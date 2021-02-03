@@ -12,12 +12,12 @@
 * Access Run metadata cheaply, again with pagination and random access.
 * Access Run data as strided C arrays in chunks.
 * A Python client with rich proxy objects that do chunk-based access
-  transparently (like intake's `RemoteXarray` and similar). But do not switch
-  dask-vs-not-dask or dask-vs-another-delayed-framework at call time. Use a
-  consistent delayed framework (or none at all) consistently within a given
-  context. Your only option at call time should be `read()`. Whether that is in
-  memory, dask, or something else should be set higher up.
-  framework or not a delayed framework at all per process.
+  transparently (like intake's `RemoteXarray` and similar). But, differently
+  from current intake and Databroker, do not switch dask-vs-not-dask or
+  dask-vs-another-delayed-framework at call time. Use a consistent delayed
+  framework (or none at all) consistently within a given context. Your only
+  option at call time should be `read()`. Whether that is in memory, dask, or
+  something else should be set higher up.
 * Usable performance without any instrisic caching in the server. Objects may
   do some internal caching for optimization, but the server will not explicitly
   hang on to any state between requests.
