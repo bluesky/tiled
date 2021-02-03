@@ -2,7 +2,8 @@
 
 ## Requirements
 
-* HTTP API that supports JSON requests, with JSON and binary responses
+* HTTP API that supports JSON and msgpack requests, with JSON and msgpack
+  responses, as well as binary blob responses for chunked data
 * Usable from ``curl`` and languages other than Python (i.e. support
   language-agnostic serialization options and avoid baking any Python-isms too
   deeply into the API)
@@ -14,7 +15,8 @@
   transparently (like intake's `RemoteXarray` and similar). But do not switch
   dask-vs-not-dask or dask-vs-another-delayed-framework at call time. Use a
   consistent delayed framework (or none at all) consistently within a given
-  context.
+  context. Your only option at call time should be `read()`. Whether that is in
+  memory, dask, or something else should be set higher up.
   framework or not a delayed framework at all per process.
 * Usable performance without any instrisic caching in the server. Objects may
   do some internal caching for optimization, but the server will not explicitly
@@ -86,6 +88,10 @@ single-dispatched on type, following ``dask.distributed``.
 * The method for initializing this object is intentionally unspecified. There
   will be variety.
 
+* The data underlying the Catalog may be updated to add items, even though te
+  Catalog itself is a read-only view on that data. Any items added MUST be added
+  to the end. Items may not be removed.
+
 ### JSON API
 
 List a Catalog to obtain its keys, paginated. It may contain subcatalogs or
@@ -98,13 +104,14 @@ GET /keys/:path?page[offset]=50&page[limit]=5
 ```json
 {
     "data": {
-        "catalogs" 
+        "metadata": {},
+        "catalogs":
             [
-                "e370b080-c1ea-4db3-90d9-64a32e6de5a5"
-                "50e81503-cdab-4370-8b0a-ce2ac192d20b"
-                "cc868088-80fc-4876-9c9a-481a37420ceb"
-                "5b13fd53-b6e4-410e-a310-2c1c31f10062"
-                "0cd287ac-823c-4ed9-a008-2a68740e1939"
+                {"key": "e370b080-c1ea-4db3-90d9-64a32e6de5a5", links: {}},
+                {"key": "50e81503-cdab-4370-8b0a-ce2ac192d20b", links: {}},
+                {"key": "cc868088-80fc-4876-9c9a-481a37420ceb", links: {}},
+                {"key": "5b13fd53-b6e4-410e-a310-2c1c31f10062", links: {}},
+                {"key": "0cd287ac-823c-4ed9-a008-2a68740e1939", links: {}}
             ],
         "datasources": [],
     }
@@ -124,21 +131,46 @@ Python API.
 Get metadata for entries in a Catalog.
 
 ```
-GET /metadata/:path?page[offset]=0&page[limit]=5
+GET /entries/:path?page[offset]=0&page[limit]=5
 ```
+
+If it contains sub-catalogs, the response looks like:
 
 ```json
 {
     "data": {
-        "catalogs" 
-            [
-                {"metadata": {...}, "__qualname__": "..."},
-                {"metadata": {...}, "__qualname__": "..."},
-                {"metadata": {...}, "__qualname__": "..."},
-                {"metadata": {...}, "__qualname__": "..."},
-                {"metadata": {...}, "__qualname__": "..."}
-            ],
+        "catalogs": [
+            {"metadata": {}, "__qualname__": "..."},
+            {"metadata": {}, "__qualname__": "..."},
+            {"metadata": {}, "__qualname__": "..."},
+            {"metadata": {}, "__qualname__": "..."},
+            {"metadata": {}, "__qualname__": "..."}
+        ],
         "datasources": [],
+    },
+    "links": {
+        "self": "...",
+        "prev": "...",
+        "next": "...",
+        "first": "...",
+        "last": "..."
+    }
+}
+```
+
+If it contains DataSources, the response looks like:
+
+```json
+{
+    "data": {
+        "catalogs": [],
+        "datasources": [
+            {"metadata": {}, "__qualname__": "...", "container": "..."},
+            {"metadata": {}, "__qualname__": "...", "container": "..."},
+            {"metadata": {}, "__qualname__": "...", "container": "..."},
+            {"metadata": {}, "__qualname__": "...", "container": "..."},
+            {"metadata": {}, "__qualname__": "...", "container": "..."}
+        ],
     },
     "links": {
         "self": "...",
@@ -170,7 +202,7 @@ in the Python API.
 * DataSources MUST implement a method ``describe()`` with no arguments
   which returns a description sufficient to construct the container before
   fetching chunks of the data. The content of this description depends on the
-  container. For example, italways includes the machine data type, and
+  container. For example, it always includes the machine data type, and
   where applicable it includes shape, chunks, and a notion of high-level
   structure like columns, dimensions, indexes. This should include links to get
   the chunks with a range of available serializations.
@@ -183,8 +215,9 @@ in the Python API.
 
 #### JSON API
 
-TO DO
-
+```
+GET /describe/path:
+```
 * /describe/path: paginated (contains metadata and key as well)
 * /describe/path: single (contains metadata and key as well)
 
