@@ -18,7 +18,7 @@
   framework (or none at all) consistently within a given context. Your only
   option at call time should be `read()`. Whether that is in memory, dask, or
   something else should be set higher up.
-* Usable performance without any instrisic caching in the server. Objects may
+* Usable performance without any intrinsic caching in the server. Objects may
   do some internal caching for optimization, but the server will not explicitly
   hang on to any state between requests.
 * Path toward adding state / caching in external systems (e.g. Redis, nginx)
@@ -56,7 +56,7 @@ single-dispatched on type, following ``dask.distributed``.
 
 * The items in a Catalog MUST have an explicit and stable order.
 
-* Catalogs MUST imlement an ``index`` attribute which supports efficient
+* Catalogs MUST implement an ``index`` attribute which supports efficient
   positional lookup and slicing for pagination. This always returns a Catalog of
   with a subset of the entries.
 
@@ -281,9 +281,12 @@ GET /datasource/blob/:path?chunk=...
 ### Serialization Dispatch
 
 This can closely follow how `dask.distributed` handles serialization. We may be
-able to just reuse `dask.distributed`'s machinery, in fact. The important
-difference is our choice of serializers. We do not need to serialize all of
-Python; we need to serialize specific data structures and we need to do it in a
-way that works for clients in languages other than Python.
+able to just reuse `dask.distributed`'s machinery, in fact. See
+[dask.distributed serialization docs](https://distributed.dask.org/en/latest/serialization.html).
 
-see [dask.distributed serialization docs](https://distributed.dask.org/en/latest/serialization.html).
+The important difference is our choice of serializers. Dask needs to serialize
+arbitrary Python objects between two trusted processes, so it makes use of
+pickle. We need to serialize a more bounded set of data structures, and we need
+to do it in a way that works with clients in languages other than Python. Also,
+even a Python client may not "trust" the server to the same extent and therefore
+should not load arbitrary pickles.
