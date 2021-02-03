@@ -98,7 +98,7 @@ List a Catalog to obtain its keys, paginated. It may contain subcatalogs or
 datasources or a mixture.
 
 ```
-GET /keys/:path?page[offset]=50&page[limit]=5
+GET /catalogs/keys/:path?page[offset]=50&page[limit]=5
 ```
 
 ```json
@@ -131,7 +131,7 @@ Python API.
 Get metadata for entries in a Catalog.
 
 ```
-GET /entries/:path?page[offset]=0&page[limit]=5
+GET /catalogs/entries/:path?page[offset]=0&page[limit]=5
 ```
 
 If it contains sub-catalogs, the response looks like:
@@ -220,7 +220,7 @@ the Catalog or their their ``metadata`` and ``container`` as well. To
 additionally include the output of ``describe()``:
 
 ```
-GET /describe/:path?page[offset]=0&page[limit]=5
+GET /catalogs/descriptions/:path?page[offset]=0&page[limit]=5
 ```
 
 ```json
@@ -247,7 +247,7 @@ GET /describe/:path?page[offset]=0&page[limit]=5
 
 To describe a single DataSource, give the path to the DataSource.
 ```
-GET /describe/:path
+GET /datasource/description/:path
 ```
 
 ```json
@@ -270,7 +270,7 @@ The content of ``description`` provides information about how to specify
 for a blob of data. Examples may include a C buffer, Arrow, msgpack, or JSON.
 
 ```
-GET /blog/:path?chunk=...
+GET /datasource/blob/:path?chunk=...
 ```
 
 ### Serialization Dispatch
