@@ -114,7 +114,7 @@ GET /catalogs/keys/:path?page[offset]=50&page[limit]=5
                 {"key": "0cd287ac-823c-4ed9-a008-2a68740e1939", "links": {}}
             ],
         "datasources": [],
-    }
+    },
     "links": {
         "self": "...",
         "prev": "...",
@@ -258,7 +258,7 @@ GET /datasource/description/:path
 ```json
 {
     "data": {
-        {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}}
+        "key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}
     },
     "links": {
         "self": "...",
