@@ -7,9 +7,9 @@
 * Usable from ``curl`` and languages other than Python (i.e. support
   language-agnostic serialization options and avoid baking any Python-isms too
   deeply into the API)
-* List Runs, with random paginated access
-* Search Runs, with random paginated access on search results
-* Access Run metadata cheaply, again with random paginated access.
+* List Runs, with pagination and random access
+* Search Runs, with pagination and random access on search results
+* Access Run metadata cheaply, again with pagination and random access.
 * Access Run data as strided C arrays in chunks.
 * A Python client with rich proxy objects that do chunk-based access
   transparently (like intake's `RemoteXarray` and similar). But do not switch
@@ -47,7 +47,7 @@ single-dispatched on type, following ``dask.distributed``.
   Catalogs may omit ``__len___`` as long as they provide
   [``__length_hint__``](https://www.python.org/dev/peps/pep-0424/), an estimated
   length that may be less expensive for Catalogs backed by databases. That is,
-  implement at this one of these:
+  implement one or both of these:
 
   ```python
   catalog.__len__
@@ -88,7 +88,7 @@ single-dispatched on type, following ``dask.distributed``.
 * The method for initializing this object is intentionally unspecified. There
   will be variety.
 
-* The data underlying the Catalog may be updated to add items, even though te
+* The data underlying the Catalog may be updated to add items, even though the
   Catalog itself is a read-only view on that data. Any items added MUST be added
   to the end. Items may not be removed.
 
@@ -107,11 +107,11 @@ GET /keys/:path?page[offset]=50&page[limit]=5
         "metadata": {},
         "catalogs":
             [
-                {"key": "e370b080-c1ea-4db3-90d9-64a32e6de5a5", links: {}},
-                {"key": "50e81503-cdab-4370-8b0a-ce2ac192d20b", links: {}},
-                {"key": "cc868088-80fc-4876-9c9a-481a37420ceb", links: {}},
-                {"key": "5b13fd53-b6e4-410e-a310-2c1c31f10062", links: {}},
-                {"key": "0cd287ac-823c-4ed9-a008-2a68740e1939", links: {}}
+                {"key": "e370b080-c1ea-4db3-90d9-64a32e6de5a5", "links": {}},
+                {"key": "50e81503-cdab-4370-8b0a-ce2ac192d20b", "links": {}},
+                {"key": "cc868088-80fc-4876-9c9a-481a37420ceb", "links": {}},
+                {"key": "5b13fd53-b6e4-410e-a310-2c1c31f10062", "links": {}},
+                {"key": "0cd287ac-823c-4ed9-a008-2a68740e1939", "links": {}}
             ],
         "datasources": [],
     }
@@ -140,11 +140,11 @@ If it contains sub-catalogs, the response looks like:
 {
     "data": {
         "catalogs": [
-            {"metadata": {}, "__qualname__": "..."},
-            {"metadata": {}, "__qualname__": "..."},
-            {"metadata": {}, "__qualname__": "..."},
-            {"metadata": {}, "__qualname__": "..."},
-            {"metadata": {}, "__qualname__": "..."}
+            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}}
         ],
         "datasources": [],
     },
@@ -165,11 +165,11 @@ If it contains DataSources, the response looks like:
     "data": {
         "catalogs": [],
         "datasources": [
-            {"metadata": {}, "__qualname__": "...", "container": "..."},
-            {"metadata": {}, "__qualname__": "...", "container": "..."},
-            {"metadata": {}, "__qualname__": "...", "container": "..."},
-            {"metadata": {}, "__qualname__": "...", "container": "..."},
-            {"metadata": {}, "__qualname__": "...", "container": "..."}
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}}
         ],
     },
     "links": {
@@ -215,13 +215,63 @@ in the Python API.
 
 #### JSON API
 
-```
-GET /describe/path:
-```
-* /describe/path: paginated (contains metadata and key as well)
-* /describe/path: single (contains metadata and key as well)
+We saw above how to list the DataSources in a Catalog, either just their key in
+the Catalog or their their ``metadata`` and ``container`` as well. To
+additionally include the output of ``describe()``:
 
-* /blob/path:?chunk=...  binary
+```
+GET /describe/:path?page[offset]=0&page[limit]=5
+```
+
+```json
+{
+    "data": {
+        "catalogs": [],
+        "datasources": [
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
+            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}}
+        ],
+    },
+    "links": {
+        "self": "...",
+        "prev": "...",
+        "next": "...",
+        "first": "...",
+        "last": "..."
+    }
+}
+```
+
+To describe a single DataSource, give the path to the DataSource.
+```
+GET /describe/:path
+```
+
+```json
+{
+    "data": {
+        {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}}
+    },
+    "links": {
+        "self": "...",
+        "prev": "...",
+        "next": "...",
+        "first": "...",
+        "last": "..."
+    }
+}
+```
+
+The content of ``description`` provides information about how to specify
+``chunk`` and a list of supported ``Content-Encoding`` headers for the request
+for a blob of data. Examples may include a C buffer, Arrow, msgpack, or JSON.
+
+```
+GET /blog/:path?chunk=...
+```
 
 ### Serialization Dispatch
 
