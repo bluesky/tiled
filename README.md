@@ -186,6 +186,11 @@ This is akin to
 ``[item.metadata for item in catalog[path].index[offset:offset + limit].values()]``
 in the Python API.
 
+Any of the above request may contain the query parameter ``q`` with a search
+query. The responses have the same structure as above. This is equivalent to
+``[item.metadata for item in catalog[path].search(query).index[offset:offset + limit].values()]``
+in the Python API.
+
 ### DataSources
 
 #### Python API
