@@ -4,7 +4,7 @@
 
 * HTTP API that supports JSON requests
 * Usable from ``curl`` and languages other than Python (i.e. support
-  serialization options other than pickle and avoid baking any Python-isms too
+  language-agnostic serialization options and avoid baking any Python-isms too
   deeply into the API)
 * List Runs, with random paginated access.
 * Access Run metadata cheaply, again with random paginated access.
@@ -16,7 +16,9 @@
 
 ## Draft Specification
 
-There are two objects in the system, **Catalogs** and **DataSources**.
+There are two user-facing objects in the system, **Catalogs** and
+**DataSources**. This is a also a **registry of (de)serialization methods**
+single-dispatched on type, following ``dask.distributed``.
 
 ### Catalogs
 
@@ -150,3 +152,13 @@ in the Python API.
   needs or usability.
 
 #### JSON API
+
+### Serialization Dispatch
+
+This can closely follow how `dask.distributed` handles serialization. We may be
+able to just reuse `dask.distributed`'s machinery, in fact. The important
+difference is our choice of serializers. We do not need to serialize all of
+Python; we need to serialize specific data structures and we need to do it in a
+way that works for clients in languages other than Python.
+
+see [dask.distributed serialization docs](https://distributed.dask.org/en/latest/serialization.html).
