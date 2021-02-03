@@ -2,16 +2,19 @@
 
 ## Requirements
 
-* HTTP API that supports JSON requests
+* HTTP API that supports JSON requests, with JSON and binary responses
 * Usable from ``curl`` and languages other than Python (i.e. support
   language-agnostic serialization options and avoid baking any Python-isms too
   deeply into the API)
-* List Runs, with random paginated access.
+* List Runs, with random paginated access
+* Search Runs, with random paginated access on search results
 * Access Run metadata cheaply, again with random paginated access.
 * Access Run data as strided C arrays in chunks.
 * A Python client with rich proxy objects that do chunk-based access
-  transparently using dask (intake's `RemoteXarray` and similar)
-* Usable performance with no state / caching in the Python objects or the server
+  transparently using dask (like intake's `RemoteXarray` and similar)
+* Usable performance without any instrisic caching in the server. Objects may
+  do some internal caching for optimization, but the server will not explicitly
+  hang on to any state between requests.
 * Path toward adding state / caching in external systems (e.g. Redis, nginx)
 
 ## Draft Specification
