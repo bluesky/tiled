@@ -27,8 +27,8 @@
 
 There are two user-facing objects in the system, **Catalogs** and
 **DataSources**. This specification proposes the Python API required to
-Duck-will type as a Catalog or DataSource as well as a sample HTTP API
-loosely based on [JSON API](https://jsonapi.org/), subject to future redesign.
+duck-type as a Catalog or DataSource as well as a sample HTTP API loosely based
+on [JSON API](https://jsonapi.org/), subject to future redesign.
 
 This is a also a **registry of (de)serialization methods**
 single-dispatched on type, following ``dask.distributed``.
