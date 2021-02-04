@@ -1,5 +1,30 @@
 # Catalog Server from Scratch
 
+## Try the prototype
+
+Install dependencies.
+
+```
+git clone https://github.com/danielballan/catalog-server-from-scratch
+cd catalog-server-from-scratch
+pip install -r requirements.tnt
+```
+Run server. It currently serves an example Catalog with a couple small array
+datasets in it. Notice that there is no `setup.py` here yet, so it must be run
+from the working directory.
+
+```
+uvicorn server:app --reload
+```
+
+Make requests. The server accepts JSON and msgpack. Examples:
+
+```
+http http://localhost:8000/catalogs/keys/
+http http://localhost:8000/catalogs/entries/
+http http://localhost:8000/catalogs/description/
+```
+
 ## Requirements
 
 * HTTP API that supports JSON and msgpack requests, with JSON and msgpack
