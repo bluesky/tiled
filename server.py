@@ -6,7 +6,7 @@ from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
     construct_response_data_from_items,
-    get_subcatalog,
+    get_entry,
     pagination_links,
 )
 
@@ -20,7 +20,7 @@ async def keys(
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
 
-    catalog = get_subcatalog(path)
+    catalog = get_entry(path)
     approx_len = length_hint(catalog)
     links = pagination_links(offset, limit, approx_len)
     response = {
@@ -39,7 +39,7 @@ async def entries(
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
 
-    catalog = get_subcatalog(path)
+    catalog = get_entry(path)
     approx_len = length_hint(catalog)
     links = pagination_links(offset, limit, approx_len)
     items = catalog.index[offset : offset + limit].items()
@@ -54,12 +54,12 @@ async def entries(
 
 @app.get("/catalogs/description")
 @app.get("/catalogs/description/{path:path}")
-async def description(
+async def list_description(
     path: Optional[str],
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
-    catalog = get_subcatalog(path)
+    catalog = get_entry(path)
     approx_len = length_hint(catalog)
     links = pagination_links(offset, limit, approx_len)
     items = catalog.index[offset : offset + limit].items()
@@ -70,6 +70,26 @@ async def description(
         "data": data,
         "links": links,
         "meta": {"count": approx_len},
+    }
+    return response
+
+
+@app.get("/datasource/description")
+@app.get("/datasource/description/{path:path}")
+async def one_description(
+    path: Optional[str],
+    offset: Optional[int] = Query(0, alias="page[offset]"),
+    limit: Optional[int] = Query(10, alias="page[limit]"),
+):
+    datasource = get_entry(path)
+    # Take the response we build for /entries and augment it.
+    *_, key = path.rsplit("/", 1)
+    data = construct_response_data_from_items(path, [(key, datasource)], describe=True)
+
+    response = {
+        "data": data["datasources"][0],
+        # "links": links,
+        # "meta": {"count": approx_len},
     }
     return response
 

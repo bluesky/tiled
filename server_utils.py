@@ -14,7 +14,7 @@ def get_settings():
     return Settings()
 
 
-def get_subcatalog(path):
+def get_entry(path):
     catalog = get_settings().catalog
     # Traverse into sub-catalog(s).
     for entry in (path or "").split("/"):
