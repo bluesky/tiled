@@ -1,0 +1,6 @@
+dask[array]
+fastapi
+msgpack-asgi==1.*
+numpy
+pydantic
+uvicorn

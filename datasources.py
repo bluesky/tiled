@@ -1,5 +1,4 @@
 import dask.array
-import h5py
 
 
 class ArraySource:
@@ -23,6 +22,8 @@ class ArraySource:
 
 class HDF5DatasetSource:
     def __init__(self, filepath, dataset_path):
+        import h5py
+
         self._file = h5py.File(filepath)
         self._dataset_path = dataset_path
         dataset = self._file[dataset_path]
