@@ -1,5 +1,8 @@
 # Catalog Server from Scratch
 
+*Disclaimer: This is very early work, presented in the spirit of an early draft
+of an RFC.*
+
 ## Try the prototype
 
 Install dependencies.
