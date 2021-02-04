@@ -46,6 +46,7 @@ class Catalog(collections.abc.Mapping):
 
 class _IndexAccessor:
     "Internal object used by Catalog."
+
     def __init__(self, entries, out_type):
         self._entries = entries
         self._out_type = out_type

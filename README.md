@@ -72,7 +72,7 @@ single-dispatched on type, following ``dask.distributed``.
 
 * The values in a Catalog MUST be other Catalogs or DataSources.
 
-* The keys in a Catalog MUST be strings.
+* The keys in a Catalog MUST be non-empty strings.
 
 * Catalogs MUST implement a ``search`` method which returns another Catalog with
   a subset of the items. The signature of that method is intentionally not
