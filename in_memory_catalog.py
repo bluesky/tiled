@@ -45,6 +45,7 @@ class Catalog(collections.abc.Mapping):
 
 
 class _IndexAccessor:
+    "Internal object used by Catalog."
     def __init__(self, entries, out_type):
         self._entries = entries
         self._out_type = out_type
@@ -53,12 +54,14 @@ class _IndexAccessor:
         if isinstance(i, int):
             if i >= len(self._entries):
                 raise IndexError("Catalog index out of range.")
-            out = next(itertools.islice(self._entries.items(), i, 1 + i))
+            out = next(itertools.islice(self._entries.values(), i, 1 + i))
         elif isinstance(i, slice):
-            out = itertools.islice(self._entries.items(), i.start, i.stop, i.step)
+            out = self._out_type(
+                dict(itertools.islice(self._entries.items(), i.start, i.stop, i.step))
+            )
         else:
             raise TypeError("Catalog index must be integer or slice.")
-        return self._out_type(dict(out))
+        return out
 
 
 class DictView(collections.abc.Mapping):
@@ -68,7 +71,7 @@ class DictView(collections.abc.Mapping):
         self._internal_dict = d
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self._internal_dict!r})"
+        return f"{type(self).__name__}({self._internal_dict!r})"
 
     def __getitem__(self, key):
         return self._internal_dict[key]
