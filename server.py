@@ -99,11 +99,21 @@ async def one_description(
 @app.get("/datasource/blob/{path:path}")
 async def blob(
     path: str,
-    blocks: str,
+    blocks: str,  # This is expected to be a list, like "[0,0]".
 ):
-    parsed_blocks = literal_eval(blocks)
-    datasource = get_entry(path)
+    # Validate request syntax.
+    try:
+        parsed_blocks = literal_eval(blocks)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Could not parse {blocks}")
+    else:
+        if (
+            not isinstance(parsed_blocks, (tuple, list)) or
+            not all(map(lambda x: isinstance(x, int), parsed_blocks))
+            ):
+                raise HTTPException(status_code=400, detail=f"Could not parse {blocks} as an index")
 
+    datasource = get_entry(path)
     try:
         chunk_bytes = datasource.read().blocks[parsed_blocks].compute().tobytes()
     except IndexError:
