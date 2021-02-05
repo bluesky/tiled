@@ -1,9 +1,11 @@
 import abc
+import json
+from functools import lru_cache
+import tempfile
+
 import dask
 from dask.distributed import Client
-from functools import lru_cache
 from pydantic import BaseSettings
-import tempfile
 
 
 class Settings(BaseSettings):
@@ -39,11 +41,10 @@ def get_entry(path):
     return catalog
 
 
-async def get_chunk_bytes(chunk):
-    "dask array -> numpy array -> bytes"
+async def get_chunk(chunk):
+    "dask array -> numpy array"
     # Make dask pull the dask into memory using its threaded workers.
-    array = await get_dask_client().compute(chunk)
-    return array.tobytes()
+    return await get_dask_client().compute(chunk)
 
 
 def pagination_links(offset, limit, length_hint):
@@ -105,3 +106,30 @@ def construct_response_data_from_items(path, items, describe):
     data["catalogs"] = catalogs
     data["datasources"] = datasources
     return data
+
+
+class SerializationRegistry:
+    def __init__(self):
+        # Map MIME types to functions
+        self._registry = {}
+        self._dask_client = get_dask_client()
+
+    def register_media_type(self, media_type, serializer):
+        self._registry[media_type] = serializer
+
+    async def serialize(self, media_type, array):
+        serializer = self._registry[media_type]
+        return await self._dask_client.submit(serializer, array)
+
+
+serialization_registry = SerializationRegistry()
+serialization_registry.register_media_type(
+    "application/octet-stream", lambda array: array.tobytes()
+)
+serialization_registry.register_media_type(
+    "application/json", lambda array: json.dumps(array.tolist()).encode()
+)
+
+
+def serialize_array(media_type, array):
+    return serialization_registry.serialize(media_type, array)

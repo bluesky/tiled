@@ -2,7 +2,7 @@ from ast import literal_eval
 from operator import length_hint
 import os
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
@@ -10,10 +10,13 @@ from server_utils import (
     get_dask_client,
     get_entry,
     pagination_links,
-    get_chunk_bytes,
+    get_chunk,
+    serialize_array,
 )
 
+
 app = FastAPI()
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -22,7 +25,7 @@ async def startup_event():
 
 
 @app.on_event("shutdown")
-async def startup_event():
+async def shutdown_event():
     "Gracefully shutdown the dask.distributed Client."
     client = get_dask_client()
     await client.close()
@@ -112,6 +115,7 @@ async def one_description(
 
 @app.get("/datasource/blob/array/{path:path}")
 async def blob(
+    request: Request,
     path: str,
     blocks: str,  # This is expected to be a list, like "[0,0]".
 ):
@@ -133,8 +137,12 @@ async def blob(
         chunk = datasource.read().blocks[parsed_blocks]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
-    chunk_bytes = await get_chunk_bytes(chunk)
-    return Response(content=chunk_bytes, media_type="application/octet-stream")
+    array = await get_chunk(chunk)
+    media_type = request.headers.get("Accept", "application/octet-stream")
+    if media_type == "*/*":
+        media_type = "application/octet-stream"
+    content = await serialize_array(media_type, array)
+    return Response(content=content, media_type=media_type)
 
 
 # After defining all routes, wrap app with middleware.
