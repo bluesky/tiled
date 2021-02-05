@@ -1,6 +1,9 @@
 import abc
+import dask
+from dask.distributed import Client
 from functools import lru_cache
 from pydantic import BaseSettings
+import tempfile
 
 
 class Settings(BaseSettings):
@@ -14,6 +17,19 @@ def get_settings():
     return Settings()
 
 
+@lru_cache()
+def get_dask_client():
+    "Start a dask cluster than uses threaded workers, and return its Client."
+    # For now avoid placing dask-worker-space in cwd (the default) because
+    # triggers server reloads in uvicorn --reload mode. We will want this to be
+    # configurable in the future.
+    temp_dask_worker_space = tempfile.TemporaryDirectory().name
+    DASK_CONFIG = {"temporary-directory": temp_dask_worker_space}
+    dask.config.update(dask.config.config, DASK_CONFIG, priority="new")
+
+    return Client(asynchronous=True, processes=False)
+
+
 def get_entry(path):
     catalog = get_settings().catalog
     # Traverse into sub-catalog(s).
@@ -21,6 +37,13 @@ def get_entry(path):
         if entry:
             catalog = catalog[entry]
     return catalog
+
+
+async def get_chunk_bytes(chunk):
+    "dask array -> numpy array -> bytes"
+    # Make dask pull the dask into memory using its threaded workers.
+    array = await get_dask_client().compute(chunk)
+    return array.tobytes()
 
 
 def pagination_links(offset, limit, length_hint):

@@ -7,11 +7,25 @@ from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
     construct_response_data_from_items,
+    get_dask_client,
     get_entry,
     pagination_links,
+    get_chunk_bytes,
 )
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    "Warm up the dask.distributed Cluster."
+    get_dask_client()
+
+
+@app.on_event("shutdown")
+async def startup_event():
+    "Gracefully shutdown the dask.distributed Client."
+    client = get_dask_client()
+    await client.close()
 
 
 @app.get("/catalogs/keys")
@@ -96,7 +110,7 @@ async def one_description(
     return response
 
 
-@app.get("/datasource/blob/{path:path}")
+@app.get("/datasource/blob/array/{path:path}")
 async def blob(
     path: str,
     blocks: str,  # This is expected to be a list, like "[0,0]".
@@ -107,17 +121,19 @@ async def blob(
     except Exception:
         raise HTTPException(status_code=400, detail=f"Could not parse {blocks}")
     else:
-        if (
-            not isinstance(parsed_blocks, (tuple, list)) or
-            not all(map(lambda x: isinstance(x, int), parsed_blocks))
-            ):
-                raise HTTPException(status_code=400, detail=f"Could not parse {blocks} as an index")
+        if not isinstance(parsed_blocks, (tuple, list)) or not all(
+            map(lambda x: isinstance(x, int), parsed_blocks)
+        ):
+            raise HTTPException(
+                status_code=400, detail=f"Could not parse {blocks} as an index"
+            )
 
     datasource = get_entry(path)
     try:
-        chunk_bytes = datasource.read().blocks[parsed_blocks].compute().tobytes()
+        chunk = datasource.read().blocks[parsed_blocks]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
+    chunk_bytes = await get_chunk_bytes(chunk)
     return Response(content=chunk_bytes, media_type="application/octet-stream")
 
 
