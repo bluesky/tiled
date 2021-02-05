@@ -1,7 +1,8 @@
+from ast import literal_eval
 from operator import length_hint
 import os
 from typing import Optional
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Response
 from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
@@ -11,6 +12,7 @@ from server_utils import (
 )
 
 app = FastAPI()
+
 
 @app.get("/catalogs/keys")
 @app.get("/catalogs/keys/{path:path}")
@@ -93,11 +95,27 @@ async def one_description(
     }
     return response
 
+
+@app.get("/datasource/blob/{path:path}")
+async def blob(
+    path: str,
+    blocks: str,
+):
+    parsed_blocks = literal_eval(blocks)
+    datasource = get_entry(path)
+
+    try:
+        chunk_bytes = datasource.read().blocks[parsed_blocks].compute().tobytes()
+    except IndexError:
+        raise HTTPException(status_code=422, detail="Block index out of range")
+    return Response(content=chunk_bytes, media_type="application/octet-stream")
+
+
 # After defining all routes, wrap app with middleware.
 
 # Add support for msgpack-encoded requests/responses as alternative to JSON.
 # https://fastapi.tiangolo.com/advanced/middleware/
-# https://github.com/florimondmanca/msgpack-asgi 
+# https://github.com/florimondmanca/msgpack-asgi
 if not os.getenv("DISABLE_MSGPACK_MIDDLEWARE"):
     app = MessagePackMiddleware(app)
 
