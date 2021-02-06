@@ -1,8 +1,70 @@
 import collections.abc
+import inspect
 import itertools
+
+import mongoquery
+from queries import MongoQuery
+
+
+class QueryRegistry:
+    def __init__(self):
+        self._lookup = {}
+        self._lazy = {}
+
+    def register(self, class_, translator):
+        self._lookup[class_] = translator
+        return translator
+
+    def register_lazy(self, toplevel, register):
+        """
+        Register a registration function which will be called if the
+        *toplevel* module (e.g. 'pandas') is ever loaded.
+        """
+        self._lazy[toplevel] = register
+
+    def dispatch(self, class_):
+        """Return the function implementation for the given ``class_``"""
+        # Fast path with direct lookup on cls
+        lk = self._lookup
+        try:
+            impl = lk[class_]
+        except KeyError:
+            pass
+        else:
+            return impl
+        # Is a lazy registration function present?
+        toplevel, _, _ = class_.__module__.partition(".")
+        try:
+            register = self._lazy.pop(toplevel)
+        except KeyError:
+            pass
+        else:
+            register()
+            return self.dispatch(class_)  # recurse
+        # Walk the MRO and cache the lookup result
+        for base in inspect.getmro(class_)[1:]:
+            if base in lk:
+                lk[class_] = lk[base]
+                return lk[base]
+        raise TypeError(f"No dispatch for {class_}")
+
+    def __call__(self, arg, *args, **kwargs):
+        """
+        Call the corresponding method based on type of argument.
+        """
+        meth = self.dispatch(type(arg))
+        return meth(arg, *args, **kwargs)
 
 
 class Catalog(collections.abc.Mapping):
+
+    # Define classmethods for managing what queries this Catalog knows.
+    __query_registry = QueryRegistry()
+    register_query = __query_registry.register_query
+    deregister_query = __query_registry.deregister_query
+
+    register_query(MongoQuery, lambda query: mongoquery.Query(query))
+
     def __init__(self, entries, metadata=None):
         self._entries = entries
         self._index_accessor = _IndexAccessor(entries, type(self))
@@ -37,7 +99,14 @@ class Catalog(collections.abc.Mapping):
         >>> catalog.search(TextSearch("Mn"))
         Catalog({...})
         """
-        return query.in_memory(self)
+        translated_query = self.__query_registry(type(query))
+        return type(self)(
+            {
+                uid: run
+                for uid, run in self.items()
+                if translated_query.match(run.metadata["start"])
+            }
+        )
 
     @property
     def index(self):

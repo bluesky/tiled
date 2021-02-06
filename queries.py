@@ -4,32 +4,12 @@ into concrete queries for specific storage backends.
 """
 
 
+# TODO Use pydantic here.
+
+
 class MongoQuery:
     def __init__(self, query):
         self._query = query
-
-    def in_memory(self, catalog):
-        # The mongoquery library is a pure-Python library that lets us do
-        # MongoDB-like querys on Python collections, without an actual MongoDB.
-        import importlib
-
-        if not importlib.util.find_spec("mongoquery"):
-            raise OptionalDependencyMissing(
-                "mongoquery is required to search on this Catalog"
-            )
-        from mongoquery import Query
-
-        parsed_query = Query(self._query)
-        return type(catalog)(
-            {
-                uid: run
-                for uid, run in catalog.items()
-                if parsed_query.match(run.metadata["start"])
-            }
-        )
-
-    def mongodb(self, catalog):
-        return catalog.raw_search(self._query)
 
 
 class TextSearch:
