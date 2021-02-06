@@ -172,7 +172,7 @@ def walk_string_values(tree, node=None):
 
 def full_text_search(query, catalog):
     matches = {}
-    query_words = set(query._text.lower().split())
+    query_words = set(query.text.lower().split())
     for key, value in catalog.items():
         words = set(
             word
