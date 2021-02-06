@@ -1,6 +1,7 @@
 import abc
-import json
 from functools import lru_cache
+import json
+from operator import length_hint
 import tempfile
 
 import dask
@@ -133,3 +134,17 @@ serialization_registry.register_media_type(
 
 def serialize_array(media_type, array):
     return serialization_registry.serialize(media_type, array)
+
+
+def keys_response(path, offset, limit, query=None):
+    catalog = get_entry(path)
+    if query is not None:
+        catalog = catalog.search(query)
+    approx_len = length_hint(catalog)
+    links = pagination_links(offset, limit, approx_len)
+    response = {
+        "data": list(catalog.index[offset : offset + limit]),
+        "links": links,
+        "meta": {"count": approx_len},
+    }
+    return response

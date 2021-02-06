@@ -9,18 +9,40 @@ from server_utils import (
     construct_response_data_from_items,
     get_dask_client,
     get_entry,
+    keys_response,
     pagination_links,
     get_chunk,
     serialize_array,
 )
+from queries import queries_by_name
 
 
 app = FastAPI()
 
 
+def add_search_routes(app=app):
+    """
+    Routes for search are defined at the last moment, just before startup, so
+    that custom query types may be registered first.
+    """
+    # We bind app in a parameter above so that we have a reference to the
+    # FastAPI instance itself, not the middleware which shadows it below.
+    for name, query_class in queries_by_name.items():
+
+        @app.post(f"/catalogs/search/{name}/keys/{{path:path}}")
+        async def keys_search_text(
+            query: query_class,
+            path: Optional[str],
+            offset: Optional[int] = Query(0, alias="page[offset]"),
+            limit: Optional[int] = Query(10, alias="page[limit]"),
+        ):
+            return keys_response(path, offset, limit, query=query)
+
+
 @app.on_event("startup")
 async def startup_event():
-    "Warm up the dask.distributed Cluster."
+    add_search_routes()
+    # Warm up the dask.distributed Cluster.
     get_dask_client()
 
 
@@ -38,16 +60,7 @@ async def keys(
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
-
-    catalog = get_entry(path)
-    approx_len = length_hint(catalog)
-    links = pagination_links(offset, limit, approx_len)
-    response = {
-        "data": list(catalog.index[offset : offset + limit]),
-        "links": links,
-        "meta": {"count": approx_len},
-    }
-    return response
+    return keys_response(path, offset, limit)
 
 
 @app.get("/catalogs/entries")

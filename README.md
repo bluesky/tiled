@@ -24,6 +24,7 @@ Make requests. The server accepts JSON and msgpack. Examples:
 
 ```
 http http://localhost:8000/catalogs/keys/
+http POST http://localhost:8000/catalogs/search/text/keys/ animal=penguin
 http http://localhost:8000/catalogs/entries/
 http http://localhost:8000/catalogs/description/
 ```
