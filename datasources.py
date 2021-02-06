@@ -4,7 +4,9 @@ import dask.array
 class ArraySource:
     def __init__(self, data):
         self.metadata = {}
-        self._data = dask.array.from_array(data)
+        if not isinstance(data, dask.array.Array):
+            data = dask.array.from_array(data)
+        self._data = data
 
     def __repr__(self):
         return f"{type(self).__name__}({self._data!r})"

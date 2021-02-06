@@ -2,8 +2,7 @@ import collections.abc
 import inspect
 import itertools
 
-import mongoquery
-from queries import MongoQuery
+from queries import Text
 
 
 class QueryRegistry:
@@ -60,10 +59,8 @@ class Catalog(collections.abc.Mapping):
 
     # Define classmethods for managing what queries this Catalog knows.
     __query_registry = QueryRegistry()
-    register_query = __query_registry.register_query
-    deregister_query = __query_registry.deregister_query
-
-    register_query(MongoQuery, lambda query: mongoquery.Query(query))
+    register_query = __query_registry.register
+    register_query_lazy = __query_registry.register_lazy
 
     def __init__(self, entries, metadata=None):
         self._entries = entries
@@ -93,20 +90,8 @@ class Catalog(collections.abc.Mapping):
     def search(self, query):
         """
         Return a Catalog with a subset of the entries.
-
-        >>> catalog.search(MongoQuery({"plan_name": "scan"}))
-        Catalog({...})
-        >>> catalog.search(TextSearch("Mn"))
-        Catalog({...})
         """
-        translated_query = self.__query_registry(type(query))
-        return type(self)(
-            {
-                uid: run
-                for uid, run in self.items()
-                if translated_query.match(run.metadata["start"])
-            }
-        )
+        return self.__query_registry(query, self)
 
     @property
     def index(self):
@@ -157,3 +142,46 @@ class DictView(collections.abc.Mapping):
 
     def __delitem__(self, key):
         raise TypeError("Deleting items is not allowed.")
+
+
+def walk_string_values(tree, node=None):
+    """
+    >>> list(
+    ...     walk_string_values(
+    ...         {'a': {'b': {'c': 'apple', 'd': 'banana'},
+    ...          'e': ['cat', 'dog']}, 'f': 'elephant'}
+    ...     )
+    ... )
+    ['apple', 'banana', 'cat', 'dog', 'elephant']
+    """
+    if node is None:
+        for node in tree:
+            yield from walk_string_values(tree, node)
+    else:
+        value = tree[node]
+        if isinstance(value, str):
+            yield value
+        elif hasattr(value, "items"):
+            for k, v in value.items():
+                yield from walk_string_values(value, k)
+        elif isinstance(value, collections.abc.Iterable):
+            for item in value:
+                if isinstance(item, str):
+                    yield item
+
+
+def full_text_search(query, catalog):
+    matches = {}
+    query_words = set(query._text.lower().split())
+    for key, value in catalog.items():
+        words = set(
+            word
+            for s in walk_string_values(value.metadata)
+            for word in s.lower().split()
+        )
+        if words.intersection(query_words):
+            matches[key] = value
+    return type(catalog)(matches)
+
+
+Catalog.register_query(Text, full_text_search)
