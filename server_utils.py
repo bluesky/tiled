@@ -46,6 +46,8 @@ def get_entry(path):
 async def get_chunk(chunk):
     "dask array -> numpy array"
     # Make dask pull the dask into memory using its threaded workers.
+    # TODO Should we client.scatter first? Is there anything *to* scatter when
+    # there is only one block?
     return await get_dask_client().compute(chunk)
 
 
