@@ -1,5 +1,4 @@
 from ast import literal_eval
-from operator import length_hint
 import os
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -7,10 +6,9 @@ from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
     construct_response_data_from_items,
+    construct_catalogs_response,
     get_dask_client,
     get_entry,
-    keys_response,
-    pagination_links,
     get_chunk,
     serialize_array,
 )
@@ -37,7 +35,14 @@ def add_search_routes(app=app):
             offset: Optional[int] = Query(0, alias="page[offset]"),
             limit: Optional[int] = Query(10, alias="page[limit]"),
         ):
-            return keys_response(path, offset, limit, query=query)
+            return construct_catalogs_response(
+                path,
+                offset,
+                limit,
+                query=query,
+                include_metadata=False,
+                include_description=False,
+            )
 
 
 @app.on_event("startup")
@@ -62,7 +67,15 @@ async def keys(
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
     "List only the keys of the items in a Catalog."
-    return keys_response(path, offset, limit)
+
+    return construct_catalogs_response(
+        path,
+        offset,
+        limit,
+        query=None,
+        include_metadata=False,
+        include_description=False,
+    )
 
 
 @app.get("/catalogs/entries/{path:path}")
@@ -74,17 +87,14 @@ async def entries(
 ):
     "List the keys and metadata of the items in a Catalog."
 
-    catalog = get_entry(path)
-    approx_len = length_hint(catalog)
-    links = pagination_links(offset, limit, approx_len)
-    items = catalog.index[offset : offset + limit].items()
-    data = construct_response_data_from_items(path, items, describe=False)
-    response = {
-        "data": data,
-        "links": links,
-        "meta": {"count": approx_len},
-    }
-    return response
+    return construct_catalogs_response(
+        path,
+        offset,
+        limit,
+        query=None,
+        include_metadata=True,
+        include_description=False,
+    )
 
 
 @app.get("/catalogs/description/{path:path}")
@@ -95,19 +105,15 @@ async def list_description(
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
     "List the keys, metadata, and data structure of the items in a Catalog."
-    catalog = get_entry(path)
-    approx_len = length_hint(catalog)
-    links = pagination_links(offset, limit, approx_len)
-    items = catalog.index[offset : offset + limit].items()
-    # Take the response we build for /entries and augment it.
-    data = construct_response_data_from_items(path, items, describe=True)
 
-    response = {
-        "data": data,
-        "links": links,
-        "meta": {"count": approx_len},
-    }
-    return response
+    return construct_catalogs_response(
+        path,
+        offset,
+        limit,
+        query=None,
+        include_metadata=True,
+        include_description=False,
+    )
 
 
 @app.get("/datasource/description/{path:path}")
@@ -120,10 +126,12 @@ async def one_description(
     datasource = get_entry(path)
     # Take the response we build for /entries and augment it.
     *_, key = path.rsplit("/", 1)
-    data = construct_response_data_from_items(path, [(key, datasource)], describe=True)
+    data = construct_response_data_from_items(
+        path, [(key, datasource)], include_metadata=True, include_description=True
+    )
 
     response = {
-        "data": data["datasources"][0],
+        "data": data[0],
         # "links": links,
         # "meta": {"count": approx_len},
     }
@@ -150,7 +158,10 @@ async def blob(
                 status_code=400, detail=f"Could not parse {blocks} as an index"
             )
 
-    datasource = get_entry(path)
+    try:
+        datasource = get_entry(path)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
     try:
         chunk = datasource.read().blocks[parsed_blocks]
     except IndexError:

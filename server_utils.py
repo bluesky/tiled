@@ -6,6 +6,7 @@ import tempfile
 
 import dask
 from dask.distributed import Client
+from fastapi import HTTPException
 from pydantic import BaseSettings
 
 
@@ -49,14 +50,24 @@ async def get_chunk(chunk):
 
 
 def pagination_links(offset, limit, length_hint):
-    last_page = length_hint // limit
     # TODO Include root path in links.
     # root_path = request.scope.get("/")
     links = {
         "self": f"/?page[offset]={offset}&page[limit]={limit}",
-        "first": f"/?page[offset]={0}&page[limit]={limit}",
-        "last": f"/?page[offset]={last_page}&page[limit]={limit}",
+        # These are conditionally overwritten below.
+        "first": None,
+        "last": None,
+        "next": None,
+        "prev": None,
     }
+    if limit:
+        last_page = length_hint // limit
+        links.update(
+            {
+                "first": f"/?page[offset]={0}&page[limit]={limit}",
+                "last": f"/?page[offset]={last_page}&page[limit]={limit}",
+            }
+        )
     if offset + limit < length_hint:
         links["next"] = f"/?page[offset]={offset + limit}&page[limit]={limit}"
     if offset > 0:
@@ -83,30 +94,68 @@ class DuckCatalog(metaclass=abc.ABCMeta):
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
 
-def construct_response_data_from_items(path, items, describe):
-    data = {}
-    catalogs, datasources = [], []
+def construct_response_data_from_items(
+    path, items, include_metadata, include_description
+):
+    path = path.rstrip("/")
+    data = []
     for key, entry in items:
         obj = {
-            "key": key,
-            "metadata": entry.metadata,
-            "__module__": getattr(type(entry), "__module__"),
-            "__qualname__": getattr(type(entry), "__qualname__"),
+            "id": f"{path}/{key}",
+            "attributes": {
+                "key": key,
+            },
+            "meta": {
+                "__module__": getattr(type(entry), "__module__"),
+                "__qualname__": getattr(type(entry), "__qualname__"),
+            },
             "links": {},
         }
+        if include_metadata:
+            obj["attributes"]["metadata"] = entry.metadata
         if isinstance(entry, DuckCatalog):
-            obj["links"]["list"] = f"/catalogs/list/{path}/{key}"
-            obj["links"]["entries"] = f"/catalogs/list/{path}/{key}"
-            catalogs.append(obj)
+            obj["type"] = "catalog"
+            obj["links"]["keys"] = f"/catalogs/keys/{path}/{key}"
+            obj["links"]["entries"] = f"/catalogs/entries/{path}/{key}"
+            obj["links"]["description"] = f"/catalogs/description/{path}/{key}"
+            data.append(obj)
         else:
-            if describe:
-                obj["description"] = entry.describe()
+            obj["type"] = "datasource"
+            if include_description:
+                obj["attributes"]["description"] = entry.describe()
             else:
-                obj["links"]["describe"] = f"/catalogs/list/{path}/{key}"
-            datasources.append(obj)
-    data["catalogs"] = catalogs
-    data["datasources"] = datasources
+                obj["links"]["description"] = f"/datasource/description/{path}/{key}"
+            data.append(obj)
     return data
+
+
+def construct_catalogs_response(
+    path, offset, limit, query, include_metadata, include_description
+):
+    try:
+        catalog = get_entry(path)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
+    if not isinstance(catalog, DuckCatalog):
+        raise HTTPException(
+            status_code=404, detail="This is a Data Source, not a Catalog."
+        )
+    if query is not None:
+        catalog = catalog.search(query)
+    approx_len = length_hint(catalog)
+    links = pagination_links(offset, limit, approx_len)
+    data = construct_response_data_from_items(
+        path,
+        catalog.index[offset : offset + limit].items(),
+        include_metadata=include_metadata,
+        include_description=include_description,
+    )
+    response = {
+        "data": data,
+        "links": links,
+        "meta": {"count": approx_len},
+    }
+    return response
 
 
 class SerializationRegistry:
@@ -134,17 +183,3 @@ serialization_registry.register_media_type(
 
 def serialize_array(media_type, array):
     return serialization_registry.serialize(media_type, array)
-
-
-def keys_response(path, offset, limit, query=None):
-    catalog = get_entry(path)
-    if query is not None:
-        catalog = catalog.search(query)
-    approx_len = length_hint(catalog)
-    links = pagination_links(offset, limit, approx_len)
-    response = {
-        "data": list(catalog.index[offset : offset + limit]),
-        "links": links,
-        "meta": {"count": approx_len},
-    }
-    return response
