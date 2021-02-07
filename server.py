@@ -5,8 +5,9 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
-    construct_response_data_from_items,
-    construct_catalogs_response,
+    construct_catalogs_entries_response,
+    construct_datasource_response,
+    DuckCatalog,
     get_dask_client,
     get_entry,
     get_chunk,
@@ -35,7 +36,7 @@ def add_search_routes(app=app):
             offset: Optional[int] = Query(0, alias="page[offset]"),
             limit: Optional[int] = Query(10, alias="page[limit]"),
         ):
-            return construct_catalogs_response(
+            return construct_catalogs_entries_response(
                 path,
                 offset,
                 limit,
@@ -59,8 +60,51 @@ async def shutdown_event():
     await client.close()
 
 
-@app.get("/catalogs/keys/{path:path}")
-@app.get("/catalogs/keys", include_in_schema=False)
+@app.get("/entry/metadata/{path:path}")
+@app.get("/entry/metadata", include_in_schema=False)
+async def metadata(
+    path: Optional[str] = "",
+):
+    "Fetch the metadata for one Catalog or Data Source."
+
+    path = path.rstrip("/")
+    try:
+        entry = get_entry(path)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
+    return {
+        "data": {
+            "id": path,
+            "attributes": {"metadata": entry.metadata},
+            "meta": {
+                "__module__": getattr(type(entry), "__module__"),
+                "__qualname__": getattr(type(entry), "__qualname__"),
+            },
+        }
+    }
+
+
+@app.get("/catalogs/entries/count/{path:path}")
+@app.get("/catalogs/entries/count", include_in_schema=False)
+async def entries_count(
+    path: Optional[str] = "",
+):
+    "Fetch the number of entries in a Catalog."
+
+    path = path.rstrip("/")
+    try:
+        catalog = get_entry(path)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
+    if not isinstance(catalog, DuckCatalog):
+        raise HTTPException(
+            status_code=404, detail="This is a Data Source, not a Catalog."
+        )
+    return {"data": {"id": path, "attributes": {"count": len(catalog)}}}
+
+
+@app.get("/catalogs/entries/keys/{path:path}")
+@app.get("/catalogs/entries/keys", include_in_schema=False)
 async def keys(
     path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
@@ -68,7 +112,7 @@ async def keys(
 ):
     "List only the keys of the items in a Catalog."
 
-    return construct_catalogs_response(
+    return construct_catalogs_entries_response(
         path,
         offset,
         limit,
@@ -78,8 +122,8 @@ async def keys(
     )
 
 
-@app.get("/catalogs/entries/{path:path}")
-@app.get("/catalogs/entries", include_in_schema=False)
+@app.get("/catalogs/entries/metadata/{path:path}")
+@app.get("/catalogs/entries/metadata", include_in_schema=False)
 async def entries(
     path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
@@ -87,7 +131,7 @@ async def entries(
 ):
     "List the keys and metadata of the items in a Catalog."
 
-    return construct_catalogs_response(
+    return construct_catalogs_entries_response(
         path,
         offset,
         limit,
@@ -97,8 +141,8 @@ async def entries(
     )
 
 
-@app.get("/catalogs/description/{path:path}")
-@app.get("/catalogs/description", include_in_schema=False)
+@app.get("/catalogs/entries/description/{path:path}")
+@app.get("/catalogs/entries/description", include_in_schema=False)
 async def list_description(
     path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
@@ -106,7 +150,7 @@ async def list_description(
 ):
     "List the keys, metadata, and data structure of the items in a Catalog."
 
-    return construct_catalogs_response(
+    return construct_catalogs_entries_response(
         path,
         offset,
         limit,
@@ -126,7 +170,7 @@ async def one_description(
     datasource = get_entry(path)
     # Take the response we build for /entries and augment it.
     *_, key = path.rsplit("/", 1)
-    data = construct_response_data_from_items(
+    data = construct_datasource_response(
         path, [(key, datasource)], include_metadata=True, include_description=True
     )
 

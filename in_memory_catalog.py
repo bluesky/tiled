@@ -6,14 +6,24 @@ from queries import DictView, QueryTranslationRegistry, Text
 
 class Catalog(collections.abc.Mapping):
 
+    __slots__ = (
+        "items_indexer",
+        "keys_indexer",
+        "_mapping",
+        "_metadata",
+        "values_indexer",
+    )
+
     # Define classmethods for managing what queries this Catalog knows.
     __query_registry = QueryTranslationRegistry()
     register_query = __query_registry.register
     register_query_lazy = __query_registry.register_lazy
 
-    def __init__(self, entries, metadata=None):
-        self._entries = entries
-        self._index_accessor = _IndexAccessor(entries, type(self))
+    def __init__(self, mapping, metadata=None):
+        self._mapping = mapping
+        self.items_indexer = ItemsIndexer(mapping)
+        self.keys_indexer = KeysIndexer(mapping)
+        self.values_indexer = ValuesIndexer(mapping)
         self._metadata = metadata or {}
 
     @property
@@ -28,17 +38,17 @@ class Catalog(collections.abc.Mapping):
         return f"{type(self).__name__}" "({...})"
 
     def __getitem__(self, key):
-        return self._entries[key]
+        return self._mapping[key]
 
     def __iter__(self):
-        yield from self._entries
+        yield from self._mapping
 
     def __len__(self):
-        return len(self._entries)
+        return len(self._mapping)
 
     def search(self, query):
         """
-        Return a Catalog with a subset of the entries.
+        Return a Catalog with a subset of the mapping.
         """
         return self.__query_registry(query, self)
 
@@ -47,25 +57,45 @@ class Catalog(collections.abc.Mapping):
         return self._index_accessor
 
 
-class _IndexAccessor:
-    "Internal object used by Catalog."
-
-    def __init__(self, entries, out_type):
-        self._entries = entries
-        self._out_type = out_type
+class KeysIndexer:
+    def __init__(self, mapping):
+        self._mapping = mapping
 
     def __getitem__(self, i):
         if isinstance(i, int):
-            if i >= len(self._entries):
-                raise IndexError("Catalog index out of range.")
-            out = next(itertools.islice(self._entries.values(), i, 1 + i))
+            if i > len(self):
+                raise IndexError(f"index {i} out of range for length {len(self)}")
+            key = next(itertools.islice(self._mapping.keys(), i))
+            return self._make_result(key)
         elif isinstance(i, slice):
-            out = self._out_type(
-                dict(itertools.islice(self._entries.items(), i.start, i.stop, i.step))
+            slice_of_keys = itertools.islice(
+                self._mapping.keys(), i.start, i.stop, i.step
             )
+            return [self._make_result(key) for key in slice_of_keys]
         else:
-            raise TypeError("Catalog index must be integer or slice.")
-        return out
+            raise TypeError(f"{type(self).__name__} index must be integer or slice.")
+
+    def _make_result(self, key):
+        return key
+
+
+class ValuesIndexer(KeysIndexer):
+
+    # A goal of this implementation is to avoid iterating over
+    # self._mapping.values() because self._mapping may be a LazyMap which only
+    # constructs its values at access time. With this in mind, w e identify the
+    # key(s) of interest and then only access those values.
+
+    def _make_result(self, key):
+        return self._mapping[key]
+
+
+class ItemsIndexer(KeysIndexer):
+
+    # See coment in ValuesIndexer above. The same motivation applies here.
+
+    def _make_result(self, key):
+        return (key, self._mapping[key])
 
 
 def walk_string_values(tree, node=None):

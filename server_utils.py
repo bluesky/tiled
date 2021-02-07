@@ -94,11 +94,29 @@ class DuckCatalog(metaclass=abc.ABCMeta):
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
 
-def construct_response_data_from_items(
-    path, items, include_metadata, include_description
+def construct_catalogs_entries_response(
+    path, offset, limit, query, include_metadata, include_description
 ):
     path = path.rstrip("/")
+    try:
+        catalog = get_entry(path)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
+    if not isinstance(catalog, DuckCatalog):
+        raise HTTPException(
+            status_code=404, detail="This is a Data Source, not a Catalog."
+        )
+    if query is not None:
+        catalog = catalog.search(query)
+    approx_len = length_hint(catalog)
+    links = pagination_links(offset, limit, approx_len)
     data = []
+    if include_metadata or include_description:
+        # Pull a page of items into memory.
+        items = catalog.items_indexer[offset : offset + limit]
+    else:
+        # Pull a page of just the keys, which is cheaper.
+        items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])
     for key, entry in items:
         obj = {
             "id": f"{path}/{key}",
@@ -126,34 +144,35 @@ def construct_response_data_from_items(
             else:
                 obj["links"]["description"] = f"/datasource/description/{path}/{key}"
             data.append(obj)
-    return data
-
-
-def construct_catalogs_response(
-    path, offset, limit, query, include_metadata, include_description
-):
-    try:
-        catalog = get_entry(path)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    if not isinstance(catalog, DuckCatalog):
-        raise HTTPException(
-            status_code=404, detail="This is a Data Source, not a Catalog."
-        )
-    if query is not None:
-        catalog = catalog.search(query)
-    approx_len = length_hint(catalog)
-    links = pagination_links(offset, limit, approx_len)
-    data = construct_response_data_from_items(
-        path,
-        catalog.index[offset : offset + limit].items(),
-        include_metadata=include_metadata,
-        include_description=include_description,
-    )
     response = {
         "data": data,
         "links": links,
         "meta": {"count": approx_len},
+    }
+    return response
+
+
+def construct_datasource_response(path, key, include_metadata, include_description):
+    path = path.rstrip("/")
+    try:
+        datasource = get_entry(path)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
+    data = {
+        "id": f"{path}/{key}",
+        "attributes": {
+            "key": key,
+            "description": datasource.describe(),
+        },
+        "meta": {
+            "__module__": getattr(type(datasource), "__module__"),
+            "__qualname__": getattr(type(datasource), "__qualname__"),
+        },
+        "links": {},
+    }
+    response = {
+        "data": data,
+        "links": {},
     }
     return response
 
