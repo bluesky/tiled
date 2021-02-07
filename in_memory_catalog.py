@@ -54,7 +54,7 @@ class _IndexAccessor:
         self._entries = entries
         self._out_type = out_type
 
-    def __getitem__(self, /, i):
+    def __getitem__(self, i):
         if isinstance(i, int):
             if i >= len(self._entries):
                 raise IndexError("Catalog index out of range.")
