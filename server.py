@@ -60,6 +60,7 @@ async def keys(
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
+    "List only the keys of the items in a Catalog."
     return keys_response(path, offset, limit)
 
 
@@ -70,6 +71,7 @@ async def entries(
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
+    "List the keys and metadata of the items in a Catalog."
 
     catalog = get_entry(path)
     approx_len = length_hint(catalog)
@@ -91,6 +93,7 @@ async def list_description(
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
+    "List the keys, metadata, and data structure of the items in a Catalog."
     catalog = get_entry(path)
     approx_len = length_hint(catalog)
     links = pagination_links(offset, limit, approx_len)
@@ -113,6 +116,7 @@ async def one_description(
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
+    "Give the keys, metadata, and data structure of one Data Source."
     datasource = get_entry(path)
     # Take the response we build for /entries and augment it.
     *_, key = path.rsplit("/", 1)
@@ -132,6 +136,7 @@ async def blob(
     path: str,
     blocks: str,  # This is expected to be a list, like "[0,0]".
 ):
+    "Provide one block (chunk) or an array."
     # Validate request syntax.
     try:
         parsed_blocks = literal_eval(blocks)
