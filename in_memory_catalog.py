@@ -133,7 +133,10 @@ def full_text_search(query, catalog):
             for s in walk_string_values(value.metadata)
             for word in s.lower().split()
         )
-        if words.intersection(query_words):
+        # Note that `not set.disjoint` is faster than `set.intersection`. At
+        # the C level, `disjoint` loops over the set until it finds one match,
+        # and then bails, whereas `intersection` proceeds to find all matches.
+        if not words.disjoint(query_words):
             matches[key] = value
     return type(catalog)(matches)
 
