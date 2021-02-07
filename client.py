@@ -89,6 +89,28 @@ class ClientCatalog(collections.abc.Mapping):
         return self._index_accessor
 
 
+class KeysIndexer:
+    def __init__(self, client, path):
+        self._mapping = mapping
+
+    def __getitem__(self, i):
+        if isinstance(i, int):
+            if i > len(self):
+                raise IndexError(f"index {i} out of range for length {len(self)}")
+            key = next(itertools.islice(self._mapping.keys(), i))
+            return self._make_result(key)
+        elif isinstance(i, slice):
+            slice_of_keys = itertools.islice(
+                self._mapping.keys(), i.start, i.stop, i.step
+            )
+            return [self._make_result(key) for key in slice_of_keys]
+        else:
+            raise TypeError(f"{type(self).__name__} index must be integer or slice.")
+
+    def _make_result(self, key):
+        return key
+
+
 class _IndexAccessor:
     "Internal object used by ClientCatalog."
 

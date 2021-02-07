@@ -6,13 +6,7 @@ from queries import DictView, QueryTranslationRegistry, Text
 
 class Catalog(collections.abc.Mapping):
 
-    __slots__ = (
-        "items_indexer",
-        "keys_indexer",
-        "_mapping",
-        "_metadata",
-        "values_indexer",
-    )
+    __slots__ = ("_mapping", "_metadata")
 
     # Define classmethods for managing what queries this Catalog knows.
     __query_registry = QueryTranslationRegistry()
@@ -21,9 +15,6 @@ class Catalog(collections.abc.Mapping):
 
     def __init__(self, mapping, metadata=None):
         self._mapping = mapping
-        self.items_indexer = ItemsIndexer(mapping)
-        self.keys_indexer = KeysIndexer(mapping)
-        self.values_indexer = ValuesIndexer(mapping)
         self._metadata = metadata or {}
 
     @property
@@ -35,7 +26,7 @@ class Catalog(collections.abc.Mapping):
         return DictView(self._metadata)
 
     def __repr__(self):
-        return f"{type(self).__name__}" "({...})"
+        return f"<{type(self).__name__}" "({...})>"
 
     def __getitem__(self, key):
         return self._mapping[key]
@@ -52,50 +43,64 @@ class Catalog(collections.abc.Mapping):
         """
         return self.__query_registry(query, self)
 
+    def _keys_slice(self, start, stop):
+        yield from itertools.islice(
+            self._mapping.keys(),
+            start,
+            stop,
+        )
+
+    def _items_slice(self, start, stop):
+        # A goal of this implementation is to avoid iterating over
+        # self._mapping.values() because self._mapping may be a LazyMap which
+        # only constructs its values at access time. With this in mind, we
+        # identify the key(s) of interest and then only access those values.
+        yield from (
+            (key, self._mapping[key]) for key in self._keys_in_interval(start, stop)
+        )
+
+    def _item_by_index(self, index):
+        if index > len(self):
+            raise IndexError(f"index {index} out of range for length {len(self)}")
+        key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
+        return (key, self._mapping[key])
+
     @property
-    def index(self):
-        return self._index_accessor
+    def keys_indexer(self):
+        return CatalogKeysSequence(self)
 
 
-class KeysIndexer:
-    def __init__(self, mapping):
-        self._mapping = mapping
+class CatalogKeysSequence(collections.abc.Sequence):
+    def __init__(self, ancestor, start=0, stop=None):
+        self._ancestor = ancestor
+        self._start = start
+        self._stop = stop
 
-    def __getitem__(self, i):
-        if isinstance(i, int):
-            if i > len(self):
-                raise IndexError(f"index {i} out of range for length {len(self)}")
-            key = next(itertools.islice(self._mapping.keys(), i))
-            return self._make_result(key)
-        elif isinstance(i, slice):
-            slice_of_keys = itertools.islice(
-                self._mapping.keys(), i.start, i.stop, i.step
-            )
-            return [self._make_result(key) for key in slice_of_keys]
+    def __repr__(self):
+        return f"<{type(self).__name__}([...])>"
+
+    def __len__(self):
+        ...
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            key, value = self._ancestor._item_by_index(index + self._start)
+            return key
+        elif isinstance(index, slice):
+            return type(self)(self, index.start + self._start, index.stop + self._start)
         else:
             raise TypeError(f"{type(self).__name__} index must be integer or slice.")
 
-    def _make_result(self, key):
-        return key
+    def _item_by_index(self, index):
+        # Recurse
+        return self._ancestor._item_by_index(index + self._start)
 
+    def _keys_slice(self, start, stop):
+        # Recurse
+        return self._ancestor._keys_slice(start + self._start, stop + self._start)
 
-class ValuesIndexer(KeysIndexer):
-
-    # A goal of this implementation is to avoid iterating over
-    # self._mapping.values() because self._mapping may be a LazyMap which only
-    # constructs its values at access time. With this in mind, w e identify the
-    # key(s) of interest and then only access those values.
-
-    def _make_result(self, key):
-        return self._mapping[key]
-
-
-class ItemsIndexer(KeysIndexer):
-
-    # See coment in ValuesIndexer above. The same motivation applies here.
-
-    def _make_result(self, key):
-        return (key, self._mapping[key])
+    def __iter__(self):
+        return self._ancestor._keys_slice(self._start, self._stop)
 
 
 def walk_string_values(tree, node=None):
