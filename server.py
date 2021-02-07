@@ -30,9 +30,10 @@ def add_search_routes(app=app):
     for name, query_class in queries_by_name.items():
 
         @app.post(f"/catalogs/search/{name}/keys/{{path:path}}")
+        @app.post(f"/catalogs/search/{name}/keys", include_in_schema=False)
         async def keys_search_text(
             query: query_class,
-            path: Optional[str],
+            path: Optional[str] = "",
             offset: Optional[int] = Query(0, alias="page[offset]"),
             limit: Optional[int] = Query(10, alias="page[limit]"),
         ):
@@ -53,10 +54,10 @@ async def shutdown_event():
     await client.close()
 
 
-@app.get("/catalogs/keys")
 @app.get("/catalogs/keys/{path:path}")
+@app.get("/catalogs/keys", include_in_schema=False)
 async def keys(
-    path: Optional[str],
+    path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
@@ -64,10 +65,10 @@ async def keys(
     return keys_response(path, offset, limit)
 
 
-@app.get("/catalogs/entries")
 @app.get("/catalogs/entries/{path:path}")
+@app.get("/catalogs/entries", include_in_schema=False)
 async def entries(
-    path: Optional[str],
+    path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
@@ -86,10 +87,10 @@ async def entries(
     return response
 
 
-@app.get("/catalogs/description")
 @app.get("/catalogs/description/{path:path}")
+@app.get("/catalogs/description", include_in_schema=False)
 async def list_description(
-    path: Optional[str],
+    path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
 ):
@@ -109,7 +110,6 @@ async def list_description(
     return response
 
 
-@app.get("/datasource/description")
 @app.get("/datasource/description/{path:path}")
 async def one_description(
     path: Optional[str],
