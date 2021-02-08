@@ -18,7 +18,7 @@ class ClientCatalog(collections.abc.Mapping):
     # reference ClientCatalog itself.
     DEFAULT_DISPATCH = {}
 
-    def __init__(self, client, *, path=None, metadata=None, dispatch=None):
+    def __init__(self, client, *, path, metadata, dispatch):
         self._client = client
         self._metadata = metadata
         self.dispatch = self.DEFAULT_DISPATCH.copy()
@@ -30,7 +30,9 @@ class ClientCatalog(collections.abc.Mapping):
     @classmethod
     def from_uri(cls, uri, dispatch=None):
         client = httpx.Client(base_url=uri.rstrip("/"))
-        return cls(client, dispatch=dispatch)
+        response = client.get(f"/entry/metadata/")
+        metadata = response.json()["data"]["attributes"]["metadata"]
+        return cls(client, path=[], metadata=metadata, dispatch=dispatch)
 
     @property
     def metadata(self):
