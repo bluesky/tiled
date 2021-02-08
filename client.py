@@ -37,6 +37,12 @@ class ClientCatalog(collections.abc.Mapping):
         metadata = response.json()["data"]["attributes"]["metadata"]
         return cls(client, path=[], metadata=metadata, dispatch=dispatch)
 
+    def __repr__(self):
+        # TODO When the number of items is very large, show only a subset.
+        # That is, do not let repr(self) trigger a large number of HTTP
+        # requests paginating through all the results.
+        return f"<{type(self).__name__}({set(self)!r})>"
+
     @property
     def metadata(self):
         "Metadata about this Catalog."

@@ -26,7 +26,7 @@ class Catalog(collections.abc.Mapping):
         return DictView(self._metadata)
 
     def __repr__(self):
-        return f"<{type(self).__name__}" "({...})>"
+        return f"<{type(self).__name__}({set(self)!r})>"
 
     def __getitem__(self, key):
         return self._mapping[key]
