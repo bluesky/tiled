@@ -55,12 +55,10 @@ class Catalog(collections.abc.Mapping):
         # self._mapping.values() because self._mapping may be a LazyMap which
         # only constructs its values at access time. With this in mind, we
         # identify the key(s) of interest and then only access those values.
-        yield from (
-            (key, self._mapping[key]) for key in self._keys_in_interval(start, stop)
-        )
+        yield from ((key, self._mapping[key]) for key in self._keys_slice(start, stop))
 
     def _item_by_index(self, index):
-        if index > len(self):
+        if index >= len(self):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
         return (key, self._mapping[key])
@@ -69,38 +67,102 @@ class Catalog(collections.abc.Mapping):
     def keys_indexer(self):
         return CatalogKeysSequence(self)
 
+    @property
+    def items_indexer(self):
+        return CatalogItemsSequence(self)
 
-class CatalogKeysSequence(collections.abc.Sequence):
+    @property
+    def values_indexer(self):
+        return CatalogValuesSequence(self)
+
+
+def _normalize_slice(index):
+    "Check that slice is supported; then return (start, stop)."
+    if index.start is None:
+        start = 0
+    elif index.start < 0:
+        raise NotImplementedError
+    else:
+        start = index.start
+    if index.stop is not None:
+        if index.stop < 0:
+            raise NotImplementedError
+    stop = index.stop
+    return start, stop
+
+
+class CatalogBaseSequence(collections.abc.Sequence):
+    "Base class for Keys, Values, Items Sequences."
+
     def __init__(self, ancestor, start=0, stop=None):
         self._ancestor = ancestor
         self._start = start
         self._stop = stop
 
     def __repr__(self):
-        return f"<{type(self).__name__}([...])>"
+        return f"<{type(self).__name__}({list(self)!r})>"
 
     def __len__(self):
         ...
 
     def __getitem__(self, index):
-        if isinstance(index, int):
-            key, value = self._ancestor._item_by_index(index + self._start)
-            return key
-        elif isinstance(index, slice):
-            return type(self)(self, index.start + self._start, index.stop + self._start)
+        "Subclasses handle the case of an integer index."
+        if isinstance(index, slice):
+            start, stop = _normalize_slice(index)
+            # Return another instance of type(self), progpagating forward a
+            # reference to self and the sub-slicing specified by index.
+            return type(self)(self, start, stop)
         else:
-            raise TypeError(f"{type(self).__name__} index must be integer or slice.")
+            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
     def _item_by_index(self, index):
         # Recurse
         return self._ancestor._item_by_index(index + self._start)
 
+    def _items_slice(self, start, stop):
+        # Recurse
+        return self._ancestor._items_slice(start + self._start, stop + self._start)
+
     def _keys_slice(self, start, stop):
         # Recurse
         return self._ancestor._keys_slice(start + self._start, stop + self._start)
 
+
+class CatalogKeysSequence(CatalogBaseSequence):
     def __iter__(self):
         return self._ancestor._keys_slice(self._start, self._stop)
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            key, _value = self._item_by_index(index)
+            return key
+        return super().__getitem__(index)
+
+
+class CatalogItemsSequence(CatalogBaseSequence):
+    def __iter__(self):
+        return self._ancestor._items_slice(self._start, self._stop)
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return self._item_by_index(index)
+        return super().__getitem__(index)
+
+
+class CatalogValuesSequence(CatalogBaseSequence):
+    def __iter__(self):
+        # Extract just the value for the iterable of (key, value) items.
+        return (
+            value
+            for _key, value in self._ancestor._items_slice(self._start, self._stop)
+        )
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            # Extract just the value from the item.
+            _key, value = self._item_by_index(index)
+            return value
+        return super().__getitem__(index)
 
 
 def walk_string_values(tree, node=None):
