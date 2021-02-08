@@ -1,7 +1,14 @@
 import collections.abc
+import itertools
+
+import httpx
 
 from queries import DictView
-import httpx
+from in_memory_catalog import (
+    CatalogKeysSequence,
+    CatalogValuesSequence,
+    CatalogItemsSequence,
+)
 
 
 class ClientCatalog(collections.abc.Mapping):
@@ -19,11 +26,6 @@ class ClientCatalog(collections.abc.Mapping):
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
         self._path = path or []
-        self._index_accessor = _IndexAccessor(
-            client=self._client,
-            path=path,
-            dispatch=dispatch,
-        )
 
     @classmethod
     def from_uri(cls, uri, dispatch=None):
@@ -84,73 +86,67 @@ class ClientCatalog(collections.abc.Mapping):
         for _, value in self.items():
             yield value
 
+    def _keys_slice(self, start, stop):
+        next_page_url = (
+            f"/catalogs/entries/keys/{'/'.join(self._path)}?page[offset]={start}"
+        )
+        item_counter = itertools.count(start)
+        while next_page_url is not None:
+            response = self._client.get(next_page_url)
+            for item in response.json()["data"]:
+                if stop is not None and next(item_counter) == stop:
+                    break
+                yield item["attributes"]["key"]
+            next_page_url = response.json()["links"]["next"]
+
+    def _items_slice(self, start, stop):
+        next_page_url = (
+            f"/catalogs/entries/metadata/{'/'.join(self._path)}?page[offset]={start}"
+        )
+        item_counter = itertools.count(start)
+        while next_page_url is not None:
+            response = self._client.get(next_page_url)
+            for item in response.json()["data"]:
+                dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
+                cls = self.dispatch[dispatch_on]
+                if stop is not None and next(item_counter) == stop:
+                    break
+                yield cls(
+                    self._client,
+                    path=item["id"].split("/"),
+                    metadata=item["attributes"]["metadata"],
+                    dispatch=self.dispatch,
+                )
+            next_page_url = response.json()["links"]["next"]
+
+    def _item_by_index(self, index):
+        if index >= len(self):
+            raise IndexError(f"index {index} out of range for length {len(self)}")
+        url = f"/catalogs/entries/metadata/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
+        response = self._client.get(url)
+        (item,) = response.json()["data"]
+        key = item["attributes"]["key"]
+        dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
+        cls = self.dispatch[dispatch_on]
+        value = cls(
+            self._client,
+            path=item["id"].split("/"),
+            metadata=item["attributes"]["metadata"],
+            dispatch=self.dispatch,
+        )
+        return (key, value)
+
     @property
-    def index(self):
-        return self._index_accessor
+    def keys_indexer(self):
+        return CatalogKeysSequence(self)
 
+    @property
+    def items_indexer(self):
+        return CatalogItemsSequence(self)
 
-class KeysIndexer:
-    def __init__(self, client, path):
-        self._mapping = mapping
-
-    def __getitem__(self, i):
-        if isinstance(i, int):
-            if i > len(self):
-                raise IndexError(f"index {i} out of range for length {len(self)}")
-            key = next(itertools.islice(self._mapping.keys(), i))
-            return self._make_result(key)
-        elif isinstance(i, slice):
-            slice_of_keys = itertools.islice(
-                self._mapping.keys(), i.start, i.stop, i.step
-            )
-            return [self._make_result(key) for key in slice_of_keys]
-        else:
-            raise TypeError(f"{type(self).__name__} index must be integer or slice.")
-
-    def _make_result(self, key):
-        return key
-
-
-class _IndexAccessor:
-    "Internal object used by ClientCatalog."
-
-    def __init__(self, *, client, path, dispatch):
-        self._client = client
-        self._path = path
-        self._dispatch = dispatch
-
-    def __getitem__(self, i):
-        if isinstance(i, int):
-            # TODO
-            out = ...
-        elif isinstance(i, slice):
-            if not ((i.step is None) or (i.step == 1)):
-                raise NotImplementedError
-            if i.start is None:
-                offset = self._offset
-            elif i.start < 0:
-                raise NotImplementedError
-            else:
-                offset = self._offset + i.start
-            if i.stop is None:
-                limit = self._limit
-            elif i.stop < 0:
-                raise NotImplementedError
-            else:
-                if self._limit is None:
-                    limit = offset + i.stop
-                else:
-                    limit = min(self._limit, offset + i.stop)
-            out = ClientCatalog(
-                client=self._client,
-                offset=offset,
-                limit=limit,
-                dispatch=self._dispatch,
-                path=self._path,
-            )
-        else:
-            raise TypeError(f"{type(self).__name__} index must be integer or slice.")
-        return out
+    @property
+    def values_indexer(self):
+        return CatalogValuesSequence(self)
 
 
 class ClientArraySource:

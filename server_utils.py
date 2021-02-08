@@ -91,7 +91,8 @@ class DuckCatalog(metaclass=abc.ABCMeta):
         EXPECTED_ATTRS = (
             "__getitem__",
             "__iter__",
-            "index",
+            "keys_indexer",
+            "items_indexer",
         )
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
