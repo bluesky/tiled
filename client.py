@@ -33,6 +33,7 @@ class ClientCatalog(collections.abc.Mapping):
     def from_uri(cls, uri, dispatch=None):
         client = httpx.Client(base_url=uri.rstrip("/"))
         response = client.get("/entry/metadata/")
+        response.raise_for_status()
         metadata = response.json()["data"]["attributes"]["metadata"]
         return cls(client, path=[], metadata=metadata, dispatch=dispatch)
 
@@ -46,18 +47,21 @@ class ClientCatalog(collections.abc.Mapping):
 
     def __len__(self):
         response = self._client.get(f"/catalogs/entries/count/{'/'.join(self._path)}")
+        response.raise_for_status()
         return response.json()["data"]["attributes"]["count"]
 
     def __iter__(self):
         next_page_url = f"/catalogs/entries/keys/{'/'.join(self._path)}"
         while next_page_url is not None:
             response = self._client.get(next_page_url)
+            response.raise_for_status()
             for item in response.json()["data"]:
                 yield item["attributes"]["key"]
             next_page_url = response.json()["links"]["next"]
 
     def __getitem__(self, key):
         response = self._client.get(f"/entry/metadata/{'/'.join(self._path + [key])}")
+        response.raise_for_status()
         data = response.json()["data"]
         dispatch_on = (data["meta"]["__module__"], data["meta"]["__qualname__"])
         cls = self.dispatch[dispatch_on]
@@ -74,6 +78,7 @@ class ClientCatalog(collections.abc.Mapping):
         next_page_url = f"/catalogs/entries/metadata/{'/'.join(self._path)}"
         while next_page_url is not None:
             response = self._client.get(next_page_url)
+            response.raise_for_status()
             for item in response.json()["data"]:
                 dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
                 cls = self.dispatch[dispatch_on]
@@ -98,6 +103,7 @@ class ClientCatalog(collections.abc.Mapping):
         item_counter = itertools.count(start)
         while next_page_url is not None:
             response = self._client.get(next_page_url)
+            response.raise_for_status()
             for item in response.json()["data"]:
                 if stop is not None and next(item_counter) == stop:
                     break
@@ -111,6 +117,7 @@ class ClientCatalog(collections.abc.Mapping):
         item_counter = itertools.count(start)
         while next_page_url is not None:
             response = self._client.get(next_page_url)
+            response.raise_for_status()
             for item in response.json()["data"]:
                 dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
                 cls = self.dispatch[dispatch_on]
@@ -129,6 +136,7 @@ class ClientCatalog(collections.abc.Mapping):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         url = f"/catalogs/entries/metadata/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
         response = self._client.get(url)
+        response.raise_for_status()
         (item,) = response.json()["data"]
         key = item["attributes"]["key"]
         dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
@@ -170,6 +178,7 @@ class ClientArraySource:
 
     def describe(self):
         response = self._client.get(f"/datasource/description/{'/'.join(self._path)}")
+        response.raise_for_status()
         result = response.json()["data"]["attributes"]["description"]
         # TODO Factor this out into a model that does deserilaization.
         result["chunks"] = tuple(map(tuple, result["chunks"]))
@@ -184,6 +193,7 @@ class ClientArraySource:
             headers={"Accept": "application/octet-stream"},
             params={"blocks": str(block)},
         )
+        response.raise_for_status()
         return numpy.frombuffer(response.content, dtype=dtype).reshape(shape)
 
     def read(self):
