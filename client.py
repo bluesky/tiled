@@ -184,7 +184,7 @@ class ClientArraySource:
         result["chunks"] = tuple(map(tuple, result["chunks"]))
         return result
 
-    def _get_block(self, *, block, dtype, shape):
+    def _get_block(self, block, dtype, shape):
         """
         Fetch the data for one block in a chunked (dask) array.
         """
@@ -206,18 +206,21 @@ class ClientArraySource:
         chunks = description["chunks"]
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)
-        # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
-        dask_graph = {
+        # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---
+        # and build a dask task encoding the method for fetching its data from
+        # the server.
+        dask_tasks = {
             (name,)
-            + block: self._get_block(
-                block=block,
-                dtype=dtype,
-                shape=tuple(chunks[dim][i] for dim, i in enumerate(block)),
+            + block: (
+                self._get_block,
+                block,
+                dtype,
+                tuple(chunks[dim][i] for dim, i in enumerate(block)),
             )
             for block in itertools.product(*num_blocks)
         }
         return dask.array.Array(
-            dask=dask_graph,
+            dask=dask_tasks,
             name=name,
             chunks=chunks,
             dtype=dtype,

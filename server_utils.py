@@ -49,8 +49,7 @@ async def get_chunk(chunk):
     # TODO Should we client.scatter first? Is there anything *to* scatter when
     # there is only one block?
     client = get_dask_client()
-    future = await client.scatter(chunk)
-    return await client.compute(future)
+    return await client.compute(chunk)
 
 
 def pagination_links(offset, limit, length_hint):
