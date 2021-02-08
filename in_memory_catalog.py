@@ -122,14 +122,20 @@ class CatalogBaseSequence(collections.abc.Sequence):
 
     def __init__(self, ancestor, start=0, stop=None):
         self._ancestor = ancestor
-        self._start = start
+        self._start = int(start or 0)
+        if stop is not None:
+            stop = int(stop)
         self._stop = stop
 
     def __repr__(self):
         return f"<{type(self).__name__}({list(self)!r})>"
 
     def __len__(self):
-        ...
+        len_ = len(self._ancestor) - self._start
+        if self._stop is not None and (len_ > (self._stop - self._start)):
+            return self._stop - self._start
+        else:
+            return len_
 
     def __getitem__(self, index):
         "Subclasses handle the case of an integer index."
