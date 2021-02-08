@@ -208,11 +208,12 @@ class ClientArraySource:
         num_blocks = (range(len(n)) for n in chunks)
         # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
         dask_graph = {
-            (name,) + block:
-            self._get_block(
+            (name,)
+            + block: self._get_block(
                 block=block,
                 dtype=dtype,
-                shape=tuple(chunks[dim][i] for dim, i in enumerate(block)))
+                shape=tuple(chunks[dim][i] for dim, i in enumerate(block)),
+            )
             for block in itertools.product(*num_blocks)
         }
         return dask.array.Array(
