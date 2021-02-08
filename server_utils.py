@@ -155,7 +155,9 @@ def construct_catalogs_entries_response(
     return response
 
 
-def construct_datasource_response(path, key, datasource, include_metadata, include_description):
+def construct_datasource_response(
+    path, key, datasource, include_metadata, include_description
+):
     path = path.rstrip("/")
     try:
         datasource = get_entry(path)

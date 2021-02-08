@@ -2,6 +2,8 @@ import collections.abc
 import itertools
 
 import httpx
+import dask.array
+import numpy
 
 from queries import DictView
 from in_memory_catalog import (
@@ -30,7 +32,7 @@ class ClientCatalog(collections.abc.Mapping):
     @classmethod
     def from_uri(cls, uri, dispatch=None):
         client = httpx.Client(base_url=uri.rstrip("/"))
-        response = client.get(f"/entry/metadata/")
+        response = client.get("/entry/metadata/")
         metadata = response.json()["data"]["attributes"]["metadata"]
         return cls(client, path=[], metadata=metadata, dispatch=dispatch)
 
@@ -168,10 +170,44 @@ class ClientArraySource:
 
     def describe(self):
         response = self._client.get(f"/datasource/description/{'/'.join(self._path)}")
-        return response.json()["data"]["attributes"]
+        result = response.json()["data"]["attributes"]["description"]
+        # TODO Factor this out into a model that does deserilaization.
+        result["chunks"] = tuple(map(tuple, result["chunks"]))
+        return result
+
+    def _get_block(self, *, block, dtype, shape):
+        """
+        Fetch the data for one block in a chunked (dask) array.
+        """
+        response = self._client.get(
+            f"/datasource/blob/array/{'/'.join(self._path)}",
+            headers={"Accept": "application/octet-stream"},
+            params={"blocks": str(block)},
+        )
+        return numpy.frombuffer(response.content, dtype=dtype).reshape(shape)
 
     def read(self):
-        ...
+        description = self.describe()
+        dtype = description["dtype"]
+        shape = description["shape"]
+        # Build a client-side dask array whose chunks pull from a server-side
+        # dask array.
+        name = "remote-dask-array-{self._client.base_url!s}{'/'.join(self._path)}"
+        chunks = description["chunks"]
+        # Count the number of blocks along each axis.
+        num_blocks = (range(len(n)) for n in chunks)
+        # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
+        dask_graph = {
+            (name,) + block: self._get_block(block=block, dtype=dtype, shape=shape)
+            for block in itertools.product(*num_blocks)
+        }
+        return dask.array.Array(
+            dask=dask_graph,
+            name=name,
+            chunks=chunks,
+            dtype=dtype,
+            shape=shape,
+        )
 
 
 ClientCatalog.DEFAULT_DISPATCH.update(
