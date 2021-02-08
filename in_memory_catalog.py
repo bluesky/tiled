@@ -76,7 +76,7 @@ class Catalog(collections.abc.Mapping):
         return CatalogValuesSequence(self)
 
 
-def _normalize_slice(index):
+def _slice_to_interval(index):
     "Check that slice is supported; then return (start, stop)."
     if index.start is None:
         start = 0
@@ -88,6 +88,32 @@ def _normalize_slice(index):
         if index.stop < 0:
             raise NotImplementedError
     stop = index.stop
+    return start, stop
+
+
+def _compose_intervals(a, b):
+    a_start, a_stop = a
+    b_start, b_stop = b
+    if a_start is None:
+        if b_start is None:
+            start = 0
+        else:
+            start = b_start
+    else:
+        if b_start is None:
+            start = a_start
+        else:
+            start = a_start + b_start
+    if a_stop is None:
+        if b_stop is None:
+            stop = None
+        else:
+            stop = b_stop + a_start
+    else:
+        if b_stop is None:
+            stop = a_stop
+        else:
+            stop = min(a_stop, b_stop + a_start)
     return start, stop
 
 
@@ -108,7 +134,7 @@ class CatalogBaseSequence(collections.abc.Sequence):
     def __getitem__(self, index):
         "Subclasses handle the case of an integer index."
         if isinstance(index, slice):
-            start, stop = _normalize_slice(index)
+            start, stop = _slice_to_interval(index)
             # Return another instance of type(self), progpagating forward a
             # reference to self and the sub-slicing specified by index.
             return type(self)(self, start, stop)
@@ -121,11 +147,17 @@ class CatalogBaseSequence(collections.abc.Sequence):
 
     def _items_slice(self, start, stop):
         # Recurse
-        return self._ancestor._items_slice(start + self._start, stop + self._start)
+        agg_start, agg_stop = _compose_intervals(
+            (self._start, self._stop), (start, stop)
+        )
+        return self._ancestor._items_slice(agg_start, agg_stop)
 
     def _keys_slice(self, start, stop):
         # Recurse
-        return self._ancestor._keys_slice(start + self._start, stop + self._start)
+        agg_start, agg_stop = _compose_intervals(
+            (self._start, self._stop), (start, stop)
+        )
+        return self._ancestor._keys_slice(agg_start, agg_stop)
 
 
 class CatalogKeysSequence(CatalogBaseSequence):
