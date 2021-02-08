@@ -15,6 +15,9 @@ class ArraySource:
         return {
             "shape": self._data.shape,
             "chunks": self._data.chunks,
+            # TODO Return the actual dtype object here, and let the
+            # server/client use .str in (de)serialization.
+            # This should probably be done in a pydantic model.
             "dtype": self._data.dtype.str,
         }
 

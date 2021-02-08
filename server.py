@@ -170,15 +170,9 @@ async def one_description(
     datasource = get_entry(path)
     # Take the response we build for /entries and augment it.
     *_, key = path.rsplit("/", 1)
-    data = construct_datasource_response(
-        path, [(key, datasource)], include_metadata=True, include_description=True
+    response = construct_datasource_response(
+        path, key, datasource, include_metadata=True, include_description=True
     )
-
-    response = {
-        "data": data[0],
-        # "links": links,
-        # "meta": {"count": approx_len},
-    }
     return response
 
 

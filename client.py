@@ -63,6 +63,7 @@ class ClientCatalog(collections.abc.Mapping):
             client=self._client,
             path=data["id"].split("/"),
             metadata=data["attributes"]["metadata"],
+            dispatch=self.dispatch,
         )
 
     def items(self):
@@ -152,7 +153,25 @@ class ClientCatalog(collections.abc.Mapping):
 
 
 class ClientArraySource:
-    ...
+    def __init__(self, client, metadata, path, dispatch):
+        self._client = client
+        self._metadata = metadata
+        self._path = path
+
+    @property
+    def metadata(self):
+        "Metadata about this Catalog."
+        # Ensure this is immutable (at the top level) to help the user avoid
+        # getting the wrong impression that editing this would update anything
+        # persistent.
+        return DictView(self._metadata)
+
+    def describe(self):
+        response = self._client.get(f"/datasource/description/{'/'.join(self._path)}")
+        return response.json()["data"]["attributes"]
+
+    def read(self):
+        ...
 
 
 ClientCatalog.DEFAULT_DISPATCH.update(
