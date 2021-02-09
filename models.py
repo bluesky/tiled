@@ -1,10 +1,12 @@
+from dataclasses import asdict
 import enum
 import sys
 
 import numpy
 import pydantic
 import pydantic.generics
-from typing import Generic, Optional, Type, TypeVar, Tuple, Any
+from typing import Generic, Optional, TypeVar, Tuple
+from queries import names_by_query_class
 
 
 DataT = TypeVar("DataT")
@@ -132,4 +134,23 @@ class DataSourceResource(Resource):
     attributes: DataSourceAttributes
 
 
-BlockIndex = Tuple
+class LabeledCatalogQuery(pydantic.BaseModel):
+    """
+    Associate a query with a string label, query_type.
+
+    The server and the client use a registry to map this string label to a
+    class. Each Catalog maps that class to its particular logic for executing
+    that query on its data store (if possible).
+    """
+
+    query_type: str
+    query: dict
+
+    @classmethod
+    def from_dataclass(cls, query):
+        query_type = names_by_query_class[type(query)]
+        return cls(query_type=query_type, query=asdict(query))
+
+
+ArrayBlock = Tuple[int, ...]
+"A dask-style block index into a chunked array"

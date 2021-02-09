@@ -5,7 +5,7 @@ import httpx
 import dask.array
 import numpy
 
-from models import DataSourceStructure
+from models import LabeledCatalogQuery, DataSourceStructure
 from queries import DictView
 from in_memory_catalog import (
     CatalogKeysSequence,
@@ -21,7 +21,8 @@ class ClientCatalog(collections.abc.Mapping):
     # reference ClientCatalog itself.
     DEFAULT_DISPATCH = {}
 
-    def __init__(self, client, *, path, metadata, dispatch):
+    def __init__(self, client, *, path, metadata, dispatch, queries=None):
+        "This is not user-facing. Use ClientCatalog.from_uri."
         self._client = client
         self._metadata = metadata
         self.dispatch = self.DEFAULT_DISPATCH.copy()
@@ -29,6 +30,7 @@ class ClientCatalog(collections.abc.Mapping):
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
         self._path = path or []
+        self._queries = queries or []
 
     @classmethod
     def from_uri(cls, uri, dispatch=None):
@@ -60,9 +62,13 @@ class ClientCatalog(collections.abc.Mapping):
         return response.json()["data"]["attributes"]["count"]
 
     def __iter__(self):
-        next_page_url = f"/entries/{'/'.join(self._path)}"
+        next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.get(next_page_url, params={"fields": []})
+            response = self._client.post(
+                next_page_url,
+                params={"fields": []},
+                json=self._queries,
+            )
             response.raise_for_status()
             for item in response.json()["data"]:
                 yield item["id"]
@@ -86,9 +92,13 @@ class ClientCatalog(collections.abc.Mapping):
     def items(self):
         # The base implementation would use __iter__ and __getitem__, making
         # one HTTP request per item. Pull pages instead.
-        next_page_url = f"/entries/{'/'.join(self._path)}"
+        next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.get(next_page_url, params={"fields": "metadata"})
+            response = self._client.post(
+                next_page_url,
+                params={"fields": "metadata"},
+                json=self._queries,
+            )
             response.raise_for_status()
             for item in response.json()["data"]:
                 dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
@@ -108,10 +118,14 @@ class ClientCatalog(collections.abc.Mapping):
             yield value
 
     def _keys_slice(self, start, stop):
-        next_page_url = f"/entries/{'/'.join(self._path)}?page[offset]={start}"
+        next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.get(next_page_url, params={"fields": []})
+            response = self._client.post(
+                next_page_url,
+                params={"fields": []},
+                json=self._queries,
+            )
             response.raise_for_status()
             for item in response.json()["data"]:
                 if stop is not None and next(item_counter) == stop:
@@ -120,10 +134,14 @@ class ClientCatalog(collections.abc.Mapping):
             next_page_url = response.json()["links"]["next"]
 
     def _items_slice(self, start, stop):
-        next_page_url = f"/entries/{'/'.join(self._path)}?page[offset]={start}"
+        next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.get(next_page_url, params={"fields": "metadata"})
+            response = self._client.post(
+                next_page_url,
+                params={"fields": "metadata"},
+                json=self._queries,
+            )
             response.raise_for_status()
             for item in response.json()["data"]:
                 key = item["id"]
@@ -142,8 +160,10 @@ class ClientCatalog(collections.abc.Mapping):
     def _item_by_index(self, index):
         if index >= len(self):
             raise IndexError(f"index {index} out of range for length {len(self)}")
-        url = f"/entries/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
-        response = self._client.get(url, params={"fields": "metadata"})
+        url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
+        response = self._client.post(
+            url, params={"fields": "metadata"}, json=self._queries
+        )
         response.raise_for_status()
         (item,) = response.json()["data"]
         key = item["id"]
@@ -168,6 +188,16 @@ class ClientCatalog(collections.abc.Mapping):
     @property
     def values_indexer(self):
         return CatalogValuesSequence(self)
+
+    def search(self, query):
+        query_as_json = LabeledCatalogQuery.from_dataclass(query).dict()
+        return type(self)(
+            client=self._client,
+            path=self._path,
+            queries=self._queries + [query_as_json],
+            metadata=self._metadata,
+            dispatch=self.dispatch,
+        )
 
 
 class ClientArraySource:
@@ -196,10 +226,10 @@ class ClientArraySource:
         """
         Fetch the data for one block in a chunked (dask) array.
         """
-        response = self._client.get(
+        response = self._client.post(
             f"/blob/array/{'/'.join(self._path)}",
             headers={"Accept": "application/octet-stream"},
-            params={"block": str(block)},
+            json=block,
         )
         response.raise_for_status()
         return numpy.frombuffer(response.content, dtype=dtype).reshape(shape)

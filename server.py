@@ -1,10 +1,11 @@
-from ast import literal_eval
+import json
 import os
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
+    array_media_types,
     DuckCatalog,
     get_dask_client,
     get_entry,
@@ -20,38 +21,26 @@ import models
 app = FastAPI()
 
 
-def add_search_routes(app=app):
-    """
-    Routes for search are defined at the last moment, just before startup, so
-    that custom query types may be registered first.
-    """
-    # We bind app in a parameter above so that we have a reference to the
-    # FastAPI instance itself, not the middleware which shadows it below.
-    for name, query_class in queries_by_name.items():
-
-        @app.post(f"/search/{name}/{{path:path}}")
-        @app.post(f"/search/{name}", include_in_schema=False)
-        async def keys_search_text(
-            query: query_class,
-            path: Optional[str] = "",
-            fields: Optional[List[models.EntryFields]] = Query(
-                list(models.EntryFields)
-            ),
-            offset: Optional[int] = Query(0, alias="page[offset]"),
-            limit: Optional[int] = Query(10, alias="page[limit]"),
-        ):
-            return construct_entries_response(
-                path,
-                offset,
-                limit,
-                fields,
-                query=query,
-            )
+@app.post("/search/{path:path}")
+@app.post("/search/", include_in_schema=False)
+async def search(
+    queries: Optional[List[models.LabeledCatalogQuery]],
+    path: Optional[str] = "",
+    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    offset: Optional[int] = Query(0, alias="page[offset]"),
+    limit: Optional[int] = Query(10, alias="page[limit]"),
+):
+    return construct_entries_response(
+        path,
+        offset,
+        limit,
+        fields,
+        queries=queries,
+    )
 
 
 @app.on_event("startup")
 async def startup_event():
-    add_search_routes()
     # Warm up the dask.distributed Cluster.
     get_dask_client()
 
@@ -96,44 +85,38 @@ async def entries(
         offset,
         limit,
         fields,
-        query=None,
+        queries=None,
     )
 
 
-@app.get("/blob/array/{path:path}")
-async def blob(
+@app.post("/blob/array/{path:path}")
+async def blob_array(
     request: Request,
     path: str,
-    block: str,  # This is expected to be a list, like "[0,0]".
+    block: models.ArrayBlock,
 ):
     "Provide one block (chunk) or an array."
-    # Validate request syntax.
-    try:
-        parsed_block = literal_eval(block)
-    except Exception:
-        raise HTTPException(status_code=400, detail=f"Could not parse {block}")
-    else:
-        if not isinstance(parsed_block, (tuple, list)) or not all(
-            map(lambda x: isinstance(x, int), parsed_block)
-        ):
-            raise HTTPException(
-                status_code=400, detail=f"Could not parse {block} as an index"
-            )
-
     try:
         datasource = get_entry(path)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
     try:
-        chunk = datasource.read().blocks[parsed_block]
+        chunk = datasource.read().blocks[block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = await get_chunk(chunk)
-    media_type = request.headers.get("Accept", "application/octet-stream")
-    if media_type == "*/*":
-        media_type = "application/octet-stream"
-    content = await serialize_array(media_type, array)
-    return Response(content=content, media_type=media_type)
+    media_types = request.headers.get("Accept", "application/octet-stream")
+    for media_type in media_types.split(", "):
+        if media_type == "*/*":
+            media_type = "application/octet-stream"
+        if media_type in array_media_types:
+            content = await serialize_array(media_type, array)
+            return Response(content=content, media_type=media_type)
+    else:
+        # We do not support any of the media types requested by the client.
+        # Reply with a list of the supported types.
+        raise HTTPException(status_code=406, detail=", ".join(array_media_types))
+
 
 
 # After defining all routes, wrap app with middleware.
@@ -185,7 +168,7 @@ def construct_entries_response(
     offset,
     limit,
     fields,
-    query,
+    queries,
 ):
     path = path.rstrip("/")
     try:
@@ -196,7 +179,9 @@ def construct_entries_response(
         raise HTTPException(
             status_code=404, detail="This is a Data Source, not a Catalog."
         )
-    if query is not None:
+    for catalog_query in queries:
+        query = queries_by_name[catalog_query.query_type](**catalog_query.query)
+        print("query", query)
         catalog = catalog.search(query)
     links = pagination_links(offset, limit, len_or_approx(catalog))
     data = []

@@ -105,11 +105,15 @@ class DuckCatalog(metaclass=abc.ABCMeta):
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
 
-class SerializationRegistry:
+class ArraySerializationRegistry:
     def __init__(self):
         # Map MIME types to functions
         self._registry = {}
         self._dask_client = get_dask_client()
+
+    @property
+    def media_types(self):
+        return self._registry.keys()
 
     def register_media_type(self, media_type, serializer):
         self._registry[media_type] = serializer
@@ -119,14 +123,17 @@ class SerializationRegistry:
         return await self._dask_client.submit(serializer, array)
 
 
-serialization_registry = SerializationRegistry()
-serialization_registry.register_media_type(
+array_serialization_registry = ArraySerializationRegistry()
+array_serialization_registry.register_media_type(
     "application/octet-stream", lambda array: array.tobytes()
 )
-serialization_registry.register_media_type(
+array_serialization_registry.register_media_type(
     "application/json", lambda array: json.dumps(array.tolist()).encode()
 )
 
 
 def serialize_array(media_type, array):
-    return serialization_registry.serialize(media_type, array)
+    return array_serialization_registry.serialize(media_type, array)
+
+
+array_media_types = array_serialization_registry.media_types

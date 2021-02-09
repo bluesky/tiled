@@ -1,11 +1,12 @@
 """
 These objects express high-level queries and translate them (when possible)
 into concrete queries for specific storage backends.
+
+This intentionally only uses built-in dataclasses, not pydantic models.
 """
 import collections.abc
+from dataclasses import dataclass
 import inspect
-
-from pydantic import BaseModel
 
 
 class DictView(collections.abc.Mapping):
@@ -45,23 +46,33 @@ class QueryRegistry:
     """
 
     def __init__(self):
-        self._lookup = {}
+        self._name_to_class = {}
+        self._class_to_name = {}
 
     @property
     def queries_by_name(self):
-        return DictView(self._lookup)
+        return DictView(self._name_to_class)
+
+    @property
+    def names_by_query_class(self):
+        return DictView(self._class_to_name)
 
     def register(self, name=None, overwrite=False):
         def inner(cls):
-            if (name in self._lookup) and (not overwrite):
-                if self._lookup[name] is cls:
+            if (name in self._name_to_class) and (not overwrite):
+                if self._name_to_class[name] is cls:
                     # redundant registration; do nothing
                     return
                 raise Exception(
                     f"The class {self._lookup[name]} is registered to the "
                     f"name {name}. To overwrite, set overwrite=True."
                 )
-            self._lookup[name] = cls
+            if cls in self._name_to_class.values():
+                raise Exception(
+                    f"The class {cls} is already registered by another name."
+                )
+            self._name_to_class[name] = cls
+            self._class_to_name[cls] = name
             return cls
 
         return inner
@@ -71,16 +82,14 @@ class QueryRegistry:
 _query_registry = QueryRegistry()
 register = _query_registry.register
 queries_by_name = _query_registry.queries_by_name
+names_by_query_class = _query_registry.names_by_query_class
 
 
 @register(name="text")
-class Text(BaseModel):
+@dataclass
+class Text:
 
     text: str
-
-    def __init__(self, text):
-        # Allow positional rather than requiring Text(text="...").
-        super().__init__(text=text)
 
 
 class QueryTranslationRegistry:
