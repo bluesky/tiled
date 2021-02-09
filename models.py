@@ -106,7 +106,7 @@ class MachineDataType(pydantic.BaseModel):
 
 class DataSourceStructure(pydantic.BaseModel):
     dtype: MachineDataType
-    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples like ((3,), (3,))
+    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
 
 
