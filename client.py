@@ -125,11 +125,12 @@ class ClientCatalog(collections.abc.Mapping):
             response = self._client.get(next_page_url)
             response.raise_for_status()
             for item in response.json()["data"]:
+                key = item["attributes"]["key"]
                 dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
                 cls = self.dispatch[dispatch_on]
                 if stop is not None and next(item_counter) == stop:
                     break
-                yield cls(
+                yield key, cls(
                     self._client,
                     path=item["id"].split("/"),
                     metadata=item["attributes"]["metadata"],
