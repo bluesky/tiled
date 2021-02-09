@@ -43,6 +43,13 @@ def get_entry(path):
     return catalog
 
 
+def len_or_approx(catalog):
+    try:
+        return len(catalog)
+    except TypeError:
+        return operator.length_hint(catalog)
+
+
 async def get_chunk(chunk):
     "dask array -> numpy array"
     # Make dask pull the dask into memory using its threaded workers.
@@ -50,7 +57,7 @@ async def get_chunk(chunk):
     # there is only one block?
     client = get_dask_client()
     future = client.compute(chunk)
-    return (await future.result())
+    return await future.result()
 
 
 def pagination_links(offset, limit, length_hint):
@@ -97,91 +104,6 @@ class DuckCatalog(metaclass=abc.ABCMeta):
             "items_indexer",
         )
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
-
-
-def construct_catalogs_entries_response(
-    path, offset, limit, query, include_metadata, include_description
-):
-    path = path.rstrip("/")
-    try:
-        catalog = get_entry(path)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    if not isinstance(catalog, DuckCatalog):
-        raise HTTPException(
-            status_code=404, detail="This is a Data Source, not a Catalog."
-        )
-    if query is not None:
-        catalog = catalog.search(query)
-    approx_len = length_hint(catalog)
-    links = pagination_links(offset, limit, approx_len)
-    data = []
-    if include_metadata or include_description:
-        # Pull a page of items into memory.
-        items = catalog.items_indexer[offset : offset + limit]
-    else:
-        # Pull a page of just the keys, which is cheaper.
-        items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])
-    for key, entry in items:
-        obj = {
-            "id": f"{path}/{key}",
-            "attributes": {
-                "key": key,
-            },
-            "meta": {
-                "__module__": getattr(type(entry), "__module__"),
-                "__qualname__": getattr(type(entry), "__qualname__"),
-            },
-            "links": {},
-        }
-        if include_metadata:
-            obj["attributes"]["metadata"] = entry.metadata
-        if isinstance(entry, DuckCatalog):
-            obj["type"] = "catalog"
-            obj["links"]["keys"] = f"/catalogs/keys/{path}/{key}"
-            obj["links"]["entries"] = f"/catalogs/entries/{path}/{key}"
-            obj["links"]["description"] = f"/catalogs/description/{path}/{key}"
-            data.append(obj)
-        else:
-            obj["type"] = "datasource"
-            if include_description:
-                obj["attributes"]["description"] = entry.describe()
-            else:
-                obj["links"]["description"] = f"/datasource/description/{path}/{key}"
-            data.append(obj)
-    response = {
-        "data": data,
-        "links": links,
-        "meta": {"count": approx_len},
-    }
-    return response
-
-
-def construct_datasource_response(
-    path, key, datasource, include_metadata, include_description
-):
-    path = path.rstrip("/")
-    try:
-        datasource = get_entry(path)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    data = {
-        "id": f"{path}/{key}",
-        "attributes": {
-            "key": key,
-            "description": datasource.describe(),
-        },
-        "meta": {
-            "__module__": getattr(type(datasource), "__module__"),
-            "__qualname__": getattr(type(datasource), "__qualname__"),
-        },
-        "links": {},
-    }
-    response = {
-        "data": data,
-        "links": {},
-    }
-    return response
 
 
 class SerializationRegistry:

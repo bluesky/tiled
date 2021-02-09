@@ -1,19 +1,21 @@
 from ast import literal_eval
+import typing
 import os
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
 from server_utils import (
-    construct_catalogs_entries_response,
-    construct_datasource_response,
     DuckCatalog,
     get_dask_client,
     get_entry,
     get_chunk,
+    len_or_approx,
+    pagination_links,
     serialize_array,
 )
 from queries import queries_by_name
+import models
 
 
 app = FastAPI()
@@ -33,16 +35,20 @@ def add_search_routes(app=app):
         async def keys_search_text(
             query: query_class,
             path: Optional[str] = "",
+            fields: Optional[typing.List[models.EntryFields]] = [
+                models.EntryFields.metadata,
+                models.EntryFields.count,
+                models.EntryFields.description,
+            ],
             offset: Optional[int] = Query(0, alias="page[offset]"),
             limit: Optional[int] = Query(10, alias="page[limit]"),
         ):
-            return construct_catalogs_entries_response(
+            return construct_entries_response(
                 path,
                 offset,
                 limit,
+                fields,
                 query=query,
-                include_metadata=False,
-                include_description=False,
             )
 
 
@@ -60,10 +66,15 @@ async def shutdown_event():
     await client.close()
 
 
-@app.get("/entry/metadata/{path:path}")
-@app.get("/entry/metadata", include_in_schema=False)
+@app.get("/metadata/{path:path}")
+@app.get("/metadata", include_in_schema=False)
 async def metadata(
     path: Optional[str] = "",
+    fields: Optional[typing.List[models.EntryFields]] = [
+        models.EntryFields.metadata,
+        models.EntryFields.count,
+        models.EntryFields.description,
+    ],
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
@@ -72,128 +83,51 @@ async def metadata(
         entry = get_entry(path)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
-    return {
-        "data": {
-            "id": path,
-            "attributes": {"metadata": entry.metadata},
-            "meta": {
-                "__module__": getattr(type(entry), "__module__"),
-                "__qualname__": getattr(type(entry), "__qualname__"),
-            },
-        }
-    }
+    resource = construct_resource(path, entry, fields)
+    return models.Response(data=resource)
 
 
-@app.get("/catalogs/entries/count/{path:path}")
-@app.get("/catalogs/entries/count", include_in_schema=False)
-async def entries_count(
-    path: Optional[str] = "",
-):
-    "Fetch the number of entries in a Catalog."
-
-    path = path.rstrip("/")
-    try:
-        catalog = get_entry(path)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    if not isinstance(catalog, DuckCatalog):
-        raise HTTPException(
-            status_code=404, detail="This is a Data Source, not a Catalog."
-        )
-    return {"data": {"id": path, "attributes": {"count": len(catalog)}}}
-
-
-@app.get("/catalogs/entries/keys/{path:path}")
-@app.get("/catalogs/entries/keys", include_in_schema=False)
-async def keys(
-    path: Optional[str] = "",
-    offset: Optional[int] = Query(0, alias="page[offset]"),
-    limit: Optional[int] = Query(10, alias="page[limit]"),
-):
-    "List only the keys of the items in a Catalog."
-
-    return construct_catalogs_entries_response(
-        path,
-        offset,
-        limit,
-        query=None,
-        include_metadata=False,
-        include_description=False,
-    )
-
-
-@app.get("/catalogs/entries/metadata/{path:path}")
-@app.get("/catalogs/entries/metadata", include_in_schema=False)
+@app.get("/entries/{path:path}")
+@app.get("/entries", include_in_schema=False)
 async def entries(
     path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
+    fields: Optional[typing.List[models.EntryFields]] = [
+        models.EntryFields.metadata,
+        models.EntryFields.count,
+        models.EntryFields.description,
+    ],
 ):
-    "List the keys and metadata of the items in a Catalog."
+    "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
 
-    return construct_catalogs_entries_response(
+    return construct_entries_response(
         path,
         offset,
         limit,
+        fields,
         query=None,
-        include_metadata=True,
-        include_description=False,
     )
 
 
-@app.get("/catalogs/entries/description/{path:path}")
-@app.get("/catalogs/entries/description", include_in_schema=False)
-async def list_description(
-    path: Optional[str] = "",
-    offset: Optional[int] = Query(0, alias="page[offset]"),
-    limit: Optional[int] = Query(10, alias="page[limit]"),
-):
-    "List the keys, metadata, and data structure of the items in a Catalog."
-
-    return construct_catalogs_entries_response(
-        path,
-        offset,
-        limit,
-        query=None,
-        include_metadata=True,
-        include_description=False,
-    )
-
-
-@app.get("/datasource/description/{path:path}")
-async def one_description(
-    path: Optional[str],
-    offset: Optional[int] = Query(0, alias="page[offset]"),
-    limit: Optional[int] = Query(10, alias="page[limit]"),
-):
-    "Give the keys, metadata, and data structure of one Data Source."
-    datasource = get_entry(path)
-    # Take the response we build for /entries and augment it.
-    *_, key = path.rsplit("/", 1)
-    response = construct_datasource_response(
-        path, key, datasource, include_metadata=True, include_description=True
-    )
-    return response
-
-
-@app.get("/datasource/blob/array/{path:path}")
+@app.get("/blob/array/{path:path}")
 async def blob(
     request: Request,
     path: str,
-    blocks: str,  # This is expected to be a list, like "[0,0]".
+    block: str,  # This is expected to be a list, like "[0,0]".
 ):
     "Provide one block (chunk) or an array."
     # Validate request syntax.
     try:
-        parsed_blocks = literal_eval(blocks)
+        parsed_block = literal_eval(block)
     except Exception:
-        raise HTTPException(status_code=400, detail=f"Could not parse {blocks}")
+        raise HTTPException(status_code=400, detail=f"Could not parse {block}")
     else:
-        if not isinstance(parsed_blocks, (tuple, list)) or not all(
-            map(lambda x: isinstance(x, int), parsed_blocks)
+        if not isinstance(parsed_block, (tuple, list)) or not all(
+            map(lambda x: isinstance(x, int), parsed_block)
         ):
             raise HTTPException(
-                status_code=400, detail=f"Could not parse {blocks} as an index"
+                status_code=400, detail=f"Could not parse {block} as an index"
             )
 
     try:
@@ -201,7 +135,7 @@ async def blob(
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
     try:
-        chunk = datasource.read().blocks[parsed_blocks]
+        chunk = datasource.read().blocks[parsed_block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = await get_chunk(chunk)
@@ -219,6 +153,83 @@ async def blob(
 # https://github.com/florimondmanca/msgpack-asgi
 if not os.getenv("DISABLE_MSGPACK_MIDDLEWARE"):
     app = MessagePackMiddleware(app)
+
+
+def construct_resource(path, entry, fields, key=None):
+    attributes = {}
+    if models.EntryFields.metadata in fields:
+        attributes["metadata"] = entry.metadata
+    if isinstance(entry, DuckCatalog):
+        if models.EntryFields.count in fields:
+            attributes["count"] = len_or_approx(entry)
+        if key is not None:
+            attributes["key"] = key
+            attributes_model = models.CatalogEntryAttributes(**attributes)
+        else:
+            attributes_model = models.CatalogAttributes(**attributes)
+        resource = models.CatalogResource(
+            **{
+                "id": path,
+                "attributes": attributes_model,
+                "type": models.EntryType.catalog,
+                "meta": {
+                    "__module__": getattr(type(entry), "__module__"),
+                    "__qualname__": getattr(type(entry), "__qualname__"),
+                },
+            }
+        )
+    else:
+        if models.EntryFields.description in fields:
+            attributes["description"] = entry.describe()
+        if key is not None:
+            attributes["key"] = key
+            attributes_model = models.DataSourceEntryAttributes(**attributes)
+        else:
+            attributes_model = models.DataSourceAttributes(**attributes)
+        resource = models.DataSourceResource(
+            **{
+                "id": path,
+                "attributes": attributes_model,
+                "type": models.EntryType.datasource,
+                "meta": {
+                    "__module__": getattr(type(entry), "__module__"),
+                    "__qualname__": getattr(type(entry), "__qualname__"),
+                },
+            }
+        )
+    return resource
+
+
+def construct_entries_response(
+    path,
+    offset,
+    limit,
+    fields,
+    query,
+):
+    path = path.rstrip("/")
+    try:
+        catalog = get_entry(path)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
+    if not isinstance(catalog, DuckCatalog):
+        raise HTTPException(
+            status_code=404, detail="This is a Data Source, not a Catalog."
+        )
+    if query is not None:
+        catalog = catalog.search(query)
+    links = pagination_links(offset, limit, len_or_approx(catalog))
+    data = []
+    if fields:
+        # Pull a page of items into memory.
+        items = catalog.items_indexer[offset : offset + limit]
+    else:
+        # Pull a page of just the keys, which is cheaper.
+        items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])
+    for key, entry in items:
+        resource = construct_resource(path, entry, fields)
+        data.append(resource)
+    return models.Response(data=data, links=links)
 
 
 if __name__ == "__main__":
