@@ -32,7 +32,7 @@ class ClientCatalog(collections.abc.Mapping):
     @classmethod
     def from_uri(cls, uri, dispatch=None):
         client = httpx.Client(base_url=uri.rstrip("/"))
-        response = client.get("/entry/metadata/")
+        response = client.get("/metadata/")
         response.raise_for_status()
         metadata = response.json()["data"]["attributes"]["metadata"]
         return cls(client, path=[], metadata=metadata, dispatch=dispatch)
@@ -52,28 +52,32 @@ class ClientCatalog(collections.abc.Mapping):
         return DictView(self._metadata)
 
     def __len__(self):
-        response = self._client.get(f"/catalogs/entries/count/{'/'.join(self._path)}")
+        response = self._client.get(
+            f"/metadata/{'/'.join(self._path)}", params={"fields": "count"}
+        )
         response.raise_for_status()
         return response.json()["data"]["attributes"]["count"]
 
     def __iter__(self):
-        next_page_url = f"/catalogs/entries/keys/{'/'.join(self._path)}"
+        next_page_url = f"/entries/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.get(next_page_url)
+            response = self._client.get(next_page_url, params={"fields": []})
             response.raise_for_status()
             for item in response.json()["data"]:
-                yield item["attributes"]["key"]
+                yield item["id"]
             next_page_url = response.json()["links"]["next"]
 
     def __getitem__(self, key):
-        response = self._client.get(f"/entry/metadata/{'/'.join(self._path + [key])}")
+        response = self._client.get(
+            f"/metadata/{'/'.join(self._path + [key])}", params={"fields": "metadata"}
+        )
         response.raise_for_status()
         data = response.json()["data"]
         dispatch_on = (data["meta"]["__module__"], data["meta"]["__qualname__"])
         cls = self.dispatch[dispatch_on]
         return cls(
             client=self._client,
-            path=data["id"].split("/"),
+            path=self._path + [data["id"]],
             metadata=data["attributes"]["metadata"],
             dispatch=self.dispatch,
         )
@@ -81,16 +85,16 @@ class ClientCatalog(collections.abc.Mapping):
     def items(self):
         # The base implementation would use __iter__ and __getitem__, making
         # one HTTP request per item. Pull pages instead.
-        next_page_url = f"/catalogs/entries/metadata/{'/'.join(self._path)}"
+        next_page_url = f"/entries/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.get(next_page_url)
+            response = self._client.get(next_page_url, params={"fields": "metadata"})
             response.raise_for_status()
             for item in response.json()["data"]:
                 dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
                 cls = self.dispatch[dispatch_on]
                 yield cls(
                     self._client,
-                    path=item["id"].split("/"),
+                    path=self.path + [item["id"]],
                     metadata=item["attributes"]["metadata"],
                     dispatch=self.dispatch,
                 )
@@ -103,36 +107,32 @@ class ClientCatalog(collections.abc.Mapping):
             yield value
 
     def _keys_slice(self, start, stop):
-        next_page_url = (
-            f"/catalogs/entries/keys/{'/'.join(self._path)}?page[offset]={start}"
-        )
+        next_page_url = f"/entries/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.get(next_page_url)
+            response = self._client.get(next_page_url, params={"fields": []})
             response.raise_for_status()
             for item in response.json()["data"]:
                 if stop is not None and next(item_counter) == stop:
                     break
-                yield item["attributes"]["key"]
+                yield item["id"]
             next_page_url = response.json()["links"]["next"]
 
     def _items_slice(self, start, stop):
-        next_page_url = (
-            f"/catalogs/entries/metadata/{'/'.join(self._path)}?page[offset]={start}"
-        )
+        next_page_url = f"/entries/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.get(next_page_url)
+            response = self._client.get(next_page_url, params={"fields": "metadata"})
             response.raise_for_status()
             for item in response.json()["data"]:
-                key = item["attributes"]["key"]
+                key = item["id"]
                 dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
                 cls = self.dispatch[dispatch_on]
                 if stop is not None and next(item_counter) == stop:
                     break
                 yield key, cls(
                     self._client,
-                    path=item["id"].split("/"),
+                    path=self._path + [item["id"]],
                     metadata=item["attributes"]["metadata"],
                     dispatch=self.dispatch,
                 )
@@ -141,16 +141,16 @@ class ClientCatalog(collections.abc.Mapping):
     def _item_by_index(self, index):
         if index >= len(self):
             raise IndexError(f"index {index} out of range for length {len(self)}")
-        url = f"/catalogs/entries/metadata/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
-        response = self._client.get(url)
+        url = f"/entries/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
+        response = self._client.get(url, params={"fields": "metadata"})
         response.raise_for_status()
         (item,) = response.json()["data"]
-        key = item["attributes"]["key"]
+        key = item["id"]
         dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
         cls = self.dispatch[dispatch_on]
         value = cls(
             self._client,
-            path=item["id"].split("/"),
+            path=self._path + [item["id"]],
             metadata=item["attributes"]["metadata"],
             dispatch=self.dispatch,
         )
@@ -184,9 +184,11 @@ class ClientArraySource:
         return DictView(self._metadata)
 
     def describe(self):
-        response = self._client.get(f"/datasource/description/{'/'.join(self._path)}")
+        response = self._client.get(
+            f"/metadata/{'/'.join(self._path)}", params={"fields": "structure"}
+        )
         response.raise_for_status()
-        result = response.json()["data"]["attributes"]["description"]
+        result = response.json()["data"]["attributes"]["structure"]
         # TODO Factor this out into a model that does deserilaization.
         result["chunks"] = tuple(map(tuple, result["chunks"]))
         return result
@@ -196,21 +198,21 @@ class ClientArraySource:
         Fetch the data for one block in a chunked (dask) array.
         """
         response = self._client.get(
-            f"/datasource/blob/array/{'/'.join(self._path)}",
+            f"/blob/array/{'/'.join(self._path)}",
             headers={"Accept": "application/octet-stream"},
-            params={"blocks": str(block)},
+            params={"block": str(block)},
         )
         response.raise_for_status()
         return numpy.frombuffer(response.content, dtype=dtype).reshape(shape)
 
     def read(self):
-        description = self.describe()
-        dtype = description["dtype"]
-        shape = description["shape"]
+        structure = self.describe()
+        dtype = structure["dtype"]
+        shape = structure["shape"]
         # Build a client-side dask array whose chunks pull from a server-side
         # dask array.
         name = "remote-dask-array-{self._client.base_url!s}{'/'.join(self._path)}"
-        chunks = description["chunks"]
+        chunks = structure["chunks"]
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)
         # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---

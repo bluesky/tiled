@@ -29,13 +29,13 @@ def add_search_routes(app=app):
     # FastAPI instance itself, not the middleware which shadows it below.
     for name, query_class in queries_by_name.items():
 
-        @app.post(f"/catalogs/search/{name}/keys/{{path:path}}")
-        @app.post(f"/catalogs/search/{name}/keys", include_in_schema=False)
+        @app.post(f"/search/{name}/{{path:path}}")
+        @app.post(f"/search/{name}", include_in_schema=False)
         async def keys_search_text(
             query: query_class,
             path: Optional[str] = "",
             fields: Optional[List[models.EntryFields]] = Query(
-                list(models.EntryFields.__members__)
+                list(models.EntryFields)
             ),
             offset: Optional[int] = Query(0, alias="page[offset]"),
             limit: Optional[int] = Query(10, alias="page[limit]"),
@@ -67,18 +67,17 @@ async def shutdown_event():
 @app.get("/metadata", include_in_schema=False)
 async def metadata(
     path: Optional[str] = "",
-    fields: Optional[List[models.EntryFields]] = Query(
-        list(models.EntryFields.__members__)
-    ),
+    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
     path = path.rstrip("/")
+    *_, key = path.rpartition("/")
     try:
         entry = get_entry(path)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
-    resource = construct_resource(path, entry, fields)
+    resource = construct_resource(key, entry, fields)
     return models.Response(data=resource)
 
 
@@ -88,9 +87,7 @@ async def entries(
     path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
-    fields: Optional[List[models.EntryFields]] = Query(
-        list(models.EntryFields.__members__)
-    ),
+    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
 
@@ -148,22 +145,17 @@ if not os.getenv("DISABLE_MSGPACK_MIDDLEWARE"):
     app = MessagePackMiddleware(app)
 
 
-def construct_resource(path, entry, fields, key=None):
+def construct_resource(key, entry, fields):
     attributes = {}
     if models.EntryFields.metadata in fields:
         attributes["metadata"] = entry.metadata
     if isinstance(entry, DuckCatalog):
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
-        if key is not None:
-            attributes["key"] = key
-            attributes_model = models.CatalogEntryAttributes(**attributes)
-        else:
-            attributes_model = models.CatalogAttributes(**attributes)
         resource = models.CatalogResource(
             **{
-                "id": path,
-                "attributes": attributes_model,
+                "id": key,
+                "attributes": models.CatalogAttributes(**attributes),
                 "type": models.EntryType.catalog,
                 "meta": {
                     "__module__": getattr(type(entry), "__module__"),
@@ -174,15 +166,10 @@ def construct_resource(path, entry, fields, key=None):
     else:
         if models.EntryFields.structure in fields:
             attributes["structure"] = entry.describe()
-        if key is not None:
-            attributes["key"] = key
-            attributes_model = models.DataSourceEntryAttributes(**attributes)
-        else:
-            attributes_model = models.DataSourceAttributes(**attributes)
         resource = models.DataSourceResource(
             **{
-                "id": path,
-                "attributes": attributes_model,
+                "id": key,
+                "attributes": models.DataSourceAttributes(**attributes),
                 "type": models.EntryType.datasource,
                 "meta": {
                     "__module__": getattr(type(entry), "__module__"),
@@ -220,7 +207,7 @@ def construct_entries_response(
         # Pull a page of just the keys, which is cheaper.
         items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])
     for key, entry in items:
-        resource = construct_resource(path, entry, fields)
+        resource = construct_resource(key, entry, fields)
         data.append(resource)
     return models.Response(data=data, links=links)
 

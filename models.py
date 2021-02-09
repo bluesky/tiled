@@ -16,6 +16,7 @@ class Response(pydantic.generics.GenericModel, Generic[DataT]):
     data: Optional[DataT]
     error: Optional[Error]
     meta: Optional[dict]
+    links: Optional[dict]
 
     @pydantic.validator("error", always=True)
     def check_consistency(cls, v, values):
@@ -35,6 +36,7 @@ class EntryFields(str, enum.Enum):
     metadata = "metadata"
     structure = "structure"
     count = "count"
+    none = ""
 
 
 class CatalogAttributes(pydantic.BaseModel):
@@ -42,42 +44,31 @@ class CatalogAttributes(pydantic.BaseModel):
     count: Optional[int]
 
 
-class DataSourceDescription(pydantic.BaseModel):
+class DataSourceStructure(pydantic.BaseModel):
     dtype: str  # TODO explode into sub-model
     chunks: Any  # Tuple[Tuple]
     shape: Any  # Tuple
 
 
-class CatalogEntryAttributes(CatalogAttributes):
-    key: str
-
-
 class DataSourceAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
-    structure: Optional[DataSourceDescription]
-
-
-class DataSourceEntryAttributes(DataSourceAttributes):
-    key: str
+    structure: Optional[DataSourceStructure]
 
 
 class Resource(pydantic.BaseModel):
     "A JSON API Resource"
     id: str
     type: EntryType
+    meta: dict
 
 
 class CatalogResource(Resource):
     "Representation of a Catalog as a JSON API Resource"
-    id: str
-    type: EntryType
     attributes: CatalogAttributes
 
 
 class DataSourceResource(Resource):
     "Representation of a DataSource as a JSON API Resource"
-    id: str
-    type: EntryType
     attributes: DataSourceAttributes
 
 
