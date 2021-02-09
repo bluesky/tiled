@@ -1,7 +1,6 @@
 from ast import literal_eval
-import typing
 import os
-from typing import Optional
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
@@ -35,11 +34,9 @@ def add_search_routes(app=app):
         async def keys_search_text(
             query: query_class,
             path: Optional[str] = "",
-            fields: Optional[typing.List[models.EntryFields]] = [
-                models.EntryFields.metadata,
-                models.EntryFields.count,
-                models.EntryFields.description,
-            ],
+            fields: Optional[List[models.EntryFields]] = Query(
+                list(models.EntryFields.__members__)
+            ),
             offset: Optional[int] = Query(0, alias="page[offset]"),
             limit: Optional[int] = Query(10, alias="page[limit]"),
         ):
@@ -70,11 +67,9 @@ async def shutdown_event():
 @app.get("/metadata", include_in_schema=False)
 async def metadata(
     path: Optional[str] = "",
-    fields: Optional[typing.List[models.EntryFields]] = [
-        models.EntryFields.metadata,
-        models.EntryFields.count,
-        models.EntryFields.description,
-    ],
+    fields: Optional[List[models.EntryFields]] = Query(
+        list(models.EntryFields.__members__)
+    ),
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
@@ -93,11 +88,9 @@ async def entries(
     path: Optional[str] = "",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
-    fields: Optional[typing.List[models.EntryFields]] = [
-        models.EntryFields.metadata,
-        models.EntryFields.count,
-        models.EntryFields.description,
-    ],
+    fields: Optional[List[models.EntryFields]] = Query(
+        list(models.EntryFields.__members__)
+    ),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
 
@@ -179,8 +172,8 @@ def construct_resource(path, entry, fields, key=None):
             }
         )
     else:
-        if models.EntryFields.description in fields:
-            attributes["description"] = entry.describe()
+        if models.EntryFields.structure in fields:
+            attributes["structure"] = entry.describe()
         if key is not None:
             attributes["key"] = key
             attributes_model = models.DataSourceEntryAttributes(**attributes)

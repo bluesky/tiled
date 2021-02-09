@@ -33,7 +33,7 @@ class EntryType(str, enum.Enum):
 
 class EntryFields(str, enum.Enum):
     metadata = "metadata"
-    description = "description"
+    structure = "structure"
     count = "count"
 
 
@@ -54,7 +54,7 @@ class CatalogEntryAttributes(CatalogAttributes):
 
 class DataSourceAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
-    description: Optional[DataSourceDescription]
+    structure: Optional[DataSourceDescription]
 
 
 class DataSourceEntryAttributes(DataSourceAttributes):
