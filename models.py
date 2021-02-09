@@ -1,7 +1,10 @@
 import enum
+import sys
+
+import numpy
 import pydantic
 import pydantic.generics
-from typing import Generic, Optional, TypeVar, Tuple, Any
+from typing import Generic, Optional, Type, TypeVar, Tuple, Any
 
 
 DataT = TypeVar("DataT")
@@ -44,10 +47,67 @@ class CatalogAttributes(pydantic.BaseModel):
     count: Optional[int]
 
 
+class Endianness(str, enum.Enum):
+    big = "big"
+    little = "little"
+    not_applicable = "not_applicable"
+
+
+class Kind(str, enum.Enum):
+    """
+    See https://numpy.org/devdocs/reference/arrays.interface.html#object.__array_interface__
+
+    The term "kind" comes from the numpy API as well.
+    """
+
+    bit_field = "t"
+    boolean = "b"
+    integer = "i"
+    unsigned_integer = "ui"
+    floating_point = "f"
+    complex_floating_point = "c"
+    timedelta = "m"
+    datetime = "M"
+    string = "S"  # fixed-length sequence of char
+    unicode = "U"  # fixed-length sequence of Py_UNICODE
+    other = "V"  # "V" is for "void" -- generic fixed-size chunk of memory
+
+
+class MachineDataType(pydantic.BaseModel):
+    endianness: Endianness
+    kind: Kind
+    itemsize: int
+
+    __endianness_map = {
+        ">": "big",
+        "<": "little",
+        "=": sys.byteorder,
+        "|": "not_applicable",
+    }
+
+    __endianness_reverse_map = {
+        "big": ">",
+        "little": "<",
+        "not_applicable": "|",
+    }
+
+    @classmethod
+    def from_numpy_dtype(cls, dtype):
+        return cls(
+            endianness=cls.__endianness_map[dtype.byteorder],
+            kind=dtype.kind,
+            itemsize=dtype.itemsize,
+        )
+
+    def to_numpy_dtype(self):
+        endianness = self.__endianness_reverse_map[self.endianness]
+        return numpy.dtype(f"{endianness}{self.kind.value}{self.itemsize}")
+
+
 class DataSourceStructure(pydantic.BaseModel):
-    dtype: str  # TODO explode into sub-model
-    chunks: Any  # Tuple[Tuple]
-    shape: Any  # Tuple
+    dtype: MachineDataType
+    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples like ((3,), (3,))
+    shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
 
 
 class DataSourceAttributes(pydantic.BaseModel):

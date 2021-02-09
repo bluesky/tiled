@@ -5,6 +5,7 @@ import httpx
 import dask.array
 import numpy
 
+from models import DataSourceStructure
 from queries import DictView
 from in_memory_catalog import (
     CatalogKeysSequence,
@@ -189,9 +190,7 @@ class ClientArraySource:
         )
         response.raise_for_status()
         result = response.json()["data"]["attributes"]["structure"]
-        # TODO Factor this out into a model that does deserilaization.
-        result["chunks"] = tuple(map(tuple, result["chunks"]))
-        return result
+        return DataSourceStructure(**result)
 
     def _get_block(self, block, dtype, shape):
         """
@@ -207,12 +206,12 @@ class ClientArraySource:
 
     def read(self):
         structure = self.describe()
-        dtype = structure["dtype"]
-        shape = structure["shape"]
+        shape = structure.shape
+        dtype = structure.dtype.to_numpy_dtype()
         # Build a client-side dask array whose chunks pull from a server-side
         # dask array.
         name = "remote-dask-array-{self._client.base_url!s}{'/'.join(self._path)}"
-        chunks = structure["chunks"]
+        chunks = structure.chunks
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)
         # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---

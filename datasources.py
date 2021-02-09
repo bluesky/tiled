@@ -1,4 +1,5 @@
 import dask.array
+from models import MachineDataType, DataSourceStructure
 
 
 class ArraySource:
@@ -12,14 +13,11 @@ class ArraySource:
         return f"{type(self).__name__}({self._data!r})"
 
     def describe(self):
-        return {
-            "shape": self._data.shape,
-            "chunks": self._data.chunks,
-            # TODO Return the actual dtype object here, and let the
-            # server/client use .str in (de)serialization.
-            # This should probably be done in a pydantic model.
-            "dtype": self._data.dtype.str,
-        }
+        return DataSourceStructure(
+            shape=self._data.shape,
+            chunks=self._data.chunks,
+            dtype=MachineDataType.from_numpy_dtype(self._data.dtype),
+        )
 
     def read(self):
         return self._data
