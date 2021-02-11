@@ -17,7 +17,7 @@ datasets in it. Notice that there is no `setup.py` here yet, so it must be run
 from the working directory.
 
 ```
-uvicorn server:app --reload
+uvicorn catalog_server.server:app --reload
 ```
 
 Make requests. The server accepts JSON and msgpack. Examples:

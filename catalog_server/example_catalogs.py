@@ -1,6 +1,7 @@
 import dask.array
-from datasources import ArraySource
-from in_memory_catalog import Catalog
+
+from .datasources import ArraySource
+from .in_memory_catalog import Catalog
 
 
 # Build Catalog of Catalogs.

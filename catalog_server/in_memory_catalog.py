@@ -1,7 +1,7 @@
 import collections.abc
 import itertools
 
-from queries import DictView, QueryTranslationRegistry, Text
+from .queries import DictView, QueryTranslationRegistry, Text
 
 
 class Catalog(collections.abc.Mapping):

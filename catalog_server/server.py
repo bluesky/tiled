@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
-from server_utils import (
+from .server_utils import (
     array_media_types,
     DuckCatalog,
     get_dask_client,
@@ -14,8 +14,8 @@ from server_utils import (
     pagination_links,
     serialize_array,
 )
-from queries import queries_by_name
-import models
+from .queries import queries_by_name
+from . import models
 
 
 app = FastAPI()
@@ -116,7 +116,6 @@ async def blob_array(
         # We do not support any of the media types requested by the client.
         # Reply with a list of the supported types.
         raise HTTPException(status_code=406, detail=", ".join(array_media_types))
-
 
 
 # After defining all routes, wrap app with middleware.

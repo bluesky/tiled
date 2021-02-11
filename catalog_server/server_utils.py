@@ -10,7 +10,7 @@ from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):
-    from example_catalogs import catalog
+    from .example_catalogs import catalog
 
     catalog = catalog
 
