@@ -178,10 +178,10 @@ def construct_entries_response(
         raise HTTPException(
             status_code=404, detail="This is a Data Source, not a Catalog."
         )
-    for catalog_query in queries:
-        query = queries_by_name[catalog_query.query_type](**catalog_query.query)
-        print("query", query)
-        catalog = catalog.search(query)
+    if queries:
+        for catalog_query in queries:
+            query = queries_by_name[catalog_query.query_type](**catalog_query.query)
+            catalog = catalog.search(query)
     links = pagination_links(offset, limit, len_or_approx(catalog))
     data = []
     if fields:
