@@ -1,0 +1,9 @@
+{
+    "arch": "x86_64",
+    "cpu": "Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz",
+    "machine": "mb",
+    "num_cpu": "16",
+    "os": "Darwin 19.6.0",
+    "ram": "17179869184",
+    "version": 1
+}
