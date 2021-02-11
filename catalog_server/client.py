@@ -268,7 +268,7 @@ class ClientArraySource:
 
 ClientCatalog.DEFAULT_DISPATCH.update(
     {
-        ("in_memory_catalog", "Catalog"): ClientCatalog,
-        ("datasources", "ArraySource"): ClientArraySource,
+        ("catalog_server.in_memory_catalog", "Catalog"): ClientCatalog,
+        ("catalog_server.datasources", "ArraySource"): ClientArraySource,
     }
 )
