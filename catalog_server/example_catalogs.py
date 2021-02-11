@@ -1,4 +1,5 @@
 import dask.array
+import numpy
 
 from .datasources import ArraySource
 from .in_memory_catalog import Catalog
@@ -14,7 +15,7 @@ for name, size, fruit, animal in zip(
 ):
     subcatalogs[name] = Catalog(
         {
-            k: ArraySource(v * dask.array.ones((size, size)))
+            k: ArraySource(v * dask.array.from_array(numpy.ones((size, size))))
             for k, v in zip(["ones", "twos", "threes"], [1, 2, 3])
         },
         metadata={"fruit": fruit, "animal": animal},
