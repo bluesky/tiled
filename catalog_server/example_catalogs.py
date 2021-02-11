@@ -1,4 +1,3 @@
-import dask.array
 import numpy
 
 from .datasources import ArraySource
