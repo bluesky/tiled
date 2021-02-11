@@ -226,10 +226,10 @@ class ClientArraySource:
         """
         Fetch the data for one block in a chunked (dask) array.
         """
-        response = self._client.post(
+        response = self._client.get(
             f"/blob/array/{'/'.join(self._path)}",
             headers={"Accept": "application/octet-stream"},
-            json=block,
+            params={"block": ",".join(map(str, block))},
         )
         response.raise_for_status()
         return numpy.frombuffer(response.content, dtype=dtype).reshape(shape)

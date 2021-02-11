@@ -151,7 +151,3 @@ class LabeledCatalogQuery(pydantic.BaseModel):
     def from_dataclass(cls, query):
         query_type = names_by_query_class[type(query)]
         return cls(query_type=query_type, query=asdict(query))
-
-
-ArrayBlock = Tuple[int, ...]
-"A dask-style block index into a chunked array"

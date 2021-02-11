@@ -88,19 +88,23 @@ async def entries(
     )
 
 
-@app.post("/blob/array/{path:path}")
+@app.get("/blob/array/{path:path}")
 async def blob_array(
     request: Request,
     path: str,
-    block: models.ArrayBlock,
+    # TODO How can we make Query a required parameter (no default value) while
+    # still applying regex? It seems that using Query makes this parameter
+    # optional, and it's not clear how to get around that.
+    block: str = Query(None, min_length=1, regex="^[0-9](,[0-9])*$"),
 ):
-    "Provide one block (chunk) or an array."
+    "Provide one block (chunk) of an array."
     try:
         datasource = get_entry(path)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
+    parsed_block = tuple(map(int, block.split(",")))
     try:
-        chunk = datasource.read().blocks[block]
+        chunk = datasource.read().blocks[parsed_block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = await get_chunk(chunk)
