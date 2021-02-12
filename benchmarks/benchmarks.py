@@ -16,10 +16,6 @@ class TimeSuite:
     An example benchmark that times the performance of various kinds
     of iterating over dictionaries in Python.
     """
-    def setup_cache(self):
-        #asyncio.create_task(uvicorn.run(app, host=HOST, port=PORT))
-        pass
-
     def time_keys(self):
         self.d = {}
         for x in range(500):
@@ -36,4 +32,4 @@ class TimeSuite:
 
     def time_list_catalog():
         self.catalog = ClientCatalog.from_uri('http://' + HOST + ':' + PORT)
-        self.catalog.keys()
+        list(catalog)
