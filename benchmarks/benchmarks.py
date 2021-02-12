@@ -17,12 +17,8 @@ class TimeSuite:
     def setup_cache(self):
         pass
 
-    async def setup(self):
-        await uvicorn(app, host=HOST, port=PORT)
-        self.catalog = ClientCatalog.from_uri(HOST + ':' + PORT)
-
-    def time_list_catalog():
-        self.catalog.keys()
+    def setup(self):
+        uvicorn(app, host=HOST, port=PORT)
 
     def time_keys(self):
         self.d = {}
@@ -37,3 +33,7 @@ class TimeSuite:
             self.d[x] = None
         for key in self.d.keys():
             pass
+
+    def time_list_catalog():
+        self.catalog = ClientCatalog.from_uri('http://' + HOST + ':' + PORT)
+        self.catalog.keys()
