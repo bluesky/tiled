@@ -34,7 +34,7 @@ def declare_search_route(app=app):
 
     We check the registry of known search query types, which is user
     configurable, and use that to define the allowed HTTP query parameters for
-    thius route.
+    this route.
     """
 
     # The parameter `app` is passed in so that we bind to the global `app`
