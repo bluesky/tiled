@@ -4,14 +4,14 @@
     "version": 1,
 
     // The name of the project being benchmarked
-    "project": "project",
+    "project": "catalog_server",
 
     // The project's homepage
     "project_url": "http://project-homepage.org/",
 
     // The URL or local path of the source code repository for the
     // project being benchmarked
-    "repo": ".",
+    "repo": "/Users/gbischof/dama/catalog-server-from-scratch",
 
     // The Python project's subdirectory in your repo.  If missing or
     // the empty string, the project is assumed to be located at the root
@@ -21,6 +21,7 @@
     // Customizable commands for building, installing, and
     // uninstalling the project. See asv.conf.json documentation.
     //
+    //"install_command": ["python -mpip install --force-reinstall {wheel_file}"],
     // "install_command": ["in-dir={env_dir} python -mpip install {wheel_file}"],
     // "uninstall_command": ["return-code=any python -mpip uninstall -y {project}"],
     // "build_command": [
@@ -44,7 +45,7 @@
     // If missing or the empty string, the tool will be automatically
     // determined by looking for tools on the PATH environment
     // variable.
-    "environment_type": "virtualenv",
+    "environment_type": "conda",
 
     // timeout in seconds for installing any dependencies in environment
     // defaults to 10 min
@@ -59,7 +60,7 @@
 
     // The list of conda channel names to be searched for benchmark
     // dependency packages in the specified order
-    // "conda_channels": ["conda-forge", "defaults"],
+    "conda_channels": ["conda-forge", "defaults"],
 
     // The matrix of dependencies to test.  Each key is the name of a
     // package (in PyPI) and the values are version numbers.  An empty
@@ -71,16 +72,17 @@
     // pip (with all the conda available packages installed first,
     // followed by the pip installed packages).
     //
-    "matrix": {
-        "dask[array]": [""],
-        "distributed": [""],
-        "fastapi": [""],
-        "httpx": [""],
-        "msgpack-asgi": [""],
-        "numpy": [""],
-        "pydantic": [""],
-        "uvicorn": [""],
-        "numpy": [""]},
+
+    //"matrix": {
+    //    "dask[array]": [""],
+    //    "distributed": [""],
+    //    "fastapi": [""],
+    //    "httpx": [""],
+    //    "msgpack-asgi": [""],
+    //    "numpy": [""],
+    //    "pydantic": [""],
+    //    "uvicorn": [""],
+    //    "numpy": [""]},
 
          //     "six": ["", null],        // test with and without six installed
     //     "pip+emcee": [""],   // emcee is only available for install with pip.

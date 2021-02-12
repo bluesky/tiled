@@ -1,5 +1,5 @@
 from os import path
-from setuptools import setup
+import setuptools
 
 here = path.abspath(path.dirname(__file__))
 
@@ -8,7 +8,8 @@ with open(path.join(here, 'requirements.txt')) as requirements_file:
     requirements = [line for line in requirements_file.read().splitlines()
                     if not line.startswith('#')]
 
-setup(
+setuptools.setup(
     name="catalog_server",
-    install_requires=requirements
+    install_requires=requirements,
+    packages=setuptools.find_packages(where='.', exclude=['doc', '.ci']),
 )
