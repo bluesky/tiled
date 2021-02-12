@@ -11,10 +11,9 @@ Install dependencies.
 git clone https://github.com/danielballan/catalog-server-from-scratch
 cd catalog-server-from-scratch
 pip install -r requirements.tnt
+pip install -e .
 ```
-Run server. It currently serves an example Catalog with a couple small array
-datasets in it. Notice that there is no `setup.py` here yet, so it must be run
-from the working directory.
+Run server.
 
 ```
 uvicorn catalog_server.server:app --reload
