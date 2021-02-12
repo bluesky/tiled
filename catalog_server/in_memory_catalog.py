@@ -1,7 +1,8 @@
 import collections.abc
 import itertools
 
-from .queries import DictView, QueryTranslationRegistry, Text
+from .query_registration import DictView, QueryTranslationRegistry
+from .queries import FullText, KeyLookup
 
 
 class Catalog(collections.abc.Mapping):
@@ -246,4 +247,13 @@ def full_text_search(query, catalog):
     return type(catalog)(matches)
 
 
-Catalog.register_query(Text, full_text_search)
+def key_lookup(query, catalog):
+    try:
+        matches = {query.key: catalog[query.key]}
+    except KeyError:
+        matches = {}
+    return type(catalog)(matches)
+
+
+Catalog.register_query(FullText, full_text_search)
+Catalog.register_query(KeyLookup, key_lookup)

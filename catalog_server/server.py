@@ -1,5 +1,10 @@
+from collections import defaultdict
+import dataclasses
+import inspect
 import os
+import re
 from typing import List, Optional
+
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
@@ -13,33 +18,84 @@ from .server_utils import (
     pagination_links,
     serialize_array,
 )
-from .queries import queries_by_name
+from . import queries  # This is not used, but it registers queries on import.
+from .query_registration import queries_by_name
 from . import models
 
+
+del queries
 
 app = FastAPI()
 
 
-@app.post("/search/{path:path}")
-@app.post("/search/", include_in_schema=False)
-async def search(
-    queries: Optional[List[models.LabeledCatalogQuery]],
-    path: Optional[str] = "",
-    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
-    offset: Optional[int] = Query(0, alias="page[offset]"),
-    limit: Optional[int] = Query(10, alias="page[limit]"),
-):
-    return construct_entries_response(
-        path,
-        offset,
-        limit,
-        fields,
-        queries=queries,
-    )
+def declare_search_route(app=app):
+    """
+    This is done dynamically at app startup.
+
+    We check the registry of known search query types, which is user
+    configurable, and use that to define the allowed HTTP query parameters for
+    thius route.
+    """
+
+    # The parameter `app` is passed in so that we bind to the global `app`
+    # defined *above* and not the middleware wrapper that overlaods that name
+    # below.
+    async def search(
+        path: Optional[str] = "",
+        fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+        offset: Optional[int] = Query(0, alias="page[offset]"),
+        limit: Optional[int] = Query(10, alias="page[limit]"),
+        **filters,
+    ):
+        return construct_entries_response(
+            path,
+            offset,
+            limit,
+            fields,
+            filters=filters,
+        )
+
+    # Black magic here! FastAPI bases its validation and auto-generated swagger
+    # documentation on the signature of the route function. We do not know what
+    # that signature should be at compile-time. We only know it once we have a
+    # chance to check the user-configurable registry of query types. Therefore,
+    # we modify the signature here, at runtime, just before handing it to
+    # FastAPI in the usual way.
+
+    # When FastAPI calls the function with these added parameters, they will be
+    # accepted via **filters.
+
+    # Make a copy of the original parameters.
+    signature = inspect.signature(search)
+    parameters = list(signature.parameters.values())
+    # Drop the **filters parameter from the signature.
+    del parameters[-1]
+    # Add a parameter for each field in each type of query.
+    for name, query in queries_by_name.items():
+        for field in dataclasses.fields(query):
+            # The structured "alias" here is based on
+            # https://mglaman.dev/blog/using-json-api-query-your-search-api-indexes
+            injected_parameter = inspect.Parameter(
+                name=f"filter___{name}___{field.name}",
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=Query(None, alias=f"filter[{name}][condition][{field.name}]"),
+                annotation=Optional[field.type],
+            )
+        parameters.append(injected_parameter)
+    search.__signature__ = signature.replace(parameters=parameters)
+    # End black magic
+
+    # Register the search route.
+    app.get("/search/{path:path}")(search)
+    app.get("/search", include_in_schema=False)(search)
+
+
+_FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 
 
 @app.on_event("startup")
 async def startup_event():
+    declare_search_route()
     # Warm up the dask.distributed Cluster.
     get_dask_client()
 
@@ -84,7 +140,7 @@ async def entries(
         offset,
         limit,
         fields,
-        queries=None,
+        filters={},
     )
 
 
@@ -170,7 +226,7 @@ def construct_entries_response(
     offset,
     limit,
     fields,
-    queries,
+    filters,
 ):
     path = path.rstrip("/")
     try:
@@ -181,10 +237,20 @@ def construct_entries_response(
         raise HTTPException(
             status_code=404, detail="This is a Data Source, not a Catalog."
         )
-    if queries:
-        for catalog_query in queries:
-            query = queries_by_name[catalog_query.query_type](**catalog_query.query)
-            catalog = catalog.search(query)
+    queries = defaultdict(
+        dict
+    )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
+    # Group the parameters by query type.
+    for key, value in filters.items():
+        if value is None:
+            continue
+        name, field = _FILTER_PARAM_PATTERN.match(key).groups()
+        queries[name][field] = value
+    # Apply the queries and obtain a narrowed catalog.
+    for name, parameters in queries.items():
+        query_class = queries_by_name[name]
+        query = query_class(**parameters)
+        catalog = catalog.search(query)
     links = pagination_links(offset, limit, len_or_approx(catalog))
     data = []
     if fields:
