@@ -19,7 +19,7 @@ from .server_utils import (
     serialize_array,
 )
 from . import queries  # This is not used, but it registers queries on import.
-from .query_registration import queries_by_name
+from .query_registration import name_to_query_type
 from . import models
 
 
@@ -71,7 +71,7 @@ def declare_search_route(app=app):
     # Drop the **filters parameter from the signature.
     del parameters[-1]
     # Add a parameter for each field in each type of query.
-    for name, query in queries_by_name.items():
+    for name, query in name_to_query_type.items():
         for field in dataclasses.fields(query):
             # The structured "alias" here is based on
             # https://mglaman.dev/blog/using-json-api-query-your-search-api-indexes
@@ -248,7 +248,7 @@ def construct_entries_response(
         queries[name][field] = value
     # Apply the queries and obtain a narrowed catalog.
     for name, parameters in queries.items():
-        query_class = queries_by_name[name]
+        query_class = name_to_query_type[name]
         query = query_class(**parameters)
         catalog = catalog.search(query)
     links = pagination_links(offset, limit, len_or_approx(catalog))

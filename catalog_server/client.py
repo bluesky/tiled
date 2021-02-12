@@ -1,4 +1,5 @@
 import collections.abc
+from dataclasses import fields
 import itertools
 
 import httpx
@@ -6,7 +7,8 @@ import dask.array
 import numpy
 
 from .models import DataSourceStructure
-from .query_registration import DictView
+from .query_registration import DictView, query_type_to_name
+from .queries import KeyLookup
 from .in_memory_catalog import (
     CatalogKeysSequence,
     CatalogValuesSequence,
@@ -29,8 +31,10 @@ class ClientCatalog(collections.abc.Mapping):
         self.dispatch.update(dispatch or {})
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
-        self._path = path or []
-        self._queries = queries or []
+        # Stash *immutable* copies just to be safe.
+        self._path = tuple(path or [])
+        self._queries = tuple(queries or [])
+        self._queries_as_params = _queries_to_params(*self._queries)
 
     @classmethod
     def from_uri(cls, uri, dispatch=None):
@@ -56,7 +60,8 @@ class ClientCatalog(collections.abc.Mapping):
 
     def __len__(self):
         response = self._client.get(
-            f"/metadata/{'/'.join(self._path)}", params={"fields": "count"}
+            f"/search/{'/'.join(self._path)}",
+            params={"fields": "count", **self._queries_as_params},
         )
         response.raise_for_status()
         return response.json()["data"]["attributes"]["count"]
@@ -64,10 +69,9 @@ class ClientCatalog(collections.abc.Mapping):
     def __iter__(self):
         next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.post(
+            response = self._client.get(
                 next_page_url,
-                params={"fields": []},
-                json=self._queries,
+                params={"fields": "", **self._queries_as_params},
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -75,17 +79,27 @@ class ClientCatalog(collections.abc.Mapping):
             next_page_url = response.json()["links"]["next"]
 
     def __getitem__(self, key):
+        # Lookup this key *within the search results* of this Catalog.
         response = self._client.get(
-            f"/metadata/{'/'.join(self._path + [key])}", params={"fields": "metadata"}
+            f"/search/{'/'.join(self._path )}",
+            params={
+                "fields": "metadata",
+                **_queries_to_params(KeyLookup(key)),
+                **self._queries_as_params,
+            },
         )
         response.raise_for_status()
         data = response.json()["data"]
-        dispatch_on = (data["meta"]["__module__"], data["meta"]["__qualname__"])
+        if not data:
+            raise KeyError(key)
+        assert len(data) == 1  # If not the query or the server is broken.
+        (item,) = data
+        dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
         cls = self.dispatch[dispatch_on]
         return cls(
             client=self._client,
-            path=self._path + [data["id"]],
-            metadata=data["attributes"]["metadata"],
+            path=self._path + (item["id"],),
+            metadata=item["attributes"]["metadata"],
             dispatch=self.dispatch,
         )
 
@@ -94,10 +108,9 @@ class ClientCatalog(collections.abc.Mapping):
         # one HTTP request per item. Pull pages instead.
         next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.post(
+            response = self._client.get(
                 next_page_url,
-                params={"fields": "metadata"},
-                json=self._queries,
+                params={"fields": "metadata", **self._queries_as_params},
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -121,10 +134,9 @@ class ClientCatalog(collections.abc.Mapping):
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.post(
+            response = self._client.get(
                 next_page_url,
-                params={"fields": []},
-                json=self._queries,
+                params={"fields": "", **self._queries_as_params},
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -137,10 +149,9 @@ class ClientCatalog(collections.abc.Mapping):
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.post(
+            response = self._client.get(
                 next_page_url,
-                params={"fields": "metadata"},
-                json=self._queries,
+                params={"fields": "metadata", **self._queries_as_params},
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -151,7 +162,7 @@ class ClientCatalog(collections.abc.Mapping):
                     break
                 yield key, cls(
                     self._client,
-                    path=self._path + [item["id"]],
+                    path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
                     dispatch=self.dispatch,
                 )
@@ -161,8 +172,8 @@ class ClientCatalog(collections.abc.Mapping):
         if index >= len(self):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
-        response = self._client.post(
-            url, params={"fields": "metadata"}, json=self._queries
+        response = self._client.get(
+            url, params={"fields": "metadata", **self._queries_as_params}
         )
         response.raise_for_status()
         (item,) = response.json()["data"]
@@ -171,7 +182,7 @@ class ClientCatalog(collections.abc.Mapping):
         cls = self.dispatch[dispatch_on]
         value = cls(
             self._client,
-            path=self._path + [item["id"]],
+            path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
             dispatch=self.dispatch,
         )
@@ -190,11 +201,10 @@ class ClientCatalog(collections.abc.Mapping):
         return CatalogValuesSequence(self)
 
     def search(self, query):
-        query_as_json = LabeledCatalogQuery.from_dataclass(query).dict()
         return type(self)(
             client=self._client,
             path=self._path,
-            queries=self._queries + [query_as_json],
+            queries=self._queries + (query,),
             metadata=self._metadata,
             dispatch=self.dispatch,
         )
@@ -272,3 +282,15 @@ ClientCatalog.DEFAULT_DISPATCH.update(
         ("catalog_server.datasources", "ArraySource"): ClientArraySource,
     }
 )
+
+
+def _queries_to_params(*queries):
+    "Compute GET params from the queries."
+    params = {}
+    for query in queries:
+        name = query_type_to_name[type(query)]
+        for field in fields(query):
+            params[f"filter[{name}][condition][{field.name}]"] = getattr(
+                query, field.name
+            )
+    return params

@@ -46,11 +46,16 @@ class QueryRegistry:
     """
 
     def __init__(self):
-        self._lookup = {}
+        self._name_to_query_type_type = {}
+        self._query_type_to_name = {}
 
     @property
-    def queries_by_name(self):
-        return DictView(self._lookup)
+    def name_to_query_type(self):
+        return DictView(self._name_to_query_type_type)
+
+    @property
+    def query_type_to_name(self):
+        return DictView(self._query_type_to_name)
 
     def register(self, name=None, overwrite=False):
         if "___" in name:
@@ -60,15 +65,15 @@ class QueryRegistry:
             # "filter___{name}___{field}".
 
         def inner(cls):
-            if (name in self._lookup) and (not overwrite):
-                if self._lookup[name] is cls:
+            if (name in self._name_to_query_type_type) and (not overwrite):
+                if self._name_to_query_type_type[name] is cls:
                     # redundant registration; do nothing
                     return
                 raise Exception(
-                    f"The class {self._lookup[name]} is registered to the "
+                    f"The class {self._name_to_query_type_type[name]} is registered to the "
                     f"name {name}. To overwrite, set overwrite=True."
                 )
-            if cls in self._lookup.values():
+            if cls in self._name_to_query_type_type.values():
                 raise Exception(
                     f"The class {cls} is already registered by another name."
                 )
@@ -80,7 +85,14 @@ class QueryRegistry:
                     # Why? This would create ambiguity in the server's handling of
                     # search requests. Route signature parameters are named like
                     # "filter___{name}___{field}".
-            self._lookup[name] = cls
+            if cls in self._query_type_to_name:
+                raise Exception(
+                    f"The type {cls} is already registered to the name "
+                    f"{self._query_type_to_name[cls]} and cannot also be "
+                    f"registered to {name}."
+                )
+            self._name_to_query_type_type[name] = cls
+            self._query_type_to_name[cls] = name
             return cls
 
         return inner
@@ -89,7 +101,8 @@ class QueryRegistry:
 # Make a global registry.
 _query_registry = QueryRegistry()
 register = _query_registry.register
-queries_by_name = _query_registry.queries_by_name
+name_to_query_type = _query_registry.name_to_query_type
+query_type_to_name = _query_registry.query_type_to_name
 
 
 class QueryTranslationRegistry:
