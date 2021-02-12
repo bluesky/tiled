@@ -1,6 +1,8 @@
 # Write the benchmarking functions here.
 # See "Writing benchmarks" in the asv docs for more information.
+import asyncio
 import uvicorn
+import time
 
 from catalog_server.client import ClientCatalog
 from catalog_server.server import app
@@ -15,10 +17,8 @@ class TimeSuite:
     of iterating over dictionaries in Python.
     """
     def setup_cache(self):
+        #asyncio.create_task(uvicorn.run(app, host=HOST, port=PORT))
         pass
-
-    def setup(self):
-        uvicorn(app, host=HOST, port=PORT)
 
     def time_keys(self):
         self.d = {}
