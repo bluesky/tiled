@@ -20,14 +20,8 @@ from the working directory.
 uvicorn catalog_server.server:app --reload
 ```
 
-Make requests. The server accepts JSON and msgpack. Examples:
-
-```
-http http://localhost:8000/catalogs/keys/
-http POST http://localhost:8000/catalogs/search/text/keys/ text=penguin
-http http://localhost:8000/catalogs/entries/
-http http://localhost:8000/catalogs/description/
-```
+Make requests. The server accepts JSON and msgpack. Once the server is running,
+visit ``http://localhost:8000/docs`` for documentation.
 
 ## Requirements
 
