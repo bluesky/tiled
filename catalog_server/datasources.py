@@ -1,5 +1,5 @@
 import dask.array
-from .models import MachineDataType, DataSourceStructure
+from catalog_server.models import MachineDataType, DataSourceStructure
 
 
 class ArraySource:

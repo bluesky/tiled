@@ -7,7 +7,7 @@ import pydantic
 import pydantic.generics
 from typing import Generic, Optional, TypeVar, Tuple
 
-from .queries import names_by_query_class
+from catalog_server.queries import names_by_query_class
 
 
 DataT = TypeVar("DataT")
