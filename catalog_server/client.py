@@ -92,7 +92,9 @@ class ClientCatalog(collections.abc.Mapping):
         data = response.json()["data"]
         if not data:
             raise KeyError(key)
-        assert len(data) == 1, "The key lookup query must never result more than one result."
+        assert (
+            len(data) == 1
+        ), "The key lookup query must never result more than one result."
         (item,) = data
         dispatch_on = (item["meta"]["__module__"], item["meta"]["__qualname__"])
         cls = self.dispatch[dispatch_on]
