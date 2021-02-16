@@ -14,7 +14,7 @@ from .server_utils import (
     serialize_array,
 )
 from .queries import queries_by_name
-from catalog_server import models
+from . import models
 
 
 app = FastAPI()
