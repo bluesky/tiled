@@ -5,9 +5,9 @@ import httpx
 import dask.array
 import numpy
 
-from catalog_server.models import LabeledCatalogQuery, DataSourceStructure
-from catalog_server.queries import DictView
-from catalog_server.in_memory_catalog import (
+from .models import LabeledCatalogQuery, DataSourceStructure
+from .queries import DictView
+from .in_memory_catalog import (
     CatalogKeysSequence,
     CatalogValuesSequence,
     CatalogItemsSequence,

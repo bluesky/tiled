@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
-from catalog_server.server_utils import (
+from .server_utils import (
     array_media_types,
     DuckCatalog,
     get_dask_client,
@@ -13,7 +13,7 @@ from catalog_server.server_utils import (
     pagination_links,
     serialize_array,
 )
-from catalog_server.queries import queries_by_name
+from .queries import queries_by_name
 from catalog_server import models
 
 
