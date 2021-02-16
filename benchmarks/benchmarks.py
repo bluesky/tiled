@@ -27,7 +27,16 @@ class TimeSuite:
         self.server_process.terminate()
 
     def time_list_catalog(self):
-:       list(self.catalog)
+        list(self.catalog)
+
+    def time_metadata(self):
+        self.catalog['medium']['ones'].metadata
+
+    def time_describe(self):
+        self.catalog['medium']['ones'].describe()
 
     def time_read(self):
-        self.catalog[-1].read()
+        self.catalog['medium']['ones'].read()
+
+    def time_compute(self):
+        self.catalog['medium']['ones'].read().compute()
