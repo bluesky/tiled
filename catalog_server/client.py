@@ -61,10 +61,10 @@ class ClientCatalog(collections.abc.Mapping):
     def __len__(self):
         response = self._client.get(
             f"/search/{'/'.join(self._path)}",
-            params={"fields": "count", **self._queries_as_params},
+            params={"fields": "", **self._queries_as_params},
         )
         response.raise_for_status()
-        return response.json()["data"]["attributes"]["count"]
+        return response.json()["meta"]["count"]
 
     def __iter__(self):
         next_page_url = f"/search/{'/'.join(self._path)}"

@@ -251,7 +251,8 @@ def construct_entries_response(
         query_class = name_to_query_type[name]
         query = query_class(**parameters)
         catalog = catalog.search(query)
-    links = pagination_links(offset, limit, len_or_approx(catalog))
+    count = len_or_approx(catalog)
+    links = pagination_links(offset, limit, count)
     data = []
     if fields:
         # Pull a page of items into memory.
@@ -262,7 +263,7 @@ def construct_entries_response(
     for key, entry in items:
         resource = construct_resource(key, entry, fields)
         data.append(resource)
-    return models.Response(data=data, links=links)
+    return models.Response(data=data, links=links, meta={"count": count})
 
 
 if __name__ == "__main__":
