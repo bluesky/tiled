@@ -9,11 +9,7 @@ import numpy
 from .models import DataSourceStructure
 from .query_registration import DictView, query_type_to_name
 from .queries import KeyLookup
-from .in_memory_catalog import (
-    CatalogKeysSequence,
-    CatalogValuesSequence,
-    CatalogItemsSequence,
-)
+from .in_memory_catalog import IndexCallable, slice_to_interval
 
 
 class ClientCatalog(collections.abc.Mapping):
@@ -35,6 +31,9 @@ class ClientCatalog(collections.abc.Mapping):
         self._path = tuple(path or [])
         self._queries = tuple(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
+        self.keys_indexer = IndexCallable(self._keys_indexer)
+        self.items_indexer = IndexCallable(self._items_indexer)
+        self.values_indexer = IndexCallable(self._values_indexer)
 
     @classmethod
     def from_uri(cls, uri, dispatch=None):
@@ -44,8 +43,9 @@ class ClientCatalog(collections.abc.Mapping):
         metadata = response.json()["data"]["attributes"]["metadata"]
         return cls(client, path=[], metadata=metadata, dispatch=dispatch)
 
-    def __repr__(self):
-        # TODO When the number of items is very large, show only a subset.
+    def __repr__(
+        self,
+    ):  # TODO When the number of items is very large, show only a subset.
         # That is, do not let repr(self) trigger a large number of HTTP
         # requests paginating through all the results.
         return f"<{type(self).__name__}({set(self)!r})>"
@@ -190,18 +190,6 @@ class ClientCatalog(collections.abc.Mapping):
         )
         return (key, value)
 
-    @property
-    def keys_indexer(self):
-        return CatalogKeysSequence(self)
-
-    @property
-    def items_indexer(self):
-        return CatalogItemsSequence(self)
-
-    @property
-    def values_indexer(self):
-        return CatalogValuesSequence(self)
-
     def search(self, query):
         return type(self)(
             client=self._client,
@@ -210,6 +198,34 @@ class ClientCatalog(collections.abc.Mapping):
             metadata=self._metadata,
             dispatch=self.dispatch,
         )
+
+    def _keys_indexer(self, index):
+        if isinstance(index, int):
+            key, _value = self._item_by_index(index)
+            return key
+        elif isinstance(index, slice):
+            start, stop = slice_to_interval(index)
+            return list(self._keys_slice(start, stop))
+        else:
+            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
+
+    def _items_indexer(self, index):
+        if isinstance(index, int):
+            return self._item_by_index(index)
+        elif isinstance(index, slice):
+            start, stop = slice_to_interval(index)
+            return list(self._items_slice(start, stop))
+        else:
+            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
+
+    def _values_indexer(self, index):
+        if isinstance(index, int):
+            _key, value = self._item_by_index(index)
+        elif isinstance(index, slice):
+            start, stop = slice_to_interval(index)
+            return [value for _key, value in self._items_slice(start, stop)]
+        else:
+            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
 
 class ClientArraySource:
