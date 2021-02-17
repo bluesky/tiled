@@ -1,18 +1,39 @@
 import abc
 from functools import lru_cache
+import importlib
 import json
 import operator
+import os
 import tempfile
 
 import dask
 from dask.distributed import Client
-from pydantic import BaseSettings
+from pydantic import BaseSettings, validator
+
+_DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.example_catalogs:catalog"
 
 
 class Settings(BaseSettings):
-    from .example_catalogs import catalog
 
-    catalog = catalog
+    catalog_object_path: str = os.getenv("ROOT_CATALOG", _DEMO_DEFAULT_ROOT_CATALOG)
+
+    @validator("catalog_object_path")
+    def valid_object_path(cls, value):
+        # TODO This could be more precise to catch more error cases.
+        import_path, obj_path = str(value).split(":")
+        for token in import_path.split("."):
+            if not token.isidentifier():
+                raise ValueError("Not a valid import path")
+        for token in obj_path.split("."):
+            if not token.isidentifier():
+                raise ValueError("Not a valid attribute in a module")
+        return str(value)
+
+    @property
+    def catalog(self):
+        import_path, obj_path = self.catalog_object_path.split(":")
+        module = importlib.import_module(import_path)
+        return operator.attrgetter(obj_path)(module)
 
 
 @lru_cache()
