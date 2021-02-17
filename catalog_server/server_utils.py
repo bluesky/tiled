@@ -81,9 +81,7 @@ def pagination_links(offset, limit, length_hint):
     if offset + limit < length_hint:
         links["next"] = f"/?page[offset]={offset + limit}&page[limit]={limit}"
     if offset > 0:
-        links[
-            "prev"
-        ] = f"/?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
+        links["prev"] = f"/?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
