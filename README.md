@@ -1,5 +1,4 @@
 # Catalog Server from Scratch
-
 *Disclaimer: This is very early work, presented in the spirit of an early draft
 of an RFC.*
 
@@ -183,7 +182,7 @@ List entries in the root catalog, paginated.
 GET /entries?page[offset]=2&page[limit]=2
 ```
 
-```
+```json
 {
     "data": [
         {
@@ -237,7 +236,7 @@ Search the full text of the metadata of the entries in the root catalog.
 GET /search?filter[fulltext][condition][text]=dog
 ```
 
-```
+```json
 {
     "data": [
         {
@@ -276,7 +275,7 @@ View the metadata of a sub-Catalog.
 GET /metadata/tiny
 ```
 
-```
+```json
 {
     "data": {
         "attributes": {
@@ -306,7 +305,7 @@ We are given their machine datatype, shape, and chunk strucutre
 GET /entries/tiny
 ```
 
-```
+```json
 {
     "data": [
         {
@@ -422,7 +421,7 @@ and as binary (using a large array as an example).
 GET /blob/array/tiny/threes?block=0,0 Accept:application/json
 ```
 
-```
+```json
 [
     [
         3.0,
