@@ -342,7 +342,6 @@ GET /entries/tiny
             "attributes": {
                 "metadata": {},
                 "structure": {
-``
                     "chunks": [
                         [
                             3
