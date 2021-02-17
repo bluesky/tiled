@@ -20,15 +20,16 @@ uvicorn catalog_server.server:app --reload
 ```
 
 Make requests. The server accepts JSON and msgpack. Once the server is running,
-visit ``http://localhost:8000/docs`` for documentation.
+visit ``http://localhost:8000/docs`` for documentation. (Or, see below for
+example requests and responses.)
 
 ## Requirements
 
 * HTTP API that supports JSON and msgpack requests, with JSON and msgpack
   responses, as well as binary blob responses for chunked data
-* Usable from ``curl`` and languages other than Python (i.e. support
-  language-agnostic serialization options and avoid baking any Python-isms too
-  deeply into the API)
+* Be usable from ``curl`` and languages other that Python. In contrast to
+  ``dask.distributed`` and the current ``intake-server`` avoid baking any
+  Python-isms deeply into it. No pickle, no msgpack-python.
 * List Runs, with pagination and random access
 * Search Runs, with pagination and random access on search results
 * Access Run metadata cheaply, again with pagination and random access.
@@ -47,17 +48,46 @@ visit ``http://localhost:8000/docs`` for documentation.
 
 ## Draft Specification
 
-There are two user-facing objects in the system, **Catalogs** and
-**DataSources**. This specification proposes the Python API required to
-duck-type as a Catalog or DataSource as well as a sample HTTP API loosely based
-on [JSON API](https://jsonapi.org/), subject to future redesign.
+There are three user-facing objects in the system:
 
-This is a also a **registry of (de)serialization methods**
-single-dispatched on type, following ``dask.distributed``.
+* **DataSource** -- wrapper around an array, dataframe, or other data container
+* **Catalog** -- nestable collection of other Catalogs or DataSources
+* **Queries** -- high-level description of a search query over entries in a
+  Catalog
 
-### Catalogs
+This specification proposes the Python API required to duck-type as a Catalog or
+DataSource as well as a sample HTTP API based on
+[JSON API](https://jsonapi.org/).
 
-#### Python API
+### Python API
+
+#### DataSources
+
+* DataSources MUST implement a ``metadata`` attribute or property which returns
+  a dict-like. This ``metadata`` is treated as user space, and no part of the
+  server or client will rely on its contents.
+
+* DataSources MUST implement a ``container`` attribute or property which returns
+  a string of the general type that will be returned by ``read()``, as in
+  intake. These will be generic terms like ``"array"``, not the
+  ``__qualname__`` of the class. It is meant to encompass the range of concrete
+  types (cupy array, sparse array, dask array, numpy ndarray) that duck-type 
+
+* DataSources MUST implement a method ``describe()`` with no arguments
+  which returns a description sufficient to construct the container before
+  fetching chunks of the data. The content of this description depends on the
+  container. For example, it always includes the machine data type, and
+  where applicable it includes shape, chunks, and a notion of high-level
+  structure like columns, dimensions, indexes. This should include links to get
+  the chunks with a range of available serializations.
+
+* DataSources MUST implement a method ``read()`` with no arguments which returns
+  the data structure.
+
+* DataSources MAY implement other methods beyond these for application-specific
+  needs or usability.
+
+#### Catalogs
 
 * Catalogs MUST implement the ``collections.abc.Mapping`` interface. That is:
 
@@ -78,27 +108,25 @@ single-dispatched on type, following ``dask.distributed``.
 
 * The items in a Catalog MUST have an explicit and stable order.
 
-* Catalogs MUST implement an ``index`` attribute which supports efficient
-  positional lookup and slicing for pagination. This always returns a Catalog of
-  with a subset of the entries.
+* Catalogs MUST implement an attributes which support efficient positional
+  lookup and slicing.
 
   ```python
-  catalog.index[i]
-  catalog.index[start:stop]
-  catalog.index[start:stop:stride]
+  catalog.keys_indexer[i]             # -> str
+  catalog.values_indexer[i]           # -> Union[Catalog, DataSource]
+  catalog.items_indexer[i]            # -> Tuple[str, Union[Catalog, Datasource]]
+  catalog.keys_indexer[start:stop]    # -> List[str]
+  catalog.items_indexer[start:stop]   # -> List[Union[Catalog, Datasource]]
+  catalog.values_indexer[start:stop]  # -> List[Tuple[str, Union[Catalog, Datasource]]]
   ```
-
-  Support for strides other than ``1`` is optional. Support for negative indexes
-  is optional. A ``NotImplementedError`` should be raised when a stride is not
-  supported.
 
 * The values in a Catalog MUST be other Catalogs or DataSources.
 
-* The keys in a Catalog MUST be non-empty strings.
+* The keys in a Catalog MUST be non-empty strings adhering to the JSON API spec
+  for allowed characters in resource ids.
 
-* Catalogs MUST implement a ``search`` method which returns another Catalog with
-  a subset of the items. The signature of that method is intentionally not
-  specified.
+* Catalogs MUST implement a ``search`` method which accepts a ``Query`` as its
+  argument and returns another Catalog with a subset of the items.  specified.
 
 * Catalogs MUST implement a ``metadata`` attribute or property which
   returns a dict-like. This ``metadata`` is treated as user space, and no part
@@ -114,201 +142,300 @@ single-dispatched on type, following ``dask.distributed``.
   Catalog itself is a read-only view on that data. Any items added MUST be added
   to the end. Items may not be removed.
 
+#### Queries
+
+* Queries MUST be dataclasses.
+
+* They MAY have any attributes. There are no required attributes.
+
+
+#### Extension points
+
+* For each container type (e.g. "array") there is a registry mapping MIME
+  type (e.g. `application/octet-stream`, `application/json`) to a function that
+  can encode a block of data from that container.
+* The server and client use a registry of associates each `Query` with a string
+  name. Additional queries can be registered.
+* In the method `Catalog.search`, a Catalog needs to translate the generic
+  *description* encoded by a `Query` into a concrete filtering operation on its
+  particular storage backend. Thus, custom Queries also need to registered by
+  Catalogs. It is not necessary for every Catalog to understand every type of
+  Query.
+
+
 ### JSON API
 
-List a Catalog to obtain its keys, paginated. It may contain subcatalogs or
-datasources or a mixture.
+Examples from the prototype....
+
+List entries in the root catalog, paginated.
 
 ```
-GET /catalogs/keys/:path?page[offset]=50&page[limit]=5
+GET /entries?page[offset]=2&page[limit]=2
 ```
 
-```json
+```
 {
-    "data": {
-        "metadata": {},
-        "catalogs":
-            [
-                {"key": "e370b080-c1ea-4db3-90d9-64a32e6de5a5", "links": {}},
-                {"key": "50e81503-cdab-4370-8b0a-ce2ac192d20b", "links": {}},
-                {"key": "cc868088-80fc-4876-9c9a-481a37420ceb", "links": {}},
-                {"key": "5b13fd53-b6e4-410e-a310-2c1c31f10062", "links": {}},
-                {"key": "0cd287ac-823c-4ed9-a008-2a68740e1939", "links": {}}
-            ],
-        "datasources": [],
-    },
+    "data": [
+        {
+            "attributes": {
+                "count": 3,
+                "metadata": {
+                    "animal": "dog",
+                    "fruit": "orange"
+                }
+            },
+            "id": "medium",
+            "meta": {
+                "__module__": "catalog_server.in_memory_catalog",
+                "__qualname__": "Catalog"
+            },
+            "type": "catalog"
+        },
+        {
+            "attributes": {
+                "count": 3,
+                "metadata": {
+                    "animal": "penguin",
+                    "fruit": "grape"
+                }
+            },
+            "id": "large",
+            "meta": {
+                "__module__": "catalog_server.in_memory_catalog",
+                "__qualname__": "Catalog"
+            },
+            "type": "catalog"
+        }
+    ],
+    "error": null,
     "links": {
-        "self": "...",
-        "prev": "...",
-        "next": "...",
-        "first": "...",
-        "last": "..."
+        "first": "/?page[offset]=0&page[limit]=2",
+        "last": "/?page[offset]=2&page[limit]=2",
+        "next": null,
+        "prev": "/?page[offset]=0&page[limit]=2",
+        "self": "/?page[offset]=2&page[limit]=2"
+    },
+    "meta": {
+        "count": 4
     }
 }
 ```
 
-This is akin to ``list(catalog[path].index[offset:offset + limit])`` in the
-Python API.
-
-Get metadata for entries in a Catalog.
+Search the full text of the metadata of the entries in the root catalog.
 
 ```
-GET /catalogs/entries/:path?page[offset]=0&page[limit]=5
+GET /search?filter[fulltext][condition][text]=dog
 ```
 
-If it contains sub-catalogs, the response looks like:
-
-```json
+```
 {
-    "data": {
-        "catalogs": [
-            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "links": {}}
-        ],
-        "datasources": [],
-    },
+    "data": [
+        {
+            "attributes": {
+                "count": 3,
+                "metadata": {
+                    "animal": "dog",
+                    "fruit": "orange"
+                }
+            },
+            "id": "medium",
+            "meta": {
+                "__module__": "catalog_server.in_memory_catalog",
+                "__qualname__": "Catalog"
+            },
+            "type": "catalog"
+        }
+    ],
+    "error": null,
     "links": {
-        "self": "...",
-        "prev": "...",
-        "next": "...",
-        "first": "...",
-        "last": "..."
+        "first": "/?page[offset]=0&page[limit]=10",
+        "last": "/?page[offset]=0&page[limit]=10",
+        "next": null,
+        "prev": null,
+        "self": "/?page[offset]=0&page[limit]=10"
+    },
+    "meta": {
+        "count": 1
     }
 }
 ```
 
-If it contains DataSources, the response looks like:
+View the metadata of a sub-Catalog.
 
-```json
+```
+GET /metadata/tiny
+```
+
+```
 {
     "data": {
-        "catalogs": [],
-        "datasources": [
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "links": {}}
-        ],
+        "attributes": {
+            "count": 3,
+            "metadata": {
+                "animal": "bird",
+                "fruit": "apple"
+            }
+        },
+        "id": "tiny",
+        "meta": {
+            "__module__": "catalog_server.in_memory_catalog",
+            "__qualname__": "Catalog"
+        },
+        "type": "catalog"
     },
+    "error": null,
+    "links": null,
+    "meta": null
+}
+```
+
+List the entries of a sub-Catalog. In this case, these are "array" DataSources.
+We are given their machine datatype, shape, and chunk strucutre
+
+```
+GET /entries/tiny
+```
+
+```
+{
+    "data": [
+        {
+            "attributes": {
+                "metadata": {},
+                "structure": {
+                    "chunks": [
+                        [
+                            3
+                        ],
+                        [
+                            3
+                        ]
+                    ],
+                    "dtype": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "f"
+                    },
+                    "shape": [
+                        3,
+                        3
+                    ]
+                }
+            },
+            "id": "ones",
+            "meta": {
+                "__module__": "catalog_server.datasources",
+                "__qualname__": "ArraySource"
+            },
+            "type": "datasource"
+        },
+        {
+            "attributes": {
+                "metadata": {},
+                "structure": {
+``
+                    "chunks": [
+                        [
+                            3
+                        ],
+                        [
+                            3
+                        ]
+                    ],
+                    "dtype": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "f"
+                    },
+                    "shape": [
+                        3,
+                        3
+                    ]
+                }
+            },
+            "id": "twos",
+            "meta": {
+                "__module__": "catalog_server.datasources",
+                "__qualname__": "ArraySource"
+            },
+            "type": "datasource"
+        },
+        {
+            "attributes": {
+                "metadata": {},
+                "structure": {
+                    "chunks": [
+                        [
+                            3
+                        ],
+                        [
+                            3
+                        ]
+                    ],
+                    "dtype": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "f"
+                    },
+                    "shape": [
+                        3,
+                        3
+                    ]
+                }
+            },
+            "id": "threes",
+            "meta": {
+                "__module__": "catalog_server.datasources",
+                "__qualname__": "ArraySource"
+            },
+            "type": "datasource"
+        }
+    ],
+    "error": null,
     "links": {
-        "self": "...",
-        "prev": "...",
-        "next": "...",
-        "first": "...",
-        "last": "..."
+        "first": "/?page[offset]=0&page[limit]=10",
+        "last": "/?page[offset]=0&page[limit]=10",
+        "next": null,
+        "prev": null,
+        "self": "/?page[offset]=0&page[limit]=10"
+    },
+    "meta": {
+        "count": 3
     }
 }
 ```
 
-This is akin to
-``[item.metadata for item in catalog[path].index[offset:offset + limit].values()]``
-in the Python API.
-
-Any of the above request may contain the query parameter ``q`` with a search
-query. The responses have the same structure as above. This is equivalent to
-``[item.metadata for item in catalog[path].search(query).index[offset:offset + limit].values()]``
-in the Python API.
-
-### DataSources
-
-#### Python API
-
-* DataSources MUST implement a ``metadata`` attribute or property which returns
-  a dict-like. This ``metadata`` is treated as user space, and no part of the
-  server or client will rely on its contents.
-
-* DataSources MUST implement a ``container`` attribute or property which returns
-  a string of the general type that will be returned by ``read()``, as in
-  intake. These will be generic terms like ``"tabular"``, not the
-  ``__qualname__`` of the class.
-
-* DataSources MUST implement a method ``describe()`` with no arguments
-  which returns a description sufficient to construct the container before
-  fetching chunks of the data. The content of this description depends on the
-  container. For example, it always includes the machine data type, and
-  where applicable it includes shape, chunks, and a notion of high-level
-  structure like columns, dimensions, indexes. This should include links to get
-  the chunks with a range of available serializations.
-
-* DataSources MUST implement a method ``read()`` with no arguments which returns
-  the data structure.
-
-* DataSources MAY implement other methods beyond these for application-specific
-  needs or usability.
-
-#### JSON API
-
-We saw above how to list the DataSources in a Catalog, either just their key in
-the Catalog or their their ``metadata`` and ``container`` as well. To
-additionally include the output of ``describe()``:
+Get a chunk of data from the array as JSON (using a small array as an example)
+and as binary (using a large array as an example).
 
 ```
-GET /catalogs/descriptions/:path?page[offset]=0&page[limit]=5
+GET /blob/array/tiny/threes?block=0,0 Accept:application/json
 ```
 
-```json
-{
-    "data": {
-        "catalogs": [],
-        "datasources": [
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}},
-            {"key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}}
-        ],
-    },
-    "links": {
-        "self": "...",
-        "prev": "...",
-        "next": "...",
-        "first": "...",
-        "last": "..."
-    }
-}
+```
+[
+    [
+        3.0,
+        3.0,
+        3.0
+    ],
+    [
+        3.0,
+        3.0,
+        3.0
+    ],
+    [
+        3.0,
+        3.0,
+        3.0
+    ]
+]
 ```
 
-To describe a single DataSource, give the path to the DataSource.
 ```
-GET /datasource/description/:path
-```
-
-```json
-{
-    "data": {
-        "key": "...", "metadata": {}, "__qualname__": "...", "container": "...", "description": {}, "links": {}
-    },
-    "links": {
-        "self": "...",
-        "prev": "...",
-        "next": "...",
-        "first": "...",
-        "last": "..."
-    }
-}
+GET /blob/array/large/threes?block=0,0 Accept:application/octet-stream
 ```
 
-The content of ``description`` provides information about how to specify
-``chunk`` and a list of supported ``Content-Encoding`` headers for the request
-for a blob of data. Examples may include a C buffer, Arrow, msgpack, or JSON.
-
 ```
-GET /datasource/blob/:path?chunk=...
+<50000000 bytes of binary data>
 ```
-
-### Serialization Dispatch
-
-This can closely follow how `dask.distributed` handles serialization. We may be
-able to just reuse `dask.distributed`'s machinery, in fact. See
-[dask.distributed serialization docs](https://distributed.dask.org/en/latest/serialization.html).
-
-The important difference is our choice of serializers. Dask needs to serialize
-arbitrary Python objects between two trusted processes, so it makes use of
-pickle. We need to serialize a more bounded set of data structures, and we need
-to do it in a way that works with clients in languages other than Python. Also,
-even a Python client may not "trust" the server to the same extent and therefore
-should not load arbitrary pickles.
