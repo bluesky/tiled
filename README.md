@@ -61,7 +61,7 @@ There are three user-facing objects in the system:
 
 * **DataSource** -- wrapper around an array, dataframe, or other data container
 * **Catalog** -- nestable collection of other Catalogs or DataSources
-* **Queries** -- high-level description of a search query over entries in a
+* **Query** -- high-level description of a search query over entries in a
   Catalog
 
 This specification proposes the Python API required to duck-type as a Catalog or
