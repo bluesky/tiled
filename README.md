@@ -80,7 +80,8 @@ DataSource as well as a sample HTTP API based on
   a string of the general type that will be returned by ``read()``, as in
   intake. These will be generic terms like ``"array"``, not the
   ``__qualname__`` of the class. It is meant to encompass the range of concrete
-  types (cupy array, sparse array, dask array, numpy ndarray) that duck-type 
+  types (cupy array, sparse array, dask array, numpy ndarray) that duck-type as
+  a given generic container.
 
 * DataSources MUST implement a method ``describe()`` with no arguments
   which returns a description sufficient to construct the container before
