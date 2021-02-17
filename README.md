@@ -84,12 +84,11 @@ DataSource as well as a sample HTTP API based on
   a given generic container.
 
 * DataSources MUST implement a method ``describe()`` with no arguments
-  which returns a description sufficient to construct the container before
-  fetching chunks of the data. The content of this description depends on the
-  container. For example, it always includes the machine data type, and
-  where applicable it includes shape, chunks, and a notion of high-level
-  structure like columns, dimensions, indexes. This should include links to get
-  the chunks with a range of available serializations.
+  which returns a description of the structure of this data. For each container
+  (array, dataframe, etc.) there will be a specific schema for this description
+  (TBD). For example, "array" reports machine data type, shape, and chunks.
+  Richer structure (e.g. xarray) will include high-level structure like columns,
+  dimensions, indexes.
 
 * DataSources MUST implement a method ``read()`` with no arguments which returns
   the data structure.
@@ -115,8 +114,6 @@ DataSource as well as a sample HTTP API based on
   catalog.__len__
   catalog.__length_hint__
   ```
-
-* The items in a Catalog MUST have an explicit and stable order.
 
 * Catalogs MUST implement an attributes which support efficient positional
   lookup and slicing.
@@ -148,9 +145,13 @@ DataSource as well as a sample HTTP API based on
 * The method for initializing this object is intentionally unspecified. There
   will be variety.
 
-* The data underlying the Catalog may be updated to add items, even though the
-  Catalog itself is a read-only view on that data. Any items added MUST be added
-  to the end. Items may not be removed.
+* [This may need revisiting. Should it be qualified? Eliminated?] The items in a
+  Catalog MUST have an explicit and stable order.
+
+* [This may need revisiting. Should it be qualified? Eliminated?] The data
+  underlying the Catalog may be updated to add items, even though the Catalog
+  itself is a read-only view on that data. Any items added MUST be added to the
+  end. Items may not be removed.
 
 #### Queries
 
@@ -158,19 +159,22 @@ DataSource as well as a sample HTTP API based on
 
 * They MAY have any attributes. There are no required attributes.
 
-
 #### Extension points
 
-* For each container type (e.g. "array") there is a registry mapping MIME
-  type (e.g. `application/octet-stream`, `application/json`) to a function that
-  can encode a block of data from that container.
-* The server and client use a registry of associates each `Query` with a string
-  name. Additional queries can be registered.
-* In the method `Catalog.search`, a Catalog needs to translate the generic
-  *description* encoded by a `Query` into a concrete filtering operation on its
-  particular storage backend. Thus, custom Queries also need to registered by
-  Catalogs. It is not necessary for every Catalog to understand every type of
-  Query.
+The prototype uses several user-configurable registries for extensibility of
+various features.
+
+* **MIME types for data** For each container type (e.g. "array") there is a
+  registry mapping MIME type (e.g. `application/octet-stream`,
+  `application/json`) to a function that can encode a block of data from that
+  container.
+* **Query types** The server and client use a registry of associates each
+  `Query` with a string name. Additional queries can be registered.
+* **Query support for a given Catalog type** In the method `Catalog.search`, a
+  Catalog needs to translate the generic *description* encoded by a `Query` into
+  a concrete filtering operation on its particular storage backend. Thus, custom
+  Queries also need to registered by Catalogs. It is not necessary for every
+  Catalog to understand every type of Query.
 
 
 ### JSON API
