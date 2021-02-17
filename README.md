@@ -23,14 +23,15 @@ Make requests. The server accepts JSON and msgpack. Once the server is running,
 visit ``http://localhost:8000/docs`` for documentation. (Or, see below for
 example requests and responses.)
 
-The server uses a demo root catalog by default, equivalent to:
+The server server a demo catalog by default, equivalent to:
 
 ```
 ROOT_CATALOG="catalog_server.example_catalogs:catalog" uvicorn catalog_server.server:app --reload
 ```
 
-Other catalogs can be served by changing the value of `ROOT_CATALOG` to point to
-a different object an in importable module.
+Other catalogs can be served by changing the value of the `ROOT_CATALOG`
+environment variable to point to a different object in any importable Python
+module.
 
 ## Requirements
 
