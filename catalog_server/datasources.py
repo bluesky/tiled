@@ -3,6 +3,9 @@ from .models import MachineDataType, DataSourceStructure
 
 
 class ArraySource:
+
+    container = "array"
+
     def __init__(self, data):
         self.metadata = {}
         if not isinstance(data, dask.array.Array):
@@ -24,6 +27,9 @@ class ArraySource:
 
 
 class HDF5DatasetSource:
+
+    container = "array"
+
     def __init__(self, filepath, dataset_path):
         import h5py
 

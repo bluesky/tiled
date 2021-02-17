@@ -53,6 +53,10 @@ class Endianness(str, enum.Enum):
     not_applicable = "not_applicable"
 
 
+class Container(str, enum.Enum):
+    array = "array"
+
+
 class Kind(str, enum.Enum):
     """
     See https://numpy.org/devdocs/reference/arrays.interface.html#object.__array_interface__
@@ -112,6 +116,7 @@ class DataSourceStructure(pydantic.BaseModel):
 
 class DataSourceAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
+    container: Container
     structure: Optional[DataSourceStructure]
 
 
