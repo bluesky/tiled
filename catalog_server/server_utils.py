@@ -14,6 +14,7 @@ _DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.example_catalogs:catalog"
 class Settings(BaseSettings):
 
     catalog_object_path: str = os.getenv("ROOT_CATALOG", _DEMO_DEFAULT_ROOT_CATALOG)
+    dask_scheduler_address : str = os.getenv("DASK_SCHEDULER")
 
     @validator("catalog_object_path")
     def valid_object_path(cls, value):
@@ -41,8 +42,15 @@ def get_settings():
 
 @lru_cache()
 def get_dask_client():
-    "Start a dask cluster than uses threaded workers, and return its Client."
-    return Client(asynchronous=True, processes=False)
+    "Connect to a specified dask scheduler, or start a LocalCluster."
+    address = get_settings().dask_scheduler_address
+    if address:
+        # Connect to an existing cluster.
+        client = Client(address, asynchronous=True)
+    else:
+        # Start a distributed.LocalCluster.
+        client = Client(asynchronous=True, processes=False)
+    return client
 
 
 def get_entry(path):
