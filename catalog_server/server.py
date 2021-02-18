@@ -33,13 +33,9 @@ class PatchedResponse(Response):
     "Patch the render method to accept memoryview."
 
     def render(self, content: Any) -> bytes:
-        if content is None:
-            return b""
         if isinstance(content, memoryview):
             return content.cast("B")
-        if isinstance(content, (bytearray, bytes)):
-            return content
-        return content.encode(self.charset)
+        return super().render(content)
 
 
 def declare_search_route(app=app):
