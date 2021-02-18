@@ -68,7 +68,7 @@ async def get_chunk(chunk):
     # there is only one block?
     client = get_dask_client()
     future = client.compute(chunk)
-    return await future.result()
+    return await future
 
 
 def pagination_links(offset, limit, length_hint):
