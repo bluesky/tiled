@@ -16,12 +16,12 @@ def generate_hdf5_data():
             [1, 2, 3],
         ):
             arr = value * numpy.ones((size, size))
-            path = Path("example_data")
+            path = Path("example_data", "hdf5")
             os.makedirs(path, exist_ok=True)
             filename = f"{name}_{inner_name}.h5"
             key = "data"
             with h5py.File(path / filename, "w") as file:
-                file.create_dataset(key, data=arr)
+                file.create_dataset(key, data=arr, chunks=True)
 
 
 def main():

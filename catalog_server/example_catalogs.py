@@ -7,7 +7,7 @@ from .in_memory_catalog import Catalog
 
 
 def access_hdf5_data(name, inner_name, value, size):
-    path = Path("example_data")
+    path = Path("example_data", "hdf5")
     filename = f"{name}_{inner_name}.h5"
     file = h5py.File(path / filename, "r")
     return file["data"]
