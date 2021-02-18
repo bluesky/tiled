@@ -8,7 +8,7 @@ import os
 from dask.distributed import Client
 from pydantic import BaseSettings, validator
 
-_DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.example_catalogs:catalog"
+_DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.example_catalogs:hdf5_catalog"
 
 
 class Settings(BaseSettings):

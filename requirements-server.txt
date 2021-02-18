@@ -1,7 +1,6 @@
 dask[array]
 distributed
 fastapi
-httpx
 msgpack-asgi==1.*
 numpy
 pydantic

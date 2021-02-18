@@ -9,8 +9,14 @@ Install dependencies.
 ```
 git clone https://github.com/danielballan/catalog-server-from-scratch
 cd catalog-server-from-scratch
-pip install -r requirements.tnt
+pip install -r requirements-demo.txt
 pip install -e .
+```
+
+Generate example data files.
+
+```
+python -m catalog_server.generate_example_data
 ```
 
 Run server.
