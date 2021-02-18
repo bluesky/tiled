@@ -207,9 +207,10 @@ def construct_resource(key, entry, fields):
             }
         )
     else:
+        if models.EntryFields.container in fields:
+            attributes["container"] = entry.container
         if models.EntryFields.structure in fields:
             attributes["structure"] = entry.describe()
-            attributes["container"] = entry.container
         resource = models.DataSourceResource(
             **{
                 "id": key,
