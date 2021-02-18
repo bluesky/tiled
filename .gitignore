@@ -1,3 +1,5 @@
 __pycache__
 *.swp
 catalog_server.egg-info/
+dask-worker-space/
+example_data/

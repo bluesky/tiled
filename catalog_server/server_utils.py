@@ -4,9 +4,7 @@ import importlib
 import json
 import operator
 import os
-import tempfile
 
-import dask
 from dask.distributed import Client
 from pydantic import BaseSettings, validator
 
@@ -44,13 +42,6 @@ def get_settings():
 @lru_cache()
 def get_dask_client():
     "Start a dask cluster than uses threaded workers, and return its Client."
-    # For now avoid placing dask-worker-space in cwd (the default) because
-    # triggers server reloads in uvicorn --reload mode. We will want this to be
-    # configurable in the future.
-    temp_dask_worker_space = tempfile.TemporaryDirectory().name
-    DASK_CONFIG = {"temporary-directory": temp_dask_worker_space}
-    dask.config.update(dask.config.config, DASK_CONFIG, priority="new")
-
     return Client(asynchronous=True, processes=False)
 
 

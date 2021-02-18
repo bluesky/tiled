@@ -12,10 +12,11 @@ cd catalog-server-from-scratch
 pip install -r requirements.tnt
 pip install -e .
 ```
+
 Run server.
 
 ```
-uvicorn catalog_server.server:app --reload
+uvicorn catalog_server.server:app
 ```
 
 Make requests. The server accepts JSON and msgpack. Once the server is running,
@@ -25,12 +26,17 @@ example requests and responses.)
 The server serves a demo catalog by default, equivalent to:
 
 ```
-ROOT_CATALOG="catalog_server.example_catalogs:catalog" uvicorn catalog_server.server:app --reload
+ROOT_CATALOG="catalog_server.example_catalogs:catalog" uvicorn catalog_server.server:app
 ```
 
 Other catalogs can be served by changing the value of the `ROOT_CATALOG`
 environment variable to point to a different object in any importable Python
 module.
+
+Note: Directories are created in the current directory for scratch space. If
+using uvicorn's ``--reload`` option, be sure to set
+``--reload-dir=catalog_server`` to avoid reloading everytime a scratch file is
+updated.
 
 ## Requirements
 
