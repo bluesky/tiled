@@ -3,7 +3,7 @@ import dataclasses
 import inspect
 import os
 import re
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
@@ -27,6 +27,17 @@ from . import models
 del queries
 
 app = FastAPI()
+
+
+class PatchedResponse(Response):
+    "Patch the render method to accept memoryview."
+
+    def render(self, content: Any) -> bytes:
+        if content is None:
+            return b""
+        if isinstance(content, (memoryview, bytearray, bytes)):
+            return content
+        return content.encode(self.charset)
 
 
 def declare_search_route(app=app):
@@ -172,7 +183,10 @@ def blob_array(
             media_type = "application/octet-stream"
         if media_type in array_media_types:
             content = serialize_array(media_type, array)
-            return Response(content=content, media_type=media_type)
+            return PatchedResponse(
+                content=content,
+                media_type=media_type,
+            )
     else:
         # We do not support any of the media types requested by the client.
         # Reply with a list of the supported types.
