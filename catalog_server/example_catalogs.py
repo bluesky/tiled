@@ -1,8 +1,6 @@
-import os
 from pathlib import Path
 
 import h5py
-import numpy
 
 from .datasources import ArraySource
 from .in_memory_catalog import Catalog
@@ -11,7 +9,6 @@ from .in_memory_catalog import Catalog
 def access_hdf5_data(name, inner_name, value, size):
     path = Path("example_data")
     filename = f"{name}_{inner_name}.h5"
-    key = "data"
     file = h5py.File(path / filename, "r")
     return file["data"]
 

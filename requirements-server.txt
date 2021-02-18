@@ -1,5 +1,4 @@
 dask[array]
-distributed
 fastapi
 msgpack-asgi==1.*
 numpy

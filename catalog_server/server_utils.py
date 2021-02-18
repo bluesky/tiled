@@ -5,7 +5,6 @@ import json
 import operator
 import os
 
-from dask.distributed import Client
 from pydantic import BaseSettings, validator
 
 _DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.example_catalogs:hdf5_catalog"
@@ -14,7 +13,7 @@ _DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.example_catalogs:hdf5_catalog"
 class Settings(BaseSettings):
 
     catalog_object_path: str = os.getenv("ROOT_CATALOG", _DEMO_DEFAULT_ROOT_CATALOG)
-    dask_scheduler_address : str = os.getenv("DASK_SCHEDULER")
+    # dask_scheduler_address : str = os.getenv("DASK_SCHEDULER")
 
     @validator("catalog_object_path")
     def valid_object_path(cls, value):
@@ -40,17 +39,17 @@ def get_settings():
     return Settings()
 
 
-@lru_cache()
-def get_dask_client():
-    "Connect to a specified dask scheduler, or start a LocalCluster."
-    address = get_settings().dask_scheduler_address
-    if address:
-        # Connect to an existing cluster.
-        client = Client(address, asynchronous=True)
-    else:
-        # Start a distributed.LocalCluster.
-        client = Client(asynchronous=True, processes=False)
-    return client
+# @lru_cache()
+# def get_dask_client():
+#     "Connect to a specified dask scheduler, or start a LocalCluster."
+#     address = get_settings().dask_scheduler_address
+#     if address:
+#         # Connect to an existing cluster.
+#         client = Client(address, asynchronous=True)
+#     else:
+#         # Start a distributed.LocalCluster.
+#         client = Client(asynchronous=True, processes=False)
+#     return client
 
 
 def get_entry(path):
@@ -69,14 +68,9 @@ def len_or_approx(catalog):
         return operator.length_hint(catalog)
 
 
-async def get_chunk(chunk):
+def get_chunk(chunk):
     "dask array -> numpy array"
-    # Make dask pull the dask into memory using its threaded workers.
-    # TODO Should we client.scatter first? Is there anything *to* scatter when
-    # there is only one block?
-    client = get_dask_client()
-    future = client.compute(chunk)
-    return await future
+    return chunk.compute(scheduler="threads")
 
 
 def pagination_links(offset, limit, length_hint):
@@ -127,7 +121,6 @@ class ArraySerializationRegistry:
     def __init__(self):
         # Map MIME types to functions
         self._registry = {}
-        self._dask_client = get_dask_client()
 
     @property
     def media_types(self):
@@ -136,9 +129,9 @@ class ArraySerializationRegistry:
     def register_media_type(self, media_type, serializer):
         self._registry[media_type] = serializer
 
-    async def serialize(self, media_type, array):
+    def serialize(self, media_type, array):
         serializer = self._registry[media_type]
-        return await self._dask_client.submit(serializer, array)
+        return serializer(array)
 
 
 array_serialization_registry = ArraySerializationRegistry()

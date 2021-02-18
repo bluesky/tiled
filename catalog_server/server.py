@@ -12,7 +12,7 @@ from .server_utils import (
     array_media_types,
     DuckCatalog,
     get_chunk,
-    get_dask_client,
+    # get_dask_client,
     get_entry,
     get_settings,
     len_or_approx,
@@ -98,15 +98,15 @@ _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\
 async def startup_event():
     declare_search_route()
     # Warm up cached access.
-    get_dask_client()
     get_settings().catalog
+    # get_dask_client()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    "Gracefully shutdown the dask.distributed Client."
-    client = get_dask_client()
-    await client.close()
+    # client = get_dask_client()
+    # await client.close()
+    pass
 
 
 @app.get("/metadata/{path:path}")
@@ -147,7 +147,7 @@ async def entries(
 
 
 @app.get("/blob/array/{path:path}")
-async def blob_array(
+def blob_array(
     request: Request,
     path: str,
     # TODO How can we make Query a required parameter (no default value) while
@@ -165,13 +165,13 @@ async def blob_array(
         chunk = datasource.read().blocks[parsed_block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
-    array = await get_chunk(chunk)
+    array = get_chunk(chunk)
     media_types = request.headers.get("Accept", "application/octet-stream")
     for media_type in media_types.split(", "):
         if media_type == "*/*":
             media_type = "application/octet-stream"
         if media_type in array_media_types:
-            content = await serialize_array(media_type, array)
+            content = serialize_array(media_type, array)
             return Response(content=content, media_type=media_type)
     else:
         # We do not support any of the media types requested by the client.
