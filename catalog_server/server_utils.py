@@ -134,21 +134,8 @@ class ArraySerializationRegistry:
         return serializer(array)
 
 
-def array_to_bytes_zero_copy(array):
-    m = memoryview(array)
-    # len(m) is the length of m as a nested list.
-    # This confuses the HTTP protocol libraries used by FastAPI, which expect
-    # len(body) to give the number of bytes. Therefore, cast such that
-    # len(m) == m.nbytes
-    m_cast = m.cast("B", (array.size * array.dtype.itemsize,))
-    assert len(m_cast) == m.nbytes
-    return m_cast
-
-
 array_serialization_registry = ArraySerializationRegistry()
-array_serialization_registry.register_media_type(
-    "application/octet-stream", array_to_bytes_zero_copy
-)
+array_serialization_registry.register_media_type("application/octet-stream", memoryview)
 array_serialization_registry.register_media_type(
     "application/json", lambda array: json.dumps(array.tolist()).encode()
 )

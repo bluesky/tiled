@@ -35,7 +35,9 @@ class PatchedResponse(Response):
     def render(self, content: Any) -> bytes:
         if content is None:
             return b""
-        if isinstance(content, (memoryview, bytearray, bytes)):
+        if isinstance(content, memoryview):
+            return content.cast("B")
+        if isinstance(content, (bytearray, bytes)):
             return content
         return content.encode(self.charset)
 
