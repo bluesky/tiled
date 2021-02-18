@@ -11,9 +11,10 @@ from msgpack_asgi import MessagePackMiddleware
 from .server_utils import (
     array_media_types,
     DuckCatalog,
+    get_chunk,
     get_dask_client,
     get_entry,
-    get_chunk,
+    get_settings,
     len_or_approx,
     pagination_links,
     serialize_array,
@@ -96,8 +97,9 @@ _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\
 @app.on_event("startup")
 async def startup_event():
     declare_search_route()
-    # Warm up the dask.distributed Cluster.
+    # Warm up cached access.
     get_dask_client()
+    get_settings().catalog
 
 
 @app.on_event("shutdown")
