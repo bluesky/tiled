@@ -147,9 +147,7 @@ def array_to_bytes_zero_copy(array):
 
 array_serialization_registry = ArraySerializationRegistry()
 array_serialization_registry.register_media_type(
-    # "application/octet-stream", array_to_bytes_zero_copy
-    "application/octet-stream",
-    array_to_bytes_zero_copy,
+    "application/octet-stream", array_to_bytes_zero_copy
 )
 array_serialization_registry.register_media_type(
     "application/json", lambda array: json.dumps(array.tolist()).encode()
