@@ -211,10 +211,6 @@ GET /entries?page[offset]=2&page[limit]=2
                 }
             },
             "id": "medium",
-            "meta": {
-                "__module__": "catalog_server.in_memory_catalog",
-                "__qualname__": "Catalog"
-            },
             "type": "catalog"
         },
         {
@@ -226,10 +222,6 @@ GET /entries?page[offset]=2&page[limit]=2
                 }
             },
             "id": "large",
-            "meta": {
-                "__module__": "catalog_server.in_memory_catalog",
-                "__qualname__": "Catalog"
-            },
             "type": "catalog"
         }
     ],
@@ -265,10 +257,6 @@ GET /search?filter[fulltext][condition][text]=dog
                 }
             },
             "id": "medium",
-            "meta": {
-                "__module__": "catalog_server.in_memory_catalog",
-                "__qualname__": "Catalog"
-            },
             "type": "catalog"
         }
     ],
@@ -303,10 +291,6 @@ GET /metadata/tiny
             }
         },
         "id": "tiny",
-        "meta": {
-            "__module__": "catalog_server.in_memory_catalog",
-            "__qualname__": "Catalog"
-        },
         "type": "catalog"
     },
     "error": null,
@@ -349,10 +333,6 @@ GET /entries/tiny
                 }
             },
             "id": "ones",
-            "meta": {
-                "__module__": "catalog_server.datasources",
-                "__qualname__": "ArraySource"
-            },
             "type": "datasource"
         },
         {
@@ -379,10 +359,6 @@ GET /entries/tiny
                 }
             },
             "id": "twos",
-            "meta": {
-                "__module__": "catalog_server.datasources",
-                "__qualname__": "ArraySource"
-            },
             "type": "datasource"
         },
         {
@@ -409,10 +385,6 @@ GET /entries/tiny
                 }
             },
             "id": "threes",
-            "meta": {
-                "__module__": "catalog_server.datasources",
-                "__qualname__": "ArraySource"
-            },
             "type": "datasource"
         }
     ],
