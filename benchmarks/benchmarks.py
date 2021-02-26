@@ -10,7 +10,7 @@ from catalog_server.server import app
 from catalog_server.example_catalogs import catalog
 
 HOST = '0.0.0.0'
-PORT = '9040'
+PORT = 9040
 
 class TimeSuite:
     """
@@ -21,7 +21,7 @@ class TimeSuite:
         self.server_process = subprocess.Popen((f"uvicorn catalog_server.server:app"
                                                 f" --host {HOST} --port {PORT}").split())
         time.sleep(5)
-        self.catalog = ClientCatalog.from_uri('http://' + HOST + ':' + PORT)
+        self.catalog = ClientCatalog.from_uri(f'http://{HOST}:{PORT}')
 
     def teardown(self):
         self.server_process.terminate()
