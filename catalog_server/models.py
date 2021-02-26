@@ -125,7 +125,7 @@ class Resource(pydantic.BaseModel):
     "A JSON API Resource"
     id: str
     type: EntryType
-    meta: dict
+    meta: Optional[dict]
 
 
 class CatalogResource(Resource):

@@ -212,10 +212,6 @@ def construct_resource(key, entry, fields):
                 "id": key,
                 "attributes": models.CatalogAttributes(**attributes),
                 "type": models.EntryType.catalog,
-                "meta": {
-                    "__module__": getattr(type(entry), "__module__"),
-                    "__qualname__": getattr(type(entry), "__qualname__"),
-                },
             }
         )
     else:
@@ -228,10 +224,6 @@ def construct_resource(key, entry, fields):
                 "id": key,
                 "attributes": models.DataSourceAttributes(**attributes),
                 "type": models.EntryType.datasource,
-                "meta": {
-                    "__module__": getattr(type(entry), "__module__"),
-                    "__qualname__": getattr(type(entry), "__qualname__"),
-                },
             }
         )
     return resource
