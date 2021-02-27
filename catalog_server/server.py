@@ -24,6 +24,8 @@ from .query_registration import name_to_query_type
 from . import models
 
 
+CURRENT_USER = "admin"  # temporary placeholder until authentication works
+
 del queries
 
 app = FastAPI()
@@ -126,7 +128,7 @@ async def metadata(
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
-    current_user = "admin"  # placeholder
+    current_user = CURRENT_USER  # placeholder
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
     try:
@@ -166,7 +168,7 @@ def blob_array(
     block: str = Query(None, min_length=1, regex="^[0-9](,[0-9])*$"),
 ):
     "Provide one block (chunk) of an array."
-    current_user = "admin"  # placeholder
+    current_user = CURRENT_USER  # placeholder
     try:
         datasource = get_entry(path, current_user)
     except KeyError:
@@ -239,7 +241,7 @@ def construct_entries_response(
     filters,
 ):
     path = path.rstrip("/")
-    current_user = "admin"  # placeholder
+    current_user = CURRENT_USER  # placeholder
     try:
         catalog = get_entry(path, current_user)
     except KeyError:
