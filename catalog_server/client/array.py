@@ -4,7 +4,7 @@ import dask.array
 import numpy
 
 from ..models import DataSourceStructure
-from ..query_registration import DictView, query_type_to_name
+from ..query_registration import DictView
 
 
 class ClientArraySource:
