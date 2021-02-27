@@ -162,10 +162,8 @@ async def entries(
 def blob_array(
     request: Request,
     path: str,
-    # TODO How can we make Query a required parameter (no default value) while
-    # still applying regex? It seems that using Query makes this parameter
-    # optional, and it's not clear how to get around that.
-    block: str = Query(None, min_length=1, regex="^[0-9](,[0-9])*$"),
+    # Ellipsis as the "default" tells FastAPI to make this parameter required.
+    block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
 ):
     "Provide one block (chunk) of an array."
     current_user = CURRENT_USER  # placeholder
