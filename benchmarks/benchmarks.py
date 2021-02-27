@@ -3,7 +3,7 @@
 import time
 import subprocess
 
-from catalog_server.client import ClientCatalog
+from catalog_server.client.catalog import ClientCatalog
 
 HOST = "0.0.0.0"
 PORT = 9040
