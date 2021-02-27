@@ -283,7 +283,7 @@ class SimpleAccessPolicy:
         if allowed is self.ALL:
             mapping = catalog._mapping
         else:
-            mapping = ({k: v for k, v in catalog._mapping.items() if k in allowed},)
+            mapping = {k: v for k, v in catalog._mapping.items() if k in allowed}
         return type(catalog)(
             mapping=mapping,
             metadata=catalog.metadata,
