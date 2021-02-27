@@ -52,8 +52,9 @@ def get_settings():
 #     return client
 
 
-def get_entry(path):
-    catalog = get_settings().catalog
+def get_entry(path, current_user):
+    root_catalog = get_settings().catalog
+    catalog = root_catalog.authenticated_as(current_user)
     # Traverse into sub-catalog(s).
     for entry in (path or "").split("/"):
         if entry:

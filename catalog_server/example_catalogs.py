@@ -3,7 +3,7 @@ from pathlib import Path
 import h5py
 
 from .datasources import ArraySource
-from .in_memory_catalog import Catalog
+from .in_memory_catalog import Catalog, SimpleAccessPolicy
 
 
 def access_hdf5_data(name, inner_name, value, size):
@@ -30,4 +30,5 @@ for name, size, fruit, animal in zip(
     )
 
 
-hdf5_catalog = Catalog(subcatalogs)
+access_policy = SimpleAccessPolicy({"alice": ["tiny/threes"]})
+hdf5_catalog = Catalog(subcatalogs, access_policy=access_policy)

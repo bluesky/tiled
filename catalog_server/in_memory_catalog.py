@@ -1,6 +1,7 @@
 import collections.abc
 import itertools
 
+from .auth import authenticated
 from .query_registration import DictView, QueryTranslationRegistry
 from .queries import FullText, KeyLookup
 
@@ -8,6 +9,8 @@ from .queries import FullText, KeyLookup
 class Catalog(collections.abc.Mapping):
 
     __slots__ = (
+        "_access_policy",
+        "_authenticated_identity",
         "_mapping",
         "_metadata",
         "keys_indexer",
@@ -19,12 +22,30 @@ class Catalog(collections.abc.Mapping):
     register_query = __query_registry.register
     register_query_lazy = __query_registry.register_lazy
 
-    def __init__(self, mapping, metadata=None):
+    def __init__(
+        self, mapping, metadata=None, access_policy=None, authenticated_identity=None
+    ):
         self._mapping = mapping
         self._metadata = metadata or {}
+        if (access_policy is not None) and (
+            not access_policy.check_compatibility(self)
+        ):
+            raise ValueError(
+                f"Access policy {access_policy} is not compatible with this Catalog."
+            )
+        self._access_policy = access_policy
+        self._authenticated_identity = authenticated_identity
         self.keys_indexer = IndexCallable(self._keys_indexer)
         self.items_indexer = IndexCallable(self._items_indexer)
         self.values_indexer = IndexCallable(self._values_indexer)
+
+    @property
+    def access_policy(self):
+        return self._access_policy
+
+    @property
+    def authenticated_identity(self):
+        return self._authenticated_identity
 
     @property
     def metadata(self):
@@ -35,17 +56,40 @@ class Catalog(collections.abc.Mapping):
         return DictView(self._metadata)
 
     def __repr__(self):
-        return f"<{type(self).__name__}({set(self)!r})>"
+        return f"<{type(self).__name__}({set(self._mapping)!r})>"
 
+    @authenticated
     def __getitem__(self, key):
         return self._mapping[key]
 
+    @authenticated
     def __iter__(self):
         yield from self._mapping
 
+    @authenticated
     def __len__(self):
         return len(self._mapping)
 
+    def authenticated_as(self, identity):
+        if self._authenticated_identity is not None:
+            raise RuntimeError(
+                f"Already authenticated as {self.authenticated_identity}"
+            )
+        if self._access_policy is not None:
+            catalog = self._access_policy.filter_results(
+                self,
+                identity,
+            )
+        else:
+            catalog = type(self)(
+                mapping,
+                metadata=self.metadata,
+                access_policy=self.access_policy,
+                authenticated_identity=identity,
+            )
+        return catalog
+
+    @authenticated
     def search(self, query):
         """
         Return a Catalog with a subset of the mapping.
@@ -176,7 +220,12 @@ def full_text_search(query, catalog):
         # and then bails, whereas `intersection` proceeds to find all matches.
         if not words.isdisjoint(query_words):
             matches[key] = value
-    return type(catalog)(matches)
+    return type(catalog)(
+        matches,
+        metadata=catalog.metadata,
+        access_policy=catalog.access_policy,
+        authenticated_identity=catalog.authenticated_identity,
+    )
 
 
 def key_lookup(query, catalog):
@@ -184,8 +233,53 @@ def key_lookup(query, catalog):
         matches = {query.key: catalog[query.key]}
     except KeyError:
         matches = {}
-    return type(catalog)(matches)
+    return type(catalog)(
+        matches,
+        metadata=catalog.metadata,
+        access_policy=catalog.access_policy,
+        authenticated_identity=catalog.authenticated_identity,
+    )
 
 
 Catalog.register_query(FullText, full_text_search)
 Catalog.register_query(KeyLookup, key_lookup)
+
+
+class DummyAccessPolicy:
+    "Impose no access restrictions."
+
+    def check_compatibility(self, catalog):
+        # This only works on in-memory Catalog or subclases.
+        return isinstance(catalog, Catalog)
+
+    def modify_query(self, query, authenticated_identity):
+        return query
+
+    def filter_results(self, catalog, authenticated_identity):
+        return catalog
+
+
+class SimpleAccessPolicy:
+    """
+    Refer to a mapping of user names to lists of entries they can access.
+
+    >>> SimpleAccessPolicy({"alice": ["large/ones"], "bob": ["tiny/threes"]})
+    """
+    def __init__(self, access_lists):
+        self.access_lists = access_lists
+
+    def check_compatibility(self, catalog):
+        # This only works on in-memory Catalog or subclases.
+        return isinstance(catalog, Catalog)
+
+    def modify_query(self, query, authenticated_identity):
+        return query
+
+    def filter_results(self, catalog, authenticated_identity):
+        allowed = self.access_lists.get(authenticated_identity, [])
+        return type(catalog)(
+            mapping={k: v for k, v in catalog._mapping.items() if k in allowed},
+            metadata=catalog.metadata,
+            access_policy=catalog.access_policy,
+            authenticated_identity=catalog.authenticated_identity,
+        )

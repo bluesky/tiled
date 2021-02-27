@@ -75,6 +75,8 @@ There are three user-facing objects in the system:
 * **Catalog** -- nestable collection of other Catalogs or DataSources
 * **Query** -- high-level description of a search query over entries in a
   Catalog
+* **AccessPolicy** -- class with methods for enforcing access control on which
+  entries in a Catalog a given identity (user) can see
 
 This specification proposes the Python API required to duck-type as a Catalog or
 DataSource as well as a sample HTTP API based on
@@ -170,6 +172,39 @@ DataSource as well as a sample HTTP API based on
 * Queries MUST be dataclasses.
 
 * They MAY have any attributes. There are no required attributes.
+
+
+#### Access Policy
+
+An ``AcessPolicy`` is tightly coupled to:
+
+1. How the metadata related to data management are stored --- "Which type of
+   database? Which collection / table in the database? Which field / column in
+   that table?"
+2. The particulars of a given access management system that encodes who can see
+   what --- "Given an authenticated identity, what API do I use to check what it
+   is allowed to see?"
+
+We envision a custom ``AccessPolicy`` will be needed for every combination of
+(1) and (2). It is injected into a given ``Catalog`` at ``__init__`` time.
+
+An ``AccessPolicy`` gets two opportunities to restrict the entries that a caller
+can see. First, a Catalog gives it the opportunity to modify a query before it
+is processed in order to restirct the set of results marshalled from storage.
+Second, it may filter the query results before they are returned to the user.
+Depending on the storage and the complexity of the data access rules, one or
+both of these modes may be used by a given AccessPolicy.
+
+* An AccessPolicy MUST implement a method
+  ``modify_query(query: Query, authenticated_identity: str) -> Query``. This MAY
+  filter the result at the database level so that less data is marshalled from
+  storage.
+* An AccessPolicy MUST implement a method
+  ``filter_results(catalog, authenticated_identity: str) -> Catalog``
+* An AccessPolicy MUST implement a method
+  ``check_compatibility(catalog) -> bool`` which can be used by the Catalog to
+  verify at its ``__init___`` time that the ``AccessPolicy`` it has been given
+  understands how to modify its queries.
 
 #### Extension points
 

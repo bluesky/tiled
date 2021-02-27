@@ -126,10 +126,11 @@ async def metadata(
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
+    current_user = "alice"
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
     try:
-        entry = get_entry(path)
+        entry = get_entry(path, current_user)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
     resource = construct_resource(key, entry, fields)
@@ -165,8 +166,9 @@ def blob_array(
     block: str = Query(None, min_length=1, regex="^[0-9](,[0-9])*$"),
 ):
     "Provide one block (chunk) of an array."
+    current_user = "alice"
     try:
-        datasource = get_entry(path)
+        datasource = get_entry(path, current_user)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
     parsed_block = tuple(map(int, block.split(",")))
@@ -237,8 +239,9 @@ def construct_entries_response(
     filters,
 ):
     path = path.rstrip("/")
+    current_user = "alice"
     try:
-        catalog = get_entry(path)
+        catalog = get_entry(path, current_user)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
     if not isinstance(catalog, DuckCatalog):
