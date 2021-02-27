@@ -5,6 +5,7 @@ import os
 import re
 from typing import Any, List, Optional
 
+import dask.base
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
@@ -177,15 +178,17 @@ def blob_array(
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = get_chunk(chunk)
+    etag = dask.base.tokenize(array)
     media_types = request.headers.get("Accept", "application/octet-stream")
+    if request.headers.get("If-None-Match", "") == etag:
+        return Response(status_code=304)
     for media_type in media_types.split(", "):
         if media_type == "*/*":
             media_type = "application/octet-stream"
         if media_type in array_media_types:
             content = serialize_array(media_type, array)
             return PatchedResponse(
-                content=content,
-                media_type=media_type,
+                content=content, media_type=media_type, headers={"ETag": etag}
             )
     else:
         # We do not support any of the media types requested by the client.
@@ -194,7 +197,6 @@ def blob_array(
 
 
 # After defining all routes, wrap app with middleware.
-
 # Add support for msgpack-encoded requests/responses as alternative to JSON.
 # https://fastapi.tiangolo.com/advanced/middleware/
 # https://github.com/florimondmanca/msgpack-asgi
