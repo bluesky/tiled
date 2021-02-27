@@ -30,5 +30,11 @@ for name, size, fruit, animal in zip(
     )
 
 
-access_policy = SimpleAccessPolicy({"alice": ["tiny/threes"]})
+access_policy = SimpleAccessPolicy(
+    {
+        "admin": SimpleAccessPolicy.ALL,
+        "alice": ["medium", "large"],
+        "bob": ["tiny"],
+    }
+)
 hdf5_catalog = Catalog(subcatalogs, access_policy=access_policy)

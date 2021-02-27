@@ -82,7 +82,7 @@ class Catalog(collections.abc.Mapping):
             )
         else:
             catalog = type(self)(
-                mapping,
+                self._mapping,
                 metadata=self.metadata,
                 access_policy=self.access_policy,
                 authenticated_identity=identity,
@@ -263,8 +263,11 @@ class SimpleAccessPolicy:
     """
     Refer to a mapping of user names to lists of entries they can access.
 
-    >>> SimpleAccessPolicy({"alice": ["large/ones"], "bob": ["tiny/threes"]})
+    >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]})
     """
+
+    ALL = object()  # sentinel
+
     def __init__(self, access_lists):
         self.access_lists = access_lists
 
@@ -277,9 +280,13 @@ class SimpleAccessPolicy:
 
     def filter_results(self, catalog, authenticated_identity):
         allowed = self.access_lists.get(authenticated_identity, [])
+        if allowed is self.ALL:
+            mapping = catalog._mapping
+        else:
+            mapping = ({k: v for k, v in catalog._mapping.items() if k in allowed},)
         return type(catalog)(
-            mapping={k: v for k, v in catalog._mapping.items() if k in allowed},
+            mapping=mapping,
             metadata=catalog.metadata,
             access_policy=catalog.access_policy,
-            authenticated_identity=catalog.authenticated_identity,
+            authenticated_identity=authenticated_identity,
         )
