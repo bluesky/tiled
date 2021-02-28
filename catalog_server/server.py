@@ -36,9 +36,8 @@ app = FastAPI()
 # Placeholder for a "database" of API tokens.
 API_TOKENS = {"secret": "admin"}  # Maps secret API key to username
 
-API_KEY_NAME = "access_token"
-api_key_query = APIKeyQuery(name=API_KEY_NAME, auto_error=False)
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+api_key_query = APIKeyQuery(name="access_token", auto_error=False)
+api_key_header = APIKeyHeader(name="X-Access-Token", auto_error=False)
 
 
 async def get_api_key(

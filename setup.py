@@ -19,7 +19,7 @@ extras_require = {
     key: read_requirements(f"requirements-{key}.txt")
     for key in ["client", "server", "array", "dataframe"]
 }
-extras_require['complete'] = sorted(set(sum(extras_require.values(), [])))
+extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))
 
 setuptools.setup(
     name="catalog_server",
