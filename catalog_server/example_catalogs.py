@@ -2,7 +2,7 @@ from pathlib import Path
 
 import h5py
 
-from .datasources import ArraySource
+from .datasources.array import ArraySource
 from .in_memory_catalog import Catalog, SimpleAccessPolicy
 
 

@@ -3,8 +3,8 @@ import itertools
 import dask.array
 import numpy
 
-from ..models import DataSourceStructure
 from ..query_registration import DictView
+from ..sources.array import ArrayStructure
 
 
 class ClientArraySource:
@@ -27,7 +27,7 @@ class ClientArraySource:
         )
         response.raise_for_status()
         result = response.json()["data"]["attributes"]["structure"]
-        return DataSourceStructure(**result)
+        return ArrayStructure(**result)
 
     def _get_block(self, block, dtype, shape):
         """

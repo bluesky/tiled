@@ -39,7 +39,7 @@ class ClientCatalog(collections.abc.Mapping):
     def from_uri(cls, uri, token, container_dispatch=None):
         client = httpx.Client(
             base_url=uri.rstrip("/"),
-            headers={"access_token": token},
+            headers={"X-Access-Token": token},
         )
         response = client.get("/metadata/")
         response.raise_for_status()
