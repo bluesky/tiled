@@ -36,8 +36,11 @@ class ClientCatalog(collections.abc.Mapping):
         self.values_indexer = IndexCallable(self._values_indexer)
 
     @classmethod
-    def from_uri(cls, uri, container_dispatch=None):
-        client = httpx.Client(base_url=uri.rstrip("/"))
+    def from_uri(cls, uri, token, container_dispatch=None):
+        client = httpx.Client(
+            base_url=uri.rstrip("/"),
+            headers={"access_token": token},
+        )
         response = client.get("/metadata/")
         response.raise_for_status()
         metadata = response.json()["data"]["attributes"]["metadata"]
