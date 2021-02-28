@@ -18,7 +18,7 @@ class TimeSuite:
     def setup(self):
         self.server_process = subprocess.Popen(
             (
-                f"uvicorn catalog_server.server:app" f" --host {HOST} --port {PORT}"
+                f"uvicorn catalog_server.server.main:app --host {HOST} --port {PORT}"
             ).split()
         )
         time.sleep(5)

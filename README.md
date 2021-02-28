@@ -22,7 +22,7 @@ python -m catalog_server.generate_example_data
 Run server.
 
 ```
-uvicorn catalog_server.server:app
+uvicorn catalog_server.server.main:app
 ```
 
 Make requests. The server accepts JSON and msgpack. Once the server is running,
@@ -32,7 +32,7 @@ example requests and responses.)
 The server serves a demo catalog by default, equivalent to:
 
 ```
-ROOT_CATALOG="catalog_server.example_catalogs:catalog" uvicorn catalog_server.server:app
+ROOT_CATALOG="catalog_server.example_catalogs:catalog" uvicorn catalog_server.server.main:app
 ```
 
 Other catalogs can be served by changing the value of the `ROOT_CATALOG`

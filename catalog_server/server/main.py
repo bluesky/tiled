@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, S
 from fastapi.security.api_key import APIKeyQuery, APIKeyHeader, APIKey
 from msgpack_asgi import MessagePackMiddleware
 
-from .server_utils import (
+from .utils import (
     array_media_types,
     DuckCatalog,
     get_chunk,
@@ -22,9 +22,9 @@ from .server_utils import (
     pagination_links,
     serialize_array,
 )
-from . import queries  # This is not used, but it registers queries on import.
-from .query_registration import name_to_query_type
 from . import models
+from .. import queries  # This is not used, but it registers queries on import.
+from ..query_registration import name_to_query_type
 
 
 del queries
