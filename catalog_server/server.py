@@ -148,6 +148,7 @@ def declare_search_route(app=app):
 
     # Register the search route.
     app.get("/search/{path:path = '/'}", response_model=models.Response)(search)
+    app.get("/search", response_model=models.Response, include_in_schema=False)(search)
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
@@ -169,6 +170,7 @@ async def shutdown_event():
 
 
 @app.get("/metadata/{path:path = '/'}", response_model=models.Response)
+@app.get("/metadata", response_model=models.Response, include_in_schema=False)
 async def metadata(
     path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
@@ -187,6 +189,7 @@ async def metadata(
 
 
 @app.get("/entries/{path:path = '/'}", response_model=models.Response)
+@app.get("/entries", response_model=models.Response, include_in_schema=False)
 async def entries(
     path: Optional[str] = "/",
     offset: Optional[int] = Query(0, alias="page[offset]"),
