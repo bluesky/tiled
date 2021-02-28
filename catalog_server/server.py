@@ -147,7 +147,7 @@ def declare_search_route(app=app):
     # End black magic
 
     # Register the search route.
-    app.get("/search/{path:path = '/'}", response_model=models.Response)(search)
+    app.get("/search/{path:path}", response_model=models.Response)(search)
     app.get("/search", response_model=models.Response, include_in_schema=False)(search)
 
 
@@ -169,7 +169,7 @@ async def shutdown_event():
     pass
 
 
-@app.get("/metadata/{path:path = '/'}", response_model=models.Response)
+@app.get("/metadata/{path:path}", response_model=models.Response)
 @app.get("/metadata", response_model=models.Response, include_in_schema=False)
 async def metadata(
     path: Optional[str] = "/",
@@ -188,7 +188,7 @@ async def metadata(
     return models.Response(data=resource)
 
 
-@app.get("/entries/{path:path = '/'}", response_model=models.Response)
+@app.get("/entries/{path:path}", response_model=models.Response)
 @app.get("/entries", response_model=models.Response, include_in_schema=False)
 async def entries(
     path: Optional[str] = "/",
