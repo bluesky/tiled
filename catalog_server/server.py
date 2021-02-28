@@ -100,7 +100,7 @@ def declare_search_route(app=app):
     # defined *above* and not the middleware wrapper that overlaods that name
     # below.
     async def search(
-        path: Optional[str] = "",
+        path: Optional[str] = "/",
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(10, alias="page[limit]"),
@@ -147,8 +147,7 @@ def declare_search_route(app=app):
     # End black magic
 
     # Register the search route.
-    app.get("/search/{path:path}")(search)
-    app.get("/search", include_in_schema=False)(search)
+    app.get("/search/{path:path = '/'}", response_model=models.Response)(search)
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
@@ -169,10 +168,9 @@ async def shutdown_event():
     pass
 
 
-@app.get("/metadata/{path:path}")
-@app.get("/metadata", include_in_schema=False)
+@app.get("/metadata/{path:path = '/'}", response_model=models.Response)
 async def metadata(
-    path: Optional[str] = "",
+    path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     current_user=Depends(get_current_user),
 ):
@@ -188,10 +186,9 @@ async def metadata(
     return models.Response(data=resource)
 
 
-@app.get("/entries/{path:path}")
-@app.get("/entries", include_in_schema=False)
+@app.get("/entries/{path:path = '/'}", response_model=models.Response)
 async def entries(
-    path: Optional[str] = "",
+    path: Optional[str] = "/",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
