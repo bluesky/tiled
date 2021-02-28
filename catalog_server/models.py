@@ -1,11 +1,9 @@
 import enum
 
 import pydantic
+import pydantic.dataclasses
 import pydantic.generics
-from typing import Generic, Optional, TypeVar, Union
-
-from .datasources.array import ArrayStructure
-
+from typing import Any, Generic, Optional, TypeVar
 
 DataT = TypeVar("DataT")
 
@@ -55,7 +53,7 @@ class Container(str, enum.Enum):
 class DataSourceAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     container: Optional[Container]
-    structure: Optional[Union[ArrayStructure]]
+    structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
 
 
 class Resource(pydantic.BaseModel):

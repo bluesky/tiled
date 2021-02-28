@@ -271,7 +271,7 @@ def construct_resource(key, entry, fields):
         if models.EntryFields.container in fields:
             attributes["container"] = entry.container
         if models.EntryFields.structure in fields:
-            attributes["structure"] = entry.describe()
+            attributes["structure"] = dataclasses.asdict(entry.describe())
         resource = models.DataSourceResource(
             **{
                 "id": key,

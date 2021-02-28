@@ -1,30 +1,38 @@
+import collections
 import collections.abc
 from dataclasses import fields
+import importlib
 import itertools
 
 import httpx
 
-from ..query_registration import DictView, query_type_to_name
-from ..queries import KeyLookup
 from ..in_memory_catalog import IndexCallable, slice_to_interval
-from .array import ClientArraySource
+from ..query_registration import query_type_to_name
+from ..queries import KeyLookup
+from ..utils import DictView, LazyMap
 
 
 class ClientCatalog(collections.abc.Mapping):
 
     # This maps the container sent by the server to a client-side object that
-    # can interpret the container's structure and content.
-    # TODO Use LazyMap here to defer imports.
-    DEFAULT_CONTAINER_DISPATCH = {
-        "array": ClientArraySource,
-    }
+    # can interpret the container's structure and content. LazyMap is used to
+    # defer imports.
+    DEFAULT_CONTAINER_DISPATCH = LazyMap(
+        {
+            "array": lambda: importlib.import_module(
+                "..array", ClientCatalog.__module__
+            ).ClientArraySource,
+        }
+    )
 
     def __init__(self, client, *, path, metadata, container_dispatch, queries=None):
         "This is not user-facing. Use ClientCatalog.from_uri."
         self._client = client
         self._metadata = metadata
-        self.container_dispatch = self.DEFAULT_CONTAINER_DISPATCH.copy()
-        self.container_dispatch.update(container_dispatch or {})
+        self.container_dispatch = collections.ChainMap(
+            container_dispatch or {},
+            self.DEFAULT_CONTAINER_DISPATCH,
+        )
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
         # Stash *immutable* copies just to be safe.

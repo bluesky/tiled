@@ -3,8 +3,8 @@ import itertools
 import dask.array
 import numpy
 
-from ..query_registration import DictView
-from ..sources.array import ArrayStructure
+from ..datasources.array import ArrayStructure, Endianness, Kind, MachineDataType
+from ..utils import DictView
 
 
 class ClientArraySource:
@@ -27,7 +27,15 @@ class ClientArraySource:
         )
         response.raise_for_status()
         result = response.json()["data"]["attributes"]["structure"]
-        return ArrayStructure(**result)
+        return ArrayStructure(
+            chunks=tuple(map(tuple, result["chunks"])),
+            shape=tuple(result["shape"]),
+            dtype=MachineDataType(
+                kind=Kind(result["dtype"]["kind"]),
+                itemsize=result["dtype"]["itemsize"],
+                endianness=Endianness(result["dtype"]["endianness"]),
+            ),
+        )
 
     def _get_block(self, block, dtype, shape):
         """

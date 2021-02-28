@@ -1,9 +1,9 @@
 import collections.abc
 import itertools
 
-from .auth import authenticated
-from .query_registration import DictView, QueryTranslationRegistry
+from .query_registration import QueryTranslationRegistry
 from .queries import FullText, KeyLookup
+from .utils import authenticated, DictView
 
 
 class Catalog(collections.abc.Mapping):

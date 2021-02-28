@@ -4,34 +4,10 @@ into concrete queries for specific storage backends.
 
 This intentionally only uses built-in dataclasses, not pydantic models.
 """
-import collections.abc
 from dataclasses import fields
 import inspect
 
-
-class DictView(collections.abc.Mapping):
-    "An immutable view of a dict."
-
-    def __init__(self, d):
-        self._internal_dict = d
-
-    def __repr__(self):
-        return f"{type(self).__name__}({self._internal_dict!r})"
-
-    def __getitem__(self, key):
-        return self._internal_dict[key]
-
-    def __iter__(self):
-        yield from self._internal_dict
-
-    def __len__(self):
-        return len(self._internal_dict)
-
-    def __setitem__(self, key, value):
-        raise TypeError("Setting items is not allowed.")
-
-    def __delitem__(self, key):
-        raise TypeError("Deleting items is not allowed.")
+from .utils import DictView
 
 
 class QueryRegistry:
