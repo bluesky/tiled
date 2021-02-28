@@ -55,7 +55,7 @@ async def get_api_key(
         raise HTTPException(status_code=403, detail="Could not validate credentials")
 
 
-async def get_current_user(api_key: APIKey = Depends(api_key_query)):
+async def get_current_user(api_key: APIKey = Depends(get_api_key)):
     try:
         return API_TOKENS[api_key]
     except KeyError:
