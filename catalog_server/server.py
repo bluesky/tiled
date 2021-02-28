@@ -2,11 +2,13 @@ from collections import defaultdict
 import dataclasses
 import inspect
 import os
+import secrets
 import re
 from typing import Any, List, Optional
 
 import dask.base
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, Security
+from fastapi.security.api_key import APIKeyQuery, APIKeyHeader, APIKey
 from msgpack_asgi import MessagePackMiddleware
 
 from .server_utils import (
@@ -25,11 +27,55 @@ from .query_registration import name_to_query_type
 from . import models
 
 
-CURRENT_USER = "admin"  # temporary placeholder until authentication works
-
 del queries
 
+
 app = FastAPI()
+
+
+# Placeholder for a "database" of API tokens.
+API_TOKENS = {"secret": "admin"}  # Maps secret API key to username
+
+API_KEY_NAME = "access_token"
+api_key_query = APIKeyQuery(name=API_KEY_NAME, auto_error=False)
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
+async def get_api_key(
+    api_key_query: APIKey = Security(api_key_query),
+    api_key_header: APIKey = Security(api_key_header),
+    # TODO Accept cookie as well.
+):
+
+    if api_key_query:
+        return api_key_query
+    elif api_key_header:
+        return api_key_header
+    else:
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
+
+
+async def get_current_user(api_key: APIKey = Depends(api_key_query)):
+    try:
+        return API_TOKENS[api_key]
+    except KeyError:
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
+
+
+def new_token(username):
+    token = secrets.token_hex(32)
+    API_TOKENS[token] = username
+    return token
+
+
+@app.post("/token", response_model=models.Token)
+async def token(username: str, current_user=Depends(get_current_user)):
+    "Generate an API access token."
+    if (username != current_user) and (current_user != "admin"):
+        raise HTTPException(
+            status_code=403, detail="Only admin can generate tokens for other users."
+        )
+    return {"access_token": new_token(username), "token_type": "bearer"}
 
 
 class PatchedResponse(Response):
@@ -58,6 +104,7 @@ def declare_search_route(app=app):
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(10, alias="page[limit]"),
+        current_user=Depends(get_current_user),
         **filters,
     ):
         return construct_entries_response(
@@ -65,7 +112,8 @@ def declare_search_route(app=app):
             offset,
             limit,
             fields,
-            filters=filters,
+            filters,
+            current_user,
         )
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
@@ -126,10 +174,10 @@ async def shutdown_event():
 async def metadata(
     path: Optional[str] = "",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    current_user=Depends(get_current_user),
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
-    current_user = CURRENT_USER  # placeholder
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
     try:
@@ -147,6 +195,7 @@ async def entries(
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    current_user=Depends(get_current_user),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
 
@@ -155,19 +204,20 @@ async def entries(
         offset,
         limit,
         fields,
-        filters={},
+        {},
+        current_user,
     )
 
 
-@app.get("/blob/array/{path:path}")
+@app.get("/blob/array/{path:path}", response_model=models.Response)
 def blob_array(
     request: Request,
     path: str,
     # Ellipsis as the "default" tells FastAPI to make this parameter required.
     block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
+    current_user=Depends(get_current_user),
 ):
     "Provide one block (chunk) of an array."
-    current_user = CURRENT_USER  # placeholder
     try:
         datasource = get_entry(path, current_user)
     except KeyError:
@@ -239,9 +289,9 @@ def construct_entries_response(
     limit,
     fields,
     filters,
+    current_user,
 ):
     path = path.rstrip("/")
-    current_user = CURRENT_USER  # placeholder
     try:
         catalog = get_entry(path, current_user)
     except KeyError:

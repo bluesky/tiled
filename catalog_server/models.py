@@ -136,3 +136,12 @@ class CatalogResource(Resource):
 class DataSourceResource(Resource):
     "Representation of a DataSource as a JSON API Resource"
     attributes: DataSourceAttributes
+
+
+class Token(pydantic.BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(pydantic.BaseModel):
+    username: Optional[str] = None
