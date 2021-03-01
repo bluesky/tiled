@@ -3,7 +3,13 @@ import itertools
 
 from ..query_registration import QueryTranslationRegistry
 from ..queries import FullText, KeyLookup
-from ..utils import authenticated, DictView, IndexCallable, slice_to_interval
+from ..utils import (
+    authenticated,
+    DictView,
+    IndexCallable,
+    slice_to_interval,
+    SpecialUsers,
+)
 
 
 class Catalog(collections.abc.Mapping):
@@ -245,7 +251,7 @@ class SimpleAccessPolicy:
 
     def filter_results(self, catalog, authenticated_identity):
         allowed = self.access_lists.get(authenticated_identity, [])
-        if allowed is self.ALL:
+        if (authenticated_identity is SpecialUsers.admin) or (allowed is self.ALL):
             mapping = catalog._mapping
         else:
             mapping = {k: v for k, v in catalog._mapping.items() if k in allowed}

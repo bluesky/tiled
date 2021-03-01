@@ -33,10 +33,10 @@ for name, size, fruit, animal in zip(
 
 access_policy = SimpleAccessPolicy(
     {
-        SpecialUsers.admin: SimpleAccessPolicy.ALL,
         SpecialUsers.public: ["medium"],
         "alice": ["medium", "large"],
         "bob": ["tiny", "medium"],
+        "cara": SimpleAccessPolicy.ALL,
     }
 )
 hdf5_catalog = Catalog(subcatalogs, access_policy=access_policy)
