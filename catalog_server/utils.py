@@ -128,5 +128,5 @@ class IndexCallable:
 
 
 class SpecialUsers(str, enum.Enum):
-    guest = "guest"
+    public = "public"
     admin = "admin"

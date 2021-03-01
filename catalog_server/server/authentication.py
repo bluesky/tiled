@@ -31,7 +31,7 @@ async def get_api_key(
 async def get_current_user(api_key: APIKey = Depends(get_api_key)):
     if api_key is None:
         if get_settings().allow_anonymous_access:
-            return SpecialUsers.guest
+            return SpecialUsers.public
         else:
             raise HTTPException(status_code=403, detail="Credentials are required")
     try:

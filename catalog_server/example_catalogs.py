@@ -34,7 +34,7 @@ for name, size, fruit, animal in zip(
 access_policy = SimpleAccessPolicy(
     {
         SpecialUsers.admin: SimpleAccessPolicy.ALL,
-        SpecialUsers.guest: ["medium"],
+        SpecialUsers.public: ["medium"],
         "alice": ["medium", "large"],
         "bob": ["tiny", "medium"],
     }
