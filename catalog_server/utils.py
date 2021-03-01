@@ -1,4 +1,5 @@
 import collections.abc
+import enum
 from functools import wraps
 import threading
 
@@ -124,3 +125,8 @@ class IndexCallable:
 
     def __getitem__(self, key):
         return self.fn(key)
+
+
+class SpecialUsers(str, enum.Enum):
+    guest = "guest"
+    admin = "admin"

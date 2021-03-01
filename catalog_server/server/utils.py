@@ -12,6 +12,7 @@ _DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.example_catalogs:hdf5_catalog"
 class Settings(BaseSettings):
 
     catalog_object_path: str = os.getenv("ROOT_CATALOG", _DEMO_DEFAULT_ROOT_CATALOG)
+    allow_anonymous_access: bool = bool(int(os.getenv("ALLOW_ANONYMOUS_ACCESS", True)))
     # dask_scheduler_address : str = os.getenv("DASK_SCHEDULER")
 
     @validator("catalog_object_path")

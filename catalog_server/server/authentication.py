@@ -3,9 +3,12 @@ import secrets
 from fastapi.security.api_key import APIKeyQuery, APIKeyHeader, APIKey
 from fastapi import Depends, HTTPException, Security
 
+from ..utils import SpecialUsers
+from .utils import get_settings
+
 
 # Placeholder for a "database" of API tokens.
-API_TOKENS = {"secret": "admin"}  # Maps secret API key to username
+API_TOKENS = {"secret": SpecialUsers.admin}  # Maps secret API key to username
 
 api_key_query = APIKeyQuery(name="access_token", auto_error=False)
 api_key_header = APIKeyHeader(name="X-Access-Token", auto_error=False)
@@ -22,10 +25,15 @@ async def get_api_key(
     elif api_key_header:
         return api_key_header
     else:
-        raise HTTPException(status_code=403, detail="Could not validate credentials")
+        return None
 
 
 async def get_current_user(api_key: APIKey = Depends(get_api_key)):
+    if api_key is None:
+        if get_settings().allow_anonymous_access:
+            return SpecialUsers.guest
+        else:
+            raise HTTPException(status_code=403, detail="Credentials are required")
     try:
         return API_TOKENS[api_key]
     except KeyError:

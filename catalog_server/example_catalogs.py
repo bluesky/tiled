@@ -4,6 +4,7 @@ import h5py
 
 from .datasources.array import ArraySource
 from .catalogs.in_memory import Catalog, SimpleAccessPolicy
+from .utils import SpecialUsers
 
 
 def access_hdf5_data(name, inner_name, value, size):
@@ -32,9 +33,10 @@ for name, size, fruit, animal in zip(
 
 access_policy = SimpleAccessPolicy(
     {
-        "admin": SimpleAccessPolicy.ALL,
+        SpecialUsers.admin: SimpleAccessPolicy.ALL,
+        SpecialUsers.guest: ["medium"],
         "alice": ["medium", "large"],
-        "bob": ["tiny"],
+        "bob": ["tiny", "medium"],
     }
 )
 hdf5_catalog = Catalog(subcatalogs, access_policy=access_policy)
