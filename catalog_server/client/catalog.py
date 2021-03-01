@@ -6,10 +6,9 @@ import itertools
 
 import httpx
 
-from ..in_memory_catalog import IndexCallable, slice_to_interval
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
-from ..utils import DictView, LazyMap
+from ..utils import DictView, LazyMap, IndexCallable, slice_to_interval
 
 
 class ClientCatalog(collections.abc.Mapping):

@@ -87,3 +87,40 @@ def authenticated(method):
         return method(self, *args, **kwargs)
 
     return inner
+
+
+def slice_to_interval(index):
+    "Check that slice is supported; then return (start, stop)."
+    if index.start is None:
+        start = 0
+    elif index.start < 0:
+        raise NotImplementedError
+    else:
+        start = index.start
+    if index.stop is not None:
+        if index.stop < 0:
+            raise NotImplementedError
+    stop = index.stop
+    return start, stop
+
+
+class IndexCallable:
+    """Provide getitem syntax for functions
+
+    >>> def inc(x):
+    ...     return x + 1
+
+    >>> I = IndexCallable(inc)
+    >>> I[3]
+    4
+
+    Vendored from dask
+    """
+
+    __slots__ = ("fn",)
+
+    def __init__(self, fn):
+        self.fn = fn
+
+    def __getitem__(self, key):
+        return self.fn(key)

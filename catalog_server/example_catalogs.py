@@ -3,7 +3,7 @@ from pathlib import Path
 import h5py
 
 from .datasources.array import ArraySource
-from .in_memory_catalog import Catalog, SimpleAccessPolicy
+from .catalogs.in_memory import Catalog, SimpleAccessPolicy
 
 
 def access_hdf5_data(name, inner_name, value, size):

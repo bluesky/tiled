@@ -1,9 +1,9 @@
 import collections.abc
 import itertools
 
-from .query_registration import QueryTranslationRegistry
-from .queries import FullText, KeyLookup
-from .utils import authenticated, DictView
+from ..query_registration import QueryTranslationRegistry
+from ..queries import FullText, KeyLookup
+from ..utils import authenticated, DictView, IndexCallable, slice_to_interval
 
 
 class Catalog(collections.abc.Mapping):
@@ -143,41 +143,6 @@ class Catalog(collections.abc.Mapping):
             return [value for _key, value in self._items_slice(start, stop)]
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
-
-
-def slice_to_interval(index):
-    "Check that slice is supported; then return (start, stop)."
-    if index.start is None:
-        start = 0
-    elif index.start < 0:
-        raise NotImplementedError
-    else:
-        start = index.start
-    if index.stop is not None:
-        if index.stop < 0:
-            raise NotImplementedError
-    stop = index.stop
-    return start, stop
-
-
-class IndexCallable:
-    """Provide getitem syntax for functions
-
-    >>> def inc(x):
-    ...     return x + 1
-
-    >>> I = IndexCallable(inc)
-    >>> I[3]
-    4
-    """
-
-    __slots__ = ("fn",)
-
-    def __init__(self, fn):
-        self.fn = fn
-
-    def __getitem__(self, key):
-        return self.fn(key)
 
 
 def walk_string_values(tree, node=None):
