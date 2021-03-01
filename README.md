@@ -7,7 +7,7 @@ of an RFC.*
 Install dependencies.
 
 ```
-git clone https://github.com/danielballan/catalog-server-from-scratch
+git clone https://github.com/bluesky/catalog-server-from-scratch
 cd catalog-server-from-scratch
 pip install -r requirements-demo.txt
 pip install -e .
