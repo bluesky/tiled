@@ -3,7 +3,7 @@ import itertools
 import dask.array
 import numpy
 
-from ..datasources.array import ArrayStructure, Endianness, Kind, MachineDataType
+from ..containers.array import ArrayStructure, Endianness, Kind, MachineDataType
 from ..utils import DictView
 
 
