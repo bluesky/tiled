@@ -180,6 +180,7 @@ def blob_array(
     current_user=Depends(get_current_user),
 ):
     "Provide one block (chunk) of an array."
+    DEFAULT_MEDIA_TYPE = "application/octet-stream"
     try:
         datasource = get_entry(path, current_user)
     except KeyError:
@@ -191,12 +192,12 @@ def blob_array(
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = get_chunk(chunk)
     etag = dask.base.tokenize(array)
-    media_types = request.headers.get("Accept", "application/octet-stream")
     if request.headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
+    media_types = request.headers.get("Accept", DEFAULT_MEDIA_TYPE)
     for media_type in media_types.split(", "):
         if media_type == "*/*":
-            media_type = "application/octet-stream"
+            media_type = DEFAULT_MEDIA_TYPE
         if media_type in serialization_registry.media_types("array"):
             content = serialization_registry("array", media_type, array)
             return PatchedResponse(
