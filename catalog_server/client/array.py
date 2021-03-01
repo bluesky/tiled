@@ -1,9 +1,9 @@
 import itertools
 
 import dask.array
-import numpy
 
 from ..containers.array import ArrayStructure, Endianness, Kind, MachineDataType
+from ..media_type_registration import deserialization_registry
 from ..utils import DictView
 
 
@@ -41,13 +41,16 @@ class ClientArraySource:
         """
         Fetch the data for one block in a chunked (dask) array.
         """
+        media_type = "application/octet-stream"
         response = self._client.get(
             f"/blob/array/{'/'.join(self._path)}",
-            headers={"Accept": "application/octet-stream"},
+            headers={"Accept": media_type},
             params={"block": ",".join(map(str, block))},
         )
         response.raise_for_status()
-        return numpy.frombuffer(response.content, dtype=dtype).reshape(shape)
+        return deserialization_registry(
+            "array", media_type, response.content, dtype, shape
+        )
 
     def read(self):
         structure = self.describe()

@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 import enum
+import json
 import sys
 from typing import Tuple
 
 import numpy
+
+from ..media_type_registration import serialization_registry, deserialization_registry
 
 
 class Endianness(str, enum.Enum):
@@ -69,3 +72,14 @@ class ArrayStructure:
     dtype: MachineDataType
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
+
+
+serialization_registry.register("array", "application/octet-stream", memoryview)
+serialization_registry.register(
+    "array", "application/json", lambda array: json.dumps(array.tolist()).encode()
+)
+deserialization_registry.register(
+    "array",
+    "application/octet-stream",
+    lambda buffer, dtype, shape: numpy.frombuffer(buffer, dtype=dtype).reshape(shape),
+)

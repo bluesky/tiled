@@ -10,7 +10,6 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from msgpack_asgi import MessagePackMiddleware
 
 from .utils import (
-    array_media_types,
     DuckCatalog,
     get_chunk,
     # get_dask_client,
@@ -18,13 +17,12 @@ from .utils import (
     get_settings,
     len_or_approx,
     pagination_links,
-    serialize_array,
 )
 from . import models
 from .authentication import get_current_user, new_token
 from .. import queries  # This is not used, but it registers queries on import.
+from ..media_type_registration import serialization_registry
 from ..query_registration import name_to_query_type
-
 
 del queries
 
@@ -199,15 +197,18 @@ def blob_array(
     for media_type in media_types.split(", "):
         if media_type == "*/*":
             media_type = "application/octet-stream"
-        if media_type in array_media_types:
-            content = serialize_array(media_type, array)
+        if media_type in serialization_registry.media_types("array"):
+            content = serialization_registry("array", media_type, array)
             return PatchedResponse(
                 content=content, media_type=media_type, headers={"ETag": etag}
             )
     else:
         # We do not support any of the media types requested by the client.
         # Reply with a list of the supported types.
-        raise HTTPException(status_code=406, detail=", ".join(array_media_types))
+        raise HTTPException(
+            status_code=406,
+            detail=", ".join(serialization_registry.media_types("array")),
+        )
 
 
 # After defining all routes, wrap app with middleware.

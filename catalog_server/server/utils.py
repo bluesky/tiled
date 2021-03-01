@@ -1,7 +1,6 @@
 import abc
 from functools import lru_cache
 import importlib
-import json
 import operator
 import os
 
@@ -116,34 +115,3 @@ class DuckCatalog(metaclass=abc.ABCMeta):
             "items_indexer",
         )
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
-
-
-class ArraySerializationRegistry:
-    def __init__(self):
-        # Map MIME types to functions
-        self._registry = {}
-
-    @property
-    def media_types(self):
-        return self._registry.keys()
-
-    def register_media_type(self, media_type, serializer):
-        self._registry[media_type] = serializer
-
-    def serialize(self, media_type, array):
-        serializer = self._registry[media_type]
-        return serializer(array)
-
-
-array_serialization_registry = ArraySerializationRegistry()
-array_serialization_registry.register_media_type("application/octet-stream", memoryview)
-array_serialization_registry.register_media_type(
-    "application/json", lambda array: json.dumps(array.tolist()).encode()
-)
-
-
-def serialize_array(media_type, array):
-    return array_serialization_registry.serialize(media_type, array)
-
-
-array_media_types = array_serialization_registry.media_types
