@@ -22,7 +22,7 @@ class TimeSuite:
             ).split()
         )
         time.sleep(5)
-        self.catalog = ClientCatalog.from_uri(f"http://{HOST}:{PORT}")
+        self.catalog = ClientCatalog.from_uri(f"http://{HOST}:{PORT}", token="secret")
 
     def teardown(self):
         self.server_process.terminate()
