@@ -41,9 +41,9 @@ class Catalog(collections.abc.Mapping):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
-        self.keys_indexer = IndexCallable(self._keys_indexer)
-        self.items_indexer = IndexCallable(self._items_indexer)
-        self.values_indexer = IndexCallable(self._values_indexer)
+        self.keys_indexer = authenticated(IndexCallable(self._keys_indexer))
+        self.items_indexer = authenticated(IndexCallable(self._items_indexer))
+        self.values_indexer = authenticated(IndexCallable(self._values_indexer))
 
     @property
     def access_policy(self):
