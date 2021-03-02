@@ -54,9 +54,9 @@ class Catalog(collections.abc.Mapping):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
-        self.keys_indexer = authenticated(IndexCallable(self._keys_indexer))
-        self.items_indexer = authenticated(IndexCallable(self._items_indexer))
-        self.values_indexer = authenticated(IndexCallable(self._values_indexer))
+        self.keys_indexer = IndexCallable(self._keys_indexer)
+        self.items_indexer = IndexCallable(self._items_indexer)
+        self.values_indexer = IndexCallable(self._values_indexer)
 
     @classmethod
     def from_uri(
@@ -111,38 +111,50 @@ class Catalog(collections.abc.Mapping):
             raise KeyError(key)
         # This may be None; that's fine.
         run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
-        return CatalogInMemory(metadata={"start": run_start_doc, "stop": run_stop_doc})
+        return CatalogInMemory(
+            {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
+        )
 
     def _chunked_find(self, collection, query, *args, skip=0, limit=None, **kwargs):
         # This is an internal chunking that affects how much we pull from
         # MongoDB at a time.
-        CURSOR_LIMIT = 100
+        CURSOR_LIMIT = 100  # TODO Tune this for performance.
         if limit is not None and limit < CURSOR_LIMIT:
             initial_limit = limit
         else:
             initial_limit = CURSOR_LIMIT
         cursor = collection.find(query, *args, **kwargs).skip(skip).limit(initial_limit)
-        # Greedily exhaust the cursor. The user may loop over this iterator
-        # slowly and, if we don't pull it all into memory now, we'll be
-        # holding a long-lived cursor that might get timed out by the
-        # MongoDB server.
-        items = []
-        items.extend(cursor)
-        yield from items
-        if len(items) <= limit < CURSOR_LIMIT:
-            # There are no more to fetch.
-            return
-        # Fetch more in batches, starting each batch from where we left off.
+        # Fetch in batches, starting each batch from where we left off.
         # https://medium.com/swlh/mongodb-pagination-fast-consistent-ece2a97070f3
-        while items:
+        tally = 0
+        items = []
+        while True:
+            # Greedily exhaust the cursor. The user may loop over this iterator
+            # slowly and, if we don't pull it all into memory now, we'll be
+            # holding a long-lived cursor that might get timed out by the
+            # MongoDB server.
+            items.extend(cursor)  # Exhaust cursor.
+            if not items:
+                break
+            # Next time through the loop, we'll pick up where we left off.
             last_object_id = items[-1]["_id"]
             query["_id"] = {"$gt": last_object_id}
-            cursor = collection.find(query, *args, **kwargs).limit(CURSOR_LIMIT)
-            items.clear()
-            items.extend(cursor)  # Exhaust cursor.
             for item in items:
                 item.pop("_id")
                 yield item
+            tally += len(items)
+            if limit is not None:
+                if tally == limit:
+                    break
+                if limit - tally < CURSOR_LIMIT:
+                    this_limit = limit - tally
+                else:
+                    this_limit = CURSOR_LIMIT
+            else:
+                this_limit = CURSOR_LIMIT
+            # Get another batch and go round again.
+            cursor = collection.find(query, *args, **kwargs).limit(this_limit)
+            items.clear()
 
     def _mongo_query(self, *queries):
         combined = self._mongo_queries + list(queries)
@@ -165,7 +177,7 @@ class Catalog(collections.abc.Mapping):
             # This may be None; that's fine.
             run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
             yield CatalogInMemory(
-                metadata={"start": run_start_doc, "stop": run_stop_doc}
+                {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
             )
 
     @authenticated
@@ -218,30 +230,32 @@ class Catalog(collections.abc.Mapping):
         )
 
     def _keys_slice(self, start, stop):
+        skip = start or 0
         if stop is not None:
-            limit = stop - (start or 0)
+            limit = stop - skip
         else:
             limit = None
         for run_start_doc in self._chunked_find(
-            self._run_start_collection, self._mongo_query(), skip=start, limit=limit
+            self._run_start_collection, self._mongo_query(), skip=skip, limit=limit
         ):
             # TODO Fetch just the uid.
             yield run_start_doc["uid"]
 
     def _items_slice(self, start, stop):
+        skip = start or 0
         if stop is not None:
-            limit = stop - (start or 0)
+            limit = stop - skip
         else:
             limit = None
         for run_start_doc in self._chunked_find(
-            self._run_start_collection, self._mongo_query(), skip=start, limit=limit
+            self._run_start_collection, self._mongo_query(), skip=skip, limit=limit
         ):
             # This may be None; that's fine.
             run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
             yield (
                 run_start_doc["uid"],
                 CatalogInMemory(
-                    metadata={"start": run_start_doc, "stop": run_stop_doc}
+                    {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
                 ),
             )
 
@@ -256,9 +270,13 @@ class Catalog(collections.abc.Mapping):
         # This may be None; that's fine.
         run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
         key = run_start_doc["uid"]
-        value = CatalogInMemory(metadata={"start": run_start_doc, "stop": run_stop_doc})
+        value = CatalogInMemory(
+            {},  # TODO
+            metadata={"start": run_start_doc, "stop": run_stop_doc},
+        )
         return (key, value)
 
+    @authenticated
     def _keys_indexer(self, index):
         if isinstance(index, int):
             key, _value = self._item_by_index(index)
@@ -269,6 +287,7 @@ class Catalog(collections.abc.Mapping):
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
+    @authenticated
     def _items_indexer(self, index):
         if isinstance(index, int):
             return self._item_by_index(index)
@@ -278,9 +297,11 @@ class Catalog(collections.abc.Mapping):
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
+    @authenticated
     def _values_indexer(self, index):
         if isinstance(index, int):
             _key, value = self._item_by_index(index)
+            return value
         elif isinstance(index, slice):
             start, stop = slice_to_interval(index)
             return [value for _key, value in self._items_slice(start, stop)]
@@ -313,6 +334,7 @@ class RawMongo:
 
 Catalog.register_query(FullText, full_text_search)
 Catalog.register_query(KeyLookup, key_lookup)
+Catalog.register_query(RawMongo, raw_mongo)
 
 
 class DummyAccessPolicy:

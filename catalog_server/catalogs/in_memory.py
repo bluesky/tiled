@@ -144,6 +144,7 @@ class Catalog(collections.abc.Mapping):
     def _values_indexer(self, index):
         if isinstance(index, int):
             _key, value = self._item_by_index(index)
+            return value
         elif isinstance(index, slice):
             start, stop = slice_to_interval(index)
             return [value for _key, value in self._items_slice(start, stop)]
