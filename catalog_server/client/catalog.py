@@ -8,7 +8,7 @@ import httpx
 
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
-from ..utils import DictView, LazyMap, IndexCallable, slice_to_interval
+from ..utils import catalog_repr, DictView, LazyMap, IndexCallable, slice_to_interval
 
 
 class ClientCatalog(collections.abc.Mapping):
@@ -55,12 +55,11 @@ class ClientCatalog(collections.abc.Mapping):
             client, path=[], metadata=metadata, container_dispatch=container_dispatch
         )
 
-    def __repr__(
-        self,
-    ):  # TODO When the number of items is very large, show only a subset.
-        # That is, do not let repr(self) trigger a large number of HTTP
-        # requests paginating through all the results.
-        return f"<{type(self).__name__}({set(self)!r})>"
+    def __repr__(self):
+        # Display the first N keys to avoid making a giant service request.
+        # Use _keys_slicer because it is unauthenticated.
+        N = 5
+        return catalog_repr(self, self._keys_slice(0, N))
 
     @property
     def metadata(self):
@@ -85,6 +84,11 @@ class ClientCatalog(collections.abc.Mapping):
         )
         response.raise_for_status()
         return response.json()["meta"]["count"]
+
+    def __length_hint__(self):
+        # TODO The server should provide an estimated count.
+        # https://www.python.org/dev/peps/pep-0424/
+        return len(self)
 
     def __iter__(self):
         next_page_url = f"/search/{'/'.join(self._path)}"
