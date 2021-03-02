@@ -223,11 +223,16 @@ class DummyAccessPolicy:
         # This only works on in-memory Catalog or subclases.
         return isinstance(catalog, Catalog)
 
-    def modify_query(self, query, authenticated_identity):
-        return query
+    def modify_queries(self, queries, authenticated_identity):
+        return queries
 
     def filter_results(self, catalog, authenticated_identity):
-        return catalog
+        return type(catalog)(
+            mapping=self._mapping,
+            metadata=catalog.metadata,
+            access_policy=catalog.access_policy,
+            authenticated_identity=authenticated_identity,
+        )
 
 
 class SimpleAccessPolicy:
@@ -246,8 +251,8 @@ class SimpleAccessPolicy:
         # This only works on in-memory Catalog or subclases.
         return isinstance(catalog, Catalog)
 
-    def modify_query(self, query, authenticated_identity):
-        return query
+    def modify_queries(self, queries, authenticated_identity):
+        return queries
 
     def filter_results(self, catalog, authenticated_identity):
         allowed = self.access_lists.get(authenticated_identity, [])
