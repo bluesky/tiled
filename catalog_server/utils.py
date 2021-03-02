@@ -140,5 +140,5 @@ def catalog_repr(catalog, sample):
     if approx_len > len(sample):
         out += f", ...}}) ~{approx_len} entries>"
     else:
-        out += "})"
+        out += "})>"
     return out

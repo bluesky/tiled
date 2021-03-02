@@ -250,7 +250,7 @@ class Catalog(collections.abc.Mapping):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         run_start_doc = next(
             self._chunked_find(
-                self._run_start_collection, self._monog_query(), skip=index, limit=1
+                self._run_start_collection, self._mongo_query(), skip=index, limit=1
             )
         )
         # This may be None; that's fine.
