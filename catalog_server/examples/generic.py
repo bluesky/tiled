@@ -17,8 +17,7 @@ def access_hdf5_data(name, inner_name, value, size):
 minimal = Catalog(
     {
         name: ArraySource(access_hdf5_data(name, "ones", 1, size))
-        for name, size in
-        zip(
+        for name, size in zip(
             ["tiny", "small", "medium", "large"],
             [3, 100, 1000, 10_000],
         )

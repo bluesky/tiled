@@ -6,7 +6,9 @@ import os
 
 from pydantic import BaseSettings, validator
 
-_DEMO_DEFAULT_ROOT_CATALOG = "catalog_server.examples.generic:nested_with_access_control"
+_DEMO_DEFAULT_ROOT_CATALOG = (
+    "catalog_server.examples.generic:nested_with_access_control"
+)
 
 
 class Settings(BaseSettings):
