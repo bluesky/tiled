@@ -142,3 +142,44 @@ def catalog_repr(catalog, sample):
     else:
         out += "})>"
     return out
+
+
+def _line(nodes, last):
+    "Generate a single line for the tree utility"
+    tee = "├"
+    vertical = "│   "
+    horizontal = "── "
+    L = "└"
+    blank = "    "
+    indent = ""
+    for item in last[:-1]:
+        if item:
+            indent += blank
+        else:
+            indent += vertical
+    if last[-1]:
+        return indent + L + horizontal + nodes[-1]
+    else:
+        return indent + tee + horizontal + nodes[-1]
+
+
+def _tree_gen(catalog, nodes=None, last=None):
+    "A generator of lines for the tree utility"
+    if nodes is None:
+        last_index = len(catalog) - 1
+        for index, node in enumerate(catalog):
+            yield from _tree_gen(catalog, [node], [index == last_index])
+    else:
+        value = catalog[nodes[-1]]
+        if hasattr(value, "items"):
+            yield _line(nodes, last)
+            last_index = len(value) - 1
+            for index, (k, v) in enumerate(value.items()):
+                yield from _tree_gen(value, nodes + [k], last + [index == last_index])
+        else:
+            yield _line(nodes, last)
+
+
+def tree(catalog):
+    "Provide a visual sketch of Catalog structure akin to UNIX `tree`."
+    print("\n".join(_tree_gen(catalog)))

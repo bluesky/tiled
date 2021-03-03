@@ -52,3 +52,7 @@ access_policy = SimpleAccessPolicy(
     }
 )
 nested_with_access_control = Catalog(subcatalogs, access_policy=access_policy)
+
+
+# This a bit contrived, the same subcatalog used three times.
+very_nested = Catalog({"a": nested, "b": nested, "c": nested})
