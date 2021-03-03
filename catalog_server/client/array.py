@@ -13,6 +13,9 @@ class ClientArraySource:
         self._metadata = metadata
         self._path = path
 
+    def __repr__(self):
+        return f"<{type(self).__name__}>"
+
     @property
     def metadata(self):
         "Metadata about this Catalog."
