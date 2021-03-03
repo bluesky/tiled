@@ -2,9 +2,9 @@ from pathlib import Path
 
 import h5py
 
-from .datasources.array import ArraySource
-from .catalogs.in_memory import Catalog, SimpleAccessPolicy
-from .utils import SpecialUsers
+from ..datasources.array import ArraySource
+from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
+from ..utils import SpecialUsers
 
 
 def access_hdf5_data(name, inner_name, value, size):
@@ -14,7 +14,19 @@ def access_hdf5_data(name, inner_name, value, size):
     return file["data"]
 
 
-# Build Catalog of Catalogs.
+minimal = Catalog(
+    {
+        name: ArraySource(access_hdf5_data(name, "ones", 1, size))
+        for name, size in
+        zip(
+            ["tiny", "small", "medium", "large"],
+            [3, 100, 1000, 10_000],
+        )
+    }
+)
+
+
+# Build nested Catalog of Catalogs.
 subcatalogs = {}
 for name, size, fruit, animal in zip(
     ["tiny", "small", "medium", "large"],
@@ -29,6 +41,7 @@ for name, size, fruit, animal in zip(
         },
         metadata={"fruit": fruit, "animal": animal},
     )
+nested = Catalog(subcatalogs)
 
 
 access_policy = SimpleAccessPolicy(
@@ -39,4 +52,4 @@ access_policy = SimpleAccessPolicy(
         "cara": SimpleAccessPolicy.ALL,
     }
 )
-hdf5_catalog = Catalog(subcatalogs, access_policy=access_policy)
+nested_with_access_control = Catalog(subcatalogs, access_policy=access_policy)
