@@ -27,10 +27,10 @@ from ..query_registration import name_to_query_type
 del queries
 
 
-app = FastAPI()
+api = FastAPI()
 
 
-@app.post("/token", response_model=models.Token)
+@api.post("/token", response_model=models.Token)
 async def token(username: str, current_user=Depends(get_current_user)):
     "Generate an API access token."
     if (username != current_user) and (current_user != "admin"):
@@ -49,18 +49,15 @@ class PatchedResponse(Response):
         return super().render(content)
 
 
-def declare_search_route(app=app):
+def declare_search_route():
     """
-    This is done dynamically at app startup.
+    This is done dynamically at api startup.
 
     We check the registry of known search query types, which is user
     configurable, and use that to define the allowed HTTP query parameters for
     this route.
     """
 
-    # The parameter `app` is passed in so that we bind to the global `app`
-    # defined *above* and not the middleware wrapper that overlaods that name
-    # below.
     async def search(
         path: Optional[str] = "/",
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
@@ -109,14 +106,14 @@ def declare_search_route(app=app):
     # End black magic
 
     # Register the search route.
-    app.get("/search/{path:path}", response_model=models.Response)(search)
-    app.get("/search", response_model=models.Response, include_in_schema=False)(search)
+    api.get("/search/{path:path}", response_model=models.Response)(search)
+    api.get("/search", response_model=models.Response, include_in_schema=False)(search)
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 
 
-@app.on_event("startup")
+@api.on_event("startup")
 async def startup_event():
     declare_search_route()
     # Warm up cached access.
@@ -124,15 +121,15 @@ async def startup_event():
     # get_dask_client()
 
 
-@app.on_event("shutdown")
+@api.on_event("shutdown")
 async def shutdown_event():
     # client = get_dask_client()
     # await client.close()
     pass
 
 
-@app.get("/metadata/{path:path}", response_model=models.Response)
-@app.get("/metadata", response_model=models.Response, include_in_schema=False)
+@api.get("/metadata/{path:path}", response_model=models.Response)
+@api.get("/metadata", response_model=models.Response, include_in_schema=False)
 async def metadata(
     path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
@@ -150,8 +147,8 @@ async def metadata(
     return models.Response(data=resource)
 
 
-@app.get("/entries/{path:path}", response_model=models.Response)
-@app.get("/entries", response_model=models.Response, include_in_schema=False)
+@api.get("/entries/{path:path}", response_model=models.Response)
+@api.get("/entries", response_model=models.Response, include_in_schema=False)
 async def entries(
     path: Optional[str] = "/",
     offset: Optional[int] = Query(0, alias="page[offset]"),
@@ -171,7 +168,7 @@ async def entries(
     )
 
 
-@app.get("/blob/array/{path:path}", response_model=models.Response)
+@api.get("/blob/array/{path:path}", response_model=models.Response)
 def blob_array(
     request: Request,
     path: str,
@@ -212,12 +209,14 @@ def blob_array(
         )
 
 
-# After defining all routes, wrap app with middleware.
+# After defining all routes, wrap api with middleware.
 # Add support for msgpack-encoded requests/responses as alternative to JSON.
 # https://fastapi.tiangolo.com/advanced/middleware/
 # https://github.com/florimondmanca/msgpack-asgi
 if not os.getenv("DISABLE_MSGPACK_MIDDLEWARE"):
-    app = MessagePackMiddleware(app)
+    app = MessagePackMiddleware(api)
+else:
+    app = api
 
 
 def construct_resource(key, entry, fields):
