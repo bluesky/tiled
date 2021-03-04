@@ -1,5 +1,6 @@
 from collections import defaultdict
 import dataclasses
+import functools
 import inspect
 import os
 import re
@@ -185,15 +186,17 @@ async def entries(
     )
 
 
-@api.get("/blob/array/{path:path}", response_model=models.Response, name="array")
-def blob_array(
+def blob_array_like(
+    access_data,
     request: Request,
     path: str,
     # Ellipsis as the "default" tells FastAPI to make this parameter required.
     block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
     current_user=Depends(get_current_user),
 ):
-    "Provide one block (chunk) of an array."
+    """
+    This is used to send array or xarray.Variable.
+    """
     DEFAULT_MEDIA_TYPE = "application/octet-stream"
     try:
         datasource = get_entry(path, current_user)
@@ -201,7 +204,7 @@ def blob_array(
         raise HTTPException(status_code=404, detail="No such entry.")
     parsed_block = tuple(map(int, block.split(",")))
     try:
-        chunk = datasource.read().blocks[parsed_block]
+        chunk = access_data(datasource.read()).blocks[parsed_block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = get_chunk(chunk)
@@ -226,47 +229,20 @@ def blob_array(
         )
 
 
-@api.get(
-    "/blob/variable/{path:path}", response_model=models.Response, name="data_array"
-)
-def blob_variable(
-    request: Request,
-    path: str,
-    # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
-    current_user=Depends(get_current_user),
-):
-    "Provide one block (chunk) of an array."
-    DEFAULT_MEDIA_TYPE = "application/octet-stream"
-    try:
-        datasource = get_entry(path, current_user)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    parsed_block = tuple(map(int, block.split(",")))
-    try:
-        chunk = datasource.read().data.blocks[parsed_block]
-    except IndexError:
-        raise HTTPException(status_code=422, detail="Block index out of range")
-    array = get_chunk(chunk)
-    etag = dask.base.tokenize(array)
-    if request.headers.get("If-None-Match", "") == etag:
-        return Response(status_code=304)
-    media_types = request.headers.get("Accept", DEFAULT_MEDIA_TYPE)
-    for media_type in media_types.split(", "):
-        if media_type == "*/*":
-            media_type = DEFAULT_MEDIA_TYPE
-        if media_type in serialization_registry.media_types("array"):
-            content = serialization_registry("array", media_type, array)
-            return PatchedResponse(
-                content=content, media_type=media_type, headers={"ETag": etag}
-            )
-    else:
-        # We do not support any of the media types requested by the client.
-        # Reply with a list of the supported types.
-        raise HTTPException(
-            status_code=406,
-            detail=", ".join(serialization_registry.media_types("array")),
-        )
+api.get(
+    "/blob/array/{path:path}",
+    response_model=models.Response,
+    name="array",
+    description="Fetch a chunk of an array-like structure.",
+)(functools.partial(blob_array_like, lambda array: array))
+
+
+api.get(
+    "/blob/variable/{path:path}",
+    response_model=models.Response,
+    name="variable",
+    description="Fetch a chunk of a xarray.Variable.",
+)(functools.partial(blob_array_like, lambda variable: variable.data))
 
 
 # After defining all routes, wrap api with middleware.
