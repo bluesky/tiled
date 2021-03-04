@@ -11,6 +11,14 @@ class VariableStructure:
     attrs: Dict  # TODO Use JSONSerializableDict
     # TODO Variables also have `encoding`. Do we want to carry that as well?
 
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            dims=structure["dims"],
+            data=ArrayStructure.from_json(structure["data"]),
+            attrs=structure["attrs"],
+        )
+
 
 @dataclass
 class DataArrayStructure:

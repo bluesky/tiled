@@ -2,45 +2,21 @@ import itertools
 
 import dask.array
 
-from ..containers.array import ArrayStructure, Endianness, Kind, MachineDataType
+from ..containers.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
-from ..utils import DictView
+from .utils import BaseClientSource
 
 
-class ClientArraySource:
-    def __init__(self, client, *, path, metadata, container_dispatch, params):
-        self._client = client
-        self._metadata = metadata
-        self._path = path
-        self._params = params
+class ClientArraySource(BaseClientSource):
+    "Client-side wrapper around an array-like"
 
-    def __repr__(self):
-        return f"<{type(self).__name__}>"
+    STRUCTURE_TYPE = ArrayStructure
 
-    @property
-    def metadata(self):
-        "Metadata about this Catalog."
-        # Ensure this is immutable (at the top level) to help the user avoid
-        # getting the wrong impression that editing this would update anything
-        # persistent.
-        return DictView(self._metadata)
-
-    def describe(self):
-        response = self._client.get(
-            f"/metadata/{'/'.join(self._path)}",
-            params={"fields": "structure", **self._params},
-        )
-        response.raise_for_status()
-        result = response.json()["data"]["attributes"]["structure"]
-        return ArrayStructure(
-            chunks=tuple(map(tuple, result["chunks"])),
-            shape=tuple(result["shape"]),
-            dtype=MachineDataType(
-                kind=Kind(result["dtype"]["kind"]),
-                itemsize=result["dtype"]["itemsize"],
-                endianness=Endianness(result["dtype"]["endianness"]),
-            ),
-        )
+    def __init__(self, *args, route="/blob/array", **kwargs):
+        super().__init__(*args, **kwargs)
+        if route.endswith("/"):
+            route = route[:-1]
+        self._route = route
 
     def _get_block(self, block, dtype, shape):
         """
@@ -48,7 +24,7 @@ class ClientArraySource:
         """
         media_type = "application/octet-stream"
         response = self._client.get(
-            f"/blob/array/{'/'.join(self._path)}",
+            self._route + "/" + "/".join(self._path),
             headers={"Accept": media_type},
             params={"block": ",".join(map(str, block)), **self._params},
         )

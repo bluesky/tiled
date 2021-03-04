@@ -36,7 +36,7 @@ api = FastAPI()
 
 
 @api.post("/token", response_model=models.Token)
-async def token(username: str, current_user=Depends(get_current_user)):
+async def create_token(username: str, current_user=Depends(get_current_user)):
     "Generate an API access token."
     if (username != current_user) and (current_user != "admin"):
         raise HTTPException(
@@ -46,7 +46,7 @@ async def token(username: str, current_user=Depends(get_current_user)):
 
 
 @api.delete("/token")
-async def token(token: models.Token, current_user=Depends(get_current_user)):
+async def delete_token(token: models.Token, current_user=Depends(get_current_user)):
     "Generate an API access token."
     username = get_user_for_token(token.access_token)
     if (username != current_user) and (current_user != "admin"):
@@ -227,14 +227,13 @@ def blob_array(
 
 
 @api.get(
-    "/blob/data_array/{path:path}", response_model=models.Response, name="data_array"
+    "/blob/variable/{path:path}", response_model=models.Response, name="data_array"
 )
-def blob_data_array(
+def blob_variable(
     request: Request,
     path: str,
     # Ellipsis as the "default" tells FastAPI to make this parameter required.
     block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
-    column: str = Query(..., min_length=1),
     current_user=Depends(get_current_user),
 ):
     "Provide one block (chunk) of an array."
@@ -245,7 +244,7 @@ def blob_data_array(
         raise HTTPException(status_code=404, detail="No such entry.")
     parsed_block = tuple(map(int, block.split(",")))
     try:
-        chunk = datasource.read()[column].data.blocks[parsed_block]
+        chunk = datasource.read().data.blocks[parsed_block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = get_chunk(chunk)

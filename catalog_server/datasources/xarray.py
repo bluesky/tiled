@@ -1,4 +1,4 @@
-from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
+from ..containers.xarray import DataArrayStructure, VariableStructure
 from ..datasources.array import ArraySource
 from ..utils import DictView
 
@@ -53,7 +53,7 @@ class DataArraySource:
     def describe(self):
         return DataArrayStructure(
             variable=VariableSource(self._data_array.variable).describe(),
-            coords={k: VaraiableSource(v) for k, v in self._data_array.coords.items()},
+            coords={k: VariableSource(v) for k, v in self._data_array.coords.items()},
             name=self._data_array.name,
         )
 

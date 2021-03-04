@@ -73,6 +73,18 @@ class ArrayStructure:
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
 
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            chunks=tuple(map(tuple, structure["chunks"])),
+            shape=tuple(structure["shape"]),
+            dtype=MachineDataType(
+                kind=Kind(structure["dtype"]["kind"]),
+                itemsize=structure["dtype"]["itemsize"],
+                endianness=Endianness(structure["dtype"]["endianness"]),
+            ),
+        )
+
 
 serialization_registry.register("array", "application/octet-stream", memoryview)
 serialization_registry.register(

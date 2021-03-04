@@ -21,11 +21,21 @@ class ClientCatalog(collections.abc.Mapping):
             "array": lambda: importlib.import_module(
                 "..array", ClientCatalog.__module__
             ).ClientArraySource,
+            "variable": lambda: importlib.import_module(
+                "..xarray", ClientCatalog.__module__
+            ).ClientVariableSource,
         }
     )
 
     def __init__(
-        self, client, *, path, metadata, container_dispatch, params=None, queries=None
+        self,
+        client,
+        *,
+        path,
+        metadata,
+        container_dispatch=None,
+        params=None,
+        queries=None,
     ):
         "This is not user-facing. Use ClientCatalog.from_uri."
         self._client = client

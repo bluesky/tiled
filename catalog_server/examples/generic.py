@@ -1,10 +1,11 @@
 from pathlib import Path
 
+import dask.array
 import h5py
 import xarray
 
 from ..datasources.array import ArraySource
-from ..datasources.xarray import DataArraySource
+from ..datasources.xarray import VariableSource
 from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
 from ..utils import SpecialUsers
 
@@ -27,10 +28,11 @@ minimal = Catalog(
 )
 minimal_xarray = Catalog(
     {
-        name: DataArraySource(
-            xarray.DataArray(
-                data=access_hdf5_data(name, "ones", 1, size),
+        name: VariableSource(
+            xarray.Variable(
+                data=dask.array.from_array(access_hdf5_data(name, "ones", 1, size)),
                 dims=["x", "y"],
+                attrs={"thing": "stuff"},
             ),
         )
         for name, size in zip(
