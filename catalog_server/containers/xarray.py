@@ -8,25 +8,22 @@ from .array import ArrayStructure
 class VariableStructure:
     dims: Tuple[str]
     data: ArrayStructure
-    attrs: dict
-    # Variables also have `encoding`. Do we want to carry that as well?
+    attrs: Dict  # TODO Use JSONSerializableDict
+    # TODO Variables also have `encoding`. Do we want to carry that as well?
 
 
 @dataclass
 class DataArrayStructure:
-    dims: Tuple[str]
-    data: ArrayStructure
+    variable: VariableStructure
     coords: Dict[str, VariableStructure]
-    attrs: Dict
     name: str
 
 
 @dataclass
 class DatasetStructure:
-    dims: Tuple[str]
-    data_vars: DataArrayStructure
-    coords: Dict[str, DataArrayStructure]
-    attrs: dict
+    data_vars: Dict[str, DataArrayStructure]
+    coords: Dict[str, VariableStructure]
+    attrs: Dict  # TODO Use JSONSerializableDict
 
 
 # TODO Also support zarr for encoding.
