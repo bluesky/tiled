@@ -19,7 +19,12 @@ from .utils import (
     pagination_links,
 )
 from . import models
-from .authentication import get_current_user, new_token
+from .authentication import (
+    get_current_user,
+    get_user_for_token,
+    new_token,
+    revoke_token,
+)
 from .. import queries  # This is not used, but it registers queries on import.
 from ..media_type_registration import serialization_registry
 from ..query_registration import name_to_query_type
@@ -38,6 +43,18 @@ async def token(username: str, current_user=Depends(get_current_user)):
             status_code=403, detail="Only admin can generate tokens for other users."
         )
     return {"access_token": new_token(username), "token_type": "bearer"}
+
+
+@api.delete("/token")
+async def token(token: models.Token, current_user=Depends(get_current_user)):
+    "Generate an API access token."
+    username = get_user_for_token(token.access_token)
+    if (username != current_user) and (current_user != "admin"):
+        raise HTTPException(
+            status_code=403, detail="Only admin can delete other users' tokens."
+        )
+    revoke_token(token.access_token)
+    return
 
 
 class PatchedResponse(Response):

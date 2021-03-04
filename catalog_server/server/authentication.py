@@ -44,3 +44,11 @@ def new_token(username):
     token = secrets.token_hex(32)
     API_TOKENS[token] = username
     return token
+
+
+def revoke_token(token):
+    API_TOKENS.pop(token, None)
+
+
+def get_user_for_token(token):
+    return API_TOKENS.get(token)
