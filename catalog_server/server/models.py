@@ -48,6 +48,7 @@ class CatalogAttributes(pydantic.BaseModel):
 
 class Container(str, enum.Enum):
     array = "array"
+    data_array = "data_array"
 
 
 class DataSourceAttributes(pydantic.BaseModel):

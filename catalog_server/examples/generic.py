@@ -1,8 +1,10 @@
 from pathlib import Path
 
 import h5py
+import xarray
 
 from ..datasources.array import ArraySource
+from ..datasources.xarray import DataArraySource
 from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
 from ..utils import SpecialUsers
 
@@ -17,6 +19,20 @@ def access_hdf5_data(name, inner_name, value, size):
 minimal = Catalog(
     {
         name: ArraySource(access_hdf5_data(name, "ones", 1, size))
+        for name, size in zip(
+            ["tiny", "small", "medium", "large"],
+            [3, 100, 1000, 10_000],
+        )
+    }
+)
+minimal_xarray = Catalog(
+    {
+        name: DataArraySource(
+            xarray.DataArray(
+                data=access_hdf5_data(name, "ones", 1, size),
+                dims=["x", "y"],
+            ),
+        )
         for name, size in zip(
             ["tiny", "small", "medium", "large"],
             [3, 100, 1000, 10_000],
