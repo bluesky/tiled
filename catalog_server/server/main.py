@@ -168,7 +168,7 @@ async def entries(
     )
 
 
-@api.get("/blob/array/{path:path}", response_model=models.Response)
+@api.get("/blob/array/{path:path}", response_model=models.Response, name="array")
 def blob_array(
     request: Request,
     path: str,
