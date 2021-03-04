@@ -8,10 +8,11 @@ from ..utils import DictView
 
 
 class ClientArraySource:
-    def __init__(self, client, metadata, path, container_dispatch):
+    def __init__(self, client, *, path, metadata, container_dispatch, params):
         self._client = client
         self._metadata = metadata
         self._path = path
+        self._params = params
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -26,7 +27,8 @@ class ClientArraySource:
 
     def describe(self):
         response = self._client.get(
-            f"/metadata/{'/'.join(self._path)}", params={"fields": "structure"}
+            f"/metadata/{'/'.join(self._path)}",
+            params={"fields": "structure", **self._params},
         )
         response.raise_for_status()
         result = response.json()["data"]["attributes"]["structure"]
@@ -48,7 +50,7 @@ class ClientArraySource:
         response = self._client.get(
             f"/blob/array/{'/'.join(self._path)}",
             headers={"Accept": media_type},
-            params={"block": ",".join(map(str, block))},
+            params={"block": ",".join(map(str, block)), **self._params},
         )
         response.raise_for_status()
         return deserialization_registry(

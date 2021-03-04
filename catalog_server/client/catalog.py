@@ -24,7 +24,9 @@ class ClientCatalog(collections.abc.Mapping):
         }
     )
 
-    def __init__(self, client, *, path, metadata, container_dispatch, queries=None):
+    def __init__(
+        self, client, *, path, metadata, container_dispatch, params=None, queries=None
+    ):
         "This is not user-facing. Use ClientCatalog.from_uri."
         self._client = client
         self._metadata = metadata
@@ -38,6 +40,7 @@ class ClientCatalog(collections.abc.Mapping):
         self._path = tuple(path or [])
         self._queries = tuple(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
+        self._params = params or {}
         self.keys_indexer = IndexCallable(self._keys_indexer)
         self.items_indexer = IndexCallable(self._items_indexer)
         self.values_indexer = IndexCallable(self._values_indexer)
@@ -52,7 +55,10 @@ class ClientCatalog(collections.abc.Mapping):
         response.raise_for_status()
         metadata = response.json()["data"]["attributes"]["metadata"]
         return cls(
-            client, path=[], metadata=metadata, container_dispatch=container_dispatch
+            client,
+            path=[],
+            metadata=metadata,
+            container_dispatch=container_dispatch,
         )
 
     def __repr__(self):
@@ -80,7 +86,7 @@ class ClientCatalog(collections.abc.Mapping):
     def __len__(self):
         response = self._client.get(
             f"/search/{'/'.join(self._path)}",
-            params={"fields": "", **self._queries_as_params},
+            params={"fields": "", **self._queries_as_params, **self._params},
         )
         response.raise_for_status()
         return response.json()["meta"]["count"]
@@ -95,7 +101,7 @@ class ClientCatalog(collections.abc.Mapping):
         while next_page_url is not None:
             response = self._client.get(
                 next_page_url,
-                params={"fields": "", **self._queries_as_params},
+                params={"fields": "", **self._queries_as_params, **self._params},
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -110,6 +116,7 @@ class ClientCatalog(collections.abc.Mapping):
                 "fields": ["metadata", "container"],
                 **_queries_to_params(KeyLookup(key)),
                 **self._queries_as_params,
+                **self._params,
             },
         )
         response.raise_for_status()
@@ -126,6 +133,7 @@ class ClientCatalog(collections.abc.Mapping):
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
             container_dispatch=self.container_dispatch,
+            params=self._params,
         )
 
     def items(self):
@@ -135,7 +143,11 @@ class ClientCatalog(collections.abc.Mapping):
         while next_page_url is not None:
             response = self._client.get(
                 next_page_url,
-                params={"fields": ["metadata", "container"], **self._queries_as_params},
+                params={
+                    "fields": ["metadata", "container"],
+                    **self._queries_as_params,
+                    **self._params,
+                },
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -145,6 +157,7 @@ class ClientCatalog(collections.abc.Mapping):
                     path=self.path + [item["id"]],
                     metadata=item["attributes"]["metadata"],
                     container_dispatch=self.container_dispatch,
+                    params=self._params,
                 )
             next_page_url = response.json()["links"]["next"]
 
@@ -160,7 +173,7 @@ class ClientCatalog(collections.abc.Mapping):
         while next_page_url is not None:
             response = self._client.get(
                 next_page_url,
-                params={"fields": "", **self._queries_as_params},
+                params={"fields": "", **self._queries_as_params, **self._params},
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -175,7 +188,11 @@ class ClientCatalog(collections.abc.Mapping):
         while next_page_url is not None:
             response = self._client.get(
                 next_page_url,
-                params={"fields": ["metadata", "container"], **self._queries_as_params},
+                params={
+                    "fields": ["metadata", "container"],
+                    **self._queries_as_params,
+                    **self._params,
+                },
             )
             response.raise_for_status()
             for item in response.json()["data"]:
@@ -188,6 +205,7 @@ class ClientCatalog(collections.abc.Mapping):
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
                     container_dispatch=self.container_dispatch,
+                    params=self._params,
                 )
             next_page_url = response.json()["links"]["next"]
 
@@ -196,7 +214,12 @@ class ClientCatalog(collections.abc.Mapping):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
         response = self._client.get(
-            url, params={"fields": ["metadata", "container"], **self._queries_as_params}
+            url,
+            params={
+                "fields": ["metadata", "container"],
+                **self._queries_as_params,
+                **self._params,
+            },
         )
         response.raise_for_status()
         (item,) = response.json()["data"]
@@ -207,6 +230,7 @@ class ClientCatalog(collections.abc.Mapping):
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
             container_dispatch=self.container_dispatch,
+            params=self._params,
         )
         return (key, value)
 
