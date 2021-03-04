@@ -1,6 +1,5 @@
 from collections import defaultdict
 import dataclasses
-import functools
 import inspect
 import os
 import re
@@ -186,63 +185,59 @@ async def entries(
     )
 
 
-def blob_array_like(
-    access_data,
-    request: Request,
+def datasource(
     path: str,
-    # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
-    current_user=Depends(get_current_user),
+    current_user: str = Depends(get_current_user),
 ):
-    """
-    This is used to send array or xarray.Variable.
-    """
-    DEFAULT_MEDIA_TYPE = "application/octet-stream"
+    "Specify a path parameter and use it to look up a datasource."
     try:
-        datasource = get_entry(path, current_user)
+        return get_entry(path, current_user)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
+
+
+def block(
+    # Ellipsis as the "default" tells FastAPI to make this parameter required.
+    block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
+):
+    "Specify and parse a block index parameter."
     parsed_block = tuple(map(int, block.split(",")))
+    return parsed_block
+
+
+@api.get("/blob/array/{path:path}", response_model=models.Response, name="array")
+def blob_array(
+    request: Request,
+    datasource=Depends(datasource),
+    block=Depends(block),
+):
+    """
+    Fetch a chunk of array-like data.
+    """
     try:
-        chunk = access_data(datasource.read()).blocks[parsed_block]
+        chunk = datasource.read().blocks[block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = get_chunk(chunk)
-    etag = dask.base.tokenize(array)
-    if request.headers.get("If-None-Match", "") == etag:
-        return Response(status_code=304)
-    media_types = request.headers.get("Accept", DEFAULT_MEDIA_TYPE)
-    for media_type in media_types.split(", "):
-        if media_type == "*/*":
-            media_type = DEFAULT_MEDIA_TYPE
-        if media_type in serialization_registry.media_types("array"):
-            content = serialization_registry("array", media_type, array)
-            return PatchedResponse(
-                content=content, media_type=media_type, headers={"ETag": etag}
-            )
-    else:
-        # We do not support any of the media types requested by the client.
-        # Reply with a list of the supported types.
-        raise HTTPException(
-            status_code=406,
-            detail=", ".join(serialization_registry.media_types("array")),
-        )
+    return construct_array_response(array, request.headers)
 
 
-api.get(
-    "/blob/array/{path:path}",
-    response_model=models.Response,
-    name="array",
-    description="Fetch a chunk of an array-like structure.",
-)(functools.partial(blob_array_like, lambda array: array))
-
-
-api.get(
-    "/blob/variable/{path:path}",
-    response_model=models.Response,
-    name="variable",
-    description="Fetch a chunk of a xarray.Variable.",
-)(functools.partial(blob_array_like, lambda variable: variable.data))
+@api.get("/blob/variable/{path:path}", response_model=models.Response, name="variable")
+def blob_variable(
+    request: Request,
+    datasource=Depends(datasource),
+    block=Depends(block),
+):
+    """
+    Fetch a chunk of array-like data.
+    """
+    try:
+        # Lookup block on the `data` attribute of the Variable.
+        chunk = datasource.read().data.blocks[block]
+    except IndexError:
+        raise HTTPException(status_code=422, detail="Block index out of range")
+    array = get_chunk(chunk)
+    return construct_array_response(array, request.headers)
 
 
 # After defining all routes, wrap api with middleware.
@@ -328,6 +323,29 @@ def construct_entries_response(
         resource = construct_resource(key, entry, fields)
         data.append(resource)
     return models.Response(data=data, links=links, meta={"count": count})
+
+
+def construct_array_response(array, request_headers):
+    DEFAULT_MEDIA_TYPE = "application/octet-stream"
+    etag = dask.base.tokenize(array)
+    if request_headers.get("If-None-Match", "") == etag:
+        return Response(status_code=304)
+    media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE)
+    for media_type in media_types.split(", "):
+        if media_type == "*/*":
+            media_type = DEFAULT_MEDIA_TYPE
+        if media_type in serialization_registry.media_types("array"):
+            content = serialization_registry("array", media_type, array)
+            return PatchedResponse(
+                content=content, media_type=media_type, headers={"ETag": etag}
+            )
+    else:
+        # We do not support any of the media types requested by the client.
+        # Reply with a list of the supported types.
+        raise HTTPException(
+            status_code=406,
+            detail=", ".join(serialization_registry.media_types("array")),
+        )
 
 
 if __name__ == "__main__":
