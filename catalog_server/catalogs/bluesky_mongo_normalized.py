@@ -338,7 +338,7 @@ def raw_mongo(query):
     return query.start
 
 
-@register(name="raw_mogno")
+@register(name="raw_mongo")
 @dataclass
 class RawMongo:
     """
