@@ -229,3 +229,43 @@ def blob_variable(
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+
+
+@router.get(
+    "/blob/data_array/{path:path}", response_model=models.Response, name="data_array"
+)
+def blob_data_array(
+    request: Request,
+    datasource=Depends(datasource),
+    block=Depends(block),
+    coord: str = Query(None, min_length=1),
+):
+    """
+    Fetch a chunk from an xarray.DataArray.
+    """
+    data_array = datasource.read()
+    if coord is None:
+        dask_array = data_array.data
+        print("dask_array", dask_array)
+        try:
+            chunk = dask_array.blocks[block]
+        except IndexError:
+            raise HTTPException(status_code=422, detail="Block index out of range")
+        array = get_chunk(chunk)
+    else:
+        if block != (0,):
+            raise HTTPException(status_code=422, detail="Block index out of range")
+        try:
+            array = data_array.coords[coord].data
+        except KeyError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No such coordinate {coord}. Coordinates: {list(data_array.coords)}",
+            )
+    print(array)
+    try:
+        return construct_array_response(array, request.headers)
+    except UnsupportedMediaTypes as err:
+        # TODO Should we just serve a default representation instead of
+        # returning this error codde?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))

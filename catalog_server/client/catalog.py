@@ -21,6 +21,9 @@ class ClientCatalog(collections.abc.Mapping):
             "array": lambda: importlib.import_module(
                 "..array", ClientCatalog.__module__
             ).ClientArraySource,
+            "data_array": lambda: importlib.import_module(
+                "..xarray", ClientCatalog.__module__
+            ).ClientDataArraySource,
             "variable": lambda: importlib.import_module(
                 "..xarray", ClientCatalog.__module__
             ).ClientVariableSource,

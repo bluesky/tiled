@@ -26,6 +26,17 @@ class DataArrayStructure:
     coords: Dict[str, VariableStructure]
     name: str
 
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            variable=VariableStructure.from_json(structure["variable"]),
+            coords={
+                key: VariableStructure.from_json(value)
+                for key, value in structure["coords"].items()
+            },
+            name=structure["name"],
+        )
+
 
 @dataclass
 class DatasetStructure:

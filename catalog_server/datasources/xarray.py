@@ -53,7 +53,10 @@ class DataArraySource:
     def describe(self):
         return DataArrayStructure(
             variable=VariableSource(self._data_array.variable).describe(),
-            coords={k: VariableSource(v) for k, v in self._data_array.coords.items()},
+            coords={
+                k: VariableSource(v).describe()
+                for k, v in self._data_array.coords.items()
+            },
             name=self._data_array.name,
         )
 

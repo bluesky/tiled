@@ -12,7 +12,7 @@ api = FastAPI()
 
 @api.on_event("startup")
 async def startup_event():
-    # The /search route is defined as server startup so that the user has the
+    # The /search route is defined at server startup so that the user has the
     # opporunity to register custom query types before startup.
     declare_search_route(router)
     api.include_router(router)
