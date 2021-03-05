@@ -131,7 +131,7 @@ class Catalog(collections.abc.Mapping):
             initial_limit = limit
         else:
             initial_limit = CURSOR_LIMIT
-        cursor = collection.find(query, *args, **kwargs).skip(skip).limit(initial_limit)
+        cursor = collection.find(query, *args, **kwargs).sort([("_id", 1)]).skip(skip).limit(initial_limit)
         # Fetch in batches, starting each batch from where we left off.
         # https://medium.com/swlh/mongodb-pagination-fast-consistent-ece2a97070f3
         tally = 0
@@ -161,7 +161,7 @@ class Catalog(collections.abc.Mapping):
             else:
                 this_limit = CURSOR_LIMIT
             # Get another batch and go round again.
-            cursor = collection.find(query, *args, **kwargs).limit(this_limit)
+            cursor = collection.find(query, *args, **kwargs).sort([("_id", 1)]).limit(this_limit)
             items.clear()
 
     def _mongo_query(self, *queries):
@@ -182,11 +182,7 @@ class Catalog(collections.abc.Mapping):
         for run_start_doc in self._chunked_find(
             self._run_start_collection, self._mongo_query()
         ):
-            # This may be None; that's fine.
-            run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
-            yield CatalogInMemory(
-                {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
-            )
+            yield run_start_doc["uid"]
 
     @authenticated
     def __len__(self):
