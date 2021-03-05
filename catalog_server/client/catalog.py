@@ -164,14 +164,16 @@ class ClientCatalog(collections.abc.Mapping):
             )
             response.raise_for_status()
             for item in response.json()["data"]:
+                key = item["id"]
                 cls = self._get_class(item)
-                yield cls(
+                value = cls(
                     self._client,
-                    path=self.path + [item["id"]],
+                    path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
                     container_dispatch=self.container_dispatch,
                     params=self._params,
                 )
+                yield key, value
             next_page_url = response.json()["links"]["next"]
 
     def values(self):
