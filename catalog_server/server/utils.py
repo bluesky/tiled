@@ -211,6 +211,8 @@ def construct_resource(key, entry, fields):
     attributes = {}
     if models.EntryFields.metadata in fields:
         attributes["metadata"] = entry.metadata
+    if models.EntryFields.suggested_py_client in fields:
+        attributes["suggested_py_client"] = getattr(entry, "suggested_py_client", None)
     if isinstance(entry, DuckCatalog):
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)

@@ -16,6 +16,16 @@ from ..utils import (
 from .in_memory import Catalog as CatalogInMemory
 
 
+class BlueskyRun(CatalogInMemory):
+    suggested_py_client = {
+        "module": "catalog_server.client.bluesky",
+        "qualname": "BlueskyRun",
+    }
+
+    def __repr__(self):
+        return f"<{type(self).__name__}(uid={self.metadata['start']['uid']})>"
+
+
 class Catalog(collections.abc.Mapping):
 
     # Define classmethods for managing what queries this Catalog knows.
@@ -119,7 +129,7 @@ class Catalog(collections.abc.Mapping):
             raise KeyError(key)
         # This may be None; that's fine.
         run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
-        return CatalogInMemory(
+        return BlueskyRun(
             {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
         )
 
@@ -131,7 +141,12 @@ class Catalog(collections.abc.Mapping):
             initial_limit = limit
         else:
             initial_limit = CURSOR_LIMIT
-        cursor = collection.find(query, *args, **kwargs).sort([("_id", 1)]).skip(skip).limit(initial_limit)
+        cursor = (
+            collection.find(query, *args, **kwargs)
+            .sort([("_id", 1)])
+            .skip(skip)
+            .limit(initial_limit)
+        )
         # Fetch in batches, starting each batch from where we left off.
         # https://medium.com/swlh/mongodb-pagination-fast-consistent-ece2a97070f3
         tally = 0
@@ -161,7 +176,11 @@ class Catalog(collections.abc.Mapping):
             else:
                 this_limit = CURSOR_LIMIT
             # Get another batch and go round again.
-            cursor = collection.find(query, *args, **kwargs).sort([("_id", 1)]).limit(this_limit)
+            cursor = (
+                collection.find(query, *args, **kwargs)
+                .sort([("_id", 1)])
+                .limit(this_limit)
+            )
             items.clear()
 
     def _mongo_query(self, *queries):
@@ -251,7 +270,7 @@ class Catalog(collections.abc.Mapping):
             run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
             yield (
                 run_start_doc["uid"],
-                CatalogInMemory(
+                BlueskyRun(
                     {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
                 ),
             )
@@ -267,7 +286,7 @@ class Catalog(collections.abc.Mapping):
         # This may be None; that's fine.
         run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
         key = run_start_doc["uid"]
-        value = CatalogInMemory(
+        value = BlueskyRun(
             {},  # TODO
             metadata={"start": run_start_doc, "stop": run_stop_doc},
         )

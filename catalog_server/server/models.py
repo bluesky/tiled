@@ -38,12 +38,19 @@ class EntryFields(str, enum.Enum):
     container = "container"
     structure = "structure"
     count = "count"
+    suggested_py_client = "suggested_py_client"
     none = ""
+
+
+class SuggestedPyClient(pydantic.BaseModel):
+    module: str
+    qualname: str
 
 
 class CatalogAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     count: Optional[int]
+    suggested_py_client: Optional[SuggestedPyClient]
 
 
 class Container(str, enum.Enum):

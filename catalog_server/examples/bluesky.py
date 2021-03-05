@@ -8,4 +8,4 @@ databroker-unpack mongo_normalized /home/dallan/.local/share/bluesky_tutorial_da
 from catalog_server.catalogs.bluesky_mongo_normalized import Catalog
 
 
-catalog = Catalog.from_uri("mongodb://localhost:27017/databroker_bmm_example")
+catalog = Catalog.from_uri("mongodb://localhost:27017/bmm_example")
