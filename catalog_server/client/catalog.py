@@ -191,7 +191,7 @@ class ClientCatalog(collections.abc.Mapping):
             response.raise_for_status()
             for item in response.json()["data"]:
                 if stop is not None and next(item_counter) == stop:
-                    break
+                    return
                 yield item["id"]
             next_page_url = response.json()["links"]["next"]
 
@@ -210,7 +210,7 @@ class ClientCatalog(collections.abc.Mapping):
             response.raise_for_status()
             for item in response.json()["data"]:
                 if stop is not None and next(item_counter) == stop:
-                    break
+                    return
                 key = item["id"]
                 cls = self._get_class(item)
                 yield key, cls(
