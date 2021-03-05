@@ -58,6 +58,14 @@ class Catalog(collections.abc.Mapping):
         self.items_indexer = IndexCallable(self._items_indexer)
         self.values_indexer = IndexCallable(self._values_indexer)
 
+    @property
+    def metadatastore_db(self):
+        return self._metadatastore_db
+
+    @property
+    def asset_registry_db(self):
+        return self._asset_registry_db
+
     @classmethod
     def from_uri(
         cls,
@@ -196,19 +204,12 @@ class Catalog(collections.abc.Mapping):
                 f"Already authenticated as {self.authenticated_identity}"
             )
         if self._access_policy is not None:
-            queries = self._access_policy.modify_queries(
-                self._high_level_queries,
-                identity,
-            )
-            catalog = self._access_policy.filter_results(
-                self,
-                identity,
-            )
+            raise NotImplementedError
         else:
             catalog = type(self)(
                 metadatastore_db=self.metadatastore_db,
                 asset_registry_db=self.asset_registry_db,
-                queries=queries,
+                queries=self._high_level_queries,
                 metadata=self.metadata,
                 access_policy=self.access_policy,
                 authenticated_identity=self.authenticated_identity,
