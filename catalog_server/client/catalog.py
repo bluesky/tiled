@@ -91,17 +91,17 @@ class ClientCatalog(collections.abc.Mapping):
 
     def _get_class(self, item):
         "Return type(self) or a container class (e.g. ClientArraySource)."
-        suggested_client = item["attributes"].get("suggested_py_client")
-        if suggested_client is not None:
-            module_name = suggested_client["module"]
+        client_type_hint = item["attributes"].get("client_type_hint")
+        if client_type_hint is not None:
+            module_name = client_type_hint["module"]
             if importlib.util.find_spec(module_name):
                 module = importlib.import_module(module_name)
                 try:
-                    cls = getattr(module, suggested_client["qualname"])
+                    cls = getattr(module, client_type_hint["qualname"])
                 except AttributeError:
                     warnings.warn(
                         "Server suggested to use the object "
-                        f"{suggested_client['qualname']} from the module "
+                        f"{client_type_hint['qualname']} from the module "
                         f"{module_name} but the object could not be found. "
                         "Falling back to a default that should be functional"
                         "but may lack some usability features."
@@ -149,7 +149,7 @@ class ClientCatalog(collections.abc.Mapping):
         response = self._client.get(
             f"/search/{'/'.join(self._path )}",
             params={
-                "fields": ["metadata", "container", "suggested_py_client"],
+                "fields": ["metadata", "container", "client_type_hint"],
                 **_queries_to_params(KeyLookup(key)),
                 **self._queries_as_params,
                 **self._params,
@@ -180,7 +180,7 @@ class ClientCatalog(collections.abc.Mapping):
             response = self._client.get(
                 next_page_url,
                 params={
-                    "fields": ["metadata", "container", "suggested_py_client"],
+                    "fields": ["metadata", "container", "client_type_hint"],
                     **self._queries_as_params,
                     **self._params,
                 },
@@ -227,7 +227,7 @@ class ClientCatalog(collections.abc.Mapping):
             response = self._client.get(
                 next_page_url,
                 params={
-                    "fields": ["metadata", "container", "suggested_py_client"],
+                    "fields": ["metadata", "container", "client_type_hint"],
                     **self._queries_as_params,
                     **self._params,
                 },
@@ -254,7 +254,7 @@ class ClientCatalog(collections.abc.Mapping):
         response = self._client.get(
             url,
             params={
-                "fields": ["metadata", "container", "suggested_py_client"],
+                "fields": ["metadata", "container", "client_type_hint"],
                 **self._queries_as_params,
                 **self._params,
             },

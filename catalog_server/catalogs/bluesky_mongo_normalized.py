@@ -17,7 +17,7 @@ from .in_memory import Catalog as CatalogInMemory
 
 
 class BlueskyRun(CatalogInMemory):
-    suggested_py_client = {
+    client_type_hint = {
         "module": "catalog_server.client.bluesky",
         "qualname": "BlueskyRun",
     }
