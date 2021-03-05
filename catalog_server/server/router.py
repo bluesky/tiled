@@ -11,7 +11,7 @@ from .authentication import (
     new_token,
     revoke_token,
 )
-from .utils import (
+from .core import (
     construct_array_response,
     construct_entries_response,
     construct_resource,

@@ -3,8 +3,8 @@ import os
 from fastapi import FastAPI
 from msgpack_asgi import MessagePackMiddleware
 
+from .core import get_settings
 from .router import declare_search_route, router
-from .utils import get_settings
 
 
 api = FastAPI()

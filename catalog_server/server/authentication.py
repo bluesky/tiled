@@ -4,7 +4,7 @@ from fastapi.security.api_key import APIKeyQuery, APIKeyHeader, APIKey
 from fastapi import Depends, HTTPException, Security
 
 from ..utils import SpecialUsers
-from .utils import get_settings
+from .core import get_settings
 
 
 # Placeholder for a "database" of API tokens.
