@@ -1,14 +1,29 @@
 import abc
+from collections import defaultdict
+import dataclasses
 from functools import lru_cache
 import importlib
 import operator
 import os
+import re
+from typing import Any
 
+import dask.base
+from fastapi import Response
 from pydantic import BaseSettings, validator
+
+from . import models
+from .. import queries  # This is not used, but it registers queries on import.
+from ..query_registration import name_to_query_type
+from ..media_type_registration import serialization_registry
+
+del queries
+
 
 _DEMO_DEFAULT_ROOT_CATALOG = (
     "catalog_server.examples.generic:nested_with_access_control"
 )
+_FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 
 
 class Settings(BaseSettings):
@@ -118,3 +133,119 @@ class DuckCatalog(metaclass=abc.ABCMeta):
             "items_indexer",
         )
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
+
+
+def construct_entries_response(
+    path,
+    offset,
+    limit,
+    fields,
+    filters,
+    current_user,
+):
+    path = path.rstrip("/")
+    try:
+        catalog = get_entry(path, current_user)
+    except KeyError:
+        raise NoEntry(path)
+    if not isinstance(catalog, DuckCatalog):
+        raise WrongTypeForRoute("This is a Data Source, not a Catalog.")
+    queries = defaultdict(
+        dict
+    )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
+    # Group the parameters by query type.
+    for key, value in filters.items():
+        if value is None:
+            continue
+        name, field = _FILTER_PARAM_PATTERN.match(key).groups()
+        queries[name][field] = value
+    # Apply the queries and obtain a narrowed catalog.
+    for name, parameters in queries.items():
+        query_class = name_to_query_type[name]
+        query = query_class(**parameters)
+        catalog = catalog.search(query)
+    count = len_or_approx(catalog)
+    links = pagination_links(offset, limit, count)
+    data = []
+    if fields:
+        # Pull a page of items into memory.
+        items = catalog.items_indexer[offset : offset + limit]
+    else:
+        # Pull a page of just the keys, which is cheaper.
+        items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])
+    for key, entry in items:
+        resource = construct_resource(key, entry, fields)
+        data.append(resource)
+    return models.Response(data=data, links=links, meta={"count": count})
+
+
+def construct_array_response(array, request_headers):
+    DEFAULT_MEDIA_TYPE = "application/octet-stream"
+    etag = dask.base.tokenize(array)
+    if request_headers.get("If-None-Match", "") == etag:
+        return Response(status_code=304)
+    media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(", ")
+    for media_type in media_types:
+        if media_type == "*/*":
+            media_type = DEFAULT_MEDIA_TYPE
+        if media_type in serialization_registry.media_types("array"):
+            content = serialization_registry("array", media_type, array)
+            return PatchedResponse(
+                content=content, media_type=media_type, headers={"ETag": etag}
+            )
+    else:
+        raise UnsupportedMediaTypes(
+            "None of the media types requested by the client are supported.",
+            unsupported=media_types,
+            supported=serialization_registry.media_types("array"),
+        )
+
+
+def construct_resource(key, entry, fields):
+    attributes = {}
+    if models.EntryFields.metadata in fields:
+        attributes["metadata"] = entry.metadata
+    if isinstance(entry, DuckCatalog):
+        if models.EntryFields.count in fields:
+            attributes["count"] = len_or_approx(entry)
+        resource = models.CatalogResource(
+            **{
+                "id": key,
+                "attributes": models.CatalogAttributes(**attributes),
+                "type": models.EntryType.catalog,
+            }
+        )
+    else:
+        if models.EntryFields.container in fields:
+            attributes["container"] = entry.container
+        if models.EntryFields.structure in fields:
+            attributes["structure"] = dataclasses.asdict(entry.describe())
+        resource = models.DataSourceResource(
+            **{
+                "id": key,
+                "attributes": models.DataSourceAttributes(**attributes),
+                "type": models.EntryType.datasource,
+            }
+        )
+    return resource
+
+
+class PatchedResponse(Response):
+    "Patch the render method to accept memoryview."
+
+    def render(self, content: Any) -> bytes:
+        if isinstance(content, memoryview):
+            return content.cast("B")
+        return super().render(content)
+
+
+class UnsupportedMediaTypes(Exception):
+    pass
+
+
+class NoEntry(KeyError):
+    pass
+
+
+class WrongTypeForRoute(Exception):
+    pass
