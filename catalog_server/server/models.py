@@ -42,15 +42,10 @@ class EntryFields(str, enum.Enum):
     none = ""
 
 
-class ClientTypeHint(pydantic.BaseModel):
-    module: str
-    qualname: str
-
-
 class CatalogAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     count: Optional[int]
-    client_type_hint: Optional[ClientTypeHint]
+    client_type_hint: Optional[str]
 
 
 class Container(str, enum.Enum):

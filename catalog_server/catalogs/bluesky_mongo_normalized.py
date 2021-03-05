@@ -17,10 +17,7 @@ from .in_memory import Catalog as CatalogInMemory
 
 
 class BlueskyRun(CatalogInMemory):
-    client_type_hint = {
-        "module": "catalog_server.client.bluesky",
-        "qualname": "BlueskyRun",
-    }
+    client_type_hint = "BlueskyRun"
 
     def __repr__(self):
         return f"<{type(self).__name__}(uid={self.metadata['start']['uid']})>"

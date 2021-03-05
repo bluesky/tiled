@@ -1,10 +1,10 @@
 import collections
 import collections.abc
 from dataclasses import fields
-import importlib
 import itertools
 import warnings
 
+import entrypoints
 import httpx
 
 from ..query_registration import query_type_to_name
@@ -14,22 +14,50 @@ from ..utils import catalog_repr, DictView, LazyMap, IndexCallable, slice_to_int
 
 class ClientCatalog(collections.abc.Mapping):
 
-    # This maps the container sent by the server to a client-side object that
-    # can interpret the container's structure and content. LazyMap is used to
-    # defer imports.
-    DEFAULT_CONTAINER_DISPATCH = LazyMap(
-        {
-            "array": lambda: importlib.import_module(
-                "..array", ClientCatalog.__module__
-            ).ClientArraySource,
-            "data_array": lambda: importlib.import_module(
-                "..xarray", ClientCatalog.__module__
-            ).ClientDataArraySource,
-            "variable": lambda: importlib.import_module(
-                "..xarray", ClientCatalog.__module__
-            ).ClientVariableSource,
-        }
-    )
+    # These are populated when the first instance is created. To populate or
+    # refresh them manually, call classmethods discover_containers() and
+    # discover_special_clients() respectively.
+    DEFAULT_CONTAINER_DISPATCH = None
+    DEFAULT_SPECIAL_CLIENT_DISPATCH = None
+
+    @classmethod
+    def _discover_entrypoints(cls, entrypoint_name):
+        return LazyMap(
+            {
+                name: entrypoint.load
+                for name, entrypoint in entrypoints.get_group_named(
+                    entrypoint_name
+                ).items()
+            }
+        )
+
+    @classmethod
+    def discover_special_clients(cls):
+        """
+        Search the software environment for libraries that register special clients.
+
+        This is called once automatically the first time ClientCatalog is
+        instantiated. You may call it again manually to refresh, and it will
+        reflect any changes to the environment since it was first populated.
+        """
+        # The modules associated with these entrypoints will be imported
+        # lazily, only when the item is first accessed.
+        cls.DEFAULT_SPECIAL_CLIENT_DISPATCH = cls._discover_entrypoints(
+            "catalog_server.special_client"
+        )
+
+    @classmethod
+    def discover_containers(cls):
+        """
+        Search the software environment for libraries that register containers.
+
+        This is called once automatically the first time ClientCatalog is
+        instantiated. You may call it again manually to refresh, and it will
+        reflect any changes to the environment since it was first populated.
+        """
+        cls.DEFAULT_CONTAINER_DISPATCH = cls._discover_entrypoints(
+            "catalog_server.container"
+        )
 
     def __init__(
         self,
@@ -38,15 +66,28 @@ class ClientCatalog(collections.abc.Mapping):
         path,
         metadata,
         container_dispatch=None,
+        special_client_dispatch=None,
         params=None,
         queries=None,
     ):
         "This is not user-facing. Use ClientCatalog.from_uri."
+
+        # We do entrypoint discovery the first time this is instantiated rather
+        # than at import time, in order to make import faster.
+        if self.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
+            self.discover_special_clients()
+        if self.DEFAULT_CONTAINER_DISPATCH is None:
+            self.discover_containers()
+
         self._client = client
         self._metadata = metadata
         self.container_dispatch = collections.ChainMap(
             container_dispatch or {},
             self.DEFAULT_CONTAINER_DISPATCH,
+        )
+        self.special_client_dispatch = collections.ChainMap(
+            special_client_dispatch or {},
+            self.DEFAULT_SPECIAL_CLIENT_DISPATCH,
         )
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
@@ -60,7 +101,9 @@ class ClientCatalog(collections.abc.Mapping):
         self.values_indexer = IndexCallable(self._values_indexer)
 
     @classmethod
-    def from_uri(cls, uri, token, container_dispatch=None):
+    def from_uri(
+        cls, uri, token, container_dispatch=None, special_client_dispatch=None
+    ):
         client = httpx.Client(
             base_url=uri.rstrip("/"),
             headers={"X-Access-Token": token},
@@ -73,6 +116,7 @@ class ClientCatalog(collections.abc.Mapping):
             path=[],
             metadata=metadata,
             container_dispatch=container_dispatch,
+            special_client_dispatch=special_client_dispatch,
         )
 
     def __repr__(self):
@@ -90,28 +134,23 @@ class ClientCatalog(collections.abc.Mapping):
         return DictView(self._metadata)
 
     def _get_class(self, item):
-        "Return type(self) or a container class (e.g. ClientArraySource)."
+        "Return the appropriate Client object for this structure."
+        # The basic structure of the response is either one of the containers
+        # we know about or a sub-Catalog. The server can hint that we should
+        # use a special variant that might have a special __repr__, or extra
+        # methods for usability, etc.
         client_type_hint = item["attributes"].get("client_type_hint")
         if client_type_hint is not None:
-            module_name = client_type_hint["module"]
-            if importlib.util.find_spec(module_name):
-                module = importlib.import_module(module_name)
-                try:
-                    cls = getattr(module, client_type_hint["qualname"])
-                except AttributeError:
-                    warnings.warn(
-                        "Server suggested to use the object "
-                        f"{client_type_hint['qualname']} from the module "
-                        f"{module_name} but the object could not be found. "
-                        "Falling back to a default that should be functional"
-                        "but may lack some usability features."
-                    )
-            else:
+            try:
+                cls = self.special_client_dispatch[client_type_hint]
+            except KeyError:
                 warnings.warn(
-                    "Server suggested to use an object from the module "
-                    f"{module_name} but it could not be imported. Falling "
-                    "back to a default that should be functional but may lack "
-                    "some usability features."
+                    "The server suggested to use a special client with the "
+                    f"hint {client_type_hint!r} but nothing matching the "
+                    "description could be discovered in the current software "
+                    "environment. We will fall back back to a default that "
+                    "should be functional but may lack some usability "
+                    "features."
                 )
         elif item["type"] == "catalog":
             cls = type(self)
@@ -169,6 +208,7 @@ class ClientCatalog(collections.abc.Mapping):
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
             container_dispatch=self.container_dispatch,
+            special_client_dispatch=self.special_client_dispatch,
             params=self._params,
         )
 
@@ -194,6 +234,7 @@ class ClientCatalog(collections.abc.Mapping):
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
                     container_dispatch=self.container_dispatch,
+                    special_client_dispatch=self.special_client_dispatch,
                     params=self._params,
                 )
                 yield key, value
@@ -243,6 +284,7 @@ class ClientCatalog(collections.abc.Mapping):
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
                     container_dispatch=self.container_dispatch,
+                    special_client_dispatch=self.special_client_dispatch,
                     params=self._params,
                 )
             next_page_url = response.json()["links"]["next"]
@@ -268,6 +310,7 @@ class ClientCatalog(collections.abc.Mapping):
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
             container_dispatch=self.container_dispatch,
+            special_client_dispatch=self.special_client_dispatch,
             params=self._params,
         )
         return (key, value)
@@ -279,6 +322,7 @@ class ClientCatalog(collections.abc.Mapping):
             queries=self._queries + (query,),
             metadata=self._metadata,
             container_dispatch=self.container_dispatch,
+            special_client_dispatch=self.special_client_dispatch,
         )
 
     def _keys_indexer(self, index):
