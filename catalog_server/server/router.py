@@ -69,6 +69,7 @@ def declare_search_route(router):
     ):
         try:
             return construct_entries_response(
+                "/search",
                 path,
                 offset,
                 limit,
@@ -151,6 +152,7 @@ async def entries(
 
     try:
         return construct_entries_response(
+            "/entries",
             path,
             offset,
             limit,

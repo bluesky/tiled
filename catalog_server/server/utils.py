@@ -92,11 +92,11 @@ def get_chunk(chunk):
     return chunk.compute(scheduler="threads")
 
 
-def pagination_links(path, offset, limit, length_hint):
+def pagination_links(route, path, offset, limit, length_hint):
     # TODO Include root path in links.
     # root_path = request.scope.get("/")
     links = {
-        "self": f"/entries{path}?page[offset]={offset}&page[limit]={limit}",
+        "self": f"{route}{path}?page[offset]={offset}&page[limit]={limit}",
         # These are conditionally overwritten below.
         "first": None,
         "last": None,
@@ -107,18 +107,18 @@ def pagination_links(path, offset, limit, length_hint):
         last_page = math.floor(length_hint / limit) * limit
         links.update(
             {
-                "first": f"/entries{path}?page[offset]={0}&page[limit]={limit}",
-                "last": f"/enries{path}?page[offset]={last_page}&page[limit]={limit}",
+                "first": f"{route}{path}?page[offset]={0}&page[limit]={limit}",
+                "last": f"{route}{path}?page[offset]={last_page}&page[limit]={limit}",
             }
         )
     if offset + limit < length_hint:
         links[
             "next"
-        ] = f"/entries{path}?page[offset]={offset + limit}&page[limit]={limit}"
+        ] = f"{route}{path}?page[offset]={offset + limit}&page[limit]={limit}"
     if offset > 0:
         links[
             "prev"
-        ] = f"/entries{path}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
+        ] = f"{route}{path}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
@@ -139,6 +139,7 @@ class DuckCatalog(metaclass=abc.ABCMeta):
 
 
 def construct_entries_response(
+    route,
     path,
     offset,
     limit,
@@ -170,7 +171,7 @@ def construct_entries_response(
         query = query_class(**parameters)
         catalog = catalog.search(query)
     count = len_or_approx(catalog)
-    links = pagination_links(path, offset, limit, count)
+    links = pagination_links(route, path, offset, limit, count)
     data = []
     if fields:
         # Pull a page of items into memory.
