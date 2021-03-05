@@ -1,3 +1,4 @@
+dask
 fastapi
 msgpack-asgi==1.*
 pydantic
