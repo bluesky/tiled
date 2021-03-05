@@ -1,19 +1,17 @@
 import abc
 from collections import defaultdict
 import dataclasses
-from functools import lru_cache
-import importlib
 import math
 import operator
-import os
 import re
 from typing import Any
 
 import dask.base
-from fastapi import Response
-from pydantic import BaseSettings, validator
+from fastapi import Depends, HTTPException, Query, Response
 
 from . import models
+from .authentication import get_current_user
+from .settings import get_settings
 from .. import queries  # This is not used, but it registers queries on import.
 from ..query_registration import name_to_query_type
 from ..media_type_registration import serialization_registry
@@ -21,40 +19,7 @@ from ..media_type_registration import serialization_registry
 del queries
 
 
-_DEMO_DEFAULT_ROOT_CATALOG = (
-    "catalog_server.examples.generic:nested_with_access_control"
-)
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
-
-
-class Settings(BaseSettings):
-
-    catalog_object_path: str = os.getenv("ROOT_CATALOG", _DEMO_DEFAULT_ROOT_CATALOG)
-    allow_anonymous_access: bool = bool(int(os.getenv("ALLOW_ANONYMOUS_ACCESS", True)))
-    # dask_scheduler_address : str = os.getenv("DASK_SCHEDULER")
-
-    @validator("catalog_object_path")
-    def valid_object_path(cls, value):
-        # TODO This could be more precise to catch more error cases.
-        import_path, obj_path = str(value).split(":")
-        for token in import_path.split("."):
-            if not token.isidentifier():
-                raise ValueError("Not a valid import path")
-        for token in obj_path.split("."):
-            if not token.isidentifier():
-                raise ValueError("Not a valid attribute in a module")
-        return str(value)
-
-    @property
-    def catalog(self):
-        import_path, obj_path = self.catalog_object_path.split(":")
-        module = importlib.import_module(import_path)
-        return operator.attrgetter(obj_path)(module)
-
-
-@lru_cache()
-def get_settings():
-    return Settings()
 
 
 # @lru_cache()
@@ -78,6 +43,26 @@ def get_entry(path, current_user):
         if entry:
             catalog = catalog[entry]
     return catalog
+
+
+def datasource(
+    path: str,
+    current_user: str = Depends(get_current_user),
+):
+    "Specify a path parameter and use it to look up a datasource."
+    try:
+        return get_entry(path, current_user)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such entry.")
+
+
+def block(
+    # Ellipsis as the "default" tells FastAPI to make this parameter required.
+    block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
+):
+    "Specify and parse a block index parameter."
+    parsed_block = tuple(map(int, block.split(",")))
+    return parsed_block
 
 
 def len_or_approx(catalog):

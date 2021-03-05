@@ -1,4 +1,4 @@
-from .catalog import ClientCatalog
+from catalog_server.client.catalog import ClientCatalog
 
 
 class BlueskyRun(ClientCatalog):

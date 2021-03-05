@@ -12,9 +12,11 @@ from .authentication import (
     revoke_token,
 )
 from .core import (
+    block,
     construct_array_response,
     construct_entries_response,
     construct_resource,
+    datasource,
     get_chunk,
     # get_dask_client,
     get_entry,
@@ -164,26 +166,6 @@ async def entries(
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:
         raise HTTPException(status_code=404, detail=err.msg)
-
-
-def datasource(
-    path: str,
-    current_user: str = Depends(get_current_user),
-):
-    "Specify a path parameter and use it to look up a datasource."
-    try:
-        return get_entry(path, current_user)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-
-
-def block(
-    # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
-):
-    "Specify and parse a block index parameter."
-    parsed_block = tuple(map(int, block.split(",")))
-    return parsed_block
 
 
 @router.get("/blob/array/{path:path}", response_model=models.Response, name="array")

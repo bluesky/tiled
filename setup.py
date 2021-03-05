@@ -27,11 +27,6 @@ setuptools.setup(
     extras_require=extras_require,
     packages=setuptools.find_packages(where=".", exclude=["doc", ".ci"]),
     entry_points={
-        "catalog_server.special_client": [
-            # This can be distributed in a separate, bluesky-focused
-            # library someday.
-            "BlueskyRun = catalog_server.client.bluesky:BlueskyRun",
-        ],
         "catalog_server.container_client": [
             "array = catalog_server.client.array:ClientArraySource",
             "variable = catalog_server.client.xarray:ClientVariableSource",

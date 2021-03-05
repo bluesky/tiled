@@ -3,9 +3,9 @@ from dataclasses import dataclass
 
 import pymongo
 
-from ..query_registration import QueryTranslationRegistry, register
-from ..queries import FullText, KeyLookup
-from ..utils import (
+from catalog_server.query_registration import QueryTranslationRegistry, register
+from catalog_server.queries import FullText, KeyLookup
+from catalog_server.utils import (
     authenticated,
     catalog_repr,
     DictView,
@@ -13,7 +13,7 @@ from ..utils import (
     slice_to_interval,
     SpecialUsers,
 )
-from .in_memory import Catalog as CatalogInMemory
+from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
 
 
 class BlueskyRun(CatalogInMemory):
@@ -21,6 +21,12 @@ class BlueskyRun(CatalogInMemory):
 
     def __repr__(self):
         return f"<{type(self).__name__}(uid={self.metadata['start']['uid']})>"
+
+    def documents(self):
+        yield self.metadata["start"]
+        stop_doc = self.metadata["stop"]
+        if stop_doc is not None:
+            yield stop_doc
 
 
 class Catalog(collections.abc.Mapping):

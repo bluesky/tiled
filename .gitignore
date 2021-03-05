@@ -1,6 +1,6 @@
 __pycache__
 *.swp
 .asv/*
-catalog_server.egg-info/
+*.egg-info/
 dask-worker-space/
 example_data/
