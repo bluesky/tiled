@@ -246,7 +246,6 @@ def blob_data_array(
     data_array = datasource.read()
     if coord is None:
         dask_array = data_array.data
-        print("dask_array", dask_array)
         try:
             chunk = dask_array.blocks[block]
         except IndexError:
@@ -262,7 +261,6 @@ def blob_data_array(
                 status_code=422,
                 detail=f"No such coordinate {coord}. Coordinates: {list(data_array.coords)}",
             )
-    print(array)
     try:
         return construct_array_response(array, request.headers)
     except UnsupportedMediaTypes as err:
