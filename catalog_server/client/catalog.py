@@ -56,7 +56,7 @@ class ClientCatalog(collections.abc.Mapping):
         reflect any changes to the environment since it was first populated.
         """
         cls.DEFAULT_CONTAINER_DISPATCH = cls._discover_entrypoints(
-            "catalog_server.container"
+            "catalog_server.container_client"
         )
 
     def __init__(

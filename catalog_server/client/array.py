@@ -4,7 +4,7 @@ import dask.array
 
 from ..containers.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
-from .utils import BaseClientSource
+from .base import BaseClientSource
 
 
 class ClientArraySource(BaseClientSource):

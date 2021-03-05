@@ -32,7 +32,7 @@ setuptools.setup(
             # library someday.
             "BlueskyRun = catalog_server.client.bluesky:BlueskyRun",
         ],
-        "catalog_server.container": [
+        "catalog_server.container_client": [
             "array = catalog_server.client.array:ClientArraySource",
             "variable = catalog_server.client.xarray:ClientVariableSource",
             "data_array = catalog_server.client.xarray:ClientDataArraySource",

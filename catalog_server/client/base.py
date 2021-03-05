@@ -10,7 +10,15 @@ class BaseClientSource:
     """
 
     def __init__(
-        self, client, *, path, metadata, params, container_dispatch=None, structure=None
+        self,
+        client,
+        *,
+        path,
+        metadata,
+        params,
+        container_dispatch=None,
+        special_client_dispatch=None,
+        structure=None,
     ):
         self._client = client
         self._metadata = metadata

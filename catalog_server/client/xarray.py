@@ -2,7 +2,7 @@ import xarray
 
 from ..containers.xarray import DataArrayStructure, VariableStructure
 from .array import ClientArraySource
-from .utils import BaseClientSource
+from .base import BaseClientSource
 
 
 class ClientVariableSource(BaseClientSource):
