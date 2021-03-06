@@ -45,6 +45,9 @@ def get_settings():
 
 def get_custom_routers():
     if get_settings().enable_custom_routers:
-        return entrypoints.get_group_all("catalog_server.custom_routers")
+        return [
+            entrypoint.load()
+            for entrypoint in entrypoints.get_group_all("catalog_server.custom_routers")
+        ]
     else:
         return []

@@ -1,23 +1,24 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+import pydantic
 from starlette.responses import StreamingResponse
-from catalog_server.core import datasource
+from catalog_server.server.core import datasource
 
-from .client import BlueskyRun
+
+class NameDocumentPair(pydantic.BaseModel):
+    name: str  # TODO Lock this down to an enum of the document types.
+    document: dict
 
 
 router = APIRouter()
 
 
-@router.get("/documents")
+@router.get("/documents/{path:path}", response_model=NameDocumentPair)
+@router.get("/documents", response_model=NameDocumentPair, include_in_schema=False)
 def documents(datasource=Depends(datasource)):
-    if not isinstance(datasource, BlueskyRun):
+    if not hasattr(datasource, "documents"):
         raise HTTPException(status_code=404)
-
-    def generator():
-        "document stream as newline-delimited JSON"
-        for item in datasource.documents():
-            yield (json.dumps(item) + "\n")
-
+    # (name, doc) pairs as newline-delimited JSON
+    generator = (json.dumps(item) + "\n" for item in datasource.documents())
     return StreamingResponse(generator, media_type="application/x-ndjson")
