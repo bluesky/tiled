@@ -23,10 +23,10 @@ class BlueskyRun(CatalogInMemory):
         return f"<{type(self).__name__}(uid={self.metadata['start']['uid']})>"
 
     def documents(self):
-        yield self.metadata["start"]
+        yield ("start", self.metadata["start"])
         stop_doc = self.metadata["stop"]
         if stop_doc is not None:
-            yield stop_doc
+            yield ("stop", stop_doc)
 
 
 class Catalog(collections.abc.Mapping):
