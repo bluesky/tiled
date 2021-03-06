@@ -25,6 +25,7 @@ class BlueskyRun(CatalogInMemory):
     def documents(self):
         yield ("start", self.metadata["start"])
         stop_doc = self.metadata["stop"]
+        # TODO: All the other documents...
         if stop_doc is not None:
             yield ("stop", stop_doc)
 
