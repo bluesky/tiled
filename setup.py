@@ -31,6 +31,7 @@ setuptools.setup(
             "array = catalog_server.client.array:ClientArraySource",
             "variable = catalog_server.client.xarray:ClientVariableSource",
             "data_array = catalog_server.client.xarray:ClientDataArraySource",
+            "dataset = catalog_server.client.xarray:ClientDatasetSource",
         ],
     },
 )

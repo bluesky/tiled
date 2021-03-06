@@ -5,7 +5,7 @@ import h5py
 import xarray
 
 from ..datasources.array import ArraySource
-from ..datasources.xarray import DataArraySource
+from ..datasources.xarray import DataArraySource, DatasetSource, VariableSource
 from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
 from ..utils import SpecialUsers
 
@@ -26,26 +26,62 @@ minimal = Catalog(
         )
     }
 )
-minimal_xarray = Catalog(
+xarrays = Catalog(
     {
-        name: DataArraySource(
-            xarray.DataArray(
-                xarray.Variable(
-                    data=dask.array.from_array(access_hdf5_data(name, "ones", 1, size)),
-                    dims=["x", "y"],
-                    attrs={"thing": "stuff"},
+        name: Catalog(
+            {
+                "variable": VariableSource(
+                    xarray.Variable(
+                        data=dask.array.from_array(
+                            access_hdf5_data(name, "ones", 1, size)
+                        ),
+                        dims=["x", "y"],
+                        attrs={"thing": "stuff"},
+                    ),
                 ),
-                coords={
-                    "x": dask.array.arange(size),
-                    "y": 10 * dask.array.arange(size),
-                },
-            ),
+                "data_array": DataArraySource(
+                    xarray.DataArray(
+                        xarray.Variable(
+                            data=dask.array.from_array(
+                                access_hdf5_data(name, "ones", 1, size)
+                            ),
+                            dims=["x", "y"],
+                            attrs={"thing": "stuff"},
+                        ),
+                        coords={
+                            "x": dask.array.arange(size),
+                            "y": 10 * dask.array.arange(size),
+                        },
+                    ),
+                ),
+                "dataset": DatasetSource(
+                    xarray.Dataset(
+                        {
+                            "image": xarray.DataArray(
+                                xarray.Variable(
+                                    data=dask.array.from_array(
+                                        access_hdf5_data(name, "ones", 1, size)
+                                    ),
+                                    dims=["x", "y"],
+                                    attrs={"thing": "stuff"},
+                                ),
+                                coords={
+                                    "x": dask.array.arange(size),
+                                    "y": 10 * dask.array.arange(size),
+                                },
+                            ),
+                            "z": xarray.DataArray(data=dask.array.ones((size,))),
+                        }
+                    )
+                ),
+            }
         )
         for name, size in zip(
             ["tiny", "small", "medium", "large"],
             [3, 100, 1000, 10_000],
         )
-    }
+    },
+    metadata={"description": "the three main xarray data structures"},
 )
 
 

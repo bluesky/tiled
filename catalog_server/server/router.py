@@ -251,3 +251,39 @@ def blob_data_array(
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+
+
+@router.get("/blob/dataset/{path:path}", response_model=models.Response, name="dataset")
+def blob_dataset(
+    request: Request,
+    datasource=Depends(datasource),
+    block=Depends(block),
+    variable: str = Query(..., min_length=1),
+):
+    """
+    Fetch a chunk from an xarray.Dataset.
+    """
+    dataset = datasource.read()
+    if variable not in dataset.variables:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No such variable {variable}.",
+        )
+    if variable in dataset.coords:
+        # TODO Dask-ify this server side to enable chunked access?
+        if block != (0,):
+            raise HTTPException(status_code=422, detail="Block index out of range")
+        array = dataset.coords[variable].data
+    else:
+        dask_array = dataset[variable].data
+        try:
+            chunk = dask_array.blocks[block]
+        except IndexError:
+            raise HTTPException(status_code=422, detail="Block index out of range")
+        array = get_chunk(chunk)
+    try:
+        return construct_array_response(array, request.headers)
+    except UnsupportedMediaTypes as err:
+        # TODO Should we just serve a default representation instead of
+        # returning this error codde?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))

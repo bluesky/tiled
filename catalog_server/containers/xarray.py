@@ -44,5 +44,19 @@ class DatasetStructure:
     coords: Dict[str, VariableStructure]
     attrs: Dict  # TODO Use JSONSerializableDict
 
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            data_vars={
+                key: DataArrayStructure.from_json(value)
+                for key, value in structure["data_vars"].items()
+            },
+            coords={
+                key: VariableStructure.from_json(value)
+                for key, value in structure["coords"].items()
+            },
+            attrs=structure["attrs"],
+        )
+
 
 # TODO Also support zarr for encoding.

@@ -1,4 +1,4 @@
-from ..containers.xarray import DataArrayStructure, VariableStructure
+from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
 from ..datasources.array import ArraySource
 from ..utils import DictView
 
@@ -62,3 +62,38 @@ class DataArraySource:
 
     def read(self):
         return self._data_array
+
+
+class DatasetSource:
+    """
+    Wrap an xarray.Dataset
+    """
+
+    container = "dataset"
+
+    def __init__(self, dataset, metadata=None):
+        self._dataset = dataset
+        self._metadata = metadata or {}
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self._dataset!r})"
+
+    @property
+    def metadata(self):
+        return DictView(self._metadata)
+
+    def describe(self):
+        return DatasetStructure(
+            data_vars={
+                key: DataArraySource(value).describe()
+                for key, value in self._dataset.data_vars.items()
+            },
+            coords={
+                key: VariableSource(value).describe()
+                for key, value in self._dataset.data_vars.items()
+            },
+            attrs=self._dataset.attrs,
+        )
+
+    def read(self):
+        return self._dataset
