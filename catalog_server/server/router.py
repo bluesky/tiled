@@ -148,7 +148,7 @@ async def metadata(
         raise HTTPException(status_code=404, detail="No such entry.")
 
     try:
-        resource = construct_resource(request.headers, key, entry, fields)
+        resource = construct_resource(key, entry, fields)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
