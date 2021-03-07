@@ -39,7 +39,11 @@ class ClientArraySource(BaseClientSource):
         dtype = structure.dtype.to_numpy_dtype()
         # Build a client-side dask array whose chunks pull from a server-side
         # dask array.
-        name = "remote-dask-array-{self._client.base_url!s}{'/'.join(self._path)}"
+        name = (
+            "remote-dask-array-"
+            f"{self._client.base_url!s}/{'/'.join(self._path)}"
+            f"{'-'.join(map(repr, sorted(self._params.items())))}"
+        )
         chunks = structure.chunks
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)

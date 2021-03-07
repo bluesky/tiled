@@ -90,7 +90,7 @@ class DatasetSource:
             },
             coords={
                 key: VariableSource(value).describe()
-                for key, value in self._dataset.data_vars.items()
+                for key, value in self._dataset.coords.items()
             },
             attrs=self._dataset.attrs,
         )

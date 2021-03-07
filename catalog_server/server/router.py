@@ -222,7 +222,7 @@ def blob_data_array(
     request: Request,
     datasource=Depends(datasource),
     block=Depends(block),
-    coord: str = Query(None, min_length=1),
+    coord: Optional[str] = Query(None, min_length=1),
 ):
     """
     Fetch a chunk from an xarray.DataArray.
@@ -259,6 +259,7 @@ def blob_dataset(
     datasource=Depends(datasource),
     block=Depends(block),
     variable: str = Query(..., min_length=1),
+    coord: Optional[str] = Query(None, min_length=1),
 ):
     """
     Fetch a chunk from an xarray.Dataset.
@@ -275,12 +276,25 @@ def blob_dataset(
             raise HTTPException(status_code=422, detail="Block index out of range")
         array = dataset.coords[variable].data
     else:
-        dask_array = dataset[variable].data
-        try:
-            chunk = dask_array.blocks[block]
-        except IndexError:
-            raise HTTPException(status_code=422, detail="Block index out of range")
-        array = get_chunk(chunk)
+        if coord is None:
+            dask_array = dataset[variable].data
+            try:
+                chunk = dask_array.blocks[block]
+            except IndexError:
+                raise HTTPException(status_code=422, detail="Block index out of range")
+            array = get_chunk(chunk)
+        else:
+            # TODO Dask-ify this server side to enable chunked access?
+            if block != (0,):
+                raise HTTPException(status_code=422, detail="Block index out of range")
+            try:
+                data_array = dataset[variable]
+                array = data_array.coords[coord].data
+            except KeyError:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"No such coordinate {coord}. Coordinates: {list(data_array.coords)}",
+                )
     try:
         return construct_array_response(array, request.headers)
     except UnsupportedMediaTypes as err:
