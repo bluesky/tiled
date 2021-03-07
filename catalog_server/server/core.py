@@ -8,6 +8,8 @@ from typing import Any
 
 import dask.base
 from fastapi import Depends, HTTPException, Query, Response
+import msgpack
+from starlette.responses import JSONResponse
 
 from . import models
 from .authentication import get_current_user
@@ -230,6 +232,31 @@ class PatchedResponse(Response):
         if isinstance(content, memoryview):
             return content.cast("B")
         return super().render(content)
+
+
+class MsgpackResponse(Response):
+    media_type = "application/x-msgpack"
+
+    def render(self, content: Any) -> bytes:
+        return msgpack.packb(content)
+
+
+def json_or_msgpack(request_headers, content):
+    DEFAULT_MEDIA_TYPE = "application/json"
+    media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(", ")
+    for media_type in media_types:
+        if media_type == "*/*":
+            media_type = DEFAULT_MEDIA_TYPE
+        if media_type == "application/x-msgpack":
+            return MsgpackResponse(content.dict())
+        if media_type == "application/json":
+            return JSONResponse(content.dict())
+    else:
+        raise UnsupportedMediaTypes(
+            "None of the media types requested by the client are supported.",
+            unsupported=media_types,
+            supported=["application/json", "application/x-msgpack"],
+        )
 
 
 class UnsupportedMediaTypes(Exception):

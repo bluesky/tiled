@@ -20,6 +20,7 @@ from .core import (
     get_chunk,
     # get_dask_client,
     get_entry,
+    json_or_msgpack,
     NoEntry,
     WrongTypeForRoute,
     UnsupportedMediaTypes,
@@ -62,6 +63,7 @@ def declare_search_route(router):
     """
 
     async def search(
+        request: Request,
         path: Optional[str] = "/",
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
         offset: Optional[int] = Query(0, alias="page[offset]"),
@@ -70,19 +72,26 @@ def declare_search_route(router):
         **filters,
     ):
         try:
-            return construct_entries_response(
-                "/search",
-                path,
-                offset,
-                limit,
-                fields,
-                filters,
-                current_user,
+            return json_or_msgpack(
+                request.headers,
+                construct_entries_response(
+                    "/search",
+                    path,
+                    offset,
+                    limit,
+                    fields,
+                    filters,
+                    current_user,
+                ),
             )
         except NoEntry:
             raise HTTPException(status_code=404, detail="No such entry.")
         except WrongTypeForRoute as err:
             raise HTTPException(status_code=404, detail=err.msg)
+        except UnsupportedMediaTypes as err:
+            # TODO Should we just serve a default representation instead of
+            # returning this error codde?
+            raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
     # documentation on the signature of the route function. We do not know what
@@ -124,6 +133,7 @@ def declare_search_route(router):
 @router.get("/metadata/{path:path}", response_model=models.Response)
 @router.get("/metadata", response_model=models.Response, include_in_schema=False)
 async def metadata(
+    request: Request,
     path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     current_user=Depends(get_current_user),
@@ -137,13 +147,19 @@ async def metadata(
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
 
-    resource = construct_resource(key, entry, fields)
-    return models.Response(data=resource)
+    try:
+        resource = construct_resource(request.headers, key, entry, fields)
+    except UnsupportedMediaTypes as err:
+        # TODO Should we just serve a default representation instead of
+        # returning this error codde?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+    return json_or_msgpack(request.headers, models.Response(data=resource))
 
 
 @router.get("/entries/{path:path}", response_model=models.Response)
 @router.get("/entries", response_model=models.Response, include_in_schema=False)
 async def entries(
+    request: Request,
     path: Optional[str] = "/",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
@@ -153,19 +169,26 @@ async def entries(
     "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
 
     try:
-        return construct_entries_response(
-            "/entries",
-            path,
-            offset,
-            limit,
-            fields,
-            {},
-            current_user,
+        return json_or_msgpack(
+            request.headers,
+            construct_entries_response(
+                "/entries",
+                path,
+                offset,
+                limit,
+                fields,
+                {},
+                current_user,
+            ),
         )
     except NoEntry:
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:
         raise HTTPException(status_code=404, detail=err.msg)
+    except UnsupportedMediaTypes as err:
+        # TODO Should we just serve a default representation instead of
+        # returning this error codde?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
 @router.get("/blob/array/{path:path}", response_model=models.Response, name="array")

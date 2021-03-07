@@ -1,7 +1,4 @@
-import os
-
 from fastapi import FastAPI
-from msgpack_asgi import MessagePackMiddleware
 
 from .settings import get_settings, get_custom_routers
 from .router import declare_search_route, router
@@ -30,13 +27,7 @@ async def shutdown_event():
     pass
 
 
-if not os.getenv("DISABLE_MSGPACK_MIDDLEWARE"):
-    app = MessagePackMiddleware(api)
-else:
-    app = api
-
-
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(api, host="0.0.0.0", port=8000)

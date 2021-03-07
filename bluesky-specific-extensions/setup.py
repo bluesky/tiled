@@ -8,5 +8,7 @@ setup(
         ],
         "catalog_server.custom_routers": ["documents = bluesky_catalog.server:router"],
     },
-    extras_require={"server": ["fastapi", "starlette", "pydantic", "pymongo"]},
+    extras_require={
+        "server": ["fastapi", "msgpack", "starlette", "pydantic", "pymongo"]
+    },
 )

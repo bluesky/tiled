@@ -1,5 +1,5 @@
 dask
 fastapi
-msgpack-asgi==1.*
+msgpack
 pydantic
 uvicorn
