@@ -41,7 +41,7 @@ async def add_server_timing_header(request: Request, call_next):
     # estimate it based on request/response time, but if we add more detailed
     # information here we should keep in mind security concerns and perhaps
     # only include this for certain users.
-    response.headers["Server-Timing"] = f"app;dur={1000 * process_time:.1}"
+    response.headers["Server-Timing"] = f"app;dur={1000 * process_time:.1f}"
     return response
 
 
