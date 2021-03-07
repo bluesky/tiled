@@ -27,6 +27,8 @@ def documents(request: Request, datasource=Depends(datasource)):
             media_type = DEFAULT_MEDIA_TYPE
         if media_type == "application/x-msgpack":
             # (name, doc) pairs as msgpack
+            # TODO: This has not yet been tested with a client. Does it work?
+            # Do we need a msgpack.Packer properly mark the boundaries?
             generator = (msgpack.packb(item) for item in datasource.documents())
             return StreamingResponse(generator, media_type="application/x-msgpack")
         if media_type == "application/json":
