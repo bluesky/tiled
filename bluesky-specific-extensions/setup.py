@@ -5,6 +5,7 @@ setup(
     entry_points={
         "catalog_server.special_client": [
             "BlueskyRun = bluesky_catalog.client:BlueskyRun",
+            "BlueskyEventStream = bluesky_catalog.client:BlueskyEventStream",
         ],
         "catalog_server.custom_routers": ["documents = bluesky_catalog.server:router"],
     },

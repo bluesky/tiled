@@ -21,3 +21,12 @@ class BlueskyRun(ClientCatalog):
         ) as response:
             for line in response.iter_lines():
                 yield tuple(json.loads(line))
+
+
+class BlueskyEventStream(ClientCatalog):
+    def __repr__(self):
+        return f"<{type(self).__name__}>"
+
+    @property
+    def descriptors(self):
+        return self.metadata["descriptors"]

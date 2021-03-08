@@ -18,7 +18,31 @@ from catalog_server.utils import LazyMap
 
 
 class BlueskyEventStream(CatalogInMemory):
-    ...
+    client_type_hint = "BlueskyEventStream"
+
+    def __init__(
+        self,
+        *,
+        run_start_doc,
+        stream_name,
+        event_descriptors,
+        event_collection,
+        datum_collection,
+        resource_collection,
+    ):
+        self._run_start_doc = (run_start_doc,)
+        self._stream_name = (stream_name,)
+        self._event_descriptors = (event_descriptors,)
+        self._event_collection = (event_collection,)
+        self._dataum_collection = (datum_collection,)
+        self._resource_collection = (resource_collection,)
+        mapping = {}  # TODO
+        metadata = {"descriptors": event_descriptors}
+        super().__init__(mapping, metadata=metadata)
+
+    @property
+    def descriptors(self):
+        return self.metadata["descriptors"]
 
 
 class BlueskyRun(CatalogInMemory):
@@ -138,7 +162,21 @@ class Catalog(collections.abc.Mapping):
             {"run_start": uid},
         )
         streams = LazyMap(
-            {name: lambda: BlueskyEventStream({}) for name in stream_names}
+            {
+                stream_name: lambda: BlueskyEventStream(
+                    run_start_doc=run_start_doc,
+                    stream_name=stream_name,
+                    event_descriptors=list(
+                        self._event_descriptor_collection.find(
+                            {"run_start": uid, "name": stream_name}, {"_id": False}
+                        )
+                    ),
+                    event_collection=self._event_collection,
+                    resource_collection=self._resource_collection,
+                    datum_collection=self._datum_collection,
+                )
+                for stream_name in stream_names
+            }
         )
         return BlueskyRun(
             streams, metadata={"start": run_start_doc, "stop": run_stop_doc}
