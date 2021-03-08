@@ -1,5 +1,6 @@
 import collections.abc
 from dataclasses import dataclass
+import functools
 
 import pymongo
 
@@ -14,35 +15,8 @@ from catalog_server.utils import (
     SpecialUsers,
 )
 from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
+from catalog_server.datasources.xarray import DatasetSource
 from catalog_server.utils import LazyMap
-
-
-class BlueskyEventStream(CatalogInMemory):
-    client_type_hint = "BlueskyEventStream"
-
-    def __init__(
-        self,
-        *,
-        run_start_doc,
-        stream_name,
-        event_descriptors,
-        event_collection,
-        datum_collection,
-        resource_collection,
-    ):
-        self._run_start_doc = (run_start_doc,)
-        self._stream_name = (stream_name,)
-        self._event_descriptors = (event_descriptors,)
-        self._event_collection = (event_collection,)
-        self._dataum_collection = (datum_collection,)
-        self._resource_collection = (resource_collection,)
-        mapping = {}  # TODO
-        metadata = {"descriptors": event_descriptors}
-        super().__init__(mapping, metadata=metadata)
-
-    @property
-    def descriptors(self):
-        return self.metadata["descriptors"]
 
 
 class BlueskyRun(CatalogInMemory):
@@ -57,6 +31,59 @@ class BlueskyRun(CatalogInMemory):
         # TODO: All the other documents...
         if stop_doc is not None:
             yield ("stop", stop_doc)
+
+
+class BlueskyEventStream(CatalogInMemory):
+    client_type_hint = "BlueskyEventStream"
+
+    @classmethod
+    def construct(
+        cls,
+        *,
+        run_start_uid,
+        cutoff_seq_num,
+        stream_name,
+        event_descriptors,
+        event_collection,
+        datum_collection,
+        resource_collection,
+    ):
+        if not event_descriptors:
+            raise ValueError("At least one Event Descriptor document is required.")
+        mapping = LazyMap(
+            {
+                "data": lambda: DatasetSource(
+                    _build_dataset(
+                        event_descriptors=event_descriptors,
+                        event_collection=event_collection,
+                        datum_collection=datum_collection,
+                        resource_collection=resource_collection,
+                        sub_dict="data",
+                    )
+                ),
+                # TODO timestamps, config, config_timestamps
+            }
+        )
+
+        metadata = {"descriptors": event_descriptors, "stream_name": stream_name}
+        return cls(mapping, metadata=metadata)
+
+    @property
+    def descriptors(self):
+        return self.metadata["descriptors"]
+
+
+def _build_dataset(
+    *,
+    event_descriptors,
+    event_collection,
+    datum_collection,
+    resource_collection,
+    sub_dict,
+):
+    # The `data_keys` in a series of Event Descriptor documents with the same
+    # `name` MUST be alike, so we can choose one arbitrarily.
+    descriptor, *_ = event_descriptors
 
 
 class Catalog(collections.abc.Mapping):
@@ -161,25 +188,52 @@ class Catalog(collections.abc.Mapping):
             "name",
             {"run_start": uid},
         )
-        streams = LazyMap(
-            {
-                stream_name: lambda: BlueskyEventStream(
-                    run_start_doc=run_start_doc,
-                    stream_name=stream_name,
-                    event_descriptors=list(
-                        self._event_descriptor_collection.find(
-                            {"run_start": uid, "name": stream_name}, {"_id": False}
-                        )
-                    ),
-                    event_collection=self._event_collection,
-                    resource_collection=self._resource_collection,
-                    datum_collection=self._datum_collection,
-                )
-                for stream_name in stream_names
-            }
-        )
+        mapping = {}
+        for stream_name in stream_names:
+            mapping[stream_name] = functools.partial(
+                self._build_event_stream,
+                run_start_uid=uid,
+                stream_name=stream_name,
+                is_complete=(run_stop_doc is not None),
+            )
         return BlueskyRun(
-            streams, metadata={"start": run_start_doc, "stop": run_stop_doc}
+            LazyMap(mapping), metadata={"start": run_start_doc, "stop": run_stop_doc}
+        )
+
+    def _build_event_stream(self, *, run_start_uid, stream_name, is_complete):
+        event_descriptors = list(
+            self._event_descriptor_collection.find(
+                {"run_start": run_start_uid, "name": stream_name}, {"_id": False}
+            )
+        )
+        event_descriptor_uids = [doc["uid"] for doc in event_descriptors]
+        if not is_complete:
+            # We need each of the sub-dicts to have a consistent length. If Events
+            # are still being added, we need to choose a consistent cutoff.
+            (result,) = list(
+                self._event_collection.aggregate(
+                    [
+                        {"$match": {"descriptor": {"$in": event_descriptor_uids}}},
+                        {
+                            "$group": {
+                                "_id": "descriptor",
+                                "highest_seq_num": {"$max": "$seq_num"},
+                            },
+                        },
+                    ]
+                )
+            )
+            cutoff_seq_num = result["highest_seq_num"]
+        else:
+            cutoff_seq_num = None
+        return BlueskyEventStream.construct(
+            run_start_uid=run_start_uid,
+            stream_name=stream_name,
+            cutoff_seq_num=cutoff_seq_num,
+            event_descriptors=event_descriptors,
+            event_collection=self._event_collection,
+            resource_collection=self._resource_collection,
+            datum_collection=self._datum_collection,
         )
 
     @authenticated
