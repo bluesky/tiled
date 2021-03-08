@@ -1,7 +1,7 @@
 import time
 
 from fastapi import FastAPI, Request, Depends
-from fastapi_simple_security import api_key_router, api_key_security
+from fastapi_simple_security import api_key_router
 
 from .settings import get_settings, get_custom_routers
 from .router import declare_search_route, router

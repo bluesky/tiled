@@ -3,6 +3,7 @@ import inspect
 from typing import List, Optional
 
 from fastapi import Depends, HTTPException, Query, Request, APIRouter
+from fastapi_simple_security import api_key_security
 
 from ..query_registration import name_to_query_type
 
@@ -39,7 +40,6 @@ def declare_search_route(router):
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(10, alias="page[limit]"),
-        current_user=Depends(get_current_user),
         **filters,
     ):
         try:
@@ -101,13 +101,14 @@ def declare_search_route(router):
     )
 
 
-@router.get("/metadata/{path:path}", response_model=models.Response)
-@router.get("/metadata", response_model=models.Response, include_in_schema=False)
+@router.get("/metadata/{path:path}", response_model=models.Response,
+            dependencies=[Depends(api_key_security)])
+@router.get("/metadata", response_model=models.Response, include_in_schema=False,
+            dependencies=[Depends(api_key_security)])
 async def metadata(
     request: Request,
     path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
-    current_user=Depends(get_current_user),
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
@@ -126,15 +127,16 @@ async def metadata(
     return json_or_msgpack(request.headers, models.Response(data=resource))
 
 
-@router.get("/entries/{path:path}", response_model=models.Response)
-@router.get("/entries", response_model=models.Response, include_in_schema=False)
+@router.get("/entries/{path:path}", response_model=models.Response,
+            dependencies=[Depends(api_key_security)])
+@router.get("/entries", response_model=models.Response, include_in_schema=False,
+            dependencies=[Depends(api_key_security)])
 async def entries(
     request: Request,
     path: Optional[str] = "/",
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
-    current_user=Depends(get_current_user),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
 
@@ -161,7 +163,8 @@ async def entries(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
-@router.get("/blob/array/{path:path}", response_model=models.Response, name="array")
+@router.get("/blob/array/{path:path}", response_model=models.Response, name="array",
+            dependencies=[Depends(api_key_security)])
 def blob_array(
     request: Request,
     datasource=Depends(datasource),
@@ -183,9 +186,8 @@ def blob_array(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
-@router.get(
-    "/blob/variable/{path:path}", response_model=models.Response, name="variable"
-)
+@router.get("/blob/variable/{path:path}", response_model=models.Response,
+            name="variable",  dependencies=[Depends(api_key_security)])
 def blob_variable(
     request: Request,
     datasource=Depends(datasource),
@@ -208,9 +210,8 @@ def blob_variable(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
-@router.get(
-    "/blob/data_array/{path:path}", response_model=models.Response, name="data_array"
-)
+@router.get("/blob/data_array/{path:path}", response_model=models.Response,
+            name="data_array",  dependencies=[Depends(api_key_security)])
 def blob_data_array(
     request: Request,
     datasource=Depends(datasource),
@@ -246,7 +247,8 @@ def blob_data_array(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
-@router.get("/blob/dataset/{path:path}", response_model=models.Response, name="dataset")
+@router.get("/blob/dataset/{path:path}", response_model=models.Response,
+            name="dataset", dependencies=[Depends(api_key_security)])
 def blob_dataset(
     request: Request,
     datasource=Depends(datasource),
