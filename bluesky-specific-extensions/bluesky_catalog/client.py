@@ -7,7 +7,12 @@ class BlueskyRun(ClientCatalog):
     "A ClientCatalog with a custom repr and (eventually) helper methods"
 
     def __repr__(self):
-        return f"<{type(self).__name__}(uid={self.metadata['start']['uid']})>"
+        return (
+            f"<{type(self).__name__}("
+            f"uid={self.metadata['start']['uid']!r}, "
+            f"streams={set(self)!r}"
+            ")>"
+        )
 
     def documents(self):
         # (name, doc) pairs are streamed as newline-delimited JSON

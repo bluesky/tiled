@@ -184,7 +184,7 @@ def construct_entries_response(
     count = len_or_approx(catalog)
     links = pagination_links(route, path, offset, limit, count)
     data = []
-    if fields:
+    if fields != [models.EntryFields.none]:
         # Pull a page of items into memory.
         items = catalog.items_indexer[offset : offset + limit]
     else:
