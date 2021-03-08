@@ -14,6 +14,11 @@ from catalog_server.utils import (
     SpecialUsers,
 )
 from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
+from catalog_server.utils import LazyMap
+
+
+class BlueskyEventStream(CatalogInMemory):
+    ...
 
 
 class BlueskyRun(CatalogInMemory):
@@ -124,6 +129,21 @@ class Catalog(collections.abc.Mapping):
         N = 5
         return catalog_repr(self, self._keys_slice(0, N))
 
+    def _build_run(self, run_start_doc):
+        uid = run_start_doc["uid"]
+        # This may be None; that's fine.
+        run_stop_doc = self._get_stop_doc(uid)
+        stream_names = self._event_descriptor_collection.distinct(
+            "name",
+            {"run_start": uid},
+        )
+        streams = LazyMap(
+            {name: lambda: BlueskyEventStream({}) for name in stream_names}
+        )
+        return BlueskyRun(
+            streams, metadata={"start": run_start_doc, "stop": run_stop_doc}
+        )
+
     @authenticated
     def __getitem__(self, key):
         # Lookup this key *within the search results* of this Catalog.
@@ -131,11 +151,7 @@ class Catalog(collections.abc.Mapping):
         run_start_doc = self._run_start_collection.find_one(query, {"_id": False})
         if run_start_doc is None:
             raise KeyError(key)
-        # This may be None; that's fine.
-        run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
-        return BlueskyRun(
-            {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
-        )
+        return self._build_run(run_start_doc)
 
     def _chunked_find(self, collection, query, *args, skip=0, limit=None, **kwargs):
         # This is an internal chunking that affects how much we pull from
@@ -270,14 +286,7 @@ class Catalog(collections.abc.Mapping):
         for run_start_doc in self._chunked_find(
             self._run_start_collection, self._mongo_query(), skip=skip, limit=limit
         ):
-            # This may be None; that's fine.
-            run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
-            yield (
-                run_start_doc["uid"],
-                BlueskyRun(
-                    {}, metadata={"start": run_start_doc, "stop": run_stop_doc}  # TODO
-                ),
-            )
+            yield (run_start_doc["uid"], self._build_run(run_start_doc))
 
     def _item_by_index(self, index):
         if index >= len(self):
@@ -287,13 +296,8 @@ class Catalog(collections.abc.Mapping):
                 self._run_start_collection, self._mongo_query(), skip=index, limit=1
             )
         )
-        # This may be None; that's fine.
-        run_stop_doc = self._get_stop_doc(run_start_doc["uid"])
         key = run_start_doc["uid"]
-        value = BlueskyRun(
-            {},  # TODO
-            metadata={"start": run_start_doc, "stop": run_stop_doc},
-        )
+        value = self._build_run(run_start_doc)
         return (key, value)
 
     @authenticated
