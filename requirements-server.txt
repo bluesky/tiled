@@ -1,5 +1,7 @@
+entrypoints
 dask
 fastapi
 msgpack
 pydantic
+toolz
 uvicorn
