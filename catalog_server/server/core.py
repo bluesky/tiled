@@ -43,24 +43,32 @@ def get_entry(path, current_user):
     # Traverse into sub-catalog(s).
     for entry in (path or "").split("/"):
         if entry:
-            catalog = catalog[entry]
+            try:
+                catalog = catalog[entry]
+            except (KeyError, TypeError):
+                raise NoEntry(path)
     return catalog
 
 
-def datasource(
+def entry(
     path: str,
     current_user: str = Depends(get_current_user),
 ):
-    "Specify a path parameter and use it to look up a datasource."
     try:
-        datasource = get_entry(path, current_user)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    if not isinstance(datasource, DuckDataSource):
+        return get_entry(path, current_user)
+    except NoEntry:
+        raise HTTPException(status_code=404, detail=f"No such entry: {path}")
+
+
+def datasource(
+    entry: Any = Depends(entry),
+):
+    "Specify a path parameter and use it to look up a datasource."
+    if not isinstance(entry, DuckDataSource):
         raise HTTPException(
             status_code=404, detail="This is a Catalog, not a DataSource."
         )
-    return datasource
+    return entry
 
 
 def block(
@@ -158,10 +166,7 @@ def construct_entries_response(
     path = path.rstrip("/")
     if not path.startswith("/"):
         path = f"/{path}"
-    try:
-        catalog = get_entry(path, current_user)
-    except KeyError:
-        raise NoEntry(path)
+    catalog = get_entry(path, current_user)
     if not isinstance(catalog, DuckCatalog):
         raise WrongTypeForRoute("This is a Data Source, not a Catalog.")
     queries = defaultdict(

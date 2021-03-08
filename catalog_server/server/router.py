@@ -144,9 +144,8 @@ async def metadata(
     *_, key = path.rpartition("/")
     try:
         entry = get_entry(path, current_user)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="No such entry.")
-
+    except NoEntry:
+        raise HTTPException(status_code=404, detail=f"No such entry: {path}")
     try:
         resource = construct_resource(key, entry, fields)
     except UnsupportedMediaTypes as err:
