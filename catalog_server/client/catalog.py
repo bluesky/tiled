@@ -182,14 +182,20 @@ class ClientCatalog(collections.abc.Mapping):
     def _get_class(self, item):
         "Return the appropriate Client object for this structure."
         # The basic structure of the response is either one of the containers
-        # we know about or a sub-Catalog. The server can hint that we should
-        # use a special variant that might have a special __repr__, or extra
-        # methods for usability, etc.
+        # we know about or a sub-Catalog.
+        if item["type"] == "datasource":
+            container = item["attributes"]["container"]
+            try:
+                return self.containers[container]
+            except KeyError:
+                raise UnknownContainer(container) from None
+        # If a catalog, server can hint that we should use a special variant
+        # that might have a special __repr__, or extra methods for usability,
+        # etc.
         client_type_hint = item["attributes"].get("client_type_hint")
         if client_type_hint is not None:
-            try:
-                cls = self.special_client_dispatch[client_type_hint]
-            except KeyError:
+            cls = self.special_clients.get(client_type_hint)
+            if cls is None:
                 warnings.warn(
                     "The server suggested to use a special client with the "
                     f"hint {client_type_hint!r} but nothing matching the "
@@ -198,14 +204,12 @@ class ClientCatalog(collections.abc.Mapping):
                     "should be functional but may lack some usability "
                     "features."
                 )
-        elif item["type"] == "catalog":
-            # This is generally just ClientCatalog, but if the original
-            # user-created catalog was a subclass of ClientCatalog, this will
-            # repsect that.
-            cls = self._root_client_type
-        else:
-            cls = self.container_dispatch[item["attributes"]["container"]]
-        return cls
+            else:
+                return cls
+        # This is generally just ClientCatalog, but if the original
+        # user-created catalog was a subclass of ClientCatalog, this will
+        # repsect that.
+        return self._root_client_type
 
     def __len__(self):
         response = self._client.get(
