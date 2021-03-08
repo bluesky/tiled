@@ -22,7 +22,7 @@ async def startup_event():
     # Warm up cached access.
     get_settings().catalog
     # get_dask_client()
-    app.include_router(api_key_router, prefix="/auth", tags=["_auth"])
+    api.include_router(api_key_router, prefix="/auth", tags=["_auth"])
 
 @api.on_event("shutdown")
 async def shutdown_event():

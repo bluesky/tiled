@@ -12,7 +12,6 @@ import msgpack
 from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
-from .authentication import get_current_user
 from .settings import get_settings
 from .. import queries  # This is not used, but it registers queries on import.
 from ..query_registration import name_to_query_type
@@ -52,7 +51,6 @@ def get_entry(path, current_user):
 
 def entry(
     path: str,
-    current_user: str = Depends(get_current_user),
 ):
     try:
         return get_entry(path, current_user)
