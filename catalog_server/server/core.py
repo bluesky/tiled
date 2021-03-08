@@ -53,9 +53,14 @@ def datasource(
 ):
     "Specify a path parameter and use it to look up a datasource."
     try:
-        return get_entry(path, current_user)
+        datasource = get_entry(path, current_user)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such entry.")
+    if not isinstance(datasource, DuckDataSource):
+        raise HTTPException(
+            status_code=404, detail="This is a Catalog, not a DataSource."
+        )
+    return datasource
 
 
 def block(
@@ -107,6 +112,22 @@ def pagination_links(route, path, offset, limit, length_hint):
             "prev"
         ] = f"{route}{path}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
+
+
+class DuckDataSource(metaclass=abc.ABCMeta):
+    """
+    Used for isinstance(obj, DuckDataSource):
+    """
+
+    @classmethod
+    def __subclasshook__(cls, candidate):
+        # If the following condition is True, candidate is recognized
+        # to "quack" like a DataSource.
+        EXPECTED_ATTRS = (
+            "read",
+            "describe",
+        )
+        return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
 
 class DuckCatalog(metaclass=abc.ABCMeta):
