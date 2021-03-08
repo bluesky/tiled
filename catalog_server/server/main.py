@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 
 from .settings import get_settings, get_custom_routers
 from .router import declare_search_route, router
+from .core import PatchedStreamingResponse
 
 
 api = FastAPI()
@@ -33,6 +34,7 @@ async def shutdown_event():
 async def add_server_timing_header(request: Request, call_next):
     start_time = time.perf_counter()
     response = await call_next(request)
+    response.__class__ = PatchedStreamingResponse  # tolerate memoryview
     process_time = time.perf_counter() - start_time
     # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
     # https://w3c.github.io/server-timing/#the-server-timing-header-field

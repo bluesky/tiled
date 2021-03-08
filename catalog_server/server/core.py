@@ -9,7 +9,7 @@ from typing import Any
 import dask.base
 from fastapi import Depends, HTTPException, Query, Response
 import msgpack
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
 from .authentication import get_current_user
@@ -232,6 +232,27 @@ class PatchedResponse(Response):
         if isinstance(content, memoryview):
             return content.cast("B")
         return super().render(content)
+
+
+class PatchedStreamingResponse(StreamingResponse):
+    "Patch the stream_response method to accept memoryview."
+
+    async def stream_response(self, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self.raw_headers,
+            }
+        )
+        async for chunk in self.body_iterator:
+            # BEGIN ALTERATION
+            if not isinstance(chunk, (bytes, memoryview)):
+                # END ALTERATION
+                chunk = chunk.encode(self.charset)
+            await send({"type": "http.response.body", "body": chunk, "more_body": True})
+
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 class MsgpackResponse(Response):
