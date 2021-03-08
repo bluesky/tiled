@@ -87,7 +87,7 @@ def declare_search_route(router):
         except NoEntry:
             raise HTTPException(status_code=404, detail="No such entry.")
         except WrongTypeForRoute as err:
-            raise HTTPException(status_code=404, detail=err.msg)
+            raise HTTPException(status_code=404, detail=err.args[0])
         except UnsupportedMediaTypes as err:
             # TODO Should we just serve a default representation instead of
             # returning this error codde?
@@ -183,7 +183,7 @@ async def entries(
     except NoEntry:
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:
-        raise HTTPException(status_code=404, detail=err.msg)
+        raise HTTPException(status_code=404, detail=err.args[0])
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?

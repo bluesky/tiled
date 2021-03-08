@@ -65,9 +65,7 @@ def datasource(
 ):
     "Specify a path parameter and use it to look up a datasource."
     if not isinstance(entry, DuckDataSource):
-        raise HTTPException(
-            status_code=404, detail="This is a Catalog, not a DataSource."
-        )
+        raise HTTPException(status_code=404, detail="This is not a DataSource.")
     return entry
 
 
@@ -168,7 +166,7 @@ def construct_entries_response(
         path = f"/{path}"
     catalog = get_entry(path, current_user)
     if not isinstance(catalog, DuckCatalog):
-        raise WrongTypeForRoute("This is a Data Source, not a Catalog.")
+        raise WrongTypeForRoute("This is not a Catalog.")
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
