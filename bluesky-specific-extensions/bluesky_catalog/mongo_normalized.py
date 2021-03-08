@@ -2,6 +2,7 @@ import collections.abc
 from dataclasses import dataclass
 import functools
 
+import dask
 import dask.array
 import pymongo
 
@@ -237,25 +238,25 @@ class Catalog(collections.abc.Mapping):
             )
         )
         event_descriptor_uids = [doc["uid"] for doc in event_descriptors]
-        if not is_complete:
-            # We need each of the sub-dicts to have a consistent length. If Events
-            # are still being added, we need to choose a consistent cutoff.
-            (result,) = list(
-                self._event_collection.aggregate(
-                    [
-                        {"$match": {"descriptor": {"$in": event_descriptor_uids}}},
-                        {
-                            "$group": {
-                                "_id": "descriptor",
-                                "highest_seq_num": {"$max": "$seq_num"},
-                            },
+        # We need each of the sub-dicts to have a consistent length. If
+        # Events are still being added, we need to choose a consistent
+        # cutoff. If not, we need to know the length anyway. Note that this
+        # is not the same thing as the number of Event documents in the
+        # stream because seq_num may be repeated, nonunique.
+        (result,) = list(
+            self._event_collection.aggregate(
+                [
+                    {"$match": {"descriptor": {"$in": event_descriptor_uids}}},
+                    {
+                        "$group": {
+                            "_id": "descriptor",
+                            "highest_seq_num": {"$max": "$seq_num"},
                         },
-                    ]
-                )
+                    },
+                ]
             )
-            cutoff_seq_num = result["highest_seq_num"]
-        else:
-            cutoff_seq_num = None
+        )
+        cutoff_seq_num = result["highest_seq_num"]
         return BlueskyEventStream.construct(
             run_start_uid=run_start_uid,
             stream_name=stream_name,
