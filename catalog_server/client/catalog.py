@@ -65,6 +65,7 @@ class ClientCatalog(collections.abc.Mapping):
         *,
         path,
         metadata,
+        root_client_type,
         container_dispatch=None,
         special_client_dispatch=None,
         params=None,
@@ -89,6 +90,7 @@ class ClientCatalog(collections.abc.Mapping):
             special_client_dispatch or {},
             self.DEFAULT_SPECIAL_CLIENT_DISPATCH,
         )
+        self._root_client_type = root_client_type
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
         # Stash *immutable* copies just to be safe.
@@ -117,6 +119,7 @@ class ClientCatalog(collections.abc.Mapping):
             metadata=metadata,
             container_dispatch=container_dispatch,
             special_client_dispatch=special_client_dispatch,
+            root_client_type=cls,
         )
 
     def __repr__(self):
@@ -152,10 +155,11 @@ class ClientCatalog(collections.abc.Mapping):
                     "should be functional but may lack some usability "
                     "features."
                 )
-            else:
-                return cls
-        if item["type"] == "catalog":
-            cls = type(self)
+        elif item["type"] == "catalog":
+            # This is generally just ClientCatalog, but if the original
+            # user-created catalog was a subclass of ClientCatalog, this will
+            # repsect that.
+            cls = self._root_client_type
         else:
             cls = self.container_dispatch[item["attributes"]["container"]]
         return cls
@@ -212,6 +216,7 @@ class ClientCatalog(collections.abc.Mapping):
             container_dispatch=self.container_dispatch,
             special_client_dispatch=self.special_client_dispatch,
             params=self._params,
+            root_client_type=self._root_client_type,
         )
 
     def items(self):
@@ -238,6 +243,7 @@ class ClientCatalog(collections.abc.Mapping):
                     container_dispatch=self.container_dispatch,
                     special_client_dispatch=self.special_client_dispatch,
                     params=self._params,
+                    root_client_type=self._root_client_type,
                 )
                 yield key, value
             next_page_url = response.json()["links"]["next"]
@@ -288,6 +294,7 @@ class ClientCatalog(collections.abc.Mapping):
                     container_dispatch=self.container_dispatch,
                     special_client_dispatch=self.special_client_dispatch,
                     params=self._params,
+                    root_client_type=self._root_client_type,
                 )
             next_page_url = response.json()["links"]["next"]
 
@@ -314,6 +321,7 @@ class ClientCatalog(collections.abc.Mapping):
             container_dispatch=self.container_dispatch,
             special_client_dispatch=self.special_client_dispatch,
             params=self._params,
+            root_client_type=self._root_client_type,
         )
         return (key, value)
 

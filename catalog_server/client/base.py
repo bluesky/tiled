@@ -18,6 +18,7 @@ class BaseClientSource:
         params,
         container_dispatch=None,
         special_client_dispatch=None,
+        root_client_type=None,
         structure=None,
     ):
         self._client = client
