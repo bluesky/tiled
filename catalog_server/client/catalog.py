@@ -152,7 +152,9 @@ class ClientCatalog(collections.abc.Mapping):
                     "should be functional but may lack some usability "
                     "features."
                 )
-        elif item["type"] == "catalog":
+            else:
+                return cls
+        if item["type"] == "catalog":
             cls = type(self)
         else:
             cls = self.container_dispatch[item["attributes"]["container"]]
