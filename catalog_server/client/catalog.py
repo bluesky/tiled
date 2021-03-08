@@ -1,6 +1,7 @@
 import collections
 import collections.abc
 from dataclasses import fields
+import importlib
 import itertools
 import warnings
 
@@ -14,10 +15,47 @@ from ..utils import catalog_repr, DictView, LazyMap, IndexCallable, slice_to_int
 
 class ClientCatalog(collections.abc.Mapping):
 
-    # These are populated when the first instance is created. To populate or
+    # This maps the container sent by the server to a client-side object that
+    # can interpret the container's structure and content. LazyMap is used to
+    # defer imports.
+    DEFAULT_CONTAINER_DISPATCH = {
+        "memory": LazyMap(
+            {
+                "array": lambda: importlib.import_module(
+                    "..array", ClientCatalog.__module__
+                ).ClientArraySource,
+                "variable": lambda: importlib.import_module(
+                    "..xarray", ClientCatalog.__module__
+                ).ClientVariableSource,
+                "data_array": lambda: importlib.import_module(
+                    "..xarray", ClientCatalog.__module__
+                ).ClientDataArraySource,
+                "dataset": lambda: importlib.import_module(
+                    "..xarray", ClientCatalog.__module__
+                ).ClientDatasetSource,
+            }
+        ),
+        "dask": LazyMap(
+            {
+                "array": lambda: importlib.import_module(
+                    "..array", ClientCatalog.__module__
+                ).ClientDaskArraySource,
+                "variable": lambda: importlib.import_module(
+                    "..xarray", ClientCatalog.__module__
+                ).ClientDaskVariableSource,
+                "data_array": lambda: importlib.import_module(
+                    "..xarray", ClientCatalog.__module__
+                ).ClientDaskDataArraySource,
+                "dataset": lambda: importlib.import_module(
+                    "..xarray", ClientCatalog.__module__
+                ).ClientDaskDatasetSource,
+            }
+        ),
+    }
+
+    # This is populated when the first instance is created. To populate or
     # refresh them manually, call classmethods discover_containers() and
     # discover_special_clients() respectively.
-    DEFAULT_CONTAINER_DISPATCH = None
     DEFAULT_SPECIAL_CLIENT_DISPATCH = None
 
     @classmethod
@@ -45,19 +83,9 @@ class ClientCatalog(collections.abc.Mapping):
         cls.DEFAULT_SPECIAL_CLIENT_DISPATCH = cls._discover_entrypoints(
             "catalog_server.special_client"
         )
-
-    @classmethod
-    def discover_containers(cls):
-        """
-        Search the software environment for libraries that register containers.
-
-        This is called once automatically the first time ClientCatalog is
-        instantiated. You may call it again manually to refresh, and it will
-        reflect any changes to the environment since it was first populated.
-        """
-        cls.DEFAULT_CONTAINER_DISPATCH = cls._discover_entrypoints(
-            "catalog_server.container_client"
-        )
+        # Note: We could used entrypoints to discover custom container types as
+        # well, and in fact we did do this in an early draft. It was removed
+        # for simplicity.
 
     def __init__(
         self,
@@ -66,8 +94,8 @@ class ClientCatalog(collections.abc.Mapping):
         path,
         metadata,
         root_client_type,
-        container_dispatch=None,
-        special_client_dispatch=None,
+        containers=None,
+        special_clients=None,
         params=None,
         queries=None,
     ):
@@ -77,17 +105,12 @@ class ClientCatalog(collections.abc.Mapping):
         # than at import time, in order to make import faster.
         if self.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
             self.discover_special_clients()
-        if self.DEFAULT_CONTAINER_DISPATCH is None:
-            self.discover_containers()
 
         self._client = client
         self._metadata = metadata
-        self.container_dispatch = collections.ChainMap(
-            container_dispatch or {},
-            self.DEFAULT_CONTAINER_DISPATCH,
-        )
-        self.special_client_dispatch = collections.ChainMap(
-            special_client_dispatch or {},
+        self.containers = containers or {}
+        self.special_clients = collections.ChainMap(
+            special_clients or {},
             self.DEFAULT_SPECIAL_CLIENT_DISPATCH,
         )
         self._root_client_type = root_client_type
@@ -103,13 +126,33 @@ class ClientCatalog(collections.abc.Mapping):
         self.values_indexer = IndexCallable(self._values_indexer)
 
     @classmethod
-    def from_uri(
-        cls, uri, token, container_dispatch=None, special_client_dispatch=None
-    ):
+    def from_uri(cls, uri, token, containers="dask", special_clients=None):
+        """
+        Create a new Client.
+
+        Parameters
+        ----------
+        uri : str
+            e.g. "http://localhost:8000"
+        containers : str or dict
+            Use "dask" for delayed data loading and "memory" for immediate
+            in-memory structures (e.g. normal numpy arrays). For advanced use,
+            provide dict mapping container names ("array", "dataframe",
+            "variable", "data_array", "dataset") to client objects. See
+            ``ClientCatalog.DEFAULT_CONTAINER_DISPATCH``.
+        special_clients : dict
+            Advanced: Map client_type_hint from the server to special client
+            catalog objects. See also
+            ``ClientCatalog.discover_special_clients()`` and
+            ``ClientCatalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        """
         client = httpx.Client(
             base_url=uri.rstrip("/"),
             headers={"X-Access-Token": token},
         )
+        # Interet containers="dask" and containers="memory" shortcuts.
+        if isinstance(containers, str):
+            containers = cls.DEFAULT_CONTAINER_DISPATCH[containers]
         response = client.get("/metadata/")
         response.raise_for_status()
         metadata = response.json()["data"]["attributes"]["metadata"]
@@ -117,8 +160,8 @@ class ClientCatalog(collections.abc.Mapping):
             client,
             path=[],
             metadata=metadata,
-            container_dispatch=container_dispatch,
-            special_client_dispatch=special_client_dispatch,
+            containers=containers,
+            special_clients=special_clients,
             root_client_type=cls,
         )
 
@@ -213,8 +256,8 @@ class ClientCatalog(collections.abc.Mapping):
             client=self._client,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
-            container_dispatch=self.container_dispatch,
-            special_client_dispatch=self.special_client_dispatch,
+            containers=self.containers,
+            special_clients=self.special_clients,
             params=self._params,
             root_client_type=self._root_client_type,
         )
@@ -240,8 +283,8 @@ class ClientCatalog(collections.abc.Mapping):
                     self._client,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
-                    container_dispatch=self.container_dispatch,
-                    special_client_dispatch=self.special_client_dispatch,
+                    containers=self.containers,
+                    special_clients=self.special_clients,
                     params=self._params,
                     root_client_type=self._root_client_type,
                 )
@@ -291,8 +334,8 @@ class ClientCatalog(collections.abc.Mapping):
                     self._client,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
-                    container_dispatch=self.container_dispatch,
-                    special_client_dispatch=self.special_client_dispatch,
+                    containers=self.containers,
+                    special_clients=self.special_clients,
                     params=self._params,
                     root_client_type=self._root_client_type,
                 )
@@ -318,8 +361,8 @@ class ClientCatalog(collections.abc.Mapping):
             self._client,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
-            container_dispatch=self.container_dispatch,
-            special_client_dispatch=self.special_client_dispatch,
+            containers=self.containers,
+            special_clients=self.special_clients,
             params=self._params,
             root_client_type=self._root_client_type,
         )
@@ -331,8 +374,8 @@ class ClientCatalog(collections.abc.Mapping):
             path=self._path,
             queries=self._queries + (query,),
             metadata=self._metadata,
-            container_dispatch=self.container_dispatch,
-            special_client_dispatch=self.special_client_dispatch,
+            containers=self.containers,
+            special_clients=self.special_clients,
         )
 
     def _keys_indexer(self, index):
@@ -375,3 +418,7 @@ def _queries_to_params(*queries):
                 query, field.name
             )
     return params
+
+
+class UnknownContainer(KeyError):
+    pass

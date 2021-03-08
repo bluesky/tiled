@@ -7,8 +7,8 @@ from ..media_type_registration import deserialization_registry
 from .base import BaseClientSource
 
 
-class ClientArraySource(BaseClientSource):
-    "Client-side wrapper around an array-like"
+class ClientDaskArraySource(BaseClientSource):
+    "Client-side wrapper around an array-like that returns dask arrays"
 
     STRUCTURE_TYPE = ArrayStructure
 
@@ -67,3 +67,10 @@ class ClientArraySource(BaseClientSource):
             dtype=dtype,
             shape=shape,
         )
+
+
+class ClientArraySource(ClientDaskArraySource):
+    "Client-side wrapper around an array-like that returns in-memory arrays"
+
+    def read(self):
+        return super().read().compute()

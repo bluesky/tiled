@@ -5,7 +5,7 @@ from .array import ClientArraySource
 from .base import BaseClientSource
 
 
-class ClientVariableSource(BaseClientSource):
+class ClientDaskVariableSource(BaseClientSource):
 
     STRUCTURE_TYPE = VariableStructure
 
@@ -28,7 +28,12 @@ class ClientVariableSource(BaseClientSource):
         )
 
 
-class ClientDataArraySource(BaseClientSource):
+class ClientVariableSource(ClientDaskVariableSource):
+    def read(self):
+        return super().read().load()
+
+
+class ClientDaskDataArraySource(BaseClientSource):
 
     STRUCTURE_TYPE = DataArrayStructure
 
@@ -38,9 +43,8 @@ class ClientDataArraySource(BaseClientSource):
 
     def read(self):
         structure = self.describe()
-        # Construct ClientArraySource for the `data` and each of the `coords`.
         variable = structure.variable
-        variable_source = ClientVariableSource(
+        variable_source = ClientDaskVariableSource(
             client=self._client,
             path=self._path,
             metadata=self.metadata,
@@ -51,7 +55,7 @@ class ClientDataArraySource(BaseClientSource):
         data = variable_source.read()
         coords = {}
         for name, variable in structure.coords.items():
-            variable_source = ClientVariableSource(
+            variable_source = ClientDaskVariableSource(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -63,7 +67,12 @@ class ClientDataArraySource(BaseClientSource):
         return xarray.DataArray(data=data, coords=coords, name=structure.name)
 
 
-class ClientDatasetSource(BaseClientSource):
+class ClientDataArraySource(ClientDaskDataArraySource):
+    def read(self):
+        return super().read().load()
+
+
+class ClientDaskDatasetSource(BaseClientSource):
 
     STRUCTURE_TYPE = DatasetStructure
 
@@ -75,7 +84,7 @@ class ClientDatasetSource(BaseClientSource):
         structure = self.describe()
         data_vars = {}
         for name, data_array in structure.data_vars.items():
-            data_array_source = ClientDataArraySource(
+            data_array_source = ClientDaskDataArraySource(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -86,7 +95,7 @@ class ClientDatasetSource(BaseClientSource):
             data_vars[name] = data_array_source.read()
         coords = {}
         for name, variable in structure.coords.items():
-            variable_source = ClientVariableSource(
+            variable_source = ClientDaskVariableSource(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -96,3 +105,8 @@ class ClientDatasetSource(BaseClientSource):
             )
             coords[name] = variable_source.read()
         return xarray.Dataset(data_vars=data_vars, coords=coords, attrs=structure.attrs)
+
+
+class ClientDatasetSource(ClientDaskDatasetSource):
+    def read(self):
+        return super().read().load()

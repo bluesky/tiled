@@ -16,8 +16,8 @@ class BaseClientSource:
         path,
         metadata,
         params,
-        container_dispatch=None,
-        special_client_dispatch=None,
+        containers=None,
+        special_clients=None,
         root_client_type=None,
         structure=None,
     ):
