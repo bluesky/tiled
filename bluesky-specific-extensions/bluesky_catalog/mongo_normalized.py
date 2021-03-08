@@ -2,6 +2,7 @@ import collections.abc
 from dataclasses import dataclass
 import functools
 
+import dask.array
 import pymongo
 
 from catalog_server.query_registration import QueryTranslationRegistry, register
@@ -84,6 +85,35 @@ def _build_dataset(
     # The `data_keys` in a series of Event Descriptor documents with the same
     # `name` MUST be alike, so we can choose one arbitrarily.
     descriptor, *_ = event_descriptors
+    for key, value in descriptor["data_keys"].items():
+        name = (
+            "remote-dask-array-"
+            f"{self._client.base_url!s}/{'/'.join(self._path)}"
+            f"{'-'.join(map(repr, sorted(self._params.items())))}"
+        )
+        chunks = structure.chunks
+        # Count the number of blocks along each axis.
+        num_blocks = (range(len(n)) for n in chunks)
+        # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---
+        # and build a dask task encoding the method for fetching its data from
+        # the server.
+        dask_tasks = {
+            (name,)
+            + block: (
+                self._get_block,
+                block,
+                dtype,
+                tuple(chunks[dim][i] for dim, i in enumerate(block)),
+            )
+            for block in itertools.product(*num_blocks)
+        }
+        return dask.array.Array(
+            dask=dask_tasks,
+            name=name,
+            chunks=chunks,
+            dtype=dtype,
+            shape=shape,
+        )
 
 
 class Catalog(collections.abc.Mapping):
