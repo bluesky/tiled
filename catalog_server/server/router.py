@@ -5,12 +5,7 @@ from typing import List, Optional
 from fastapi import Depends, HTTPException, Query, Request, APIRouter
 
 from ..query_registration import name_to_query_type
-from .authentication import (
-    get_current_user,
-    get_user_for_token,
-    new_token,
-    revoke_token,
-)
+
 from .core import (
     block,
     construct_array_response,
@@ -27,31 +22,7 @@ from .core import (
 )
 from . import models
 
-
 router = APIRouter()
-
-
-@router.post("/token", response_model=models.Token)
-async def create_token(username: str, current_user=Depends(get_current_user)):
-    "Generate an API access token."
-    if (username != current_user) and (current_user != "admin"):
-        raise HTTPException(
-            status_code=403, detail="Only admin can generate tokens for other users."
-        )
-    return {"access_token": new_token(username), "token_type": "bearer"}
-
-
-@router.delete("/token")
-async def delete_token(token: models.Token, current_user=Depends(get_current_user)):
-    "Generate an API access token."
-    username = get_user_for_token(token.access_token)
-    if (username != current_user) and (current_user != "admin"):
-        raise HTTPException(
-            status_code=403, detail="Only admin can delete other users' tokens."
-        )
-    revoke_token(token.access_token)
-    return
-
 
 def declare_search_route(router):
     """

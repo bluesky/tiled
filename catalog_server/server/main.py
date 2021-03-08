@@ -1,6 +1,7 @@
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
+from fastapi_simple_security import api_key_router, api_key_security
 
 from .settings import get_settings, get_custom_routers
 from .router import declare_search_route, router
@@ -21,7 +22,7 @@ async def startup_event():
     # Warm up cached access.
     get_settings().catalog
     # get_dask_client()
-
+    app.include_router(api_key_router, prefix="/auth", tags=["_auth"])
 
 @api.on_event("shutdown")
 async def shutdown_event():

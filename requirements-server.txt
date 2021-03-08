@@ -5,3 +5,4 @@ msgpack
 pydantic
 toolz
 uvicorn
+fastapi-simple-security
