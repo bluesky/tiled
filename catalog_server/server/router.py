@@ -25,6 +25,8 @@ from . import models
 
 router = APIRouter()
 
+current_user = "admin"
+
 def declare_search_route(router):
     """
     This is done dynamically at router startup.
