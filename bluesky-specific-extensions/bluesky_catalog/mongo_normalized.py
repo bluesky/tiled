@@ -7,6 +7,7 @@ import dask.array
 import pymongo
 import xarray
 
+from catalog_server.containers.xarray import DatasetStructure
 from catalog_server.query_registration import QueryTranslationRegistry, register
 from catalog_server.queries import FullText, KeyLookup
 from catalog_server.utils import (
@@ -18,7 +19,6 @@ from catalog_server.utils import (
     SpecialUsers,
 )
 from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
-from catalog_server.datasources.xarray import DatasetSource
 from catalog_server.utils import LazyMap
 
 
@@ -39,72 +39,66 @@ class BlueskyRun(CatalogInMemory):
 class BlueskyEventStream(CatalogInMemory):
     client_type_hint = "BlueskyEventStream"
 
-    @classmethod
-    def construct(
-        cls,
-        *,
-        run_start_uid,
-        cutoff_seq_num,
-        stream_name,
-        event_descriptors,
-        event_collection,
-        datum_collection,
-        resource_collection,
-    ):
-        if not event_descriptors:
-            raise ValueError("At least one Event Descriptor document is required.")
-        mapping = LazyMap(
-            {
-                "data": lambda: DatasetSource(
-                    _build_dataset(
-                        cutoff_seq_num=cutoff_seq_num,
-                        event_descriptors=event_descriptors,
-                        event_collection=event_collection,
-                        datum_collection=datum_collection,
-                        resource_collection=resource_collection,
-                        sub_dict="data",
-                    )
-                ),
-                # TODO timestamps, config, config_timestamps
-            }
-        )
-
-        metadata = {"descriptors": event_descriptors, "stream_name": stream_name}
-        return cls(mapping, metadata=metadata)
-
     @property
     def descriptors(self):
         return self.metadata["descriptors"]
 
 
-def _build_dataset(
-    *,
-    cutoff_seq_num,
-    event_descriptors,
-    event_collection,
-    datum_collection,
-    resource_collection,
-    sub_dict,
-):
-    # The `data_keys` in a series of Event Descriptor documents with the same
-    # `name` MUST be alike, so we can choose one arbitrarily.
-    descriptor, *_ = event_descriptors
-    data_arrays = {}
-    for key, value in descriptor["data_keys"].items():
-        dask_array = dask.array.from_delayed(
-            dask.delayed(_get_column)(key, block=(0,)),
-            shape=(cutoff_seq_num, *value["shape"]),
-            dtype=...,
-        )
-        data_array = xarray.DataArray(dask_array)
-        data_arrays[key] = data_array
-    return xarray.Dataset(data_arrays)
+class DatasetFromDocuments:
+    """
+    An xarray.Dataset from a sub-dict of an Event stream
+    """
 
+    container = "dataset"
 
-def _get_column(key, block):
-    if block != (0,):
-        raise NotImplementedError
-        # TODO Implement columns that are internally chunked.
+    def __init__(
+        self,
+        *,
+        cutoff_seq_num,
+        event_descriptors,
+        event_collection,
+        datum_collection,
+        resource_collection,
+        sub_dict,
+        metadata=None,
+    ):
+        self._metadata = metadata or {}
+        self._cutoff_seq_num = cutoff_seq_num
+        self._event_descriptrs = event_descriptors
+        self._event_collection = event_collection
+        self._datum_collection = datum_collection
+        self._resource_collection = resource_collection
+        self._sub_dict = sub_dict
+
+    def __repr__(self):
+        return f"{type(self).__name__}"
+
+    @property
+    def metadata(self):
+        return DictView(self._metadata)
+
+    def describe(self):
+        return DatasetStructure(...)
+
+    def read(self):
+        # The `data_keys` in a series of Event Descriptor documents with the same
+        # `name` MUST be alike, so we can choose one arbitrarily.
+        descriptor, *_ = self._event_descriptors
+        data_arrays = {}
+        for key, value in descriptor["data_keys"].items():
+            dask_array = dask.array.from_delayed(
+                dask.delayed(self._get_column)(key, block=(0,)),
+                shape=(self._cutoff_seq_num, *value["shape"]),
+                dtype=float,  # TODOD
+            )
+            data_array = xarray.DataArray(dask_array)
+            data_arrays[key] = data_array
+        return xarray.Dataset(data_arrays)
+
+    def _get_column(self, key, block):
+        if block != (0,):
+            raise NotImplementedError
+            # TODO Implement columns that are internally chunked.
 
 
 class Catalog(collections.abc.Mapping):
@@ -247,15 +241,22 @@ class Catalog(collections.abc.Mapping):
             )
         )
         cutoff_seq_num = result["highest_seq_num"]
-        return BlueskyEventStream.construct(
-            run_start_uid=run_start_uid,
-            stream_name=stream_name,
-            cutoff_seq_num=cutoff_seq_num,
-            event_descriptors=event_descriptors,
-            event_collection=self._event_collection,
-            resource_collection=self._resource_collection,
-            datum_collection=self._datum_collection,
+        mapping = LazyMap(
+            {
+                "data": lambda: DatasetFromDocuments(
+                    cutoff_seq_num=cutoff_seq_num,
+                    event_descriptors=event_descriptors,
+                    event_collection=self._event_collection,
+                    datum_collection=self._datum_collection,
+                    resource_collection=self._resource_collection,
+                    sub_dict="data",
+                ),
+                # TODO timestamps, config, config_timestamps
+            }
         )
+
+        metadata = {"descriptors": event_descriptors, "stream_name": stream_name}
+        return BlueskyEventStream(mapping, metadata=metadata)
 
     @authenticated
     def __getitem__(self, key):
