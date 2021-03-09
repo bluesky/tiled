@@ -54,8 +54,7 @@ class ClientCatalog(collections.abc.Mapping):
     }
 
     # This is populated when the first instance is created. To populate or
-    # refresh them manually, call classmethods discover_containers() and
-    # discover_special_clients() respectively.
+    # refresh it manually, call classmethod discover_special_clients().
     DEFAULT_SPECIAL_CLIENT_DISPATCH = None
 
     @classmethod
@@ -74,8 +73,8 @@ class ClientCatalog(collections.abc.Mapping):
         """
         Search the software environment for libraries that register special clients.
 
-        This is called once automatically the first time ClientCatalog is
-        instantiated. You may call it again manually to refresh, and it will
+        This is called once automatically the first time ClientCatalog.from_uri
+        is called. You may call it again manually to refresh, and it will
         reflect any changes to the environment since it was first populated.
         """
         # The modules associated with these entrypoints will be imported
@@ -83,47 +82,9 @@ class ClientCatalog(collections.abc.Mapping):
         cls.DEFAULT_SPECIAL_CLIENT_DISPATCH = cls._discover_entrypoints(
             "catalog_server.special_client"
         )
-        # Note: We could used entrypoints to discover custom container types as
+        # Note: We could use entrypoints to discover custom container types as
         # well, and in fact we did do this in an early draft. It was removed
-        # for simplicity.
-
-    def __init__(
-        self,
-        client,
-        *,
-        path,
-        metadata,
-        root_client_type,
-        containers=None,
-        special_clients=None,
-        params=None,
-        queries=None,
-    ):
-        "This is not user-facing. Use ClientCatalog.from_uri."
-
-        # We do entrypoint discovery the first time this is instantiated rather
-        # than at import time, in order to make import faster.
-        if self.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
-            self.discover_special_clients()
-
-        self._client = client
-        self._metadata = metadata
-        self.containers = containers or {}
-        self.special_clients = collections.ChainMap(
-            special_clients or {},
-            self.DEFAULT_SPECIAL_CLIENT_DISPATCH,
-        )
-        self._root_client_type = root_client_type
-        if isinstance(path, str):
-            raise ValueError("path is expected to be a list of segments")
-        # Stash *immutable* copies just to be safe.
-        self._path = tuple(path or [])
-        self._queries = tuple(queries or [])
-        self._queries_as_params = _queries_to_params(*self._queries)
-        self._params = params or {}
-        self.keys_indexer = IndexCallable(self._keys_indexer)
-        self.items_indexer = IndexCallable(self._items_indexer)
-        self.values_indexer = IndexCallable(self._values_indexer)
+        # for simplicity, at least for now.
 
     @classmethod
     def from_uri(cls, uri, token, containers="dask", special_clients=None):
@@ -153,6 +114,13 @@ class ClientCatalog(collections.abc.Mapping):
         # Interet containers="dask" and containers="memory" shortcuts.
         if isinstance(containers, str):
             containers = cls.DEFAULT_CONTAINER_DISPATCH[containers]
+        # Do entrypoint discovery if it hasn't yet been done.
+        if cls.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
+            cls.discover_special_clients()
+        special_clients = collections.ChainMap(
+            special_clients or {},
+            cls.DEFAULT_SPECIAL_CLIENT_DISPATCH,
+        )
         response = client.get("/metadata/")
         response.raise_for_status()
         metadata = response.json()["data"]["attributes"]["metadata"]
@@ -164,6 +132,36 @@ class ClientCatalog(collections.abc.Mapping):
             special_clients=special_clients,
             root_client_type=cls,
         )
+
+    def __init__(
+        self,
+        client,
+        *,
+        path,
+        metadata,
+        root_client_type,
+        containers=None,
+        special_clients=None,
+        params=None,
+        queries=None,
+    ):
+        "This is not user-facing. Use ClientCatalog.from_uri."
+
+        self._client = client
+        self._metadata = metadata
+        self.containers = containers
+        self.special_clients = special_clients
+        self._root_client_type = root_client_type
+        if isinstance(path, str):
+            raise ValueError("path is expected to be a list of segments")
+        # Stash *immutable* copies just to be safe.
+        self._path = tuple(path or [])
+        self._queries = tuple(queries or [])
+        self._queries_as_params = _queries_to_params(*self._queries)
+        self._params = params or {}
+        self.keys_indexer = IndexCallable(self._keys_indexer)
+        self.items_indexer = IndexCallable(self._items_indexer)
+        self.values_indexer = IndexCallable(self._values_indexer)
 
     def __repr__(self):
         # Display the first N keys to avoid making a giant service request.
