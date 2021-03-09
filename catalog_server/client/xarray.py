@@ -1,7 +1,7 @@
 import xarray
 
 from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
-from .array import ClientArraySource
+from .array import ClientDaskArraySource
 from .base import BaseClientSource
 
 
@@ -15,7 +15,7 @@ class ClientDaskVariableSource(BaseClientSource):
 
     def read(self):
         structure = self.describe()
-        array_source = ClientArraySource(
+        array_source = ClientDaskArraySource(
             client=self._client,
             path=self._path,
             metadata=self.metadata,
