@@ -74,6 +74,15 @@ class LazyMap(collections.abc.Mapping):
         self.__mapping = mapping
         self.__lock = threading.Lock()
 
+    def __repr__(self):
+        d = {}
+        for k, v in self.__mapping.items():
+            if isinstance(v, _LazyMapWrapper):
+                d[k] = "<lazy>"
+            else:
+                d[k] = repr(v)
+        return "<LazyMap({" + ", ".join(f"{k!r}: {v!s}" for k, v in d.items()) + "})>"
+
 
 class AuthenticationRequired(Exception):
     pass
