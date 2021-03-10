@@ -1,0 +1,7 @@
+entrypoints
+event-model
+fastapi
+msgpack
+pydantic
+pymongo
+starlette
