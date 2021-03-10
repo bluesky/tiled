@@ -58,7 +58,7 @@ class MachineDataType:
     def from_numpy_dtype(cls, dtype):
         return cls(
             endianness=cls.__endianness_map[dtype.byteorder],
-            kind=dtype.kind,
+            kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
         )
 

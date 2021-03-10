@@ -90,6 +90,7 @@ class DatasetFromDocuments:
         self._datum_collection = datum_collection
         self._resource_collection = resource_collection
         self._sub_dict = sub_dict
+        self._events = []
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -126,7 +127,7 @@ class DatasetFromDocuments:
                         attrs["object"] = object_name
                         break
             shape = tuple((self._cutoff_seq_num, *field_metadata["shape"]))
-            numpy_dtype = numpy.dtype(type(sample_event["data"][key]))
+            numpy_dtype = numpy.dtype(type(sample_event[self._sub_dict][key]))
             data = ArrayStructure(
                 shape=shape,
                 dtype=MachineDataType.from_numpy_dtype(numpy_dtype),
@@ -140,13 +141,18 @@ class DatasetFromDocuments:
     def read(self):
         structure = self.describe()
         data_arrays = {}
-        for key, data_var in structure.items():
+        for key, data_array in structure.data_vars.items():
+            variable = data_array.variable
+            # TODO Handle chunks.
+            for dim in variable.data.chunks:
+                if len(dim) > 1:
+                    raise NotImplementedError
             dask_array = dask.array.from_delayed(
                 dask.delayed(self._get_column)(key, block=(0,)),
-                shape=data_var.variable.shape,
-                dtype=data_var.variable.dtype,
+                shape=variable.data.shape,
+                dtype=variable.data.dtype.to_numpy_dtype(),
             )
-            data_array = xarray.DataArray(dask_array, attrs=data_var.attrs)
+            data_array = xarray.DataArray(dask_array, attrs=variable.attrs)
             data_arrays[key] = data_array
         return xarray.Dataset(data_arrays)
 
@@ -154,6 +160,20 @@ class DatasetFromDocuments:
         if block != (0,):
             raise NotImplementedError
             # TODO Implement columns that are internally chunked.
+        self._load_data()
+        col = numpy.array(_transpose(self._events, [key], self._sub_dict)[key])
+        print(col)
+        return col
+
+    def _load_data(self):
+        # TODO Support partial loading.
+        if self._events:
+            return
+        for descriptor in sorted(self._event_descriptors, key=lambda d: d["time"]):
+            query = {"descriptor": descriptor["uid"]}
+            cursor = self._event_collection.find(query, {"_id": False})
+            self._events.extend(cursor)
+        print(self._events)
 
 
 class Catalog(collections.abc.Mapping):
@@ -824,3 +844,32 @@ def parse_transforms(transforms):
 
 def _no_op(doc):
     return doc
+
+
+def _transpose(in_data, keys, field):
+    """Turn a list of dicts into dict of lists
+
+    Parameters
+    ----------
+    in_data : list
+        A list of dicts which contain at least one dict.
+        All of the inner dicts must have at least the keys
+        in `keys`
+
+    keys : list
+        The list of keys to extract
+
+    field : str
+        The field in the outer dict to use
+
+    Returns
+    -------
+    transpose : dict
+        The transpose of the data
+    """
+    out = {k: [None] * len(in_data) for k in keys}
+    for j, ev in enumerate(in_data):
+        dd = ev[field]
+        for k in keys:
+            out[k][j] = dd[k]
+    return out
