@@ -143,10 +143,18 @@ class SpecialUsers(str, enum.Enum):
 
 
 def catalog_repr(catalog, sample):
-    sample = list(map(repr, sample))
-    out = f"<{type(catalog).__name__} {{{', '.join(sample)}"
+    sample_reprs = list(map(repr, sample))
+    out = f"<{type(catalog).__name__} {{"
+    # Always show at least one.
+    if sample_reprs:
+        out += sample_reprs[0]
+    # And then show as many more as we can fit on one line.
+    for sample_repr in sample_reprs[1:]:
+        if len(out) + len(sample_repr) > 60:  # character count
+            break
+        out += ", " + sample_repr
     approx_len = operator.length_hint(catalog)  # cheaper to compute than len(catalog)
-    if approx_len > len(sample):
+    if approx_len > len(sample_reprs):
         out += f", ...}} ~{approx_len} entries>"
     else:
         out += "}>"

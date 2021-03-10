@@ -164,9 +164,9 @@ class ClientCatalog(collections.abc.Mapping):
         self.values_indexer = IndexCallable(self._values_indexer)
 
     def __repr__(self):
-        # Display the first N keys to avoid making a giant service request.
-        # Use _keys_slicer because it is unauthenticated.
-        N = 5
+        # Display up to the first N keys to avoid making a giant service
+        # request. Use _keys_slicer because it is unauthenticated.
+        N = 10
         return catalog_repr(self, self._keys_slice(0, N))
 
     @property

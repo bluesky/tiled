@@ -377,9 +377,9 @@ class Catalog(collections.abc.Mapping):
         return DictView(self._metadata)
 
     def __repr__(self):
-        # Display the first N keys to avoid making a giant service request.
-        # Use _keys_slicer because it is unauthenticated.
-        N = 5
+        # Display up to the first N keys to avoid making a giant service
+        # request. Use _keys_slicer because it is unauthenticated.
+        N = 10
         return catalog_repr(self, self._keys_slice(0, N))
 
     def _build_run(self, run_start_doc):
