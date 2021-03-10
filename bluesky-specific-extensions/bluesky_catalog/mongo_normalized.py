@@ -163,6 +163,89 @@ class Catalog(collections.abc.Mapping):
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
 
+    @classmethod
+    def from_uri(
+        cls,
+        metadatastore,
+        *,
+        asset_registry=None,
+        handler_registry=None,
+        root_map=None,
+        transforms=None,
+        filler_class=event_model.Filler,
+        metadata=None,
+        access_policy=None,
+        authenticated_identity=None,
+    ):
+        """
+        Create a Catalog from MongoDB with the "normalized" (original) layout.
+
+        Parameters
+        ----------
+        handler_registry: dict, optional
+            This is passed to the Filler or whatever class is given in the
+            filler_class parameter below.
+
+            Maps each 'spec' (a string identifying a given type or external
+            resource) to a handler class.
+
+            A 'handler class' may be any callable with the signature::
+
+                handler_class(resource_path, root, **resource_kwargs)
+
+            It is expected to return an object, a 'handler instance', which is also
+            callable and has the following signature::
+
+                handler_instance(**datum_kwargs)
+
+            As the names 'handler class' and 'handler instance' suggest, this is
+            typically implemented using a class that implements ``__init__`` and
+            ``__call__``, with the respective signatures. But in general it may be
+            any callable-that-returns-a-callable.
+        root_map: dict, optional
+            This is passed to Filler or whatever class is given in the filler_class
+            parameter below.
+
+            str -> str mapping to account for temporarily moved/copied/remounted
+            files.  Any resources which have a ``root`` in ``root_map`` will be
+            loaded using the mapped ``root``.
+        filler_class: type
+            This is Filler by default. It can be a Filler subclass,
+            ``functools.partial(Filler, ...)``, or any class that provides the same
+            methods as ``DocumentRouter``.
+        transforms: dict
+            A dict that maps any subset of the keys {start, stop, resource, descriptor}
+            to a function that accepts a document of the corresponding type and
+            returns it, potentially modified. This feature is for patching up
+            erroneous metadata. It is intended for quick, temporary fixes that
+            may later be applied permanently to the data at rest
+            (e.g., via a database migration).
+        """
+        metadatastore_db = _get_database(metadatastore)
+        if asset_registry is None:
+            asset_registry_db = metadatastore_db
+        else:
+            asset_registry_db = _get_database(asset_registry)
+        if isinstance(filler_class, str):
+            module_name, _, class_name = filler_class.rpartition(".")
+            filler_class = getattr(importlib.import_module(module_name), class_name)
+        root_map = root_map or {}
+        transforms = parse_transforms(transforms)
+        if handler_registry is None:
+            handler_registry = discover_handlers()
+        handler_registry = parse_handler_registry(handler_registry)
+        return cls(
+            metadatastore_db=metadatastore_db,
+            asset_registry_db=asset_registry_db,
+            filler_class=filler_class,
+            handler_registry=handler_registry,
+            root_map=root_map,
+            transforms=transforms,
+            metadata=metadata,
+            access_policy=access_policy,
+            authenticated_identity=authenticated_identity,
+        )
+
     def __init__(
         self,
         metadatastore_db,
@@ -176,6 +259,7 @@ class Catalog(collections.abc.Mapping):
         access_policy=None,
         authenticated_identity=None,
     ):
+        "This is not user-facing. Use Catalog.from_uri."
         self._run_start_collection = metadatastore_db.get_collection("run_start")
         self._run_stop_collection = metadatastore_db.get_collection("run_stop")
         self._event_descriptor_collection = metadatastore_db.get_collection(
@@ -206,45 +290,6 @@ class Catalog(collections.abc.Mapping):
         self.keys_indexer = IndexCallable(self._keys_indexer)
         self.items_indexer = IndexCallable(self._items_indexer)
         self.values_indexer = IndexCallable(self._values_indexer)
-
-    @classmethod
-    def from_uri(
-        cls,
-        metadatastore,
-        *,
-        asset_registry=None,
-        handler_registry=None,
-        root_map=None,
-        transforms=None,
-        filler_class=event_model.Filler,
-        metadata=None,
-        access_policy=None,
-        authenticated_identity=None,
-    ):
-        metadatastore_db = _get_database(metadatastore)
-        if asset_registry is None:
-            asset_registry_db = metadatastore_db
-        else:
-            asset_registry_db = _get_database(asset_registry)
-        if isinstance(filler_class, str):
-            module_name, _, class_name = filler_class.rpartition(".")
-            filler_class = getattr(importlib.import_module(module_name), class_name)
-        root_map = root_map or {}
-        transforms = parse_transforms(transforms)
-        if handler_registry is None:
-            handler_registry = discover_handlers()
-        handler_registry = parse_handler_registry(handler_registry)
-        return cls(
-            metadatastore_db=metadatastore_db,
-            asset_registry_db=asset_registry_db,
-            filler_class=filler_class,
-            handler_registry=handler_registry,
-            root_map=root_map,
-            transforms=transforms,
-            metadata=metadata,
-            access_policy=access_policy,
-            authenticated_identity=authenticated_identity,
-        )
 
     def register_handler(self, spec, handler, overwrite=False):
         if (not overwrite) and (spec in self._handler_registry):

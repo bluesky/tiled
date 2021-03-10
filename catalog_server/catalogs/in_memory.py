@@ -32,6 +32,16 @@ class Catalog(collections.abc.Mapping):
     def __init__(
         self, mapping, metadata=None, access_policy=None, authenticated_identity=None
     ):
+        """
+        Create a simple Catalog from any mapping (e.g. dict, LazyMap).
+
+        Parameters
+        ----------
+        mapping : dict-like
+        metadata : dict, optional
+        access_policy : AccessPolicy, optional
+        authenticated_identity : str, optional
+        """
         self._mapping = mapping
         self._metadata = metadata or {}
         if (access_policy is not None) and (
