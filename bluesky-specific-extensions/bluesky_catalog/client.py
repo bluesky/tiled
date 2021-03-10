@@ -4,7 +4,7 @@ from catalog_server.client.catalog import ClientCatalog
 from .common import BlueskyEventStreamMixin, BlueskyRunMixin
 
 
-class BlueskyRun(ClientCatalog, BlueskyRunMixin):
+class BlueskyRun(BlueskyRunMixin, ClientCatalog):
     """
     This encapsulates the data and metadata for one Bluesky 'run'.
     """
@@ -18,5 +18,5 @@ class BlueskyRun(ClientCatalog, BlueskyRunMixin):
                 yield tuple(json.loads(line))
 
 
-class BlueskyEventStream(ClientCatalog, BlueskyEventStreamMixin):
+class BlueskyEventStream(BlueskyEventStreamMixin, ClientCatalog):
     pass

@@ -143,13 +143,13 @@ class SpecialUsers(str, enum.Enum):
 
 
 def catalog_repr(catalog, sample):
-    sample = list(sample)
-    out = f"<{type(catalog).__name__}({{{', '.join(sample)}"
+    sample = list(map(repr, sample))
+    out = f"<{type(catalog).__name__} {{{', '.join(sample)}"
     approx_len = operator.length_hint(catalog)  # cheaper to compute than len(catalog)
     if approx_len > len(sample):
-        out += f", ...}}) ~{approx_len} entries>"
+        out += f", ...}} ~{approx_len} entries>"
     else:
-        out += "})>"
+        out += "}>"
     return out
 
 
