@@ -170,6 +170,9 @@ class DatasetFromDocuments:
         if self._events:
             return
         for descriptor in sorted(self._event_descriptors, key=lambda d: d["time"]):
+            # TODO Sort, and deal with repeated seq_num.
+            # May $last would be useful for that, or we could just drop
+            # duplicate on the Python side since they are rare.
             query = {"descriptor": descriptor["uid"]}
             cursor = self._event_collection.find(query, {"_id": False})
             self._events.extend(cursor)
