@@ -34,7 +34,7 @@ class ClientDaskArraySource(BaseClientSource):
         )
 
     def read(self):
-        structure = self.describe()
+        structure = self.structure()
         shape = structure.shape
         dtype = structure.dtype.to_numpy_dtype()
         # Build a client-side dask array whose chunks pull from a server-side

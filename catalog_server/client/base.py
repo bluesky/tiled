@@ -38,7 +38,7 @@ class BaseClientSource:
         # persistent.
         return DictView(self._metadata)
 
-    def describe(self):
+    def structure(self):
         if self._structure is None:
             response = self._client.get(
                 f"/metadata/{'/'.join(self._path)}",

@@ -30,7 +30,7 @@ class ArraySource:
     def metadata(self):
         return DictView(self._metadata)
 
-    def describe(self):
+    def structure(self):
         return ArrayStructure(
             shape=self._data.shape,
             chunks=self._data.chunks,

@@ -21,10 +21,10 @@ class VariableSource:
     def metadata(self):
         return DictView(self._metadata)
 
-    def describe(self):
+    def structure(self):
         return VariableStructure(
             dims=self._variable.dims,
-            data=ArraySource(self._variable.data).describe(),
+            data=ArraySource(self._variable.data).structure(),
             attrs=self._variable.attrs,
         )
 
@@ -50,11 +50,11 @@ class DataArraySource:
     def metadata(self):
         return DictView(self._metadata)
 
-    def describe(self):
+    def structure(self):
         return DataArrayStructure(
-            variable=VariableSource(self._data_array.variable).describe(),
+            variable=VariableSource(self._data_array.variable).structure(),
             coords={
-                k: VariableSource(v).describe()
+                k: VariableSource(v).structure()
                 for k, v in self._data_array.coords.items()
             },
             name=self._data_array.name,
@@ -82,14 +82,14 @@ class DatasetSource:
     def metadata(self):
         return DictView(self._metadata)
 
-    def describe(self):
+    def structure(self):
         return DatasetStructure(
             data_vars={
-                key: DataArraySource(value).describe()
+                key: DataArraySource(value).structure()
                 for key, value in self._dataset.data_vars.items()
             },
             coords={
-                key: VariableSource(value).describe()
+                key: VariableSource(value).structure()
                 for key, value in self._dataset.coords.items()
             },
             attrs=self._dataset.attrs,

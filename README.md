@@ -97,7 +97,7 @@ DataSource as well as a sample HTTP API based on
   types (cupy array, sparse array, dask array, numpy ndarray) that duck-type as
   a given generic container.
 
-* DataSources MUST implement a method ``describe()`` with no arguments
+* DataSources MUST implement a method ``structure()`` with no arguments
   which returns a description of the structure of this data. For each container
   (array, dataframe, etc.) there will be a specific schema for this description
   (TBD). For example, "array" reports machine data type, shape, and chunks.

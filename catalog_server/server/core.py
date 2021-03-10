@@ -132,7 +132,7 @@ class DuckDataSource(metaclass=abc.ABCMeta):
         # to "quack" like a DataSource.
         EXPECTED_ATTRS = (
             "read",
-            "describe",
+            "structure",
         )
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
@@ -241,7 +241,7 @@ def construct_resource(key, entry, fields):
         if models.EntryFields.container in fields:
             attributes["container"] = entry.container
         if models.EntryFields.structure in fields:
-            attributes["structure"] = dataclasses.asdict(entry.describe())
+            attributes["structure"] = dataclasses.asdict(entry.structure())
         resource = models.DataSourceResource(
             **{
                 "id": key,

@@ -14,7 +14,7 @@ class ClientDaskVariableSource(BaseClientSource):
         self._route = route
 
     def read(self):
-        structure = self.describe()
+        structure = self.structure()
         array_source = ClientDaskArraySource(
             client=self._client,
             path=self._path,
@@ -42,7 +42,7 @@ class ClientDaskDataArraySource(BaseClientSource):
         self._route = route
 
     def read(self):
-        structure = self.describe()
+        structure = self.structure()
         variable = structure.variable
         variable_source = ClientDaskVariableSource(
             client=self._client,
@@ -81,7 +81,7 @@ class ClientDaskDatasetSource(BaseClientSource):
         self._route = route
 
     def read(self):
-        structure = self.describe()
+        structure = self.structure()
         data_vars = {}
         for name, data_array in structure.data_vars.items():
             data_array_source = ClientDaskDataArraySource(

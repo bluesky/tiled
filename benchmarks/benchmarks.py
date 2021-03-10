@@ -34,8 +34,8 @@ class TimeSuite:
     def time_metadata(self):
         self.catalog["medium"]["ones"].metadata
 
-    def time_describe(self):
-        self.catalog["medium"]["ones"].describe()
+    def time_structure(self):
+        self.catalog["medium"]["ones"].structure()
 
     def time_read(self):
         self.catalog["medium"]["ones"].read()

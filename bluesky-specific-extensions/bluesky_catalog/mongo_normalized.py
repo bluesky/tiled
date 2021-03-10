@@ -98,7 +98,7 @@ class DatasetFromDocuments:
     def metadata(self):
         return DictView(self._metadata)
 
-    def describe(self):
+    def structure(self):
         # The `data_keys` in a series of Event Descriptor documents with the same
         # `name` MUST be alike, so we can choose one arbitrarily.
         descriptor, *_ = self._event_descriptors
@@ -144,7 +144,7 @@ class DatasetFromDocuments:
         return DatasetStructure(data_vars=data_vars, coords={}, attrs={})
 
     def read(self):
-        structure = self.describe()
+        structure = self.structure()
         data_arrays = {}
         for key, data_array in structure.data_vars.items():
             variable = data_array.variable
