@@ -140,8 +140,8 @@ class ClientCatalog(collections.abc.Mapping):
         path,
         metadata,
         root_client_type,
-        containers=None,
-        special_clients=None,
+        containers,
+        special_clients,
         params=None,
         queries=None,
     ):
