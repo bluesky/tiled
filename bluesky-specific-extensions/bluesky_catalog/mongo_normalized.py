@@ -90,7 +90,6 @@ class DatasetFromDocuments:
         self._datum_collection = datum_collection
         self._resource_collection = resource_collection
         self._sub_dict = sub_dict
-        self._events = []
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
