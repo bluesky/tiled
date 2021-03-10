@@ -632,7 +632,7 @@ def full_text_search(query):
 
 
 def key_lookup(query):
-    return Catalog.query_registry(RawMongo(start={"$uid": query.uid}))
+    return Catalog.query_registry(RawMongo(start={"uid": query.key}))
 
 
 def raw_mongo(query):
