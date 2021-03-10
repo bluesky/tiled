@@ -1,18 +1,13 @@
 import json
 
 from catalog_server.client.catalog import ClientCatalog
+from .common import BlueskyEventStreamMixin, BlueskyRunMixin
 
 
-class BlueskyRun(ClientCatalog):
-    "A ClientCatalog with a custom repr and (eventually) helper methods"
-
-    def __repr__(self):
-        return (
-            f"<{type(self).__name__}("
-            f"uid={self.metadata['start']['uid']!r}, "
-            f"streams={set(self)!r}"
-            ")>"
-        )
+class BlueskyRun(ClientCatalog, BlueskyRunMixin):
+    """
+    This encapsulates the data and metadata for one Bluesky 'run'.
+    """
 
     def documents(self):
         # (name, doc) pairs are streamed as newline-delimited JSON
@@ -23,10 +18,5 @@ class BlueskyRun(ClientCatalog):
                 yield tuple(json.loads(line))
 
 
-class BlueskyEventStream(ClientCatalog):
-    def __repr__(self):
-        return f"<{type(self).__name__}>"
-
-    @property
-    def descriptors(self):
-        return self.metadata["descriptors"]
+class BlueskyEventStream(ClientCatalog, BlueskyEventStreamMixin):
+    pass

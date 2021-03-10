@@ -32,9 +32,10 @@ from catalog_server.utils import (
 )
 from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
 from catalog_server.utils import LazyMap
+from .common import BlueskyEventStreamMixin, BlueskyRunMixin
 
 
-class BlueskyRun(CatalogInMemory):
+class BlueskyRun(CatalogInMemory, BlueskyRunMixin):
     client_type_hint = "BlueskyRun"
 
     def __init__(self, *args, filler, **kwargs):
@@ -46,9 +47,6 @@ class BlueskyRun(CatalogInMemory):
             filler = self.filler
         return super().new_variation(*args, filler=filler, **kwargs)
 
-    def __repr__(self):
-        return f"<{type(self).__name__}(uid={self.metadata['start']['uid']})>"
-
     def documents(self):
         yield ("start", self.metadata["start"])
         stop_doc = self.metadata["stop"]
@@ -57,12 +55,8 @@ class BlueskyRun(CatalogInMemory):
             yield ("stop", stop_doc)
 
 
-class BlueskyEventStream(CatalogInMemory):
+class BlueskyEventStream(CatalogInMemory, BlueskyEventStreamMixin):
     client_type_hint = "BlueskyEventStream"
-
-    @property
-    def descriptors(self):
-        return self.metadata["descriptors"]
 
 
 class DatasetFromDocuments:
