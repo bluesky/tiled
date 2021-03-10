@@ -1,13 +1,24 @@
 import collections.abc
 from dataclasses import dataclass
+import importlib
+import itertools
 import functools
+import warnings
 
+import entrypoints
+import event_model
 import dask
 import dask.array
+import numpy
 import pymongo
 import xarray
 
-from catalog_server.containers.xarray import DatasetStructure
+from catalog_server.containers.array import ArrayStructure, MachineDataType
+from catalog_server.containers.xarray import (
+    DataArrayStructure,
+    DatasetStructure,
+    VariableStructure,
+)
 from catalog_server.query_registration import QueryTranslationRegistry, register
 from catalog_server.queries import FullText, KeyLookup
 from catalog_server.utils import (
@@ -17,6 +28,7 @@ from catalog_server.utils import (
     IndexCallable,
     slice_to_interval,
     SpecialUsers,
+    UNCHANGED,
 )
 from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
 from catalog_server.utils import LazyMap
@@ -24,6 +36,15 @@ from catalog_server.utils import LazyMap
 
 class BlueskyRun(CatalogInMemory):
     client_type_hint = "BlueskyRun"
+
+    def __init__(self, *args, filler, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.filler = filler
+
+    def new_variation(self, *args, filler=UNCHANGED, **kwargs):
+        if filler is UNCHANGED:
+            filler = self.filler
+        return super().new_variation(*args, filler=filler, **kwargs)
 
     def __repr__(self):
         return f"<{type(self).__name__}(uid={self.metadata['start']['uid']})>"
@@ -64,36 +85,70 @@ class DatasetFromDocuments:
     ):
         self._metadata = metadata or {}
         self._cutoff_seq_num = cutoff_seq_num
-        self._event_descriptrs = event_descriptors
+        self._event_descriptors = event_descriptors
         self._event_collection = event_collection
         self._datum_collection = datum_collection
         self._resource_collection = resource_collection
         self._sub_dict = sub_dict
 
     def __repr__(self):
-        return f"{type(self).__name__}"
+        return f"<{type(self).__name__}>"
 
     @property
     def metadata(self):
         return DictView(self._metadata)
 
     def describe(self):
-        return DatasetStructure(...)
-
-    def read(self):
         # The `data_keys` in a series of Event Descriptor documents with the same
         # `name` MUST be alike, so we can choose one arbitrarily.
         descriptor, *_ = self._event_descriptors
-        data_arrays = {}
-        for key, value in descriptor["data_keys"].items():
-            dask_array = dask.array.from_delayed(
-                dask.delayed(self._get_column)(key, block=(0,)),
-                shape=(self._cutoff_seq_num, *value["shape"]),
-                dtype=float,  # TODOD
+        # Unfortunately, the Event Descriptor does not contain all the
+        # information we need, so we have to pull one Event at this point
+        query = {"descriptor": descriptor["uid"]}
+        sample_event = self._event_collection.find_one(query)
+        data_vars = {}
+        dim_counter = itertools.count()
+        for key, field_metadata in descriptor["data_keys"].items():
+            # if the EventDescriptor doesn't provide names for the
+            # dimensions (it's optional) use the same default dimension
+            # names that xarray would.
+            try:
+                dims = field_metadata["dims"]
+            except KeyError:
+                ndim = len(field_metadata["shape"])
+                dims = [f"dim_{next(dim_counter)}" for _ in range(ndim)]
+            attrs = {}
+            # Record which object (i.e. device) this column is associated with,
+            # which enables one to find the relevant configuration, if any.
+            for object_name, keys_ in descriptor.get("object_keys", {}).items():
+                for item in keys_:
+                    if item == key:
+                        attrs["object"] = object_name
+                        break
+            shape = tuple((self._cutoff_seq_num, *field_metadata["shape"]))
+            numpy_dtype = numpy.dtype(type(sample_event["data"][key]))
+            data = ArrayStructure(
+                shape=shape,
+                dtype=MachineDataType.from_numpy_dtype(numpy_dtype),
+                chunks=tuple((s,) for s in shape),  # TODO subdivide
             )
-            data_array = xarray.DataArray(dask_array)
-            data_arrays[key] = data_array
-        return xarray.Dataset(data_arrays)
+            variable = VariableStructure(dims=dims, data=data, attrs=attrs)
+            data_array = DataArrayStructure(variable, coords={}, name=key)
+            data_vars[key] = data_array
+        return DatasetStructure(data_vars=data_vars, coords={}, attrs={})
+
+    def read(self):
+        ...
+        # data_arrays = {}
+        # for key, value in descriptor["data_keys"].items():
+        #     dask_array = dask.array.from_delayed(
+        #         dask.delayed(self._get_column)(key, block=(0,)),
+        #         shape=(self._cutoff_seq_num, *value["shape"]),
+        #         dtype=float,  # TODOD
+        #     )
+        #     data_array = xarray.DataArray(dask_array)
+        #     data_arrays[key] = data_array
+        # return xarray.Dataset(data_arrays)
 
     def _get_column(self, key, block):
         if block != (0,):
@@ -112,6 +167,10 @@ class Catalog(collections.abc.Mapping):
         self,
         metadatastore_db,
         asset_registry_db,
+        filler_class,
+        handler_registry,
+        root_map,
+        transforms,
         metadata=None,
         queries=None,
         access_policy=None,
@@ -128,6 +187,11 @@ class Catalog(collections.abc.Mapping):
         self._metadatastore_db = metadatastore_db
         self._asset_registry_db = asset_registry_db
 
+        self.filler_class = filler_class
+        self._handler_registry = handler_registry
+        self.handler_registry = event_model.HandlerRegistryView(self._handler_registry)
+        self.root_map = root_map
+        self.transforms = transforms
         self._metadata = metadata or {}
         self._high_level_queries = tuple(queries or [])
         self._mongo_queries = [self.query_registry(q) for q in self._high_level_queries]
@@ -143,19 +207,16 @@ class Catalog(collections.abc.Mapping):
         self.items_indexer = IndexCallable(self._items_indexer)
         self.values_indexer = IndexCallable(self._values_indexer)
 
-    @property
-    def metadatastore_db(self):
-        return self._metadatastore_db
-
-    @property
-    def asset_registry_db(self):
-        return self._asset_registry_db
-
     @classmethod
     def from_uri(
         cls,
         metadatastore,
+        *,
         asset_registry=None,
+        handler_registry=None,
+        root_map=None,
+        transforms=None,
+        filler_class=event_model.Filler,
         metadata=None,
         access_policy=None,
         authenticated_identity=None,
@@ -165,12 +226,68 @@ class Catalog(collections.abc.Mapping):
             asset_registry_db = metadatastore_db
         else:
             asset_registry_db = _get_database(asset_registry)
+        if isinstance(filler_class, str):
+            module_name, _, class_name = filler_class.rpartition(".")
+            filler_class = getattr(importlib.import_module(module_name), class_name)
+        root_map = root_map or {}
+        transforms = parse_transforms(transforms)
+        if handler_registry is None:
+            handler_registry = discover_handlers()
+        handler_registry = parse_handler_registry(handler_registry)
         return cls(
             metadatastore_db=metadatastore_db,
             asset_registry_db=asset_registry_db,
+            filler_class=filler_class,
+            handler_registry=handler_registry,
+            root_map=root_map,
+            transforms=transforms,
             metadata=metadata,
             access_policy=access_policy,
             authenticated_identity=authenticated_identity,
+        )
+
+    def register_handler(self, spec, handler, overwrite=False):
+        if (not overwrite) and (spec in self._handler_registry):
+            original = self._handler_registry[spec]
+            if original is handler:
+                return
+            raise event_model.DuplicateHandler(
+                f"There is already a handler registered for the spec {spec!r}. "
+                f"Use overwrite=True to deregister the original.\n"
+                f"Original: {original}\n"
+                f"New: {handler}"
+            )
+        self._handler_registry[spec] = handler
+
+    def deregister_handler(self, spec):
+        self._handler_registry.pop(spec, None)
+
+    def new_variation(
+        self,
+        *args,
+        metadata=UNCHANGED,
+        queries=UNCHANGED,
+        authenticated_identity=UNCHANGED,
+        **kwargs,
+    ):
+        if metadata is UNCHANGED:
+            metadata = self._metadata
+        if queries is UNCHANGED:
+            queries = self._high_level_queries
+        if authenticated_identity is UNCHANGED:
+            authenticated_identity = self._authenticated_identity
+        return type(self)(
+            *args,
+            metadatastore_db=self._metadatastore_db,
+            asset_registry_db=self._asset_registry_db,
+            filler_class=self.filler_class,
+            handler_registry=self.handler_registry,
+            root_map=self.root_map,
+            transforms=self.transforms,
+            queries=queries,
+            access_policy=self.access_policy,
+            authenticated_identity=authenticated_identity,
+            **kwargs,
         )
 
     @property
@@ -211,8 +328,15 @@ class Catalog(collections.abc.Mapping):
                 stream_name=stream_name,
                 is_complete=(run_stop_doc is not None),
             )
+        filler = self.filler_class(
+            handler_registry=self.handler_registry,
+            root_map=self.root_map,
+            inplace=False,
+        )
         return BlueskyRun(
-            LazyMap(mapping), metadata={"start": run_start_doc, "stop": run_stop_doc}
+            LazyMap(mapping),
+            metadata={"start": run_start_doc, "stop": run_stop_doc},
+            filler=filler,
         )
 
     def _build_event_stream(self, *, run_start_uid, stream_name, is_complete):
@@ -355,14 +479,7 @@ class Catalog(collections.abc.Mapping):
         if self._access_policy is not None:
             raise NotImplementedError
         else:
-            catalog = type(self)(
-                metadatastore_db=self.metadatastore_db,
-                asset_registry_db=self.asset_registry_db,
-                queries=self._high_level_queries,
-                metadata=self.metadata,
-                access_policy=self.access_policy,
-                authenticated_identity=self.authenticated_identity,
-            )
+            catalog = self.new_variation()
         return catalog
 
     @authenticated
@@ -370,13 +487,8 @@ class Catalog(collections.abc.Mapping):
         """
         Return a Catalog with a subset of the mapping.
         """
-        return type(self)(
-            self._metadatastore_db,
-            self._asset_registry_db,
-            metadata=self.metadata,
+        return self.new_variation(
             queries=self._high_level_queries + (query,),
-            access_policy=self.access_policy,
-            authenticated_identity=self.authenticated_identity,
         )
 
     def _keys_slice(self, start, stop):
@@ -521,13 +633,7 @@ class SimpleAccessPolicy:
         return modified_queries
 
     def filter_results(self, catalog, authenticated_identity):
-        return type(catalog)(
-            metadatastore_db=catalog.metadatastore_db,
-            asset_registry_db=catalog.asset_registry_db,
-            metadata=catalog.metadata,
-            access_policy=catalog.access_policy,
-            authenticated_identity=authenticated_identity,
-        )
+        return catalog.new_variation(authenticated_identity=authenticated_identity)
 
 
 def _get_database(uri):
@@ -538,3 +644,138 @@ def _get_database(uri):
     else:
         client = pymongo.MongoClient(uri)
         return client.get_database()
+
+
+def discover_handlers(entrypoint_group_name="databroker.handlers", skip_failures=True):
+    """
+    Discover handlers via entrypoints.
+
+    Parameters
+    ----------
+    entrypoint_group_name: str
+        Default is 'databroker.handlers', the "official" databroker entrypoint
+        for handlers.
+    skip_failures: boolean
+        True by default. Errors loading a handler class are converted to
+        warnings if this is True.
+
+    Returns
+    -------
+    handler_registry: dict
+        A suitable default handler registry
+    """
+    group = entrypoints.get_group_named(entrypoint_group_name)
+    group_all = entrypoints.get_group_all(entrypoint_group_name)
+    if len(group_all) != len(group):
+        # There are some name collisions. Let's go digging for them.
+        for name, matches in itertools.groupby(group_all, lambda ep: ep.name):
+            matches = list(matches)
+            if len(matches) != 1:
+                winner = group[name]
+                warnings.warn(
+                    f"There are {len(matches)} entrypoints for the "
+                    f"databroker handler spec {name!r}. "
+                    f"They are {matches}. The match {winner} has won the race."
+                )
+    handler_registry = {}
+    for name, entrypoint in group.items():
+        try:
+            handler_class = entrypoint.load()
+        except Exception as exc:
+            if skip_failures:
+                warnings.warn(
+                    f"Skipping {entrypoint!r} which failed to load. "
+                    f"Exception: {exc!r}"
+                )
+                continue
+            else:
+                raise
+        handler_registry[name] = handler_class
+
+    return handler_registry
+
+
+def parse_handler_registry(handler_registry):
+    """
+    Parse mapping of spec name to 'import path' into mapping to class itself.
+
+    Parameters
+    ----------
+    handler_registry : dict
+        Values may be string 'import paths' to classes or actual classes.
+
+    Examples
+    --------
+    Pass in name; get back actual class.
+
+    >>> parse_handler_registry({'my_spec': 'package.module.ClassName'})
+    {'my_spec': <package.module.ClassName>}
+
+    """
+    result = {}
+    for spec, handler_str in handler_registry.items():
+        if isinstance(handler_str, str):
+            module_name, _, class_name = handler_str.rpartition(".")
+            class_ = getattr(importlib.import_module(module_name), class_name)
+        else:
+            class_ = handler_str
+        result[spec] = class_
+    return result
+
+
+def parse_transforms(transforms):
+    """
+    Parse mapping of spec name to 'import path' into mapping to class itself.
+
+    Parameters
+    ----------
+    transforms : collections.abc.Mapping or None
+        A collections.abc.Mapping or subclass, that maps any subset of the
+        keys {start, stop, resource, descriptor} to a function (or a string
+        import path) that accepts a document of the corresponding type and
+        returns it, potentially modified. This feature is for patching up
+        erroneous metadata. It is intended for quick, temporary fixes that
+        may later be applied permanently to the data at rest (e.g via a
+        database migration).
+
+    Examples
+    --------
+    Pass in name; get back actual class.
+
+    >>> parse_transforms({'descriptor': 'package.module.function_name'})
+    {'descriptor': <package.module.function_name>}
+
+    """
+    transformable = {"start", "stop", "resource", "descriptor"}
+
+    if transforms is None:
+        result = {key: _no_op for key in transformable}
+        return result
+    elif isinstance(transforms, collections.abc.Mapping):
+        if len(transforms.keys() - transformable) > 0:
+            raise NotImplementedError(
+                f"Transforms for {transforms.keys() - transformable} "
+                f"are not supported."
+            )
+        result = {}
+
+        for name in transformable:
+            transform = transforms.get(name)
+            if isinstance(transform, str):
+                module_name, _, class_name = transform.rpartition(".")
+                function = getattr(importlib.import_module(module_name), class_name)
+            elif transform is None:
+                function = _no_op
+            else:
+                function = transform
+            result[name] = function
+        return result
+    else:
+        raise ValueError(
+            f"Invalid transforms argument {transforms}. "
+            f"transforms must be None or a dictionary."
+        )
+
+
+def _no_op(doc):
+    return doc

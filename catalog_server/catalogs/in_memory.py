@@ -9,6 +9,7 @@ from ..utils import (
     IndexCallable,
     slice_to_interval,
     SpecialUsers,
+    UNCHANGED,
 )
 
 
@@ -87,13 +88,31 @@ class Catalog(collections.abc.Mapping):
                 identity,
             )
         else:
-            catalog = type(self)(
-                self._mapping,
-                metadata=self.metadata,
-                access_policy=self.access_policy,
-                authenticated_identity=identity,
-            )
+            catalog = self.new_variation(authenticated_identity=identity)
         return catalog
+
+    def new_variation(
+        self,
+        *args,
+        mapping=UNCHANGED,
+        metadata=UNCHANGED,
+        authenticated_identity=UNCHANGED,
+        **kwargs,
+    ):
+        if mapping is UNCHANGED:
+            mapping = self._mapping
+        if metadata is UNCHANGED:
+            metadata = self._metadata
+        if authenticated_identity is UNCHANGED:
+            authenticated_identity = self._authenticated_identity
+        return type(self)(
+            *args,
+            mapping=mapping,
+            metadata=self._metadata,
+            access_policy=self.access_policy,
+            authenticated_identity=self.authenticated_identity,
+            **kwargs,
+        )
 
     @authenticated
     def search(self, query):
@@ -195,12 +214,7 @@ def full_text_search(query, catalog):
         # and then bails, whereas `intersection` proceeds to find all matches.
         if not words.isdisjoint(query_words):
             matches[key] = value
-    return type(catalog)(
-        matches,
-        metadata=catalog.metadata,
-        access_policy=catalog.access_policy,
-        authenticated_identity=catalog.authenticated_identity,
-    )
+    return catalog.new_variation(mapping=matches)
 
 
 def key_lookup(query, catalog):
@@ -208,12 +222,7 @@ def key_lookup(query, catalog):
         matches = {query.key: catalog[query.key]}
     except KeyError:
         matches = {}
-    return type(catalog)(
-        matches,
-        metadata=catalog.metadata,
-        access_policy=catalog.access_policy,
-        authenticated_identity=catalog.authenticated_identity,
-    )
+    return catalog.new_variation(mapping=matches)
 
 
 Catalog.register_query(FullText, full_text_search)

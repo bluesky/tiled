@@ -192,3 +192,14 @@ def _tree_gen(catalog, nodes=None, last=None):
 def tree(catalog):
     "Provide a visual sketch of Catalog structure akin to UNIX `tree`."
     print("\n".join(_tree_gen(catalog)))
+
+
+class Sentinel:
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return f"<{self.name}>"
+
+
+UNCHANGED = Sentinel("UNCHANGED")
