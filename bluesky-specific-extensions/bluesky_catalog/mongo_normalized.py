@@ -126,6 +126,12 @@ class DatasetFromDocuments:
                     if item == key:
                         attrs["object"] = object_name
                         break
+            units = field_metadata.get("units")
+            if units:
+                if isinstance(units, str):
+                    attrs["units_string"] = units
+                # TODO We may soon add a more structured units type, which
+                # would likely be a dict here.
             shape = tuple((self._cutoff_seq_num, *field_metadata["shape"]))
             numpy_dtype = numpy.dtype(type(sample_event[self._sub_dict][key]))
             data = ArrayStructure(
