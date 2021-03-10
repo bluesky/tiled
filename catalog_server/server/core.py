@@ -9,6 +9,7 @@ from typing import Any
 import dask.base
 from fastapi import Depends, HTTPException, Query, Response
 import msgpack
+import numpy
 from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
@@ -198,6 +199,8 @@ def construct_entries_response(
 
 def construct_array_response(array, request_headers):
     DEFAULT_MEDIA_TYPE = "application/octet-stream"
+    # Ensure contiguous C-ordered array.
+    array = numpy.ascontiguousarray(array)
     etag = dask.base.tokenize(array)
     if request_headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
