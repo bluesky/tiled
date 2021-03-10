@@ -103,10 +103,6 @@ class DatasetFromDocuments:
         # The `data_keys` in a series of Event Descriptor documents with the same
         # `name` MUST be alike, so we can choose one arbitrarily.
         descriptor, *_ = self._event_descriptors
-        # Unfortunately, the Event Descriptor does not contain all the
-        # information we need, so we have to pull one Event at this point
-        query = {"descriptor": descriptor["uid"]}
-        sample_event = self._event_collection.find_one(query)
         data_vars = {}
         dim_counter = itertools.count()
         for key, field_metadata in descriptor["data_keys"].items():
@@ -133,10 +129,14 @@ class DatasetFromDocuments:
                 # TODO We may soon add a more structured units type, which
                 # would likely be a dict here.
             shape = tuple((self._cutoff_seq_num, *field_metadata["shape"]))
-            numpy_dtype = numpy.dtype(type(sample_event[self._sub_dict][key]))
+            if self._sub_dict == "data":
+                dtype = JSON_DTYPE_TO_MACHINE_DATA_TYPE[field_metadata["dtype"]]
+            else:
+                # assert sub_dict == "timestamps"
+                dtype = FLOAT_DTYPE
             data = ArrayStructure(
                 shape=shape,
-                dtype=MachineDataType.from_numpy_dtype(numpy_dtype),
+                dtype=dtype,
                 chunks=tuple((s,) for s in shape),  # TODO subdivide
             )
             variable = VariableStructure(dims=dims, data=data, attrs=attrs)
@@ -166,23 +166,26 @@ class DatasetFromDocuments:
         if block != (0,):
             raise NotImplementedError
             # TODO Implement columns that are internally chunked.
-        self._load_data()
-        col = numpy.array(_transpose(self._events, [key], self._sub_dict)[key])
-        print(col)
-        return col
-
-    def _load_data(self):
-        # TODO Support partial loading.
-        if self._events:
-            return
+        column = []
         for descriptor in sorted(self._event_descriptors, key=lambda d: d["time"]):
-            # TODO Sort, and deal with repeated seq_num.
-            # May $last would be useful for that, or we could just drop
-            # duplicate on the Python side since they are rare.
-            query = {"descriptor": descriptor["uid"]}
-            cursor = self._event_collection.find(query, {"_id": False})
-            self._events.extend(cursor)
-        print(self._events)
+            (result,) = self._event_collection.aggregate(
+                [
+                    {
+                        "$match": {
+                            "descriptor": descriptor["uid"],
+                            "seq_num": {"$lte": self._cutoff_seq_num}
+                        },
+                    },
+                    {
+                        "$group": {
+                            "_id": {"descriptor": "descriptor"},
+                            "column": {"$push": f"${self._sub_dict}.{key}"},
+                        },
+                    },
+                ]
+            )
+            column.extend(result["column"])
+        return numpy.array(column)
 
 
 class Catalog(collections.abc.Mapping):
@@ -425,18 +428,16 @@ class Catalog(collections.abc.Mapping):
         # cutoff. If not, we need to know the length anyway. Note that this
         # is not the same thing as the number of Event documents in the
         # stream because seq_num may be repeated, nonunique.
-        (result,) = list(
-            self._event_collection.aggregate(
-                [
-                    {"$match": {"descriptor": {"$in": event_descriptor_uids}}},
-                    {
-                        "$group": {
-                            "_id": "descriptor",
-                            "highest_seq_num": {"$max": "$seq_num"},
-                        },
+        (result,) = self._event_collection.aggregate(
+            [
+                {"$match": {"descriptor": {"$in": event_descriptor_uids}}},
+                {
+                    "$group": {
+                        "_id": "descriptor",
+                        "highest_seq_num": {"$max": "$seq_num"},
                     },
-                ]
-            )
+                },
+            ]
         )
         cutoff_seq_num = result["highest_seq_num"]
         mapping = LazyMap(
@@ -855,30 +856,12 @@ def _no_op(doc):
     return doc
 
 
-def _transpose(in_data, keys, field):
-    """Turn a list of dicts into dict of lists
-
-    Parameters
-    ----------
-    in_data : list
-        A list of dicts which contain at least one dict.
-        All of the inner dicts must have at least the keys
-        in `keys`
-
-    keys : list
-        The list of keys to extract
-
-    field : str
-        The field in the outer dict to use
-
-    Returns
-    -------
-    transpose : dict
-        The transpose of the data
-    """
-    out = {k: [None] * len(in_data) for k in keys}
-    for j, ev in enumerate(in_data):
-        dd = ev[field]
-        for k in keys:
-            out[k][j] = dd[k]
-    return out
+FLOAT_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype('float64'))
+INT_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype('int64'))
+STRING_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype('<U'))
+JSON_DTYPE_TO_MACHINE_DATA_TYPE = {
+    "number": FLOAT_DTYPE,
+    "integer": INT_DTYPE,
+    "string": STRING_DTYPE,
+    "integer": INT_DTYPE,
+}
