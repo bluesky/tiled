@@ -2,7 +2,7 @@ class BlueskyEventStreamMixin:
     "Convenience methods used by the server- and client-side"
 
     def __repr__(self):
-        return f"<{type(self).__name__} {self.metadata['stream_name']!r} {set(self)!r}>"
+        return f"<{type(self).__name__} {set(self)!r} stream_name={self.metadata['stream_name']!r}>"
 
     @property
     def descriptors(self):
@@ -29,7 +29,7 @@ class BlueskyRunMixin:
     def __repr__(self):
         return (
             f"<{type(self).__name__} "
-            f"uid={self.metadata['start']['uid']!r}, "
-            f"streams={set(self)!r}"
+            f"{set(self)!r} "
+            f"uid={self.metadata['start']['uid']!r}"
             ">"
         )
