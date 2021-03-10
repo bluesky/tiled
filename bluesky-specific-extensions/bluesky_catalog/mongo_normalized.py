@@ -161,6 +161,8 @@ class DatasetFromDocuments:
             # TODO Implement columns that are internally chunked.
         column = []
         for descriptor in sorted(self._event_descriptors, key=lambda d: d["time"]):
+            # TODO When seq_num is repeated, take the last one only (sorted by
+            # time).
             (result,) = self._event_collection.aggregate(
                 [
                     {
@@ -178,6 +180,7 @@ class DatasetFromDocuments:
                 ]
             )
             column.extend(result["column"])
+        # TODO Implement filled data.
         return numpy.array(column)
 
 
