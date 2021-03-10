@@ -166,7 +166,7 @@ class DatasetFromDocuments:
                     {
                         "$match": {
                             "descriptor": descriptor["uid"],
-                            "seq_num": {"$lte": self._cutoff_seq_num}
+                            "seq_num": {"$lte": self._cutoff_seq_num},
                         },
                     },
                     {
@@ -849,9 +849,9 @@ def _no_op(doc):
     return doc
 
 
-FLOAT_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype('float64'))
-INT_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype('int64'))
-STRING_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype('<U'))
+FLOAT_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype("float64"))
+INT_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype("int64"))
+STRING_DTYPE = MachineDataType.from_numpy_dtype(numpy.dtype("<U"))
 JSON_DTYPE_TO_MACHINE_DATA_TYPE = {
     "number": FLOAT_DTYPE,
     "integer": INT_DTYPE,
