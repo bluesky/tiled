@@ -113,10 +113,10 @@ class DatasetFromDocuments:
             # dimensions (it's optional) use the same default dimension
             # names that xarray would.
             try:
-                dims = field_metadata["dims"]
+                dims = ["time"] + field_metadata["dims"]
             except KeyError:
-                ndim = len(field_metadata["shape"])
-                dims = [f"dim_{next(dim_counter)}" for _ in range(ndim)]
+                ndim = min(1, len(field_metadata["shape"]))
+                dims = ["time"] + [f"dim_{next(dim_counter)}" for _ in range(ndim)]
             attrs = {}
             # Record which object (i.e. device) this column is associated with,
             # which enables one to find the relevant configuration, if any.
@@ -138,17 +138,17 @@ class DatasetFromDocuments:
         return DatasetStructure(data_vars=data_vars, coords={}, attrs={})
 
     def read(self):
-        ...
-        # data_arrays = {}
-        # for key, value in descriptor["data_keys"].items():
-        #     dask_array = dask.array.from_delayed(
-        #         dask.delayed(self._get_column)(key, block=(0,)),
-        #         shape=(self._cutoff_seq_num, *value["shape"]),
-        #         dtype=float,  # TODOD
-        #     )
-        #     data_array = xarray.DataArray(dask_array)
-        #     data_arrays[key] = data_array
-        # return xarray.Dataset(data_arrays)
+        structure = self.describe()
+        data_arrays = {}
+        for key, data_var in structure.items():
+            dask_array = dask.array.from_delayed(
+                dask.delayed(self._get_column)(key, block=(0,)),
+                shape=data_var.variable.shape,
+                dtype=data_var.variable.dtype,
+            )
+            data_array = xarray.DataArray(dask_array, attrs=data_var.attrs)
+            data_arrays[key] = data_array
+        return xarray.Dataset(data_arrays)
 
     def _get_column(self, key, block):
         if block != (0,):
