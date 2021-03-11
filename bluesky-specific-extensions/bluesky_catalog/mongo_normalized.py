@@ -33,6 +33,7 @@ from catalog_server.utils import (
 )
 from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
 from catalog_server.utils import LazyMap
+
 from .common import BlueskyEventStreamMixin, BlueskyRunMixin
 
 
