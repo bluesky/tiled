@@ -200,9 +200,39 @@ def _tree_gen(catalog, nodes=None, last=None):
             yield _line(nodes, last)
 
 
-def tree(catalog):
-    "Provide a visual sketch of Catalog structure akin to UNIX `tree`."
-    print("\n".join(_tree_gen(catalog)))
+def tree(catalog, max_lines=20):
+    """
+    Print a visual sketch of Catalog structure akin to UNIX `tree`.
+
+    Parameters
+    ----------
+    catalog : Catalog
+    max_lines: int or None, optional
+        By default, output is trucated at 20 lines. ``None`` means "Do not
+        truncate."
+
+    Examples
+    --------
+
+    >>> tree(catalog)
+    ├── A
+    │   ├── dog
+    │   ├── cat
+    │   └── monkey
+    └── B
+        ├── snake
+        ├── bear
+        └── wolf
+
+    """
+    for counter, line in enumerate(_tree_gen(catalog), start=1):
+        if (max_lines is not None) and (counter > max_lines):
+            print(
+                f"<Output truncated at {max_lines} lines. "
+                "Adjust max_lines parameter to see more.>"
+            )
+            break
+        print(line)
 
 
 class Sentinel:
