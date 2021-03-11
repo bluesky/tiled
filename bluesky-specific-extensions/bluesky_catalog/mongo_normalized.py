@@ -151,7 +151,17 @@ class DatasetFromDocuments:
             variable = VariableStructure(dims=dims, data=data, attrs=attrs)
             data_array = DataArrayStructure(variable, coords={}, name=key)
             data_vars[key] = data_array
-        return DatasetStructure(data_vars=data_vars, coords={}, attrs={})
+        # Build the time coordinate.
+        shape = (self._cutoff_seq_num,)
+        data = ArrayStructure(
+            shape=shape,
+            dtype=dtype,
+            chunks=tuple((s,) for s in shape),  # TODO subdivide
+        )
+        variable = VariableStructure(dims=["time"], data=data, attrs={})
+        return DatasetStructure(
+            data_vars=data_vars, coords={"time": variable}, attrs={}
+        )
 
     def read(self):
         structure = self.structure()
@@ -169,7 +179,14 @@ class DatasetFromDocuments:
             )
             data_array = xarray.DataArray(dask_array, attrs=variable.attrs)
             data_arrays[key] = data_array
-        return xarray.Dataset(data_arrays)
+        # Build the time coordinate.
+        variable = structure.coords["time"]
+        dask_array = dask.array.from_delayed(
+            dask.delayed(self._get_time_coord)(block=(0,)),
+            shape=variable.data.shape,
+            dtype=variable.data.dtype.to_numpy_dtype(),
+        )
+        return xarray.Dataset(data_arrays, coords={"time": dask_array})
 
     @property
     def filler(self):
@@ -180,6 +197,33 @@ class DatasetFromDocuments:
             for descriptor in self._event_descriptors:
                 self._filler("descriptor", descriptor)
         return self._filler
+
+    def _get_time_coord(self, block):
+        if block != (0,):
+            raise NotImplementedError
+            # TODO Implement columns that are internally chunked.
+        column = []
+        for descriptor in sorted(self._event_descriptors, key=lambda d: d["time"]):
+            # TODO When seq_num is repeated, take the last one only (sorted by
+            # time).
+            (result,) = self._event_collection.aggregate(
+                [
+                    {
+                        "$match": {
+                            "descriptor": descriptor["uid"],
+                            "seq_num": {"$lte": self._cutoff_seq_num},
+                        },
+                    },
+                    {
+                        "$group": {
+                            "_id": {"descriptor": "descriptor"},
+                            "column": {"$push": "$time"},
+                        },
+                    },
+                ]
+            )
+            column.extend(result["column"])
+        return numpy.array(column)
 
     def _get_column(self, key, block):
         if block != (0,):
@@ -255,7 +299,6 @@ class DatasetFromDocuments:
                 doc["uid"] = uid
 
         if doc is None:
-            breakpoint()
             raise ValueError(f"Could not find Resource with uid={uid}")
         return doc
 
