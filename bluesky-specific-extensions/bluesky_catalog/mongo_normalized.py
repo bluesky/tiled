@@ -42,6 +42,7 @@ class BlueskyRun(CatalogInMemory, BlueskyRunMixin):
     def __init__(self, *args, handler_registry, transforms, root_map, **kwargs):
         super().__init__(*args, **kwargs)
         self._handler_registry = handler_registry
+        self.handler_registry = event_model.HandlerRegistryView(self._handler_registry)
         self.transforms = transforms
         self.root_map = root_map
 
@@ -95,6 +96,7 @@ class DatasetFromDocuments:
         self._resource_collection = resource_collection
         self._sub_dict = sub_dict
         self._handler_registry = handler_registry
+        self.handler_registry = event_model.HandlerRegistryView(self._handler_registry)
         self.transforms = transforms
         self.root_map = root_map
         self._filler = None
@@ -119,7 +121,7 @@ class DatasetFromDocuments:
             try:
                 dims = ["time"] + field_metadata["dims"]
             except KeyError:
-                ndim = min(1, len(field_metadata["shape"]))
+                ndim = max(1, len(field_metadata["shape"]))
                 dims = ["time"] + [f"dim_{next(dim_counter)}" for _ in range(ndim)]
             attrs = {}
             # Record which object (i.e. device) this column is associated with,
@@ -210,12 +212,18 @@ class DatasetFromDocuments:
         # The `data_keys` in a series of Event Descriptor documents with the
         # same `name` MUST be alike, so we can just use the last one from the
         # loop above.
-        if descriptor["data_keys"]["key"].get("external"):
+        if descriptor["data_keys"][key].get("external"):
             filled_column = []
+            descriptor_uid = descriptor["uid"]
             for datum_id in column:
                 # HACK to adapt Filler which is designed to consume whole,
                 # streamed documents, to this column-based access mode.
-                mock_event = {"data": {key: datum_id}}
+                mock_event = {
+                    "data": {key: datum_id},
+                    "descriptor": descriptor_uid,
+                    "uid": "PLACEHOLDER",
+                    "filled": {key: False},
+                }
                 filled_mock_event = _fill(
                     self.filler,
                     mock_event,
@@ -247,6 +255,7 @@ class DatasetFromDocuments:
                 doc["uid"] = uid
 
         if doc is None:
+            breakpoint()
             raise ValueError(f"Could not find Resource with uid={uid}")
         return doc
 
@@ -497,6 +506,9 @@ class Catalog(collections.abc.Mapping):
                     event_collection=self._event_collection,
                     datum_collection=self._datum_collection,
                     resource_collection=self._resource_collection,
+                    handler_registry=self._handler_registry,
+                    root_map=self.root_map,
+                    transforms=self.transforms,
                     sub_dict="data",
                 ),
                 # TODO timestamps, config, config_timestamps
@@ -912,7 +924,7 @@ JSON_DTYPE_TO_MACHINE_DATA_TYPE = {
     "number": FLOAT_DTYPE,
     "integer": INT_DTYPE,
     "string": STRING_DTYPE,
-    "integer": INT_DTYPE,
+    "array": FLOAT_DTYPE,  # HACK This is not a good assumption.
 }
 
 

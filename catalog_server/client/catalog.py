@@ -235,6 +235,8 @@ class ClientCatalog(collections.abc.Mapping):
             metadata = self._metadata
         if containers is UNCHANGED:
             containers = self.containers
+        if special_clients is UNCHANGED:
+            special_clients = self.special_clients
         if params is UNCHANGED:
             params = self._params
         return class_(
