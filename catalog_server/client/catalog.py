@@ -10,7 +10,14 @@ import httpx
 
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
-from ..utils import catalog_repr, DictView, LazyMap, IndexCallable, slice_to_interval
+from ..utils import (
+    catalog_repr,
+    DictView,
+    LazyMap,
+    IndexCallable,
+    slice_to_interval,
+    UNCHANGED,
+)
 
 
 class ClientCatalog(collections.abc.Mapping):
@@ -192,8 +199,8 @@ class ClientCatalog(collections.abc.Mapping):
         # etc.
         client_type_hint = item["attributes"].get("client_type_hint")
         if client_type_hint is not None:
-            cls = self.special_clients.get(client_type_hint)
-            if cls is None:
+            class_ = self.special_clients.get(client_type_hint)
+            if class_ is None:
                 warnings.warn(
                     "The server suggested to use a special client with the "
                     f"hint {client_type_hint!r} but nothing matching the "
@@ -203,11 +210,42 @@ class ClientCatalog(collections.abc.Mapping):
                     "features."
                 )
             else:
-                return cls
+                return class_
         # This is generally just ClientCatalog, but if the original
         # user-created catalog was a subclass of ClientCatalog, this will
         # repsect that.
         return self._root_client_type
+
+    def new_variation(
+        self,
+        class_,
+        *,
+        path=UNCHANGED,
+        metadata=UNCHANGED,
+        containers=UNCHANGED,
+        special_clients=UNCHANGED,
+        params=UNCHANGED,
+    ):
+        """
+        This is intended primarily for intenal use and use by subclasses.
+        """
+        if path is UNCHANGED:
+            path = self._path
+        if metadata is UNCHANGED:
+            metadata = self._metadata
+        if containers is UNCHANGED:
+            containers = self.containers
+        if params is UNCHANGED:
+            params = self._params
+        return class_(
+            client=self._client,
+            path=path,
+            metadata=metadata,
+            containers=containers,
+            special_clients=special_clients,
+            params=params,
+            root_client_type=self._root_client_type,
+        )
 
     def __len__(self):
         response = self._client.get(
@@ -253,15 +291,11 @@ class ClientCatalog(collections.abc.Mapping):
             len(data) == 1
         ), "The key lookup query must never result more than one result."
         (item,) = data
-        cls = self._get_class(item)
-        return cls(
-            client=self._client,
+        class_ = self._get_class(item)
+        return self.new_variation(
+            class_,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
-            containers=self.containers,
-            special_clients=self.special_clients,
-            params=self._params,
-            root_client_type=self._root_client_type,
         )
 
     def items(self):
@@ -280,15 +314,11 @@ class ClientCatalog(collections.abc.Mapping):
             response.raise_for_status()
             for item in response.json()["data"]:
                 key = item["id"]
-                cls = self._get_class(item)
-                value = cls(
-                    self._client,
+                class_ = self._get_class(item)
+                value = self.new_variation(
+                    class_,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
-                    containers=self.containers,
-                    special_clients=self.special_clients,
-                    params=self._params,
-                    root_client_type=self._root_client_type,
                 )
                 yield key, value
             next_page_url = response.json()["links"]["next"]
@@ -331,15 +361,11 @@ class ClientCatalog(collections.abc.Mapping):
                 if stop is not None and next(item_counter) == stop:
                     return
                 key = item["id"]
-                cls = self._get_class(item)
-                yield key, cls(
-                    self._client,
+                class_ = self._get_class(item)
+                yield key, self.new_variation(
+                    class_,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
-                    containers=self.containers,
-                    special_clients=self.special_clients,
-                    params=self._params,
-                    root_client_type=self._root_client_type,
                 )
             next_page_url = response.json()["links"]["next"]
 
@@ -358,15 +384,11 @@ class ClientCatalog(collections.abc.Mapping):
         response.raise_for_status()
         (item,) = response.json()["data"]
         key = item["id"]
-        cls = self._get_class(item)
-        value = cls(
-            self._client,
+        class_ = self._get_class(item)
+        value = self.new_variation(
+            class_,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
-            containers=self.containers,
-            special_clients=self.special_clients,
-            params=self._params,
-            root_client_type=self._root_client_type,
         )
         return (key, value)
 
