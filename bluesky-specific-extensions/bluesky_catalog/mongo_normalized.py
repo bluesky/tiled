@@ -5,6 +5,7 @@ import itertools
 import functools
 import warnings
 
+from bson.objectid import ObjectId, InvalidId
 import entrypoints
 import event_model
 import dask
@@ -38,14 +39,20 @@ from .common import BlueskyEventStreamMixin, BlueskyRunMixin
 class BlueskyRun(CatalogInMemory, BlueskyRunMixin):
     client_type_hint = "BlueskyRun"
 
-    def __init__(self, *args, filler, **kwargs):
+    def __init__(self, *args, handler_registry, transforms, root_map, **kwargs):
         super().__init__(*args, **kwargs)
-        self.filler = filler
+        self._handler_registry = handler_registry
+        self.transforms = transforms
+        self.root_map = root_map
 
-    def new_variation(self, *args, filler=UNCHANGED, **kwargs):
-        if filler is UNCHANGED:
-            filler = self.filler
-        return super().new_variation(*args, filler=filler, **kwargs)
+    def new_variation(self, *args, **kwargs):
+        return super().new_variation(
+            *args,
+            handler_registry=self.handler_registry,
+            transforms=self.transforms,
+            root_map=self.root_map,
+            **kwargs,
+        )
 
     def documents(self):
         yield ("start", self.metadata["start"])
@@ -74,6 +81,9 @@ class DatasetFromDocuments:
         event_collection,
         datum_collection,
         resource_collection,
+        handler_registry,
+        root_map,
+        transforms,
         sub_dict,
         metadata=None,
     ):
@@ -84,6 +94,10 @@ class DatasetFromDocuments:
         self._datum_collection = datum_collection
         self._resource_collection = resource_collection
         self._sub_dict = sub_dict
+        self._handler_registry = handler_registry
+        self.transforms = transforms
+        self.root_map = root_map
+        self._filler = None
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -155,6 +169,16 @@ class DatasetFromDocuments:
             data_arrays[key] = data_array
         return xarray.Dataset(data_arrays)
 
+    @property
+    def filler(self):
+        if self._filler is None:
+            self._filler = event_model.Filler(
+                handler_registry=self._handler_registry, root_map=self.root_map
+            )
+            for descriptor in self._event_descriptors:
+                self._filler("descriptor", descriptor)
+        return self._filler
+
     def _get_column(self, key, block):
         if block != (0,):
             raise NotImplementedError
@@ -180,8 +204,57 @@ class DatasetFromDocuments:
                 ]
             )
             column.extend(result["column"])
-        # TODO Implement filled data.
-        return numpy.array(column)
+
+        # If data is external, we now have a column of datum_ids, and we need
+        # to look up the data that they reference.
+        # The `data_keys` in a series of Event Descriptor documents with the
+        # same `name` MUST be alike, so we can just use the last one from the
+        # loop above.
+        if descriptor["data_keys"]["key"].get("external"):
+            filled_column = []
+            for datum_id in column:
+                # HACK to adapt Filler which is designed to consume whole,
+                # streamed documents, to this column-based access mode.
+                mock_event = {"data": {key: datum_id}}
+                filled_mock_event = _fill(
+                    self.filler,
+                    mock_event,
+                    self._lookup_resource_for_datum,
+                    self._get_resource,
+                    self._get_datum_for_resource,
+                    last_datum_id=None,
+                )
+                filled_column.append(filled_mock_event["data"][key])
+            return dask.array.stack(filled_column)
+        else:
+            return numpy.array(column)
+
+    def _get_datum_for_resource(self, resource_uid):
+        return self._datum_collection.find({"resource": resource_uid}, {"_id": False})
+
+    def _get_resource(self, uid):
+        doc = self._resource_collection.find_one({"uid": uid}, {"_id": False})
+
+        # Some old resource documents don't have a 'uid' and they are
+        # referenced by '_id'.
+        if doc is None:
+            try:
+                _id = ObjectId(uid)
+            except InvalidId:
+                pass
+            else:
+                doc = self._resource_collection.find_one({"_id": _id}, {"_id": False})
+                doc["uid"] = uid
+
+        if doc is None:
+            raise ValueError(f"Could not find Resource with uid={uid}")
+        return doc
+
+    def _lookup_resource_for_datum(self, datum_id):
+        doc = self._datum_collection.find_one({"datum_id": datum_id})
+        if doc is None:
+            raise ValueError(f"Could not find Datum with datum_id={datum_id}")
+        return doc["resource"]
 
 
 class Catalog(collections.abc.Mapping):
@@ -200,7 +273,6 @@ class Catalog(collections.abc.Mapping):
         handler_registry=None,
         root_map=None,
         transforms=None,
-        filler_class=event_model.Filler,
         metadata=None,
         access_policy=None,
         authenticated_identity=None,
@@ -211,9 +283,6 @@ class Catalog(collections.abc.Mapping):
         Parameters
         ----------
         handler_registry: dict, optional
-            This is passed to the Filler or whatever class is given in the
-            filler_class parameter below.
-
             Maps each 'spec' (a string identifying a given type or external
             resource) to a handler class.
 
@@ -231,16 +300,9 @@ class Catalog(collections.abc.Mapping):
             ``__call__``, with the respective signatures. But in general it may be
             any callable-that-returns-a-callable.
         root_map: dict, optional
-            This is passed to Filler or whatever class is given in the filler_class
-            parameter below.
-
             str -> str mapping to account for temporarily moved/copied/remounted
             files.  Any resources which have a ``root`` in ``root_map`` will be
             loaded using the mapped ``root``.
-        filler_class: type
-            This is Filler by default. It can be a Filler subclass,
-            ``functools.partial(Filler, ...)``, or any class that provides the same
-            methods as ``DocumentRouter``.
         transforms: dict
             A dict that maps any subset of the keys {start, stop, resource, descriptor}
             to a function that accepts a document of the corresponding type and
@@ -254,9 +316,6 @@ class Catalog(collections.abc.Mapping):
             asset_registry_db = metadatastore_db
         else:
             asset_registry_db = _get_database(asset_registry)
-        if isinstance(filler_class, str):
-            module_name, _, class_name = filler_class.rpartition(".")
-            filler_class = getattr(importlib.import_module(module_name), class_name)
         root_map = root_map or {}
         transforms = parse_transforms(transforms)
         if handler_registry is None:
@@ -265,7 +324,6 @@ class Catalog(collections.abc.Mapping):
         return cls(
             metadatastore_db=metadatastore_db,
             asset_registry_db=asset_registry_db,
-            filler_class=filler_class,
             handler_registry=handler_registry,
             root_map=root_map,
             transforms=transforms,
@@ -278,7 +336,6 @@ class Catalog(collections.abc.Mapping):
         self,
         metadatastore_db,
         asset_registry_db,
-        filler_class,
         handler_registry,
         root_map,
         transforms,
@@ -299,7 +356,6 @@ class Catalog(collections.abc.Mapping):
         self._metadatastore_db = metadatastore_db
         self._asset_registry_db = asset_registry_db
 
-        self.filler_class = filler_class
         self._handler_registry = handler_registry
         self.handler_registry = event_model.HandlerRegistryView(self._handler_registry)
         self.root_map = root_map
@@ -353,7 +409,6 @@ class Catalog(collections.abc.Mapping):
             *args,
             metadatastore_db=self._metadatastore_db,
             asset_registry_db=self._asset_registry_db,
-            filler_class=self.filler_class,
             handler_registry=self.handler_registry,
             root_map=self.root_map,
             transforms=self.transforms,
@@ -401,15 +456,13 @@ class Catalog(collections.abc.Mapping):
                 stream_name=stream_name,
                 is_complete=(run_stop_doc is not None),
             )
-        filler = self.filler_class(
-            handler_registry=self.handler_registry,
-            root_map=self.root_map,
-            inplace=False,
-        )
         return BlueskyRun(
             LazyMap(mapping),
             metadata={"start": run_start_doc, "stop": run_stop_doc},
-            filler=filler,
+            handler_registry=self.handler_registry,
+            transforms=self.transforms,
+            root_map=self.root_map,
+            # caches=...,
         )
 
     def _build_event_stream(self, *, run_start_uid, stream_name, is_complete):
@@ -861,3 +914,59 @@ JSON_DTYPE_TO_MACHINE_DATA_TYPE = {
     "string": STRING_DTYPE,
     "integer": INT_DTYPE,
 }
+
+
+def _fill(
+    filler,
+    event,
+    lookup_resource_for_datum,
+    get_resource,
+    get_datum_for_resource,
+    last_datum_id=None,
+):
+    try:
+        _, filled_event = filler("event", event)
+        return filled_event
+    except event_model.UnresolvableForeignKeyError as err:
+        datum_id = err.key
+        if datum_id == last_datum_id:
+            # We tried to fetch this Datum on the last trip
+            # trip through this method, and apparently it did not
+            # work. We are in an infinite loop. Bail!
+            raise
+
+        # try to fast-path looking up the resource uid if this works
+        # it saves us a a database hit (to get the datum document)
+        if "/" in datum_id:
+            resource_uid, _ = datum_id.split("/", 1)
+        # otherwise do it the standard way
+        else:
+            resource_uid = lookup_resource_for_datum(datum_id)
+
+        # but, it might be the case that the key just happens to have
+        # a '/' in it and it does not have any semantic meaning so we
+        # optimistically try
+        try:
+            resource = get_resource(uid=resource_uid)
+        # and then fall back to the standard way to be safe
+        except ValueError:
+            resource = get_resource(lookup_resource_for_datum(datum_id))
+
+        filler("resource", resource)
+        # Pre-fetch all datum for this resource.
+        for datum in get_datum_for_resource(resource_uid=resource_uid):
+            filler("datum", datum)
+        # TODO -- When to clear the datum cache in filler?
+
+        # Re-enter and try again now that the Filler has consumed the
+        # missing Datum. There might be another missing Datum in this same
+        # Event document (hence this re-entrant structure) or might be good
+        # to go.
+        return _fill(
+            filler,
+            event,
+            lookup_resource_for_datum,
+            get_resource,
+            get_datum_for_resource,
+            last_datum_id=datum_id,
+        )
