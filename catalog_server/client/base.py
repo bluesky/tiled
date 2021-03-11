@@ -1,4 +1,5 @@
 from ..utils import DictView
+from .utils import handle_error
 
 
 class BaseClientSource:
@@ -44,7 +45,7 @@ class BaseClientSource:
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure", **self._params},
             )
-            response.raise_for_status()
+            handle_error(response)
             result = response.json()["data"]["attributes"]["structure"]
             structure = self.STRUCTURE_TYPE.from_json(result)
         else:

@@ -5,6 +5,7 @@ import dask.array
 from ..containers.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
 from .base import BaseClientSource
+from .utils import handle_error
 
 
 class ClientDaskArraySource(BaseClientSource):
@@ -28,7 +29,7 @@ class ClientDaskArraySource(BaseClientSource):
             headers={"Accept": media_type},
             params={"block": ",".join(map(str, block)), **self._params},
         )
-        response.raise_for_status()
+        handle_error(response)
         return deserialization_registry(
             "array", media_type, response.content, dtype, shape
         )

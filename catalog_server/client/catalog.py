@@ -18,6 +18,7 @@ from ..utils import (
     slice_to_interval,
     UNCHANGED,
 )
+from .utils import handle_error
 
 
 class ClientCatalog(collections.abc.Mapping):
@@ -129,7 +130,7 @@ class ClientCatalog(collections.abc.Mapping):
             cls.DEFAULT_SPECIAL_CLIENT_DISPATCH,
         )
         response = client.get("/metadata/")
-        response.raise_for_status()
+        handle_error(response)
         metadata = response.json()["data"]["attributes"]["metadata"]
         return cls(
             client,
@@ -254,7 +255,7 @@ class ClientCatalog(collections.abc.Mapping):
             f"/search/{'/'.join(self._path)}",
             params={"fields": "", **self._queries_as_params, **self._params},
         )
-        response.raise_for_status()
+        handle_error(response)
         return response.json()["meta"]["count"]
 
     def __length_hint__(self):
@@ -269,7 +270,7 @@ class ClientCatalog(collections.abc.Mapping):
                 next_page_url,
                 params={"fields": "", **self._queries_as_params, **self._params},
             )
-            response.raise_for_status()
+            handle_error(response)
             for item in response.json()["data"]:
                 yield item["id"]
             next_page_url = response.json()["links"]["next"]
@@ -285,7 +286,7 @@ class ClientCatalog(collections.abc.Mapping):
                 **self._params,
             },
         )
-        response.raise_for_status()
+        handle_error(response)
         data = response.json()["data"]
         if not data:
             raise KeyError(key)
@@ -313,7 +314,7 @@ class ClientCatalog(collections.abc.Mapping):
                     **self._params,
                 },
             )
-            response.raise_for_status()
+            handle_error(response)
             for item in response.json()["data"]:
                 key = item["id"]
                 class_ = self._get_class(item)
@@ -339,7 +340,7 @@ class ClientCatalog(collections.abc.Mapping):
                 next_page_url,
                 params={"fields": "", **self._queries_as_params, **self._params},
             )
-            response.raise_for_status()
+            handle_error(response)
             for item in response.json()["data"]:
                 if stop is not None and next(item_counter) == stop:
                     return
@@ -358,7 +359,8 @@ class ClientCatalog(collections.abc.Mapping):
                     **self._params,
                 },
             )
-            response.raise_for_status()
+            handle_error(response)
+
             for item in response.json()["data"]:
                 if stop is not None and next(item_counter) == stop:
                     return
@@ -383,7 +385,7 @@ class ClientCatalog(collections.abc.Mapping):
                 **self._params,
             },
         )
-        response.raise_for_status()
+        handle_error(response)
         (item,) = response.json()["data"]
         key = item["id"]
         class_ = self._get_class(item)
