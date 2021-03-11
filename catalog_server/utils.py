@@ -149,13 +149,15 @@ def catalog_repr(catalog, sample):
     if sample_reprs:
         out += sample_reprs[0]
     # And then show as many more as we can fit on one line.
-    for index, sample_repr in enumerate(sample_reprs[1:], start=1):
+    counter = 1
+    for sample_repr in sample_reprs[1:]:
         if len(out) + len(sample_repr) > 60:  # character count
             break
         out += ", " + sample_repr
+        counter += 1
     approx_len = operator.length_hint(catalog)  # cheaper to compute than len(catalog)
     # Are there more in the catalog that what we displayed above?
-    if approx_len > index:
+    if approx_len > counter:
         out += f", ...}} ~{approx_len} entries>"
     else:
         out += "}>"
