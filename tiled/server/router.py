@@ -16,7 +16,7 @@ from .core import (
     construct_array_response,
     construct_entries_response,
     construct_resource,
-    datasource,
+    reader,
     entry,
     get_chunk,
     # get_dask_client,
@@ -165,7 +165,7 @@ async def entries(
     current_user=Depends(get_current_user),
     entry: Any = Depends(entry),
 ):
-    "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
+    "List the entries in a Catalog, which may be sub-Catalogs or Readers."
 
     try:
         return json_or_msgpack(
@@ -194,14 +194,14 @@ async def entries(
 @router.get("/tile/array/{path:path}", response_model=models.Response, name="array")
 def tile_array(
     request: Request,
-    datasource=Depends(datasource),
+    reader=Depends(reader),
     block=Depends(block),
 ):
     """
     Fetch a chunk of array-like data.
     """
     try:
-        chunk = datasource.read().blocks[block]
+        chunk = reader.read().blocks[block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = get_chunk(chunk)
@@ -218,7 +218,7 @@ def tile_array(
 )
 def tile_variable(
     request: Request,
-    datasource=Depends(datasource),
+    reader=Depends(reader),
     block=Depends(block),
 ):
     """
@@ -226,7 +226,7 @@ def tile_variable(
     """
     try:
         # Lookup block on the `data` attribute of the Variable.
-        chunk = datasource.read().data.blocks[block]
+        chunk = reader.read().data.blocks[block]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     array = get_chunk(chunk)
@@ -243,14 +243,14 @@ def tile_variable(
 )
 def tile_data_array(
     request: Request,
-    datasource=Depends(datasource),
+    reader=Depends(reader),
     block=Depends(block),
     coord: Optional[str] = Query(None, min_length=1),
 ):
     """
     Fetch a chunk from an xarray.DataArray.
     """
-    data_array = datasource.read()
+    data_array = reader.read()
     if coord is None:
         dask_array = data_array.data
         try:
@@ -279,7 +279,7 @@ def tile_data_array(
 @router.get("/tile/dataset/{path:path}", response_model=models.Response, name="dataset")
 def tile_dataset(
     request: Request,
-    datasource=Depends(datasource),
+    reader=Depends(reader),
     block=Depends(block),
     variable: str = Query(..., min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
@@ -287,7 +287,7 @@ def tile_dataset(
     """
     Fetch a chunk from an xarray.Dataset.
     """
-    dataset = datasource.read()
+    dataset = reader.read()
     if variable not in dataset.variables:
         raise HTTPException(
             status_code=422,

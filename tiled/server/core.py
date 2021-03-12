@@ -59,12 +59,12 @@ def entry(
         raise HTTPException(status_code=404, detail=f"No such entry: {path}")
 
 
-def datasource(
+def reader(
     entry: Any = Depends(entry),
 ):
-    "Specify a path parameter and use it to look up a datasource."
-    if not isinstance(entry, DuckDataSource):
-        raise HTTPException(status_code=404, detail="This is not a DataSource.")
+    "Specify a path parameter and use it to look up a reader."
+    if not isinstance(entry, DuckReader):
+        raise HTTPException(status_code=404, detail="This is not a Reader.")
     return entry
 
 
@@ -119,15 +119,15 @@ def pagination_links(route, path, offset, limit, length_hint):
     return links
 
 
-class DuckDataSource(metaclass=abc.ABCMeta):
+class DuckReader(metaclass=abc.ABCMeta):
     """
-    Used for isinstance(obj, DuckDataSource):
+    Used for isinstance(obj, DuckReader):
     """
 
     @classmethod
     def __subclasshook__(cls, candidate):
         # If the following condition is True, candidate is recognized
-        # to "quack" like a DataSource.
+        # to "quack" like a Reader.
         EXPECTED_ATTRS = (
             "read",
             "structure",
@@ -240,11 +240,11 @@ def construct_resource(key, entry, fields):
             attributes["container"] = entry.container
         if models.EntryFields.structure in fields:
             attributes["structure"] = dataclasses.asdict(entry.structure())
-        resource = models.DataSourceResource(
+        resource = models.ReaderResource(
             **{
                 "id": key,
-                "attributes": models.DataSourceAttributes(**attributes),
-                "type": models.EntryType.datasource,
+                "attributes": models.ReaderAttributes(**attributes),
+                "type": models.EntryType.reader,
             }
         )
     return resource

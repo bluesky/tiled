@@ -1,5 +1,5 @@
 from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
-from ..datasources.array import ArraySource
+from ..readers.array import ArraySource
 from ..utils import DictView
 
 

@@ -189,7 +189,7 @@ class ClientCatalog(collections.abc.Mapping):
         "Return the appropriate Client object for this structure."
         # The basic structure of the response is either one of the containers
         # we know about or a sub-Catalog.
-        if item["type"] == "datasource":
+        if item["type"] == "reader":
             container = item["attributes"]["container"]
             try:
                 return self.containers[container]

@@ -30,7 +30,7 @@ class Response(pydantic.generics.GenericModel, Generic[DataT]):
 
 class EntryType(str, enum.Enum):
     catalog = "catalog"
-    datasource = "datasource"
+    reader = "reader"
 
 
 class EntryFields(str, enum.Enum):
@@ -55,7 +55,7 @@ class Container(str, enum.Enum):
     dataset = "dataset"
 
 
-class DataSourceAttributes(pydantic.BaseModel):
+class ReaderAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     container: Optional[Container]
     structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
@@ -73,9 +73,9 @@ class CatalogResource(Resource):
     attributes: CatalogAttributes
 
 
-class DataSourceResource(Resource):
-    "Representation of a DataSource as a JSON API Resource"
-    attributes: DataSourceAttributes
+class ReaderResource(Resource):
+    "Representation of a Reader as a JSON API Resource"
+    attributes: ReaderAttributes
 
 
 class Token(pydantic.BaseModel):

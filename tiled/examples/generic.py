@@ -4,8 +4,8 @@ import dask.array
 import h5py
 import xarray
 
-from ..datasources.array import ArraySource
-from ..datasources.xarray import DataArraySource, DatasetSource, VariableSource
+from ..readers.array import ArraySource
+from ..readers.xarray import DataArraySource, DatasetSource, VariableSource
 from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
 from ..utils import SpecialUsers
 
