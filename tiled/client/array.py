@@ -13,7 +13,7 @@ class ClientDaskArraySource(BaseClientSource):
 
     STRUCTURE_TYPE = ArrayStructure
 
-    def __init__(self, *args, route="/blob/array", **kwargs):
+    def __init__(self, *args, route="/tile/array", **kwargs):
         super().__init__(*args, **kwargs)
         if route.endswith("/"):
             route = route[:-1]

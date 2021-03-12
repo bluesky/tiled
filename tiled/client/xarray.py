@@ -9,7 +9,7 @@ class ClientDaskVariableSource(BaseClientSource):
 
     STRUCTURE_TYPE = VariableStructure
 
-    def __init__(self, *args, route="/blob/variable", **kwargs):
+    def __init__(self, *args, route="/tile/variable", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 
@@ -37,7 +37,7 @@ class ClientDaskDataArraySource(BaseClientSource):
 
     STRUCTURE_TYPE = DataArrayStructure
 
-    def __init__(self, *args, route="/blob/data_array", **kwargs):
+    def __init__(self, *args, route="/tile/data_array", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 
@@ -76,7 +76,7 @@ class ClientDaskDatasetSource(BaseClientSource):
 
     STRUCTURE_TYPE = DatasetStructure
 
-    def __init__(self, *args, route="/blob/dataset", **kwargs):
+    def __init__(self, *args, route="/tile/dataset", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 

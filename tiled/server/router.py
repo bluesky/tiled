@@ -191,8 +191,8 @@ async def entries(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
-@router.get("/blob/array/{path:path}", response_model=models.Response, name="array")
-def blob_array(
+@router.get("/tile/array/{path:path}", response_model=models.Response, name="array")
+def tile_array(
     request: Request,
     datasource=Depends(datasource),
     block=Depends(block),
@@ -214,9 +214,9 @@ def blob_array(
 
 
 @router.get(
-    "/blob/variable/{path:path}", response_model=models.Response, name="variable"
+    "/tile/variable/{path:path}", response_model=models.Response, name="variable"
 )
-def blob_variable(
+def tile_variable(
     request: Request,
     datasource=Depends(datasource),
     block=Depends(block),
@@ -239,9 +239,9 @@ def blob_variable(
 
 
 @router.get(
-    "/blob/data_array/{path:path}", response_model=models.Response, name="data_array"
+    "/tile/data_array/{path:path}", response_model=models.Response, name="data_array"
 )
-def blob_data_array(
+def tile_data_array(
     request: Request,
     datasource=Depends(datasource),
     block=Depends(block),
@@ -276,8 +276,8 @@ def blob_data_array(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
-@router.get("/blob/dataset/{path:path}", response_model=models.Response, name="dataset")
-def blob_dataset(
+@router.get("/tile/dataset/{path:path}", response_model=models.Response, name="dataset")
+def tile_dataset(
     request: Request,
     datasource=Depends(datasource),
     block=Depends(block),
