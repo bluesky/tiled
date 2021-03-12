@@ -17,9 +17,7 @@ class TimeSuite:
 
     def setup(self):
         self.server_process = subprocess.Popen(
-            (
-                f"uvicorn tiled.server.main:app --host {HOST} --port {PORT}"
-            ).split()
+            (f"uvicorn tiled.server.main:app --host {HOST} --port {PORT}").split()
         )
         time.sleep(5)
         self.catalog = ClientCatalog.from_uri(f"http://{HOST}:{PORT}", token="secret")

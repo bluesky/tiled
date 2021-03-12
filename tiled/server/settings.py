@@ -7,9 +7,7 @@ import entrypoints
 from pydantic import BaseSettings, validator
 
 
-_DEMO_DEFAULT_ROOT_CATALOG = (
-    "tiled.examples.generic:nested_with_access_control"
-)
+_DEMO_DEFAULT_ROOT_CATALOG = "tiled.examples.generic:nested_with_access_control"
 
 
 class Settings(BaseSettings):
