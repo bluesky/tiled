@@ -54,6 +54,7 @@ setup(
     cmdclass=versioneer.get_cmdclass(),
     description="Tile-based access to SciPy/PyData data structures over the web in many formats",
     long_description=readme,
+    long_description_content_type='text/markdown',
     author="Bluesky Collaboration",
     author_email="dallan@bnl.gov",
     url="https://github.com/bluesky/tiled",
