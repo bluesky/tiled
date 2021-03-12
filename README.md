@@ -1,4 +1,5 @@
-# Catalog Server from Scratch
+# Tiled
+
 *Disclaimer: This is very early work, presented in the spirit of an early draft
 of an RFC.*
 
