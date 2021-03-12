@@ -88,7 +88,7 @@ class ClientCatalog(collections.abc.Mapping):
         # The modules associated with these entrypoints will be imported
         # lazily, only when the item is first accessed.
         cls.DEFAULT_SPECIAL_CLIENT_DISPATCH = cls._discover_entrypoints(
-            "catalog_server.special_client"
+            "tiled.special_client"
         )
         # Note: We could use entrypoints to discover custom container types as
         # well, and in fact we did do this in an early draft. It was removed

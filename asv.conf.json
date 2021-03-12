@@ -4,7 +4,7 @@
     "version": 1,
 
     // The name of the project being benchmarked
-    "project": "catalog_server",
+    "project": "tiled",
 
     // The project's homepage
     "project_url": "http://project-homepage.org/",

@@ -3,7 +3,7 @@
 import time
 import subprocess
 
-from catalog_server.client.catalog import ClientCatalog
+from tiled.client.catalog import ClientCatalog
 
 HOST = "0.0.0.0"
 PORT = 9040
@@ -18,7 +18,7 @@ class TimeSuite:
     def setup(self):
         self.server_process = subprocess.Popen(
             (
-                f"uvicorn catalog_server.server.main:app --host {HOST} --port {PORT}"
+                f"uvicorn tiled.server.main:app --host {HOST} --port {PORT}"
             ).split()
         )
         time.sleep(5)

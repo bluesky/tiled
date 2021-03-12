@@ -7,8 +7,8 @@ of an RFC.*
 Install dependencies.
 
 ```
-git clone https://github.com/bluesky/catalog-server-from-scratch
-cd catalog-server-from-scratch
+git clone https://github.com/bluesky/tiled
+cd tiled
 pip install -r requirements-demo.txt
 pip install -e .
 ```
@@ -16,13 +16,13 @@ pip install -e .
 Generate example data files.
 
 ```
-python -m catalog_server.generate_example_data
+python -m tiled.generate_example_data
 ```
 
 Run server.
 
 ```
-uvicorn catalog_server.server.main:api
+uvicorn tiled.server.main:api
 ```
 
 Make requests. The server accepts JSON and msgpack. Once the server is running,
@@ -32,7 +32,7 @@ example requests and responses.)
 The server serves a demo catalog by default, equivalent to:
 
 ```
-ROOT_CATALOG="catalog_server.examples.generic:nested_with_access_control" uvicorn catalog_server.server.main:api
+ROOT_CATALOG="tiled.examples.generic:nested_with_access_control" uvicorn tiled.server.main:api
 ```
 
 Other catalogs can be served by changing the value of the `ROOT_CATALOG`
@@ -41,7 +41,7 @@ module.
 
 Note: Directories are created in the current directory for scratch space. If
 using uvicorn's ``--reload`` option, be sure to set
-``--reload-dir=catalog_server`` to avoid reloading everytime a scratch file is
+``--reload-dir=tiled`` to avoid reloading everytime a scratch file is
 updated.
 
 ## Requirements

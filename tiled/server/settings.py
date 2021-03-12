@@ -8,7 +8,7 @@ from pydantic import BaseSettings, validator
 
 
 _DEMO_DEFAULT_ROOT_CATALOG = (
-    "catalog_server.examples.generic:nested_with_access_control"
+    "tiled.examples.generic:nested_with_access_control"
 )
 
 
@@ -47,7 +47,7 @@ def get_custom_routers():
     if get_settings().enable_custom_routers:
         return [
             entrypoint.load()
-            for entrypoint in entrypoints.get_group_all("catalog_server.custom_routers")
+            for entrypoint in entrypoints.get_group_all("tiled.custom_routers")
         ]
     else:
         return []

@@ -22,7 +22,7 @@ extras_require = {
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))
 
 setuptools.setup(
-    name="catalog_server",
+    name="tiled",
     install_requires=[],  # Requirements depend strongly on use case (e.g. client vs server).
     extras_require=extras_require,
     packages=setuptools.find_packages(where=".", exclude=["doc", ".ci"]),

@@ -14,15 +14,15 @@ import numpy
 import pymongo
 import xarray
 
-from catalog_server.containers.array import ArrayStructure, MachineDataType
-from catalog_server.containers.xarray import (
+from tiled.containers.array import ArrayStructure, MachineDataType
+from tiled.containers.xarray import (
     DataArrayStructure,
     DatasetStructure,
     VariableStructure,
 )
-from catalog_server.query_registration import QueryTranslationRegistry, register
-from catalog_server.queries import FullText, KeyLookup
-from catalog_server.utils import (
+from tiled.query_registration import QueryTranslationRegistry, register
+from tiled.queries import FullText, KeyLookup
+from tiled.utils import (
     authenticated,
     catalog_repr,
     DictView,
@@ -31,8 +31,8 @@ from catalog_server.utils import (
     SpecialUsers,
     UNCHANGED,
 )
-from catalog_server.catalogs.in_memory import Catalog as CatalogInMemory
-from catalog_server.utils import LazyMap
+from tiled.catalogs.in_memory import Catalog as CatalogInMemory
+from tiled.utils import LazyMap
 
 from .common import BlueskyEventStreamMixin, BlueskyRunMixin
 

@@ -3,7 +3,7 @@ import msgpack
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 import pydantic
-from catalog_server.server.core import entry, PatchedStreamingResponse
+from tiled.server.core import entry, PatchedStreamingResponse
 
 
 class NameDocumentPair(pydantic.BaseModel):

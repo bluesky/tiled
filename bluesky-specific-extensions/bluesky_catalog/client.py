@@ -1,6 +1,6 @@
 import json
 
-from catalog_server.client.catalog import ClientCatalog
+from tiled.client.catalog import ClientCatalog
 from .common import BlueskyEventStreamMixin, BlueskyRunMixin
 
 
