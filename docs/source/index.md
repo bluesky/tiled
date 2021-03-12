@@ -15,6 +15,7 @@ lineage
 ```{toctree}
 :caption: Reference
 specification
+development
 release-history
 min_versions
 ```

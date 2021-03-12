@@ -23,11 +23,11 @@ can provide (e.g. PNG, TIFF, Excel).
 
 ## Try it
 
-Install, with the demo dependencies. (Note that this bundles in a bunch of the
-optional dependencies.)
+Install the dependencies for the client, the server, xarray, and h5py to
+generate example data files.
 
 ```
-pip install tiled[demo]
+pip install tiled[client,server,xarray]
 ```
 
 Generate example data files.
@@ -42,9 +42,8 @@ Run server.
 uvicorn tiled.server.main:api
 ```
 
-Make requests. The server accepts JSON and msgpack. Once the server is running,
-visit ``http://localhost:8000/docs`` for documentation. (Or, see below for
-example requests and responses.)
+Visit ``http://localhost:8000/docs`` for interactive documentation. Or, see
+below for example requests and responses.
 
 The server serves a demo catalog by default, equivalent to:
 
@@ -55,8 +54,3 @@ ROOT_CATALOG="tiled.examples.generic:nested_with_access_control" uvicorn tiled.s
 Other catalogs can be served by changing the value of the `ROOT_CATALOG`
 environment variable to point to a different object in any importable Python
 module.
-
-Note: Directories are created in the current directory for scratch space. If
-using uvicorn's ``--reload`` option, be sure to set
-``--reload-dir=tiled`` to avoid reloading everytime a scratch file is
-updated.
