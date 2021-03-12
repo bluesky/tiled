@@ -8,9 +8,9 @@ projects.
   lazy-loading, numpy-slicable Python object. It has some goals in common with
   [**Dask Array**](https://docs.dask.org/en/latest/array.html) but it is tightly
   focused on image time series, which lends it
-  [ceratin advantages](https://docs.dask.org/en/latest/array.html) for that use
-  case. PIMS is still maintained and widely used, including as a dependency of
-  [dask-image](https://github.com/dask/dask-image).
+  [ceratin advantages](https://github.com/danielballan/pims2-prototype/issues/1#issuecomment-595653031)
+  for that use case. PIMS is still maintained and widely used, including as a
+  dependency of [dask-image](https://github.com/dask/dask-image).
 * [**Databroker**](https://blueskyproject.io/databroker)
   (2015, Brookhaven National Laboratory) provides searchable dict-like
   "catalogs" of data with entries that ultimately provide N-dimensional or
