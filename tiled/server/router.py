@@ -1,6 +1,6 @@
 import dataclasses
 import inspect
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import Depends, HTTPException, Query, Request, APIRouter
 
@@ -17,9 +17,9 @@ from .core import (
     construct_entries_response,
     construct_resource,
     datasource,
+    entry,
     get_chunk,
     # get_dask_client,
-    get_entry,
     json_or_msgpack,
     NoEntry,
     WrongTypeForRoute,
@@ -69,12 +69,14 @@ def declare_search_route(router):
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(10, alias="page[limit]"),
         current_user=Depends(get_current_user),
+        entry: Any = Depends(entry),
         **filters,
     ):
         try:
             return json_or_msgpack(
                 request.headers,
                 construct_entries_response(
+                    entry,
                     "/search",
                     path,
                     offset,
@@ -137,15 +139,12 @@ async def metadata(
     path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     current_user=Depends(get_current_user),
+    entry: Any = Depends(entry),
 ):
     "Fetch the metadata for one Catalog or Data Source."
 
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
-    try:
-        entry = get_entry(path, current_user)
-    except NoEntry:
-        raise HTTPException(status_code=404, detail=f"No such entry: {path}")
     try:
         resource = construct_resource(key, entry, fields)
     except UnsupportedMediaTypes as err:
@@ -164,6 +163,7 @@ async def entries(
     limit: Optional[int] = Query(10, alias="page[limit]"),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     current_user=Depends(get_current_user),
+    entry: Any = Depends(entry),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or DataSources."
 
@@ -171,6 +171,7 @@ async def entries(
         return json_or_msgpack(
             request.headers,
             construct_entries_response(
+                entry,
                 "/entries",
                 path,
                 offset,

@@ -54,7 +54,7 @@ setup(
     cmdclass=versioneer.get_cmdclass(),
     description="Tile-based access to SciPy/PyData data structures over the web in many formats",
     long_description=readme,
-    long_description_content_type='text/markdown',
+    long_description_content_type="text/markdown",
     author="Bluesky Collaboration",
     author_email="dallan@bnl.gov",
     url="https://github.com/bluesky/tiled",
@@ -62,6 +62,11 @@ setup(
     install_requires=[],  # Requirements depend on use case (e.g. client vs server).
     extras_require=extras_require,
     packages=find_packages(exclude=["docs", "tests"]),
+    entry_points={
+        "console_scripts": [
+            "tiled = tiled.commandline.main:main",
+        ]
+    },
     license="BSD (3-clause)",
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",

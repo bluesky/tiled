@@ -10,6 +10,7 @@ import dask.base
 from fastapi import Depends, HTTPException, Query, Response
 import msgpack
 import numpy
+import pydantic
 from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
@@ -38,25 +39,22 @@ _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\
 #     return client
 
 
-def get_entry(path, current_user):
-    root_catalog = get_settings().catalog
-    catalog = root_catalog.authenticated_as(current_user)
-    # Traverse into sub-catalog(s).
-    for entry in (path or "").split("/"):
-        if entry:
-            try:
-                catalog = catalog[entry]
-            except (KeyError, TypeError):
-                raise NoEntry(path)
-    return catalog
-
-
 def entry(
     path: str,
     current_user: str = Depends(get_current_user),
+    settings: pydantic.BaseSettings = Depends(get_settings),
 ):
     try:
-        return get_entry(path, current_user)
+        root_catalog = get_settings().catalog
+        catalog = root_catalog.authenticated_as(current_user)
+        # Traverse into sub-catalog(s).
+        for entry in (path or "").split("/"):
+            if entry:
+                try:
+                    catalog = catalog[entry]
+                except (KeyError, TypeError):
+                    raise NoEntry(path)
+        return catalog
     except NoEntry:
         raise HTTPException(status_code=404, detail=f"No such entry: {path}")
 
@@ -154,6 +152,7 @@ class DuckCatalog(metaclass=abc.ABCMeta):
 
 
 def construct_entries_response(
+    catalog,
     route,
     path,
     offset,
@@ -165,7 +164,6 @@ def construct_entries_response(
     path = path.rstrip("/")
     if not path.startswith("/"):
         path = f"/{path}"
-    catalog = get_entry(path, current_user)
     if not isinstance(catalog, DuckCatalog):
         raise WrongTypeForRoute("This is not a Catalog.")
     queries = defaultdict(
