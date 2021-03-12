@@ -1,0 +1,20 @@
+[tool.black]
+line-length = 88
+target-version = ['py37']
+include = '\.pyi?$'
+exclude = '''
+
+(
+  /(
+    | \.git
+    | \.mypy_cache
+    | \.venv
+    | _build
+    | build
+    | dist
+  )/
+  | versioneer.py
+  | tiled/_version.py
+  | docs/source/conf.py
+)
+'''
