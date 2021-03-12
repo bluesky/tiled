@@ -1,6 +1,7 @@
 import collections.abc
 import enum
 from functools import wraps
+import importlib
 import operator
 import threading
 
@@ -244,3 +245,9 @@ class Sentinel:
 
 
 UNCHANGED = Sentinel("UNCHANGED")
+
+
+def import_object(colon_separated_string):
+    import_path, obj_path = colon_separated_string.split(":")
+    module = importlib.import_module(import_path)
+    return operator.attrgetter(obj_path)(module)
