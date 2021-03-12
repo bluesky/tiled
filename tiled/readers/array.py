@@ -39,3 +39,12 @@ class ArraySource:
 
     def read(self):
         return self._data
+
+    def close(self):
+        self._data = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self):
+        self.close()

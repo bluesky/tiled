@@ -31,6 +31,15 @@ class VariableSource:
     def read(self):
         return self._variable
 
+    def close(self):
+        self._variable = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self):
+        self.close()
+
 
 class DataArraySource:
     """
@@ -62,6 +71,15 @@ class DataArraySource:
 
     def read(self):
         return self._data_array
+
+    def close(self):
+        self._data_array = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self):
+        self.close()
 
 
 class DatasetSource:
@@ -97,3 +115,12 @@ class DatasetSource:
 
     def read(self):
         return self._dataset
+
+    def close(self):
+        self._dataset = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self):
+        self.close()
