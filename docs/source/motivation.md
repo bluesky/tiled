@@ -2,18 +2,23 @@
 
 ## Why structured data?
 
-In the beginning there were raw bytes. Then numpy gave us "strided N-dimensional
-arrays". Now richer data structures with column structure, indexes/coordinates,
+In the beginning there were raw bytes. Then numpy gave us strided N-dimensional
+arrays. Now richer data structures with column structure, indexes/coordinates,
 and additional context have grown.
+
+Structure data enables us to navigate through a dataset remotely and download
+only the parts we want. And once we have it, the structure makes the data easier
+to understand and work with in data analysis.
 
 ## Prior Art
 
-There are many solutions in this space. The frequently specialize on a data
-format (e.g. serving HDF5 files) or on a kind of dataset (e.g. large microscopy
-image stacks). This one specializes on the popular scientific Python
-strucutres---N-dimensional array, DataFrame, and xarray's various
-structures---reading tiles of data selectively on the server side and providing
-them in a range of formats suitable to each given structure.
+There are many solutions in this space. They frequently specialize on a data
+Formapull t (e.g. [serving HDF5 files](https://github.com/jupyterlab/jupyterlab-hdf5)
+or [Zarr](https://pypi.org/project/simple-zarr-server/)) or else on a kind of
+dataset (e.g. large microscopy image stacks). This project specializes on the
+popular scientific Python strucutres---N-dimensional array, DataFrame, and
+xarray's various structures---reading tiles of data selectively on the server
+side and providing them in a range of formats suitable to each given structure.
 
 See also {doc}`lineage`.
 
