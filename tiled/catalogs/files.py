@@ -27,7 +27,7 @@ class Catalog(CatalogInMemory):
         return cls({})  # TODO
 
     @classmethod
-    def from_globs(
+    def from_files(
         cls, *globs, reader_for_glob=None, reader_for_mimetype=None, sniffer=None
     ):
         """
