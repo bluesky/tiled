@@ -314,7 +314,10 @@ def json_or_msgpack(request_headers, content):
 
 
 class UnsupportedMediaTypes(Exception):
-    pass
+    def __init__(self, message, unsupported, supported):
+        self.unsupported = unsupported
+        self.supported = supported
+        super().__init__(message)
 
 
 class NoEntry(KeyError):

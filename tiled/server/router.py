@@ -93,7 +93,7 @@ def declare_search_route(router):
         except UnsupportedMediaTypes as err:
             # TODO Should we just serve a default representation instead of
             # returning this error codde?
-            raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+            raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
     # documentation on the signature of the route function. We do not know what
@@ -150,7 +150,7 @@ async def metadata(
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
     return json_or_msgpack(request.headers, models.Response(data=resource))
 
 
@@ -188,7 +188,7 @@ async def entries(
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get("/tile/array/{path:path}", response_model=models.Response, name="array")
@@ -212,7 +212,7 @@ def tile_array(
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get("/full/array/{path:path}", response_model=models.Response, name="full array")
@@ -236,7 +236,7 @@ def full_array(
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
@@ -263,7 +263,7 @@ def tile_variable(
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
@@ -298,7 +298,7 @@ def tile_data_array(
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get("/tile/dataset/{path:path}", response_model=models.Response, name="dataset")
@@ -334,4 +334,4 @@ def tile_dataset(
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
