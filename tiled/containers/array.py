@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import enum
+import importlib
 import json
 import sys
 from typing import Tuple
@@ -95,3 +96,31 @@ deserialization_registry.register(
     "application/octet-stream",
     lambda buffer, dtype, shape: numpy.frombuffer(buffer, dtype=dtype).reshape(shape),
 )
+if importlib.util.find_spec("PIL"):
+    from PIL import Image
+    import io
+
+    def save_to_buffer(array, format):
+        # Handle to *few* dimensions here, and let PIL raise if there are too
+        # *many* because it depends on the shape (RGB, RGBA, etc.)
+        normalized_array = numpy.atleast_2d(array)
+        file = io.BytesIO()
+        image = Image.fromarray(normalized_array).convert("RGBA")
+        image.save(file, format=format)
+        return file.getbuffer()
+
+    def array_from_buffer(buffer, format,  dtype, shape):
+        file = io.BytesIO(buffer)
+        image = Image.open(file, format=format)
+        return numpy.asarray(image).asdtype(dtype).reshape(shape)
+
+    serialization_registry.register(
+        "array",
+        "image/png",
+        lambda array: save_to_buffer(array.astype(float), "png"),
+    )
+    deserialization_registry.register(
+        "array",
+        "image/png",
+        lambda buffer, dtype, shape: array_from_buffer(buffer, "png", dtype, shape),
+    )
