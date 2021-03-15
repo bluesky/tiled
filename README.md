@@ -36,10 +36,10 @@ Generate example data files.
 python -m tiled.generate_example_data
 ```
 
-Run server.
+Run server with a demo catalog.
 
 ```
-uvicorn tiled.server.main:api
+tiled serve instance tiled.examples.generic:minimal
 ```
 
 Visit ``http://localhost:8000/docs`` for interactive documentation. Or, see
@@ -48,7 +48,6 @@ below for example requests and responses.
 The server serves a demo catalog by default, equivalent to:
 
 ```
-ROOT_CATALOG="tiled.examples.generic:nested_with_access_control" uvicorn tiled.server.main:api
 ```
 
 Other catalogs can be served by changing the value of the `ROOT_CATALOG`
