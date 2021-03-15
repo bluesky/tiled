@@ -18,7 +18,6 @@ from .core import (
     construct_resource,
     reader,
     entry,
-    get_chunk,
     # get_dask_client,
     json_or_msgpack,
     NoEntry,
@@ -126,14 +125,14 @@ def declare_search_route(router):
     # End black magic
 
     # Register the search route.
-    router.get("/search/{path:path}", response_model=models.Response)(search)
     router.get("/search", response_model=models.Response, include_in_schema=False)(
         search
     )
+    router.get("/search/{path:path}", response_model=models.Response)(search)
 
 
-@router.get("/metadata/{path:path}", response_model=models.Response)
 @router.get("/metadata", response_model=models.Response, include_in_schema=False)
+@router.get("/metadata/{path:path}", response_model=models.Response)
 async def metadata(
     request: Request,
     path: Optional[str] = "/",
@@ -154,8 +153,8 @@ async def metadata(
     return json_or_msgpack(request.headers, models.Response(data=resource))
 
 
-@router.get("/entries/{path:path}", response_model=models.Response)
 @router.get("/entries", response_model=models.Response, include_in_schema=False)
+@router.get("/entries/{path:path}", response_model=models.Response)
 async def entries(
     request: Request,
     path: Optional[str] = "/",
@@ -201,10 +200,9 @@ def tile_array(
     Fetch a chunk of array-like data.
     """
     try:
-        chunk = reader.read().blocks[block]
+        array = reader.read_block(block)
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
-    array = get_chunk(chunk)
     try:
         return construct_array_response(array, request.headers)
     except UnsupportedMediaTypes as err:
@@ -226,10 +224,9 @@ def tile_variable(
     """
     try:
         # Lookup block on the `data` attribute of the Variable.
-        chunk = reader.read().data.blocks[block]
+        array = reader.read_block(block)
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
-    array = get_chunk(chunk)
     try:
         return construct_array_response(array, request.headers)
     except UnsupportedMediaTypes as err:
@@ -250,24 +247,18 @@ def tile_data_array(
     """
     Fetch a chunk from an xarray.DataArray.
     """
-    data_array = reader.read()
-    if coord is None:
-        dask_array = data_array.data
-        try:
-            chunk = dask_array.blocks[block]
-        except IndexError:
-            raise HTTPException(status_code=422, detail="Block index out of range")
-        array = get_chunk(chunk)
-    else:
-        if block != (0,):
-            raise HTTPException(status_code=422, detail="Block index out of range")
-        try:
-            array = data_array.coords[coord].data
-        except KeyError:
+    try:
+        array = reader.read_block(block, coord)
+    except IndexError:
+        raise HTTPException(status_code=422, detail="Block index out of range")
+    except KeyError:
+        if coord is not None:
             raise HTTPException(
                 status_code=422,
-                detail=f"No such coordinate {coord}. Coordinates: {list(data_array.coords)}",
+                detail=f"No such coordinate {coord}.",
             )
+        else:
+            raise
     try:
         return construct_array_response(array, request.headers)
     except UnsupportedMediaTypes as err:
@@ -287,37 +278,20 @@ def tile_dataset(
     """
     Fetch a chunk from an xarray.Dataset.
     """
-    dataset = reader.read()
-    if variable not in dataset.variables:
+    try:
+        array = reader.read_block(variable, block, coord)
+    except IndexError:
+        raise HTTPException(status_code=422, detail="Block index out of range")
+    except KeyError:
+        if coord is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No such variable {variable}.",
+            )
         raise HTTPException(
             status_code=422,
-            detail=f"No such variable {variable}.",
+            detail=f"No such coordinate {coord}.",
         )
-    if variable in dataset.coords:
-        # TODO Dask-ify this server side to enable chunked access?
-        if block != (0,):
-            raise HTTPException(status_code=422, detail="Block index out of range")
-        array = dataset.coords[variable].data
-    else:
-        if coord is None:
-            dask_array = dataset[variable].data
-            try:
-                chunk = dask_array.blocks[block]
-            except IndexError:
-                raise HTTPException(status_code=422, detail="Block index out of range")
-            array = get_chunk(chunk)
-        else:
-            # TODO Dask-ify this server side to enable chunked access?
-            if block != (0,):
-                raise HTTPException(status_code=422, detail="Block index out of range")
-            try:
-                data_array = dataset[variable]
-                array = data_array.coords[coord].data
-            except KeyError:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"No such coordinate {coord}. Coordinates: {list(data_array.coords)}",
-                )
     try:
         return construct_array_response(array, request.headers)
     except UnsupportedMediaTypes as err:

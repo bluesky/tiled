@@ -84,11 +84,6 @@ def len_or_approx(catalog):
         return operator.length_hint(catalog)
 
 
-def get_chunk(chunk):
-    "dask array -> numpy array"
-    return chunk.compute(scheduler="threads")
-
-
 def pagination_links(route, path, offset, limit, length_hint):
     # TODO Include root path in links.
     # root_path = request.scope.get("/")
