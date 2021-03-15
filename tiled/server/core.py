@@ -86,7 +86,9 @@ def slice_(
     # very careful about locking down what can be in it. The regex above
     # excludes any letters or operators, should it is not possible to execute
     # functions or expensive artithmetic.
-    return [eval(f"numpy.s_[{dim!s}]") for dim in (slice or "").split(",") if dim]
+    return tuple(
+        [eval(f"numpy.s_[{dim!s}]") for dim in (slice or "").split(",") if dim]
+    )
 
 
 def len_or_approx(catalog):

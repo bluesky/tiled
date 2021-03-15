@@ -215,6 +215,30 @@ def tile_array(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
+@router.get("/full/array/{path:path}", response_model=models.Response, name="array")
+def full_array(
+    request: Request,
+    reader=Depends(reader),
+    slice=Depends(slice_),
+):
+    """
+    Fetch a slice of array-like data.
+    """
+    try:
+        array = reader.read()
+        if slice:
+            array = array[slice]
+        array = array.compute()  # TODO Rethink this. How does PIMS fit it?
+    except IndexError:
+        raise HTTPException(status_code=422, detail="Block index out of range")
+    try:
+        return construct_array_response(array, request.headers)
+    except UnsupportedMediaTypes as err:
+        # TODO Should we just serve a default representation instead of
+        # returning this error codde?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
+
+
 @router.get(
     "/tile/variable/{path:path}", response_model=models.Response, name="variable"
 )
