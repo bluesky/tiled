@@ -1,3 +1,5 @@
+import numpy
+
 from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
 from ..readers.array import ArrayReader
 from ..utils import DictView
@@ -30,6 +32,14 @@ class VariableReader:
 
     def read(self):
         return self._variable
+
+    def read_block(self, block):
+        data = self._variable.data
+        if isinstance(data, numpy.ndarray):
+            if block != (0,):
+                raise NotImplementedError
+            return data
+        return data.blocks[block].compute()
 
     def close(self):
         self._variable = None
@@ -71,6 +81,13 @@ class DataArrayReader:
 
     def read(self):
         return self._data_array
+
+    def read_block(self, block, coord=None):
+        if coord is None:
+            variable = VariableReader(self._data_array.variable)
+        else:
+            variable = VariableReader(self._data_array.coords[coord])
+        return variable.read_block(block)
 
     def close(self):
         self._data_array = None
@@ -115,6 +132,12 @@ class DatasetReader:
 
     def read(self):
         return self._dataset
+
+    def read_block(self, variable, block, coord=None):
+        if variable in self._dataset.coords:
+            return VariableReader(self._dataset.coords[variable]).read_block(block)
+        else:
+            return DataArrayReader(self._dataset[variable]).read_block(block, coord)
 
     def close(self):
         self._dataset = None

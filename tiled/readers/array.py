@@ -40,6 +40,9 @@ class ArrayReader:
     def read(self):
         return self._data
 
+    def read_block(self, block):
+        return self._data.blocks[block].compute()
+
     def close(self):
         self._data = None
 
