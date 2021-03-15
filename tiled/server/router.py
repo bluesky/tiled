@@ -197,6 +197,7 @@ def tile_array(
     reader=Depends(reader),
     block=Depends(block),
     slice=Depends(slice_),
+    format: Optional[str] = None,
 ):
     """
     Fetch a chunk of array-like data.
@@ -208,18 +209,21 @@ def tile_array(
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     try:
-        return construct_array_response(array, request.headers)
+        return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
-@router.get("/full/array/{path:path}", response_model=models.Response, name="full array")
+@router.get(
+    "/full/array/{path:path}", response_model=models.Response, name="full array"
+)
 def full_array(
     request: Request,
     reader=Depends(reader),
     slice=Depends(slice_),
+    format: Optional[str] = None,
 ):
     """
     Fetch a slice of array-like data.
@@ -232,7 +236,7 @@ def full_array(
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     try:
-        return construct_array_response(array, request.headers)
+        return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
@@ -247,6 +251,7 @@ def tile_variable(
     reader=Depends(reader),
     block=Depends(block),
     slice=Depends(slice_),
+    format: Optional[str] = None,
 ):
     """
     Fetch a chunk of array-like data.
@@ -259,7 +264,7 @@ def tile_variable(
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     try:
-        return construct_array_response(array, request.headers)
+        return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
@@ -275,6 +280,7 @@ def tile_data_array(
     block=Depends(block),
     coord: Optional[str] = Query(None, min_length=1),
     slice=Depends(slice_),
+    format: Optional[str] = None,
 ):
     """
     Fetch a chunk from an xarray.DataArray.
@@ -294,7 +300,7 @@ def tile_data_array(
         else:
             raise
     try:
-        return construct_array_response(array, request.headers)
+        return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?
@@ -309,6 +315,7 @@ def tile_dataset(
     variable: str = Query(..., min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
     slice=Depends(slice_),
+    format: Optional[str] = None,
 ):
     """
     Fetch a chunk from an xarray.Dataset.
@@ -330,7 +337,7 @@ def tile_dataset(
             detail=f"No such coordinate {coord}.",
         )
     try:
-        return construct_array_response(array, request.headers)
+        return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
         # returning this error codde?

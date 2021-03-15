@@ -109,7 +109,7 @@ if importlib.util.find_spec("PIL"):
         image.save(file, format=format)
         return file.getbuffer()
 
-    def array_from_buffer(buffer, format,  dtype, shape):
+    def array_from_buffer(buffer, format, dtype, shape):
         file = io.BytesIO(buffer)
         image = Image.open(file, format=format)
         return numpy.asarray(image).asdtype(dtype).reshape(shape)
