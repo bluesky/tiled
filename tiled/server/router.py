@@ -215,7 +215,7 @@ def tile_array(
         raise HTTPException(status_code=406, detail=", ".join(err.supported_types))
 
 
-@router.get("/full/array/{path:path}", response_model=models.Response, name="array")
+@router.get("/full/array/{path:path}", response_model=models.Response, name="full array")
 def full_array(
     request: Request,
     reader=Depends(reader),
