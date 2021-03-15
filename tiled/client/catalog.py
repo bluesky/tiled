@@ -31,32 +31,32 @@ class ClientCatalog(collections.abc.Mapping):
             {
                 "array": lambda: importlib.import_module(
                     "..array", ClientCatalog.__module__
-                ).ClientArraySource,
+                ).ClientArrayReader,
                 "variable": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
-                ).ClientVariableSource,
+                ).ClientVariableReader,
                 "data_array": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
-                ).ClientDataArraySource,
+                ).ClientDataArrayReader,
                 "dataset": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
-                ).ClientDatasetSource,
+                ).ClientDatasetReader,
             }
         ),
         "dask": LazyMap(
             {
                 "array": lambda: importlib.import_module(
                     "..array", ClientCatalog.__module__
-                ).ClientDaskArraySource,
+                ).ClientDaskArrayReader,
                 "variable": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
-                ).ClientDaskVariableSource,
+                ).ClientDaskVariableReader,
                 "data_array": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
-                ).ClientDaskDataArraySource,
+                ).ClientDaskDataArrayReader,
                 "dataset": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
-                ).ClientDaskDatasetSource,
+                ).ClientDaskDatasetReader,
             }
         ),
     }

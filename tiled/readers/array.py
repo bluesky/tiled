@@ -4,7 +4,7 @@ from ..containers.array import ArrayStructure, MachineDataType
 from ..utils import DictView
 
 
-class ArraySource:
+class ArrayReader:
     """
     Wrap an array-like
 

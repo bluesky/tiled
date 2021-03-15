@@ -2,7 +2,7 @@ from ..utils import DictView
 from .utils import handle_error
 
 
-class BaseClientSource:
+class BaseClientReader:
     """
     Subclass must define:
 

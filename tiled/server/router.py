@@ -141,7 +141,7 @@ async def metadata(
     current_user=Depends(get_current_user),
     entry: Any = Depends(entry),
 ):
-    "Fetch the metadata for one Catalog or Data Source."
+    "Fetch the metadata for one Catalog or Reader."
 
     path = path.rstrip("/")
     *_, key = path.rpartition("/")

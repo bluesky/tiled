@@ -1,9 +1,9 @@
 from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
-from ..readers.array import ArraySource
+from ..readers.array import ArrayReader
 from ..utils import DictView
 
 
-class VariableSource:
+class VariableReader:
     """
     Wrap an xarray.Variable
     """
@@ -24,7 +24,7 @@ class VariableSource:
     def structure(self):
         return VariableStructure(
             dims=self._variable.dims,
-            data=ArraySource(self._variable.data).structure(),
+            data=ArrayReader(self._variable.data).structure(),
             attrs=self._variable.attrs,
         )
 
@@ -41,7 +41,7 @@ class VariableSource:
         self.close()
 
 
-class DataArraySource:
+class DataArrayReader:
     """
     Wrap an xarray.DataArray
     """
@@ -61,9 +61,9 @@ class DataArraySource:
 
     def structure(self):
         return DataArrayStructure(
-            variable=VariableSource(self._data_array.variable).structure(),
+            variable=VariableReader(self._data_array.variable).structure(),
             coords={
-                k: VariableSource(v).structure()
+                k: VariableReader(v).structure()
                 for k, v in self._data_array.coords.items()
             },
             name=self._data_array.name,
@@ -82,7 +82,7 @@ class DataArraySource:
         self.close()
 
 
-class DatasetSource:
+class DatasetReader:
     """
     Wrap an xarray.Dataset
     """
@@ -103,11 +103,11 @@ class DatasetSource:
     def structure(self):
         return DatasetStructure(
             data_vars={
-                key: DataArraySource(value).structure()
+                key: DataArrayReader(value).structure()
                 for key, value in self._dataset.data_vars.items()
             },
             coords={
-                key: VariableSource(value).structure()
+                key: VariableReader(value).structure()
                 for key, value in self._dataset.coords.items()
             },
             attrs=self._dataset.attrs,

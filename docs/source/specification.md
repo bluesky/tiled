@@ -37,14 +37,23 @@ Reader as well as a sample HTTP API based on
   dimensions, indexes.
 
 * Readers MUST implement a method ``read()`` returns the data structure. All
-  Readers (accept client-side Reader proxies) MUST return a lazy object, such as
+  Readers (except client-side Reader proxies) MUST return a lazy object, such as
   a PIMS sequence, dask array, dask dataframe, or dask-backed xarray structure.
 
-* The ``read()`` method SHOULD accept optional paramers to restrict the result
-  to a single, possibly sub-sliced tile, as in ``read(block=(0, 0))`` for an
-  array or ``read(partition=3, columns=["a", "b"])`` for a DataFrame. The
-  signature is not standardized, but SHOULD use existing terminology in the
-  corresponding data structure.
+* Readers MUST implement a method ``read_block(...)`` that efficiently reads and
+  return a single block of data. The signature SHOULD reuse existing terminology
+  from the corresponding data strucutre. Examples:
+
+  ```py
+  array_reader.read_block(block=(0, 0))
+  dataframe_reader.read_block(partition=0)
+  dataset_reader.read_block(variable="image", coord="x", block=(0,))
+  ```
+
+  Additionally, the method MAY accept a ``slice`` parameter which takes a tuple
+  of ``slice`` objects into the block to specify a partial block. This may be
+  used by a client to restrict how much data is sent from the server. Typically
+  the full block is still read from disk, but not sent.
 
 * Reader MAY allocate system resources (file handles, network connections, a
   cache in memory) but MUST implement a method ``close()`` which releases those
