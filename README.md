@@ -27,7 +27,7 @@ Install the dependencies for the client, the server, xarray, and h5py to
 generate example data files.
 
 ```
-pip install tiled[client,server,xarray]
+pip install tiled[client,server,xarray] h5py
 ```
 
 Generate example data files.

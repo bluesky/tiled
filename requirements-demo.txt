@@ -1,4 +1,0 @@
--r ./requirements-client.txt
--r ./requirements-server.txt
-# Additional requirements for reading/writing example files.
-h5py
