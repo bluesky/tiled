@@ -77,6 +77,18 @@ def block(
     return parsed_block
 
 
+def slice_(
+    slice: str = Query(None, regex="^[0-9,:]*$"),
+):
+    "Specify and parse a block index parameter."
+    print(slice)
+    # IMPORTANT We are eval-ing a user-provider string here so we need to be
+    # very careful about locking down what can be in it. The regex above
+    # excludes any letters or operators, should it is not possible to execute
+    # functions or expensive artithmetic.
+    return [eval(f"numpy.s_[{dim!s}]") for dim in (slice or "").split(",") if dim]
+
+
 def len_or_approx(catalog):
     try:
         return len(catalog)

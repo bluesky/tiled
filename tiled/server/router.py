@@ -21,6 +21,7 @@ from .core import (
     # get_dask_client,
     json_or_msgpack,
     NoEntry,
+    slice_,
     WrongTypeForRoute,
     UnsupportedMediaTypes,
 )
@@ -195,12 +196,15 @@ def tile_array(
     request: Request,
     reader=Depends(reader),
     block=Depends(block),
+    slice=Depends(slice_),
 ):
     """
     Fetch a chunk of array-like data.
     """
     try:
         array = reader.read_block(block)
+        if slice:
+            array = array[slice]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     try:
@@ -218,6 +222,7 @@ def tile_variable(
     request: Request,
     reader=Depends(reader),
     block=Depends(block),
+    slice=Depends(slice_),
 ):
     """
     Fetch a chunk of array-like data.
@@ -225,6 +230,8 @@ def tile_variable(
     try:
         # Lookup block on the `data` attribute of the Variable.
         array = reader.read_block(block)
+        if slice:
+            array = array[slice]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     try:
@@ -243,12 +250,15 @@ def tile_data_array(
     reader=Depends(reader),
     block=Depends(block),
     coord: Optional[str] = Query(None, min_length=1),
+    slice=Depends(slice_),
 ):
     """
     Fetch a chunk from an xarray.DataArray.
     """
     try:
         array = reader.read_block(block, coord)
+        if slice:
+            array = array[slice]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     except KeyError:
@@ -274,12 +284,15 @@ def tile_dataset(
     block=Depends(block),
     variable: str = Query(..., min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
+    slice=Depends(slice_),
 ):
     """
     Fetch a chunk from an xarray.Dataset.
     """
     try:
         array = reader.read_block(variable, block, coord)
+        if slice:
+            array = array[slice]
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     except KeyError:
