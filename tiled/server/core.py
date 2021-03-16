@@ -313,11 +313,9 @@ def json_or_msgpack(request_headers, content):
         if media_type == "application/json":
             return JSONResponse(content.dict())
     else:
-        raise UnsupportedMediaTypes(
-            "None of the media types requested by the client are supported.",
-            unsupported=media_types,
-            supported=["application/json", "application/x-msgpack"],
-        )
+        # HTTP says we should fall back to a default representation if none of
+        # the ones the client asks for is available.
+        return JSONResponse(content.dict())
 
 
 class UnsupportedMediaTypes(Exception):

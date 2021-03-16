@@ -34,21 +34,24 @@ router = APIRouter()
 
 
 @router.get("/")  # TODO response_model
-async def about():
+async def about(request: Request):
     # TODO The lazy import of reader modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
     # helpful for discovery! The registration can be made non-lazy, while the
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
     # etc.) can remain lazy.
-    return {
-        "library_version": __version__,
-        "api_version": 0,
-        "formats": {
-            container: list(serialization_registry.media_types(container))
-            for container in serialization_registry.containers
+    return json_or_msgpack(
+        request.headers,
+        {
+            "library_version": __version__,
+            "api_version": 0,
+            "formats": {
+                container: list(serialization_registry.media_types(container))
+                for container in serialization_registry.containers
+            },
+            "queries": list(name_to_query_type),
         },
-        "queries": list(name_to_query_type),
-    }
+    )
 
 
 @router.post("/token", response_model=models.Token)
@@ -165,12 +168,7 @@ async def metadata(
 
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
-    try:
-        resource = construct_resource(key, entry, fields)
-    except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+    resource = construct_resource(key, entry, fields)
     return json_or_msgpack(request.headers, models.Response(data=resource))
 
 
@@ -205,10 +203,6 @@ async def entries(
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:
         raise HTTPException(status_code=404, detail=err.args[0])
-    except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error codde?
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get("/tile/array/{path:path}", response_model=models.Response, name="array")
@@ -246,6 +240,10 @@ def full_array(
     """
     Fetch a slice of array-like data.
     """
+    # Deferred import because this is not a required dependency of the server
+    # for some use cases.
+    import numpy
+
     try:
         array = reader.read()
         if slice:
