@@ -215,7 +215,14 @@ def construct_array_response(array, request_headers, format=None):
     if format is not None:
         media_types = format.split(",")
     else:
-        media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
+        # The HTTP spec says these should be separated by ", " but some
+        # browsers separate with just "," (no space).
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
+        # That variation is what we are handling below with lstrip.
+        media_types = [
+            s.lstrip(" ")
+            for s in request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
+        ]
     # The client may give us a choice of media types. Find the first one
     # that we support.
     for media_type in media_types:
