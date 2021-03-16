@@ -230,7 +230,7 @@ def full_array(
         array = reader.read()
         if slice:
             array = array[slice]
-        array = array.compute()  # TODO Rethink this. How does PIMS fit it?
+        array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     try:
