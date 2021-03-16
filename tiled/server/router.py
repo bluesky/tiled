@@ -21,14 +21,34 @@ from .core import (
     # get_dask_client,
     json_or_msgpack,
     NoEntry,
+    serialization_registry,
     slice_,
     WrongTypeForRoute,
     UnsupportedMediaTypes,
 )
 from . import models
+from .. import __version__
 
 
 router = APIRouter()
+
+
+@router.get("/")  # TODO response_model
+async def about():
+    # TODO The lazy import of reader modules and serializers means that the
+    # lists of formats are not populated until they are first used. Not very
+    # helpful for discovery! The registration can be made non-lazy, while the
+    # imports of the underlying I/O libraries themselves (openpyxl, pillow,
+    # etc.) can remain lazy.
+    return {
+        "library_version": __version__,
+        "api_version": 0,
+        "formats": {
+            container: list(serialization_registry.media_types(container))
+            for container in serialization_registry.containers
+        },
+        "queries": list(name_to_query_type),
+    }
 
 
 @router.post("/token", response_model=models.Token)

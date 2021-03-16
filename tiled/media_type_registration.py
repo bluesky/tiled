@@ -11,6 +11,10 @@ class Registry:
     def media_types(self, container):
         return DictView(self._lookup[container])
 
+    @property
+    def containers(self):
+        return list(self._lookup)
+
     def register(self, container, media_type, func):
         self._lookup[container][media_type] = func
 
