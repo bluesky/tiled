@@ -1,3 +1,4 @@
+import base64
 from dataclasses import dataclass
 import enum
 import importlib
@@ -117,10 +118,21 @@ if importlib.util.find_spec("PIL"):
     serialization_registry.register(
         "array",
         "image/png",
-        lambda array: save_to_buffer(array.astype(float), "png"),
+        lambda array: save_to_buffer(array, "png"),
     )
     deserialization_registry.register(
         "array",
         "image/png",
         lambda buffer, dtype, shape: array_from_buffer(buffer, "png", dtype, shape),
+    )
+    serialization_registry.register(
+        "array",
+        "text/html",
+        lambda array: (
+            "<html>"
+            '<img src="data:image/png;base64,'
+            f"{base64.b64encode(save_to_buffer(array, 'png')).decode()!s}\""
+            "/>"
+            "</html>"
+        ),
     )
