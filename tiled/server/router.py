@@ -50,6 +50,7 @@ async def about(request: Request):
                 for container in serialization_registry.containers
             },
             "queries": list(name_to_query_type),
+            # "documentation_url": ".../docs"  # TODO How to get the base URL?
         },
     )
 
