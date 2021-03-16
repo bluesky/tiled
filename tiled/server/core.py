@@ -215,8 +215,7 @@ def construct_array_response(array, request_headers, format=None):
     if format is not None:
         media_types = format.split(",")
     else:
-        # Spec says these are separated by comma with space.
-        media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(", ")
+        media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
     # The client may give us a choice of media types. Find the first one
     # that we support.
     for media_type in media_types:
