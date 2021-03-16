@@ -203,9 +203,7 @@ def tile_array(
     Fetch a chunk of array-like data.
     """
     try:
-        array = reader.read_block(block)
-        if slice:
-            array = array[slice]
+        array = reader.read_block(block, slice=slice)
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     try:
@@ -258,7 +256,7 @@ def tile_variable(
     """
     try:
         # Lookup block on the `data` attribute of the Variable.
-        array = reader.read_block(block)
+        array = reader.read_block(block, slice=slice)
         if slice:
             array = array[slice]
     except IndexError:
@@ -286,9 +284,7 @@ def tile_data_array(
     Fetch a chunk from an xarray.DataArray.
     """
     try:
-        array = reader.read_block(block, coord)
-        if slice:
-            array = array[slice]
+        array = reader.read_block(block, coord, slice=slice)
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     except KeyError:
@@ -321,9 +317,7 @@ def tile_dataset(
     Fetch a chunk from an xarray.Dataset.
     """
     try:
-        array = reader.read_block(variable, block, coord)
-        if slice:
-            array = array[slice]
+        array = reader.read_block(variable, block, coord, slice=slice)
     except IndexError:
         raise HTTPException(status_code=422, detail="Block index out of range")
     except KeyError:

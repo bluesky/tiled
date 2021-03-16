@@ -36,13 +36,15 @@ Reader as well as a sample HTTP API based on
   Richer structure (e.g. xarray) will include high-level structure like columns,
   dimensions, indexes.
 
-* Readers MUST implement a method ``read()`` returns the data structure. All
-  Readers (except client-side Reader proxies) MUST return a lazy object, such as
-  a PIMS sequence, dask array, dask dataframe, or dask-backed xarray structure.
+* Readers MUST implement a method ``read()`` returns the data structure. It MAY
+  return a lazy object, such as a PIMS sequence, dask array, dask dataframe, or
+  other structure with delayed I/O.
 
 * Readers MUST implement a method ``read_block(...)`` that efficiently reads and
-  return a single block of data. The signature SHOULD reuse existing terminology
-  from the corresponding data strucutre. Examples:
+  return a single block of data. It MUST perform all necessary I/O and return a
+  self-contained and complete structure; that is, unlike ``read()`` it must not
+  be delayed. The signature SHOULD reuse existing terminology from the
+  corresponding data strucutre.  Examples:
 
   ```py
   array_reader.read_block(block=(0, 0))
@@ -50,10 +52,8 @@ Reader as well as a sample HTTP API based on
   dataset_reader.read_block(variable="image", coord="x", block=(0,))
   ```
 
-  Additionally, the method MAY accept a ``slice`` parameter which takes a tuple
-  of ``slice`` objects into the block to specify a partial block. This may be
-  used by a client to restrict how much data is sent from the server. Typically
-  the full block is still read from disk, but not sent.
+  Additionally, the method SHOULD accept a ``slice`` parameter which takes a
+  tuple of Python ``slice`` objects into the block to specify a partial block.
 
 * Reader MAY allocate system resources (file handles, network connections, a
   cache in memory) but MUST implement a method ``close()`` which releases those

@@ -40,8 +40,11 @@ class ArrayReader:
     def read(self):
         return self._data
 
-    def read_block(self, block):
-        return self._data.blocks[block].compute()
+    def read_block(self, block, slice=None):
+        dask_array = self._data.blocks[block]
+        if slice is not None:
+            dask_array = dask_array[slice]
+        return dask_array.compute()
 
     def close(self):
         self._data = None
