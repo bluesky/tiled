@@ -33,7 +33,7 @@ from .. import __version__
 router = APIRouter()
 
 
-@router.get("/")  # TODO response_model
+@router.get("/", response_model=models.About)
 async def about(request: Request):
     # TODO The lazy import of reader modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
@@ -42,16 +42,16 @@ async def about(request: Request):
     # etc.) can remain lazy.
     return json_or_msgpack(
         request.headers,
-        {
-            "library_version": __version__,
-            "api_version": 0,
-            "formats": {
+        models.About(
+            library_version=__version__,
+            api_version=0,
+            formats={
                 container: list(serialization_registry.media_types(container))
                 for container in serialization_registry.containers
             },
-            "queries": list(name_to_query_type),
-            # "documentation_url": ".../docs"  # TODO How to get the base URL?
-        },
+            queries=list(name_to_query_type),
+            # documentation_url=".../docs",  # TODO How to get the base URL?
+        ),
     )
 
 

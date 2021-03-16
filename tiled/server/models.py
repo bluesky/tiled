@@ -3,7 +3,7 @@ import enum
 import pydantic
 import pydantic.dataclasses
 import pydantic.generics
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 DataT = TypeVar("DataT")
 
@@ -85,3 +85,10 @@ class Token(pydantic.BaseModel):
 
 class TokenData(pydantic.BaseModel):
     username: Optional[str] = None
+
+
+class About(pydantic.BaseModel):
+    api_version: int
+    library_version: str
+    formats: Dict[str, List[str]]
+    queries: List[str]
