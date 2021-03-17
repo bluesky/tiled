@@ -47,6 +47,7 @@ class BaseArrayClientReader(BaseClientReader):
 
     * MICROSTRUCTURE_TYPE : type
     * MACROSTRUCTURE_TYPE : type
+    * STRUCTURE_TYPE : type
     """
 
     def structure(self):
@@ -65,8 +66,13 @@ class BaseArrayClientReader(BaseClientReader):
             handle_error(response)
             result = response.json()["data"]["attributes"]["structure"]
             structure = {}
-            structure["micro"] = self.MICROSTRUCTURE_TYPE.from_json(result["micro"])
             structure["macro"] = self.MACROSTRUCTURE_TYPE.from_json(result["macro"])
+            if self.MICROSTRUCTURE_TYPE is not None:
+                # xarrays have not microstructure
+                structure["micro"] = self.MICROSTRUCTURE_TYPE.from_json(result["micro"])
+            else:
+                structure["micro"] = None
+            structure_ = self.STRUCTURE_TYPE(**structure)
         else:
-            structure = self._structure
-        return structure
+            structure_ = self._structure
+        return structure_

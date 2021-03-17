@@ -306,9 +306,13 @@ def construct_resource(key, entry, fields):
         if models.EntryFields.container in fields:
             attributes["container"] = entry.container
         if models.EntryFields.macrostructure in fields:
-            structure["macro"] = dataclasses.asdict(entry.macrostructure())
+            macrostructure = entry.macrostructure()
+            if macrostructure is not None:
+                structure["macro"] = dataclasses.asdict(macrostructure)
         if models.EntryFields.microstructure in fields:
-            structure["micro"] = dataclasses.asdict(entry.microstructure())
+            microstructure = entry.microstructure()
+            if microstructure is not None:
+                structure["micro"] = dataclasses.asdict(microstructure)
         attributes["structure"] = structure
         resource = models.ReaderResource(
             **{

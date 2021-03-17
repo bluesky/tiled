@@ -1,12 +1,22 @@
 import xarray
 
-from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
+from ..containers.xarray import (
+    DataArrayMacroStructure,
+    DatasetMacroStructure,
+    VariableMacroStructure,
+    DataArrayStructure,
+    DatasetStructure,
+    VariableStructure,
+)
+
 from .array import ClientDaskArrayReader
 from .base import BaseArrayClientReader
 
 
 class ClientDaskVariableReader(BaseArrayClientReader):
 
+    MACROSTRUCTURE_TYPE = VariableMacroStructure
+    MICROSTRUCTURE_TYPE = None
     STRUCTURE_TYPE = VariableStructure
 
     def __init__(self, *args, route="/variable/block", **kwargs):
@@ -14,7 +24,7 @@ class ClientDaskVariableReader(BaseArrayClientReader):
         self._route = route
 
     def read(self):
-        structure = self.structure()
+        structure = self.structure().macro
         array_source = ClientDaskArrayReader(
             client=self._client,
             path=self._path,
@@ -35,6 +45,8 @@ class ClientVariableReader(ClientDaskVariableReader):
 
 class ClientDaskDataArrayReader(BaseArrayClientReader):
 
+    MACROSTRUCTURE_TYPE = DataArrayMacroStructure
+    MICROSTRUCTURE_TYPE = None
     STRUCTURE_TYPE = DataArrayStructure
 
     def __init__(self, *args, route="/data_array/block", **kwargs):
@@ -42,7 +54,7 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         self._route = route
 
     def read(self):
-        structure = self.structure()
+        structure = self.structure().macro
         variable = structure.variable
         variable_source = ClientDaskVariableReader(
             client=self._client,
@@ -74,6 +86,8 @@ class ClientDataArrayReader(ClientDaskDataArrayReader):
 
 class ClientDaskDatasetReader(BaseArrayClientReader):
 
+    MACROSTRUCTURE_TYPE = DatasetMacroStructure
+    MICROSTRUCTURE_TYPE = None
     STRUCTURE_TYPE = DatasetStructure
 
     def __init__(self, *args, route="/dataset/block", **kwargs):
@@ -81,7 +95,7 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
         self._route = route
 
     def read(self):
-        structure = self.structure()["macro"]
+        structure = self.structure().macro
         data_vars = {}
         for name, data_array in structure.data_vars.items():
             data_array_source = ClientDaskDataArrayReader(

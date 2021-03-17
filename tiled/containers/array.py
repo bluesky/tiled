@@ -78,7 +78,7 @@ class MachineDataType:
 
 
 @dataclass
-class ArrayStructure:
+class ArrayMacroStructure:
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
 
@@ -87,6 +87,19 @@ class ArrayStructure:
         return cls(
             chunks=tuple(map(tuple, structure["chunks"])),
             shape=tuple(structure["shape"]),
+        )
+
+
+@dataclass
+class ArrayStructure:
+    macro: ArrayMacroStructure
+    micro: MachineDataType
+
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            macro=ArrayMacroStructure.from_json(structure["macro"]),
+            micro=MachineDataType.from_json(structure["micro"]),
         )
 
 

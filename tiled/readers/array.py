@@ -1,6 +1,6 @@
 import dask.array
 
-from ..containers.array import ArrayStructure, MachineDataType
+from ..containers.array import ArrayMacroStructure, MachineDataType
 from ..utils import DictView
 
 
@@ -32,7 +32,7 @@ class ArrayReader:
 
     def macrostructure(self):
         "Structures of the layout of blocks of this array"
-        return ArrayStructure(
+        return ArrayMacroStructure(
             shape=self._data.shape,
             chunks=self._data.chunks,
         )

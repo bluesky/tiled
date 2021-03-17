@@ -2,7 +2,7 @@ import itertools
 
 import dask.array
 
-from ..containers.array import ArrayStructure, MachineDataType
+from ..containers.array import ArrayStructure, ArrayMacroStructure, MachineDataType
 from ..media_type_registration import deserialization_registry
 from .base import BaseArrayClientReader
 from .utils import handle_error
@@ -11,8 +11,9 @@ from .utils import handle_error
 class ClientDaskArrayReader(BaseArrayClientReader):
     "Client-side wrapper around an array-like that returns dask arrays"
 
-    MACROSTRUCTURE_TYPE = ArrayStructure
+    MACROSTRUCTURE_TYPE = ArrayMacroStructure
     MICROSTRUCTURE_TYPE = MachineDataType
+    STRUCTURE_TYPE = ArrayStructure
 
     def __init__(self, *args, route="/array/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -37,8 +38,8 @@ class ClientDaskArrayReader(BaseArrayClientReader):
 
     def read(self):
         structure = self.structure()
-        shape = structure["macro"].shape
-        dtype = structure["micro"].to_numpy_dtype()
+        shape = structure.macro.shape
+        dtype = structure.micro.to_numpy_dtype()
         # Build a client-side dask array whose chunks pull from a server-side
         # dask array.
         name = (
@@ -46,7 +47,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             f"{self._client.base_url!s}/{'/'.join(self._path)}"
             f"{'-'.join(map(repr, sorted(self._params.items())))}"
         )
-        chunks = structure["macro"].chunks
+        chunks = structure.macro.chunks
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)
         # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---

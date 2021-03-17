@@ -5,7 +5,7 @@ from .array import ArrayStructure
 
 
 @dataclass
-class VariableStructure:
+class VariableMacroStructure:
     dims: Tuple[str]
     data: ArrayStructure
     attrs: Dict  # TODO Use JSONSerializableDict
@@ -21,7 +21,17 @@ class VariableStructure:
 
 
 @dataclass
-class DataArrayStructure:
+class VariableStructure:
+    macro: VariableMacroStructure
+    micro: None
+
+    @classmethod
+    def from_json(cls, structure):
+        return cls(macro=VariableMacroStructure(structure["macro"]), micro=None)
+
+
+@dataclass
+class DataArrayMacroStructure:
     variable: VariableStructure
     coords: Dict[str, VariableStructure]
     name: str
@@ -39,7 +49,17 @@ class DataArrayStructure:
 
 
 @dataclass
-class DatasetStructure:
+class DataArrayStructure:
+    macro: DataArrayMacroStructure
+    micro: None
+
+    @classmethod
+    def from_json(cls, structure):
+        return cls(macro=DataArrayMacroStructure(structure["macro"]), micro=None)
+
+
+@dataclass
+class DatasetMacroStructure:
     data_vars: Dict[str, DataArrayStructure]
     coords: Dict[str, VariableStructure]
     attrs: Dict  # TODO Use JSONSerializableDict
@@ -57,6 +77,16 @@ class DatasetStructure:
             },
             attrs=structure["attrs"],
         )
+
+
+@dataclass
+class DatasetStructure:
+    macro: DatasetMacroStructure
+    micro: None
+
+    @classmethod
+    def from_json(cls, structure):
+        return cls(macro=DatasetMacroStructure(structure["macro"]), micro=None)
 
 
 # TODO Also support zarr for encoding.
