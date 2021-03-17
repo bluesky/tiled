@@ -68,10 +68,17 @@ class MachineDataType:
         endianness = self.__endianness_reverse_map[self.endianness]
         return numpy.dtype(f"{endianness}{self.kind.value}{self.itemsize}")
 
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            kind=Kind(structure["kind"]),
+            itemsize=structure["itemsize"],
+            endianness=Endianness(structure["endianness"]),
+        )
+
 
 @dataclass
 class ArrayStructure:
-    dtype: MachineDataType
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
 
@@ -80,11 +87,6 @@ class ArrayStructure:
         return cls(
             chunks=tuple(map(tuple, structure["chunks"])),
             shape=tuple(structure["shape"]),
-            dtype=MachineDataType(
-                kind=Kind(structure["dtype"]["kind"]),
-                itemsize=structure["dtype"]["itemsize"],
-                endianness=Endianness(structure["dtype"]["endianness"]),
-            ),
         )
 
 

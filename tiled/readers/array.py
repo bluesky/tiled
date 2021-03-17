@@ -39,7 +39,7 @@ class ArrayReader:
 
     def microstructure(self):
         "Internal structure of a block of this array --- i.e. its data type"
-        return MachineDataType.from_numpy_dtype(self._data.dtype),
+        return MachineDataType.from_numpy_dtype(self._data.dtype)
 
     def read(self):
         return self._data

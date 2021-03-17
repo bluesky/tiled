@@ -45,7 +45,8 @@ class BaseArrayClientReader(BaseClientReader):
 
     Subclass must define:
 
-    * STRUCTURE_TYPE : type
+    * MICROSTRUCTURE_TYPE : type
+    * MACROSTRUCTURE_TYPE : type
     """
 
     def structure(self):
@@ -56,11 +57,16 @@ class BaseArrayClientReader(BaseClientReader):
         if self._structure is None:
             response = self._client.get(
                 f"/metadata/{'/'.join(self._path)}",
-                params={"fields": ["microstructure", "macrostructure"], **self._params},
+                params={
+                    "fields": ["structure.micro", "structure.macro"],
+                    **self._params,
+                },
             )
             handle_error(response)
             result = response.json()["data"]["attributes"]["structure"]
-            structure = self.STRUCTURE_TYPE.from_json(result)
+            structure = {}
+            structure["micro"] = self.MICROSTRUCTURE_TYPE.from_json(result["micro"])
+            structure["macro"] = self.MACROSTRUCTURE_TYPE.from_json(result["macro"])
         else:
             structure = self._structure
         return structure

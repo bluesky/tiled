@@ -81,7 +81,7 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
         self._route = route
 
     def read(self):
-        structure = self.structure()
+        structure = self.structure()["macro"]
         data_vars = {}
         for name, data_array in structure.data_vars.items():
             data_array_source = ClientDaskDataArrayReader(
