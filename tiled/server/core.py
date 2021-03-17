@@ -9,7 +9,6 @@ from typing import Any
 import dask.base
 from fastapi import Depends, HTTPException, Query, Response
 import msgpack
-import numpy
 import pydantic
 from starlette.responses import JSONResponse, StreamingResponse, Send
 
@@ -81,6 +80,8 @@ def slice_(
     slice: str = Query(None, regex="^[0-9,:]*$"),
 ):
     "Specify and parse a block index parameter."
+    import numpy  # noqa F401
+
     # IMPORTANT We are eval-ing a user-provider string here so we need to be
     # very careful about locking down what can be in it. The regex above
     # excludes any letters or operators, should it is not possible to execute
@@ -204,6 +205,8 @@ def construct_entries_response(
 
 
 def construct_array_response(array, request_headers, format=None):
+    import numpy
+
     DEFAULT_MEDIA_TYPE = "application/octet-stream"
     # Ensure contiguous C-ordered array.
     array = numpy.ascontiguousarray(array)
@@ -238,6 +241,46 @@ def construct_array_response(array, request_headers, format=None):
             "None of the media types requested by the client are supported.",
             unsupported=media_types,
             supported=serialization_registry.media_types("array"),
+        )
+
+
+APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
+
+
+def construct_dataframe_response(df, request_headers, format=None):
+    etag = dask.base.tokenize(df)
+    if request_headers.get("If-None-Match", "") == etag:
+        return Response(status_code=304)
+    # Give priority to the `format` query parameter. Otherwise, consult Accept
+    # header.
+    if format is not None:
+        media_types = format.split(",")
+    else:
+        # The HTTP spec says these should be separated by ", " but some
+        # browsers separate with just "," (no space).
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
+        # That variation is what we are handling below with lstrip.
+        media_types = [
+            s.lstrip(" ")
+            for s in request_headers.get("Accept", APACHE_ARROW_FILE_MIME_TYPE).split(
+                ","
+            )
+        ]
+    # The client may give us a choice of media types. Find the first one
+    # that we support.
+    for media_type in media_types:
+        if media_type == "*/*":
+            media_type = APACHE_ARROW_FILE_MIME_TYPE
+        if media_type in serialization_registry.media_types("dataframe"):
+            content = serialization_registry("dataframe", media_type, df)
+            return PatchedResponse(
+                content=content, media_type=media_type, headers={"ETag": etag}
+            )
+    else:
+        raise UnsupportedMediaTypes(
+            "None of the media types requested by the client are supported.",
+            unsupported=media_types,
+            supported=serialization_registry.media_types("dataframe"),
         )
 
 

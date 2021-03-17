@@ -2,14 +2,14 @@ import xarray
 
 from ..containers.xarray import DataArrayStructure, DatasetStructure, VariableStructure
 from .array import ClientDaskArrayReader
-from .base import BaseClientReader
+from .base import BaseArrayClientReader
 
 
-class ClientDaskVariableReader(BaseClientReader):
+class ClientDaskVariableReader(BaseArrayClientReader):
 
     STRUCTURE_TYPE = VariableStructure
 
-    def __init__(self, *args, route="/tile/variable", **kwargs):
+    def __init__(self, *args, route="/variable/block", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 
@@ -33,11 +33,11 @@ class ClientVariableReader(ClientDaskVariableReader):
         return super().read().load()
 
 
-class ClientDaskDataArrayReader(BaseClientReader):
+class ClientDaskDataArrayReader(BaseArrayClientReader):
 
     STRUCTURE_TYPE = DataArrayStructure
 
-    def __init__(self, *args, route="/tile/data_array", **kwargs):
+    def __init__(self, *args, route="/data_array/block", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 
@@ -72,11 +72,11 @@ class ClientDataArrayReader(ClientDaskDataArrayReader):
         return super().read().load()
 
 
-class ClientDaskDatasetReader(BaseClientReader):
+class ClientDaskDatasetReader(BaseArrayClientReader):
 
     STRUCTURE_TYPE = DatasetStructure
 
-    def __init__(self, *args, route="/tile/dataset", **kwargs):
+    def __init__(self, *args, route="/dataset/block", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 

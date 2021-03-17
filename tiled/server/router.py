@@ -2,7 +2,7 @@ import dataclasses
 import inspect
 from typing import Any, List, Optional
 
-from fastapi import Depends, HTTPException, Query, Request, APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from ..query_registration import name_to_query_type
 from .authentication import (
@@ -12,8 +12,10 @@ from .authentication import (
     revoke_token,
 )
 from .core import (
+    APACHE_ARROW_FILE_MIME_TYPE,
     block,
     construct_array_response,
+    construct_dataframe_response,
     construct_entries_response,
     construct_resource,
     reader,
@@ -116,7 +118,7 @@ def declare_search_route(router):
             raise HTTPException(status_code=404, detail=err.args[0])
         except UnsupportedMediaTypes as err:
             # TODO Should we just serve a default representation instead of
-            # returning this error codde?
+            # returning this error code?
             raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
@@ -206,8 +208,10 @@ async def entries(
         raise HTTPException(status_code=404, detail=err.args[0])
 
 
-@router.get("/tile/array/{path:path}", response_model=models.Response, name="array")
-def tile_array(
+@router.get(
+    "/array/block/{path:path}", response_model=models.Response, name="array block"
+)
+def array_block(
     request: Request,
     reader=Depends(reader),
     block=Depends(block),
@@ -225,14 +229,14 @@ def tile_array(
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
-        # returning this error codde?
+        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
-    "/full/array/{path:path}", response_model=models.Response, name="full array"
+    "/array/full/{path:path}", response_model=models.Response, name="full array"
 )
-def full_array(
+def array_full(
     request: Request,
     reader=Depends(reader),
     slice=Depends(slice_),
@@ -256,14 +260,65 @@ def full_array(
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
-        # returning this error codde?
+        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
-    "/tile/variable/{path:path}", response_model=models.Response, name="variable"
+    "/dataframe/schema/{path:path}",
+    response_model=models.Response,
+    name="dataframe partition",
 )
-def tile_variable(
+def dataframe_schema(
+    request: Request,
+    partition: int,
+    reader=Depends(reader),
+    columns: Optional[str] = None,
+    format: Optional[str] = None,
+):
+    """
+    Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
+    """
+    import pyarrow
+
+    meta = reader.structure()["meta"]
+    return Response(pyarrow.serialize(meta), content_type=APACHE_ARROW_FILE_MIME_TYPE)
+
+
+@router.get(
+    "/dataframe/partition/{path:path}",
+    response_model=models.Response,
+    name="dataframe partition",
+)
+def dataframe_partition(
+    request: Request,
+    partition: int,
+    reader=Depends(reader),
+    columns: Optional[str] = None,
+    format: Optional[str] = None,
+):
+    """
+    Fetch a chunk from an xarray.Dataset.
+    """
+    try:
+        df = reader.read_partition(partition, columns=columns)
+    except IndexError:
+        raise HTTPException(status_code=422, detail="Partition out of range")
+    except KeyError as err:
+        (key,) = err.args
+        raise HTTPException(status_code=422, detail=f"No such column {key}.")
+    try:
+        return construct_dataframe_response(df, request.headers, format)
+    except UnsupportedMediaTypes as err:
+        # TODO Should we just serve a default representation instead of
+        # returning this error code?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/variable/block/{path:path}", response_model=models.Response, name="variable block"
+)
+def variable_block(
     request: Request,
     reader=Depends(reader),
     block=Depends(block),
@@ -284,14 +339,14 @@ def tile_variable(
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
-        # returning this error codde?
+        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
-    "/tile/data_array/{path:path}", response_model=models.Response, name="data_array"
+    "/data_array/block/{path:path}", response_model=models.Response, name="data_array"
 )
-def tile_data_array(
+def data_array_block(
     request: Request,
     reader=Depends(reader),
     block=Depends(block),
@@ -318,12 +373,14 @@ def tile_data_array(
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
-        # returning this error codde?
+        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
-@router.get("/tile/dataset/{path:path}", response_model=models.Response, name="dataset")
-def tile_dataset(
+@router.get(
+    "/dataset/block/{path:path}", response_model=models.Response, name="dataset"
+)
+def dataset_block(
     request: Request,
     reader=Depends(reader),
     block=Depends(block),
@@ -353,5 +410,5 @@ def tile_dataset(
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
         # TODO Should we just serve a default representation instead of
-        # returning this error codde?
+        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))

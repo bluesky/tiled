@@ -6,7 +6,6 @@ class BaseClientReader:
     """
     Subclass must define:
 
-    * STRUCTURE_TYPE : type
     * read()
     """
 
@@ -39,7 +38,21 @@ class BaseClientReader:
         # persistent.
         return DictView(self._metadata)
 
+
+class BaseArrayClientReader(BaseClientReader):
+    """
+    Shared by Array, DataArray, Dataset
+
+    Subclass must define:
+
+    * STRUCTURE_TYPE : type
+    """
+
     def structure(self):
+        # Notice that we are NOT *caching* in self._structure here. We are
+        # allowing that the creator of this instance might have already known
+        # our structure (as part of the some larger structure) and passed it
+        # in.
         if self._structure is None:
             response = self._client.get(
                 f"/metadata/{'/'.join(self._path)}",

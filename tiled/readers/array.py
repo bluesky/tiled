@@ -47,6 +47,7 @@ class ArrayReader:
         return dask_array.compute()
 
     def close(self):
+        # Allow the garbage collector to reclaim this memory.
         self._data = None
 
     def __enter__(self):

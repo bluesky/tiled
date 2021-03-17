@@ -4,16 +4,16 @@ import dask.array
 
 from ..containers.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
-from .base import BaseClientReader
+from .base import BaseArrayClientReader
 from .utils import handle_error
 
 
-class ClientDaskArrayReader(BaseClientReader):
+class ClientDaskArrayReader(BaseArrayClientReader):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     STRUCTURE_TYPE = ArrayStructure
 
-    def __init__(self, *args, route="/tile/array", **kwargs):
+    def __init__(self, *args, route="/array/block", **kwargs):
         super().__init__(*args, **kwargs)
         if route.endswith("/"):
             route = route[:-1]
