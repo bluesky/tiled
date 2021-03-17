@@ -265,7 +265,7 @@ def array_full(
 
 
 @router.get(
-    "/dataframe/schema/{path:path}",
+    "/dataframe/meta/{path:path}",
     response_model=models.Response,
     name="dataframe partition",
 )
@@ -281,7 +281,28 @@ def dataframe_schema(
     """
     import pyarrow
 
-    meta = reader.structure()["meta"]
+    meta = reader.microstructure()["meta"]
+    return Response(pyarrow.serialize(meta), content_type=APACHE_ARROW_FILE_MIME_TYPE)
+
+
+@router.get(
+    "/dataframe/divisions/{path:path}",
+    response_model=models.Response,
+    name="dataframe partition",
+)
+def dataframe_schema(
+    request: Request,
+    partition: int,
+    reader=Depends(reader),
+    columns: Optional[str] = None,
+    format: Optional[str] = None,
+):
+    """
+    Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
+    """
+    import pyarrow
+
+    meta = reader.microstructure()["divisions"]
     return Response(pyarrow.serialize(meta), content_type=APACHE_ARROW_FILE_MIME_TYPE)
 
 

@@ -139,7 +139,8 @@ class DuckReader(metaclass=abc.ABCMeta):
         # to "quack" like a Reader.
         EXPECTED_ATTRS = (
             "read",
-            "structure",
+            "macrostructure",
+            "microstructure",
         )
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
@@ -301,10 +302,14 @@ def construct_resource(key, entry, fields):
             }
         )
     else:
+        structure = {}
         if models.EntryFields.container in fields:
             attributes["container"] = entry.container
-        if models.EntryFields.structure in fields:
-            attributes["structure"] = dataclasses.asdict(entry.structure())
+        if models.EntryFields.macrostructure in fields:
+            structure["macro"] = dataclasses.asdict(entry.macrostructure())
+        if models.EntryFields.microstructure in fields:
+            structure["micro"] = dataclasses.asdict(entry.microstructure())
+        attributes["structure"] = structure
         resource = models.ReaderResource(
             **{
                 "id": key,

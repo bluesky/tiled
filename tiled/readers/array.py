@@ -30,12 +30,16 @@ class ArrayReader:
     def metadata(self):
         return DictView(self._metadata)
 
-    def structure(self):
+    def macrostructure(self):
+        "Structures of the layout of blocks of this array"
         return ArrayStructure(
             shape=self._data.shape,
             chunks=self._data.chunks,
-            dtype=MachineDataType.from_numpy_dtype(self._data.dtype),
         )
+
+    def microstructure(self):
+        "Internal structure of a block of this array --- i.e. its data type"
+        return MachineDataType.from_numpy_dtype(self._data.dtype),
 
     def read(self):
         return self._data

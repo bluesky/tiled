@@ -36,8 +36,8 @@ class ClientDaskArrayReader(BaseArrayClientReader):
 
     def read(self):
         structure = self.structure()
-        shape = structure.shape
-        dtype = structure.dtype.to_numpy_dtype()
+        shape = structure["macro"].shape
+        dtype = structure["micro"].to_numpy_dtype()
         # Build a client-side dask array whose chunks pull from a server-side
         # dask array.
         name = (
@@ -45,7 +45,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             f"{self._client.base_url!s}/{'/'.join(self._path)}"
             f"{'-'.join(map(repr, sorted(self._params.items())))}"
         )
-        chunks = structure.chunks
+        chunks = structure["macro"].chunks
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)
         # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---

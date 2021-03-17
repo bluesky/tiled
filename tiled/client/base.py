@@ -56,7 +56,7 @@ class BaseArrayClientReader(BaseClientReader):
         if self._structure is None:
             response = self._client.get(
                 f"/metadata/{'/'.join(self._path)}",
-                params={"fields": "structure", **self._params},
+                params={"fields": ["microstructure", "macrostructure"], **self._params},
             )
             handle_error(response)
             result = response.json()["data"]["attributes"]["structure"]

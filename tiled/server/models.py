@@ -36,7 +36,8 @@ class EntryType(str, enum.Enum):
 class EntryFields(str, enum.Enum):
     metadata = "metadata"
     container = "container"
-    structure = "structure"
+    microstructure = "structure.micro"
+    macrostructure = "structure.macro"
     count = "count"
     client_type_hint = "client_type_hint"
     none = ""
