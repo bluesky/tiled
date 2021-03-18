@@ -1,7 +1,12 @@
 import dask.dataframe
 import pyarrow
 
-from ..containers.dataframe import APACHE_ARROW_FILE_MIME_TYPE, DataFrameStructure
+from ..containers.dataframe import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    DataFrameMacroStructure,
+    DataFrameMicroStructure,
+    DataFrameStructure,
+)
 from ..media_type_registration import deserialization_registry
 from .base import BaseClientReader
 from .utils import handle_error
@@ -14,20 +19,27 @@ class ClientDaskDataFrameReader(BaseClientReader):
         super().__init__(*args, **kwargs)
 
     def structure(self):
-        # Notice that we are NOT *caching* in self._structure here. We are
-        # allowing that the creator of this instance might have already known
-        # our structure (as part of the some larger structure) and passed it
-        # in.
-        if self._structure is None:
-            response = self._client.get(
-                f"/dataframe/schema/{'/'.join(self._path)}",
-                params=self._params,
-            )
-            handle_error(response)
-            meta = pyarrow.deserialize_pandas(response.content)
-        else:
-            structure = self._structure
-        return structure
+        meta_response = self._client.get(
+            f"/dataframe/meta/{'/'.join(self._path)}",
+            params=self._params,
+        )
+        handle_error(meta_response)
+        meta = pyarrow.deserialize_pandas(meta_response.content)
+        divisions_response = self._client.get(
+            f"/dataframe/divisions/{'/'.join(self._path)}",
+            params=self._params,
+        )
+        handle_error(divisions_response)
+        divisions = pyarrow.deserialize_pandas(divisions_response.content)
+        return DataFrameStructure(
+            micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
+            # We could get the macrostructure by making another HTTP request
+            # but it's knowable from the microstructure, so we'll just recreate it
+            # that way.
+            macro=DataFrameMacroStructure(
+                npartitions=len(divisions) - 1, columns=meta.columns
+            ),
+        )
 
     def read_partition(self, partition, columns):
         """

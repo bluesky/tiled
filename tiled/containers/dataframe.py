@@ -10,7 +10,7 @@ from ..media_type_registration import serialization_registry, deserialization_re
 
 
 @dataclass
-class DataFrameStructure:
+class DataFrameMicroStructure:
     meta: pandas.DataFrame
     divisions: List[Any]
 
@@ -19,6 +19,22 @@ class DataFrameStructure:
         # Make an *empty* DataFrame with the same structure as ddf.
         meta = dask.dataframe.utils.make_meta(ddf)
         return cls(meta=meta, divisions=ddf.divisions)
+
+
+@dataclass
+class DataFrameMacroStructure:
+    npartitions: int
+    columns: List[str]
+
+    @classmethod
+    def from_dask_dataframe(cls, ddf):
+        return cls(npartitions=ddf.npartitions, columns=list(ddf.columns))
+
+
+@dataclass
+class DataFrameStructure:
+    micro = DataFrameMicroStructure
+    macro = DataFrameMacroStructure
 
 
 # The MIME type vnd.apache.arrow.file is provisional. See:

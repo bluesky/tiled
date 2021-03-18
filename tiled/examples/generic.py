@@ -2,9 +2,11 @@ from pathlib import Path
 
 import dask.array
 import h5py
+import pandas
 import xarray
 
 from ..readers.array import ArrayReader
+from ..readers.dataframe import DataFrameReader
 from ..readers.xarray import DataArrayReader, DatasetReader, VariableReader
 from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
 from ..utils import SpecialUsers
@@ -17,7 +19,7 @@ def access_hdf5_data(name, inner_name, value, size):
     return file["data"]
 
 
-minimal = Catalog(
+arrays = Catalog(
     {
         name: ArrayReader(access_hdf5_data(name, "ones", 1, size))
         for name, size in zip(
@@ -25,6 +27,11 @@ minimal = Catalog(
             [3, 100, 1000, 10_000],
         )
     }
+)
+
+arr = access_hdf5_data("tiny", "ones", 1, 3)
+dataframes = Catalog(
+    {"df": DataFrameReader(pandas.DataFrame({"A": arr[0], "B": arr[1], "C": arr[2]}))}
 )
 xarrays = Catalog(
     {

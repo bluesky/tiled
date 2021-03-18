@@ -2,7 +2,7 @@ import dataclasses
 import inspect
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..query_registration import name_to_query_type
 from .authentication import (
@@ -23,6 +23,7 @@ from .core import (
     # get_dask_client,
     json_or_msgpack,
     NoEntry,
+    PatchedResponse,
     serialization_registry,
     slice_,
     WrongTypeForRoute,
@@ -171,7 +172,7 @@ async def metadata(
 
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
-    resource = construct_resource(key, entry, fields)
+    resource = construct_resource(path, key, entry, fields)
     return json_or_msgpack(request.headers, models.Response(data=resource))
 
 
@@ -271,9 +272,7 @@ def array_full(
 )
 def dataframe_meta(
     request: Request,
-    partition: int,
     reader=Depends(reader),
-    columns: Optional[str] = None,
     format: Optional[str] = None,
 ):
     """
@@ -281,8 +280,11 @@ def dataframe_meta(
     """
     import pyarrow
 
-    meta = reader.microstructure()["meta"]
-    return Response(pyarrow.serialize(meta), content_type=APACHE_ARROW_FILE_MIME_TYPE)
+    meta = reader.microstructure().meta
+    return PatchedResponse(
+        memoryview(pyarrow.serialize(meta).to_buffer()),
+        media_type=APACHE_ARROW_FILE_MIME_TYPE,
+    )
 
 
 @router.get(
@@ -290,11 +292,9 @@ def dataframe_meta(
     response_model=models.Response,
     name="dataframe partition",
 )
-def dataframe_schema(
+def dataframe_divisions(
     request: Request,
-    partition: int,
     reader=Depends(reader),
-    columns: Optional[str] = None,
     format: Optional[str] = None,
 ):
     """
@@ -302,8 +302,11 @@ def dataframe_schema(
     """
     import pyarrow
 
-    meta = reader.microstructure()["divisions"]
-    return Response(pyarrow.serialize(meta), content_type=APACHE_ARROW_FILE_MIME_TYPE)
+    divisions = reader.microstructure().divisions
+    return PatchedResponse(
+        memoryview(pyarrow.serialize(divisions).to_buffer()),
+        media_type=APACHE_ARROW_FILE_MIME_TYPE,
+    )
 
 
 @router.get(

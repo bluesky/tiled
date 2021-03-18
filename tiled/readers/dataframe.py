@@ -1,6 +1,6 @@
 import dask.dataframe
 
-from ..containers.dataframe import DataFrameStructure
+from ..containers.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
 
 
@@ -18,8 +18,9 @@ class DataFrameReader:
 
     def __init__(self, data, metadata=None):
         self._metadata = metadata or {}
-        if not isinstance(data, dask.array.DataFrame):
-            data = dask.dataframe.from_pandas(data)
+        if not isinstance(data, dask.dataframe.DataFrame):
+            DEFAULT_CHUNK_SIZE = 100  # wild guess, needs more thought
+            data = dask.dataframe.from_pandas(data, chunksize=DEFAULT_CHUNK_SIZE)
         self._data = data
 
     def __repr__(self):
@@ -29,8 +30,11 @@ class DataFrameReader:
     def metadata(self):
         return DictView(self._metadata)
 
-    def structure(self):
-        return DataFrameStructure.from_dask_dataframe(self._data)
+    def macrostructure(self):
+        return DataFrameMacroStructure.from_dask_dataframe(self._data)
+
+    def microstructure(self):
+        return DataFrameMicroStructure.from_dask_dataframe(self._data)
 
     def read(self):
         return self._data

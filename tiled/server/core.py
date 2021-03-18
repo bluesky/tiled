@@ -200,7 +200,7 @@ def construct_entries_response(
         # Pull a page of just the keys, which is cheaper.
         items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])
     for key, entry in items:
-        resource = construct_resource(key, entry, fields)
+        resource = construct_resource(path, key, entry, fields)
         data.append(resource)
     return models.Response(data=data, links=links, meta={"count": count})
 
@@ -285,7 +285,7 @@ def construct_dataframe_response(df, request_headers, format=None):
         )
 
 
-def construct_resource(key, entry, fields):
+def construct_resource(path, key, entry, fields):
     attributes = {}
     if models.EntryFields.metadata in fields:
         attributes["metadata"] = entry.metadata
@@ -310,9 +310,20 @@ def construct_resource(key, entry, fields):
             if macrostructure is not None:
                 structure["macro"] = dataclasses.asdict(macrostructure)
         if models.EntryFields.microstructure in fields:
-            microstructure = entry.microstructure()
-            if microstructure is not None:
-                structure["micro"] = dataclasses.asdict(microstructure)
+            if entry.container == "dataframe":
+                # Special case: its microstructure is cannot be JSON-serialized
+                # and is therefore available from separate routes. Sends links
+                # instead of the actual payload.
+                structure["micro"] = {
+                    "links": {
+                        "meta": f"/dataframe/meta/{path}",
+                        "divisions": f"/dataframe/divisions/{path}",
+                    }
+                }
+            else:
+                microstructure = entry.microstructure()
+                if microstructure is not None:
+                    structure["micro"] = dataclasses.asdict(microstructure)
         attributes["structure"] = structure
         resource = models.ReaderResource(
             **{
