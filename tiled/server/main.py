@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .settings import get_settings
 from .router import declare_search_route, router
 from .core import PatchedStreamingResponse
+from .jwt_auth import jwt_router
 
 
 app = FastAPI()
@@ -19,6 +20,7 @@ async def startup_event():
     app.include_router(router)
     # Warm up cached access.
     get_settings().catalog
+    api.include_router(jwt_router)
 
 
 @app.middleware("http")
