@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..query_registration import name_to_query_type
 
+from .jwt_auth import get_current_user
+
 from .core import (
     APACHE_ARROW_FILE_MIME_TYPE,
     block,
@@ -76,6 +78,7 @@ def declare_search_route(router):
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(10, alias="page[limit]"),
         entry: Any = Depends(entry),
+        current_user: str = Depends(get_current_user),
         **filters,
     ):
         try:
@@ -158,6 +161,7 @@ async def entries(
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(10, alias="page[limit]"),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    current_user: str = Depends(get_current_user),
     entry: Any = Depends(entry),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or Readers."
