@@ -27,7 +27,9 @@ class VariableStructure:
 
     @classmethod
     def from_json(cls, structure):
-        return cls(macro=VariableMacroStructure(structure["macro"]), micro=None)
+        return cls(
+            macro=VariableMacroStructure.from_json(structure["macro"]), micro=None
+        )
 
 
 @dataclass
@@ -55,7 +57,9 @@ class DataArrayStructure:
 
     @classmethod
     def from_json(cls, structure):
-        return cls(macro=DataArrayMacroStructure(structure["macro"]), micro=None)
+        return cls(
+            macro=DataArrayMacroStructure.from_json(structure["macro"]), micro=None
+        )
 
 
 @dataclass
@@ -86,7 +90,9 @@ class DatasetStructure:
 
     @classmethod
     def from_json(cls, structure):
-        return cls(macro=DatasetMacroStructure(structure["macro"]), micro=None)
+        return cls(
+            macro=DatasetMacroStructure.from_json(structure["macro"]), micro=None
+        )
 
 
 # TODO Also support zarr for encoding.

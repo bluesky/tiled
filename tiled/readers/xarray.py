@@ -1,9 +1,12 @@
 import numpy
 
 from ..containers.xarray import (
+    ArrayStructure,
     DataArrayMacroStructure,
+    DataArrayStructure,
     DatasetMacroStructure,
     VariableMacroStructure,
+    VariableStructure,
 )
 from ..readers.array import ArrayReader
 from ..utils import DictView
@@ -31,10 +34,10 @@ class VariableReader:
         array_reader = ArrayReader(self._variable.data)
         return VariableMacroStructure(
             dims=self._variable.dims,
-            data={
-                "macro": array_reader.macrostructure(),
-                "micro": array_reader.microstructure(),
-            },
+            data=ArrayStructure(
+                macro=array_reader.macrostructure(),
+                micro=array_reader.microstructure(),
+            ),
             attrs=self._variable.attrs,
         )
 
@@ -84,12 +87,20 @@ class DataArrayReader:
         return DictView(self._metadata)
 
     def macrostructure(self):
+        variable_reader = VariableReader(self._data_array.variable)
+        variable_structure = VariableStructure(
+            macro=variable_reader.macrostructure(), micro=None
+        )
+        coords = {}
+        for k, v in self._data_array.coords.items():
+            coord_reader = VariableReader(v)
+            coord_structure = VariableStructure(
+                macro=coord_reader.macrostructure(), micro=None
+            )
+            coords[k] = coord_structure
         return DataArrayMacroStructure(
-            variable=VariableReader(self._data_array.variable).macrostructure(),
-            coords={
-                k: VariableReader(v).macrostructure()
-                for k, v in self._data_array.coords.items()
-            },
+            variable=variable_structure,
+            coords=coords,
             name=self._data_array.name,
         )
 
@@ -135,15 +146,23 @@ class DatasetReader:
         return DictView(self._metadata)
 
     def macrostructure(self):
+        data_vars = {}
+        for k, v in self._dataset.data_vars.items():
+            data_array_reader = DataArrayReader(v)
+            data_array_structure = DataArrayStructure(
+                macro=data_array_reader.macrostructure(), micro=None
+            )
+            data_vars[k] = data_array_structure
+        coords = {}
+        for k, v in self._dataset.coords.items():
+            coord_reader = VariableReader(v)
+            coord_structure = VariableStructure(
+                macro=coord_reader.macrostructure(), micro=None
+            )
+            coords[k] = coord_structure
         return DatasetMacroStructure(
-            data_vars={
-                key: DataArrayReader(value).macrostructure()
-                for key, value in self._dataset.data_vars.items()
-            },
-            coords={
-                key: VariableReader(value).macrostructure()
-                for key, value in self._dataset.coords.items()
-            },
+            data_vars=data_vars,
+            coords=coords,
             attrs=self._dataset.attrs,
         )
 

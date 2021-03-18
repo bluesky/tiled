@@ -269,7 +269,7 @@ def array_full(
     response_model=models.Response,
     name="dataframe partition",
 )
-def dataframe_schema(
+def dataframe_meta(
     request: Request,
     partition: int,
     reader=Depends(reader),
