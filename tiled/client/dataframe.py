@@ -82,7 +82,7 @@ class ClientDaskDataFrameReader(BaseClientReader):
 
 
 class ClientDataFrameReader(ClientDaskDataFrameReader):
-    "Client-side wrapper around an array-like that returns in-memory arrays"
+    "Client-side wrapper around a dataframe-like that returns in-memory dataframes"
 
     def read(self):
         return super().read().compute()

@@ -31,7 +31,10 @@ class ClientCatalog(collections.abc.Mapping):
             {
                 "array": lambda: importlib.import_module(
                     "..array", ClientCatalog.__module__
-                ).ClientArrayReader,
+                ).ClientDataFrameReader,
+                "dataframe": lambda: importlib.import_module(
+                    "..dataframe", ClientCatalog.__module__
+                ).ClientDataFrameReader,
                 "variable": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
                 ).ClientVariableReader,
@@ -48,6 +51,9 @@ class ClientCatalog(collections.abc.Mapping):
                 "array": lambda: importlib.import_module(
                     "..array", ClientCatalog.__module__
                 ).ClientDaskArrayReader,
+                "dataframe": lambda: importlib.import_module(
+                    "..dataframe", ClientCatalog.__module__
+                ).ClientDaskDataFrameReader,
                 "variable": lambda: importlib.import_module(
                     "..xarray", ClientCatalog.__module__
                 ).ClientDaskVariableReader,
