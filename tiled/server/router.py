@@ -278,11 +278,9 @@ def dataframe_meta(
     """
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
     """
-    import pyarrow
-
     meta = reader.microstructure().meta
     return PatchedResponse(
-        memoryview(pyarrow.serialize(meta).to_buffer()),
+        serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta),
         media_type=APACHE_ARROW_FILE_MIME_TYPE,
     )
 
@@ -300,11 +298,9 @@ def dataframe_divisions(
     """
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
     """
-    import pyarrow
-
     divisions = reader.microstructure().divisions
     return PatchedResponse(
-        memoryview(pyarrow.serialize(divisions).to_buffer()),
+        serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions),
         media_type=APACHE_ARROW_FILE_MIME_TYPE,
     )
 
@@ -318,12 +314,13 @@ def dataframe_partition(
     request: Request,
     partition: int,
     reader=Depends(reader),
-    columns: Optional[str] = None,
+    columns: Optional[List[str]] = None,
     format: Optional[str] = None,
 ):
     """
     Fetch a chunk from an xarray.Dataset.
     """
+    print("columns", columns)
     try:
         df = reader.read_partition(partition, columns=columns)
     except IndexError:

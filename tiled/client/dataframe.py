@@ -1,5 +1,4 @@
 import dask.dataframe
-import pyarrow
 
 from ..containers.dataframe import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -24,13 +23,17 @@ class ClientDaskDataFrameReader(BaseClientReader):
             params=self._params,
         )
         handle_error(meta_response)
-        meta = pyarrow.deserialize_pandas(meta_response.content)
+        meta = deserialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_response.content
+        )
         divisions_response = self._client.get(
             f"/dataframe/divisions/{'/'.join(self._path)}",
             params=self._params,
         )
         handle_error(divisions_response)
-        divisions = pyarrow.deserialize_pandas(divisions_response.content)
+        divisions = deserialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_response.content
+        )
         return DataFrameStructure(
             micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
             # We could get the macrostructure by making another HTTP request
@@ -45,10 +48,13 @@ class ClientDaskDataFrameReader(BaseClientReader):
         """
         Fetch the data for one block in a chunked (dask) array.
         """
+        params = {"partition": partition}
+        if columns:
+            params["columns"] = columns
         response = self._client.get(
-            "/dataframe/partition" + "/".join(self._path),
+            "/dataframe/partition/" + "/".join(self._path),
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-            params={"partition": partition, "columns": columns, **self._params},
+            params={**params, **self._params},
         )
         handle_error(response)
         return deserialization_registry(
@@ -66,18 +72,18 @@ class ClientDaskDataFrameReader(BaseClientReader):
         )
         dask_tasks = {
             (name,)
-            + partition: (
+            + (partition,): (
                 self.read_partition,
                 partition,
                 columns,
             )
-            for partition in range(len(structure.divisions))
+            for partition in range(structure.macro.npartitions)
         }
-        return dask.array.Array(
-            dask=dask_tasks,
+        return dask.dataframe.DataFrame(
+            dask_tasks,
             name=name,
-            meta=structure.meta,
-            divisions=structure.divisions,
+            meta=structure.micro.meta,
+            divisions=structure.micro.divisions,
         )
 
 

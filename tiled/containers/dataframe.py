@@ -33,8 +33,16 @@ class DataFrameMacroStructure:
 
 @dataclass
 class DataFrameStructure:
-    micro = DataFrameMicroStructure
-    macro = DataFrameMacroStructure
+    micro: DataFrameMicroStructure
+    macro: DataFrameMacroStructure
+
+
+def deserialize_arrow(bytes_):
+    return pyarrow.deserialize(bytes_)
+
+
+def serialize_arrow(obj):
+    return memoryview(pyarrow.serialize(obj).to_buffer())
 
 
 # The MIME type vnd.apache.arrow.file is provisional. See:
@@ -43,10 +51,10 @@ class DataFrameStructure:
 # for this use case but I have not read deeply into the details yet.
 APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
 serialization_registry.register(
-    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, pyarrow.serialize_pandas
+    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, serialize_arrow
 )
 deserialization_registry.register(
-    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, lambda buffer: pyarrow.deserlialize_pandas
+    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, deserialize_arrow
 )
 if importlib.util.find_spec("openpyxl"):
     # TODO Excel reading and writng seems like a nifty application of this.

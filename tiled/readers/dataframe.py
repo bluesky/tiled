@@ -43,7 +43,7 @@ class DataFrameReader:
         partition = self._data.partitions[partition]
         if columns is not None:
             # Sub-select columns.
-            partition = partition.iloc[:, columns]
+            partition = partition[columns]
         return partition.compute()
 
     def close(self):
