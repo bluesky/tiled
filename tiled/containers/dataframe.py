@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import importlib
+import io
 from typing import Any, List
 
 import dask.dataframe.utils
@@ -37,12 +38,16 @@ class DataFrameStructure:
     macro: DataFrameMacroStructure
 
 
-def deserialize_arrow(bytes_):
-    return pyarrow.deserialize(bytes_)
+def serialize_arrow(df):
+    # pyarrow.serialize(...).to_buffer() returns a custom type.
+    # Wrap it in memoryview so generic server code knows what to do with it.
+    return memoryview(pyarrow.serialize(df).to_buffer())
 
 
-def serialize_arrow(obj):
-    return memoryview(pyarrow.serialize(obj).to_buffer())
+def serialize_csv(df):
+    file = io.BytesIO()
+    df.to_csv(file)  # TODO How would we expose options in the server?
+    return file.getbuffer()
 
 
 # The MIME type vnd.apache.arrow.file is provisional. See:
@@ -54,8 +59,9 @@ serialization_registry.register(
     "dataframe", APACHE_ARROW_FILE_MIME_TYPE, serialize_arrow
 )
 deserialization_registry.register(
-    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, deserialize_arrow
+    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, pyarrow.deserialize
 )
+serialization_registry.register("dataframe", "text/csv", serialize_csv)
 if importlib.util.find_spec("openpyxl"):
     # TODO Excel reading and writng seems like a nifty application of this.
     ...
