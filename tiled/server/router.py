@@ -318,12 +318,39 @@ def dataframe_partition(
     format: Optional[str] = None,
 ):
     """
-    Fetch a chunk from an xarray.Dataset.
+    Fetch a partition (continuous block of rows) from a DataFrame.
     """
     try:
         df = reader.read_partition(partition, columns=column)
     except IndexError:
         raise HTTPException(status_code=422, detail="Partition out of range")
+    except KeyError as err:
+        (key,) = err.args
+        raise HTTPException(status_code=422, detail=f"No such column {key}.")
+    try:
+        return construct_dataframe_response(df, request.headers, format)
+    except UnsupportedMediaTypes as err:
+        # TODO Should we just serve a default representation instead of
+        # returning this error code?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/dataframe/full/{path:path}",
+    response_model=models.Response,
+    name="dataframe full",
+)
+def dataframe_full(
+    request: Request,
+    reader=Depends(reader),
+    column: Optional[List[str]] = Query(None),
+    format: Optional[str] = None,
+):
+    """
+    Fetch all the rows of DataFrame.
+    """
+    try:
+        df = reader.read(columns=column)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=422, detail=f"No such column {key}.")

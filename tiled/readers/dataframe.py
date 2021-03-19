@@ -36,8 +36,15 @@ class DataFrameReader:
     def microstructure(self):
         return DataFrameMicroStructure.from_dask_dataframe(self._data)
 
-    def read(self):
-        return self._data
+    def read(self, columns=None):
+        # TODO For the array reader we require returning a *lazy* object here.
+        # Should rethink that. As is, this is inconsistent.
+        # But we very intentionally do not support fancy row-slicing because
+        # that becomes complex fast and it out of scope for Tiled.
+        df = self._data
+        if columns is not None:
+            df = df[columns]
+        return df.compute()
 
     def read_partition(self, partition, columns=None):
         partition = self._data.partitions[partition]
