@@ -28,9 +28,19 @@ from ..catalogs.utils import (
 )
 
 
-def get_jwt(uri):
+def get_token(uri):
     username = input("Username: ")
     password = getpass.getpass()
+    form_data = {'grant_type': 'password',
+                 'username': username,
+                 'password': password}
+    response = httpx.post(uri + '/token', data=form_data)
+    return 'Bearer ' + json.loads(response.text)['access_token']
+
+
+def get_public_token(uri):
+    username = 'public'
+    password = 'secret'
     form_data = {'grant_type': 'password',
                  'username': username,
                  'password': password}
