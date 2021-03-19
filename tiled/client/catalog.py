@@ -7,9 +7,11 @@ import functools
 import importlib
 import itertools
 import time
+import json
 import warnings
 
 import entrypoints
+import getpass
 import httpx
 
 from ..query_registration import query_type_to_name
@@ -24,6 +26,16 @@ from ..catalogs.utils import (
     IndexersMixin,
     UNCHANGED,
 )
+
+
+def get_jwt(uri):
+    username = input("Username: ")
+    password = getpass.getpass()
+    form_data = {'grant_type': 'password',
+                 'username': username,
+                 'password': password}
+    response = httpx.post(uri + '/token', data=form_data)
+    return 'Bearer ' + json.loads(response.text)['access_token']
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
