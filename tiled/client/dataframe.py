@@ -50,7 +50,9 @@ class ClientDaskDataFrameReader(BaseClientReader):
         """
         params = {"partition": partition}
         if columns:
-            params["columns"] = columns
+            # Note: The singular/plural inconsistency here is due to the fact that
+            # ["A", "B"] will be encoded in the URL as column=A&column=B
+            params["column"] = columns
         response = self._client.get(
             "/dataframe/partition/" + "/".join(self._path),
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
@@ -79,12 +81,15 @@ class ClientDaskDataFrameReader(BaseClientReader):
             )
             for partition in range(structure.macro.npartitions)
         }
-        return dask.dataframe.DataFrame(
+        ddf = dask.dataframe.DataFrame(
             dask_tasks,
             name=name,
             meta=structure.micro.meta,
             divisions=structure.micro.divisions,
         )
+        if columns is not None:
+            ddf = ddf[columns]
+        return ddf
 
 
 class ClientDataFrameReader(ClientDaskDataFrameReader):

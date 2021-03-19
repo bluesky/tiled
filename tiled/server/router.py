@@ -314,15 +314,14 @@ def dataframe_partition(
     request: Request,
     partition: int,
     reader=Depends(reader),
-    columns: Optional[List[str]] = None,
+    column: Optional[List[str]] = Query(None),
     format: Optional[str] = None,
 ):
     """
     Fetch a chunk from an xarray.Dataset.
     """
-    print("columns", columns)
     try:
-        df = reader.read_partition(partition, columns=columns)
+        df = reader.read_partition(partition, columns=column)
     except IndexError:
         raise HTTPException(status_code=422, detail="Partition out of range")
     except KeyError as err:
