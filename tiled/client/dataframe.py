@@ -91,6 +91,17 @@ class ClientDaskDataFrameReader(BaseClientReader):
             ddf = ddf[columns]
         return ddf
 
+    def __getitem__(self, columns):
+        if isinstance(columns, str):
+            # Return a single column (a pandas.Series)
+            return self.read(columns=[columns])[columns]
+        else:
+            # Return a DataFrame, with possibly a subset of the available columns.
+            return self.read(columns=columns)
+
+    def __iter__(self):
+        yield from self.structure().macro.columns
+
 
 class ClientDataFrameReader(ClientDaskDataFrameReader):
     "Client-side wrapper around a dataframe-like that returns in-memory dataframes"
