@@ -1,3 +1,4 @@
+import dask
 import dask.dataframe
 
 from ..containers.dataframe import (
@@ -44,9 +45,11 @@ class ClientDaskDataFrameReader(BaseClientReader):
             ),
         )
 
-    def read_partition(self, partition, columns):
+    def _get_partition(self, partition, columns):
         """
-        Fetch the data for one block in a chunked (dask) array.
+        Fetch the actual data for one partition in a partitioned (dask) dataframe.
+
+        See read_partition for a public version of this.
         """
         params = {"partition": partition}
         if columns:
@@ -63,7 +66,31 @@ class ClientDaskDataFrameReader(BaseClientReader):
             "dataframe", APACHE_ARROW_FILE_MIME_TYPE, response.content
         )
 
+    def read_partition(self, partition, columns=None):
+        """
+        Access one partition in a partitioned (dask) dataframe.
+
+        Optionally select a subset of the columns.
+        """
+        structure = self.structure()
+        npartitions = structure.macro.npartitions
+        if not (0 <= partition < npartitions):
+            raise IndexError(f"partition {partition} out of range")
+        meta = structure.micro.meta
+        if columns is not None:
+            meta = meta[columns]
+        return dask.dataframe.from_delayed(
+            [dask.delayed(self._get_partition)(partition, columns)],
+            meta=meta,
+            divisions=structure.micro.divisions,
+        )
+
     def read(self, columns=None):
+        """
+        Access the entire DataFrame. Optionally select a subset of the columns.
+
+        The result will be internally partitioned with dask.
+        """
         structure = self.structure()
         # Build a client-side dask dataframe whose partitions pull from a
         # server-side dask array.
@@ -75,16 +102,19 @@ class ClientDaskDataFrameReader(BaseClientReader):
         dask_tasks = {
             (name,)
             + (partition,): (
-                self.read_partition,
+                self._get_partition,
                 partition,
                 columns,
             )
             for partition in range(structure.macro.npartitions)
         }
+        meta = structure.micro.meta
+        if columns is not None:
+            meta = meta[columns]
         ddf = dask.dataframe.DataFrame(
             dask_tasks,
             name=name,
-            meta=structure.micro.meta,
+            meta=meta,
             divisions=structure.micro.divisions,
         )
         if columns is not None:
@@ -117,5 +147,14 @@ class ClientDaskDataFrameReader(BaseClientReader):
 class ClientDataFrameReader(ClientDaskDataFrameReader):
     "Client-side wrapper around a dataframe-like that returns in-memory dataframes"
 
+    def read_partition(self, partition, columns=None):
+        """
+        Access one partition of the DataFrame. Optionally select a subset of the columns.
+        """
+        return super().read_partition(partition, columns).compute()
+
     def read(self, columns=None):
+        """
+        Access the entire DataFrame. Optionally select a subset of the columns.
+        """
         return super().read(columns).compute()

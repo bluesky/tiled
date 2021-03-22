@@ -24,7 +24,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
 
     def _get_block(self, block, dtype, shape, slice=None):
         """
-        Fetch the data for one block in a chunked (dask) array.
+        Fetch the actual data for one block in a chunked (dask) array.
 
         See read_block() for a public version of this. This private version
         enables more efficient multi-block access by requiring the caller to
