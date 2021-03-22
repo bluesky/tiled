@@ -134,7 +134,7 @@ class ClientDaskDataFrameReader(BaseClientReader):
             # Return a single column (a pandas.Series)
             return self.read(columns=[columns])[columns]
         else:
-            # Return a DataFrame, with possibly a subset of the available columns.
+            # Return a DataFrame with a subset of the available columns.
             return self.read(columns=columns)
 
     def __iter__(self):

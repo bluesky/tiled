@@ -10,13 +10,14 @@ from ..containers.xarray import (
     VariableStructure,
 )
 
-from .array import ClientDaskArrayReader
+from .array import ClientArrayReader, ClientDaskArrayReader
 from .base import BaseArrayClientReader
 
 
 class ClientDaskVariableReader(BaseArrayClientReader):
 
     STRUCTURE_TYPE = VariableStructure
+    ARRAY_READER = ClientDaskArrayReader
 
     def __init__(self, *args, route="/variable/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -29,7 +30,7 @@ class ClientDaskVariableReader(BaseArrayClientReader):
         Intended for advanced uses. Returns array-like, not Variable.
         """
         structure = self.structure().macro
-        return ClientDaskArrayReader(
+        return self.ARRAY_READER(
             client=self._client,
             path=self._path,
             metadata=self.metadata,
@@ -40,7 +41,7 @@ class ClientDaskVariableReader(BaseArrayClientReader):
 
     def read(self, slice=None):
         structure = self.structure().macro
-        array_source = ClientDaskArrayReader(
+        array_source = self.ARRAY_READER(
             client=self._client,
             path=self._path,
             metadata=self.metadata,
@@ -64,6 +65,9 @@ class ClientDaskVariableReader(BaseArrayClientReader):
 
 
 class ClientVariableReader(ClientDaskVariableReader):
+
+    ARRAY_READER = ClientArrayReader
+
     def read_block(self, block, slice=None):
         return super().read_block(block, slice).compute()
 
@@ -73,7 +77,8 @@ class ClientVariableReader(ClientDaskVariableReader):
 
 class ClientDaskDataArrayReader(BaseArrayClientReader):
 
-    STRUCTURE_TYPE = DataArrayStructure
+    STRUCTURE_TYPE = DataArrayStructure  # used by base class
+    VARIABLE_READER = ClientDaskVariableReader  # overriden in subclass
 
     def __init__(self, *args, route="/data_array/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -87,7 +92,7 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         """
         structure = self.structure().macro
         variable = structure.variable
-        variable_source = ClientDaskVariableReader(
+        variable_source = self.VARIABLE_READER(
             client=self._client,
             path=self._path,
             metadata=self.metadata,
@@ -107,7 +112,7 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         structure = self.structure().macro
         result = {}
         for name, variable in structure.coords.items():
-            variable_source = ClientDaskVariableReader(
+            variable_source = self.VARIABLE_READER(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -127,7 +132,7 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
             slice = tuple([slice])
         structure = self.structure().macro
         variable = structure.variable
-        variable_source = ClientDaskVariableReader(
+        variable_source = self.VARIABLE_READER(
             client=self._client,
             path=self._path,
             metadata=self.metadata,
@@ -140,7 +145,7 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         for coord_slice, (name, variable) in itertools.zip_longest(
             slice, structure.coords.items(), fillvalue=builtins.slice(None, None)
         ):
-            variable_source = ClientDaskVariableReader(
+            variable_source = self.VARIABLE_READER(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -163,25 +168,38 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
 
 
 class ClientDataArrayReader(ClientDaskDataArrayReader):
-    def read(self, slice):
+
+    VARAIBLE_READER = ClientVariableReader
+
+    def read(self, slice=None):
         return super().read(slice).load()
 
 
 class ClientDaskDatasetReader(BaseArrayClientReader):
 
     STRUCTURE_TYPE = DatasetStructure
+    DATA_ARRAY_READER = ClientDaskDataArrayReader
 
     def __init__(self, *args, route="/dataset/block", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 
-    def read(self, columns=None):
+    @property
+    def data_vars(self):
         structure = self.structure().macro
+        return self._build_data_vars(structure)
+
+    @property
+    def coords(self):
+        structure = self.structure().macro
+        return self._build_coords(structure)
+
+    def _build_data_vars(self, structure, columns=None):
         data_vars = {}
         for name, data_array in structure.data_vars.items():
             if (columns is not None) and (name not in columns):
                 continue
-            data_array_source = ClientDaskDataArrayReader(
+            data_array_source = self.DATA_ARRAY_READER(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -189,12 +207,15 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
                 structure=data_array,
                 route=self._route,
             )
-            data_vars[name] = data_array_source.read()
+            data_vars[name] = data_array_source
+        return data_vars
+
+    def _build_coords(self, structure, columns=None):
         coords = {}
         for name, variable in structure.coords.items():
             if (columns is not None) and (name not in columns):
                 continue
-            variable_source = ClientDaskVariableReader(
+            variable_source = self.DATA_ARRAY_READER(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -202,16 +223,26 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
                 structure=variable,
                 route=self._route,
             )
-            coords[name] = variable_source.read()
-        return xarray.Dataset(data_vars=data_vars, coords=coords, attrs=structure.attrs)
+            coords[name] = variable_source
+        return coords
+
+    def read(self, columns=None):
+        structure = self.structure().macro
+        data_vars = self._build_data_vars(structure, columns)
+        coords = self._build_coords(structure, columns)
+        return xarray.Dataset(
+            data_vars={k: v.read() for k, v in data_vars.items()},
+            coords={k: v.read() for k, v in coords.items()},
+            attrs=structure.attrs,
+        )
 
     def __getitem__(self, columns):
         # This is type unstable, matching xarray's behavior.
         if isinstance(columns, str):
-            # Return a single column (an xarray.DataArray)
+            # Return a single column (an xarray.DataArray).
             return self.read(columns=[columns])[columns]
         else:
-            # Return an xarray.Dataset , with possibly a subset of the available columns.
+            # Return an xarray.Dataset with a subset of the available columns.
             return self.read(columns=columns)
 
     def __iter__(self):
@@ -223,5 +254,8 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
 
 
 class ClientDatasetReader(ClientDaskDatasetReader):
+
+    DATA_ARRAY_READER = ClientDataArrayReader
+
     def read(self, columns=None):
         return super().read(columns).load()
