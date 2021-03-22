@@ -31,7 +31,7 @@ class ClientCatalog(collections.abc.Mapping):
             {
                 "array": lambda: importlib.import_module(
                     "..array", ClientCatalog.__module__
-                ).ClientDataFrameReader,
+                ).ClientArrayReader,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", ClientCatalog.__module__
                 ).ClientDataFrameReader,

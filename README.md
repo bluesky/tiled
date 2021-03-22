@@ -39,7 +39,7 @@ python -m tiled.generate_example_data
 Run server with a demo catalog.
 
 ```
-tiled serve instance tiled.examples.generic:minimal
+tiled serve instance tiled.examples.generic:arrays
 ```
 
 Visit ``http://localhost:8000/docs`` for interactive documentation. Or, see
