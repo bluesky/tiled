@@ -5,9 +5,6 @@ import itertools
 import xarray
 
 from ..containers.xarray import (
-    DataArrayMacroStructure,
-    DatasetMacroStructure,
-    VariableMacroStructure,
     DataArrayStructure,
     DatasetStructure,
     VariableStructure,
@@ -19,8 +16,6 @@ from .base import BaseArrayClientReader
 
 class ClientDaskVariableReader(BaseArrayClientReader):
 
-    MACROSTRUCTURE_TYPE = VariableMacroStructure
-    MICROSTRUCTURE_TYPE = None
     STRUCTURE_TYPE = VariableStructure
 
     def __init__(self, *args, route="/variable/block", **kwargs):
@@ -59,8 +54,6 @@ class ClientVariableReader(ClientDaskVariableReader):
 
 class ClientDaskDataArrayReader(BaseArrayClientReader):
 
-    MACROSTRUCTURE_TYPE = DataArrayMacroStructure
-    MICROSTRUCTURE_TYPE = None
     STRUCTURE_TYPE = DataArrayStructure
 
     def __init__(self, *args, route="/data_array/block", **kwargs):
@@ -118,8 +111,6 @@ class ClientDataArrayReader(ClientDaskDataArrayReader):
 
 class ClientDaskDatasetReader(BaseArrayClientReader):
 
-    MACROSTRUCTURE_TYPE = DatasetMacroStructure
-    MICROSTRUCTURE_TYPE = None
     STRUCTURE_TYPE = DatasetStructure
 
     def __init__(self, *args, route="/dataset/block", **kwargs):

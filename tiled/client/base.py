@@ -45,8 +45,6 @@ class BaseArrayClientReader(BaseClientReader):
 
     Subclass must define:
 
-    * MICROSTRUCTURE_TYPE : type
-    * MACROSTRUCTURE_TYPE : type
     * STRUCTURE_TYPE : type
     """
 

@@ -3,7 +3,7 @@ import itertools
 import dask
 import dask.array
 
-from ..containers.array import ArrayStructure, ArrayMacroStructure, MachineDataType
+from ..containers.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
 from .base import BaseArrayClientReader
 from .utils import handle_error
@@ -12,8 +12,6 @@ from .utils import handle_error
 class ClientDaskArrayReader(BaseArrayClientReader):
     "Client-side wrapper around an array-like that returns dask arrays"
 
-    MACROSTRUCTURE_TYPE = ArrayMacroStructure
-    MICROSTRUCTURE_TYPE = MachineDataType
     STRUCTURE_TYPE = ArrayStructure
 
     def __init__(self, *args, route="/array/block", **kwargs):
