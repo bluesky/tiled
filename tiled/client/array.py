@@ -36,7 +36,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             "array", media_type, response.content, dtype, shape
         )
 
-    def read(self):
+    def read(self, slice=None):
         structure = self.structure()
         shape = structure.macro.shape
         dtype = structure.micro.to_numpy_dtype()
@@ -63,17 +63,30 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             )
             for block in itertools.product(*num_blocks)
         }
-        return dask.array.Array(
+        dask_array = dask.array.Array(
             dask=dask_tasks,
             name=name,
             chunks=chunks,
             dtype=dtype,
             shape=shape,
         )
+        if slice is not None:
+            dask_array = dask_array[slice]
+        return dask_array
+
+    def __getitem__(self, slice):
+        return self.read(slice)
+
+    # The default object.__iter__ works as expected here, no need to
+    # implemented it specifically.
+
+    def __len__(self):
+        # As with numpy, len(arr) as the size of the zeroth axis.
+        return self.structure().macro.shape[0]
 
 
 class ClientArrayReader(ClientDaskArrayReader):
     "Client-side wrapper around an array-like that returns in-memory arrays"
 
-    def read(self):
-        return super().read().compute()
+    def read(self, slice=None):
+        return super().read(slice).compute()

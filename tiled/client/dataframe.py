@@ -91,6 +91,13 @@ class ClientDaskDataFrameReader(BaseClientReader):
             ddf = ddf[columns]
         return ddf
 
+    # We implement *some* of the Mapping interface here but intentionally not
+    # all of it. DataFrames are not quite Mapping-like. Their __len__ for
+    # example returns the number of rows (which it would be costly for us to
+    # compute) as opposed to holding to the usual invariant
+    # `len(list(obj)) == # len(obj)` for Mappings. Additionally, their behavior
+    # with `__getitem__` is a bit "extra", e.g. df[["A", "B"]].
+
     def __getitem__(self, columns):
         if isinstance(columns, str):
             # Return a single column (a pandas.Series)
@@ -101,6 +108,9 @@ class ClientDaskDataFrameReader(BaseClientReader):
 
     def __iter__(self):
         yield from self.structure().macro.columns
+
+    # __len__ is intentionally not implemented. For DataFrames it means "number
+    # of rows" which is expensive to compute.
 
 
 class ClientDataFrameReader(ClientDaskDataFrameReader):
