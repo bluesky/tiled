@@ -23,6 +23,11 @@ class ClientDaskVariableReader(BaseArrayClientReader):
         self._route = route
 
     def read_block(self, block, slice=None):
+        """
+        Read a block (optional sub-sliced) of array data from this Variable.
+
+        Intended for advanced uses. Returns array-like, not Variable.
+        """
         structure = self.structure().macro
         return ClientDaskArrayReader(
             client=self._client,
@@ -73,6 +78,45 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
     def __init__(self, *args, route="/data_array/block", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
+
+    def read_block(self, block, slice=None):
+        """
+        Read a block (optional sub-sliced) of array data from this DataArray's Variable.
+
+        Intended for advanced uses. Returns array-like, not Variable.
+        """
+        structure = self.structure().macro
+        variable = structure.variable
+        variable_source = ClientDaskVariableReader(
+            client=self._client,
+            path=self._path,
+            metadata=self.metadata,
+            params=self._params,
+            structure=variable,
+            route=self._route,
+        )
+        return variable_source.read_block(block, slice)
+
+    @property
+    def coords(self):
+        """
+        A dict mapping coord names to Variables.
+
+        Intended for advanced uses. Enables access to read_block(...) on coords.
+        """
+        structure = self.structure().macro
+        result = {}
+        for name, variable in structure.coords.items():
+            variable_source = ClientDaskVariableReader(
+                client=self._client,
+                path=self._path,
+                metadata=self.metadata,
+                params={"coord": name, **self._params},
+                structure=variable,
+                route=self._route,
+            )
+            result[name] = variable_source
+        return result
 
     def read(self, slice=None):
         if slice is None:
