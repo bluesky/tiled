@@ -99,6 +99,7 @@ class ClientDaskDataFrameReader(BaseClientReader):
     # with `__getitem__` is a bit "extra", e.g. df[["A", "B"]].
 
     def __getitem__(self, columns):
+        # This is type unstable, matching pandas' behavior.
         if isinstance(columns, str):
             # Return a single column (a pandas.Series)
             return self.read(columns=[columns])[columns]

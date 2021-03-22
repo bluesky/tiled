@@ -1,3 +1,7 @@
+from collections.abc import Iterable
+import builtins
+import itertools
+
 import xarray
 
 from ..containers.xarray import (
@@ -23,7 +27,7 @@ class ClientDaskVariableReader(BaseArrayClientReader):
         super().__init__(*args, **kwargs)
         self._route = route
 
-    def read(self):
+    def read(self, slice=None):
         structure = self.structure().macro
         array_source = ClientDaskArrayReader(
             client=self._client,
@@ -34,13 +38,23 @@ class ClientDaskVariableReader(BaseArrayClientReader):
             route=self._route,
         )
         return xarray.Variable(
-            dims=structure.dims, data=array_source.read(), attrs=structure.attrs
+            dims=structure.dims, data=array_source.read(slice), attrs=structure.attrs
         )
+
+    def __getitem__(self, slice):
+        return self.read(slice)
+
+    # The default object.__iter__ works as expected here, no need to
+    # implemented it specifically.
+
+    def __len__(self):
+        # As with numpy, len(arr) as the size of the zeroth axis.
+        return self.structure().macro.data.macro.shape[0]
 
 
 class ClientVariableReader(ClientDaskVariableReader):
-    def read(self):
-        return super().read().load()
+    def read(self, slice=None):
+        return super().read(slice).load()
 
 
 class ClientDaskDataArrayReader(BaseArrayClientReader):
@@ -53,7 +67,13 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         super().__init__(*args, **kwargs)
         self._route = route
 
-    def read(self):
+    def read(self, slice=None):
+        if slice is None:
+            slice = ()
+        elif isinstance(slice, Iterable):
+            slice = tuple(slice)
+        else:
+            slice = tuple([slice])
         structure = self.structure().macro
         variable = structure.variable
         variable_source = ClientDaskVariableReader(
@@ -64,9 +84,11 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
             structure=variable,
             route=self._route,
         )
-        data = variable_source.read()
+        data = variable_source.read(slice)
         coords = {}
-        for name, variable in structure.coords.items():
+        for coord_slice, (name, variable) in itertools.zip_longest(
+            slice, structure.coords.items(), fillvalue=builtins.slice(None, None)
+        ):
             variable_source = ClientDaskVariableReader(
                 client=self._client,
                 path=self._path,
@@ -75,13 +97,23 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
                 structure=variable,
                 route=self._route,
             )
-            coords[name] = variable_source.read()
+            coords[name] = variable_source.read(coord_slice)
         return xarray.DataArray(data=data, coords=coords, name=structure.name)
+
+    def __getitem__(self, slice):
+        return self.read(slice)
+
+    # The default object.__iter__ works as expected here, no need to
+    # implemented it specifically.
+
+    def __len__(self):
+        # As with numpy, len(arr) as the size of the zeroth axis.
+        return self.structure().macro.variable.macro.data.macro.shape[0]
 
 
 class ClientDataArrayReader(ClientDaskDataArrayReader):
-    def read(self):
-        return super().read().load()
+    def read(self, slice):
+        return super().read(slice).load()
 
 
 class ClientDaskDatasetReader(BaseArrayClientReader):
@@ -94,10 +126,12 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
         super().__init__(*args, **kwargs)
         self._route = route
 
-    def read(self):
+    def read(self, columns=None):
         structure = self.structure().macro
         data_vars = {}
         for name, data_array in structure.data_vars.items():
+            if (columns is not None) and (name not in columns):
+                continue
             data_array_source = ClientDaskDataArrayReader(
                 client=self._client,
                 path=self._path,
@@ -109,6 +143,8 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
             data_vars[name] = data_array_source.read()
         coords = {}
         for name, variable in structure.coords.items():
+            if (columns is not None) and (name not in columns):
+                continue
             variable_source = ClientDaskVariableReader(
                 client=self._client,
                 path=self._path,
@@ -120,7 +156,23 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
             coords[name] = variable_source.read()
         return xarray.Dataset(data_vars=data_vars, coords=coords, attrs=structure.attrs)
 
+    def __getitem__(self, columns):
+        # This is type unstable, matching xarray's behavior.
+        if isinstance(columns, str):
+            # Return a single column (an xarray.DataArray)
+            return self.read(columns=[columns])[columns]
+        else:
+            # Return an xarray.Dataset , with possibly a subset of the available columns.
+            return self.read(columns=columns)
+
+    def __iter__(self):
+        # This reflects a slight weirdness in xarray, where coordinates can be
+        # used in __getitem__ and __contains__, as in `ds[coord_name]` and
+        # `coord_name in ds`, but they are not included in the result of
+        # `list(ds)`.
+        yield from self.structure().macro.data_vars
+
 
 class ClientDatasetReader(ClientDaskDatasetReader):
-    def read(self):
-        return super().read().load()
+    def read(self, columns=None):
+        return super().read(columns).load()
