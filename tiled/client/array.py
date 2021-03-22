@@ -118,7 +118,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
     # implemented it specifically.
 
     def __len__(self):
-        # As with numpy, len(arr) as the size of the zeroth axis.
+        # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.shape[0]
 
 

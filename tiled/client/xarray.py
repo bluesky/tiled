@@ -22,6 +22,17 @@ class ClientDaskVariableReader(BaseArrayClientReader):
         super().__init__(*args, **kwargs)
         self._route = route
 
+    def read_block(self, block, slice=None):
+        structure = self.structure().macro
+        return ClientDaskArrayReader(
+            client=self._client,
+            path=self._path,
+            metadata=self.metadata,
+            params=self._params,
+            structure=structure.data,
+            route=self._route,
+        ).read_block(block, slice)
+
     def read(self, slice=None):
         structure = self.structure().macro
         array_source = ClientDaskArrayReader(
@@ -43,11 +54,14 @@ class ClientDaskVariableReader(BaseArrayClientReader):
     # implemented it specifically.
 
     def __len__(self):
-        # As with numpy, len(arr) as the size of the zeroth axis.
+        # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.data.macro.shape[0]
 
 
 class ClientVariableReader(ClientDaskVariableReader):
+    def read_block(self, block, slice=None):
+        return super().read_block(block, slice).compute()
+
     def read(self, slice=None):
         return super().read(slice).load()
 
@@ -100,7 +114,7 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
     # implemented it specifically.
 
     def __len__(self):
-        # As with numpy, len(arr) as the size of the zeroth axis.
+        # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.variable.macro.data.macro.shape[0]
 
 
