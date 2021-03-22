@@ -24,6 +24,10 @@ class ClientDaskArrayReader(BaseArrayClientReader):
     def _get_block(self, block, dtype, shape):
         """
         Fetch the data for one block in a chunked (dask) array.
+
+        See read_block() for a public version of this. This private version
+        enables more efficient multi-block access by requiring the caller to
+        pass in the structure (dtype, shape).
         """
         media_type = "application/octet-stream"
         response = self._client.get(
@@ -36,7 +40,25 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             "array", media_type, response.content, dtype, shape
         )
 
+    def read_block(self, block):
+        """
+        Fetch the data for one block in a chunked (dask) array.
+        """
+        structure = self.structure()
+        chunks = structure.macro.chunks
+        dtype = structure.micro.to_numpy_dtype()
+        try:
+            shape = tuple(chunks[dim][i] for dim, i in enumerate(block))
+        except IndexError:
+            raise IndexError("Block index {block} out of range")
+        return self._get_block(block, dtype, shape)
+
     def read(self, slice=None):
+        """
+        Fetch the entire array or a slice.
+
+        The array will be internally chunked with dask. in parallel.
+        """
         structure = self.structure()
         shape = structure.macro.shape
         dtype = structure.micro.to_numpy_dtype()
