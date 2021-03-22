@@ -1,5 +1,6 @@
 import itertools
 
+import dask
 import dask.array
 
 from ..containers.array import ArrayStructure, ArrayMacroStructure, MachineDataType
@@ -21,7 +22,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             route = route[:-1]
         self._route = route
 
-    def _get_block(self, block, dtype, shape):
+    def _get_block(self, block, dtype, shape, slice=None):
         """
         Fetch the data for one block in a chunked (dask) array.
 
@@ -30,6 +31,12 @@ class ClientDaskArrayReader(BaseArrayClientReader):
         pass in the structure (dtype, shape).
         """
         media_type = "application/octet-stream"
+        if slice is not None:
+            # TODO The server accepts a slice parameter but we'll need to write
+            # careful code here to determine what the new shape will be.
+            raise NotImplementedError(
+                "Slicing less than one block is not yet supported."
+            )
         response = self._client.get(
             self._route + "/" + "/".join(self._path),
             headers={"Accept": media_type},
@@ -40,9 +47,11 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             "array", media_type, response.content, dtype, shape
         )
 
-    def read_block(self, block):
+    def read_block(self, block, slice=None):
         """
-        Fetch the data for one block in a chunked (dask) array.
+        Acess the data for one block of this chunked (dask) array.
+
+        Optionally, access only a slice *within* this block.
         """
         structure = self.structure()
         chunks = structure.macro.chunks
@@ -51,13 +60,21 @@ class ClientDaskArrayReader(BaseArrayClientReader):
             shape = tuple(chunks[dim][i] for dim, i in enumerate(block))
         except IndexError:
             raise IndexError("Block index {block} out of range")
-        return self._get_block(block, dtype, shape)
+        dask_array = dask.array.from_delayed(
+            dask.delayed(self._get_block)(block, dtype, shape), dtype=dtype, shape=shape
+        )
+        # TODO Make the request in _get_block include the slice so that we only
+        # fetch exactly the data that we want. This will require careful code
+        # to determine what the shape will be.
+        if slice is not None:
+            dask_array = dask_array[slice]
+        return dask_array
 
     def read(self, slice=None):
         """
-        Fetch the entire array or a slice.
+        Acess the entire array or a slice.
 
-        The array will be internally chunked with dask. in parallel.
+        The array will be internally chunked with dask.
         """
         structure = self.structure()
         shape = structure.macro.shape
@@ -112,3 +129,6 @@ class ClientArrayReader(ClientDaskArrayReader):
 
     def read(self, slice=None):
         return super().read(slice).compute()
+
+    def read_block(self, block, slice=None):
+        return super().read_block(block, slice).compute()
