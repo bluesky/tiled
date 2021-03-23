@@ -16,20 +16,14 @@ from .base import BaseArrayClientReader
 
 class ClientDaskVariableReader(BaseArrayClientReader):
 
-    STRUCTURE_TYPE = VariableStructure
-    ARRAY_READER = ClientDaskArrayReader
+    STRUCTURE_TYPE = VariableStructure  # used by base class
+    ARRAY_READER = ClientDaskArrayReader  # overridden by subclass
 
     def __init__(self, *args, route="/variable/block", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 
-    def read_block(self, block, slice=None):
-        """
-        Read a block (optional sub-sliced) of array data from this Variable.
-
-        Intended for advanced uses. Returns array-like, not Variable.
-        """
-        structure = self.structure().macro
+    def _build_array_reader(self, structure):
         return self.ARRAY_READER(
             client=self._client,
             path=self._path,
@@ -37,20 +31,26 @@ class ClientDaskVariableReader(BaseArrayClientReader):
             params=self._params,
             structure=structure.data,
             route=self._route,
-        ).read_block(block, slice)
+        )
+
+    @property
+    def data(self):
+        return self._build_array_reader(self.structure().macro)
+
+    def read_block(self, block, slice=None):
+        """
+        Read a block (optional sub-sliced) of array data from this Variable.
+
+        Intended for advanced uses. Returns array-like, not Variable.
+        """
+        return self.data.read_block(block, slice)
 
     def read(self, slice=None):
         structure = self.structure().macro
-        array_source = self.ARRAY_READER(
-            client=self._client,
-            path=self._path,
-            metadata=self.metadata,
-            params=self._params,
-            structure=structure.data,
-            route=self._route,
-        )
         return xarray.Variable(
-            dims=structure.dims, data=array_source.read(slice), attrs=structure.attrs
+            dims=structure.dims,
+            data=self._build_array_reader(structure).read(slice),
+            attrs=structure.attrs,
         )
 
     def __getitem__(self, slice):
@@ -168,9 +168,9 @@ class ClientDataArrayReader(ClientDaskDataArrayReader):
 
 class ClientDaskDatasetReader(BaseArrayClientReader):
 
-    STRUCTURE_TYPE = DatasetStructure
-    DATA_ARRAY_READER = ClientDaskDataArrayReader
-    VARIABLE_READER = ClientDaskVariableReader
+    STRUCTURE_TYPE = DatasetStructure  # used by base class
+    DATA_ARRAY_READER = ClientDaskDataArrayReader  # overridden by subclass
+    VARIABLE_READER = ClientDaskVariableReader  # overridden by subclass
 
     def __init__(self, *args, route="/dataset/block", **kwargs):
         super().__init__(*args, **kwargs)
