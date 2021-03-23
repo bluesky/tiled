@@ -44,7 +44,7 @@ def read_requirements(filename):
 
 extras_require = {
     key: read_requirements(f"requirements-{key}.txt")
-    for key in ["client", "server", "array", "dataframe"]
+    for key in ["client", "cache", "server", "array", "dataframe", "xarray"]
 }
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))
 
