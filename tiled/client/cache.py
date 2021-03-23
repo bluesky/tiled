@@ -12,6 +12,7 @@ the same source directory as this module.
 """
 from collections import defaultdict
 from math import log
+from threading import RLock
 import time
 import urllib.parse
 
@@ -70,20 +71,16 @@ class Cache:
         self.url_to_etag_cache = url_to_etag_cache
         self.etag_to_content_cache = etag_to_content_cache
         self.etag_refcount = defaultdict(lambda: 0)
-    
+        self.etag_lock = defaultdict(RLock)
+
     def get_etag_for_url(self, url):
-        self.etag_to_content_cache.get(tokenize_url(url))
+        return self.url_to_etag_cache.get(tokenize_url(url))
+    
+    def get_content_for_etag(self, etag):
+        return self.etag_to_content_cache.get(etag)
 
-    def put(self, key, value, cost, nbytes=None):
-        """Put key-value data into cache with associated cost
-
-        >>> c = Cache(1e9, 10)
-        >>> c.put('x', 10, cost=50)
-        >>> c.get('x')
-        10
-        """
-        if nbytes is None:
-            nbytes = self.get_nbytes(value)
+    def put(self, key, value, cost):
+        nbytes = len(value)
         if cost >= self.limit and nbytes < self.available_bytes:
             score = self.scorer.touch(key, cost)
             if (
@@ -123,8 +120,9 @@ class Cache:
         See Also:
             shrink
         """
-        val = self.data.pop(key)
-        self.total_bytes -= self.nbytes.pop(key)
+        with self.etag_lock[key]:
+            val = self.data.pop(key)
+            self.total_bytes -= self.nbytes.pop(key)
 
     def _shrink_one(self):
         try:
