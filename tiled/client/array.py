@@ -57,7 +57,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
         try:
             shape = tuple(chunks[dim][i] for dim, i in enumerate(block))
         except IndexError:
-            raise IndexError("Block index {block} out of range")
+            raise IndexError(f"Block index {block} out of range")
         dask_array = dask.array.from_delayed(
             dask.delayed(self._get_block)(block, dtype, shape), dtype=dtype, shape=shape
         )

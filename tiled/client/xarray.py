@@ -68,12 +68,6 @@ class ClientVariableReader(ClientDaskVariableReader):
 
     ARRAY_READER = ClientArrayReader
 
-    def read_block(self, block, slice=None):
-        return super().read_block(block, slice).compute()
-
-    def read(self, slice=None):
-        return super().read(slice).load()
-
 
 class ClientDaskDataArrayReader(BaseArrayClientReader):
 
@@ -169,16 +163,14 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
 
 class ClientDataArrayReader(ClientDaskDataArrayReader):
 
-    VARAIBLE_READER = ClientVariableReader
-
-    def read(self, slice=None):
-        return super().read(slice).load()
+    VARIABLE_READER = ClientVariableReader
 
 
 class ClientDaskDatasetReader(BaseArrayClientReader):
 
     STRUCTURE_TYPE = DatasetStructure
     DATA_ARRAY_READER = ClientDaskDataArrayReader
+    VARIABLE_READER = ClientDaskVariableReader
 
     def __init__(self, *args, route="/dataset/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -215,7 +207,7 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
         for name, variable in structure.coords.items():
             if (columns is not None) and (name not in columns):
                 continue
-            variable_source = self.DATA_ARRAY_READER(
+            variable_source = self.VARIABLE_READER(
                 client=self._client,
                 path=self._path,
                 metadata=self.metadata,
@@ -256,6 +248,4 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
 class ClientDatasetReader(ClientDaskDatasetReader):
 
     DATA_ARRAY_READER = ClientDataArrayReader
-
-    def read(self, columns=None):
-        return super().read(columns).load()
+    VARIABLE_READER = ClientVariableReader
