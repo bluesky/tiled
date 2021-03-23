@@ -18,6 +18,60 @@ class ClientDaskDataFrameReader(BaseClientReader):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def _repr_pretty_(self, p, cycle):
+        """
+        Provide "pretty" display in IPython/Jupyter.
+
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
+        """
+        # Try to get the column names, but give up quickly to avoid blocking
+        # for long.
+        TIMEOUT = 0.2  # seconds
+        try:
+            response = self._client.get(
+                f"/metadata/{'/'.join(self._path)}",
+                params={"fields": "structure.macro", **self._params},
+                timeout=TIMEOUT,
+            )
+        except TimeoutError:
+            p.text(
+                f"<{type(self).__name__} Loading column names took too long; use list(...) >"
+            )
+        except Exception:
+            p.text(f"<{type(self).__name__} Loading column names raised error {err!r}>")
+        else:
+            try:
+                handle_error(response)
+                columns = response.json()["data"]["attributes"]["structure"]["macro"][
+                    "columns"
+                ]
+            except Exception as err:
+                p.text(
+                    f"<{type(self).__name__} Loading column names raised error {err!r}>"
+                )
+            else:
+                p.text(f"<{type(self).__name__} {columns}>")
+
+    def _ipython_key_completions_(self):
+        """
+        Provide method for the key-autocompletions in IPython.
+
+        See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
+        """
+        try:
+            response = self._client.get(
+                f"/metadata/{'/'.join(self._path)}",
+                params={"fields": "structure.macro", **self._params},
+            )
+            handle_error(response)
+            columns = response.json()["data"]["attributes"]["structure"]["macro"][
+                "columns"
+            ]
+        except Exception:
+            # Do not print messy traceback from thread. Just fail silently.
+            return []
+        return columns
+
     def structure(self):
         meta_response = self._client.get(
             f"/dataframe/meta/{'/'.join(self._path)}",
