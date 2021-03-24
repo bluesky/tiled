@@ -1,6 +1,7 @@
 import time
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from .settings import get_settings, get_custom_routers
 from .router import declare_search_route, router
@@ -32,19 +33,28 @@ async def shutdown_event():
 
 @api.middleware("http")
 async def add_server_timing_header(request: Request, call_next):
-    start_time = time.perf_counter()
-    response = await call_next(request)
-    response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-    process_time = time.perf_counter() - start_time
     # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
     # https://w3c.github.io/server-timing/#the-server-timing-header-field
-    # Units are ms.
     # This information seems safe to share because the user can easily
     # estimate it based on request/response time, but if we add more detailed
     # information here we should keep in mind security concerns and perhaps
     # only include this for certain users.
+    # Units are ms.
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+    process_time = time.perf_counter() - start_time
     response.headers["Server-Timing"] = f"app;dur={1000 * process_time:.1f}"
     return response
+
+
+api.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 if __name__ == "__main__":

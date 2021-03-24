@@ -1,6 +1,6 @@
 from functools import lru_cache
 import os
-from typing import Any
+from typing import Any, List
 
 import entrypoints
 from pydantic import BaseSettings
@@ -9,8 +9,15 @@ from pydantic import BaseSettings
 class Settings(BaseSettings):
 
     catalog: Any = None
-    allow_anonymous_access: bool = bool(int(os.getenv("ALLOW_ANONYMOUS_ACCESS", True)))
-    enable_custom_routers: bool = bool(int(os.getenv("ENABLE_CUSTOM_ROUTERS", True)))
+    allow_anonymous_access: bool = bool(
+        int(os.getenv("TILED_ALLOW_ANONYMOUS_ACCESS", True))
+    )
+    allow_origins: List[str] = [
+        item for item in os.getenv("TILED_ALLOW_ORIGINS", "").split() if item
+    ]
+    enable_custom_routers: bool = bool(
+        int(os.getenv("TILED_ENABLE_CUSTOM_ROUTERS", True))
+    )
     # dask_scheduler_address : str = os.getenv("DASK_SCHEDULER")
 
 
