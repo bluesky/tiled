@@ -39,7 +39,7 @@ python -m tiled.generate_example_data
 Run server with a demo catalog.
 
 ```
-tiled serve pyobject tiled.examples.generic:arrays
+tiled serve pyobject tiled.examples.generic:demo
 ```
 
 Visit ``http://localhost:8000/docs`` for interactive documentation. Or, see
