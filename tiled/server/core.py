@@ -25,17 +25,17 @@ from .. import queries
 
 del queries
 if modules_available("numpy", "dask.array"):
-    from ..containers import array
+    from ..containers import array as _array  # noqa: F401
 
-    del array
+    del _array
 if modules_available("pandas", "pyarrow", "dask.dataframe"):
-    from ..containers import dataframe
+    from ..containers import dataframe as _dataframe  # noqa: F401
 
-    del dataframe
+    del _dataframe
 if modules_available("xarray"):
-    from ..containers import xarray
+    from ..containers import xarray as _xarray  # noqa: F401
 
-    del xarray
+    del _xarray
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")

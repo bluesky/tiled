@@ -196,7 +196,7 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
             p.text(
                 f"<{type(self).__name__} Loading column names took too long; use list(...) >"
             )
-        except Exception:
+        except Exception as err:
             p.text(f"<{type(self).__name__} Loading column names raised error {err!r}>")
         else:
             try:
