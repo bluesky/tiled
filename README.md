@@ -39,17 +39,8 @@ python -m tiled.generate_example_data
 Run server with a demo catalog.
 
 ```
-tiled serve instance tiled.examples.generic:arrays
+tiled serve pyobject tiled.examples.generic:arrays
 ```
 
 Visit ``http://localhost:8000/docs`` for interactive documentation. Or, see
 below for example requests and responses.
-
-The server serves a demo catalog by default, equivalent to:
-
-```
-```
-
-Other catalogs can be served by changing the value of the `ROOT_CATALOG`
-environment variable to point to a different object in any importable Python
-module.
