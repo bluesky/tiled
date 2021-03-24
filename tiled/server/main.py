@@ -21,14 +21,6 @@ async def startup_event():
         api.include_router(custom_router)
     # Warm up cached access.
     get_settings().catalog
-    # get_dask_client()
-
-
-@api.on_event("shutdown")
-async def shutdown_event():
-    # client = get_dask_client()
-    # await client.close()
-    pass
 
 
 @api.middleware("http")

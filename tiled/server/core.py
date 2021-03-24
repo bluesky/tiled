@@ -41,19 +41,6 @@ if modules_available("xarray"):
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 
 
-# @lru_cache()
-# def get_dask_client():
-#     "Connect to a specified dask scheduler, or start a LocalCluster."
-#     address = get_settings().dask_scheduler_address
-#     if address:
-#         # Connect to an existing cluster.
-#         client = Client(address, asynchronous=True)
-#     else:
-#         # Start a distributed.LocalCluster.
-#         client = Client(asynchronous=True, processes=False)
-#     return client
-
-
 def entry(
     path: str,
     current_user: str = Depends(get_current_user),

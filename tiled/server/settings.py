@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     enable_custom_routers: bool = bool(
         int(os.getenv("TILED_ENABLE_CUSTOM_ROUTERS", True))
     )
-    # dask_scheduler_address : str = os.getenv("DASK_SCHEDULER")
 
 
 @lru_cache()
