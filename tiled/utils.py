@@ -251,3 +251,13 @@ def import_object(colon_separated_string):
     import_path, obj_path = colon_separated_string.split(":")
     module = importlib.import_module(import_path)
     return operator.attrgetter(obj_path)(module)
+
+
+def modules_available(*module_names):
+    for module_name in module_names:
+        if not importlib.util.find_spec(module_name):
+            break
+    else:
+        # All modules were found.
+        return True
+    return False

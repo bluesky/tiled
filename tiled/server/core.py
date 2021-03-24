@@ -15,11 +15,27 @@ from starlette.responses import JSONResponse, StreamingResponse, Send
 from . import models
 from .authentication import get_current_user
 from .settings import get_settings
-from .. import queries  # This is not used, but it registers queries on import.
+from ..utils import modules_available
 from ..query_registration import name_to_query_type
 from ..media_type_registration import serialization_registry
 
+
+# These modules are not directly used, but they register things on import.
+from .. import queries
+
 del queries
+if modules_available("numpy", "dask.array"):
+    from ..containers import array
+
+    del array
+if modules_available("pandas", "pyarrow", "dask.dataframe"):
+    from ..containers import dataframe
+
+    del dataframe
+if modules_available("xarray"):
+    from ..containers import xarray
+
+    del xarray
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
