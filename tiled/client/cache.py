@@ -72,57 +72,66 @@ class Cache:
         self.etag_to_content_cache = etag_to_content_cache
         self.etag_refcount = defaultdict(lambda: 0)
         self.etag_lock = defaultdict(RLock)
-
-    def get_etag_for_url(self, url):
-        return self.url_to_etag_cache.get(tokenize_url(url))
     
-    def get_content_for_etag(self, etag):
-        return self.etag_to_content_cache.get(etag)
+    def put_etag_for_url(self, url, etag)
+        key = tokenize_url(url)
+        previous_etag = self.url_to_etag_cache.get(key)
+        if existing:
+            self.etag_refcount[previous_etag] -= 1
+            if self.etag_refcount[previous_tag] == 0
+                # All URLs that referred to this content have since
+                # changed their ETags, so we can forget about this content.
+                self.retire(previous_etag)
+        self.url_to_etag_cache[key] = etag
 
-    def put(self, key, value, cost):
-        nbytes = len(value)
-        if cost >= self.limit and nbytes < self.available_bytes:
-            score = self.scorer.touch(key, cost)
+    def put_content(self, etag, content):
+        nbytes = len(content)
+        if nbytes < self.available_bytes:
+            score = self.scorer.touch(etag, nbytes)
             if (
                 nbytes + self.total_bytes < self.available_bytes
                 or not self.heap
                 or score > self.heap.peekitem()[1]
             ):
-                self.data[key] = value
-                self.heap[key] = score
-                self.nbytes[key] = nbytes
+                self.etag_to_content_cache[etag] = content
+                self.heap[etag] = score
+                self.nbytes[etag] = nbytes
                 self.total_bytes += nbytes
+                # TODO We should actually shrink *first* to stay below the available_bytes.
                 self.shrink()
 
-    def get(self, key, default=None):
-        """Get value associated with key.  Returns None if not present
+    def get_etag_for_url(self, url, default=None):
+        return self.url_to_etag_cache.get(tokenize_url(url), default)
+
+    def get_content_for_etag(self, etag, default=None):
+        """Get value associated with etag.  Returns None if not present
 
         >>> c = Cache(1e9, 10)
         >>> c.put('x', 10, cost=50)
         >>> c.get('x')
         10
         """
-        score = self.scorer.touch(key)
-        if key in self.data:
-            value = self.data[key]
-            if self.hit is not None:
-                self.hit(key, value)
-            self.heap[key] = score
+        # Access this item increases its score.
+        score = self.scorer.touch(etag)
+        if etag in self.etag_to_content_cache:
+            value = self.etag_to_content_cache[etag]
+            self.heap[etag] = score
             return value
         else:
-            if self.miss is not None:
-                self.miss(key)
             return default
 
-    def retire(self, key):
-        """Retire/remove a key from the cache
+    def retire(self, etag):
+        """Retire/remove a etag from the cache
 
         See Also:
             shrink
         """
-        with self.etag_lock[key]:
-            val = self.data.pop(key)
-            self.total_bytes -= self.nbytes.pop(key)
+        lock = self.etag_lock[etag]
+        with lock:
+            self.etag_to_content_cache.pop(etag)
+            self.total_bytes -= self.nbytes.pop(etag)
+            del self.etag_lock[etag]
+
 
     def _shrink_one(self):
         try:
@@ -152,7 +161,7 @@ class Cache:
             self._shrink_one()
 
     def clear(self):
-        while self.data:
+        while self.etag_to_content_cache:
             self._shrink_one()
 
 
