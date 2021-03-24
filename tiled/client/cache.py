@@ -13,7 +13,6 @@ the same source directory as this module.
 from collections import defaultdict
 from math import log
 from threading import RLock
-import time
 import urllib.parse
 
 from heapdict import heapdict
@@ -72,17 +71,19 @@ class Cache:
         self.etag_to_content_cache = etag_to_content_cache
         self.etag_refcount = defaultdict(lambda: 0)
         self.etag_lock = defaultdict(RLock)
-    
-    def put_etag_for_url(self, url, etag)
+        self.url_to_etag_lock = RLock()
+
+    def put_etag_for_url(self, url, etag):
         key = tokenize_url(url)
         previous_etag = self.url_to_etag_cache.get(key)
-        if existing:
+        if previous_etag:
             self.etag_refcount[previous_etag] -= 1
-            if self.etag_refcount[previous_tag] == 0
+            if self.etag_refcount[previous_etag] == 0:
                 # All URLs that referred to this content have since
                 # changed their ETags, so we can forget about this content.
                 self.retire(previous_etag)
-        self.url_to_etag_cache[key] = etag
+        with self.url_to_etag_lock:
+            self.url_to_etag_cache[key] = etag
 
     def put_content(self, etag, content):
         nbytes = len(content)
@@ -101,7 +102,13 @@ class Cache:
                 self.shrink()
 
     def get_etag_for_url(self, url, default=None):
-        return self.url_to_etag_cache.get(tokenize_url(url), default)
+        # Hold the global lock.
+        with self.url_to_etag_lock:
+            etag = self.url_to_etag_cache.get(tokenize_url(url), default)
+            # Acquire a targeted lock, and then release and the global lock.
+            lock = self.etag_lock[etag]
+            lock.acquire()
+        return etag, lock
 
     def get_content_for_etag(self, etag, default=None):
         """Get value associated with etag.  Returns None if not present
@@ -130,15 +137,16 @@ class Cache:
         with lock:
             self.etag_to_content_cache.pop(etag)
             self.total_bytes -= self.nbytes.pop(etag)
-            del self.etag_lock[etag]
-
+            self.etag_lock.pop(etag)
 
     def _shrink_one(self):
-        try:
-            key, score = self.heap.popitem()
-        except IndexError:
-            return
-        self.retire(key)
+        if self.heap.heap:
+            # Retire the lowest-priority item that isn't locked.
+            for score, etag, _ in self.heap.heap:
+                if self.etag_lock[etag].acquire(blocking=False):
+                    self.heap.pop(etag)
+                    self.retire(etag)
+                    break
 
     def resize(self, available_bytes):
         """Resize the cache.
@@ -222,4 +230,4 @@ class Scorer:
 def tokenize_url(url):
     # TODO This should probably return a tuple of paths (dropping the scheme)
     # which can be used by the on-disk cache to create subdirectories.
-    return urllib.parse.quote_plus(term)
+    return urllib.parse.quote_plus(url)

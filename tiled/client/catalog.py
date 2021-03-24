@@ -456,9 +456,8 @@ def _queries_to_params(*queries):
 
 def get_with_cache(cache, client, url, **kwargs):
     request = httpx.Request("GET", url, **kwargs)
-    lock = cache.locks[etag]
-    with lock:
-        etag = cache.get_etag_for_url(url)
+    etag, lock = cache.get_etag_for_url(url)
+    try:
         if etag is None:
             # Release the lock early.
             lock.release()
@@ -467,13 +466,17 @@ def get_with_cache(cache, client, url, **kwargs):
         response = client.send(request)
         if response.status_code == 304:  # HTTP 304 Not Modified
             # Read from the cache
-            cache.get_content_for_etag(etag)
+            content = cache.get_content_for_etag(etag)
         elif response.status_code == 200:
             etag = response.headers.get("ETag")
+            content = response.content
             # TODO Respect Cache-control headers (e.g. "no-store")
             if etag is not None:
                 # Write to cache.
                 cache.put(etag, content)
+    finally:
+        if lock.locked():
+            lock.release()
     return content
 
 
