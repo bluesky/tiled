@@ -3,7 +3,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .settings import get_settings, get_custom_routers
+from .settings import get_settings
 from .router import declare_search_route, router
 from .core import PatchedStreamingResponse
 
@@ -17,8 +17,6 @@ async def startup_event():
     # opporunity to register custom query types before startup.
     declare_search_route(router)
     api.include_router(router)
-    for custom_router in get_custom_routers():
-        api.include_router(custom_router)
     # Warm up cached access.
     get_settings().catalog
 
