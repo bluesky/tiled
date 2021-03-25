@@ -1,4 +1,5 @@
 import dataclasses
+from hashlib import md5
 import inspect
 from typing import Any, List, Optional
 
@@ -278,9 +279,12 @@ def dataframe_meta(
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
     """
     meta = reader.microstructure().meta
+    content = serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta)
+    headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
-        serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta),
+        content,
         media_type=APACHE_ARROW_FILE_MIME_TYPE,
+        headers=headers,
     )
 
 
@@ -298,9 +302,14 @@ def dataframe_divisions(
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
     """
     divisions = reader.microstructure().divisions
+    content = serialization_registry(
+        "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions
+    )
+    headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
-        serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions),
+        content,
         media_type=APACHE_ARROW_FILE_MIME_TYPE,
+        headers=headers,
     )
 
 

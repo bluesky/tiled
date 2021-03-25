@@ -12,7 +12,7 @@ from ..containers.xarray import (
 
 from .array import ClientArrayReader, ClientDaskArrayReader
 from .base import BaseArrayClientReader
-from .utils import handle_error
+from .utils import get_json_with_cache
 
 
 class ClientDaskVariableReader(BaseArrayClientReader):
@@ -27,6 +27,8 @@ class ClientDaskVariableReader(BaseArrayClientReader):
     def _build_array_reader(self, structure):
         return self.ARRAY_READER(
             client=self._client,
+            offline=self._offline,
+            cache=self._cache,
             path=self._path,
             metadata=self.metadata,
             params=self._params,
@@ -89,6 +91,8 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         variable = structure.variable
         variable_source = self.VARIABLE_READER(
             client=self._client,
+            offline=self._offline,
+            cache=self._cache,
             path=self._path,
             metadata=self.metadata,
             params=self._params,
@@ -109,6 +113,8 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         for name, variable in structure.coords.items():
             variable_source = self.VARIABLE_READER(
                 client=self._client,
+                offline=self._offline,
+                cache=self._cache,
                 path=self._path,
                 metadata=self.metadata,
                 params={"coord": name, **self._params},
@@ -129,6 +135,8 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         variable = structure.variable
         variable_source = self.VARIABLE_READER(
             client=self._client,
+            offline=self._offline,
+            cache=self._cache,
             path=self._path,
             metadata=self.metadata,
             params=self._params,
@@ -142,6 +150,8 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         ):
             variable_source = self.VARIABLE_READER(
                 client=self._client,
+                offline=self._offline,
+                cache=self._cache,
                 path=self._path,
                 metadata=self.metadata,
                 params={"coord": name, **self._params},
@@ -187,7 +197,10 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
         # for long.
         TIMEOUT = 0.2  # seconds
         try:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
@@ -200,8 +213,7 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
             p.text(f"<{type(self).__name__} Loading column names raised error {err!r}>")
         else:
             try:
-                handle_error(response)
-                macro = response.json()["data"]["attributes"]["structure"]["macro"]
+                macro = content["data"]["attributes"]["structure"]["macro"]
                 columns = [*macro["data_vars"], *macro["coords"]]
             except Exception as err:
                 p.text(
@@ -217,12 +229,14 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         try:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
             )
-            handle_error(response)
-            macro = response.json()["data"]["attributes"]["structure"]["macro"]
+            macro = content["data"]["attributes"]["structure"]["macro"]
             columns = [*macro["data_vars"], *macro["coords"]]
         except Exception:
             # Do not print messy traceback from thread. Just fail silently.
@@ -246,6 +260,8 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
                 continue
             data_array_source = self.DATA_ARRAY_READER(
                 client=self._client,
+                offline=self._offline,
+                cache=self._cache,
                 path=self._path,
                 metadata=self.metadata,
                 params={"variable": name, **self._params},
@@ -262,6 +278,8 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
                 continue
             variable_source = self.VARIABLE_READER(
                 client=self._client,
+                offline=self._offline,
+                cache=self._cache,
                 path=self._path,
                 metadata=self.metadata,
                 params={"variable": name, **self._params},

@@ -9,7 +9,7 @@ from ..containers.dataframe import (
 )
 from ..media_type_registration import deserialization_registry
 from .base import BaseClientReader
-from .utils import handle_error
+from .utils import get_content_with_cache, get_json_with_cache
 
 
 class ClientDaskDataFrameReader(BaseClientReader):
@@ -28,7 +28,10 @@ class ClientDaskDataFrameReader(BaseClientReader):
         # for long.
         TIMEOUT = 0.2  # seconds
         try:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
@@ -41,10 +44,7 @@ class ClientDaskDataFrameReader(BaseClientReader):
             p.text(f"<{type(self).__name__} Loading column names raised error {err!r}>")
         else:
             try:
-                handle_error(response)
-                columns = response.json()["data"]["attributes"]["structure"]["macro"][
-                    "columns"
-                ]
+                columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
             except Exception as err:
                 p.text(
                     f"<{type(self).__name__} Loading column names raised error {err!r}>"
@@ -59,35 +59,39 @@ class ClientDaskDataFrameReader(BaseClientReader):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         try:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
             )
-            handle_error(response)
-            columns = response.json()["data"]["attributes"]["structure"]["macro"][
-                "columns"
-            ]
+            columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
         except Exception:
             # Do not print messy traceback from thread. Just fail silently.
             return []
         return columns
 
     def structure(self):
-        meta_response = self._client.get(
+        meta_content = get_content_with_cache(
+            self._cache,
+            self._offline,
+            self._client,
             f"/dataframe/meta/{'/'.join(self._path)}",
             params=self._params,
         )
-        handle_error(meta_response)
         meta = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_response.content
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_content
         )
-        divisions_response = self._client.get(
+        divisions_content = get_content_with_cache(
+            self._cache,
+            self._offline,
+            self._client,
             f"/dataframe/divisions/{'/'.join(self._path)}",
             params=self._params,
         )
-        handle_error(divisions_response)
         divisions = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_response.content
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_content
         )
         return DataFrameStructure(
             micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
@@ -110,14 +114,16 @@ class ClientDaskDataFrameReader(BaseClientReader):
             # Note: The singular/plural inconsistency here is due to the fact that
             # ["A", "B"] will be encoded in the URL as column=A&column=B
             params["column"] = columns
-        response = self._client.get(
+        content = get_content_with_cache(
+            self._cache,
+            self._offline,
+            self._client,
             "/dataframe/partition/" + "/".join(self._path),
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params={**params, **self._params},
         )
-        handle_error(response)
         return deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, response.content
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content
         )
 
     def read_partition(self, partition, columns=None):

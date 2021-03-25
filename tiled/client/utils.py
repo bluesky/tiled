@@ -1,8 +1,16 @@
 import httpx
 import msgpack
 
+from ..utils import Sentinel
 
-def get_content_with_cache(cache, offline, client, path, accept=None, **kwargs):
+
+class UNSET(Sentinel):
+    pass
+
+
+def get_content_with_cache(
+    cache, offline, client, path, accept=None, timeout=UNSET, **kwargs
+):
     request = client.build_request("GET", path, **kwargs)
     if accept:
         request.headers["Accept"] = accept
@@ -18,7 +26,10 @@ def get_content_with_cache(cache, offline, client, path, accept=None, **kwargs):
         return content
     if cache is None:
         # No cache, so we can use the client straightforwardly.
-        response = client.send(request)
+        if timeout is not UNSET:
+            response = client.send(request, timeout=timeout)
+        else:
+            response = client.send(request)
         handle_error(response)
         return response.content
     # If we get this far, we have an online client and a cache.
@@ -31,7 +42,10 @@ def get_content_with_cache(cache, offline, client, path, accept=None, **kwargs):
             lock_held = False
         else:
             request.headers["If-None-Match"] = etag
-        response = client.send(request)
+        if timeout is not UNSET:
+            response = client.send(request, timeout=timeout)
+        else:
+            response = client.send(request)
         handle_error(response)
         if response.status_code == 304:  # HTTP 304 Not Modified
             # Read from the cache
@@ -42,7 +56,7 @@ def get_content_with_cache(cache, offline, client, path, accept=None, **kwargs):
             # TODO Respect Cache-control headers (e.g. "no-store")
             if etag is not None:
                 # Write to cache.
-                content = cache.put_etag_for_url(url, etag)
+                cache.put_etag_for_url(url, etag)
                 cache.put_content(etag, content)
         else:
             raise NotImplementedError(f"Unexpected status_code {response.status_code}")
