@@ -45,14 +45,18 @@ tiled serve pyobject tiled.examples.generic:demo
 Visit ``http://localhost:8000/docs`` for interactive documentation. Or, see
 below for example requests and responses.
 
-This can work with various front-ends. Try it for example with Plotly's Chart Studio.
+This can work with various front-ends. Try it for example with Plotly's Chart
+Studio or Vega Voyager.
 
 Start the server in a way that accepts requests from the chart-studio frontend.
 
 ```
-TILED_ALLOW_ORIGINS=https://chart-studio.plotly.com tiled serve pyobject tiled.examples.generic:demo
+TILED_ALLOW_ORIGINS="https://chart-studio.plotly.com https://vega.github.io/voyager/" tiled serve pyobject tiled.examples.generic:demo
 ```
 
 Navigate your browser to https://chart-studio.plotly.com. Use the "Import"
 feature to import data by URL. Enter a URL such as
 ``http://localhost:8000/dataframe/full/dataframes/df?format=text/csv``.
+
+Navigate your browser to https://vega.github.io/voyager/. Click "Load", "From URL",
+set the file type to "JSON" and then use the same URL in the previous example.
