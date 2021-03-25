@@ -31,7 +31,14 @@ arrays = Catalog(
 
 arr = access_hdf5_data("tiny", "ones", 1, 3)
 dataframes = Catalog(
-    {"df": DataFrameReader(pandas.DataFrame({"A": arr[0], "B": arr[1], "C": arr[2]}))}
+    {
+        "df": DataFrameReader(
+            pandas.DataFrame(
+                {"A": arr[0], "B": arr[1], "C": arr[2]},
+                index=pandas.Index([1, 2, 3], name="index"),
+            )
+        )
+    }
 )
 xarrays = Catalog(
     {

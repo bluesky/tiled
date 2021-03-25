@@ -3,7 +3,6 @@ from .utils import get_json_with_cache
 
 
 class BaseClientReader:
-
     def __init__(
         self,
         client,
