@@ -3,11 +3,6 @@ from .utils import get_json_with_cache
 
 
 class BaseClientReader:
-    """
-    Subclass must define:
-
-    * read()
-    """
 
     def __init__(
         self,
