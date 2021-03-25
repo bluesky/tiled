@@ -249,6 +249,7 @@ class ClientCatalog(collections.abc.Mapping):
         containers=UNCHANGED,
         special_clients=UNCHANGED,
         params=UNCHANGED,
+        queries=UNCHANGED,
     ):
         """
         This is intended primarily for intenal use and use by subclasses.
@@ -263,6 +264,8 @@ class ClientCatalog(collections.abc.Mapping):
             special_clients = self.special_clients
         if params is UNCHANGED:
             params = self._params
+        if queries is UNCHANGED:
+            queries = self._queries
         return class_(
             client=self._client,
             offline=self._offline,
@@ -272,6 +275,7 @@ class ClientCatalog(collections.abc.Mapping):
             containers=containers,
             special_clients=special_clients,
             params=params,
+            queries=queries,
             root_client_type=self._root_client_type,
         )
 
@@ -436,13 +440,9 @@ class ClientCatalog(collections.abc.Mapping):
         return (key, value)
 
     def search(self, query):
-        return type(self)(
-            client=self._client,
-            path=self._path,
+        return self.new_variation(
+            type(self),
             queries=self._queries + (query,),
-            metadata=self._metadata,
-            containers=self.containers,
-            special_clients=self.special_clients,
         )
 
     def _keys_indexer(self, index):
