@@ -12,6 +12,7 @@ class BaseClientReader:
         path,
         metadata,
         params,
+        queries=None,
         containers=None,
         special_clients=None,
         root_client_type=None,
