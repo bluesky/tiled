@@ -184,6 +184,21 @@ def _line(nodes, last):
         return indent + tee + horizontal + nodes[-1]
 
 
+def walk(catalog, nodes=None):
+    "Walk the entries in a (nested) Catalog depth first."
+    if nodes is None:
+        for node in catalog:
+            yield from walk(catalog, [node])
+    else:
+        value = catalog[nodes[-1]]
+        if hasattr(value, "items"):
+            yield nodes
+            for k, v in value.items():
+                yield from walk(value, nodes + [k])
+        else:
+            yield nodes
+
+
 def _tree_gen(catalog, nodes=None, last=None):
     "A generator of lines for the tree utility"
     if nodes is None:
