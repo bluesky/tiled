@@ -18,6 +18,36 @@ import urllib.parse
 from heapdict import heapdict
 
 
+class ReadOnlyCache:
+    @classmethod
+    def on_disk(cls, path):
+        "An on-disk cache of data from the server"
+        raise NotImplementedError("Work in progress...")
+        return cls(..., ...)
+
+    def __init__(self, url_to_etag_cache, etag_to_content_cache):
+        """
+        Parameters
+        ----------
+
+        url_to_etag_cache : MutableMapping
+            Dict-like object to use for cache
+        etag_to_content_cache : MutableMapping
+            Dict-like object to use for cache
+        """
+
+        self.url_to_etag_cache = url_to_etag_cache
+        self.etag_to_content_cache = etag_to_content_cache
+
+    def get_etag_for_url(self, url, default=None):
+        # Return (etag, None) so that a writable cache's return value,
+        # which is (etag, RLock), is a drop-in replacement.
+        return self.url_to_etag_cache.get(tokenize_url(url), default), None
+
+    def get_content_for_etag(self, etag, default=None):
+        return self.etag_to_content_cache.get(etag, default)
+
+
 class Cache:
     """
     A client-side cache of data from the server.
@@ -29,7 +59,7 @@ class Cache:
     @classmethod
     def in_memory(cls, available_bytes, scorer=None):
         "An in-memory cache of data from the server"
-        return cls(available_bytes, scorer, {}, {})
+        return cls(available_bytes, {}, {}, scorer)
 
     @classmethod
     def on_disk(cls, available_bytes, path, scorer=None):
@@ -41,6 +71,9 @@ class Cache:
         # Record the client library version somewhere so we can
         # deal with migrating caches across upgrades if needed.
         return cls(available_bytes, scorer, ..., ...)
+
+    def read_only(self):
+        return ReadOnlyCache(self.url_to_etag_cache, self.etag_to_content_cache)
 
     def __init__(
         self, available_bytes, url_to_etag_cache, etag_to_content_cache, scorer=None
@@ -111,13 +144,6 @@ class Cache:
         return etag, lock
 
     def get_content_for_etag(self, etag, default=None):
-        """Get value associated with etag.  Returns None if not present
-
-        >>> c = Cache(1e9, 10)
-        >>> c.put('x', 10, cost=50)
-        >>> c.get('x')
-        10
-        """
         # Access this item increases its score.
         score = self.scorer.touch(etag)
         if etag in self.etag_to_content_cache:
@@ -228,6 +254,12 @@ class Scorer:
 
 
 def tokenize_url(url):
-    # TODO This should probably return a tuple of paths (dropping the scheme)
-    # which can be used by the on-disk cache to create subdirectories.
-    return urllib.parse.quote_plus(url)
+    """
+    >>> tokenize_url((b"https", b"localhost", 8000, b"/metadata/"))
+    (b"https", b"localhost", b"8000", b"%2Fmetadata%2F")
+    """
+    return (
+        url[:2]
+        + (str(url[2]).encode(),)
+        + tuple(urllib.parse.quote_plus(term) for term in url[3:])
+    )

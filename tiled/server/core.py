@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 import dataclasses
+from hashlib import md5
 import math
 import operator
 import re
@@ -382,17 +383,20 @@ class MsgpackResponse(Response):
 def json_or_msgpack(request_headers, content):
     DEFAULT_MEDIA_TYPE = "application/json"
     media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(", ")
+    content_as_dict = content.dict()
+    content_hash = md5(str(content_as_dict).encode()).hexdigest()
+    headers = {"ETag": content_hash}
     for media_type in media_types:
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPE
         if media_type == "application/x-msgpack":
-            return MsgpackResponse(content.dict())
+            return MsgpackResponse(content_as_dict, headers=headers)
         if media_type == "application/json":
-            return JSONResponse(content.dict())
+            return JSONResponse(content_as_dict, headers=headers)
     else:
         # HTTP says we should fall back to a default representation if none of
         # the ones the client asks for is available.
-        return JSONResponse(content.dict())
+        return JSONResponse(content_as_dict, headers=headers)
 
 
 class UnsupportedMediaTypes(Exception):

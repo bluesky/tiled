@@ -18,7 +18,7 @@ from ..utils import (
     slice_to_interval,
     UNCHANGED,
 )
-from .utils import handle_error
+from .utils import get_json_with_cache
 
 
 class ClientCatalog(collections.abc.Mapping):
@@ -101,7 +101,16 @@ class ClientCatalog(collections.abc.Mapping):
         # for simplicity, at least for now.
 
     @classmethod
-    def from_uri(cls, uri, token, containers="dask", special_clients=None):
+    def from_uri(
+        cls,
+        uri,
+        *,
+        cache=None,
+        offline=False,
+        token=None,
+        containers="dask",
+        special_clients=None,
+    ):
         """
         Create a new Client.
 
@@ -109,6 +118,9 @@ class ClientCatalog(collections.abc.Mapping):
         ----------
         uri : str
             e.g. "http://localhost:8000"
+        cache : Cache, optional
+        offline : bool, optional
+            False by default. If True, rely on cache only.
         containers : str or dict
             Use "dask" for delayed data loading and "memory" for immediate
             in-memory structures (e.g. normal numpy arrays). For advanced use,
@@ -135,14 +147,15 @@ class ClientCatalog(collections.abc.Mapping):
             special_clients or {},
             cls.DEFAULT_SPECIAL_CLIENT_DISPATCH,
         )
-        response = client.get("/metadata/")
-        handle_error(response)
-        metadata = response.json()["data"]["attributes"]["metadata"]
+        content = get_json_with_cache(cache, offline, client, "/metadata/")
+        metadata = content["data"]["attributes"]["metadata"]
         return cls(
             client,
+            offline=offline,
             path=[],
             metadata=metadata,
             containers=containers,
+            cache=cache,
             special_clients=special_clients,
             root_client_type=cls,
         )
@@ -151,10 +164,12 @@ class ClientCatalog(collections.abc.Mapping):
         self,
         client,
         *,
+        offline,
         path,
         metadata,
         root_client_type,
         containers,
+        cache,
         special_clients,
         params=None,
         queries=None,
@@ -162,7 +177,9 @@ class ClientCatalog(collections.abc.Mapping):
         "This is not user-facing. Use ClientCatalog.from_uri."
 
         self._client = client
+        self._offline = offline
         self._metadata = metadata
+        self._cache = cache
         self.containers = containers
         self.special_clients = special_clients
         self._root_client_type = root_client_type
@@ -248,6 +265,8 @@ class ClientCatalog(collections.abc.Mapping):
             params = self._params
         return class_(
             client=self._client,
+            offline=self._offline,
+            cache=self._cache,
             path=path,
             metadata=metadata,
             containers=containers,
@@ -257,12 +276,14 @@ class ClientCatalog(collections.abc.Mapping):
         )
 
     def __len__(self):
-        response = self._client.get(
+        content = get_json_with_cache(
+            self._cache,
+            self._offline,
+            self._client,
             f"/search/{'/'.join(self._path)}",
             params={"fields": "", **self._queries_as_params, **self._params},
         )
-        handle_error(response)
-        return response.json()["meta"]["count"]
+        return content["meta"]["count"]
 
     def __length_hint__(self):
         # TODO The server should provide an estimated count.
@@ -272,18 +293,23 @@ class ClientCatalog(collections.abc.Mapping):
     def __iter__(self):
         next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 next_page_url,
                 params={"fields": "", **self._queries_as_params, **self._params},
             )
-            handle_error(response)
-            for item in response.json()["data"]:
+            for item in content["data"]:
                 yield item["id"]
-            next_page_url = response.json()["links"]["next"]
+            next_page_url = content["links"]["next"]
 
     def __getitem__(self, key):
         # Lookup this key *within the search results* of this Catalog.
-        response = self._client.get(
+        content = get_json_with_cache(
+            self._cache,
+            self._offline,
+            self._client,
             f"/search/{'/'.join(self._path )}",
             params={
                 "fields": ["metadata", "container", "client_type_hint"],
@@ -292,8 +318,7 @@ class ClientCatalog(collections.abc.Mapping):
                 **self._params,
             },
         )
-        handle_error(response)
-        data = response.json()["data"]
+        data = content["data"]
         if not data:
             raise KeyError(key)
         assert (
@@ -312,7 +337,10 @@ class ClientCatalog(collections.abc.Mapping):
         # one HTTP request per item. Pull pages instead.
         next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 next_page_url,
                 params={
                     "fields": ["metadata", "container", "client_type_hint"],
@@ -320,8 +348,7 @@ class ClientCatalog(collections.abc.Mapping):
                     **self._params,
                 },
             )
-            handle_error(response)
-            for item in response.json()["data"]:
+            for item in content["data"]:
                 key = item["id"]
                 class_ = self._get_class(item)
                 value = self.new_variation(
@@ -330,7 +357,7 @@ class ClientCatalog(collections.abc.Mapping):
                     metadata=item["attributes"]["metadata"],
                 )
                 yield key, value
-            next_page_url = response.json()["links"]["next"]
+            next_page_url = content["links"]["next"]
 
     def values(self):
         # The base implementation would use __iter__ and __getitem__, making
@@ -342,22 +369,27 @@ class ClientCatalog(collections.abc.Mapping):
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 next_page_url,
                 params={"fields": "", **self._queries_as_params, **self._params},
             )
-            handle_error(response)
-            for item in response.json()["data"]:
+            for item in content["data"]:
                 if stop is not None and next(item_counter) == stop:
                     return
                 yield item["id"]
-            next_page_url = response.json()["links"]["next"]
+            next_page_url = content["links"]["next"]
 
     def _items_slice(self, start, stop):
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 next_page_url,
                 params={
                     "fields": ["metadata", "container", "client_type_hint"],
@@ -365,9 +397,8 @@ class ClientCatalog(collections.abc.Mapping):
                     **self._params,
                 },
             )
-            handle_error(response)
 
-            for item in response.json()["data"]:
+            for item in content["data"]:
                 if stop is not None and next(item_counter) == stop:
                     return
                 key = item["id"]
@@ -377,13 +408,16 @@ class ClientCatalog(collections.abc.Mapping):
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
                 )
-            next_page_url = response.json()["links"]["next"]
+            next_page_url = content["links"]["next"]
 
     def _item_by_index(self, index):
         if index >= len(self):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
-        response = self._client.get(
+        content = get_json_with_cache(
+            self._cache,
+            self._offline,
+            self._client,
             url,
             params={
                 "fields": ["metadata", "container", "client_type_hint"],
@@ -391,8 +425,7 @@ class ClientCatalog(collections.abc.Mapping):
                 **self._params,
             },
         )
-        handle_error(response)
-        (item,) = response.json()["data"]
+        (item,) = content["data"]
         key = item["id"]
         class_ = self._get_class(item)
         value = self.new_variation(
@@ -452,32 +485,6 @@ def _queries_to_params(*queries):
                 query, field.name
             )
     return params
-
-
-def get_with_cache(cache, client, url, **kwargs):
-    request = httpx.Request("GET", url, **kwargs)
-    etag, lock = cache.get_etag_for_url(url)
-    try:
-        if etag is None:
-            # Release the lock early.
-            lock.release()
-        else:
-            request.headers["If-None-Match"] = etag
-        response = client.send(request)
-        if response.status_code == 304:  # HTTP 304 Not Modified
-            # Read from the cache
-            content = cache.get_content_for_etag(etag)
-        elif response.status_code == 200:
-            etag = response.headers.get("ETag")
-            content = response.content
-            # TODO Respect Cache-control headers (e.g. "no-store")
-            if etag is not None:
-                # Write to cache.
-                cache.put(etag, content)
-    finally:
-        if lock.locked():
-            lock.release()
-    return content
 
 
 class UnknownContainer(KeyError):

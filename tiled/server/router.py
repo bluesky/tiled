@@ -20,7 +20,6 @@ from .core import (
     construct_resource,
     reader,
     entry,
-    # get_dask_client,
     json_or_msgpack,
     NoEntry,
     PatchedResponse,

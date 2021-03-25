@@ -1,5 +1,5 @@
-from ..utils import DictView
-from .utils import handle_error
+from ..utils import DictView, UNCHANGED
+from .utils import get_json_with_cache
 
 
 class BaseClientReader:
@@ -13,6 +13,8 @@ class BaseClientReader:
         self,
         client,
         *,
+        cache,
+        offline,
         path,
         metadata,
         params,
@@ -22,10 +24,50 @@ class BaseClientReader:
         structure=None,
     ):
         self._client = client
+        self._offline = offline
+        self._cache = cache
         self._metadata = metadata
         self._path = path
         self._params = params
         self._structure = structure
+
+    def new_variation(
+        self,
+        class_,
+        *,
+        path=UNCHANGED,
+        metadata=UNCHANGED,
+        params=UNCHANGED,
+        structure=UNCHANGED,
+        containers=UNCHANGED,
+        special_clients=UNCHANGED,
+    ):
+        """
+        This is intended primarily for intenal use and use by subclasses.
+        """
+        if path is UNCHANGED:
+            path = self._path
+        if metadata is UNCHANGED:
+            metadata = self._metadata
+        if containers is UNCHANGED:
+            containers = self.containers
+        if special_clients is UNCHANGED:
+            special_clients = self.special_clients
+        if params is UNCHANGED:
+            params = self._params
+        if params is UNCHANGED:
+            params = self._params
+        return class_(
+            client=self._client,
+            offline=self._offline,
+            cache=self._cache,
+            path=path,
+            metadata=metadata,
+            params=params,
+            structure=self._structure,
+            containers=containers,
+            special_clients=special_clients,
+        )
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -54,15 +96,17 @@ class BaseArrayClientReader(BaseClientReader):
         # our structure (as part of the some larger structure) and passed it
         # in.
         if self._structure is None:
-            response = self._client.get(
+            content = get_json_with_cache(
+                self._cache,
+                self._offline,
+                self._client,
                 f"/metadata/{'/'.join(self._path)}",
                 params={
                     "fields": ["structure.micro", "structure.macro"],
                     **self._params,
                 },
             )
-            handle_error(response)
-            result = response.json()["data"]["attributes"]["structure"]
+            result = content["data"]["attributes"]["structure"]
             structure = self.STRUCTURE_TYPE.from_json(result)
         else:
             structure = self._structure
