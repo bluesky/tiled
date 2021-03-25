@@ -2,6 +2,7 @@ from pathlib import Path
 
 import dask.array
 import h5py
+import numpy
 import pandas
 import xarray
 
@@ -34,8 +35,12 @@ dataframes = Catalog(
     {
         "df": DataFrameReader(
             pandas.DataFrame(
-                {"A": arr[0], "B": arr[1], "C": arr[2]},
-                index=pandas.Index([1, 2, 3], name="index"),
+                {
+                    "A": numpy.random.random(100),
+                    "B": numpy.random.random(100),
+                    "C": numpy.random.random(100),
+                },
+                index=pandas.Index(numpy.arange(100), name="index"),
             )
         )
     }
