@@ -333,6 +333,7 @@ class ClientCatalog(collections.abc.Mapping):
         return self.new_variation(
             class_,
             path=self._path + (item["id"],),
+            queries=None,  # The queries applied to the parent, not this child.
             metadata=item["attributes"]["metadata"],
         )
 
@@ -358,6 +359,7 @@ class ClientCatalog(collections.abc.Mapping):
                 value = self.new_variation(
                     class_,
                     path=self._path + (item["id"],),
+                    queries=None,  # The queries applied to the parent, not this child.
                     metadata=item["attributes"]["metadata"],
                 )
                 yield key, value
@@ -410,6 +412,7 @@ class ClientCatalog(collections.abc.Mapping):
                 yield key, self.new_variation(
                     class_,
                     path=self._path + (item["id"],),
+                    queries=None,  # The queries applied to the parent, not this child.
                     metadata=item["attributes"]["metadata"],
                 )
             next_page_url = content["links"]["next"]
@@ -435,6 +438,7 @@ class ClientCatalog(collections.abc.Mapping):
         value = self.new_variation(
             class_,
             path=self._path + (item["id"],),
+            queries=None,  # The queries applied to the parent, not this child.
             metadata=item["attributes"]["metadata"],
         )
         return (key, value)
