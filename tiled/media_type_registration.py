@@ -24,7 +24,7 @@ class Registry:
         except KeyError:
             pass
         raise ValueError(
-            "No dispatch for container {container} with media type {media_type}"
+            f"No dispatch for container {container} with media type {media_type}"
         )
 
     def __call__(self, container, media_type, *args, **kwargs):
