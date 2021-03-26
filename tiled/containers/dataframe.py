@@ -56,6 +56,12 @@ def serialize_excel(df):
     return file.getbuffer()
 
 
+def serialize_html(df):
+    file = io.StringIO()
+    df.to_html(file)  # TODO How would we expose options in the server?
+    return file.getvalue().encode()
+
+
 # The MIME type vnd.apache.arrow.file is provisional. See:
 # https://lists.apache.org/thread.html/r9b462400a15296576858b52ae22e73f13c3e66f031757b2c9522f247%40%3Cdev.arrow.apache.org%3E  # noqa
 # TODO Should we actually use vnd.apache.arrow.stream? I think 'file' is right
@@ -68,15 +74,17 @@ deserialization_registry.register(
     "dataframe", APACHE_ARROW_FILE_MIME_TYPE, pyarrow.deserialize
 )
 serialization_registry.register("dataframe", "text/csv", serialize_csv)
+serialization_registry.register("dataframe", "text/html", serialize_html)
+XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 if modules_available("openpyxl"):
     # The optional pandas dependency openpyxel is required for Excel read/write.
     serialization_registry.register(
         "dataframe",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        XLSX_MIME_TYPE,
         serialize_excel,
     )
     deserialization_registry.register(
         "dataframe",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        XLSX_MIME_TYPE,
         pandas.read_excel,
     )
