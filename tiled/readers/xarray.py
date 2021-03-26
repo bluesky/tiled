@@ -169,8 +169,11 @@ class DatasetReader:
     def microstructure(self):
         return None
 
-    def read(self):
-        return self._dataset
+    def read(self, variables=None):
+        ds = self._dataset
+        if variables is not None:
+            ds = ds[variables]
+        return ds
 
     def read_variable(self, variable):
         return self._dataset[variable]

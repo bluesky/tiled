@@ -315,13 +315,15 @@ def dataframe_partition(
     request: Request,
     partition: int,
     reader=Depends(reader),
-    column: Optional[List[str]] = Query(None),
+    column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
     """
     try:
+        # The singular/plural mismatch here of "columns" and "column" is
+        # due to the ?column=A&column=B&column=C... encodes in a URL.
         df = reader.read_partition(partition, columns=column)
     except IndexError:
         raise HTTPException(status_code=422, detail="Partition out of range")
@@ -342,13 +344,15 @@ def dataframe_partition(
 def dataframe_full(
     request: Request,
     reader=Depends(reader),
-    column: Optional[List[str]] = Query(None),
+    column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
 ):
     """
     Fetch all the rows of DataFrame.
     """
     try:
+        # The singular/plural mismatch here of "columns" and "column" is
+        # due to the ?column=A&column=B&column=C... encodes in a URL.
         df = reader.read(columns=column)
     except KeyError as err:
         (key,) = err.args
@@ -579,12 +583,19 @@ def dataset_coord_full(
 def dataset_full(
     request: Request,
     reader=Depends(reader),
+    variable: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
 ):
     """
     Fetch a full coordinate from within an xarray.Dataset.
     """
-    dataset = reader.read()
+    try:
+        # The singular/plural mismatch here of "variables" and "variable" is
+        # due to the ?variable=A&variable=B&variable=C... encodes in a URL.
+        dataset = reader.read(variables=variable)
+    except KeyError as err:
+        (key,) = err.args
+        raise HTTPException(status_code=422, detail=f"No such variable {key}.")
     try:
         return construct_dataset_response(dataset, request.headers, format)
     except UnsupportedMediaTypes as err:
