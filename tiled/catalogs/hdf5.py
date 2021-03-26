@@ -1,6 +1,7 @@
 import collections.abc
 
 import h5py
+import numpy
 
 from ..readers.array import ArrayReader
 from ..utils import (
@@ -14,8 +15,9 @@ from ..queries import KeyLookup
 from .in_memory import Catalog as CatalogInMemory
 
 
-# TODO Just wrap h5py.Dataset directly, not via dask.array.
-HDF5DatasetReader = ArrayReader
+class HDF5DatasetReader(ArrayReader):
+    # TODO Just wrap h5py.Dataset directly, not via dask.array.
+    ...
 
 
 class Catalog(collections.abc.Mapping):
@@ -35,6 +37,10 @@ class Catalog(collections.abc.Mapping):
 
     def __repr__(self):
         return catalog_repr(self, list(self))
+
+    @property
+    def access_policy(self):
+        return self._access_policy
 
     @property
     def authenticated_identity(self):
@@ -67,6 +73,9 @@ class Catalog(collections.abc.Mapping):
         if isinstance(value, h5py.Group):
             return Catalog(value)
         else:
+            if value.dtype == numpy.dtype("O"):
+                # HACK Placeholder
+                return HDF5DatasetReader(numpy.array([1]))
             return HDF5DatasetReader(value)
 
     def __len__(self):
@@ -86,10 +95,10 @@ class Catalog(collections.abc.Mapping):
         return list(self._node)[start:stop]
 
     def _items_slice(self, start, stop):
-        return list(self._node.items())[start:stop]
+        return [(key, self[key]) for key in list(self)[start:stop]]
 
     def _item_by_index(self, index):
-        return list(self._node.items())[index]
+        return self[list(self)[index]]
 
     @authenticated
     def _keys_indexer(self, index):
