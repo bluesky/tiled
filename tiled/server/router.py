@@ -17,6 +17,7 @@ from .core import (
     block,
     construct_array_response,
     construct_dataframe_response,
+    construct_dataset_response,
     construct_entries_response,
     construct_resource,
     reader,
@@ -117,10 +118,6 @@ def declare_search_route(router):
             raise HTTPException(status_code=404, detail="No such entry.")
         except WrongTypeForRoute as err:
             raise HTTPException(status_code=404, detail=err.args[0])
-        except UnsupportedMediaTypes as err:
-            # TODO Should we just serve a default representation instead of
-            # returning this error code?
-            raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
     # documentation on the signature of the route function. We do not know what
@@ -229,8 +226,6 @@ def array_block(
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
@@ -260,15 +255,13 @@ def array_full(
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
     "/dataframe/meta/{path:path}",
     response_model=models.Response,
-    name="dataframe partition",
+    name="dataframe meta",
 )
 def dataframe_meta(
     request: Request,
@@ -291,7 +284,7 @@ def dataframe_meta(
 @router.get(
     "/dataframe/divisions/{path:path}",
     response_model=models.Response,
-    name="dataframe partition",
+    name="dataframe divisions",
 )
 def dataframe_divisions(
     request: Request,
@@ -299,7 +292,7 @@ def dataframe_divisions(
     format: Optional[str] = None,
 ):
     """
-    Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
+    Fetch the Apache Arrow serialization of the index values at the partition edges.
     """
     divisions = reader.microstructure().divisions
     content = serialization_registry(
@@ -338,15 +331,13 @@ def dataframe_partition(
     try:
         return construct_dataframe_response(df, request.headers, format)
     except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
     "/dataframe/full/{path:path}",
     response_model=models.Response,
-    name="dataframe full",
+    name="full dataframe",
 )
 def dataframe_full(
     request: Request,
@@ -365,13 +356,13 @@ def dataframe_full(
     try:
         return construct_dataframe_response(df, request.headers, format)
     except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
-    "/variable/block/{path:path}", response_model=models.Response, name="variable block"
+    "/variable/block/{path:path}",
+    response_model=models.Response,
+    name="xarray.Variable block",
 )
 def variable_block(
     request: Request,
@@ -381,7 +372,7 @@ def variable_block(
     format: Optional[str] = None,
 ):
     """
-    Fetch a chunk of array-like data.
+    Fetch a chunk of array-like data from an xarray.Variable.
     """
     try:
         # Lookup block on the `data` attribute of the Variable.
@@ -393,13 +384,63 @@ def variable_block(
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
-    "/data_array/block/{path:path}", response_model=models.Response, name="data_array"
+    "/variable/full/{path:path}",
+    response_model=models.Response,
+    name="full xarray.Variable",
+)
+def variable_full(
+    request: Request,
+    reader=Depends(reader),
+    format: Optional[str] = None,
+):
+    """
+    Fetch a full xarray.Variable.
+    """
+    array = reader.read()
+    try:
+        return construct_array_response(array, request.headers, format)
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/data_array/variable/full/{path:path}",
+    response_model=models.Response,
+    name="full xarray.Variable from within an xarray.DataArray",
+)
+def data_array_variable_full(
+    request: Request,
+    reader=Depends(reader),
+    coord: Optional[str] = Query(None, min_length=1),
+    format: Optional[str] = None,
+):
+    """
+    Fetch a chunk from an xarray.DataArray.
+    """
+    # TODO Should read() accept a `coord` argument?
+    array = reader.read()
+    if coord is not None:
+        try:
+            array = array.coords[coord]
+        except KeyError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No such coordinate {coord}.",
+            )
+    try:
+        return construct_array_response(array, request.headers, format)
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/data_array/block/{path:path}",
+    response_model=models.Response,
+    name="xarray.DataArray block",
 )
 def data_array_block(
     request: Request,
@@ -427,13 +468,13 @@ def data_array_block(
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error code?
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
 @router.get(
-    "/dataset/block/{path:path}", response_model=models.Response, name="dataset"
+    "/dataset/block/{path:path}",
+    response_model=models.Response,
+    name="xarray.Dataset block",
 )
 def dataset_block(
     request: Request,
@@ -464,6 +505,87 @@ def dataset_block(
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
-        # TODO Should we just serve a default representation instead of
-        # returning this error code?
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/dataset/data_var/full/{path:path}",
+    response_model=models.Response,
+    name="full xarray.Dataset data variable",
+)
+def dataset_data_var_full(
+    request: Request,
+    reader=Depends(reader),
+    variable: str = Query(..., min_length=1),
+    coord: Optional[str] = Query(None, min_length=1),
+    format: Optional[str] = None,
+):
+    """
+    Fetch a full xarray.Variable from within an xarray.Dataset.
+    """
+    try:
+        array = reader.read_variable(variable)
+    except KeyError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No such variable {variable}.",
+        )
+    if coord is not None:
+        try:
+            array = array.coords[coord]
+        except KeyError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No such coordinate {coord}.",
+            )
+    try:
+        return construct_array_response(array, request.headers, format)
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/dataset/coord/full/{path:path}",
+    response_model=models.Response,
+    name="full xarray.Dataset coordinate",
+)
+def dataset_coord_full(
+    request: Request,
+    reader=Depends(reader),
+    coord: str = Query(..., min_length=1),
+    format: Optional[str] = None,
+):
+    """
+    Fetch a full coordinate from within an xarray.Dataset.
+    """
+    try:
+        array = reader.read_variable(coord)
+    except KeyError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No such coordinate {coord}.",
+        )
+    try:
+        return construct_array_response(array, request.headers, format)
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/dataset/full/{path:path}",
+    response_model=models.Response,
+    name="full xarray.Dataset",
+)
+def dataset_full(
+    request: Request,
+    reader=Depends(reader),
+    format: Optional[str] = None,
+):
+    """
+    Fetch a full coordinate from within an xarray.Dataset.
+    """
+    dataset = reader.read()
+    try:
+        return construct_dataset_response(dataset, request.headers, format)
+    except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))

@@ -1,7 +1,11 @@
 from dataclasses import dataclass
+import io
 from typing import Dict, Tuple
 
+import xarray
+
 from .array import ArrayStructure
+from ..media_type_registration import serialization_registry, deserialization_registry
 
 
 @dataclass
@@ -95,4 +99,20 @@ class DatasetStructure:
         )
 
 
-# TODO Also support zarr for encoding.
+class _BytesIOThatIgnoresClose(io.BytesIO):
+    def close(self):
+        # When the netcdf writer tells us to close(), ignore it.
+        pass
+
+
+def serialize_netcdf(dataset):
+    file = _BytesIOThatIgnoresClose()
+    dataset.to_netcdf(file)  # TODO How would we expose options in the server?
+    return file.getbuffer()
+
+
+serialization_registry.register("dataset", "application/netcdf", serialize_netcdf)
+deserialization_registry.register("dataset", "application/x-zarr", xarray.open_zarr)
+
+
+# TODO How should we add support for access via Zarr?

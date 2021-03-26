@@ -172,6 +172,9 @@ class DatasetReader:
     def read(self):
         return self._dataset
 
+    def read_variable(self, variable):
+        return self._dataset[variable]
+
     def read_block(self, variable, block, coord=None, slice=None):
         if variable in self._dataset.coords:
             return VariableReader(self._dataset.coords[variable]).read_block(

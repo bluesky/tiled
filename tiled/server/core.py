@@ -293,6 +293,42 @@ def construct_dataframe_response(df, request_headers, format=None):
         )
 
 
+def construct_dataset_response(dataset, request_headers, format=None):
+    DEFAULT_MEDIA_TYPE = "application/netcdf"
+    etag = dask.base.tokenize(dataset)
+    if request_headers.get("If-None-Match", "") == etag:
+        return Response(status_code=304)
+    # Give priority to the `format` query parameter. Otherwise, consult Accept
+    # header.
+    if format is not None:
+        media_types = format.split(",")
+    else:
+        # The HTTP spec says these should be separated by ", " but some
+        # browsers separate with just "," (no space).
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
+        # That variation is what we are handling below with lstrip.
+        media_types = [
+            s.lstrip(" ")
+            for s in request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
+        ]
+    # The client may give us a choice of media types. Find the first one
+    # that we support.
+    for media_type in media_types:
+        if media_type == "*/*":
+            media_type = APACHE_ARROW_FILE_MIME_TYPE
+        if media_type in serialization_registry.media_types("dataset"):
+            content = serialization_registry("dataset", media_type, dataset)
+            return PatchedResponse(
+                content=content, media_type=media_type, headers={"ETag": etag}
+            )
+    else:
+        raise UnsupportedMediaTypes(
+            "None of the media types requested by the client are supported.",
+            unsupported=media_types,
+            supported=serialization_registry.media_types("dataset"),
+        )
+
+
 def construct_resource(path, key, entry, fields):
     attributes = {}
     if models.EntryFields.metadata in fields:
@@ -394,8 +430,10 @@ def json_or_msgpack(request_headers, content):
         if media_type == "application/json":
             return JSONResponse(content_as_dict, headers=headers)
     else:
-        # HTTP says we should fall back to a default representation if none of
-        # the ones the client asks for is available.
+        # It is commmon in HTTP to fall back on a default representation if
+        # none of the requested ones are avaiable. We do not do this for
+        # data payloads, but it makes some sense to do it for these metadata
+        # messages.
         return JSONResponse(content_as_dict, headers=headers)
 
 
