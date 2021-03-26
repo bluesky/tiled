@@ -5,6 +5,14 @@ from typing import Dict, Tuple
 import xarray
 
 from .array import ArrayStructure
+from .dataframe import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    serialize_arrow,
+    serialize_csv,
+    serialize_excel,
+    serialize_html,
+    XLSX_MIME_TYPE,
+)
 from ..media_type_registration import serialization_registry, deserialization_registry
 
 
@@ -112,7 +120,23 @@ def serialize_netcdf(dataset):
 
 
 serialization_registry.register("dataset", "application/netcdf", serialize_netcdf)
+# Support DataFrame formats by first converting to DataFrame.
+# This doesn't make much sense for N-dimensional variables, but for
+# 1-dimensional variables it is useful.
+serialization_registry.register(
+    "dataset",
+    APACHE_ARROW_FILE_MIME_TYPE,
+    lambda ds: serialize_arrow(ds.to_dataframe()),
+)
+serialization_registry.register(
+    "dataset", "text/csv", lambda ds: serialize_csv(ds.to_dataframe())
+)
+serialization_registry.register(
+    "dataset", XLSX_MIME_TYPE, lambda ds: serialize_excel(ds.to_dataframe())
+)
+serialization_registry.register(
+    "dataset", "text/html", lambda ds: serialize_html(ds.to_dataframe())
+)
+
 deserialization_registry.register("dataset", "application/x-zarr", xarray.open_zarr)
-
-
 # TODO How should we add support for access via Zarr?
