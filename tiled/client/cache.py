@@ -261,5 +261,5 @@ def tokenize_url(url):
     return (
         url[:2]
         + (str(url[2]).encode(),)
-        + tuple(urllib.parse.quote_plus(term) for term in url[3:])
+        + tuple(urllib.parse.quote_plus(segment) for segment in url[3:])
     )
