@@ -5,8 +5,9 @@ import mimetypes
 import os
 from pathlib import Path
 import threading
+import time
 
-import watchgod
+from watchgod.watcher import AllWatcher, Change
 
 from .in_memory import Catalog as CatalogInMemory
 from ..readers.array import (
@@ -86,6 +87,12 @@ class LazyCachedMap(collections.abc.Mapping):
         )
 
 
+class Watcher(AllWatcher):
+    def should_watch_file(self, entry) -> bool:
+        # TODO Implement ignoring some files.
+        return super().should_watch_file(entry)
+
+
 class Catalog(CatalogInMemory):
     """
     Make a Catalog from files.
@@ -96,6 +103,7 @@ class Catalog(CatalogInMemory):
     }
 
     def __init__(self, directory, ignore=None, readers_by_mimetype=None):
+        self.directory = directory
         if ignore is not None:
             # TODO Support regex or glob (?) patterns to ignore.
             raise NotImplementedError
@@ -106,42 +114,60 @@ class Catalog(CatalogInMemory):
         # 2. Do an initial scan of the files in the directory.
         # 3. When the initial scan completes, start processing changes. This
         #    will cover changes that occurred during or after the initial scan.
+        self.watcher = Watcher(directory)
+        self._watcher_thread_kill_switch = threading.Event()
         self._watching_thread = threading.Thread(
-            target=self._watch, args=(directory,), name="tiled-watch-filesystem-changes"
+            target=self._watch,
+            daemon=True,
+            name="tiled-watch-filesystem-changes",
         )
         self._watching_thread.start()
-        internal_mapping = {}
-        catalog_mapping = {}
+        # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
+        index = {(): {}}
         for root, subdirectories, files in os.walk(directory, topdown=True):
-            internal_mapping_node = internal_mapping
-            catalog_mapping_node = catalog_mapping
-            for part in Path(root).relative_to(directory).parts:
-                internal_mapping_node = internal_mapping_node[part]
-                catalog_mapping_node = catalog_mapping_node[part]
+            parts = Path(root).relative_to(directory).parts
             for subdirectory in subdirectories:
-                internal_mapping_node[subdirectory] = {}
-                catalog_mapping_node[subdirectory] = functools.partial(
-                    CatalogInMemory, LazyCachedMap(internal_mapping_node[subdirectory])
+                # Make a new mapping and a corresponding Catalog for this subdirectory.
+                mapping = {}
+                index[parts + (subdirectory,)] = mapping
+                index[parts][subdirectory] = functools.partial(
+                    CatalogInMemory, LazyCachedMap(mapping)
                 )
             for filename in files:
-                internal_mapping_node[filename] = self._reader_factory_for_file(
+                # Add items to the mapping for this root directory.
+                index[parts][filename] = self._reader_factory_for_file(
                     Path(root, filename)
                 )
-        self._internal_mapping = internal_mapping
-        self._catalog_mapping = catalog_mapping
-        super().__init__(
-            LazyCachedMap(
-                collections.ChainMap(self._catalog_mapping, self._internal_mapping)
-            )
-        )
-
-    def _watch(self, directory):
-        for changes in watchgod.watch(directory):
-            print(changes)
-            # TODO Call _process_file.
-            # TODO Shut down cleanly.
+        self._index = index
+        super().__init__(LazyCachedMap(self._index[()]))
 
     def _reader_factory_for_file(self, path):
         mimetype, _ = mimetypes.guess_type(path)
         reader_class = self.readers_by_mimetype[mimetype]
         return functools.partial(reader_class, str(path))
+
+    def shutdown_watcher(self):
+        self._watcher_thread_kill_switch.set()
+
+    def _watch(self, poll_interval=0.2):
+        while not self._watcher_thread_kill_switch.is_set():
+            changes = self.watcher.check()
+            self._process_changes(changes)
+            time.sleep(poll_interval)
+
+    def _process_changes(self, changes):
+        for kind, entry in changes:
+            path = Path(entry)
+            if path.is_dir():
+                raise NotImplementedError
+            parent_parts = path.relative_to(self.directory).parent.parts
+            if kind == Change.added:
+                self._index[parent_parts][path.name] = self._reader_factory_for_file(
+                    path
+                )
+            elif kind == Change.deleted:
+                self._index[parent_parts].pop(path.name)
+            elif kind == Change.modified:
+                # Nothing to do at present, but once we add caching we'll need to
+                # invalidate the relevant cache entry here.
+                pass
