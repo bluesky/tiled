@@ -1,3 +1,4 @@
+import collections
 import collections.abc
 import functools
 import mimetypes
@@ -111,29 +112,34 @@ class Catalog(CatalogInMemory):
         self._watching_thread.start()
         internal_mapping = {}
         catalog_mapping = {}
-        for root, directories, files in os.walk(directory, topdown=True):
+        for root, subdirectories, files in os.walk(directory, topdown=True):
             internal_mapping_node = internal_mapping
             catalog_mapping_node = catalog_mapping
-            for part in Path(root).parts:
+            for part in Path(root).relative_to(directory).parts:
                 internal_mapping_node = internal_mapping_node[part]
                 catalog_mapping_node = catalog_mapping_node[part]
-            for directory in directories:
-                internal_mapping_node[directory] = {}
-                catalog_mapping_node[directory] = functools.partial(
-                    LazyCachedMap, internal_mapping_node[directory]
+            for subdirectory in subdirectories:
+                internal_mapping_node[subdirectory] = {}
+                catalog_mapping_node[subdirectory] = functools.partial(
+                    CatalogInMemory, LazyCachedMap(internal_mapping_node[subdirectory])
                 )
             for filename in files:
-                catalog_mapping_node[filename] = self._reader_factory_for_file(
+                internal_mapping_node[filename] = self._reader_factory_for_file(
                     Path(root, filename)
                 )
         self._internal_mapping = internal_mapping
         self._catalog_mapping = catalog_mapping
-        super().__init__(self._catalog_mapping["."])
+        super().__init__(
+            LazyCachedMap(
+                collections.ChainMap(self._catalog_mapping, self._internal_mapping)
+            )
+        )
 
     def _watch(self, directory):
         for changes in watchgod.watch(directory):
             print(changes)
             # TODO Call _process_file.
+            # TODO Shut down cleanly.
 
     def _reader_factory_for_file(self, path):
         mimetype, _ = mimetypes.guess_type(path)
