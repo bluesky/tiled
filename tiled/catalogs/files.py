@@ -1,82 +1,62 @@
+import mimetypes
+import os
+import pathlib
+import threading
+
+import watchgod
+
 from .in_memory import Catalog as CatalogInMemory
+
+
+class TiffReader(ArrayReader):
+    def __init__(self, path):
+        import tifffile
+
+        super().__init__(tifffile.imread(path))
 
 
 class Catalog(CatalogInMemory):
     "Make a Catalog from files."
 
-    # TODO Use watchgod to observe updates.
+    # TODO Implement some culling of state, possibly with a variant of LazyMap.
+
+    def __init__(self, directory):
+        self._watching_thread = None
+        super().__init__(*args, **kwargs)
+        self.readers_by_mimetype = {"image/tiff": TiffReader}
+
+    def start_watching_thread(self, directory):
+        self._watching_thread = threading.Thread(
+            target=self._watch, args=(directory,), name="tiled-watch-filesystem-changes"
+        )
+        self._watching_thread.start()
+
+    def _watch(self, directory):
+        for changes in watchgod.watch(directory):
+            print(changes)
+            # TODO Call _process_file.
+
+    def _process_file(path):
+        mimetype, _ = mimetypes.guess_type(filepath)
+        reader_class = self.readers_by_mimetype[mimetype]
+        reader = reader_class(str(path))
+        catalog = self
+        for part in path.parent.parts:
+            try:
+                catalog = catalog[segment]
+            except KeyError:
+                catalog = catalog._mapping[part] = CatalogInMemory({})
+        catalog[path.name] = reader
 
     @classmethod
-    def from_directory(
-        cls, directory, reader_for_glob=None, reader_for_mimetype=None, sniffer=None
-    ):
+    def from_directory(cls, directory):
         """
         Construct a Catalog from a (possibly nested) directory.
 
         Parameters
         ----------
         directory : Path or str
-        reader_for_glob: Dict[str, str]
-            Map glob string like ``"*.sqlite"`` to Reader class
-        reader_for_mimetype: Dict[str, str]
-            Map MIME type like ``"image/tiff"`` to Reader class
-        sniffer: callable
-            Expected signature::
-                f(path) -> str  # e.g "text/plain"
         """
-        return cls({})  # TODO
-
-    @classmethod
-    def from_files(
-        cls, *globs, reader_for_glob=None, reader_for_mimetype=None, sniffer=None
-    ):
-        """
-        Construct a Catalog from file paths or globs. See examples.
-
-        Parameters
-        ----------
-        *globs
-        reader_for_glob: Dict[str, str]
-            Map glob string like ``"*.sqlite"`` to Reader class
-        reader_for_mimetype: Dict[str, str]
-            Map MIME type like ``"image/tiff"`` to Reader class
-        sniffer: callable
-            Expected signature::
-                f(path) -> str  # e.g "text/plain"
-
-        >>> Catalog.from_globs("things.txt", "stuff.txt", "miscellany.csv")
-
-        >>> Catalog.from_globs("*.txt", "*.csv")
-        """
-        import glob
-
-        if sniffer is None:
-            sniffer = default_sniffer
-        if reader_for_glob is None:
-            reader_for_glob = {}
-        if reader_for_mimetype is None:
-            reader_for_mimetype = {}
-
-        mapping = {}
-        filepaths = []
-        for g in globs:
-            filepaths.extend(glob.glob(g))
-        for filepath in filepaths:
-            mimetype = default_sniffer(filepath)
-            if mimetype is None:
-                continue
-            reader_class = reader_for_glob.get(mimetype)
-            if reader_class is not None:
-                mapping[filepath] = reader_class(filepath)
-                continue
-            reader_class = reader_for_mimetype.get(mimetype)
-            if reader_class is not None:
-                mapping[filepath] = reader_class(filepath)
-        return cls(mapping)
-
-
-def default_sniffer(path):
-    import mimetypes
-
-    mimetype, _ = mimetypes.guess_type(path)
-    return mimetype
+        for root, dirs, files in os.walk(directory, topdown=False):
+            for file in files:
+                self._process_file(pathlib.Path(root, file))

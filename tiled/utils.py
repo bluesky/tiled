@@ -1,6 +1,5 @@
 import collections.abc
 import enum
-from functools import wraps
 import importlib
 import operator
 import threading
@@ -85,84 +84,9 @@ class LazyMap(collections.abc.Mapping):
         return "<LazyMap({" + ", ".join(f"{k!r}: {v!s}" for k, v in d.items()) + "})>"
 
 
-class AuthenticationRequired(Exception):
-    pass
-
-
-def authenticated(method):
-    @wraps(method)
-    def inner(self, *args, **kwargs):
-        if (self.access_policy is not None) and (self.authenticated_identity is None):
-            raise AuthenticationRequired(
-                f"Access policy on {self} is {self.access_policy}."
-            )
-        return method(self, *args, **kwargs)
-
-    return inner
-
-
-def slice_to_interval(index):
-    "Check that slice is supported; then return (start, stop)."
-    if index.start is None:
-        start = 0
-    elif index.start < 0:
-        raise NotImplementedError
-    else:
-        start = index.start
-    if index.stop is not None:
-        if index.stop < 0:
-            raise NotImplementedError
-    stop = index.stop
-    return start, stop
-
-
-class IndexCallable:
-    """Provide getitem syntax for functions
-
-    >>> def inc(x):
-    ...     return x + 1
-
-    >>> I = IndexCallable(inc)
-    >>> I[3]
-    4
-
-    Vendored from dask
-    """
-
-    __slots__ = ("fn",)
-
-    def __init__(self, fn):
-        self.fn = fn
-
-    def __getitem__(self, key):
-        return self.fn(key)
-
-
 class SpecialUsers(str, enum.Enum):
     public = "public"
     admin = "admin"
-
-
-def catalog_repr(catalog, sample):
-    sample_reprs = list(map(repr, sample))
-    out = f"<{type(catalog).__name__} {{"
-    # Always show at least one.
-    if sample_reprs:
-        out += sample_reprs[0]
-    # And then show as many more as we can fit on one line.
-    counter = 1
-    for sample_repr in sample_reprs[1:]:
-        if len(out) + len(sample_repr) > 60:  # character count
-            break
-        out += ", " + sample_repr
-        counter += 1
-    approx_len = operator.length_hint(catalog)  # cheaper to compute than len(catalog)
-    # Are there more in the catalog that what we displayed above?
-    if approx_len > counter:
-        out += f", ...}} ~{approx_len} entries>"
-    else:
-        out += "}>"
-    return out
 
 
 def _line(nodes, last):
@@ -257,9 +181,6 @@ class Sentinel:
 
     def __repr__(self):
         return f"<{self.name}>"
-
-
-UNCHANGED = Sentinel("UNCHANGED")
 
 
 def import_object(colon_separated_string):

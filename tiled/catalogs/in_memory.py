@@ -4,25 +4,19 @@ import itertools
 from ..query_registration import QueryTranslationRegistry
 from ..queries import FullText, KeyLookup
 from ..utils import (
-    authenticated,
     DictView,
-    IndexCallable,
-    slice_to_interval,
     SpecialUsers,
-    UNCHANGED,
 )
+from .utils import authenticated, IndexersMixin, UNCHANGED
 
 
-class Catalog(collections.abc.Mapping):
+class Catalog(collections.abc.Mapping, IndexersMixin):
 
     __slots__ = (
         "_access_policy",
         "_authenticated_identity",
         "_mapping",
         "_metadata",
-        "keys_indexer",
-        "items_indexer",
-        "values_indexer",
     )
     # Define classmethods for managing what queries this Catalog knows.
     __query_registry = QueryTranslationRegistry()
@@ -52,9 +46,7 @@ class Catalog(collections.abc.Mapping):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
-        self.keys_indexer = IndexCallable(self._keys_indexer)
-        self.items_indexer = IndexCallable(self._items_indexer)
-        self.values_indexer = IndexCallable(self._values_indexer)
+        super().__init__()
 
     @property
     def access_policy(self):
@@ -131,6 +123,9 @@ class Catalog(collections.abc.Mapping):
         """
         return self.__query_registry(query, self)
 
+    # The following three methods are used by IndexersMixin
+    # to define keys_indexer, items_indexer, and values_indexer.
+
     def _keys_slice(self, start, stop):
         yield from itertools.islice(
             self._mapping.keys(),
@@ -150,38 +145,6 @@ class Catalog(collections.abc.Mapping):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
         return (key, self._mapping[key])
-
-    @authenticated
-    def _keys_indexer(self, index):
-        if isinstance(index, int):
-            key, _value = self._item_by_index(index)
-            return key
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return list(self._keys_slice(start, stop))
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
-
-    @authenticated
-    def _items_indexer(self, index):
-        if isinstance(index, int):
-            return self._item_by_index(index)
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return list(self._items_slice(start, stop))
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
-
-    @authenticated
-    def _values_indexer(self, index):
-        if isinstance(index, int):
-            _key, value = self._item_by_index(index)
-            return value
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return [value for _key, value in self._items_slice(start, stop)]
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
 
 def walk_string_values(tree, node=None):

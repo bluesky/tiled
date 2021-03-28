@@ -1,4 +1,5 @@
-from ..utils import DictView, UNCHANGED
+from ..utils import DictView
+from ..catalogs.utils import UNCHANGED
 from .utils import get_json_with_cache
 
 

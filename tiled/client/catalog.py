@@ -11,17 +11,18 @@ import httpx
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
 from ..utils import (
-    catalog_repr,
     DictView,
     LazyMap,
-    IndexCallable,
-    slice_to_interval,
-    UNCHANGED,
 )
 from .utils import get_json_with_cache
+from ..catalogs.utils import (
+    catalog_repr,
+    IndexersMixin,
+    UNCHANGED,
+)
 
 
-class ClientCatalog(collections.abc.Mapping):
+class ClientCatalog(collections.abc.Mapping, IndexersMixin):
 
     # This maps the container sent by the server to a client-side object that
     # can interpret the container's structure and content. LazyMap is used to
@@ -190,9 +191,6 @@ class ClientCatalog(collections.abc.Mapping):
         self._queries = tuple(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
         self._params = params or {}
-        self.keys_indexer = IndexCallable(self._keys_indexer)
-        self.items_indexer = IndexCallable(self._items_indexer)
-        self.values_indexer = IndexCallable(self._values_indexer)
 
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
@@ -371,6 +369,9 @@ class ClientCatalog(collections.abc.Mapping):
         for _, value in self.items():
             yield value
 
+    # The following three methods are used by IndexersMixin
+    # to define keys_indexer, items_indexer, and values_indexer.
+
     def _keys_slice(self, start, stop):
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
@@ -448,35 +449,6 @@ class ClientCatalog(collections.abc.Mapping):
             type(self),
             queries=self._queries + (query,),
         )
-
-    def _keys_indexer(self, index):
-        if isinstance(index, int):
-            key, _value = self._item_by_index(index)
-            return key
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return list(self._keys_slice(start, stop))
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
-
-    def _items_indexer(self, index):
-        if isinstance(index, int):
-            return self._item_by_index(index)
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return list(self._items_slice(start, stop))
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
-
-    def _values_indexer(self, index):
-        if isinstance(index, int):
-            _key, value = self._item_by_index(index)
-            return value
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return [value for _key, value in self._items_slice(start, stop)]
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
 
 def _queries_to_params(*queries):
