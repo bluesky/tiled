@@ -81,7 +81,10 @@ class LazyMap(collections.abc.Mapping):
                 d[k] = "<lazy>"
             else:
                 d[k] = repr(v)
-        return "<LazyMap({" + ", ".join(f"{k!r}: {v!s}" for k, v in d.items()) + "})>"
+        return (
+            f"<{type(self).__name__}"
+            "({" + ", ".join(f"{k!r}: {v!s}" for k, v in d.items()) + "})>"
+        )
 
 
 class SpecialUsers(str, enum.Enum):

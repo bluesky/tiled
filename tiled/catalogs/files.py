@@ -1,11 +1,16 @@
+import collections.abc
+import functools
 import mimetypes
 import os
-import pathlib
+from pathlib import Path
 import threading
 
 import watchgod
 
 from .in_memory import Catalog as CatalogInMemory
+from ..readers.array import (
+    ArrayReader,
+)  # TODO If this is needed, its import should be delayed.
 
 
 class TiffReader(ArrayReader):
@@ -15,48 +20,122 @@ class TiffReader(ArrayReader):
         super().__init__(tifffile.imread(path))
 
 
+class LazyCachedMap(collections.abc.Mapping):
+    """
+    Mapping that computes values on read and optionally caches them.
+
+    Parameters
+    ----------
+    mapping : dict-like
+        Must map keys to callables that return values.
+    cache : dict-like or None, optional
+        Will be used to cache values. If None, nothing is cached.
+        May be ordinary dict, LRUCache, etc.
+    """
+
+    __slots__ = ("__mapping", "__cache")
+
+    def __init__(self, mapping, cache=None):
+        self.__mapping = mapping
+        self.__cache = cache
+
+    def __getitem__(self, key):
+        if self.__cache is None:
+            return self.__mapping[key]()
+        else:
+            try:
+                return self.__cache[key]
+            except KeyError:
+                value = self.__mapping[key]()
+                self.__cache[key] = value
+                return value
+
+    def __len__(self):
+        return len(self.__mapping)
+
+    def __iter__(self):
+        return iter(self.__mapping)
+
+    def __contains__(self, key):
+        # Ensure checking 'in' does not trigger evaluation.
+        return key in self.__mapping
+
+    def __getstate__(self):
+        return self.__mapping, self.__cache
+
+    def __setstate__(self, mapping, cache):
+        self.__mapping = mapping
+        self.__cache = cache
+
+    def __repr__(self):
+        if self.__cache is None:
+            d = {k: "<lazy>" for k in self.__mapping}
+        else:
+            d = {}
+            for k in self.__mapping:
+                try:
+                    value = self.__cache[k]
+                except KeyError:
+                    d[k] = "<lazy>"
+                else:
+                    d[k] = repr(value)
+        return (
+            f"<{type(self).__name__}"
+            "({" + ", ".join(f"{k!r}: {v!s}" for k, v in d.items()) + "})>"
+        )
+
+
 class Catalog(CatalogInMemory):
-    "Make a Catalog from files."
+    """
+    Make a Catalog from files.
+    """
 
-    # TODO Implement some culling of state, possibly with a variant of LazyMap.
+    DEFAULT_READERS_BY_MIMETYPE = {
+        "image/tiff": TiffReader,
+    }
 
-    def __init__(self, directory):
-        self._watching_thread = None
-        super().__init__(*args, **kwargs)
-        self.readers_by_mimetype = {"image/tiff": TiffReader}
-
-    def start_watching_thread(self, directory):
+    def __init__(self, directory, ignore=None, readers_by_mimetype=None):
+        if ignore is not None:
+            # TODO Support regex or glob (?) patterns to ignore.
+            raise NotImplementedError
+        readers = self.DEFAULT_READERS_BY_MIMETYPE.copy()
+        readers.update(readers_by_mimetype or {})
+        self.readers_by_mimetype = readers
+        # 1. Start watching directory for changes and accumulating a queue of them.
+        # 2. Do an initial scan of the files in the directory.
+        # 3. When the initial scan completes, start processing changes. This
+        #    will cover changes that occurred during or after the initial scan.
         self._watching_thread = threading.Thread(
             target=self._watch, args=(directory,), name="tiled-watch-filesystem-changes"
         )
         self._watching_thread.start()
+        internal_mapping = {}
+        catalog_mapping = {}
+        for root, directories, files in os.walk(directory, topdown=True):
+            internal_mapping_node = internal_mapping
+            catalog_mapping_node = catalog_mapping
+            for part in Path(root).parts:
+                internal_mapping_node = internal_mapping_node[part]
+                catalog_mapping_node = catalog_mapping_node[part]
+            for directory in directories:
+                internal_mapping_node[directory] = {}
+                catalog_mapping_node[directory] = functools.partial(
+                    LazyCachedMap, internal_mapping_node[directory]
+                )
+            for filename in files:
+                catalog_mapping_node[filename] = self._reader_factory_for_file(
+                    Path(root, filename)
+                )
+        self._internal_mapping = internal_mapping
+        self._catalog_mapping = catalog_mapping
+        super().__init__(self._catalog_mapping["."])
 
     def _watch(self, directory):
         for changes in watchgod.watch(directory):
             print(changes)
             # TODO Call _process_file.
 
-    def _process_file(path):
-        mimetype, _ = mimetypes.guess_type(filepath)
+    def _reader_factory_for_file(self, path):
+        mimetype, _ = mimetypes.guess_type(path)
         reader_class = self.readers_by_mimetype[mimetype]
-        reader = reader_class(str(path))
-        catalog = self
-        for part in path.parent.parts:
-            try:
-                catalog = catalog[segment]
-            except KeyError:
-                catalog = catalog._mapping[part] = CatalogInMemory({})
-        catalog[path.name] = reader
-
-    @classmethod
-    def from_directory(cls, directory):
-        """
-        Construct a Catalog from a (possibly nested) directory.
-
-        Parameters
-        ----------
-        directory : Path or str
-        """
-        for root, dirs, files in os.walk(directory, topdown=False):
-            for file in files:
-                self._process_file(pathlib.Path(root, file))
+        return functools.partial(reader_class, str(path))
