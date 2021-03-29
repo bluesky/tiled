@@ -1,7 +1,7 @@
 import base64
 from dataclasses import dataclass
 import enum
-import importlib
+import io
 import json
 import sys
 from typing import Tuple
@@ -9,6 +9,7 @@ from typing import Tuple
 import numpy
 
 from ..media_type_registration import serialization_registry, deserialization_registry
+from ..utils import modules_available
 
 
 class Endianness(str, enum.Enum):
@@ -112,12 +113,12 @@ deserialization_registry.register(
     "application/octet-stream",
     lambda buffer, dtype, shape: numpy.frombuffer(buffer, dtype=dtype).reshape(shape),
 )
-if importlib.util.find_spec("PIL"):
-    from PIL import Image
-    import io
+if modules_available("PIL"):
 
-    def save_to_buffer(array, format):
-        # Handle to *few* dimensions here, and let PIL raise if there are too
+    def save_to_buffer_PIL(array, format):
+        from PIL import Image
+
+        # Handle too *few* dimensions here, and let PIL raise if there are too
         # *many* because it depends on the shape (RGB, RGBA, etc.)
         normalized_array = numpy.atleast_2d(array)
         file = io.BytesIO()
@@ -125,7 +126,9 @@ if importlib.util.find_spec("PIL"):
         image.save(file, format=format)
         return file.getbuffer()
 
-    def array_from_buffer(buffer, format, dtype, shape):
+    def array_from_buffer_PIL(buffer, format, dtype, shape):
+        from PIL import Image
+
         file = io.BytesIO(buffer)
         image = Image.open(file, format=format)
         return numpy.asarray(image).asdtype(dtype).reshape(shape)
@@ -133,12 +136,12 @@ if importlib.util.find_spec("PIL"):
     serialization_registry.register(
         "array",
         "image/png",
-        lambda array: save_to_buffer(array, "png"),
+        lambda array: save_to_buffer_PIL(array, "png"),
     )
     deserialization_registry.register(
         "array",
         "image/png",
-        lambda buffer, dtype, shape: array_from_buffer(buffer, "png", dtype, shape),
+        lambda buffer, dtype, shape: array_from_buffer_PIL(buffer, "png", dtype, shape),
     )
     serialization_registry.register(
         "array",
@@ -146,8 +149,35 @@ if importlib.util.find_spec("PIL"):
         lambda array: (
             "<html>"
             '<img src="data:image/png;base64,'
-            f"{base64.b64encode(save_to_buffer(array, 'png')).decode()!s}\""
+            f"{base64.b64encode(save_to_buffer_PIL(array, 'png')).decode()!s}\""
             "/>"
             "</html>"
         ),
+    )
+if modules_available("tifffile"):
+
+    def array_from_buffer_tifffile(buffer, dtype, shape):
+        from tifffile import imread
+
+        return imread(buffer).astype(dtype).reshape(shape)
+
+    def save_to_buffer_tifffile(array):
+        from tifffile import imsave
+
+        # Handle too *few* dimensions here, and let tifffile raise if there are too
+        # *many* because it depends on the shape (RGB, RGBA, etc.)
+        normalized_array = numpy.atleast_2d(array)
+        file = io.BytesIO()
+        imsave(file, normalized_array)
+        return file.getbuffer()
+
+    serialization_registry.register(
+        "array",
+        "image/tiff",
+        save_to_buffer_tifffile,
+    )
+    deserialization_registry.register(
+        "array",
+        "image/tiff",
+        array_from_buffer_tifffile,
     )
