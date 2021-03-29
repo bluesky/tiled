@@ -165,6 +165,8 @@ class Catalog(CatalogInMemory):
                     readers_by_mimetype,
                     Path(root, filename),
                 )
+        # Appending any object will cause bool(initial_scan_complete) to
+        # evaluate to True.
         initial_scan_complete.append(object())
         mapping = LazyCachedMap(index[()])
         return cls(
@@ -211,7 +213,9 @@ class Catalog(CatalogInMemory):
         )
 
     def shutdown_watcher(self):
-        self._watcher_thread_kill_switch = True
+        # Appending any object will cause bool(self._watcher_thread_kill_switch)
+        # to evaluate to True.
+        self._watcher_thread_kill_switch.append(object())
 
 
 def _watch(
