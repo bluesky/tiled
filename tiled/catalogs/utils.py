@@ -1,23 +1,6 @@
-from functools import wraps
 import operator
 
 from ..utils import Sentinel
-
-
-class AuthenticationRequired(Exception):
-    pass
-
-
-def authenticated(method):
-    @wraps(method)
-    def inner(self, *args, **kwargs):
-        if (self.access_policy is not None) and (self.authenticated_identity is None):
-            raise AuthenticationRequired(
-                f"Access policy on {self} is {self.access_policy}."
-            )
-        return method(self, *args, **kwargs)
-
-    return inner
 
 
 class IndexCallable:
@@ -65,7 +48,9 @@ class IndexersMixin:
         self.items_indexer = IndexCallable(self._items_indexer)
         self.values_indexer = IndexCallable(self._values_indexer)
 
-    @authenticated
+    # There is some code reptition here, but let's live with it rather than add
+    # yet more depth to the call stack....
+
     def _keys_indexer(self, index):
         if isinstance(index, int):
             key, _value = self._item_by_index(index)
@@ -76,7 +61,6 @@ class IndexersMixin:
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
-    @authenticated
     def _items_indexer(self, index):
         if isinstance(index, int):
             return self._item_by_index(index)
@@ -86,7 +70,6 @@ class IndexersMixin:
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
-    @authenticated
     def _values_indexer(self, index):
         if isinstance(index, int):
             _key, value = self._item_by_index(index)

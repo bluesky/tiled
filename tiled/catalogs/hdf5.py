@@ -5,7 +5,6 @@ import numpy
 
 from ..readers.array import ArrayReader
 from ..utils import (
-    authenticated,
     catalog_repr,
     DictView,
     IndexersMixin,
@@ -77,7 +76,6 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def __len__(self):
         return len(self._node)
 
-    @authenticated
     def search(self, query):
         """
         Return a Catalog with a subset of the mapping.

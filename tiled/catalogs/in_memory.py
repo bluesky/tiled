@@ -7,7 +7,7 @@ from ..utils import (
     DictView,
     SpecialUsers,
 )
-from .utils import authenticated, IndexersMixin, UNCHANGED
+from .utils import IndexersMixin, UNCHANGED
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
@@ -67,15 +67,12 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def __repr__(self):
         return f"<{type(self).__name__}({set(self._mapping)!r})>"
 
-    @authenticated
     def __getitem__(self, key):
         return self._mapping[key]
 
-    @authenticated
     def __iter__(self):
         yield from self._mapping
 
-    @authenticated
     def __len__(self):
         return len(self._mapping)
 
@@ -116,7 +113,6 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             **kwargs,
         )
 
-    @authenticated
     def search(self, query):
         """
         Return a Catalog with a subset of the mapping.
