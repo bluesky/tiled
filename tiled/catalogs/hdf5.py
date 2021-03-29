@@ -8,8 +8,7 @@ from ..utils import (
     authenticated,
     catalog_repr,
     DictView,
-    IndexCallable,
-    slice_to_interval,
+    IndexersMixin,
 )
 from ..queries import KeyLookup
 from .in_memory import Catalog as CatalogInMemory
@@ -20,7 +19,7 @@ class HDF5DatasetReader(ArrayReader):
     ...
 
 
-class Catalog(collections.abc.Mapping):
+class Catalog(collections.abc.Mapping, IndexersMixin):
     def __init__(self, node, access_policy=None, authenticated_identity=None):
         self._node = node
         if (access_policy is not None) and (
@@ -30,9 +29,6 @@ class Catalog(collections.abc.Mapping):
                 f"Access policy {access_policy} is not compatible with this Catalog."
             )
         self._access_policy = access_policy
-        self.keys_indexer = IndexCallable(self._keys_indexer)
-        self.items_indexer = IndexCallable(self._items_indexer)
-        self.values_indexer = IndexCallable(self._values_indexer)
         self._authenticated_identity = authenticated_identity
 
     def __repr__(self):
@@ -91,6 +87,9 @@ class Catalog(collections.abc.Mapping):
         else:
             raise NotImplementedError
 
+    # The following three methods are used by IndexersMixin
+    # to define keys_indexer, items_indexer, and values_indexer.
+
     def _keys_slice(self, start, stop):
         return list(self._node)[start:stop]
 
@@ -99,35 +98,3 @@ class Catalog(collections.abc.Mapping):
 
     def _item_by_index(self, index):
         return self[list(self)[index]]
-
-    @authenticated
-    def _keys_indexer(self, index):
-        if isinstance(index, int):
-            key, _value = self._item_by_index(index)
-            return key
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return list(self._keys_slice(start, stop))
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
-
-    @authenticated
-    def _items_indexer(self, index):
-        if isinstance(index, int):
-            return self._item_by_index(index)
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return list(self._items_slice(start, stop))
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
-
-    @authenticated
-    def _values_indexer(self, index):
-        if isinstance(index, int):
-            _key, value = self._item_by_index(index)
-            return value
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
-            return [value for _key, value in self._items_slice(start, stop)]
-        else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
