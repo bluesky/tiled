@@ -227,6 +227,10 @@ def tokenize_url(url):
     """
     return (
         url[:2]
-        + (str(url[2]).encode(),)
-        + tuple(urllib.parse.quote_plus(segment) for segment in url[3:])
+        + (str(url[2]).encode(),)  # convert port from int to bytestring
+        + tuple(
+            urllib.parse.quote_plus(segment)
+            for item in url[3:]
+            for segment in item.split(b"/")
+        )
     )
