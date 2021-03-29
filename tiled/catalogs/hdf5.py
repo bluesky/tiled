@@ -73,8 +73,15 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             return Catalog(value)
         else:
             if value.dtype == numpy.dtype("O"):
-                # HACK Placeholder
-                return HDF5DatasetReader(numpy.array([1]))
+                warnings.warn(
+                    f"The dataset {key} is of object type, using a "
+                    "Python-only feature of h5py that is not supported by "
+                    "HDF5 in general. Read more about that feature at "
+                    "https://docs.h5py.org/en/stable/special.html. "
+                    "Consider using a fixed-length field instead. "
+                    "Tiled will serve an empty placeholder."
+                )
+                return HDF5DatasetReader(numpy.array([]))
             return HDF5DatasetReader(value)
 
     def __len__(self):
