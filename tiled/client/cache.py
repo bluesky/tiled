@@ -120,6 +120,14 @@ class Cache:
         self.etag_refcount = defaultdict(lambda: 0)
         self.etag_lock = LockDict.from_lock_factory(lock_factory)
         self.url_to_etag_lock = global_lock
+        # TODO Do this without actually causing the content in FileBasedCache to be
+        # *read* at this point.
+        for etag, content in etag_to_content_cache.items():
+            nbytes = len(content)
+            score = self.scorer.touch(etag, nbytes)
+            self.heap[etag] = score
+            self.nbytes[etag] = nbytes
+            self.total_bytes += nbytes
 
     def put_etag_for_url(self, url, etag):
         assert etag is not None
@@ -298,6 +306,7 @@ class FileBasedCache(collections.abc.MutableMapping):
 
     def __init__(self, directory):
         self._directory = Path(directory)
+        self._directory.mkdir(parents=True, exist_ok=True)
 
     def __repr__(self):
         return repr(dict(self))
@@ -327,7 +336,8 @@ class FileBasedCache(collections.abc.MutableMapping):
         return len(list(self._directory.iterdir()))
 
     def __iter__(self):
-        return self._directory.iterdir()
+        for path in self._directory.iterdir():
+            yield path.relative_to(self._directory).parts
 
     def __contains__(self, key):
         path = Path(self._directory, *_normalize(key))
