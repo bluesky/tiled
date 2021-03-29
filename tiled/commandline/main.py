@@ -16,8 +16,6 @@ app.add_typer(serve_app, name="serve")
 @serve_app.command("directory")
 def directory(
     directory: str,
-    reader_for_glob: List[str] = typer.Option(None),
-    reader_for_mimetype: List[str] = typer.Option(None),
 ):
     "Serve a Catalog instance from a directory of files."
     import os
@@ -30,16 +28,7 @@ def directory(
     @lru_cache(1)
     def override_settings():
         settings = get_settings()
-        settings.catalog = Catalog.from_directory(
-            directory,
-            reader_for_glob={
-                k: import_object(v) for k, v in _parse_kwargs(reader_for_glob).items()
-            },
-            reader_for_mimetype={
-                k: import_object(v)
-                for k, v in _parse_kwargs(reader_for_mimetype).items()
-            },
-        )
+        settings.catalog = Catalog.from_directory(directory)
         return settings
 
     api.dependency_overrides[get_settings] = override_settings
