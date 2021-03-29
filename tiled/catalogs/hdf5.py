@@ -1,14 +1,12 @@
 import collections.abc
+import warnings
 
 import h5py
 import numpy
 
 from ..readers.array import ArrayReader
-from ..utils import (
-    catalog_repr,
-    DictView,
-    IndexersMixin,
-)
+from ..utils import DictView
+from .utils import catalog_repr, IndexersMixin
 from ..queries import KeyLookup
 from .in_memory import Catalog as CatalogInMemory
 
@@ -29,6 +27,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
+        super().__init__()
 
     def __repr__(self):
         return catalog_repr(self, list(self))
