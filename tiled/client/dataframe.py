@@ -1,7 +1,7 @@
 import dask
 import dask.dataframe
 
-from ..containers.dataframe import (
+from ..structures.dataframe import (
     APACHE_ARROW_FILE_MIME_TYPE,
     DataFrameMacroStructure,
     DataFrameMicroStructure,

@@ -22,15 +22,15 @@ Reader as well as a sample HTTP API based on
   a dict-like. This ``metadata`` is treated as user space, and no part of the
   server or client will rely on its contents.
 
-* Readers MUST implement a ``container`` attribute or property which returns
+* Readers MUST implement a ``structure_family`` attribute or property which returns
   a string of the general type that will be returned by ``read()``, as in
   intake. These will be generic terms like ``"array"``, not the
   ``__qualname__`` of the class. It is meant to encompass the range of concrete
   types (cupy array, sparse array, dask array, numpy ndarray) that duck-type as
-  a given generic container.
+  a given generic structure.
 
 * Readers MUST implement a method ``structure()`` with no arguments
-  which returns a description of the structure of this data. For each container
+  which returns a description of the structure of this data. For each structure family 
   (array, dataframe, etc.) there will be a specific schema for this description
   (TBD). For example, "array" reports machine data type, shape, and chunks.
   Richer structure (e.g. xarray) will include high-level structure like columns,

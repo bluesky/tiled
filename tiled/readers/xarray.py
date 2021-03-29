@@ -1,6 +1,6 @@
 import numpy
 
-from ..containers.xarray import (
+from ..structures.xarray import (
     ArrayStructure,
     DataArrayMacroStructure,
     DataArrayStructure,
@@ -17,7 +17,7 @@ class VariableReader:
     Wrap an xarray.Variable
     """
 
-    container = "variable"
+    structure_family = "variable"
 
     def __init__(self, variable, metadata=None):
         self._variable = variable
@@ -73,7 +73,7 @@ class DataArrayReader:
     Wrap an xarray.DataArray
     """
 
-    container = "data_array"
+    structure_family = "data_array"
 
     def __init__(self, data_array, metadata=None):
         self._data_array = data_array
@@ -132,7 +132,7 @@ class DatasetReader:
     Wrap an xarray.Dataset
     """
 
-    container = "dataset"
+    structure_family = "dataset"
 
     def __init__(self, dataset, metadata=None):
         self._dataset = dataset

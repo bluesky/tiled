@@ -3,7 +3,7 @@ import itertools
 import dask
 import dask.array
 
-from ..containers.array import ArrayStructure
+from ..structures.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
 from .base import BaseArrayClientReader
 from .utils import get_content_with_cache

@@ -1,6 +1,6 @@
 import dask.dataframe
 
-from ..containers.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
+from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
 
 
@@ -14,7 +14,7 @@ class DataFrameReader:
     - dask.DataFrame
     """
 
-    container = "dataframe"
+    structure_family = "dataframe"
 
     def __init__(self, data, metadata=None):
         self._metadata = metadata or {}

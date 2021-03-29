@@ -50,8 +50,10 @@ async def about(request: Request):
             library_version=__version__,
             api_version=0,
             formats={
-                container: list(serialization_registry.media_types(container))
-                for container in serialization_registry.containers
+                structure_family: list(
+                    serialization_registry.media_types(structure_family)
+                )
+                for structure_family in serialization_registry.structure_families
             },
             queries=list(name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?

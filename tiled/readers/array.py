@@ -1,6 +1,6 @@
 import dask.array
 
-from ..containers.array import ArrayMacroStructure, MachineDataType
+from ..structures.array import ArrayMacroStructure, MachineDataType
 from ..utils import DictView
 
 
@@ -15,7 +15,7 @@ class ArrayReader:
     - h5py.Dataset
     """
 
-    container = "array"
+    structure_family = "array"
 
     def __init__(self, data, metadata=None):
         self._metadata = metadata or {}

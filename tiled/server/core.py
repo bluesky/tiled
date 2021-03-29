@@ -26,15 +26,15 @@ from .. import queries
 
 del queries
 if modules_available("numpy", "dask.array"):
-    from ..containers import array as _array  # noqa: F401
+    from ..structures import array as _array  # noqa: F401
 
     del _array
 if modules_available("pandas", "pyarrow", "dask.dataframe"):
-    from ..containers import dataframe as _dataframe  # noqa: F401
+    from ..structures import dataframe as _dataframe  # noqa: F401
 
     del _dataframe
 if modules_available("xarray"):
-    from ..containers import xarray as _xarray  # noqa: F401
+    from ..structures import xarray as _xarray  # noqa: F401
 
     del _xarray
 
@@ -347,14 +347,14 @@ def construct_resource(path, key, entry, fields):
         )
     else:
         structure = {}
-        if models.EntryFields.container in fields:
-            attributes["container"] = entry.container
+        if models.EntryFields.structure_family in fields:
+            attributes["structure_family"] = entry.structure_family
         if models.EntryFields.macrostructure in fields:
             macrostructure = entry.macrostructure()
             if macrostructure is not None:
                 structure["macro"] = dataclasses.asdict(macrostructure)
         if models.EntryFields.microstructure in fields:
-            if entry.container == "dataframe":
+            if entry.structure_family == "dataframe":
                 # Special case: its microstructure is cannot be JSON-serialized
                 # and is therefore available from separate routes. Sends links
                 # instead of the actual payload.

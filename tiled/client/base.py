@@ -1,5 +1,4 @@
 from ..utils import DictView
-from ..catalogs.utils import UNCHANGED
 from .utils import get_json_with_cache
 
 
@@ -13,10 +12,6 @@ class BaseClientReader:
         path,
         metadata,
         params,
-        queries=None,
-        containers=None,
-        special_clients=None,
-        root_client_type=None,
         structure=None,
     ):
         self._client = client
@@ -26,44 +21,6 @@ class BaseClientReader:
         self._path = path
         self._params = params
         self._structure = structure
-
-    def new_variation(
-        self,
-        class_,
-        *,
-        path=UNCHANGED,
-        metadata=UNCHANGED,
-        params=UNCHANGED,
-        structure=UNCHANGED,
-        containers=UNCHANGED,
-        special_clients=UNCHANGED,
-    ):
-        """
-        This is intended primarily for intenal use and use by subclasses.
-        """
-        if path is UNCHANGED:
-            path = self._path
-        if metadata is UNCHANGED:
-            metadata = self._metadata
-        if containers is UNCHANGED:
-            containers = self.containers
-        if special_clients is UNCHANGED:
-            special_clients = self.special_clients
-        if params is UNCHANGED:
-            params = self._params
-        if params is UNCHANGED:
-            params = self._params
-        return class_(
-            client=self._client,
-            offline=self._offline,
-            cache=self._cache,
-            path=path,
-            metadata=metadata,
-            params=params,
-            structure=self._structure,
-            containers=containers,
-            special_clients=special_clients,
-        )
 
     def __repr__(self):
         return f"<{type(self).__name__}>"

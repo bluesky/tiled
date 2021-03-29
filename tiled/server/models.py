@@ -35,7 +35,7 @@ class EntryType(str, enum.Enum):
 
 class EntryFields(str, enum.Enum):
     metadata = "metadata"
-    container = "container"
+    structure_family = "structure_family"
     microstructure = "structure.micro"
     macrostructure = "structure.macro"
     count = "count"
@@ -49,7 +49,7 @@ class CatalogAttributes(pydantic.BaseModel):
     client_type_hint: Optional[str]
 
 
-class Container(str, enum.Enum):
+class StructureFamilies(str, enum.Enum):
     array = "array"
     dataframe = "dataframe"
     variable = "variable"
@@ -59,7 +59,7 @@ class Container(str, enum.Enum):
 
 class ReaderAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
-    container: Optional[Container]
+    structure_family: Optional[StructureFamilies]
     structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
 
 

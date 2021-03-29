@@ -1,13 +1,13 @@
 import tifffile
 
-from ..containers.array import (
+from ..structures.array import (
     ArrayMacroStructure,
     MachineDataType,
 )
 
 
 class TiffReader:
-    container = "array"
+    structure_family = "array"
 
     def __init__(self, path):
         self._file = tifffile.TiffFile(path)

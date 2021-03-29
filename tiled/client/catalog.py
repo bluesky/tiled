@@ -24,10 +24,10 @@ from ..catalogs.utils import (
 
 class ClientCatalog(collections.abc.Mapping, IndexersMixin):
 
-    # This maps the container sent by the server to a client-side object that
-    # can interpret the container's structure and content. LazyMap is used to
+    # This maps the structure_family sent by the server to a client-side object that
+    # can interpret the structure_family's structure and content. LazyMap is used to
     # defer imports.
-    DEFAULT_CONTAINER_DISPATCH = {
+    DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
         "memory": LazyMap(
             {
                 "array": lambda: importlib.import_module(
@@ -97,7 +97,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         cls.DEFAULT_SPECIAL_CLIENT_DISPATCH = cls._discover_entrypoints(
             "tiled.special_client"
         )
-        # Note: We could use entrypoints to discover custom container types as
+        # Note: We could use entrypoints to discover custom structure_family types as
         # well, and in fact we did do this in an early draft. It was removed
         # for simplicity, at least for now.
 
@@ -109,7 +109,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         cache=None,
         offline=False,
         token=None,
-        containers="dask",
+        structure_clients="dask",
         special_clients=None,
     ):
         """
@@ -122,12 +122,12 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         cache : Cache, optional
         offline : bool, optional
             False by default. If True, rely on cache only.
-        containers : str or dict
+        structure_clients : str or dict
             Use "dask" for delayed data loading and "memory" for immediate
             in-memory structures (e.g. normal numpy arrays). For advanced use,
-            provide dict mapping container names ("array", "dataframe",
+            provide dict mapping structure_family names ("array", "dataframe",
             "variable", "data_array", "dataset") to client objects. See
-            ``ClientCatalog.DEFAULT_CONTAINER_DISPATCH``.
+            ``ClientCatalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         special_clients : dict
             Advanced: Map client_type_hint from the server to special client
             catalog objects. See also
@@ -145,7 +145,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             client,
             cache=cache,
             offline=offline,
-            containers=containers,
+            structure_clients=structure_clients,
             special_clients=special_clients,
         )
 
@@ -156,7 +156,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         *,
         cache=None,
         offline=False,
-        containers="dask",
+        structure_clients="dask",
         special_clients=None,
     ):
         """
@@ -169,21 +169,21 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         cache : Cache, optional
         offline : bool, optional
             False by default. If True, rely on cache only.
-        containers : str or dict
+        structure_clients : str or dict
             Use "dask" for delayed data loading and "memory" for immediate
             in-memory structures (e.g. normal numpy arrays). For advanced use,
-            provide dict mapping container names ("array", "dataframe",
+            provide dict mapping structure families ("array", "dataframe",
             "variable", "data_array", "dataset") to client objects. See
-            ``ClientCatalog.DEFAULT_CONTAINER_DISPATCH``.
+            ``ClientCatalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         special_clients : dict
             Advanced: Map client_type_hint from the server to special client
             catalog objects. See also
             ``ClientCatalog.discover_special_clients()`` and
             ``ClientCatalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
         """
-        # Interet containers="dask" and containers="memory" shortcuts.
-        if isinstance(containers, str):
-            containers = cls.DEFAULT_CONTAINER_DISPATCH[containers]
+        # Interet structure_clients="dask" and structure_clients="memory" shortcuts.
+        if isinstance(structure_clients, str):
+            structure_clients = cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
         # Do entrypoint discovery if it hasn't yet been done.
         if cls.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
             cls.discover_special_clients()
@@ -198,7 +198,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             offline=offline,
             path=[],
             metadata=metadata,
-            containers=containers,
+            structure_clients=structure_clients,
             cache=cache,
             special_clients=special_clients,
             root_client_type=cls,
@@ -212,7 +212,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         path,
         metadata,
         root_client_type,
-        containers,
+        structure_clients,
         cache,
         special_clients,
         params=None,
@@ -224,7 +224,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         self._offline = offline
         self._metadata = metadata
         self._cache = cache
-        self.containers = containers
+        self.structure_clients = structure_clients
         self.special_clients = special_clients
         self._root_client_type = root_client_type
         if isinstance(path, str):
@@ -250,15 +250,14 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         return DictView(self._metadata)
 
     def _get_class(self, item):
-        "Return the appropriate Client object for this structure."
-        # The basic structure of the response is either one of the containers
+        # The basic structure of the response is either one of the structure_clients
         # we know about or a sub-Catalog.
         if item["type"] == "reader":
-            container = item["attributes"]["container"]
+            structure_family = item["attributes"]["structure_family"]
             try:
-                return self.containers[container]
+                return self.structure_clients[structure_family]
             except KeyError:
-                raise UnknownContainer(container) from None
+                raise UnknownStructureFamily(structure_family) from None
         # If a catalog, server can hint that we should use a special variant
         # that might have a special __repr__, or extra methods for usability,
         # etc.
@@ -283,11 +282,11 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
 
     def new_variation(
         self,
-        class_,
+        item,
         *,
         path=UNCHANGED,
         metadata=UNCHANGED,
-        containers=UNCHANGED,
+        structure_clients=UNCHANGED,
         special_clients=UNCHANGED,
         params=UNCHANGED,
         queries=UNCHANGED,
@@ -299,26 +298,40 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             path = self._path
         if metadata is UNCHANGED:
             metadata = self._metadata
-        if containers is UNCHANGED:
-            containers = self.containers
+        if structure_clients is UNCHANGED:
+            structure_clients = self.structure_clients
         if special_clients is UNCHANGED:
             special_clients = self.special_clients
         if params is UNCHANGED:
             params = self._params
         if queries is UNCHANGED:
-            queries = self._queries
-        return class_(
-            client=self._client,
-            offline=self._offline,
-            cache=self._cache,
-            path=path,
-            metadata=metadata,
-            containers=containers,
-            special_clients=special_clients,
-            params=params,
-            queries=queries,
-            root_client_type=self._root_client_type,
-        )
+            if path is UNCHANGED:
+                queries = self._queries
+            else:
+                queries = None  # The queries do not apply to a parent or child catalog.
+        class_ = self._get_class(item)
+        if item["type"] == "catalog":
+            return class_(
+                client=self._client,
+                offline=self._offline,
+                cache=self._cache,
+                path=path,
+                metadata=metadata,
+                structure_clients=structure_clients,
+                special_clients=special_clients,
+                params=params,
+                queries=queries,
+                root_client_type=self._root_client_type,
+            )
+        else:  # item["type"] == "reader"
+            return class_(
+                client=self._client,
+                offline=self._offline,
+                cache=self._cache,
+                path=path,
+                metadata=metadata,
+                params=params,
+            )
 
     def __len__(self):
         content = get_json_with_cache(
@@ -357,7 +370,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             self._client,
             f"/search/{'/'.join(self._path )}",
             params={
-                "fields": ["metadata", "container", "client_type_hint"],
+                "fields": ["metadata", "structure_family", "client_type_hint"],
                 **_queries_to_params(KeyLookup(key)),
                 **self._queries_as_params,
                 **self._params,
@@ -370,11 +383,9 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             len(data) == 1
         ), "The key lookup query must never result more than one result."
         (item,) = data
-        class_ = self._get_class(item)
         return self.new_variation(
-            class_,
+            item,
             path=self._path + (item["id"],),
-            queries=None,  # The queries applied to the parent, not this child.
             metadata=item["attributes"]["metadata"],
         )
 
@@ -389,18 +400,16 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
                 self._client,
                 next_page_url,
                 params={
-                    "fields": ["metadata", "container", "client_type_hint"],
+                    "fields": ["metadata", "structure_family", "client_type_hint"],
                     **self._queries_as_params,
                     **self._params,
                 },
             )
             for item in content["data"]:
                 key = item["id"]
-                class_ = self._get_class(item)
                 value = self.new_variation(
-                    class_,
+                    item,
                     path=self._path + (item["id"],),
-                    queries=None,  # The queries applied to the parent, not this child.
                     metadata=item["attributes"]["metadata"],
                 )
                 yield key, value
@@ -442,7 +451,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
                 self._client,
                 next_page_url,
                 params={
-                    "fields": ["metadata", "container", "client_type_hint"],
+                    "fields": ["metadata", "structure_family", "client_type_hint"],
                     **self._queries_as_params,
                     **self._params,
                 },
@@ -452,11 +461,9 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
                 if stop is not None and next(item_counter) == stop:
                     return
                 key = item["id"]
-                class_ = self._get_class(item)
                 yield key, self.new_variation(
-                    class_,
+                    item,
                     path=self._path + (item["id"],),
-                    queries=None,  # The queries applied to the parent, not this child.
                     metadata=item["attributes"]["metadata"],
                 )
             next_page_url = content["links"]["next"]
@@ -471,26 +478,32 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             self._client,
             url,
             params={
-                "fields": ["metadata", "container", "client_type_hint"],
+                "fields": ["metadata", "structure_family", "client_type_hint"],
                 **self._queries_as_params,
                 **self._params,
             },
         )
         (item,) = content["data"]
         key = item["id"]
-        class_ = self._get_class(item)
         value = self.new_variation(
-            class_,
+            item,
             path=self._path + (item["id"],),
-            queries=None,  # The queries applied to the parent, not this child.
             metadata=item["attributes"]["metadata"],
         )
         return (key, value)
 
     def search(self, query):
-        return self.new_variation(
-            type(self),
+        return type(self)(
+            client=self._client,
+            offline=self._offline,
+            cache=self._cache,
+            path=self._path,
+            metadata=self._metadata,
+            structure_clients=self.structure_clients,
+            special_clients=self.special_clients,
+            params=self._params,
             queries=self._queries + (query,),
+            root_client_type=self._root_client_type,
         )
 
 
@@ -506,5 +519,5 @@ def _queries_to_params(*queries):
     return params
 
 
-class UnknownContainer(KeyError):
+class UnknownStructureFamily(KeyError):
     pass

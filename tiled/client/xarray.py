@@ -4,7 +4,7 @@ import itertools
 
 import xarray
 
-from ..containers.xarray import (
+from ..structures.xarray import (
     DataArrayStructure,
     DatasetStructure,
     VariableStructure,
