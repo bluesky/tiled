@@ -19,11 +19,11 @@ def get_content_with_cache(
         # We must rely on the cache alone.
         reservation = cache.get_reservation(url)
         if reservation is None:
-            raise NotAvailable(url)
+            raise NotAvailableOffline(url)
         content = reservation.load_content()
         if content is None:
             # TODO Do we ever get here?
-            raise NotAvailable(url)
+            raise NotAvailableOffline(url)
         return content
     if cache is None:
         # No cache, so we can use the client straightforwardly.
@@ -93,5 +93,5 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
-class NotAvailable(Exception):
+class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."

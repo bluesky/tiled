@@ -22,6 +22,14 @@ from heapdict import heapdict
 
 
 class Reservation:
+    """
+    This represents a reservation on a cached piece of content.
+
+    The content will not be evicted from the cache or updated
+    until the content is loaded using `load_content()` or released
+    using `ensure_released()`.
+    """
+
     def __init__(self, url, etag, lock, load_content):
         self.url = url
         self.etag = etag
@@ -31,11 +39,13 @@ class Reservation:
         lock.acquire()
 
     def load_content(self):
+        "Return the content and release the reservation."
         content = self._load_content()
         self._lock.release()
         return content
 
     def ensure_released(self):
+        "Release the reservation. This is idempotent."
         if self._lock_held:
             self._lock.release()
             self._lock_held = False
@@ -46,17 +56,29 @@ class Cache:
     A client-side cache of data from the server.
 
     The __init__ is to be used internally and by authors of custom caches.
-    See Cache.in_memory() and Cache.on_disk() for user-facing methods.
+    See ``Cache.in_memory()`` and ``Cache.on_disk()`` for user-facing methods.
+
+    This is used by the function ``tiled.client.utils.get_content_with_cache``.
     """
 
     @classmethod
     def in_memory(cls, available_bytes, *, scorer=None):
-        "An in-memory cache of data from the server"
+        """
+        An in-memory cache of data from the server
 
+        This is useful to ensure that data is not downloaded repeatedly
+        unless it has been updated since the last download.
+
+        Because it is in memory, it only applies to a given Python process,
+        i.e. a given working session. See ``Cache.on_disk()`` for a
+        cache that can be shared across process and persistent for future
+        sessions.
+        """
         return cls(
             available_bytes,
             url_to_etag_cache={},
             etag_to_content_cache={},
+            sizes={},
             global_lock=threading.Lock(),
             lock_factory=lambda etag: threading.Lock(),
             scorer=scorer,
@@ -64,18 +86,30 @@ class Cache:
 
     @classmethod
     def on_disk(cls, available_bytes, path, *, scorer=None):
-        "An on-disk cache of data from the server"
+        """
+        An on-disk cache of data from the server
+
+        This is useful to ensure that data is not downloaded repeatedly
+        unless it has been updated since the last download.
+
+        This uses file-based locking to ensure consistency when the cache
+        is shared by multiple processes.
+        """
         import locket
 
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-
-        # TODO Record the client library version somewhere so we can
-        # deal with migrating caches across upgrades if needed.
+        # Get the nbytes for each object in the cache if it is not empty.
+        # The FileBasedCache provides a `sizes` property that computes this
+        # using stat(). That is, we do not actually read the content into
+        # memory at this point.
+        etag_to_content_cache = FileBasedCache(path / "etag_to_content_cache")
+        sizes = etag_to_content_cache.sizes
         return cls(
             available_bytes,
             url_to_etag_cache=FileBasedCache(path / "url_to_etag_cache"),
-            etag_to_content_cache=FileBasedCache(path / "etag_to_content_cache"),
+            etag_to_content_cache=etag_to_content_cache,
+            sizes=sizes,
             global_lock=locket.lock_file(path / "global.lock"),
             lock_factory=lambda etag: locket.lock_file(
                 path / "etag_to_content_cache" / f"{etag}.lock"
@@ -89,6 +123,7 @@ class Cache:
         *,
         url_to_etag_cache,
         etag_to_content_cache,
+        sizes,
         global_lock,
         lock_factory,
         scorer=None,
@@ -97,12 +132,18 @@ class Cache:
         Parameters
         ----------
 
-        available_bytes: int
+        available_bytes : int
             The number of bytes of data to keep in the cache
         url_to_etag_cache : MutableMapping
             Dict-like object to use for cache
         etag_to_content_cache : MutableMapping
             Dict-like object to use for cache
+        sizes : dict
+            Byte size of each item in the etag_to_content_cache.
+        global_lock : Lock
+            A lock used for the url_to_etag_cache
+        lock_factory : callable
+            Expected signature: ``f(etag) -> Lock``
         scorer: Scorer, optional
             A Scorer object that controls how we decide what to retire when space
             is low.
@@ -120,17 +161,15 @@ class Cache:
         self.etag_refcount = defaultdict(lambda: 0)
         self.etag_lock = LockDict.from_lock_factory(lock_factory)
         self.url_to_etag_lock = global_lock
-        # TODO Do this without actually causing the content in FileBasedCache to be
-        # *read* at this point.
-        for etag, content in etag_to_content_cache.items():
-            nbytes = len(content)
+        # If the cache has data in it, initialize the internal caches.
+        for etag in etag_to_content_cache:
+            nbytes = sizes[etag]
             score = self.scorer.touch(etag, nbytes)
             self.heap[etag] = score
             self.nbytes[etag] = nbytes
             self.total_bytes += nbytes
 
     def put_etag_for_url(self, url, etag):
-        assert etag is not None
         key = tokenize_url(url)
         previous_etag = self.url_to_etag_cache.get(key)
         if previous_etag:
@@ -173,11 +212,11 @@ class Cache:
         )
 
     def _get_content_for_etag(self, etag):
-        assert etag is not None
-        # Access this item increases its score.
-        score = self.scorer.touch(etag)
         if etag in self.etag_to_content_cache:
             value = self.etag_to_content_cache[etag]
+            # Access this item increases its score.
+            nbytes = len(value)
+            score = self.scorer.touch(etag, nbytes)
             self.heap[etag] = score
             return value
 
@@ -304,9 +343,16 @@ def tokenize_url(url):
 class FileBasedCache(collections.abc.MutableMapping):
     "Locking is handled in the other layer, by Cache."
 
-    def __init__(self, directory):
+    def __init__(self, directory, mode="w"):
         self._directory = Path(directory)
         self._directory.mkdir(parents=True, exist_ok=True)
+        if mode == "w":
+            # Record the version which may be useful to future code that needs
+            # to deal with a change in internal format or layout.
+            with open(self._directory / "client_library_version", "wt") as file:
+                from tiled import __version__
+
+                file.write(__version__)
 
     def __repr__(self):
         return repr(dict(self))
@@ -314,6 +360,13 @@ class FileBasedCache(collections.abc.MutableMapping):
     @property
     def directory(self):
         return self._directory
+
+    @property
+    def sizes(self):
+        return {
+            path.relative_to(self._directory).parts: path.stat().st_size
+            for path in self._directory.iterdir()
+        }
 
     def __getitem__(self, key):
         path = Path(self._directory, *_normalize(key))
