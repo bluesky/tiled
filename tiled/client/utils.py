@@ -22,6 +22,7 @@ def get_content_with_cache(
             raise NotAvailable(url)
         content = reservation.load_content()
         if content is None:
+            # TODO Do we ever get here?
             raise NotAvailable(url)
         return content
     if cache is None:
@@ -56,7 +57,8 @@ def get_content_with_cache(
         else:
             raise NotImplementedError(f"Unexpected status_code {response.status_code}")
     finally:
-        reservation.ensure_released()
+        if reservation is not None:
+            reservation.ensure_released()
     return content
 
 

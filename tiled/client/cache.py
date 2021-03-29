@@ -22,8 +22,9 @@ from heapdict import heapdict
 
 
 class Reservation:
-    def __init__(self, url, lock, load_content):
-        self._url = url
+    def __init__(self, url, etag, lock, load_content):
+        self.url = url
+        self.etag = etag
         self._lock = lock
         self._lock_held = True
         self._load_content = load_content
@@ -49,7 +50,7 @@ class Cache:
     """
 
     @classmethod
-    def in_memory(cls, available_bytes, scorer=None):
+    def in_memory(cls, available_bytes, *, scorer=None):
         "An in-memory cache of data from the server"
 
         return cls(
@@ -62,7 +63,7 @@ class Cache:
         )
 
     @classmethod
-    def on_disk(cls, available_bytes, path, scorer=None):
+    def on_disk(cls, available_bytes, path, *, scorer=None):
         "An on-disk cache of data from the server"
         import locket
 
@@ -152,14 +153,15 @@ class Cache:
     def get_reservation(self, url):
         # Hold the global lock.
         with self.url_to_etag_lock:
-            etag = self.url_to_etag_cache.get(tokenize_url(url)).decode()
-            if etag is None:
+            etag_bytes = self.url_to_etag_cache.get(tokenize_url(url))
+            if etag_bytes is None:
                 # We have nothing for this URL.
                 return None
+            etag = etag_bytes.decode()
             # Acquire a targeted lock, and then release and the global lock.
             lock = self.etag_lock[etag]
         return Reservation(
-            etag, lock, functools.partial(self._get_content_for_etag, etag)
+            url, etag, lock, functools.partial(self._get_content_for_etag, etag)
         )
 
     def _get_content_for_etag(self, etag):
@@ -287,11 +289,7 @@ def tokenize_url(url):
         + (str(url[2]),)  # convert port from int to string
         # Split remainder of URL on "/" and make each segment safe to use as a
         # filename.
-        + tuple(
-            urllib.parse.quote_plus(segment)
-            for item in url[3:]
-            for segment in item.decode().split("/")
-        )
+        + tuple(urllib.parse.quote_plus(item) for item in url[3:] if item)
     )
 
 
@@ -300,6 +298,9 @@ class FileBasedCache(collections.abc.MutableMapping):
 
     def __init__(self, directory):
         self._directory = Path(directory)
+
+    def __repr__(self):
+        return repr(dict(self))
 
     @property
     def directory(self):
