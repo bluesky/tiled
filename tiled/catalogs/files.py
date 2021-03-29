@@ -135,7 +135,7 @@ class Catalog(CatalogInMemory):
         # 2. Do an initial scan of the files in the directory.
         # 3. When the initial scan completes, start processing changes. This
         #    will cover changes that occurred during or after the initial scan and
-        #    avoid the possibility of a race condition.
+        #    avoid a possibile a race condition.
         initial_scan_complete = []
         watcher_thread_kill_switch = []
         watcher_thread = threading.Thread(
