@@ -34,13 +34,11 @@ def get_content_with_cache(
         return response.content
     # If we get this far, we have an online client and a cache.
     etag, lock = cache.get_etag_for_url(url)
-    lock_held = True
     try:
         if etag is None:
-            # Release the lock early.
-            lock.release()
             lock_held = False
         else:
+            lock_held = True
             request.headers["If-None-Match"] = etag
         if timeout is not UNSET:
             response = client.send(request, timeout=timeout)

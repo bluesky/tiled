@@ -47,6 +47,7 @@ class Cache:
         import locket
 
         path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
 
         # TODO Record the client library version somewhere so we can
         # deal with migrating caches across upgrades if needed.
@@ -100,6 +101,7 @@ class Cache:
         self.url_to_etag_lock = global_lock
 
     def put_etag_for_url(self, url, etag):
+        assert etag is not None
         key = tokenize_url(url)
         previous_etag = self.url_to_etag_cache.get(key)
         if previous_etag:
@@ -109,7 +111,7 @@ class Cache:
                 # changed their ETags, so we can forget about this content.
                 self.retire(previous_etag)
         with self.url_to_etag_lock:
-            self.url_to_etag_cache[key] = etag
+            self.url_to_etag_cache[key] = etag.encode()
 
     def put_content(self, etag, content):
         nbytes = len(content)
@@ -130,13 +132,17 @@ class Cache:
     def get_etag_for_url(self, url, default=None):
         # Hold the global lock.
         with self.url_to_etag_lock:
-            etag = self.url_to_etag_cache.get(tokenize_url(url), default)
-            # Acquire a targeted lock, and then release and the global lock.
-            lock = self.etag_lock[etag]
-            lock.acquire()
+            etag = self.url_to_etag_cache.get(tokenize_url(url), default).decode()
+            if etag is not None:
+                # Acquire a targeted lock, and then release and the global lock.
+                lock = self.etag_lock[etag]
+                lock.acquire()
+            else:
+                lock = None
         return etag, lock
 
     def get_content_for_etag(self, etag, default=None):
+        assert etag is not None
         # Access this item increases its score.
         score = self.scorer.touch(etag)
         if etag in self.etag_to_content_cache:
@@ -282,6 +288,8 @@ class FileBasedCache(collections.abc.MutableMapping):
 
     def __getitem__(self, key):
         path = Path(self._directory, *_normalize(key))
+        if not path.is_file():
+            raise KeyError(key)
         with open(path, "rb") as file:
             return file.read()
 
@@ -309,6 +317,7 @@ class FileBasedCache(collections.abc.MutableMapping):
 def _normalize(key):
     if isinstance(key, str):
         return (key,)
+    return key
 
 
 class LockDict(dict):
