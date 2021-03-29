@@ -12,6 +12,7 @@ the same source directory as this module.
 """
 from collections import defaultdict
 import collections.abc
+import functools
 from math import log
 from pathlib import Path
 import threading
@@ -20,12 +21,31 @@ import urllib.parse
 from heapdict import heapdict
 
 
+class Reservation:
+    def __init__(self, url, lock, load_content):
+        self._url = url
+        self._lock = lock
+        self._lock_held = True
+        self._load_content = load_content
+        lock.acquire()
+
+    def load_content(self):
+        content = self._load_content()
+        self._lock.release()
+        return content
+
+    def ensure_released(self):
+        if self._lock_held:
+            self._lock.release()
+            self._lock_held = False
+
+
 class Cache:
     """
     A client-side cache of data from the server.
 
     The __init__ is to be used internally and by authors of custom caches.
-    See Cache.in_memory() and Cache.on_disk() for user-facing methods..
+    See Cache.in_memory() and Cache.on_disk() for user-facing methods.
     """
 
     @classmethod
@@ -129,19 +149,20 @@ class Cache:
                 # TODO We should actually shrink *first* to stay below the available_bytes.
                 self.shrink()
 
-    def get_etag_for_url(self, url, default=None):
+    def get_reservation(self, url):
         # Hold the global lock.
         with self.url_to_etag_lock:
-            etag = self.url_to_etag_cache.get(tokenize_url(url), default).decode()
-            if etag is not None:
-                # Acquire a targeted lock, and then release and the global lock.
-                lock = self.etag_lock[etag]
-                lock.acquire()
-            else:
-                lock = None
-        return etag, lock
+            etag = self.url_to_etag_cache.get(tokenize_url(url)).decode()
+            if etag is None:
+                # We have nothing for this URL.
+                return None
+            # Acquire a targeted lock, and then release and the global lock.
+            lock = self.etag_lock[etag]
+        return Reservation(
+            etag, lock, functools.partial(self._get_content_for_etag, etag)
+        )
 
-    def get_content_for_etag(self, etag, default=None):
+    def _get_content_for_etag(self, etag):
         assert etag is not None
         # Access this item increases its score.
         score = self.scorer.touch(etag)
@@ -149,8 +170,6 @@ class Cache:
             value = self.etag_to_content_cache[etag]
             self.heap[etag] = score
             return value
-        else:
-            return default
 
     def retire(self, etag):
         """Retire/remove a etag from the cache

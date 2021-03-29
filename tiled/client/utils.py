@@ -17,10 +17,10 @@ def get_content_with_cache(
     url = request.url.raw  # URL as tuple
     if offline:
         # We must rely on the cache alone.
-        etag, _ = cache.get_etag_for_url(url)
-        if etag is None:
+        reservation = cache.get_reservation(url)
+        if reservation is None:
             raise NotAvailable(url)
-        content = cache.get_content_for_etag(etag)
+        content = reservation.load_content()
         if content is None:
             raise NotAvailable(url)
         return content
@@ -33,13 +33,10 @@ def get_content_with_cache(
         handle_error(response)
         return response.content
     # If we get this far, we have an online client and a cache.
-    etag, lock = cache.get_etag_for_url(url)
+    reservation = cache.get_reservation(url)
     try:
-        if etag is None:
-            lock_held = False
-        else:
-            lock_held = True
-            request.headers["If-None-Match"] = etag
+        if reservation is not None:
+            request.headers["If-None-Match"] = reservation.etag
         if timeout is not UNSET:
             response = client.send(request, timeout=timeout)
         else:
@@ -47,7 +44,7 @@ def get_content_with_cache(
         handle_error(response)
         if response.status_code == 304:  # HTTP 304 Not Modified
             # Read from the cache
-            content = cache.get_content_for_etag(etag)
+            content = reservation.load_content()
         elif response.status_code == 200:
             etag = response.headers.get("ETag")
             content = response.content
@@ -59,9 +56,7 @@ def get_content_with_cache(
         else:
             raise NotImplementedError(f"Unexpected status_code {response.status_code}")
     finally:
-        if lock_held:
-            # The lock was not released early. Release it now.
-            lock.release()
+        reservation.ensure_released()
     return content
 
 
