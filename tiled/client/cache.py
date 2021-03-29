@@ -18,36 +18,6 @@ import urllib.parse
 from heapdict import heapdict
 
 
-class ReadOnlyCache:
-    @classmethod
-    def on_disk(cls, path):
-        "An on-disk cache of data from the server"
-        raise NotImplementedError("Work in progress...")
-        return cls(..., ...)
-
-    def __init__(self, url_to_etag_cache, etag_to_content_cache):
-        """
-        Parameters
-        ----------
-
-        url_to_etag_cache : MutableMapping
-            Dict-like object to use for cache
-        etag_to_content_cache : MutableMapping
-            Dict-like object to use for cache
-        """
-
-        self.url_to_etag_cache = url_to_etag_cache
-        self.etag_to_content_cache = etag_to_content_cache
-
-    def get_etag_for_url(self, url, default=None):
-        # Return (etag, None) so that a writable cache's return value,
-        # which is (etag, RLock), is a drop-in replacement.
-        return self.url_to_etag_cache.get(tokenize_url(url), default), None
-
-    def get_content_for_etag(self, etag, default=None):
-        return self.etag_to_content_cache.get(etag, default)
-
-
 class Cache:
     """
     A client-side cache of data from the server.
@@ -71,9 +41,6 @@ class Cache:
         # Record the client library version somewhere so we can
         # deal with migrating caches across upgrades if needed.
         return cls(available_bytes, scorer, ..., ...)
-
-    def read_only(self):
-        return ReadOnlyCache(self.url_to_etag_cache, self.etag_to_content_cache)
 
     def __init__(
         self, available_bytes, url_to_etag_cache, etag_to_content_cache, scorer=None
