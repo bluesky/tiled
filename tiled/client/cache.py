@@ -11,8 +11,10 @@ The original cachey license (which, like Tiled's, is 3-clause BSD) is included i
 the same source directory as this module.
 """
 from collections import defaultdict
+import collections.abc
 from math import log
-from threading import RLock
+from pathlib import Path
+import threading
 import urllib.parse
 
 from heapdict import heapdict
@@ -29,21 +31,45 @@ class Cache:
     @classmethod
     def in_memory(cls, available_bytes, scorer=None):
         "An in-memory cache of data from the server"
-        return cls(available_bytes, {}, {}, scorer)
+
+        return cls(
+            available_bytes,
+            url_to_etag_cache={},
+            etag_to_content_cache={},
+            global_lock=threading.Lock(),
+            lock_factory=lambda etag: threading.Lock(),
+            scorer=scorer,
+        )
 
     @classmethod
     def on_disk(cls, available_bytes, path, scorer=None):
         "An on-disk cache of data from the server"
-        raise NotImplementedError("Work in progress...")
-        # TODO Make file-backed mutable mappings.
-        # Consider using zict.File.
-        # Consider using locket for file-based locking.
-        # Record the client library version somewhere so we can
+        import locket
+
+        path = Path(path)
+
+        # TODO Record the client library version somewhere so we can
         # deal with migrating caches across upgrades if needed.
-        return cls(available_bytes, scorer, ..., ...)
+        return cls(
+            available_bytes,
+            url_to_etag_cache=FileBasedCache(path / "url_to_etag_cache"),
+            etag_to_content_cache=FileBasedCache(path / "etag_to_content_cache"),
+            global_lock=locket.lock_file(path / "global.lock"),
+            lock_factory=lambda etag: locket.lock_file(
+                path / "etag_to_content_cache" / f"{etag}.lock"
+            ),
+            scorer=scorer,
+        )
 
     def __init__(
-        self, available_bytes, url_to_etag_cache, etag_to_content_cache, scorer=None
+        self,
+        available_bytes,
+        *,
+        url_to_etag_cache,
+        etag_to_content_cache,
+        global_lock,
+        lock_factory,
+        scorer=None,
     ):
         """
         Parameters
@@ -70,8 +96,8 @@ class Cache:
         self.url_to_etag_cache = url_to_etag_cache
         self.etag_to_content_cache = etag_to_content_cache
         self.etag_refcount = defaultdict(lambda: 0)
-        self.etag_lock = defaultdict(RLock)
-        self.url_to_etag_lock = RLock()
+        self.etag_lock = LockDict.from_lock_factory(lock_factory)
+        self.url_to_etag_lock = global_lock
 
     def put_etag_for_url(self, url, etag):
         key = tokenize_url(url)
@@ -136,9 +162,15 @@ class Cache:
         if self.heap.heap:
             # Retire the lowest-priority item that isn't locked.
             for score, etag, _ in self.heap.heap:
-                if self.etag_lock[etag].acquire(blocking=False):
-                    self.heap.pop(etag)
-                    self.retire(etag)
+                lock = self.etag_lock[etag]
+                if lock.acquire(blocking=False):
+                    try:
+                        self.heap.pop(etag)
+                        self.etag_to_content_cache.pop(etag)
+                        self.total_bytes -= self.nbytes.pop(etag)
+                        self.etag_lock.pop(etag)
+                    finally:
+                        lock.release()
                     break
 
     def resize(self, available_bytes):
@@ -223,14 +255,70 @@ class Scorer:
 def tokenize_url(url):
     """
     >>> tokenize_url((b"https", b"localhost", 8000, b"/metadata/"))
-    (b"https", b"localhost", b"8000", b"%2Fmetadata%2F")
+    ("https", "localhost", "8000", "%2Fmetadata%2F")
     """
     return (
-        url[:2]
-        + (str(url[2]).encode(),)  # convert port from int to bytestring
+        (url[0].decode(), url[1].decode())
+        + (str(url[2]),)  # convert port from int to string
+        # Split remainder of URL on "/" and make each segment safe to use as a
+        # filename.
         + tuple(
             urllib.parse.quote_plus(segment)
             for item in url[3:]
-            for segment in item.split(b"/")
+            for segment in item.decode().split("/")
         )
     )
+
+
+class FileBasedCache(collections.abc.MutableMapping):
+    "Locking is handled in the other layer, by Cache."
+
+    def __init__(self, directory):
+        self._directory = Path(directory)
+
+    @property
+    def directory(self):
+        return self._directory
+
+    def __getitem__(self, key):
+        path = Path(self._directory, *_normalize(key))
+        with open(path, "rb") as file:
+            return file.read()
+
+    def __setitem__(self, key, value):
+        path = Path(self._directory, *_normalize(key))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as file:
+            file.write(value)
+
+    def __delitem__(self, key):
+        path = Path(self._directory, *_normalize(key))
+        path.unlink()
+
+    def __len__(self):
+        return len(list(self._directory.iterdir()))
+
+    def __iter__(self):
+        return self._directory.iterdir()
+
+    def __contains__(self, key):
+        path = Path(self._directory, *_normalize(key))
+        return path.is_file()
+
+
+def _normalize(key):
+    if isinstance(key, str):
+        return (key,)
+
+
+class LockDict(dict):
+    @classmethod
+    def from_lock_factory(cls, lock_factory):
+        instance = cls()
+        instance._lock_factory = lock_factory
+        return instance
+
+    def __missing__(self, key):
+        value = self._lock_factory(key)
+        self[key] = value
+        return value
