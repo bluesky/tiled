@@ -8,12 +8,12 @@ happens to be stored in. By providing the data to clients with semantic slicing
 and a choice of formats, clients can access data with very light sofware
 dependencies and fast partial downloads.
 
-* Python-based *Catalogs* and *Readers* that integrate with directories of files
-  or databases, such as MongoDB
-* A Python-based HTTP server that makes data available to clients in **any
-  language** in a variety of data formats
-* A lightweight Python-based client whose only required dependency is
-  [the httpx web client](https://www.python-httpx.org/)
+* *Catalogs* and *Readers* that integrate with directories of files,
+  web-based resources, databases, or potentialy any source of data
+* A webserver that makes data available to clients in a variety of data formats
+* A Python client with very light dependencies that accesses data from the server
+  as numpy arrays, pandas DataFrames, or xarray stuructures in a friendly h5py-like
+  interface, with support for in-memory and on-disk caching
 
 **Lightweight core dependencies.** Both the server and client can operate with
 few dependencies. (You don't even need numpy.) To serve and read numpy arrays,
