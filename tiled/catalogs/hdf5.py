@@ -57,7 +57,12 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     @property
     def metadata(self):
-        return DictView(dict(self._node.attrs))
+        d = dict(self._node.attrs)
+        for k, v in list(d.items()):
+            # Convert any bytes to str.
+            if isinstance(v, bytes):
+                d[k] = v.decode()
+        return DictView(d)
 
     def __iter__(self):
         yield from self._node
