@@ -4,13 +4,13 @@ import typer
 from typing import List
 import uvicorn
 
-from ..server.main import api, get_settings
+from ..server.main import app as web_app, get_settings
 from ..utils import import_object
 
 
-app = typer.Typer()
+cli_app = typer.Typer()
 serve_app = typer.Typer()
-app.add_typer(serve_app, name="serve")
+cli_app.add_typer(serve_app, name="serve")
 
 
 @serve_app.command("directory")
@@ -31,8 +31,8 @@ def directory(
         settings.catalog = Catalog.from_directory(directory)
         return settings
 
-    api.dependency_overrides[get_settings] = override_settings
-    uvicorn.run(api)
+    web_app.dependency_overrides[get_settings] = override_settings
+    uvicorn.run(web_app)
 
 
 @serve_app.command("pyobject")
@@ -49,8 +49,8 @@ def pyobject(
         settings.catalog = import_object(instance)
         return settings
 
-    api.dependency_overrides[get_settings] = override_settings
-    uvicorn.run(api)
+    web_app.dependency_overrides[get_settings] = override_settings
+    uvicorn.run(web_app)
 
 
 def _parse_kwargs(arg):
@@ -68,6 +68,6 @@ def _parse_kwargs(arg):
     return kwargs
 
 
-main = app
+main = cli_app
 if __name__ == "__main__":
     main()

@@ -8,20 +8,20 @@ from .router import declare_search_route, router
 from .core import PatchedStreamingResponse
 
 
-api = FastAPI()
+app = FastAPI()
 
 
-@api.on_event("startup")
+@app.on_event("startup")
 async def startup_event():
     # The /search route is defined at server startup so that the user has the
     # opporunity to register custom query types before startup.
     declare_search_route(router)
-    api.include_router(router)
+    app.include_router(router)
     # Warm up cached access.
     get_settings().catalog
 
 
-@api.middleware("http")
+@app.middleware("http")
 async def add_server_timing_header(request: Request, call_next):
     # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
     # https://w3c.github.io/server-timing/#the-server-timing-header-field
@@ -38,7 +38,7 @@ async def add_server_timing_header(request: Request, call_next):
     return response
 
 
-api.add_middleware(
+app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().allow_origins,
     allow_credentials=True,
@@ -50,4 +50,4 @@ api.add_middleware(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(api, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

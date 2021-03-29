@@ -113,7 +113,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         special_clients=None,
     ):
         """
-        Create a new Client.
+        Create a new ClientCatalog.
 
         Parameters
         ----------
@@ -138,6 +138,94 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             base_url=uri.rstrip("/"),
             headers={"X-Access-Token": token},
         )
+        return cls.from_client(
+            client,
+            cache=cache,
+            offline=offline,
+            containers=containers,
+            special_clients=special_clients,
+        )
+
+    @classmethod
+    def from_app(
+        cls,
+        uri,
+        app,
+        *,
+        cache=None,
+        offline=False,
+        token=None,
+        containers="dask",
+        special_clients=None,
+    ):
+        """
+        Advanced: Create a new ClientCatalog directly communicating with an app in the same process.
+
+        Parameters
+        ----------
+        uri : str
+            e.g. "http://localhost:8000"
+        app : ASGI app
+        cache : Cache, optional
+        offline : bool, optional
+            False by default. If True, rely on cache only.
+        containers : str or dict
+            Use "dask" for delayed data loading and "memory" for immediate
+            in-memory structures (e.g. normal numpy arrays). For advanced use,
+            provide dict mapping container names ("array", "dataframe",
+            "variable", "data_array", "dataset") to client objects. See
+            ``ClientCatalog.DEFAULT_CONTAINER_DISPATCH``.
+        special_clients : dict
+            Advanced: Map client_type_hint from the server to special client
+            catalog objects. See also
+            ``ClientCatalog.discover_special_clients()`` and
+            ``ClientCatalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        """
+        client = httpx.Client(
+            base_url=uri.rstrip("/"),
+            app=app,
+            headers={"X-Access-Token": token},
+        )
+        return cls.from_client(
+            client,
+            cache=cache,
+            offline=offline,
+            containers=containers,
+            special_clients=special_clients,
+        )
+
+    @classmethod
+    def from_client(
+        cls,
+        client,
+        *,
+        cache=None,
+        offline=False,
+        containers="dask",
+        special_clients=None,
+    ):
+        """
+        Advanced: Create a new ClientCatalog from an httpx.Client.
+
+        Parameters
+        ----------
+        client : httpx.Client
+            Should be pre-configured with a base_url and any auth-related headers.
+        cache : Cache, optional
+        offline : bool, optional
+            False by default. If True, rely on cache only.
+        containers : str or dict
+            Use "dask" for delayed data loading and "memory" for immediate
+            in-memory structures (e.g. normal numpy arrays). For advanced use,
+            provide dict mapping container names ("array", "dataframe",
+            "variable", "data_array", "dataset") to client objects. See
+            ``ClientCatalog.DEFAULT_CONTAINER_DISPATCH``.
+        special_clients : dict
+            Advanced: Map client_type_hint from the server to special client
+            catalog objects. See also
+            ``ClientCatalog.discover_special_clients()`` and
+            ``ClientCatalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        """
         # Interet containers="dask" and containers="memory" shortcuts.
         if isinstance(containers, str):
             containers = cls.DEFAULT_CONTAINER_DISPATCH[containers]
