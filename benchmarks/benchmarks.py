@@ -3,7 +3,7 @@
 import time
 import subprocess
 
-from tiled.client.catalog import ClientCatalog
+from tiled.client.catalog import Catalog
 
 HOST = "0.0.0.0"
 PORT = 9040
@@ -20,7 +20,7 @@ class TimeSuite:
             (f"uvicorn tiled.server.main:app --host {HOST} --port {PORT}").split()
         )
         time.sleep(5)
-        self.catalog = ClientCatalog.from_uri(f"http://{HOST}:{PORT}", token="secret")
+        self.catalog = Catalog.from_uri(f"http://{HOST}:{PORT}", token="secret")
 
     def teardown(self):
         self.server_process.terminate()

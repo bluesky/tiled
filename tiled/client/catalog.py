@@ -22,7 +22,7 @@ from ..catalogs.utils import (
 )
 
 
-class ClientCatalog(collections.abc.Mapping, IndexersMixin):
+class Catalog(collections.abc.Mapping, IndexersMixin):
 
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. LazyMap is used to
@@ -31,38 +31,38 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         "memory": LazyMap(
             {
                 "array": lambda: importlib.import_module(
-                    "..array", ClientCatalog.__module__
+                    "..array", Catalog.__module__
                 ).ClientArrayReader,
                 "dataframe": lambda: importlib.import_module(
-                    "..dataframe", ClientCatalog.__module__
+                    "..dataframe", Catalog.__module__
                 ).ClientDataFrameReader,
                 "variable": lambda: importlib.import_module(
-                    "..xarray", ClientCatalog.__module__
+                    "..xarray", Catalog.__module__
                 ).ClientVariableReader,
                 "data_array": lambda: importlib.import_module(
-                    "..xarray", ClientCatalog.__module__
+                    "..xarray", Catalog.__module__
                 ).ClientDataArrayReader,
                 "dataset": lambda: importlib.import_module(
-                    "..xarray", ClientCatalog.__module__
+                    "..xarray", Catalog.__module__
                 ).ClientDatasetReader,
             }
         ),
         "dask": LazyMap(
             {
                 "array": lambda: importlib.import_module(
-                    "..array", ClientCatalog.__module__
+                    "..array", Catalog.__module__
                 ).ClientDaskArrayReader,
                 "dataframe": lambda: importlib.import_module(
-                    "..dataframe", ClientCatalog.__module__
+                    "..dataframe", Catalog.__module__
                 ).ClientDaskDataFrameReader,
                 "variable": lambda: importlib.import_module(
-                    "..xarray", ClientCatalog.__module__
+                    "..xarray", Catalog.__module__
                 ).ClientDaskVariableReader,
                 "data_array": lambda: importlib.import_module(
-                    "..xarray", ClientCatalog.__module__
+                    "..xarray", Catalog.__module__
                 ).ClientDaskDataArrayReader,
                 "dataset": lambda: importlib.import_module(
-                    "..xarray", ClientCatalog.__module__
+                    "..xarray", Catalog.__module__
                 ).ClientDaskDatasetReader,
             }
         ),
@@ -88,7 +88,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         """
         Search the software environment for libraries that register special clients.
 
-        This is called once automatically the first time ClientCatalog.from_uri
+        This is called once automatically the first time Catalog.from_uri
         is called. You may call it again manually to refresh, and it will
         reflect any changes to the environment since it was first populated.
         """
@@ -113,7 +113,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         special_clients=None,
     ):
         """
-        Create a new ClientCatalog.
+        Create a new Catalog.
 
         Parameters
         ----------
@@ -127,12 +127,12 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             in-memory structures (e.g. normal numpy arrays). For advanced use,
             provide dict mapping structure_family names ("array", "dataframe",
             "variable", "data_array", "dataset") to client objects. See
-            ``ClientCatalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         special_clients : dict
             Advanced: Map client_type_hint from the server to special client
             catalog objects. See also
-            ``ClientCatalog.discover_special_clients()`` and
-            ``ClientCatalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+            ``Catalog.discover_special_clients()`` and
+            ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
         """
         headers = {}
         if token is not None:
@@ -160,7 +160,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         special_clients=None,
     ):
         """
-        Advanced: Create a new ClientCatalog from an httpx.Client.
+        Advanced: Create a new Catalog from an httpx.Client.
 
         Parameters
         ----------
@@ -174,12 +174,12 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             in-memory structures (e.g. normal numpy arrays). For advanced use,
             provide dict mapping structure families ("array", "dataframe",
             "variable", "data_array", "dataset") to client objects. See
-            ``ClientCatalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         special_clients : dict
             Advanced: Map client_type_hint from the server to special client
             catalog objects. See also
-            ``ClientCatalog.discover_special_clients()`` and
-            ``ClientCatalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+            ``Catalog.discover_special_clients()`` and
+            ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
         """
         # Interet structure_clients="dask" and structure_clients="memory" shortcuts.
         if isinstance(structure_clients, str):
@@ -218,7 +218,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         params=None,
         queries=None,
     ):
-        "This is not user-facing. Use ClientCatalog.from_uri."
+        "This is not user-facing. Use Catalog.from_uri."
 
         self._client = client
         self._offline = offline
@@ -288,8 +288,8 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
                 )
             else:
                 return class_
-        # This is generally just ClientCatalog, but if the original
-        # user-created catalog was a subclass of ClientCatalog, this will
+        # This is generally just Catalog, but if the original
+        # user-created catalog was a subclass of Catalog, this will
         # repsect that.
         return self._root_client_type
 
