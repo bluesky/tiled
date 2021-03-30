@@ -16,10 +16,8 @@ dependencies and fast partial downloads.
   interface, with support for in-memory and on-disk caching
 
 **Lightweight core dependencies.** Both the server and client can operate with
-few dependencies. The client only needs
-[httpx](https://www.python-httpx.org/) and two tiny single-module, pure
-Python libraries. To serve and/or request numpy arrays, pandas DataFrames,
-and various xarray structures, install those respective libraries.
+few dependencies. To serve and/or request numpy arrays, pandas DataFrames,
+and various xarray structures, install those respective libraries as well.
 
 ## Try it
 
