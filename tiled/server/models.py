@@ -93,4 +93,5 @@ class About(pydantic.BaseModel):
     api_version: int
     library_version: str
     formats: Dict[str, List[str]]
+    aliases: Dict[str, Dict[str, List[str]]]
     queries: List[str]

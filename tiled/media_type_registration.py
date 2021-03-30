@@ -1,3 +1,5 @@
+import mimetypes
+
 from collections import defaultdict
 
 from .utils import DictView
@@ -14,6 +16,21 @@ class Registry:
     @property
     def structure_families(self):
         return list(self._lookup)
+
+    def aliases(self, structure_family):
+        result = {}
+        for media_type in self.media_types(structure_family):
+            if media_type == "application/octet-stream":
+                # Skip the general binary type; it doesn't really apply.
+                continue
+            aliases = []
+            for k, v in mimetypes.types_map.items():
+                # e.g. k, v == (".csv", "text/csv")
+                if v == media_type:
+                    aliases.append(k[1:])  # e.g. aliases == {"text/csv": ["csv"]}
+            if aliases:
+                result[media_type] = aliases
+        return result
 
     def register(self, structure_family, media_type, func):
         self._lookup[structure_family][media_type] = func

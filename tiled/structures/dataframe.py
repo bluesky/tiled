@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import mimetypes
 import io
 from typing import Any, List
 
@@ -88,3 +89,4 @@ if modules_available("openpyxl"):
         XLSX_MIME_TYPE,
         pandas.read_excel,
     )
+    mimetypes.types_map.setdefault(".xlsx", XLSX_MIME_TYPE)

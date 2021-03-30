@@ -3,6 +3,7 @@ from collections import defaultdict
 import dataclasses
 from hashlib import md5
 import math
+from mimetypes import types_map
 import operator
 import re
 from typing import Any
@@ -225,7 +226,9 @@ def construct_array_response(array, request_headers, format=None):
     # Give priority to the `format` query parameter. Otherwise, consult Accept
     # header.
     if format is not None:
-        media_types = format.split(",")
+        media_types_or_aliases = format.split(",")
+        # Resolve aliases, like "csv" -> "text/csv".
+        media_types = [types_map.get("." + t, t) for t in media_types_or_aliases]
     else:
         # The HTTP spec says these should be separated by ", " but some
         # browsers separate with just "," (no space).
@@ -263,7 +266,9 @@ def construct_dataframe_response(df, request_headers, format=None):
     # Give priority to the `format` query parameter. Otherwise, consult Accept
     # header.
     if format is not None:
-        media_types = format.split(",")
+        media_types_or_aliases = format.split(",")
+        # Resolve aliases, like "csv" -> "text/csv".
+        media_types = [types_map.get("." + t, t) for t in media_types_or_aliases]
     else:
         # The HTTP spec says these should be separated by ", " but some
         # browsers separate with just "," (no space).
@@ -301,7 +306,9 @@ def construct_dataset_response(dataset, request_headers, format=None):
     # Give priority to the `format` query parameter. Otherwise, consult Accept
     # header.
     if format is not None:
-        media_types = format.split(",")
+        media_types_or_aliases = format.split(",")
+        # Resolve aliases, like "csv" -> "text/csv".
+        media_types = [types_map.get("." + t, t) for t in media_types_or_aliases]
     else:
         # The HTTP spec says these should be separated by ", " but some
         # browsers separate with just "," (no space).

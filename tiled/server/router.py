@@ -55,6 +55,10 @@ async def about(request: Request):
                 )
                 for structure_family in serialization_registry.structure_families
             },
+            aliases={
+                structure_family: serialization_registry.aliases(structure_family)
+                for structure_family in serialization_registry.structure_families
+            },
             queries=list(name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?
         ),
