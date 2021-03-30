@@ -22,6 +22,24 @@ from heapdict import heapdict
 
 
 def download(*entries, path=None, available_bytes=None, cache=None):
+    """
+    Download a local cache for Tiled so access is fast and can work offline.
+
+    Parameters
+    ----------
+    *entries : Catalog(s) or ClientReader(s)
+    path : Path or str
+        A directory will be created at this path if it does not yet exist.
+        It is safe to reuse an existing cache directory and to share a cache
+        directory between multiple processes.
+    available_bytes : integer, optional
+        e.g. 2e9 to use up to 2 GB of disk space. If None, this will consume
+        up to (X - 1 GB) where X is the free space remaining on the volume
+        containing `path`.
+    cache : Cache, optional
+        For advanced usage with a custom cache. If set, `path` and `available_bytes`
+        must *not* be set.
+    """
     # We have "coupled kwargs" here, which is a pattern I try to avoid, but
     # in this case I think it's overall better than having too separate functions.
     if cache is None:
@@ -31,6 +49,12 @@ def download(*entries, path=None, available_bytes=None, cache=None):
                 "path='path/to/directory' (common) or a cache=... (advanced)."
             )
         cache = Cache.on_disk(path, available_bytes=available_bytes)
+    else:
+        if (path is not None) or (available_bytes is not None):
+            raise TypeError(
+                "Since the advanced `cache` parameter is used, `path` and "
+                "`available_bytes` must not be used."
+            )
     # TODO Use multiple processes to ensure we are saturating our network connection.
     for entry in entries:
         entry.new_variation(cache=cache).touch()
@@ -147,7 +171,7 @@ class Cache:
             directory between multiple processes.
         available_bytes : integer, optional
             e.g. 2e9 to use up to 2 GB of disk space. If None, this will consume
-            up to (X - 1 GB) where X is the free space remaining on the disk
+            up to (X - 1 GB) where X is the free space remaining on the volume
             containing `path`.
         cull_on_startup : boolean, optional
             If reusing an existing cache directory which is already larger than the
@@ -171,7 +195,8 @@ class Cache:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
         if available_bytes is None:
-            # By default, use (X - 1 GB) where X is the free space on the drive containing `path`.
+            # By default, use (X - 1 GB) where X is the current free space
+            # on the volume containing `path`.
             available_bytes = shutil.disk_usage(path).free - 1e9
         # Get the nbytes for each object in the cache if it is not empty.
         # The FileBasedCache provides a `sizes` property that computes this
