@@ -9,7 +9,7 @@ slicing and a choice of formats, so users can access data with very light
 software dependencies and fast partial downloads.
 
 Web-based data access usually involves downloading complete files, in the
-manner of [Globus](https://www.globus.org/); or using specialized chunk-based
+manner of [Globus](https://www.globus.org/); or using modern chunk-based
 storage formats, such as [TileDB](https://tiledb.com/) and
 [Zarr](https://zarr.readthedocs.io/en/stable/) in local or cloud storage; or
 using custom solutions tailored to a particular large dataset. Waiting for an

@@ -30,10 +30,10 @@ catalog = Catalog(
 
 ## Load on first read
 
-For the nest example we'll use a neat dictionary-like object. It is created by
+For the next example we'll use a neat dictionary-like object. It is created by
 by mapping keys to *functions*. The first time a given item is accessed, the
-function is called to generate the value, and the result is stashed for next time.
-Notice that one it's created, it acts just like a normal Python dictionary.
+function is called to generate the value, and the result is stashed
+internally for next time.
 
 ```python
 >>> from tiled.utils import OneShotCachedMap
@@ -46,7 +46,11 @@ Notice that one it's created, it acts just like a normal Python dictionary.
 {"a": 1, "b": 2}
 ```
 
-It can be integrated with a Catalog directly, just replacing the dictionary
+Notice that one the object is created, it acts just like a normal Python
+mapping. Downstream code does not have to do anything special to work with
+it.
+
+It can be integrated with ``Catalog`` directly, just replacing the dictionary
 in the first example with a ``OneShotCachedMap``.
 
 ```python
@@ -78,7 +82,7 @@ catalog = Catalog(
 ## Load on first read and stash for awhile (but not forever)
 
 We'll use another neat dictionary-like object very much like the previous one.
-These two objects behave identally...
+These two objects behave identically...
 
 ```python
 from tiled.utils import CachingMap, OneShotCachedMap
@@ -112,6 +116,18 @@ from cachetools import LRUCache
 # "TTL" stands for "time to live", measured in seconds.
 CachingMap({"a": lambda: 1, "b": lambda: 2}, cache=TTLCache(maxsize=100, ttl=10))
 ```
+
+If we keep a reference to our cache before passing it in, then other parts
+of the program can explicitly evict items to force an update.
+
+```python
+cache = TTLCache(maxsize=100, ttl=10)
+CachingMap({"a": lambda: 1, "b": lambda: 2}, cache=cache)
+
+# Meanwhile...elsewhere in the code....
+cache.pop("a")  # Force a refresh of this item next time it is accessed from CachingMap.
+```
+
 ``CachingMap`` integrates with ``Catalog`` exactly the same as the others.
 
 ```python
@@ -144,14 +160,16 @@ catalog = Catalog(
 
 ## Proxy data from a network service and keep an on-disk cache
 
-TODO Add fsspec example --- How to put an upper bound on the disk cache?
+TO DO: Add fsspec example --- How to put an upper bound on the disk cache?
 
 ## Load keys dynamically as well as values
 
 In all the previous examples, the *keys* of the Catalog were held in memory,
-in Python. For Catalog at the scale of thousands of entries, backed by a
-database or a web service, this becomes impractical. At that point, transition
-to a custom class satisfying the Catalog specification, which fetching keys
-and values on demand by making efficient queries.
+in Python, and the *values* were sometimes generated on demand. For Catalog
+at the scale of thousands of entries, backed by a database or a web service,
+we'll need to generate the keys on demand too. At that point, we escalate to
+writing a custom class satisfying the Catalog specification, which fetches
+keys and values on demand by making queries specific to the underlying
+storage.
 
-TODO Simplify Bluesky MongoDB example into MVP and add it here.
+TO DO: Simplify Bluesky MongoDB example into MVP and add it here.
