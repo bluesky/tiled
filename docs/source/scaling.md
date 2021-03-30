@@ -102,25 +102,36 @@ from cachetools import LRUCache
 CachingMap({"a": lambda: 1, "b": lambda: 2}, cache=LRUCache(1))
 ```
 
-And this integrates with ``Catalog`` exactly the same as the others.
+As another example, we can keep items for up to some time limit. This
+enforces a maximum size as well, so that the cache cannot grow too large if
+it is receiving many requests within the specified time window.
 
 ```python
+from cachetools import LRUCache
+
+# "TTL" stands for "time to live", measured in seconds.
+CachingMap({"a": lambda: 1, "b": lambda: 2}, cache=TTLCache(maxsize=100, ttl=10))
+```
+``CachingMap`` integrates with ``Catalog`` exactly the same as the others.
+
+```python
+from cachetools import TTLCache
 import numpy
 from tiled.utils import CachingMap
 from tiled.readers.array ArrayAdapter
 from tiled.catalogs.in_memory import Catalog
 
-# Use OneShotCachedMap which maps keys to *functions* that are
-# run when the data is fist accessed.
-a = 
-b = numpy.random.random((100, 100))
+# Use CachingMap which again maps keys to *functions* that are
+# run when the data is fist accessed. The values may be cached
+# for a time.
 catalog = Catalog(
     CachingMap(
         {
             "a": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
             "b": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
-        }
-    )
+        },
+        cache=TTLCache(maxsize=100, ttl=10),
+    ),
 )
 ```
 
