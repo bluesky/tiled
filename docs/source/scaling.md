@@ -106,7 +106,7 @@ And this integrates with ``Catalog`` exactly the same as the others.
 
 ```python
 import numpy
-from tiled.utils import OneShotCachedMap
+from tiled.utils import CachingMap
 from tiled.readers.array ArrayAdapter
 from tiled.catalogs.in_memory import Catalog
 
@@ -115,7 +115,7 @@ from tiled.catalogs.in_memory import Catalog
 a = 
 b = numpy.random.random((100, 100))
 catalog = Catalog(
-    OneShotCachedMap(
+    CachingMap(
         {
             "a": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
             "b": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),

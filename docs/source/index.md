@@ -6,6 +6,10 @@
 installation
 ```
 
+```{how-to}
+:caption: How To Guides
+scaling
+
 ```{toctree}
 :caption: Explanations
 faq
