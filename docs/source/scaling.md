@@ -57,13 +57,11 @@ from tiled.catalogs.in_memory import Catalog
 
 # Use OneShotCachedMap which maps keys to *functions* that are
 # run when the data is fist accessed.
-a = numpy.random.random((100, 100))
-b = numpy.random.random((100, 100))
 catalog = Catalog(
     OneShotCachedMap(
         {
-            "a": lambda: ArrayAdapter.from_array(a),
-            "b": lambda: ArrayAdapter.from_array(b),
+            "a": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
+            "b": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
         }
     )
 )
@@ -114,13 +112,13 @@ from tiled.catalogs.in_memory import Catalog
 
 # Use OneShotCachedMap which maps keys to *functions* that are
 # run when the data is fist accessed.
-a = numpy.random.random((100, 100))
+a = 
 b = numpy.random.random((100, 100))
 catalog = Catalog(
     OneShotCachedMap(
         {
-            "a": lambda: ArrayAdapter.from_array(a),
-            "b": lambda: ArrayAdapter.from_array(b),
+            "a": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
+            "b": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
         }
     )
 )
