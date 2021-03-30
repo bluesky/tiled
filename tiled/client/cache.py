@@ -50,6 +50,10 @@ def download(*entries, path=None, available_bytes=None, cache=None):
     >>> from tiled.client.cache import download
     >>> download(catalog, "my_cache_directory")
 
+    Alternatively ,this can be done from the commandline via the tiled CLI:
+
+    $ tiled download "http://..." my_cache_direcotry
+
     Use the local copy for faster data access. Tiled will connect to server just
     to verify that the local copy is current, and only download data if there have
     been changes to the copy of the server.

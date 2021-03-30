@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 import typer
-from typing import List
+from typing import List, Optional
 import uvicorn
 
 from ..server.main import app as web_app, get_settings
@@ -11,6 +11,19 @@ from ..utils import import_object
 cli_app = typer.Typer()
 serve_app = typer.Typer()
 cli_app.add_typer(serve_app, name="serve")
+
+
+@cli_app.command("download")
+def download(
+    catalog_uri: str,
+    path: str,
+    available_bytes: Optional[int] = None,
+):
+    from tiled.client.cache import download
+    from tiled.client.catalog import Catalog
+
+    catalog = Catalog.from_uri(catalog_uri)
+    download(catalog, path=path, available_bytes=available_bytes)
 
 
 @serve_app.command("directory")
