@@ -1,3 +1,6 @@
+import asyncio
+from inspect import iscoroutine
+
 import httpx
 import msgpack
 
@@ -27,10 +30,7 @@ def get_content_with_cache(
         return content
     if cache is None:
         # No cache, so we can use the client straightforwardly.
-        if timeout is not UNSET:
-            response = client.send(request, timeout=timeout)
-        else:
-            response = client.send(request)
+        response = _send(client, request, timeout=timeout)
         handle_error(response)
         return response.content
     # If we get this far, we have an online client and a cache.
@@ -38,10 +38,7 @@ def get_content_with_cache(
     try:
         if reservation is not None:
             request.headers["If-None-Match"] = reservation.etag
-        if timeout is not UNSET:
-            response = client.send(request, timeout=timeout)
-        else:
-            response = client.send(request)
+            response = _send(client, request, timeout=timeout)
         handle_error(response)
         if response.status_code == 304:  # HTTP 304 Not Modified
             # Read from the cache
@@ -68,6 +65,22 @@ def get_json_with_cache(cache, offline, client, path, **kwargs):
             cache, offline, client, path, accept="application/x-msgpack", **kwargs
         )
     )
+
+
+def _send(client, request, timeout):
+    """
+    EXPERIMENTAL: Tolerate sync httpx.Client or httpx.AsyncClient.
+
+    The AsyncClient is interesting because it can interface directly with FastAPI app
+    in the same process via ASGI.
+    """
+    if timeout is UNSET:
+        result = client.send(request)
+    else:
+        result = client.send(request, timeout=timeout)
+    if iscoroutine(result):
+        return asyncio.run(result)
+    return result
 
 
 def handle_error(response):

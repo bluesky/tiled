@@ -1,6 +1,9 @@
+import asyncio
+import atexit
 import collections
 import collections.abc
 from dataclasses import fields
+import functools
 import importlib
 import itertools
 import warnings
@@ -113,7 +116,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         special_clients=None,
     ):
         """
-        Create a new Catalog.
+        Connect to a Catalog on a local or remote server.
 
         Parameters
         ----------
@@ -150,6 +153,80 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         )
 
     @classmethod
+    def direct(
+        cls,
+        catalog,
+        *,
+        token=None,
+        structure_clients="dask",
+        special_clients=None,
+    ):
+        """
+        Connect to a Catalog directly, running the app in this same process.
+
+        NOTE: This is experimental. It may need to be re-designed or even removed.
+
+        In this configuration, we are using the server, but we are communicating
+        with it directly within this process, not over a local network. It is
+        generally faster.
+
+        Specifically, we are using HTTP over ASGI rather than HTTP over TCP.
+        There are no sockets or network-related syscalls.
+
+        Parameters
+        ----------
+        client : httpx.Client
+            Should be pre-configured with a base_url and any auth-related headers.
+        structure_clients : str or dict
+            Use "dask" for delayed data loading and "memory" for immediate
+            in-memory structures (e.g. normal numpy arrays). For advanced use,
+            provide dict mapping structure families ("array", "dataframe",
+            "variable", "data_array", "dataset") to client objects. See
+            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        special_clients : dict
+            Advanced: Map client_type_hint from the server to special client
+            catalog objects. See also
+            ``Catalog.discover_special_clients()`` and
+            ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        """
+        from ..server.main import app, get_settings
+
+        @functools.lru_cache(1)
+        def override_settings():
+            settings = get_settings()
+            settings.catalog = catalog
+            return settings
+
+        app.dependency_overrides[get_settings] = override_settings
+        # Note: This is important. The Tiled server routes are defined lazily on startup.
+        asyncio.run(app.router.startup())
+
+        headers = {}
+        if token is not None:
+            headers["X-Access-Token"] = token
+        # Only an AsyncClient can be used over ASGI.
+        # We wrap all the async methods in a call to asyncio.run(...).
+        # Someday we should explore asynchronous Tiled Client objects.
+        client = httpx.AsyncClient(
+            base_url="http://local-tiled-app",
+            headers=headers,
+            app=app,
+        )
+        # TODO How to close the httpx.AsyncClient more cleanly?
+        atexit.register(asyncio.run, client.aclose())
+
+        return cls.from_client(
+            client,
+            # The cache and "offline" mode do not make much sense when we have an
+            # in-process connection. It's also not clear what URL we would use for the cache
+            # even if we wanted to.... but it might be worth rethinking this someday.
+            cache=None,
+            offline=False,
+            structure_clients=structure_clients,
+            special_clients=special_clients,
+        )
+
+    @classmethod
     def from_client(
         cls,
         client,
@@ -160,7 +237,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         special_clients=None,
     ):
         """
-        Advanced: Create a new Catalog from an httpx.Client.
+        Advanced: Connect to a Catalog using a custom instance of httpx.Client or httpx.AsyncClient.
 
         Parameters
         ----------
