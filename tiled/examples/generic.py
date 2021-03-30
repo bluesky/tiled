@@ -1,14 +1,15 @@
 from pathlib import Path
 
 import dask.array
+import dask.dataframe
 import h5py
 import numpy
 import pandas
 import xarray
 
-from ..readers.array import ArrayReader
-from ..readers.dataframe import DataFrameReader
-from ..readers.xarray import DataArrayReader, DatasetReader, VariableReader
+from ..readers.array import ArrayAdapter
+from ..readers.dataframe import DataFrameAdapter
+from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
 from ..utils import SpecialUsers
 
@@ -22,7 +23,7 @@ def access_hdf5_data(name, inner_name, value, size):
 
 arrays = Catalog(
     {
-        name: ArrayReader(access_hdf5_data(name, "ones", 1, size))
+        name: ArrayAdapter.from_array(access_hdf5_data(name, "ones", 1, size))
         for name, size in zip(
             ["tiny", "small", "medium", "large"],
             [3, 100, 1000, 10_000],
@@ -33,14 +34,17 @@ arrays = Catalog(
 arr = access_hdf5_data("tiny", "ones", 1, 3)
 dataframes = Catalog(
     {
-        "df": DataFrameReader(
-            pandas.DataFrame(
-                {
-                    "A": numpy.random.random(100),
-                    "B": numpy.random.random(100),
-                    "C": numpy.random.random(100),
-                },
-                index=pandas.Index(numpy.arange(100), name="index"),
+        "df": DataFrameAdapter(
+            dask.dataframe.from_pandas(
+                pandas.DataFrame(
+                    {
+                        "A": numpy.random.random(100),
+                        "B": numpy.random.random(100),
+                        "C": numpy.random.random(100),
+                    },
+                    index=pandas.Index(numpy.arange(100), name="index"),
+                ),
+                npartitions=1,
             )
         )
     }
@@ -49,7 +53,7 @@ xarrays = Catalog(
     {
         name: Catalog(
             {
-                "variable": VariableReader(
+                "variable": VariableAdapter(
                     xarray.Variable(
                         data=dask.array.from_array(
                             access_hdf5_data(name, "ones", 1, size)
@@ -58,7 +62,7 @@ xarrays = Catalog(
                         attrs={"thing": "stuff"},
                     ),
                 ),
-                "data_array": DataArrayReader(
+                "data_array": DataArrayAdapter(
                     xarray.DataArray(
                         xarray.Variable(
                             data=dask.array.from_array(
@@ -73,7 +77,7 @@ xarrays = Catalog(
                         },
                     ),
                 ),
-                "dataset": DatasetReader(
+                "dataset": DatasetAdapter(
                     xarray.Dataset(
                         {
                             "image": xarray.DataArray(
@@ -114,7 +118,9 @@ for name, size, fruit, animal in zip(
 ):
     subcatalogs[name] = Catalog(
         {
-            inner_name: ArrayReader(access_hdf5_data(name, inner_name, value, size))
+            inner_name: ArrayAdapter.from_array(
+                access_hdf5_data(name, inner_name, value, size)
+            )
             for inner_name, value in zip(["ones", "twos", "threes"], [1, 2, 3])
         },
         metadata={"fruit": fruit, "animal": animal},

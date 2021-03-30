@@ -1,3 +1,4 @@
+import dask.array
 import numpy
 
 from ..structures.xarray import (
@@ -8,11 +9,11 @@ from ..structures.xarray import (
     VariableMacroStructure,
     VariableStructure,
 )
-from ..readers.array import ArrayReader
+from ..readers.array import ArrayAdapter
 from ..utils import DictView
 
 
-class VariableReader:
+class VariableAdapter:
     """
     Wrap an xarray.Variable
     """
@@ -31,7 +32,10 @@ class VariableReader:
         return DictView(self._metadata)
 
     def macrostructure(self):
-        array_reader = ArrayReader(self._variable.data)
+        if isinstance(self._variable.data, dask.array.Array):
+            array_reader = ArrayAdapter(self._variable.data)
+        else:
+            array_reader = ArrayAdapter.from_array(self._variable.data)
         return VariableMacroStructure(
             dims=self._variable.dims,
             data=ArrayStructure(
@@ -68,7 +72,7 @@ class VariableReader:
         self.close()
 
 
-class DataArrayReader:
+class DataArrayAdapter:
     """
     Wrap an xarray.DataArray
     """
@@ -87,13 +91,13 @@ class DataArrayReader:
         return DictView(self._metadata)
 
     def macrostructure(self):
-        variable_reader = VariableReader(self._data_array.variable)
+        variable_reader = VariableAdapter(self._data_array.variable)
         variable_structure = VariableStructure(
             macro=variable_reader.macrostructure(), micro=None
         )
         coords = {}
         for k, v in self._data_array.coords.items():
-            coord_reader = VariableReader(v)
+            coord_reader = VariableAdapter(v)
             coord_structure = VariableStructure(
                 macro=coord_reader.macrostructure(), micro=None
             )
@@ -107,14 +111,17 @@ class DataArrayReader:
     def microstructure(self):
         return None
 
-    def read(self):
-        return self._data_array
+    def read(self, slice=None):
+        data_array = self._data_array
+        if slice is not None:
+            data_array = data_array[slice]
+        return data_array.compute()
 
     def read_block(self, block, coord=None, slice=None):
         if coord is None:
-            variable = VariableReader(self._data_array.variable)
+            variable = VariableAdapter(self._data_array.variable)
         else:
-            variable = VariableReader(self._data_array.coords[coord])
+            variable = VariableAdapter(self._data_array.coords[coord])
         return variable.read_block(block, slice=slice)
 
     def close(self):
@@ -127,7 +134,7 @@ class DataArrayReader:
         self.close()
 
 
-class DatasetReader:
+class DatasetAdapter:
     """
     Wrap an xarray.Dataset
     """
@@ -148,14 +155,14 @@ class DatasetReader:
     def macrostructure(self):
         data_vars = {}
         for k, v in self._dataset.data_vars.items():
-            data_array_reader = DataArrayReader(v)
+            data_array_reader = DataArrayAdapter(v)
             data_array_structure = DataArrayStructure(
                 macro=data_array_reader.macrostructure(), micro=None
             )
             data_vars[k] = data_array_structure
         coords = {}
         for k, v in self._dataset.coords.items():
-            coord_reader = VariableReader(v)
+            coord_reader = VariableAdapter(v)
             coord_structure = VariableStructure(
                 macro=coord_reader.macrostructure(), micro=None
             )
@@ -173,18 +180,18 @@ class DatasetReader:
         ds = self._dataset
         if variables is not None:
             ds = ds[variables]
-        return ds
+        return ds.compute()
 
     def read_variable(self, variable):
-        return self._dataset[variable]
+        return self._dataset[variable].compute()
 
     def read_block(self, variable, block, coord=None, slice=None):
         if variable in self._dataset.coords:
-            return VariableReader(self._dataset.coords[variable]).read_block(
+            return VariableAdapter(self._dataset.coords[variable]).read_block(
                 block, slice=slice
             )
         else:
-            return DataArrayReader(self._dataset[variable]).read_block(
+            return DataArrayAdapter(self._dataset[variable]).read_block(
                 block, coord, slice=slice
             )
 

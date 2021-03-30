@@ -1,19 +1,21 @@
 import collections.abc
 import warnings
 
+import dask.array
 import h5py
 import numpy
 
-from ..readers.array import ArrayReader
+from ..readers.array import ArrayAdapter
 from ..utils import DictView
 from .utils import catalog_repr, IndexersMixin
 from ..queries import KeyLookup
 from .in_memory import Catalog as CatalogInMemory
 
 
-class HDF5DatasetReader(ArrayReader):
+class HDF5DatasetAdapter(ArrayAdapter):
     # TODO Just wrap h5py.Dataset directly, not via dask.array.
-    ...
+    def __init__(self, dataset):
+        super().__init__(dask.array.from_array(dataset))
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
@@ -81,8 +83,8 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                     "Consider using a fixed-length field instead. "
                     "Tiled will serve an empty placeholder."
                 )
-                return HDF5DatasetReader(numpy.array([]))
-            return HDF5DatasetReader(value)
+                return HDF5DatasetAdapter(numpy.array([]))
+            return HDF5DatasetAdapter(value)
 
     def __len__(self):
         return len(self._node)

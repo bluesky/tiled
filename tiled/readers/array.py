@@ -4,24 +4,33 @@ from ..structures.array import ArrayMacroStructure, MachineDataType
 from ..utils import DictView
 
 
-class ArrayReader:
+class ArrayAdapter:
     """
-    Wrap an array-like
+    Wrap an array-like in a "Reader".
 
-    Such as:
+    Examples
+    --------
 
-    - numpy.ndarray
-    - dask.array.Array
-    - h5py.Dataset
+    Wrap a dask array.
+
+    >>> ArrayAdapter(dask.array.from_array(numpy.random.random((100, 100)), chunks=(100, 50)))
+
+    Wrap a numpy array. Internally, it will be automatically divided into chunks by dask.
+
+    >>> ArrayAdapter.from_array(numpy.random.random((100, 100)))
     """
 
     structure_family = "array"
 
     def __init__(self, data, metadata=None):
-        self._metadata = metadata or {}
         if not isinstance(data, dask.array.Array):
-            data = dask.array.from_array(data)
+            raise TypeError(f"data must be a dask.array.Array, not a {type(data)}")
         self._data = data
+        self._metadata = metadata or {}
+
+    @classmethod
+    def from_array(cls, data, metadata=None):
+        return cls(dask.array.from_array(data), metadata)
 
     def __repr__(self):
         return f"{type(self).__name__}({self._data!r})"
@@ -41,8 +50,11 @@ class ArrayReader:
         "Internal structure of a block of this array --- i.e. its data type"
         return MachineDataType.from_numpy_dtype(self._data.dtype)
 
-    def read(self):
-        return self._data
+    def read(self, slice=None):
+        dask_array = self._data
+        if slice is not None:
+            dask_array = dask_array[slice]
+        return dask_array.compute()
 
     def read_block(self, block, slice=None):
         dask_array = self._data.blocks[block]

@@ -35,38 +35,38 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             {
                 "array": lambda: importlib.import_module(
                     "..array", Catalog.__module__
-                ).ClientArrayReader,
+                ).ClientArrayAdapter,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Catalog.__module__
-                ).ClientDataFrameReader,
+                ).ClientDataFrameAdapter,
                 "variable": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientVariableReader,
+                ).ClientVariableAdapter,
                 "data_array": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDataArrayReader,
+                ).ClientDataArrayAdapter,
                 "dataset": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDatasetReader,
+                ).ClientDatasetAdapter,
             }
         ),
         "dask": LazyMap(
             {
                 "array": lambda: importlib.import_module(
                     "..array", Catalog.__module__
-                ).ClientDaskArrayReader,
+                ).ClientDaskArrayAdapter,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Catalog.__module__
-                ).ClientDaskDataFrameReader,
+                ).ClientDaskDataFrameAdapter,
                 "variable": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDaskVariableReader,
+                ).ClientDaskVariableAdapter,
                 "data_array": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDaskDataArrayReader,
+                ).ClientDaskDataArrayAdapter,
                 "dataset": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDaskDatasetReader,
+                ).ClientDaskDatasetAdapter,
             }
         ),
     }

@@ -9,7 +9,7 @@ from .base import BaseArrayClientReader
 from .utils import get_content_with_cache
 
 
-class ClientDaskArrayReader(BaseArrayClientReader):
+class ClientDaskArrayAdapter(BaseArrayClientReader):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     STRUCTURE_TYPE = ArrayStructure
@@ -126,7 +126,7 @@ class ClientDaskArrayReader(BaseArrayClientReader):
         self.read().compute()
 
 
-class ClientArrayReader(ClientDaskArrayReader):
+class ClientArrayAdapter(ClientDaskArrayAdapter):
     "Client-side wrapper around an array-like that returns in-memory arrays"
 
     def read(self, slice=None):

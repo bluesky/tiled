@@ -4,14 +4,20 @@ from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStruct
 from ..utils import DictView
 
 
-class DataFrameReader:
+class DataFrameAdapter:
     """
-    Wrap a dataframe-like
+    Wrap a dataframe-like in a "Reader".
 
-    Such as:
+    Examples
+    --------
 
-    - pandas.DataFrame
-    - dask.DataFrame
+    >>> df = pandas.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    >>> DataFrameAdapter(dask.dataframe.from_pandas(df), npartitions=1)
+
+    Read a CSV (uses dask.dataframe.read_csv).
+
+    >>> DataFrameAdapter.read_csv("myfiles.*.csv")
+    >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
     """
 
     structure_family = "dataframe"
@@ -19,9 +25,22 @@ class DataFrameReader:
     def __init__(self, data, metadata=None):
         self._metadata = metadata or {}
         if not isinstance(data, dask.dataframe.DataFrame):
-            DEFAULT_CHUNK_SIZE = 100  # wild guess, needs more thought
-            data = dask.dataframe.from_pandas(data, chunksize=DEFAULT_CHUNK_SIZE)
+            raise TypeError(
+                f"data must be a dask.dataframe.Dataframe, not a {type(data)}"
+            )
         self._data = data
+
+    @classmethod
+    def read_csv(cls, *args, **kwargs):
+        return cls(dask.dataframe.read_csv(*args, **kwargs))
+
+    read_csv.__doc__ = (
+        """
+    This wraps dask.dataframe.read_csv. Original docstring:
+
+    """
+        + dask.dataframe.read_csv.__doc__
+    )
 
     def __repr__(self):
         return f"{type(self).__name__}({self._data!r})"

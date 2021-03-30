@@ -12,7 +12,7 @@ from .base import BaseClientReader
 from .utils import get_content_with_cache, get_json_with_cache
 
 
-class ClientDaskDataFrameReader(BaseClientReader):
+class ClientDaskDataFrameAdapter(BaseClientReader):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     def __init__(self, *args, **kwargs):
@@ -209,7 +209,7 @@ class ClientDaskDataFrameReader(BaseClientReader):
     # of rows" which is expensive to compute.
 
 
-class ClientDataFrameReader(ClientDaskDataFrameReader):
+class ClientDataFrameAdapter(ClientDaskDataFrameAdapter):
     "Client-side wrapper around a dataframe-like that returns in-memory dataframes"
 
     def read_partition(self, partition, columns=None):
