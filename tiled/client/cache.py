@@ -39,6 +39,30 @@ def download(*entries, path=None, available_bytes=None, cache=None):
     cache : Cache, optional
         For advanced usage with a custom cache. If set, `path` and `available_bytes`
         must *not* be set.
+
+    Examples
+    --------
+
+    Connect a catalog and download it in its entirety.
+
+    >>> from tiled.client import Catalog
+    >>> catalog = Catalog.from_uri("http://...")
+    >>> from tiled.cache import download
+    >>> download(catalog, "my_cache_directory")
+
+    Use the local copy for faster data access. Tiled will connect to server just
+    to verify that the local copy is current, and only download data if there have
+    been changes to the copy of the server.
+
+    >>> from tiled.client import Catalog
+    >>> catalog = Catalog.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"))
+
+    If network is unavailable or very slow, rely on the local copy entirely. Tiled
+    will not connect to the server. (Note that you still need to provide a URL,
+    but it is only used to contruct the names of files in the local directory.)
+
+    >>> from tiled.client import Catalog
+    >>> catalog = Catalog.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
     """
     # We have "coupled kwargs" here, which is a pattern I try to avoid, but
     # in this case I think it's overall better than having too separate functions.
