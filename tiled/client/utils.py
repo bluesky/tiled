@@ -38,7 +38,7 @@ def get_content_with_cache(
     try:
         if reservation is not None:
             request.headers["If-None-Match"] = reservation.etag
-            response = _send(client, request, timeout=timeout)
+        response = _send(client, request, timeout=timeout)
         handle_error(response)
         if response.status_code == 304:  # HTTP 304 Not Modified
             # Read from the cache
