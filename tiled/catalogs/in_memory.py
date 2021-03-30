@@ -27,7 +27,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self, mapping, metadata=None, access_policy=None, authenticated_identity=None
     ):
         """
-        Create a simple Catalog from any mapping (e.g. dict, LazyMap).
+        Create a simple Catalog from any mapping (e.g. dict, OneShotCachedMap).
 
         Parameters
         ----------
@@ -131,7 +131,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     def _items_slice(self, start, stop):
         # A goal of this implementation is to avoid iterating over
-        # self._mapping.values() because self._mapping may be a LazyMap which
+        # self._mapping.values() because self._mapping may be a OneShotCachedMap which
         # only constructs its values at access time. With this in mind, we
         # identify the key(s) of interest and then only access those values.
         yield from ((key, self._mapping[key]) for key in self._keys_slice(start, stop))

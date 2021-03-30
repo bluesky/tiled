@@ -15,7 +15,7 @@ from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
 from ..utils import (
     DictView,
-    LazyMap,
+    OneShotCachedMap,
 )
 from .utils import get_json_with_cache
 from ..catalogs.utils import (
@@ -28,10 +28,10 @@ from ..catalogs.utils import (
 class Catalog(collections.abc.Mapping, IndexersMixin):
 
     # This maps the structure_family sent by the server to a client-side object that
-    # can interpret the structure_family's structure and content. LazyMap is used to
+    # can interpret the structure_family's structure and content. OneShotCachedMap is used to
     # defer imports.
     DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
-        "memory": LazyMap(
+        "memory": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
                     "..array", Catalog.__module__
@@ -50,7 +50,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 ).ClientDatasetAdapter,
             }
         ),
-        "dask": LazyMap(
+        "dask": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
                     "..array", Catalog.__module__
@@ -77,7 +77,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     @classmethod
     def _discover_entrypoints(cls, entrypoint_name):
-        return LazyMap(
+        return OneShotCachedMap(
             {
                 name: entrypoint.load
                 for name, entrypoint in entrypoints.get_group_named(

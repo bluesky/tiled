@@ -1,5 +1,4 @@
 import collections
-import collections.abc
 import functools
 import importlib
 import mimetypes
@@ -10,73 +9,8 @@ import time
 
 from watchgod.watcher import AllWatcher, Change
 
-from ..utils import DictView, LazyMap
+from ..utils import CachingMap, DictView, OneShotCachedMap
 from .in_memory import Catalog as CatalogInMemory
-
-
-class LazyCachedMap(collections.abc.Mapping):
-    """
-    Mapping that computes values on read and optionally caches them.
-
-    Parameters
-    ----------
-    mapping : dict-like
-        Must map keys to callables that return values.
-    cache : dict-like or None, optional
-        Will be used to cache values. If None, nothing is cached.
-        May be ordinary dict, LRUCache, etc.
-    """
-
-    __slots__ = ("__mapping", "__cache")
-
-    def __init__(self, mapping, cache=None):
-        self.__mapping = mapping
-        self.__cache = cache
-
-    def __getitem__(self, key):
-        if self.__cache is None:
-            return self.__mapping[key]()
-        else:
-            try:
-                return self.__cache[key]
-            except KeyError:
-                value = self.__mapping[key]()
-                self.__cache[key] = value
-                return value
-
-    def __len__(self):
-        return len(self.__mapping)
-
-    def __iter__(self):
-        return iter(self.__mapping)
-
-    def __contains__(self, key):
-        # Ensure checking 'in' does not trigger evaluation.
-        return key in self.__mapping
-
-    def __getstate__(self):
-        return self.__mapping, self.__cache
-
-    def __setstate__(self, mapping, cache):
-        self.__mapping = mapping
-        self.__cache = cache
-
-    def __repr__(self):
-        if self.__cache is None:
-            d = {k: "<lazy>" for k in self.__mapping}
-        else:
-            d = {}
-            for k in self.__mapping:
-                try:
-                    value = self.__cache[k]
-                except KeyError:
-                    d[k] = "<lazy>"
-                else:
-                    d[k] = repr(value)
-        return (
-            f"<{type(self).__name__}"
-            "({" + ", ".join(f"{k!r}: {v!s}" for k, v in d.items()) + "})>"
-        )
 
 
 class Watcher(AllWatcher):
@@ -97,9 +31,9 @@ class Catalog(CatalogInMemory):
     )
 
     # This maps MIME types (i.e. file formats) for appropriate Readers.
-    # LazyMap is used to defer imports. We don't want to pay up front
+    # OneShotCachedMap is used to defer imports. We don't want to pay up front
     # for importing Readers that we will not actually use.
-    DEFAULT_READERS_BY_MIMETYPE = LazyMap(
+    DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         {
             "image/tiff": lambda: importlib.import_module(
                 "...readers.tiff", Catalog.__module__
@@ -158,7 +92,7 @@ class Catalog(CatalogInMemory):
                 mapping = {}
                 index[parts + (subdirectory,)] = mapping
                 index[parts][subdirectory] = functools.partial(
-                    CatalogInMemory, LazyCachedMap(mapping)
+                    CatalogInMemory, CachingMap(mapping)
                 )
             for filename in files:
                 # Add items to the mapping for this root directory.
@@ -169,7 +103,7 @@ class Catalog(CatalogInMemory):
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
         initial_scan_complete.append(object())
-        mapping = LazyCachedMap(index[()])
+        mapping = CachingMap(index[()])
         return cls(
             mapping,
             index=index,
