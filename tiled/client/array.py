@@ -121,6 +121,10 @@ class ClientDaskArrayReader(BaseArrayClientReader):
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.shape[0]
 
+    def touch(self):
+        super().touch()
+        self.read().compute()
+
 
 class ClientArrayReader(ClientDaskArrayReader):
     "Client-side wrapper around an array-like that returns in-memory arrays"

@@ -1,5 +1,6 @@
 from ..utils import DictView
 from .utils import get_json_with_cache
+from ..catalogs.utils import UNCHANGED
 
 
 class BaseClientReader:
@@ -32,6 +33,49 @@ class BaseClientReader:
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._metadata)
+
+    def new_variation(
+        self,
+        offline=UNCHANGED,
+        cache=UNCHANGED,
+        metadata=UNCHANGED,
+        path=UNCHANGED,
+        params=UNCHANGED,
+        structure=UNCHANGED,
+    ):
+        """
+        This is intended primarily for intenal use and use by subclasses.
+        """
+        if offline is UNCHANGED:
+            self._offline = offline
+        if cache is UNCHANGED:
+            self._cache = offline
+        if metadata is UNCHANGED:
+            self._metadata = metadata
+        if path is UNCHANGED:
+            self._path = path
+        if params is UNCHANGED:
+            self._params = params
+        if structure is UNCHANGED:
+            self._structure = structure
+        return type(self)(
+            client=self._client,
+            offline=offline,
+            cache=cache,
+            metadata=metadata,
+            path=path,
+            params=params,
+            structure=structure,
+        )
+
+    def touch(self):
+        """
+        Access all the data from the Reader.
+
+        This causes it to be cached if the client is configured with a cache.
+        """
+        repr(self)
+        self.read()
 
 
 class BaseArrayClientReader(BaseClientReader):

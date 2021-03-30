@@ -66,6 +66,10 @@ class ClientDaskVariableReader(BaseArrayClientReader):
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.data.macro.shape[0]
 
+    def touch(self):
+        super().touch()
+        self.read().compute()
+
 
 class ClientVariableReader(ClientDaskVariableReader):
 
@@ -171,6 +175,10 @@ class ClientDaskDataArrayReader(BaseArrayClientReader):
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.variable.macro.data.macro.shape[0]
 
+    def touch(self):
+        super().touch()
+        self.read().compute()
+
 
 class ClientDataArrayReader(ClientDaskDataArrayReader):
 
@@ -242,6 +250,11 @@ class ClientDaskDatasetReader(BaseArrayClientReader):
             # Do not print messy traceback from thread. Just fail silently.
             return []
         return columns
+
+    def touch(self):
+        super().touch()
+        self._ipython_key_completions_()
+        self.read().compute()
 
     @property
     def data_vars(self):

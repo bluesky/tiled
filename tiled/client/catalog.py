@@ -234,6 +234,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         self._queries = tuple(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
         self._params = params or {}
+        super().__init__()
 
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
@@ -248,6 +249,18 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._metadata)
+
+    def touch(self):
+        """
+        Access all the data in this Catalog.
+
+        This causes it to be cached if the client is configured with a cache.
+        """
+        get_json_with_cache(self._cache, self._offline, self._client, "/metadata/")
+        repr(self)
+        for key in self:
+            entry = self[key]
+            entry.touch()
 
     def _get_class(self, item):
         # The basic structure of the response is either one of the structure_clients
@@ -280,35 +293,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         # repsect that.
         return self._root_client_type
 
-    def new_variation(
-        self,
-        item,
-        *,
-        path=UNCHANGED,
-        metadata=UNCHANGED,
-        structure_clients=UNCHANGED,
-        special_clients=UNCHANGED,
-        params=UNCHANGED,
-        queries=UNCHANGED,
-    ):
-        """
-        This is intended primarily for intenal use and use by subclasses.
-        """
-        if path is UNCHANGED:
-            path = self._path
-        if metadata is UNCHANGED:
-            metadata = self._metadata
-        if structure_clients is UNCHANGED:
-            structure_clients = self.structure_clients
-        if special_clients is UNCHANGED:
-            special_clients = self.special_clients
-        if params is UNCHANGED:
-            params = self._params
-        if queries is UNCHANGED:
-            if path is UNCHANGED:
-                queries = self._queries
-            else:
-                queries = None  # The queries do not apply to a parent or child catalog.
+    def client_for_item(self, item, path, metadata):
         class_ = self._get_class(item)
         if item["type"] == "catalog":
             return class_(
@@ -317,10 +302,10 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
                 cache=self._cache,
                 path=path,
                 metadata=metadata,
-                structure_clients=structure_clients,
-                special_clients=special_clients,
-                params=params,
-                queries=queries,
+                structure_clients=self.structure_clients,
+                special_clients=self.special_clients,
+                params=self._params,
+                queries=None,
                 root_client_type=self._root_client_type,
             )
         else:  # item["type"] == "reader"
@@ -330,8 +315,52 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
                 cache=self._cache,
                 path=path,
                 metadata=metadata,
-                params=params,
+                params=self._params,
             )
+
+    def new_variation(
+        self,
+        *,
+        offline=UNCHANGED,
+        path=UNCHANGED,
+        metadata=UNCHANGED,
+        structure_clients=UNCHANGED,
+        special_clients=UNCHANGED,
+        cache=UNCHANGED,
+        params=UNCHANGED,
+        queries=UNCHANGED,
+    ):
+        """
+        This is intended primarily for intenal use and use by subclasses.
+        """
+        if offline is UNCHANGED:
+            offline = self._offline
+        if path is UNCHANGED:
+            path = self._path
+        if metadata is UNCHANGED:
+            metadata = self._metadata
+        if structure_clients is UNCHANGED:
+            structure_clients = self.structure_clients
+        if special_clients is UNCHANGED:
+            special_clients = self.special_clients
+        if cache is UNCHANGED:
+            cache = self._cache
+        if params is UNCHANGED:
+            params = self._params
+        if queries is UNCHANGED:
+            queries = self._queries
+        return type(self)(
+            client=self._client,
+            cache=cache,
+            offline=offline,
+            path=path,
+            metadata=metadata,
+            structure_clients=structure_clients,
+            special_clients=special_clients,
+            params=params,
+            queries=queries,
+            root_client_type=self._root_client_type,
+        )
 
     def __len__(self):
         content = get_json_with_cache(
@@ -383,7 +412,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             len(data) == 1
         ), "The key lookup query must never result more than one result."
         (item,) = data
-        return self.new_variation(
+        return self.client_for_item(
             item,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
@@ -407,7 +436,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
             )
             for item in content["data"]:
                 key = item["id"]
-                value = self.new_variation(
+                value = self.client_for_item(
                     item,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
@@ -461,7 +490,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
                 if stop is not None and next(item_counter) == stop:
                     return
                 key = item["id"]
-                yield key, self.new_variation(
+                yield key, self.client_for_item(
                     item,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
@@ -485,7 +514,7 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         )
         (item,) = content["data"]
         key = item["id"]
-        value = self.new_variation(
+        value = self.client_for_item(
             item,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
@@ -493,17 +522,8 @@ class ClientCatalog(collections.abc.Mapping, IndexersMixin):
         return (key, value)
 
     def search(self, query):
-        return type(self)(
-            client=self._client,
-            offline=self._offline,
-            cache=self._cache,
-            path=self._path,
-            metadata=self._metadata,
-            structure_clients=self.structure_clients,
-            special_clients=self.special_clients,
-            params=self._params,
+        return self.new_variation(
             queries=self._queries + (query,),
-            root_client_type=self._root_client_type,
         )
 
 

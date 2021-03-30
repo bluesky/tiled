@@ -72,6 +72,11 @@ class ClientDaskDataFrameReader(BaseClientReader):
             return []
         return columns
 
+    def touch(self):
+        super().touch()
+        self._ipython_key_completions_()
+        self.read().compute()
+
     def structure(self):
         meta_content = get_content_with_cache(
             self._cache,

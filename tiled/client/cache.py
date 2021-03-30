@@ -21,6 +21,21 @@ import urllib.parse
 from heapdict import heapdict
 
 
+def download(*entries, path=None, available_bytes=None, cache=None):
+    # We have "coupled kwargs" here, which is a pattern I try to avoid, but
+    # in this case I think it's overall better than having too separate functions.
+    if cache is None:
+        if path is None:
+            raise TypeError(
+                "You must set either `path` or `cache`, as in "
+                "path='path/to/directory' (common) or a cache=... (advanced)."
+            )
+        cache = Cache.on_disk(path, available_bytes=available_bytes)
+    # TODO Use multiple processes to ensure we are saturating our network connection.
+    for entry in entries:
+        entry.new_variation(cache=cache).touch()
+
+
 class Reservation:
     """
     This represents a reservation on a cached piece of content.
@@ -47,8 +62,12 @@ class Reservation:
     def ensure_released(self):
         "Release the reservation. This is idempotent."
         if self._lock_held:
-            self._lock.release()
-            self._lock_held = False
+            try:
+                self._lock.release()
+                # TODO Investigate why this is sometimes released twice.
+            except AttributeError:
+                pass
+                self._lock_held = False
 
 
 class Cache:
@@ -62,7 +81,7 @@ class Cache:
     """
 
     @classmethod
-    def in_memory(cls, available_bytes, *, scorer=None):
+    def in_memory(cls, available_bytes, *, error_if_full=False, scorer=None):
         """
         An in-memory cache of data from the server
 
@@ -73,6 +92,22 @@ class Cache:
         i.e. a given working session. See ``Cache.on_disk()`` for a
         cache that can be shared across process and persistent for future
         sessions.
+
+        Parameters
+        ----------
+        available_bytes : integer
+            e.g. 2e9 to use up to 2 GB of RAM
+        error_if_full : boolean, optional
+            By default, the cache starts evicting the least-used items when
+            it fills up. This is generally fine when working with a
+            connection to the server. But if the goal is to cache for
+            *offline* use, it is better to be notified by and error that the
+            cache is full. Then the user can respond by increasing
+            available_bytes, using a different storage volume for the cache,
+            or choosing to a different (smaller) set of entries to download.
+        scorer : Scorer
+            Determines which items to evict from the cache when it grows full.
+            See tiled.client.cache.Scorer for example.
         """
         return cls(
             available_bytes,
@@ -81,11 +116,20 @@ class Cache:
             sizes={},
             global_lock=threading.Lock(),
             lock_factory=lambda etag: threading.Lock(),
+            error_if_full=error_if_full,
             scorer=scorer,
         )
 
     @classmethod
-    def on_disk(cls, available_bytes, path, *, scorer=None):
+    def on_disk(
+        cls,
+        path,
+        available_bytes=None,
+        *,
+        cull_on_startup=False,
+        error_if_full=False,
+        scorer=None,
+    ):
         """
         An on-disk cache of data from the server
 
@@ -94,18 +138,56 @@ class Cache:
 
         This uses file-based locking to ensure consistency when the cache
         is shared by multiple processes.
+
+        Parameters
+        ----------
+        path : Path or str
+            A directory will be created at this path if it does not yet exist.
+            It is safe to reuse an existing cache directory and to share a cache
+            directory between multiple processes.
+        available_bytes : integer, optional
+            e.g. 2e9 to use up to 2 GB of disk space. If None, this will consume
+            up to (X - 1 GB) where X is the free space remaining on the disk
+            containing `path`.
+        cull_on_startup : boolean, optional
+            If reusing an existing cache directory which is already larger than the
+            available_bytes, an error is raised. Set this to True to delete
+            items from the cache until it fits in available_bytes. False by default.
+        error_if_full : boolean, optional
+            By default, the cache starts evicting the least-used items when
+            it fills up. This is generally fine when working with a
+            connection to the server. But if the goal is to cache for
+            *offline* use, it is better to be notified by and error that the
+            cache is full. Then the user can respond by increasing
+            available_bytes, using a different storage volume for the cache,
+            or choosing to a different (smaller) set of entries to download.
+        scorer : Scorer
+            Determines which items to evict from the cache when it grows full.
+            See tiled.client.cache.Scorer for example.
         """
         import locket
+        import shutil
 
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
+        if available_bytes is None:
+            # By default, use (X - 1 GB) where X is the free space on the drive containing `path`.
+            available_bytes = shutil.disk_usage(path).free - 1e9
         # Get the nbytes for each object in the cache if it is not empty.
         # The FileBasedCache provides a `sizes` property that computes this
         # using stat(). That is, we do not actually read the content into
         # memory at this point.
         etag_to_content_cache = FileBasedCache(path / "etag_to_content_cache")
         sizes = etag_to_content_cache.sizes
-        return cls(
+        total_size = sum(sizes.values())
+        if total_size > available_bytes:
+            if not cull_on_startup:
+                raise AlreadyTooLarge(
+                    f"The cache directory is already {total_size} bytes which is greater "
+                    f"that the specified available_bytes {available_bytes}. To delete items "
+                    "from the cache until it fits, set cull_on_startup=True."
+                )
+        instance = cls(
             available_bytes,
             url_to_etag_cache=FileBasedCache(path / "url_to_etag_cache"),
             etag_to_content_cache=etag_to_content_cache,
@@ -114,8 +196,12 @@ class Cache:
             lock_factory=lambda etag: locket.lock_file(
                 path / "etag_to_content_cache" / f"{etag}.lock"
             ),
+            error_if_full=error_if_full,
             scorer=scorer,
         )
+        # Ensure we fit in available_bytes.
+        instance.shrink()
+        return instance
 
     def __init__(
         self,
@@ -126,6 +212,7 @@ class Cache:
         sizes,
         global_lock,
         lock_factory,
+        error_if_full=False,
         scorer=None,
     ):
         """
@@ -144,6 +231,14 @@ class Cache:
             A lock used for the url_to_etag_cache
         lock_factory : callable
             Expected signature: ``f(etag) -> Lock``
+        error_if_full : boolean, optional
+            By default, the cache starts evicting the least-used items when
+            it fills up. This is generally fine when working with a
+            connection to the server. But if the goal is to cache for
+            *offline* use, it is better to be notified by and error that the
+            cache is full. Then the user can respond by increasing
+            available_bytes, using a different storage volume for the cache,
+            or choosing to a different (smaller) set of entries to download.
         scorer: Scorer, optional
             A Scorer object that controls how we decide what to retire when space
             is low.
@@ -161,6 +256,7 @@ class Cache:
         self.etag_refcount = defaultdict(lambda: 0)
         self.etag_lock = LockDict.from_lock_factory(lock_factory)
         self.url_to_etag_lock = global_lock
+        self.error_if_full = error_if_full
         # If the cache has data in it, initialize the internal caches.
         for etag in etag_to_content_cache:
             nbytes = sizes[etag]
@@ -263,6 +359,15 @@ class Cache:
         """
         if self.total_bytes <= self.available_bytes:
             return
+
+        if self._error_if_full:
+            raise CacheIsFull(
+                f"""All {self.available_bytes} are used. Options:
+1. Set larger available_bytes (and if necessary a different storage volume with more room).
+2. Choose a smaller set of entries to cache.
+3. Allow the cache to evict items that do not fit by setting error_if_full=False.
+"""
+            )
 
         while self.total_bytes > self.available_bytes:
             self._shrink_one()
@@ -414,3 +519,11 @@ class LockDict(dict):
         value = self._lock_factory(key)
         self[key] = value
         return value
+
+
+class AlreadyTooLarge(Exception):
+    pass
+
+
+class CacheIsFull(Exception):
+    pass
