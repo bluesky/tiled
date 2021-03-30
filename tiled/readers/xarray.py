@@ -32,6 +32,9 @@ class VariableAdapter:
         return DictView(self._metadata)
 
     def macrostructure(self):
+        # Coordinates are greedily loaded into numpy, so we cannot insist or
+        # assume that these are dask-backed the way that we do in the other
+        # adapters.
         if isinstance(self._variable.data, dask.array.Array):
             array_reader = ArrayAdapter(self._variable.data)
         else:
