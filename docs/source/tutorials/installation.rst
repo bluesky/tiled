@@ -26,9 +26,10 @@ whether you are publishing data as a ``server``, reading data as a ``client`` or
 
 .. code:: bash
 
-   python3 -m pip install tiled[client]         # client only
-   python3 -m pip install tiled[server]         # server only
-   python3 -m pip install tiled[client,server]  # both
+   python3 -m pip install 'tiled[client]'         # client only
+   python3 -m pip install 'tiled[client,cache]'   # add support for keeping local copies
+   python3 -m pip install 'tiled[server]'         # server only
+   python3 -m pip install 'tiled[client,server]'  # both
 
 If you may be publishing or reading ``xarray``, pandas ``dataframe``, and numpy
 ``array`` data, install them all, or a subset. With none of the above you can
@@ -36,14 +37,14 @@ still publish and/or read *metadata* but cannot pull any actual data.
 
 .. code:: bash
 
-   python3 -m pip install tiled[array,dataframe,xarray]
+   python3 -m pip install 'tiled[array,dataframe,xarray]'
 
 If you want to just grab everything you might need without worrying about keeping
 dependencies low:
 
 .. code:: bash
 
-   python3 -m pip install tiled[complete]
+   python3 -m pip install 'tiled[complete]'
 
 Source
 ------
@@ -54,4 +55,4 @@ To install an editable installation for local development:
 
    git clone https://github.com/bluesky/tiled
    cd tiled
-   pip install -e .[complete]
+   pip install -e '.[complete]'
