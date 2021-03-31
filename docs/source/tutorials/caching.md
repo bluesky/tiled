@@ -3,6 +3,12 @@
 There are several modes of *caching* supported by Tiled. They cover different
 situations. Each one is addressed here with a hypthoetical scenario.
 
+To follow along, start the Tiled server with the demo Catalog.
+
+```
+tiled serve pyobject tiled.examples.generated:demo
+```
+
 ## Make repeated access fast within one working session / process
 
 *Solution: Stash results in memory (RAM).*
@@ -11,7 +17,7 @@ situations. Each one is addressed here with a hypthoetical scenario.
 from tiled.client.catalog import Catalog
 from tiled.client.cache import Cache
 
-catalog = Catalog.from_uri("http://...", cache=Cache.in_memory(2e9))
+catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
 ```
 
 where we have to specify the maximum RAM we are willing to dedicate to the cache,
@@ -21,16 +27,37 @@ Most things that we do with a Catalog or dataset make an HTTP request to the
 server and receive a response. For example...
 
 ```python
->>> catalog  # Downloads the first couple entry names to display them.
-Catalog({"some_dataframe", "another_dataframe", ... (N entries)})
->>> catalog.metadata  # Downloads the metadata for this Catalog.
-{"color": "red"}
->>> catalog["some_dataframe"]  # Downloads the column names to display.
-... <snipped for brevity>
->>> catalog["some_dataframe"].metadata  # Downloads the metadata for this DataFrame.
-{"flavor": "salty"}
->>> catalog["some_dataframe"].read().compute()  # Downloads the data, in several partitions.
-... <snipped for brevity>
+In [2]: catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
+
+In [3]: catalog
+Out[3]: <Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
+
+In [4]: catalog.metadata  # fetches metadata (in this case empty)
+Out[4]: DictView({})
+
+In [5]: catalog['dataframes']['df']  # fetches column names
+Out[5]: <ClientDaskDataFrameAdapter ['A', 'B', 'C']>
+
+In [6]: catalog['dataframes']['df'].metadata  # fetches metadata (in this case empty)
+Out[6]: DictView({})
+
+In [8]: catalog['dataframes']['df'].read().compute()  # fetches data, in partitions
+Out[8]: 
+              A         B         C
+index                              
+0      0.748885  0.769644  0.296070
+1      0.071319  0.364743  0.718473
+2      0.322665  0.897854  0.558606
+3      0.328785  0.810159  0.073775
+4      0.158253  0.822505  0.637224
+...         ...       ...       ...
+95     0.913758  0.488304  0.615120
+96     0.969652  0.287850  0.288405
+97     0.769774  0.941785  0.353047
+98     0.350033  0.052412  0.969244
+99     0.356245  0.683540  0.166682
+
+[100 rows x 3 columns]
 ```
 
 If run any of the code above, a second time, we'll find that it's faster.
@@ -55,13 +82,13 @@ see the next section.
 
 *Solution: Stash results on disk.*
 
-```{code} python
-:emphasize-lines 4
+```{code-block} python
+:emphasize-lines: 4
 
 from tiled.client.catalog import Catalog
 from tiled.client.cache import Cache
 
-catalog = Catalog.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"))
+catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
 ```
 
 This works exactly the same as before, but now the data is stored in files on disk.
@@ -90,7 +117,7 @@ First, when connected to the Internet, connect a Catalog and download it.
 from tiled.client.cache import download
 from tiled.client.catalog import Catalog
 
-catalog = Catalog.from_uri("http://...")
+catalog = Catalog.from_uri("http://localhost:8000")
 download(catalog, "my_cache_directory")
 ```
 
@@ -112,20 +139,22 @@ tiled CLI.
 
 ```
 
-$ tiled download "http://..." my_cache_direcotry
+```
+$ tiled download "http://localhost:8000" my_cache_direcotry
+```
 
 In normal *online* operation, Tiled will still "phone home" to the server
 just to check that its cached copy is still the most recent version of
 the meadata and data. By setting ``offline=True`` we tell it not to
 attempt to connect and to rely entirely on its local cache.
 
-```{code} python
-:emphasize-lines 4
+```{code-block} python
+:emphasize-lines: 4
 
 from tiled.client.catalog import Catalog
 from tiled.client.cache import Cache
 
-catalog = Catalog.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
+catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
 ```
 
 If you attempt to access something that was not downloaded a
@@ -162,13 +191,13 @@ intentionally not very configurable.
 ```python
 from tiled.utils import export
 
-export(catalog["some_dataframe"], "table.csv")
+export(catalog["dataframes"]["df"], "table.csv")
 ```
 
 To do more sophisticated export, use standard Python tools, as in:
 
 ```python
-catalog["some_dataframe"]["A"].to_csv("table.csv")
+catalog["dataframes"]["df"].to_csv("table.csv", ...)
 ```
 
 ```{note}
