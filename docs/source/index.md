@@ -29,9 +29,9 @@ explanations/lineage
 ```{toctree}
 :caption: Reference
 
-reference/specification
+reference/http-api-overview
 reference/requirements
-reference/development
+reference/specification
 reference/release-history
 reference/min-versions
 ```
