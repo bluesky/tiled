@@ -133,6 +133,12 @@ If you attempt to access something that was not downloaded a
 
 ## Export files for use by external programs ("deliberate export")
 
+```{warning}
+
+This is "documentation-driven development". The feature described in
+this section is not yet implemented!
+```
+
 First, consider alternatives:
 
 If you data analysis is taking place in Python, then you may have
