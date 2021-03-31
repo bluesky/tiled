@@ -1,45 +1,43 @@
 # Serving a Directory of Files
 
-For this tutorial, install tiffffile.
+For this tutorial, install tiffffile and openpyxl.
 
 ```
-pip install tifffile
+pip install tifffile openpyxl
 ```
-Generate a directory of TIFF files using a utility provided by Tiled.
+Generate a directory of example files using a utility provided by Tiled.
 (Or use your own, if you have one to hand.)
 
 ```
-python -m tiled.examples.generate_files some_files
+python -m tiled.examples.generate_files example_files/
 ```
 
-This created a directory named ``some_files`` with some files and subdirectories.
+This created a directory named ``example_files`` with some files and subdirectories.
 
 ```
-$ ls some_files
+$ ls example_files
 a.tif  b.tif  c.tif  even_more  more
 ```
 
 The full strucutre looks like
 
 ```
-$ tree some_files
-some_files
+├── another_table.csv
 ├── a.tif
 ├── b.tif
 ├── c.tif
 ├── even_more
 │   ├── e.tif
 │   └── f.tif
-└── more
-    └── d.tif
-
-2 directories, 6 files
+├── more
+│   └── d.tif
+└── tables.xlsx
 ```
 
 We can serve this directory using Tiled.
 
 ```
-tiled serve directory some_files
+tiled serve directory example_files
 ```
 
 Tiled walks the directory, identifies files that it recognizes and has
@@ -55,11 +53,11 @@ catalog = Catalog.from_uri("http:/localhost:8000")
 ```
 
 The ``catalog`` has the same tree structure as the directory on
-disk, and we can slice and access the data in dask and numpy.
+disk, and we can slice and access the data.
 
 ```python
 >>> catalog
-<Catalog {'more', 'even_more', 'c.tif', 'b.tif', 'a.tif'}>
+<Catalog {'more', 'even_more', 'b.tif', 'a.tif', 'c.tif', ...} ~7 entries>
 
 >>> catalog['more']
 <Catalog {'d.tif'}>

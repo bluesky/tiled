@@ -9,6 +9,7 @@ import time
 
 from watchgod.watcher import AllWatcher, Change
 
+from ..structures.dataframe import XLSX_MIME_TYPE
 from ..utils import CachingMap, DictView, OneShotCachedMap
 from .in_memory import Catalog as CatalogInMemory
 
@@ -38,6 +39,12 @@ class Catalog(CatalogInMemory):
             "image/tiff": lambda: importlib.import_module(
                 "...readers.tiff", Catalog.__module__
             ).TiffReader,
+            "text/csv": lambda: importlib.import_module(
+                "...readers.dataframe", Catalog.__module__
+            ).DataFrameAdapter.read_csv,
+            XLSX_MIME_TYPE: lambda: importlib.import_module(
+                "...readers.excel", Catalog.__module__
+            ).ExcelReader.from_file,
         }
     )
 
