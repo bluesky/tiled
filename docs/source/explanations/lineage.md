@@ -18,18 +18,20 @@ projects.
   DataFrames respectively. It also provides streaming access to data and is
   tightly coupled to the Bluesky "Document Model" for streaming data.
 * [**Intake**](https://intake.readthedocs.org/) (2017, Anaconda Inc.) is similar
-  Databroker in its goals and feature set---searchable Catalogs that ultimately
-  provide standard SciPy data structures---but its intended scope is broader
-  than Databroker's, not being tied to the Bluesky "Document Model" in
-  particular. It also supports *nested* Catalogs and chainable search queries.
-  In 2019--2020, Databroker was refactored to become an Intake plugin.
+  to Databroker in its goals and feature set---searchable Catalogs that
+  ultimately provide standard SciPy data structures---but its intended scope
+  is broader than Databroker's, not being tied to the Bluesky "Document
+  Model" in particular. It also supports *nested* Catalogs and chainable
+  search queries. In 2018--2020, Databroker was refactored to become a set of
+  Intake drivers.
 
 Intake also has a prototype of an HTTP server, which has not yet been fully
 developed into a robust tool. Attempts to rework that server led to the
 conclusion that Intake's architecture and API privilege ergonomic *interactive*
-use, and the changes neccessary to use it as library code effectively within a
-performant server (or other larger applicaiton) would be largely *subtractive*,
-in tension with its use as a user-facing interactive exploratory tool.
+use and direct access from Python. The changes neccessary to use it as
+library code effectively within a performant service or larger application
+would be largely *subtractive*, in tension with its use as a user-facing
+interactive exploratory tool.
 
 Which brings us to Tiled (2021, Brookhaven National Laboratory with the Bluesky
 Collaboration). Tiled is designed with HTTP-based access as the driving use
@@ -41,3 +43,10 @@ to suit the server--client interaction. (It is hoped that Tiled Catalogs and
 Intake Catalogs can be made interoperable in the near future.) Finally, Tiled
 has a *Reader* abstraction that is something like an amalgam of PIMS Readers and
 Intake's Datasources.
+
+In summary:
+
+* Tiled can use PIMS internally for efficiently slicing and reading image series.
+* Tiled can probably be made interoperate with Intake.
+* Databroker will evolve to be a thin wrapper around Tiled, adding
+  concepts and capabilties specific to the Bluesky "Document Model".

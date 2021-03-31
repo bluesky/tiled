@@ -137,10 +137,8 @@ TO DO: Demonstrate downloading only a *portion* of a Catalog.
 Alternatively, a basic download can be performed from the commandline via the
 tiled CLI.
 
-```
+    $ tiled download "http://localhost:8000" my_cache_direcotry
 
-```
-$ tiled download "http://localhost:8000" my_cache_direcotry
 ```
 
 In normal *online* operation, Tiled will still "phone home" to the server
