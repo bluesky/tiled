@@ -46,7 +46,7 @@ Intake's Datasources.
 
 In summary:
 
-* Tiled can use PIMS internally for efficiently slicing and reading image series.
-* Tiled can probably be made interoperate with Intake.
+* Tiled can use PIMS internally to efficiently slice and read image series.
+* Tiled can probably be made interoperate with Intake objects.
 * Databroker will evolve to be a thin wrapper around Tiled, adding
   concepts and capabilties specific to the Bluesky "Document Model".
