@@ -237,7 +237,7 @@ def tree(catalog, max_lines=20):
         if (max_lines is not None) and (counter > max_lines):
             print(
                 f"<Output truncated at {max_lines} lines. "
-                "Adjust max_lines parameter to see more.>"
+                "Adjust tree's max_lines parameter to see more.>"
             )
             break
         print(line)

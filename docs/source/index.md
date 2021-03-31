@@ -5,6 +5,8 @@
 :caption: Tutorials
 
 tutorials/installation
+tutorials/navigation
+tutorials/search
 tutorials/caching
 tutorials/plotly-integration
 ```
@@ -18,6 +20,7 @@ how-to/scaling
 ```{toctree}
 :caption: Explanations
 
+explanations/access-control
 explanations/faq
 explanations/lineage
 ```

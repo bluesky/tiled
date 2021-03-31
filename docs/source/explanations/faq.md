@@ -31,3 +31,13 @@ See {doc}`lineage` for background.
 See {doc}`lineage` for background. Databroker will likely be refactored to
 extend Tiled, adding specifics related to Bluesky's Document Model and
 storage backends.
+
+**Can I upload data to Tiled?**
+
+Not yet. This is on the roadmap, but will probably not be worked on in earned
+until the second half of 2021.
+
+To be clear, Tiled *does* already cope with internal changes. For example, it
+will update if files in a directory it is serving or entries in a
+database it is serving have been added, removed, or changed. But it does not
+accept *client-initiated* changes at this time.
