@@ -138,5 +138,3 @@ served. The server incorporates search capability, which may be backed by a
 proper database solution at large scales or a simple in-memory index at small
 scales, as well as access controls. A Python client provides a friendly
 h5py-like interface and supports offline caching.
-
-**Docs are not yet published. See ``docs/source/`` directory in source tree.**

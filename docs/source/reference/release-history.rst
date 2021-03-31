@@ -2,5 +2,4 @@
 Release History
 ===============
 
-Initial Release (YYYY-MM-DD)
-----------------------------
+This project is on PyPI but as of yet only preleased, and quickly moving.

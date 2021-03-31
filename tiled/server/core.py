@@ -204,10 +204,10 @@ def construct_entries_response(
     data = []
     if fields != [models.EntryFields.none]:
         # Pull a page of items into memory.
-        items = catalog.items_indexer[offset : offset + limit]
+        items = catalog.items_indexer[offset : offset + limit]  # noqa: E203
     else:
         # Pull a page of just the keys, which is cheaper.
-        items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])
+        items = ((key, None) for key in catalog.keys_indexer[offset : offset + limit])  # noqa: E203
     for key, entry in items:
         resource = construct_resource(path, key, entry, fields)
         data.append(resource)

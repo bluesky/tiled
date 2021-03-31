@@ -3,24 +3,31 @@
 
 ```{toctree}
 :caption: Tutorials
-installation
+
+tutorials/installation
+tutorials/caching
+tutorials/plotly-integration
 ```
 
-```{how-to}
+```{toctree}
 :caption: How To Guides
-scaling
+
+how-to/scaling
+```
 
 ```{toctree}
 :caption: Explanations
-faq
-lineage
+
+explanations/faq
+explanations/lineage
 ```
 
 ```{toctree}
 :caption: Reference
-specification
-motivation
-development
-release-history
-min_versions
+
+reference/specification
+reference/requirements
+reference/development
+reference/release-history
+reference/min-versions
 ```
