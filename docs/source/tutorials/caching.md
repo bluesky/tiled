@@ -55,7 +55,7 @@ see the next section.
 
 *Solution: Stash results on disk.*
 
-```python
+```{code} python
 :emphasize-lines 4
 
 from tiled.client.catalog import Catalog
@@ -119,7 +119,7 @@ just to check that its cached copy is still the most recent version of
 the meadata and data. By setting ``offline=True`` we tell it not to
 attempt to connect and to rely entirely on its local cache.
 
-```python
+```{code} python
 :emphasize-lines 4
 
 from tiled.client.catalog import Catalog
