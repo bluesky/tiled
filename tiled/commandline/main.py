@@ -50,16 +50,20 @@ def directory(
 
 @serve_app.command("pyobject")
 def pyobject(
-    instance: str,
+    object_path: str,  # e.g. "package_name.module_name:object_name"
     glob: List[str] = typer.Option(None),
     mimetype: List[str] = typer.Option(None),
 ):
     "Serve a Catalog instance from a Python module."
 
+    # Import eagerly so any errors here get raised
+    # before server startup.
+    catalog = import_object(object_path)
+
     @lru_cache(1)
     def override_settings():
         settings = get_settings()
-        settings.catalog = import_object(instance)
+        settings.catalog = catalog
         return settings
 
     web_app.dependency_overrides[get_settings] = override_settings

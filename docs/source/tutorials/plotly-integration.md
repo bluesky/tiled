@@ -3,7 +3,7 @@
 1. Start the server in a way that accepts requests from the chart-studio frontend.
 
    ```
-   TILED_ALLOW_ORIGINS="https://chart-studio.plotly.com" tiled serve pyobject tiled.examples.generic:demo
+   TILED_ALLOW_ORIGINS="https://chart-studio.plotly.com" tiled serve pyobject tiled.examples.generated:demo
    ```
 
 2. Navigate your browser to https://chart-studio.plotly.com.
