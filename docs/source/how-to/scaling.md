@@ -30,7 +30,7 @@ catalog = Catalog(
 
 ## Load on first read
 
-For the next example we'll use a neat dictionary-like object. It is created by
+For the next example we'll use a neat dictionary-like object. It is created
 by mapping keys to *functions*. The first time a given item is accessed, the
 function is called to generate the value, and the result is stashed
 internally for next time.
@@ -73,7 +73,7 @@ catalog = Catalog(
 
 * Server startup is **fast** because nothing is generated or read up front.
 * The first acccess for each item is **slow** because the data is generated or
-  read on demand.
+  read on demand. Subsequent access is **fast**.
 * The machine running the server must have sufficient RAM for all the entries
   in the Catalog. The memory usage will grow monotonically as items are
   accessed and stashed internally by ``OneShotCachedMap``. This **is not** a
@@ -153,8 +153,8 @@ catalog = Catalog(
 
 * Server startup is **fast** because nothing is generated or read up front.
 * The first acccess for each item is **slow** because the data is generated or
-  read on demand. Later access *may* be slow if the item has been evicted
-  from the cache.
+  read on demand. Later access may be **fast or slow** depending on whether
+  the item has been evicted from the cache.
 * With an appropriately-scaled cache, this **is** scalable for large Catalogs
   with large data.
 
