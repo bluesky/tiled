@@ -7,6 +7,7 @@
 tutorials/installation
 tutorials/navigation
 tutorials/search
+tutorials/slicing
 tutorials/caching
 tutorials/serving-files
 tutorials/plotly-integration

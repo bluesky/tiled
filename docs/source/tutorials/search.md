@@ -1,5 +1,8 @@
 # Search
 
+In this tutorial we will find a dataset in a Catalog by performing a search
+over the entries' metadata.
+
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
 ```
@@ -8,7 +11,7 @@ tiled serve pyobject tiled.examples.generated:demo
 
 ## Search Using the Python Client
 
-Now, in a Python interpreter, connect, with the Python client.
+Now, in a Python interpreter, connect with the Python client.
 
 ```python
 from tiled.client.catalog import Catalog
@@ -59,7 +62,19 @@ We might next stash it in a variable and drill further down.
 >>> results['medium']['ones']
 <ClientDaskArrayAdapter>
 >>> results['medium']['ones'][:]
-dask.array<remote-dask-array, shape=(1000, 1000), dtype=float64, chunksize=(1000, 1000), chunktype=numpy.ndarray>
+array([[0.90346422, 0.88209766, 0.50729484, ..., 0.85845848, 0.40995339,
+        0.62513141],
+       [0.69748695, 0.30697613, 0.52659964, ..., 0.99122457, 0.45656973,
+        0.28431247],
+       [0.3397253 , 0.62399495, 0.51621599, ..., 0.17175257, 0.31096683,
+        0.72702145],
+       ...,
+       [0.05031631, 0.04460506, 0.0942693 , ..., 0.7271035 , 0.53009248,
+        0.38832301],
+       [0.9703186 , 0.59947921, 0.9180047 , ..., 0.30109343, 0.23135718,
+        0.10103669],
+       [0.05446547, 0.58519701, 0.05065231, ..., 0.60261189, 0.90321973,
+        0.89681987]])
 ```
 
 Searches may be chained:

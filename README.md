@@ -28,24 +28,20 @@ And then access the data efficiently via the Python client, a web browser, or
 any HTTP client.
 
 ```python
-In [1]: from tiled.client.catalog import Catalog
+>>> from tiled.client.catalog import Catalog
 
-In [2]: catalog = Catalog.from_uri("http://localhost:8000")
+>>> catalog = Catalog.from_uri("http://localhost:8000")
 
-In [3]: catalog
-Out[3]: <Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
+>>> catalog
+<Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
 
-In [4]: catalog['arrays']
-Out[4]: <Catalog {'large', 'medium', 'small', 'tiny'}>
+>>> catalog['arrays']
+<Catalog {'large', 'medium', 'small', 'tiny'}>
 
-In [5]: catalog['arrays']['medium']
-Out[5]: <ClientDaskArrayAdapter>
+>>> catalog['arrays']['medium']
+<ClientDaskArrayAdapter>
 
-In [6]: catalog['arrays']['medium'][:]
-Out[6]: dask.array<remote-dask-array, shape=(1000, 1000), dtype=float64, chunksize=(1000, 1000), chunktype=numpy.ndarray>
-
-In [7]: catalog['arrays']['medium'][:].compute()
-Out[7]: 
+>>> catalog['arrays']['medium'][:]
 array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
         0.27761903],
        [0.95434218, 0.31376234, 0.05776443, ..., 0.53886856, 0.92855426,
@@ -60,23 +56,13 @@ array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
        [0.4721781 , 0.01424852, 0.57294198, ..., 0.70392867, 0.69371454,
         0.228491  ]])
 
-In [8]: catalog['dataframes']
-Out[8]: <Catalog {'df'}>
+>>> catalog['dataframes']
+<Catalog {'df'}>
 
-In [9]: catalog['dataframes']['df']
-Out[9]: <ClientDaskDataFrameAdapter ['A', 'B', 'C']>
+>>> catalog['dataframes']['df']
+<ClientDaskDataFrameAdapter ['A', 'B', 'C']>
 
-In [10]: catalog['dataframes']['df'][['A', 'B']]
-Out[10]: 
-Dask DataFrame Structure:
-                     A        B
-npartitions=1                  
-0              float64  float64
-99                 ...      ...
-Dask Name: getitem, 2 tasks
-
-In [11]: catalog['dataframes']['df'][['A', 'B']].compute()
-Out[11]: 
+>>> catalog['dataframes']['df'][['A', 'B']]
               A         B
 index                    
 0      0.748885  0.769644

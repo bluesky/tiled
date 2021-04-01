@@ -1,5 +1,7 @@
 # Navigating a Catalog
 
+In this tutorial we will navigate a collection of datasets from Python.
+
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
 ```

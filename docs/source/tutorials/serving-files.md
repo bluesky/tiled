@@ -1,10 +1,15 @@
 # Serving a Directory of Files
 
+In this tutorial, we will use Tiled to browse a directory of 
+spreadsheets and image files from Python and read the data as pandas
+DataFrames and numpy arrays.
+
 For this tutorial, install tiffffile and openpyxl.
 
 ```
 pip install tifffile openpyxl
 ```
+
 Generate a directory of example files using a utility provided by Tiled.
 (Or use your own, if you have one to hand.)
 
@@ -44,7 +49,7 @@ Tiled walks the directory, identifies files that it recognizes and has
 Readers for. It watches the directory for additions, removals, and changes to
 the file.
 
-In a Python interpreter, connect, with the Python client.
+In a Python interpreter, connect with the Python client.
 
 ```python
 from tiled.client.catalog import Catalog
@@ -65,8 +70,26 @@ disk, and we can slice and access the data.
 >>> catalog['more']['d.tif']
 <ClientDaskArrayAdapter>
 
->>> catalog['more']['d.tif'][:10]
-dask.array<getitem, shape=(10, 100), dtype=float64, chunksize=(10, 100), chunktype=numpy.ndarray>
+>>> catalog['more']['d.tif']
+array([[1., 1., 1., ..., 1., 1., 1.],
+       [1., 1., 1., ..., 1., 1., 1.],
+       [1., 1., 1., ..., 1., 1., 1.],
+       ...,
+       [1., 1., 1., ..., 1., 1., 1.],
+       [1., 1., 1., ..., 1., 1., 1.],
+       [1., 1., 1., ..., 1., 1., 1.]])
+
+>>> catalog['tables.xlsx']
+<Catalog {'Sheet 1', 'Sheet 2'}>
+
+>>> catalog['tables.xlsx']['Sheet 1']
+<ClientDataFrameAdapter ['A', 'B']>
+
+>>> catalog['tables.xlsx']['Sheet 1'].read()
+   A  B
+0  1  4
+1  2  5
+2  3  6
 ```
 
 Try deleting, moving, or adding files, and notice that the ``catalog`` object

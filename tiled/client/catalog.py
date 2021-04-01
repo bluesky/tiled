@@ -31,7 +31,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
     # defer imports.
     DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
-        "memory": OneShotCachedMap(
+        "numpy": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
                     "..array", Catalog.__module__
@@ -108,11 +108,11 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def from_uri(
         cls,
         uri,
+        structure_clients="numpy",
         *,
         cache=None,
         offline=False,
         token=None,
-        structure_clients="dask",
         special_clients=None,
     ):
         """
@@ -122,15 +122,16 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         ----------
         uri : str
             e.g. "http://localhost:8000"
+        structure_clients : str or dict
+            Use "dask" for delayed data loading and "numpy" for immediate
+            in-memory structures (e.g. normal numpy arrays, pandas
+            DataFrames). For advanced use, provide dict mapping
+            structure_family names ("array", "dataframe", "variable",
+            "data_array", "dataset") to client objects. See
+            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         cache : Cache, optional
         offline : bool, optional
             False by default. If True, rely on cache only.
-        structure_clients : str or dict
-            Use "dask" for delayed data loading and "memory" for immediate
-            in-memory structures (e.g. normal numpy arrays). For advanced use,
-            provide dict mapping structure_family names ("array", "dataframe",
-            "variable", "data_array", "dataset") to client objects. See
-            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         special_clients : dict
             Advanced: Map client_type_hint from the server to special client
             catalog objects. See also
@@ -156,9 +157,9 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def direct(
         cls,
         catalog,
+        structure_clients="numpy",
         *,
         token=None,
-        structure_clients="dask",
         special_clients=None,
     ):
         """
@@ -178,10 +179,11 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         client : httpx.Client
             Should be pre-configured with a base_url and any auth-related headers.
         structure_clients : str or dict
-            Use "dask" for delayed data loading and "memory" for immediate
-            in-memory structures (e.g. normal numpy arrays). For advanced use,
-            provide dict mapping structure families ("array", "dataframe",
-            "variable", "data_array", "dataset") to client objects. See
+            Use "dask" for delayed data loading and "numpy" for immediate
+            in-memory structures (e.g. normal numpy arrays, pandas
+            DataFrames). For advanced use, provide dict mapping
+            structure_family names ("array", "dataframe", "variable",
+            "data_array", "dataset") to client objects. See
             ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         special_clients : dict
             Advanced: Map client_type_hint from the server to special client
@@ -217,12 +219,12 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
         return cls.from_client(
             client,
+            structure_clients=structure_clients,
             # The cache and "offline" mode do not make much sense when we have an
             # in-process connection. It's also not clear what URL we would use for the cache
             # even if we wanted to.... but it might be worth rethinking this someday.
             cache=None,
             offline=False,
-            structure_clients=structure_clients,
             special_clients=special_clients,
         )
 
@@ -230,10 +232,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def from_client(
         cls,
         client,
+        structure_clients="numpy",
         *,
         cache=None,
         offline=False,
-        structure_clients="dask",
         special_clients=None,
     ):
         """
@@ -243,22 +245,23 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         ----------
         client : httpx.Client
             Should be pre-configured with a base_url and any auth-related headers.
+        structure_clients : str or dict
+            Use "dask" for delayed data loading and "numpy" for immediate
+            in-memory structures (e.g. normal numpy arrays, pandas
+            DataFrames). For advanced use, provide dict mapping
+            structure_family names ("array", "dataframe", "variable",
+            "data_array", "dataset") to client objects. See
+            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         cache : Cache, optional
         offline : bool, optional
             False by default. If True, rely on cache only.
-        structure_clients : str or dict
-            Use "dask" for delayed data loading and "memory" for immediate
-            in-memory structures (e.g. normal numpy arrays). For advanced use,
-            provide dict mapping structure families ("array", "dataframe",
-            "variable", "data_array", "dataset") to client objects. See
-            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
         special_clients : dict
             Advanced: Map client_type_hint from the server to special client
             catalog objects. See also
             ``Catalog.discover_special_clients()`` and
             ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
         """
-        # Interet structure_clients="dask" and structure_clients="memory" shortcuts.
+        # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
         if isinstance(structure_clients, str):
             structure_clients = cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
         # Do entrypoint discovery if it hasn't yet been done.

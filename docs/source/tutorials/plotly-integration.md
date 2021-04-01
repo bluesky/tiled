@@ -1,5 +1,8 @@
 # Plot Data in Plotly Chart Studio
 
+This tutorial illustrates how Tiled can be used to get data into a browser-based
+data visualization tool.
+
 1. Start the server in a way that accepts requests from the chart-studio frontend.
 
    ```
