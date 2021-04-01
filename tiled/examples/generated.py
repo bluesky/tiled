@@ -31,18 +31,16 @@ arrays = Catalog(
 
 dataframes = Catalog(
     {
-        "df": DataFrameAdapter(
-            dask.dataframe.from_pandas(
-                pandas.DataFrame(
-                    {
-                        "A": A,
-                        "B": B,
-                        "C": C,
-                    },
-                    index=pandas.Index(numpy.arange(100), name="index"),
-                ),
-                npartitions=1,
-            )
+        "df": DataFrameAdapter.from_pandas(
+            pandas.DataFrame(
+                {
+                    "A": A,
+                    "B": B,
+                    "C": C,
+                },
+                index=pandas.Index(numpy.arange(100), name="index"),
+            ),
+            npartitions=3,  # Partition for demo purposes, even though it's small.
         )
     }
 )

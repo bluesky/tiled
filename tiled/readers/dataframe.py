@@ -34,6 +34,10 @@ class DataFrameAdapter:
     def read_csv(cls, *args, **kwargs):
         return cls(dask.dataframe.read_csv(*args, **kwargs))
 
+    @classmethod
+    def from_pandas(cls, *args, **kwargs):
+        return cls(dask.dataframe.from_pandas(*args, **kwargs))
+
     read_csv.__doc__ = (
         """
     This wraps dask.dataframe.read_csv. Original docstring:

@@ -208,8 +208,9 @@ def construct_entries_response(
     else:
         # Pull a page of just the keys, which is cheaper.
         items = (
-            (key, None) for key in catalog.keys_indexer[offset : offset + limit]
-        )  # noqa: E203
+            (key, None)
+            for key in catalog.keys_indexer[offset : offset + limit]  # noqa: E203
+        )
     for key, entry in items:
         resource = construct_resource(path, key, entry, fields)
         data.append(resource)
