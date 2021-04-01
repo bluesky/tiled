@@ -94,9 +94,9 @@ index
 [100 rows x 2 columns]
 ```
 
-Using a normal browser or a commandline HTTP client like [curl](https://curl.se/)
-or [httpie](https://httpie.io/) you can download the data in whole or in
-efficiently-chunked parts in the format of your choice:
+Using an Internet browser or a commandline HTTP client like
+[curl](https://curl.se/) or [httpie](https://httpie.io/) you can download the
+data in whole or in efficiently-chunked parts in the format of your choice:
 
 ```
 # Download tabular data as CSV

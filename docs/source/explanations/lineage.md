@@ -1,4 +1,27 @@
-# Lineage
+# How Tiled Fits into the Ecosystem
+
+## What Tiled is Not
+
+* Tiled is a **not a storage format** like [TileDB](https://tiledb.com/) or
+  [Zarr](https://zarr.readthedocs.io/en/stable/). It is expected to
+  work well with those formats because they enable efficient chunk-based access,
+  but it is designed to work with less modern formats as well, to accept the
+  data "as is" and convert it on the fly upon request.
+* Tiled is **not a data-browsing or visualization front-end** like
+  [Plotly Chart Studio](https://chart-studio.plotly.com/),
+  [Vega Voyager](https://vega.github.io/voyager/), or
+  [JupyterLab Data Explorer](https://github.com/jupyterlab/jupyterlab-data-explorer)
+  but it can be used to serve data into them. (Plotly and Vega both work today;
+  the JupyterLab Data Explorer is being investigated.)
+* Tiled is **not an application server** like  [Vaex](https://vaex.io/). Tiled
+  offers no compute; it is focused only on I/O.
+* Tiled is a **not a server for specific data format** like
+  [Xpublish](https://xpublish.readthedocs.io/) or
+  [JupyterLab HDF5](https://github.com/jupyterlab/jupyterlab-hdf5), though
+  it may be possible to build similar things with Tiled easily these formats
+  and others.
+
+## Lineage
 
 The originating authors of Tiled have worked on several previous, related
 projects.

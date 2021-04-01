@@ -78,7 +78,7 @@ specific Python process. Once Python exits (or a Jupyter kernel is restarted)
 or data is lost and will need to be cached anew. To persist it for longer,
 see the next section.
 
-## Make repeated access fast across one working session / process
+## Make repeated access fast across working sessions / processes
 
 *Solution: Stash results on disk.*
 
