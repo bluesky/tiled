@@ -19,6 +19,8 @@ class DataFrameMicroStructure:
     @classmethod
     def from_dask_dataframe(cls, ddf):
         # Make an *empty* DataFrame with the same structure as ddf.
+        # TODO Look at make_meta_nonempty to see if the "objects" are str or
+        # datetime or actually generic objects.
         meta = dask.dataframe.utils.make_meta(ddf)
         return cls(meta=meta, divisions=ddf.divisions)
 

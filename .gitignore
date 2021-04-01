@@ -81,4 +81,4 @@ target/
 #Ipython Notebook
 .ipynb_checkpoints
 
-example_data/
+example_files/
