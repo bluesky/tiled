@@ -222,13 +222,13 @@ class ClientDaskDatasetAdapter(BaseArrayClientReader):
         else:
             try:
                 macro = content["data"]["attributes"]["structure"]["macro"]
-                columns = [*macro["data_vars"], *macro["coords"]]
+                variables = [*macro["data_vars"], *macro["coords"]]
             except Exception as err:
                 p.text(
                     f"<{type(self).__name__} Loading column names raised error {err!r}>"
                 )
             else:
-                p.text(f"<{type(self).__name__} {columns}>")
+                p.text(f"<{type(self).__name__} {variables}>")
 
     def _ipython_key_completions_(self):
         """
@@ -245,11 +245,11 @@ class ClientDaskDatasetAdapter(BaseArrayClientReader):
                 params={"fields": "structure.macro", **self._params},
             )
             macro = content["data"]["attributes"]["structure"]["macro"]
-            columns = [*macro["data_vars"], *macro["coords"]]
+            variables = [*macro["data_vars"], *macro["coords"]]
         except Exception:
             # Do not print messy traceback from thread. Just fail silently.
             return []
-        return columns
+        return variables
 
     def touch(self):
         super().touch()
@@ -266,10 +266,10 @@ class ClientDaskDatasetAdapter(BaseArrayClientReader):
         structure = self.structure().macro
         return self._build_coords(structure)
 
-    def _build_data_vars(self, structure, columns=None):
+    def _build_data_vars(self, structure, variables=None):
         data_vars = {}
         for name, data_array in structure.data_vars.items():
-            if (columns is not None) and (name not in columns):
+            if (variables is not None) and (name not in variables):
                 continue
             data_array_source = self.DATA_ARRAY_READER(
                 client=self._client,
@@ -284,10 +284,10 @@ class ClientDaskDatasetAdapter(BaseArrayClientReader):
             data_vars[name] = data_array_source
         return data_vars
 
-    def _build_coords(self, structure, columns=None):
+    def _build_coords(self, structure, variables=None):
         coords = {}
         for name, variable in structure.coords.items():
-            if (columns is not None) and (name not in columns):
+            if (variables is not None) and (name not in variables):
                 continue
             variable_source = self.VARIABLE_READER(
                 client=self._client,
@@ -302,24 +302,24 @@ class ClientDaskDatasetAdapter(BaseArrayClientReader):
             coords[name] = variable_source
         return coords
 
-    def read(self, columns=None):
+    def read(self, variables=None):
         structure = self.structure().macro
-        data_vars = self._build_data_vars(structure, columns)
-        coords = self._build_coords(structure, columns)
+        data_vars = self._build_data_vars(structure, variables)
+        coords = self._build_coords(structure, variables)
         return xarray.Dataset(
             data_vars={k: v.read() for k, v in data_vars.items()},
             coords={k: v.read() for k, v in coords.items()},
             attrs=structure.attrs,
         )
 
-    def __getitem__(self, columns):
+    def __getitem__(self, variables):
         # This is type unstable, matching xarray's behavior.
-        if isinstance(columns, str):
+        if isinstance(variables, str):
             # Return a single column (an xarray.DataArray).
-            return self.read(columns=[columns])[columns]
+            return self.read(variables=[variables])[variables]
         else:
-            # Return an xarray.Dataset with a subset of the available columns.
-            return self.read(columns=columns)
+            # Return an xarray.Dataset with a subset of the available variables.
+            return self.read(variables=variables)
 
     def __iter__(self):
         # This reflects a slight weirdness in xarray, where coordinates can be
