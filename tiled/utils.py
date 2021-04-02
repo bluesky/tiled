@@ -252,7 +252,18 @@ class Sentinel:
 
 
 def import_object(colon_separated_string):
-    import_path, obj_path = colon_separated_string.split(":")
+    MESSAGE = (
+        "Expected string formatted like:\n\n"
+        "    package_name.module_name:object_name\n\n"
+        "Notice *dots* between modules and a "
+        "*colon* before the object name."
+    )
+    import_path, _, obj_path = colon_separated_string.partition(":")
+    for segment in import_path.split("."):
+        if not segment.isidentifier():
+            raise ValueError(MESSAGE)
+    if not obj_path.isidentifier():
+        raise ValueError(MESSAGE)
     module = importlib.import_module(import_path)
     return operator.attrgetter(obj_path)(module)
 
