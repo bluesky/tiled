@@ -112,11 +112,11 @@ The content of this dict has no special meaning to Tiled; it's the user's
 space to use or not.
 
 ```python
-In [15]: catalog.metadata  # happens to be empty
-Out[15]: DictView({})
+>>> catalog.metadata  # happens to be empty
+DictView({})
 
-In [16]: catalog['xarrays'].metadata  # happens to have some stuff
-Out[16]: DictView({'description': 'the three main xarray data structures'})
+>>> catalog['xarrays'].metadata  # happens to have some stuff
+DictView({'description': 'the three main xarray data structures'})
 ```
 
 See a later tutorial for how to search Catalogs with queries.

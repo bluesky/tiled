@@ -189,8 +189,7 @@ downloaded.
 
 ```python
 # This will be fast because it only downloads the relevant chunk(s)
-In [10]: catalog["arrays"]["large"].read()[:10, 3:5].compute()
-Out[10]: 
+>>> catalog["arrays"]["large"].read()[:10, 3:5].compute()
 array([[0.26355793, 0.01284164],
        [0.14378819, 0.54898243],
        [0.03100601, 0.88506586],

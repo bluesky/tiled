@@ -27,22 +27,21 @@ Most things that we do with a Catalog or dataset make an HTTP request to the
 server and receive a response. For example...
 
 ```python
-In [2]: catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
+>>> catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
 
-In [3]: catalog
-Out[3]: <Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
+>>> catalog
+<Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
 
-In [4]: catalog.metadata  # fetches metadata (in this case empty)
-Out[4]: DictView({})
+>>> catalog.metadata  # fetches metadata (in this case empty)
+DictView({})
 
-In [5]: catalog['dataframes']['df']  # fetches column names
-Out[5]: <ClientDaskDataFrameAdapter ['A', 'B', 'C']>
+>>> catalog['dataframes']['df']  # fetches column names
+<ClientDaskDataFrameAdapter ['A', 'B', 'C']>
 
-In [6]: catalog['dataframes']['df'].metadata  # fetches metadata (in this case empty)
-Out[6]: DictView({})
+>>> catalog['dataframes']['df'].metadata  # fetches metadata (in this case empty)
+DictView({})
 
-In [8]: catalog['dataframes']['df'].read().compute()  # fetches data, in partitions
-Out[8]: 
+>>> catalog['dataframes']['df'].read().compute()  # fetches data, in partitions
               A         B         C
 index                              
 0      0.748885  0.769644  0.296070
