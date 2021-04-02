@@ -5,3 +5,4 @@ pydantic
 toolz
 typer
 uvicorn
+watchgod
