@@ -13,7 +13,7 @@ Now, in a Python interpreter, connect, with the Python client.
 ```python
 from tiled.client.catalog import Catalog
 
-catalog = Catalog.from_uri("http:/localhost:8000")
+catalog = Catalog.from_uri("http://localhost:8000")
 ```
 
 A Catalog is a nested strucutre of data. Conceptually, it corresponds well to
@@ -54,8 +54,6 @@ however many fit on one line.
 ```python
 >>> catalog
 <Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
->>> catalog['arrays']
-<Catalog {'large', 'medium', 'small', 'tiny'}>
 ```
 
 Catalogs act like (nested) mappings in Python. All the (read-only) methods
