@@ -7,6 +7,7 @@ DataFrames and numpy arrays.
 For this tutorial, install tiffffile and openpyxl.
 
 ```
+pip install tiled[complete]
 pip install tifffile openpyxl
 ```
 
@@ -54,7 +55,7 @@ In a Python interpreter, connect with the Python client.
 ```python
 from tiled.client.catalog import Catalog
 
-catalog = Catalog.from_uri("http:/localhost:8000")
+catalog = Catalog.from_uri("http://localhost:8000")
 ```
 
 The ``catalog`` has the same tree structure as the directory on
@@ -70,7 +71,7 @@ disk, and we can slice and access the data.
 >>> catalog['more']['d.tif']
 <ClientDaskArrayAdapter>
 
->>> catalog['more']['d.tif']
+>>> catalog['more']['d.tif'].read()
 array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
