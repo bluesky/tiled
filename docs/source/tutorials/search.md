@@ -16,7 +16,7 @@ Now, in a Python interpreter, connect with the Python client.
 ```python
 from tiled.client.catalog import Catalog
 
-catalog = Catalog.from_uri("http:/localhost:8000")
+catalog = Catalog.from_uri("http://localhost:8000")
 ```
 
 Tiled has an extensible collection of queries. The client just has to
@@ -60,7 +60,7 @@ We might next stash it in a variable and drill further down.
 >>> results['medium']
 <Catalog {'ones', 'tens', 'hundreds'}>
 >>> results['medium']['ones']
-<ClientDaskArrayAdapter>
+<ClientArrayAdapter>
 >>> results['medium']['ones'][:]
 array([[0.90346422, 0.88209766, 0.50729484, ..., 0.85845848, 0.40995339,
         0.62513141],
@@ -80,7 +80,7 @@ array([[0.90346422, 0.88209766, 0.50729484, ..., 0.85845848, 0.40995339,
 Searches may be chained:
 
 ```python
-catalog['nested'].serach(FullText("dog")).search(FullText("orange"))
+>>> catalog['nested'].search(FullText("dog")).search(FullText("orange"))
 ```
 
 If there no matches, the result is an empty catalog:
