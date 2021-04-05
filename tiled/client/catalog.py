@@ -35,7 +35,7 @@ def get_token(uri):
                  'username': username,
                  'password': password}
     response = httpx.post(uri + '/token', data=form_data)
-    return 'Bearer ' + json.loads(response.text)['access_token']
+    return response.json()['access_token']
 
 
 def get_public_token(uri):
@@ -45,7 +45,7 @@ def get_public_token(uri):
                  'username': username,
                  'password': password}
     response = httpx.post(uri + '/token', data=form_data)
-    return 'Bearer ' + json.loads(response.text)['access_token']
+    return response.json()['access_token']
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
@@ -163,7 +163,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         """
         headers = {}
         if token is not None:
-            headers["X-Access-Token"] = token
+            headers["Authorization"] = f"Bearer {token}"
         client = httpx.Client(
             base_url=uri.rstrip("/"),
             headers=headers,
@@ -228,7 +228,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
         headers = {}
         if token is not None:
-            headers["X-Access-Token"] = token
+            headers["Authorization"] = f"Bearer {token}"
         # Only an AsyncClient can be used over ASGI.
         # We wrap all the async methods in a call to asyncio.run(...).
         # Someday we should explore asynchronous Tiled Client objects.
@@ -236,6 +236,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             base_url="http://local-tiled-app",
             headers=headers,
             app=app,
+            headers=headers,
         )
         # TODO How to close the httpx.AsyncClient more cleanly?
         atexit.register(asyncio.run, client.aclose())
