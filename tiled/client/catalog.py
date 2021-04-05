@@ -6,6 +6,7 @@ from dataclasses import fields
 import functools
 import importlib
 import itertools
+import time
 import warnings
 
 import entrypoints
@@ -304,6 +305,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self._offline = offline
         self._metadata = metadata
         self._cache = cache
+        self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
         self.special_clients = special_clients
         self._root_client_type = root_client_type
@@ -443,6 +445,12 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         )
 
     def __len__(self):
+        now = time.monotonic()
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if now < deadline:
+                # Used the cached value and do not make any request.
+                return length
         content = get_json_with_cache(
             self._cache,
             self._offline,
@@ -450,7 +458,9 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             f"/search/{'/'.join(self._path)}",
             params={"fields": "", **self._queries_as_params, **self._params},
         )
-        return content["meta"]["count"]
+        length = content["meta"]["count"]
+        self._cached_len = (length, now + LENGTH_CACHE_TTL)
+        return length
 
     def __length_hint__(self):
         # TODO The server should provide an estimated count.
@@ -466,6 +476,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 self._client,
                 next_page_url,
                 params={"fields": "", **self._queries_as_params, **self._params},
+            )
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
             )
             for item in content["data"]:
                 yield item["id"]
@@ -484,6 +498,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 **self._queries_as_params,
                 **self._params,
             },
+        )
+        self._cached_len = (
+            content["meta"]["count"],
+            time.monotonic() + LENGTH_CACHE_TTL,
         )
         data = content["data"]
         if not data:
@@ -513,6 +531,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                     **self._queries_as_params,
                     **self._params,
                 },
+            )
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
             )
             for item in content["data"]:
                 key = item["id"]
@@ -544,6 +566,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 next_page_url,
                 params={"fields": "", **self._queries_as_params, **self._params},
             )
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
+            )
             for item in content["data"]:
                 if stop is not None and next(item_counter) == stop:
                     return
@@ -564,6 +590,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                     **self._queries_as_params,
                     **self._params,
                 },
+            )
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
             )
 
             for item in content["data"]:
@@ -591,6 +621,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 **self._queries_as_params,
                 **self._params,
             },
+        )
+        self._cached_len = (
+            content["meta"]["count"],
+            time.monotonic() + LENGTH_CACHE_TTL,
         )
         (item,) = content["data"]
         key = item["id"]
@@ -621,3 +655,6 @@ def _queries_to_params(*queries):
 
 class UnknownStructureFamily(KeyError):
     pass
+
+
+LENGTH_CACHE_TTL = 1  # second
