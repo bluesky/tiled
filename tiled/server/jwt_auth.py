@@ -45,12 +45,10 @@ jwt_router = APIRouter()
 
 
 def verify_password(plain_password, hashed_password):
-
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password):
-
     return pwd_context.hash(password)
 
 
@@ -60,17 +58,11 @@ def get_hashed_password(db, username: str):
 
 
 def authenticate_user(fake_db, username: str, password: str):
-
     hashed_password = get_hashed_password(fake_db, username)
-
     if not hashed_password:
-
         return False
-
     if not verify_password(password, hashed_password):
-
         return False
-
     return username
 
 
