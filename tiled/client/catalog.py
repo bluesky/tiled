@@ -27,7 +27,7 @@ from ..catalogs.utils import (
 )
 
 
-def get_token(uri):
+def generate_token(uri):
     username = input("Username: ")
     password = getpass.getpass()
     form_data = {"grant_type": "password", "username": username, "password": password}
