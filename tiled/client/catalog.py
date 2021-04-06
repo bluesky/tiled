@@ -27,12 +27,19 @@ from ..catalogs.utils import (
 )
 
 
+class InvalidCredentials(Exception):
+    pass
+
+
 def generate_token(uri):
     username = input("Username: ")
     password = getpass.getpass()
     form_data = {"grant_type": "password", "username": username, "password": password}
     response = httpx.post(uri + "/token", data=form_data)
-    return response.json()["access_token"]
+    try:
+        return response.json()["access_token"]
+    except KeyError as err:
+        raise InvalidCredentials("Invalid login credentials")
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
