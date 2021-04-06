@@ -97,6 +97,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             if username is None:
                 raise credentials_exception
             token_data = TokenData(username=username)
+            break
         except JWTError:
             # Try the next key in the key rotation.
             continue
