@@ -236,7 +236,6 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             base_url="http://local-tiled-app",
             headers=headers,
             app=app,
-            headers=headers,
         )
         # TODO How to close the httpx.AsyncClient more cleanly?
         atexit.register(asyncio.run, client.aclose())
