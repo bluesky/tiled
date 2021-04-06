@@ -6,9 +6,9 @@ from typing import Optional
 from fastapi import Depends, APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, BaseSettings
 
+from .settings import get_settings
 from ..utils import SpecialUsers
 
 # The TILED_SERVER_SECRET_KEYS may be a single key or a ;-separated list of
@@ -17,17 +17,6 @@ from ..utils import SpecialUsers
 SECRET_KEYS = os.environ.get("TILED_SERVER_SECRET_KEYS", token_hex(32)).split(";")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-# This is the hash of the string "secret":
-HASHED_DEFAULT_PASSWORD = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
-
-
-fake_users_db = {
-    "alice": HASHED_DEFAULT_PASSWORD,
-    "bob": HASHED_DEFAULT_PASSWORD,
-    "cara": HASHED_DEFAULT_PASSWORD,
-    "public": HASHED_DEFAULT_PASSWORD,
-}
 
 
 class Token(BaseModel):
@@ -39,31 +28,8 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 jwt_router = APIRouter()
-
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-
-def get_hashed_password(db, username: str):
-    if username in db:
-        return db[username]
-
-
-def authenticate_user(fake_db, username: str, password: str):
-    hashed_password = get_hashed_password(fake_db, username)
-    if not hashed_password:
-        return False
-    if not verify_password(password, hashed_password):
-        return False
-    return username
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -77,35 +43,53 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    settings: BaseSettings = Depends(get_settings),
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     if token is None:
-        return SpecialUsers.public
+        if settings.allow_anonymous_access:
+            # Any user who can see the server can make unauthenticated requests.
+            # This is a sentinel that has special meaning to the authorization
+            # code (the access control policies).
+            return SpecialUsers.public
+        else:
+            # In this mode, there may still be entries that are visible to all,
+            # but users have to authenticate as *someone* to see anything.
+            raise HTTPException(status_code=403, detail="Not authenticated")
     for secret_key in SECRET_KEYS:
         try:
             payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
             username: str = payload.get("sub")
             if username is None:
                 raise credentials_exception
-            token_data = TokenData(username=username)
             break
         except JWTError:
             # Try the next key in the key rotation.
             continue
     else:
         raise credentials_exception
-    if fake_users_db.get(token_data.username, None) is None:
-        raise credentials_exception
+    # The user has a valid token for 'username' so we know that
+    # within ACCESS_TOKEN_EXPIRE_MINUTES they successfully validated.
+    # Do we want to re-verify that the user still exists and is
+    # authorized at this point? This only makes sense if we grow
+    # some server-side database.
     return username
 
 
 @jwt_router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    username = authenticate_user(fake_users_db, form_data.username, form_data.password)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    settings: BaseSettings = Depends(get_settings),
+):
+    username = settings.authenticator.authenticate(
+        form_data.username, form_data.password
+    )
     if not username:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -117,13 +101,3 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         data={"sub": username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
-
-@jwt_router.get("/users/me/", response_model=str)
-async def read_users_me(current_user: str = Depends(get_current_user)):
-    return current_user
-
-
-@jwt_router.get("/users/me/items/")
-async def read_own_items(current_user: str = Depends(get_current_user)):
-    return [{"item_id": "Foo", "owner": current_user.username}]

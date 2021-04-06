@@ -6,11 +6,10 @@ import numpy
 import pandas
 import xarray
 
-from ..readers.array import ArrayAdapter
-from ..readers.dataframe import DataFrameAdapter
-from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
-from ..catalogs.in_memory import Catalog, SimpleAccessPolicy
-from ..utils import SpecialUsers
+from tiled.readers.array import ArrayAdapter
+from tiled.readers.dataframe import DataFrameAdapter
+from tiled.readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
+from tiled.catalogs.in_memory import Catalog
 
 
 print("Generating large example data...", file=sys.stderr)
@@ -111,17 +110,6 @@ for name, fruit, animal in zip(
 nested = Catalog(subcatalogs)
 
 
-access_policy = SimpleAccessPolicy(
-    {
-        SpecialUsers.public: ["medium"],
-        "alice": ["medium", "large"],
-        "bob": ["tiny", "medium"],
-        "cara": SimpleAccessPolicy.ALL,
-    }
-)
-nested_with_access_control = Catalog(subcatalogs, access_policy=access_policy)
-
-
 # This a bit contrived, the same subcatalog used three times.
 very_nested = Catalog({"a": nested, "b": nested, "c": nested})
 
@@ -131,7 +119,6 @@ demo = Catalog(
         "dataframes": dataframes,
         "xarrays": xarrays,
         "nested": nested,
-        # "nested_with_access_control": nested_with_access_control,
         "very_nested": very_nested,
     }
 )
