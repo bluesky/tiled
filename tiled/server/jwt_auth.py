@@ -10,7 +10,10 @@ from passlib.context import CryptContext
 
 from pydantic import BaseModel
 
-SECRET_KEY = os.environ.get('TILED_SERVER_SECRET_KEY', token_hex(32))
+# The TILED_SERVER_SECRET_KEY may be a single key or a ;-separated list of
+# keys to support key rotation. The first key will be used for encryption. Each
+# key will be tried in turn for decryption.
+SECRET_KEYS = os.environ.get("TILED_SERVER_SECRET_KEY", token_hex(32)).split(";")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -54,6 +57,7 @@ def get_hashed_password(db, username: str):
     if username in db:
         return db[username]
 
+
 def authenticate_user(fake_db, username: str, password: str):
 
     hashed_password = get_hashed_password(fake_db, username)
@@ -76,7 +80,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEYS[0], algorithm=ALGORITHM)
     return encoded_jwt
 
 
@@ -86,13 +90,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
+    for secret_key in SECRET_KEYS:
+        try:
+            payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+            username: str = payload.get("sub")
+            if username is None:
+                raise credentials_exception
+            token_data = TokenData(username=username)
+        except JWTError:
+            # Try the next key in the key rotation.
+            continue
+    else:
         raise credentials_exception
     if fake_users_db.get(token_data.username, None) is None:
         raise credentials_exception
