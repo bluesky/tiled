@@ -19,7 +19,10 @@ from ..utils import (
     DictView,
     OneShotCachedMap,
 )
-from .utils import get_json_with_cache
+from .utils import (
+    get_json_with_cache,
+    handle_error,
+)
 from ..catalogs.utils import (
     catalog_repr,
     IndexersMixin,
@@ -27,19 +30,13 @@ from ..catalogs.utils import (
 )
 
 
-class InvalidCredentials(Exception):
-    pass
-
-
 def generate_token(uri):
     username = input("Username: ")
     password = getpass.getpass()
     form_data = {"grant_type": "password", "username": username, "password": password}
     response = httpx.post(uri + "/token", data=form_data)
-    try:
-        return response.json()["access_token"]
-    except KeyError as err:
-        raise InvalidCredentials("Invalid login credentials")
+    handle_error(response)
+    return response.json()["access_token"]
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
