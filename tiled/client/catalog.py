@@ -10,6 +10,7 @@ import time
 import warnings
 
 import entrypoints
+import getpass
 import httpx
 
 from ..query_registration import query_type_to_name
@@ -18,12 +19,24 @@ from ..utils import (
     DictView,
     OneShotCachedMap,
 )
-from .utils import get_json_with_cache
+from .utils import (
+    get_json_with_cache,
+    handle_error,
+)
 from ..catalogs.utils import (
     catalog_repr,
     IndexersMixin,
     UNCHANGED,
 )
+
+
+def generate_token(uri):
+    username = input("Username: ")
+    password = getpass.getpass()
+    form_data = {"grant_type": "password", "username": username, "password": password}
+    response = httpx.post(uri + "/token", data=form_data)
+    handle_error(response)
+    return response.json()["access_token"]
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
@@ -141,7 +154,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         """
         headers = {}
         if token is not None:
-            headers["X-Access-Token"] = token
+            headers["Authorization"] = f"Bearer {token}"
         client = httpx.Client(
             base_url=uri.rstrip("/"),
             headers=headers,
@@ -206,7 +219,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
         headers = {}
         if token is not None:
-            headers["X-Access-Token"] = token
+            headers["Authorization"] = f"Bearer {token}"
         # Only an AsyncClient can be used over ASGI.
         # We wrap all the async methods in a call to asyncio.run(...).
         # Someday we should explore asynchronous Tiled Client objects.
