@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .settings import get_settings
 from .router import declare_search_route, router
 from .core import PatchedStreamingResponse
-from .jwt_auth import jwt_router
+from .authentication import authentication_router
 
 
 app = FastAPI()
@@ -20,7 +20,10 @@ async def startup_event():
     app.include_router(router)
     # Warm up cached access.
     get_settings().catalog
-    app.include_router(jwt_router)
+    # The authentication routes are added at server startup so that the user
+    # has the opportunity to use a custom Authenticator that may add its own
+    # custom routes. (Not currently supported, but planned.)
+    app.include_router(authentication_router)
 
 
 @app.middleware("http")

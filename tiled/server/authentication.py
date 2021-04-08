@@ -29,7 +29,7 @@ class TokenData(BaseModel):
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
-jwt_router = APIRouter()
+authentication_router = APIRouter()
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -82,7 +82,7 @@ async def get_current_user(
     return username
 
 
-@jwt_router.post("/token", response_model=Token)
+@authentication_router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     settings: BaseSettings = Depends(get_settings),

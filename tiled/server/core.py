@@ -15,7 +15,7 @@ import pydantic
 from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
-from .jwt_auth import get_current_user
+from .authentication import get_current_user
 from .settings import get_settings
 from ..utils import modules_available
 from ..query_registration import name_to_query_type

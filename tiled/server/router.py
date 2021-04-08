@@ -6,8 +6,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..query_registration import name_to_query_type
-
-from .jwt_auth import get_current_user
+from .authentication import get_current_user
 
 from .core import (
     APACHE_ARROW_FILE_MIME_TYPE,
