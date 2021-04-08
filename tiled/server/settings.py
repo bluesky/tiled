@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     )
     # TODO Should we use PAM by default? Or raise an error by default?
     authenticator: Any = DummyAuthenticator()
-    stuff: int = 1
     allow_origins: List[str] = [
         item for item in os.getenv("TILED_ALLOW_ORIGINS", "").split() if item
     ]
