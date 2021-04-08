@@ -2,6 +2,8 @@ dask
 fastapi
 msgpack
 pydantic
+python-multipart
+python-jose[cryptography]
 toolz
 typer
 uvicorn
