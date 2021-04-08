@@ -88,7 +88,7 @@ async def login_for_access_token(
     settings: BaseSettings = Depends(get_settings),
 ):
     username = settings.authenticator.authenticate(
-        form_data.username, form_data.password
+        username=form_data.username, password=form_data.password
     )
     if not username:
         raise HTTPException(
