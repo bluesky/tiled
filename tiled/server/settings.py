@@ -6,7 +6,7 @@ from pydantic import BaseSettings
 
 
 class DummyAuthenticator:
-    def authenticate(username: str, password: str):
+    def authenticate(self, username: str, password: str):
         return username
 
 
