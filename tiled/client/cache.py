@@ -119,7 +119,7 @@ class Reservation:
             try:
                 self._lock.release()
                 # TODO Investigate why this is sometimes released twice.
-            except AttributeError:
+            except (AttributeError, RuntimeError):
                 pass
                 self._lock_held = False
 
