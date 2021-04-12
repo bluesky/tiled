@@ -11,9 +11,9 @@ tiled serve pyobject tiled.examples.generated:demo
 Now, in a Python interpreter, connect, with the Python client.
 
 ```python
-from tiled.client.catalog import Catalog
+from tiled.client import from_uri
 
-catalog = Catalog.from_uri("http://localhost:8000")
+catalog = from_uri("http://localhost:8000")
 ```
 
 A Catalog is a nested strucutre of data. Conceptually, it corresponds well to

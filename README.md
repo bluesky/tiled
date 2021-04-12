@@ -28,9 +28,9 @@ And then access the data efficiently via the Python client, a web browser, or
 any HTTP client.
 
 ```python
->>> from tiled.client.catalog import Catalog
+>>> from tiled.client import from_uri
 
->>> catalog = Catalog.from_uri("http://localhost:8000")
+>>> catalog = from_uri("http://localhost:8000")
 
 >>> catalog
 <Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>

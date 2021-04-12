@@ -53,9 +53,9 @@ the file.
 In a Python interpreter, connect with the Python client.
 
 ```python
-from tiled.client.catalog import Catalog
+from tiled.client import from_uri
 
-catalog = Catalog.from_uri("http://localhost:8000")
+catalog = from_uri("http://localhost:8000")
 ```
 
 The ``catalog`` has the same tree structure as the directory on

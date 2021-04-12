@@ -14,10 +14,10 @@ tiled serve pyobject tiled.examples.generated:demo
 *Solution: Stash results in memory (RAM).*
 
 ```python
-from tiled.client.catalog import Catalog
+from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
+catalog = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
 ```
 
 where we have to specify the maximum RAM we are willing to dedicate to the cache,
@@ -27,7 +27,7 @@ Most things that we do with a Catalog or dataset make an HTTP request to the
 server and receive a response. For example...
 
 ```python
->>> catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
+>>> catalog = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
 
 >>> catalog
 <Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
@@ -84,10 +84,10 @@ see the next section.
 ```{code-block} python
 :emphasize-lines: 4
 
-from tiled.client.catalog import Catalog
+from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
+catalog = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
 ```
 
 This works exactly the same as before, but now the data is stored in files on disk.
@@ -114,9 +114,9 @@ First, when connected to the Internet, connect a Catalog and download it.
 
 ```python
 from tiled.client.cache import download
-from tiled.client.catalog import Catalog
+from tiled.client import from_uri
 
-catalog = Catalog.from_uri("http://localhost:8000")
+catalog = from_uri("http://localhost:8000")
 download(catalog, "my_cache_directory")
 ```
 
@@ -148,7 +148,7 @@ attempt to connect and to rely entirely on its local cache.
 ```{code-block} python
 :emphasize-lines: 4
 
-from tiled.client.catalog import Catalog
+from tiled.client import from_uri
 from tiled.client.cache import Cache
 
 catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
