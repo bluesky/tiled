@@ -119,184 +119,28 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         # for simplicity, at least for now.
 
     @classmethod
-    def from_uri(
-        cls,
-        uri,
-        structure_clients="numpy",
-        *,
-        cache=None,
-        offline=False,
-        token=None,
-        special_clients=None,
-    ):
-        """
-        Connect to a Catalog on a local or remote server.
-
-        Parameters
-        ----------
-        uri : str
-            e.g. "http://localhost:8000"
-        structure_clients : str or dict
-            Use "dask" for delayed data loading and "numpy" for immediate
-            in-memory structures (e.g. normal numpy arrays, pandas
-            DataFrames). For advanced use, provide dict mapping
-            structure_family names ("array", "dataframe", "variable",
-            "data_array", "dataset") to client objects. See
-            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
-        cache : Cache, optional
-        offline : bool, optional
-            False by default. If True, rely on cache only.
-        special_clients : dict
-            Advanced: Map client_type_hint from the server to special client
-            catalog objects. See also
-            ``Catalog.discover_special_clients()`` and
-            ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
-        """
-        headers = {}
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token}"
-        client = httpx.Client(
-            base_url=uri.rstrip("/"),
-            headers=headers,
+    def from_client(cls, *args, **kwargs):
+        warnings.warn(
+            "The classmethod Catalog.from_client is deperecated and will be removed. "
+            "Use the function tiled.client.from_client instead."
         )
-        return cls.from_client(
-            client,
-            cache=cache,
-            offline=offline,
-            structure_clients=structure_clients,
-            special_clients=special_clients,
-        )
+        return from_client(*args, **kwargs)
 
     @classmethod
-    def direct(
-        cls,
-        catalog,
-        structure_clients="numpy",
-        *,
-        token=None,
-        special_clients=None,
-    ):
-        """
-        Connect to a Catalog directly, running the app in this same process.
-
-        NOTE: This is experimental. It may need to be re-designed or even removed.
-
-        In this configuration, we are using the server, but we are communicating
-        with it directly within this process, not over a local network. It is
-        generally faster.
-
-        Specifically, we are using HTTP over ASGI rather than HTTP over TCP.
-        There are no sockets or network-related syscalls.
-
-        Parameters
-        ----------
-        client : httpx.Client
-            Should be pre-configured with a base_url and any auth-related headers.
-        structure_clients : str or dict
-            Use "dask" for delayed data loading and "numpy" for immediate
-            in-memory structures (e.g. normal numpy arrays, pandas
-            DataFrames). For advanced use, provide dict mapping
-            structure_family names ("array", "dataframe", "variable",
-            "data_array", "dataset") to client objects. See
-            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
-        special_clients : dict
-            Advanced: Map client_type_hint from the server to special client
-            catalog objects. See also
-            ``Catalog.discover_special_clients()`` and
-            ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
-        """
-        from ..server.main import app, get_settings
-
-        @functools.lru_cache(1)
-        def override_settings():
-            settings = get_settings()
-            settings.catalog = catalog
-            return settings
-
-        app.dependency_overrides[get_settings] = override_settings
-        # Note: This is important. The Tiled server routes are defined lazily on startup.
-        asyncio.run(app.router.startup())
-
-        headers = {}
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token}"
-        # Only an AsyncClient can be used over ASGI.
-        # We wrap all the async methods in a call to asyncio.run(...).
-        # Someday we should explore asynchronous Tiled Client objects.
-        client = httpx.AsyncClient(
-            base_url="http://local-tiled-app",
-            headers=headers,
-            app=app,
+    def direct(cls, *args, **kwargs):
+        warnings.warn(
+            "The classmethod Catalog.direct is deperecated and will be removed. "
+            "Use the function tiled.client.direct instead."
         )
-        # TODO How to close the httpx.AsyncClient more cleanly?
-        atexit.register(asyncio.run, client.aclose())
-
-        return cls.from_client(
-            client,
-            structure_clients=structure_clients,
-            # The cache and "offline" mode do not make much sense when we have an
-            # in-process connection. It's also not clear what URL we would use for the cache
-            # even if we wanted to.... but it might be worth rethinking this someday.
-            cache=None,
-            offline=False,
-            special_clients=special_clients,
-        )
+        return direct(*args, **kwargs)
 
     @classmethod
-    def from_client(
-        cls,
-        client,
-        structure_clients="numpy",
-        *,
-        cache=None,
-        offline=False,
-        special_clients=None,
-    ):
-        """
-        Advanced: Connect to a Catalog using a custom instance of httpx.Client or httpx.AsyncClient.
-
-        Parameters
-        ----------
-        client : httpx.Client
-            Should be pre-configured with a base_url and any auth-related headers.
-        structure_clients : str or dict
-            Use "dask" for delayed data loading and "numpy" for immediate
-            in-memory structures (e.g. normal numpy arrays, pandas
-            DataFrames). For advanced use, provide dict mapping
-            structure_family names ("array", "dataframe", "variable",
-            "data_array", "dataset") to client objects. See
-            ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
-        cache : Cache, optional
-        offline : bool, optional
-            False by default. If True, rely on cache only.
-        special_clients : dict
-            Advanced: Map client_type_hint from the server to special client
-            catalog objects. See also
-            ``Catalog.discover_special_clients()`` and
-            ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
-        """
-        # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
-        if isinstance(structure_clients, str):
-            structure_clients = cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
-        # Do entrypoint discovery if it hasn't yet been done.
-        if cls.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
-            cls.discover_special_clients()
-        special_clients = collections.ChainMap(
-            special_clients or {},
-            cls.DEFAULT_SPECIAL_CLIENT_DISPATCH,
+    def from_uri(cls, *args, **kwargs):
+        warnings.warn(
+            "The classmethod Catalog.from_uri is deperecated and will be removed. "
+            "Use the function tiled.client.from_uri instead."
         )
-        content = get_json_with_cache(cache, offline, client, "/metadata/")
-        metadata = content["data"]["attributes"]["metadata"]
-        return cls(
-            client,
-            offline=offline,
-            path=[],
-            metadata=metadata,
-            structure_clients=structure_clients,
-            cache=cache,
-            special_clients=special_clients,
-            root_client_type=cls,
-        )
+        return from_uri(*args, **kwargs)
 
     def __init__(
         self,
@@ -671,3 +515,180 @@ class UnknownStructureFamily(KeyError):
 
 
 LENGTH_CACHE_TTL = 1  # second
+
+
+def from_uri(
+    uri,
+    structure_clients="numpy",
+    *,
+    cache=None,
+    offline=False,
+    token=None,
+    special_clients=None,
+):
+    """
+    Connect to a Catalog on a local or remote server.
+
+    Parameters
+    ----------
+    uri : str
+        e.g. "http://localhost:8000"
+    structure_clients : str or dict
+        Use "dask" for delayed data loading and "numpy" for immediate
+        in-memory structures (e.g. normal numpy arrays, pandas
+        DataFrames). For advanced use, provide dict mapping
+        structure_family names ("array", "dataframe", "variable",
+        "data_array", "dataset") to client objects. See
+        ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+    cache : Cache, optional
+    offline : bool, optional
+        False by default. If True, rely on cache only.
+    special_clients : dict
+        Advanced: Map client_type_hint from the server to special client
+        catalog objects. See also
+        ``Catalog.discover_special_clients()`` and
+        ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+    """
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    client = httpx.Client(
+        base_url=uri.rstrip("/"),
+        headers=headers,
+    )
+    return from_client(
+        client,
+        cache=cache,
+        offline=offline,
+        structure_clients=structure_clients,
+        special_clients=special_clients,
+    )
+
+
+def direct(
+    catalog,
+    structure_clients="numpy",
+    *,
+    token=None,
+    special_clients=None,
+):
+    """
+    Connect to a Catalog directly, running the app in this same process.
+
+    NOTE: This is experimental. It may need to be re-designed or even removed.
+
+    In this configuration, we are using the server, but we are communicating
+    with it directly within this process, not over a local network. It is
+    generally faster.
+
+    Specifically, we are using HTTP over ASGI rather than HTTP over TCP.
+    There are no sockets or network-related syscalls.
+
+    Parameters
+    ----------
+    client : httpx.Client
+        Should be pre-configured with a base_url and any auth-related headers.
+    structure_clients : str or dict
+        Use "dask" for delayed data loading and "numpy" for immediate
+        in-memory structures (e.g. normal numpy arrays, pandas
+        DataFrames). For advanced use, provide dict mapping
+        structure_family names ("array", "dataframe", "variable",
+        "data_array", "dataset") to client objects. See
+        ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+    special_clients : dict
+        Advanced: Map client_type_hint from the server to special client
+        catalog objects. See also
+        ``Catalog.discover_special_clients()`` and
+        ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+    """
+    from ..server.main import app, get_settings
+
+    @functools.lru_cache(1)
+    def override_settings():
+        settings = get_settings()
+        settings.catalog = catalog
+        return settings
+
+    app.dependency_overrides[get_settings] = override_settings
+    # Note: This is important. The Tiled server routes are defined lazily on startup.
+    asyncio.run(app.router.startup())
+
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    # Only an AsyncClient can be used over ASGI.
+    # We wrap all the async methods in a call to asyncio.run(...).
+    # Someday we should explore asynchronous Tiled Client objects.
+    client = httpx.AsyncClient(
+        base_url="http://local-tiled-app",
+        headers=headers,
+        app=app,
+    )
+    # TODO How to close the httpx.AsyncClient more cleanly?
+    atexit.register(asyncio.run, client.aclose())
+
+    return from_client(
+        client,
+        structure_clients=structure_clients,
+        # The cache and "offline" mode do not make much sense when we have an
+        # in-process connection. It's also not clear what URL we would use for the cache
+        # even if we wanted to.... but it might be worth rethinking this someday.
+        cache=None,
+        offline=False,
+        special_clients=special_clients,
+    )
+
+def from_client(
+    client,
+    structure_clients="numpy",
+    *,
+    cache=None,
+    offline=False,
+    special_clients=None,
+):
+    """
+    Advanced: Connect to a Catalog using a custom instance of httpx.Client or httpx.AsyncClient.
+
+    Parameters
+    ----------
+    client : httpx.Client
+        Should be pre-configured with a base_url and any auth-related headers.
+    structure_clients : str or dict
+        Use "dask" for delayed data loading and "numpy" for immediate
+        in-memory structures (e.g. normal numpy arrays, pandas
+        DataFrames). For advanced use, provide dict mapping
+        structure_family names ("array", "dataframe", "variable",
+        "data_array", "dataset") to client objects. See
+        ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+    cache : Cache, optional
+    offline : bool, optional
+        False by default. If True, rely on cache only.
+    special_clients : dict
+        Advanced: Map client_type_hint from the server to special client
+        catalog objects. See also
+        ``Catalog.discover_special_clients()`` and
+        ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+    """
+    # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
+    if isinstance(structure_clients, str):
+        structure_clients = Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
+    # Do entrypoint discovery if it hasn't yet been done.
+    if Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
+        Catalog.discover_special_clients()
+    special_clients = collections.ChainMap(
+        special_clients or {},
+        Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH,
+    )
+    content = get_json_with_cache(cache, offline, client, "/metadata/")
+    item = content["data"]
+    metadata = item["attributes"]["metadata"]
+    return Catalog(
+        client,
+        offline=offline,
+        path=[],
+        metadata=metadata,
+        structure_clients=structure_clients,
+        cache=cache,
+        special_clients=special_clients,
+        root_client_type=Catalog,
+    ).client_for_item(item, path=[], metadata=metadata)
