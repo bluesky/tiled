@@ -201,7 +201,7 @@ def array_block(
     try:
         array = reader.read_block(block, slice=slice)
     except IndexError:
-        raise HTTPException(status_code=422, detail="Block index out of range")
+        raise HTTPException(status_code=400, detail="Block index out of range")
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -230,7 +230,7 @@ def array_full(
             array = array[slice]
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
-        raise HTTPException(status_code=422, detail="Block index out of range")
+        raise HTTPException(status_code=400, detail="Block index out of range")
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -305,10 +305,10 @@ def dataframe_partition(
         # due to the ?column=A&column=B&column=C... encodes in a URL.
         df = reader.read_partition(partition, columns=column)
     except IndexError:
-        raise HTTPException(status_code=422, detail="Partition out of range")
+        raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=422, detail=f"No such column {key}.")
+        raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
         return construct_dataframe_response(df, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -335,7 +335,7 @@ def dataframe_full(
         df = reader.read(columns=column)
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=422, detail=f"No such column {key}.")
+        raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
         return construct_dataframe_response(df, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -363,7 +363,7 @@ def variable_block(
         if slice:
             array = array[slice]
     except IndexError:
-        raise HTTPException(status_code=422, detail="Block index out of range")
+        raise HTTPException(status_code=400, detail="Block index out of range")
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -411,7 +411,7 @@ def data_array_variable_full(
             array = array.coords[coord]
         except KeyError:
             raise HTTPException(
-                status_code=422,
+                status_code=400,
                 detail=f"No such coordinate {coord}.",
             )
     try:
@@ -439,11 +439,11 @@ def data_array_block(
     try:
         array = reader.read_block(block, coord, slice=slice)
     except IndexError:
-        raise HTTPException(status_code=422, detail="Block index out of range")
+        raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
         if coord is not None:
             raise HTTPException(
-                status_code=422,
+                status_code=400,
                 detail=f"No such coordinate {coord}.",
             )
         else:
@@ -474,15 +474,15 @@ def dataset_block(
     try:
         array = reader.read_block(variable, block, coord, slice=slice)
     except IndexError:
-        raise HTTPException(status_code=422, detail="Block index out of range")
+        raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
         if coord is None:
             raise HTTPException(
-                status_code=422,
+                status_code=400,
                 detail=f"No such variable {variable}.",
             )
         raise HTTPException(
-            status_code=422,
+            status_code=400,
             detail=f"No such coordinate {coord}.",
         )
     try:
@@ -510,7 +510,7 @@ def dataset_data_var_full(
         array = reader.read_variable(variable)
     except KeyError:
         raise HTTPException(
-            status_code=422,
+            status_code=400,
             detail=f"No such variable {variable}.",
         )
     if coord is not None:
@@ -518,7 +518,7 @@ def dataset_data_var_full(
             array = array.coords[coord]
         except KeyError:
             raise HTTPException(
-                status_code=422,
+                status_code=400,
                 detail=f"No such coordinate {coord}.",
             )
     try:
@@ -545,7 +545,7 @@ def dataset_coord_full(
         array = reader.read_variable(coord)
     except KeyError:
         raise HTTPException(
-            status_code=422,
+            status_code=400,
             detail=f"No such coordinate {coord}.",
         )
     try:
@@ -574,7 +574,7 @@ def dataset_full(
         dataset = reader.read(variables=variable)
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=422, detail=f"No such variable {key}.")
+        raise HTTPException(status_code=400, detail=f"No such variable {key}.")
     try:
         return construct_dataset_response(dataset, request.headers, format)
     except UnsupportedMediaTypes as err:
