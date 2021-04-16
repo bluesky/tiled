@@ -638,6 +638,7 @@ def direct(
         special_clients=special_clients,
     )
 
+
 def from_client(
     client,
     structure_clients="numpy",
