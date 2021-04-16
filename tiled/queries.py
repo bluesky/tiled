@@ -13,6 +13,7 @@ class FullText:
     """
 
     text: str
+    case_sensitive: bool = False
 
 
 @register(name="lookup")

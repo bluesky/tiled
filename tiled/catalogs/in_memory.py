@@ -171,12 +171,21 @@ def walk_string_values(tree, node=None):
 
 def full_text_search(query, catalog):
     matches = {}
-    query_words = set(query.text.lower().split())
+    text = query.text
+    if query.case_sensitive:
+
+        def maybe_lower(s):
+            # no-op
+            return s
+
+    else:
+        maybe_lower = str.lower
+    query_words = set(text.split())
     for key, value in catalog.items():
         words = set(
             word
             for s in walk_string_values(value.metadata)
-            for word in s.lower().split()
+            for word in maybe_lower(s).split()
         )
         # Note that `not set.isdisjoint` is faster than `set.intersection`. At
         # the C level, `isdisjoint` loops over the set until it finds one match,
