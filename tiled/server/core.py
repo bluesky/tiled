@@ -19,6 +19,7 @@ from .authentication import get_current_user
 from .settings import get_settings
 from ..utils import modules_available
 from ..query_registration import name_to_query_type
+from ..queries import QueryValueError
 from ..media_type_registration import serialization_registry
 
 
@@ -197,8 +198,11 @@ def construct_entries_response(
     # Apply the queries and obtain a narrowed catalog.
     for name, parameters in queries.items():
         query_class = name_to_query_type[name]
-        query = query_class(**parameters)
-        catalog = catalog.search(query)
+        try:
+            query = query_class(**parameters)
+            catalog = catalog.search(query)
+        except QueryValueError as err:
+            raise HTTPException(status_code=400, detail=err.args[0])
     count = len_or_approx(catalog)
     links = pagination_links(route, path, offset, limit, count)
     data = []

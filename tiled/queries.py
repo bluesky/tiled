@@ -28,3 +28,7 @@ class KeyLookup:
     """
 
     key: str
+
+
+class QueryValueError(ValueError):
+    pass
