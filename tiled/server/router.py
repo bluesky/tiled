@@ -125,7 +125,7 @@ def declare_search_route(router):
                 default=Query(None, alias=f"filter[{name}][condition][{field.name}]"),
                 annotation=Optional[field.type],
             )
-        parameters.append(injected_parameter)
+            parameters.append(injected_parameter)
     search.__signature__ = signature.replace(parameters=parameters)
     # End black magic
 
