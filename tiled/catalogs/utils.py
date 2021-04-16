@@ -52,47 +52,66 @@ class IndexersMixin:
     # yet more depth to the call stack....
 
     def _keys_indexer(self, index):
+        length = len(self)
         if isinstance(index, int):
+            if index < 0:
+                index = length + index
+            if index >= length:
+                raise IndexError(f"index {index} out of range for length {length}")
             key, _value = self._item_by_index(index)
             return key
         elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
+            start, stop = slice_to_interval(index, length)
             return list(self._keys_slice(start, stop))
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
     def _items_indexer(self, index):
+        length = len(self)
         if isinstance(index, int):
+            if index >= length:
+                raise IndexError(f"index {index} out of range for length {length}")
+            if index < 0:
+                index = length + index
             return self._item_by_index(index)
         elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
+            start, stop = slice_to_interval(index, length)
             return list(self._items_slice(start, stop))
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
     def _values_indexer(self, index):
+        length = len(self)
         if isinstance(index, int):
+            if index >= length:
+                raise IndexError(f"index {index} out of range for length {length}")
+            if index < 0:
+                index = length + index
             _key, value = self._item_by_index(index)
             return value
         elif isinstance(index, slice):
-            start, stop = slice_to_interval(index)
+            start, stop = slice_to_interval(index, length)
             return [value for _key, value in self._items_slice(start, stop)]
         else:
             raise TypeError(f"{index} must be an int or slice, not {type(index)}")
 
 
-def slice_to_interval(index):
-    "Check that slice is supported; then return (start, stop)."
-    if index.start is None:
-        start = 0
-    elif index.start < 0:
-        raise NotImplementedError
-    else:
-        start = index.start
-    if index.stop is not None:
-        if index.stop < 0:
-            raise NotImplementedError
-    stop = index.stop
+def slice_to_interval(slice_, length):
+    "Convert slice object to (start, stop) where both are whole numbers."
+    if (slice_.step is not None) and (slice_.step != 1):
+        raise NotImplementedError(
+            f"A slice with a step {slice_.step} is not supported. Only 1 (or None) is."
+        )
+    start = slice_.start or 0  # Handles case where slice_.start is None.
+    if start < 0:
+        start = max(length + start, 0)
+    stop = slice_.stop
+    if stop is None:
+        stop = length
+    elif stop < 0:
+        stop = max(length + stop, 0)
+    assert start >= 0
+    assert stop >= 0
     return start, stop
 
 

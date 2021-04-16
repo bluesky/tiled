@@ -137,8 +137,6 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         yield from ((key, self._mapping[key]) for key in self._keys_slice(start, stop))
 
     def _item_by_index(self, index):
-        if index >= len(self):
-            raise IndexError(f"index {index} out of range for length {len(self)}")
         key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
         return (key, self._mapping[key])
 

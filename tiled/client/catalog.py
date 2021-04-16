@@ -413,6 +413,8 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     # to define keys_indexer, items_indexer, and values_indexer.
 
     def _keys_slice(self, start, stop):
+        assert start >= 0
+        assert stop >= 0
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
@@ -434,6 +436,8 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def _items_slice(self, start, stop):
+        assert start >= 0
+        assert stop >= 0
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
@@ -465,6 +469,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def _item_by_index(self, index):
+        assert index >= 0
         if index >= len(self):
             raise IndexError(f"index {index} out of range for length {len(self)}")
         url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
