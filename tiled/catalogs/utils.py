@@ -54,10 +54,10 @@ class IndexersMixin:
     def _keys_indexer(self, index):
         length = len(self)
         if isinstance(index, int):
+            if (index >= length) or (index < -length):
+                raise IndexError(f"index {index} out of range for length {length}")
             if index < 0:
                 index = length + index
-            if index >= length:
-                raise IndexError(f"index {index} out of range for length {length}")
             key, _value = self._item_by_index(index)
             return key
         elif isinstance(index, slice):
@@ -69,7 +69,7 @@ class IndexersMixin:
     def _items_indexer(self, index):
         length = len(self)
         if isinstance(index, int):
-            if index >= length:
+            if (index >= length) or (index < -length):
                 raise IndexError(f"index {index} out of range for length {length}")
             if index < 0:
                 index = length + index
@@ -83,7 +83,7 @@ class IndexersMixin:
     def _values_indexer(self, index):
         length = len(self)
         if isinstance(index, int):
-            if index >= length:
+            if (index >= length) or (index < -length):
                 raise IndexError(f"index {index} out of range for length {length}")
             if index < 0:
                 index = length + index
