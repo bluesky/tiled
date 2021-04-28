@@ -606,7 +606,9 @@ def direct(
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
-    from ..server.main import app, get_settings
+    from ..server.main import get_app, get_settings
+
+    app = get_app(include_routers=getattr(catalog, "include_routers", []))
 
     @functools.lru_cache(1)
     def override_settings():
