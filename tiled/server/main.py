@@ -13,7 +13,6 @@ def get_app(include_routers=None):
     app = FastAPI()
 
     for user_router in include_routers or []:
-        print("adding", user_router)
         app.include_router(user_router)
 
     @app.on_event("startup")
