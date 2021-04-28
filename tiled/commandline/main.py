@@ -1,10 +1,8 @@
-from functools import lru_cache
-
 import typer
 from typing import List, Optional
 import uvicorn
 
-from ..server.main import get_app as get_web_app, get_settings
+from ..server.main import serve_catalog
 from ..utils import import_object
 
 
@@ -38,14 +36,8 @@ def directory(
 
     from tiled.catalogs.files import Catalog
 
-    @lru_cache(1)
-    def override_settings():
-        settings = get_settings()
-        settings.catalog = Catalog.from_directory(directory)
-        return settings
-
-    web_app = get_web_app()
-    web_app.dependency_overrides[get_settings] = override_settings
+    catalog = Catalog.from_directory(directory)
+    web_app = serve_catalog(catalog)
     uvicorn.run(web_app)
 
 
@@ -61,18 +53,7 @@ def pyobject(
     # before server startup.
     catalog = import_object(object_path)
 
-    @lru_cache(1)
-    def override_settings():
-        settings = get_settings()
-        settings.catalog = catalog
-        return settings
-
-    # The Catalog has the opporunity to add custom routes to the server here.
-    # (Just for example, a Catalog of BlueskyRuns uses this hook to add a
-    # /documents route.)
-    include_routers = getattr(catalog, "include_routers", [])
-    web_app = get_web_app(include_routers=include_routers)
-    web_app.dependency_overrides[get_settings] = override_settings
+    web_app = serve_catalog(catalog)
     uvicorn.run(web_app)
 
 

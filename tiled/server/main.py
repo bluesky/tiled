@@ -1,3 +1,4 @@
+from functools import lru_cache
 import time
 
 from fastapi import FastAPI, Request
@@ -52,6 +53,22 @@ def get_app(include_routers=None):
         allow_headers=["*"],
     )
 
+    return app
+
+
+def serve_catalog(catalog):
+    @lru_cache(1)
+    def override_settings():
+        settings = get_settings()
+        settings.catalog = catalog
+        return settings
+
+    # The Catalog has the opporunity to add custom routes to the server here.
+    # (Just for example, a Catalog of BlueskyRuns uses this hook to add a
+    # /documents route.)
+    include_routers = getattr(catalog, "include_routers", [])
+    app = get_app(include_routers=include_routers)
+    app.dependency_overrides[get_settings] = override_settings
     return app
 
 
