@@ -61,7 +61,7 @@ async def about(request: Request):
     )
 
 
-def declare_search_route(router):
+def declare_search_router():
     """
     This is done dynamically at router startup.
 
@@ -130,10 +130,12 @@ def declare_search_route(router):
     # End black magic
 
     # Register the search route.
+    router = APIRouter()
     router.get("/search", response_model=models.Response, include_in_schema=False)(
         search
     )
     router.get("/search/{path:path}", response_model=models.Response)(search)
+    return router
 
 
 @router.get("/metadata", response_model=models.Response, include_in_schema=False)

@@ -5,13 +5,14 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .settings import get_settings
-from .router import declare_search_route, router
+from .router import declare_search_router, router
 from .core import PatchedStreamingResponse
 from .authentication import authentication_router
 
 
 def get_app(include_routers=None):
     app = FastAPI()
+    app.include_router(router)
 
     for user_router in include_routers or []:
         app.include_router(user_router)
@@ -20,10 +21,7 @@ def get_app(include_routers=None):
     async def startup_event():
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
-        declare_search_route(router)
-        app.include_router(router)
-        # Warm up cached access.
-        get_settings().catalog
+        app.include_router(declare_search_router())
         # The authentication routes are added at server startup so that the user
         # has the opportunity to use a custom Authenticator that may add its own
         # custom routes. (Not currently supported, but planned.)
