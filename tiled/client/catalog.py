@@ -606,17 +606,9 @@ def direct(
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
-    from ..server.main import get_app, get_settings
+    from ..server.main import serve_catalog
 
-    app = get_app(include_routers=getattr(catalog, "include_routers", []))
-
-    @functools.lru_cache(1)
-    def override_settings():
-        settings = get_settings()
-        settings.catalog = catalog
-        return settings
-
-    app.dependency_overrides[get_settings] = override_settings
+    app = serve_catalog(catalog)
     # Note: This is important. The Tiled server routes are defined lazily on startup.
     asyncio.run(app.router.startup())
 
