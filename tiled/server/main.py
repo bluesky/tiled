@@ -24,7 +24,6 @@ def get_app(include_routers=None):
         # opporunity to register custom query types before startup.
         app.include_router(declare_search_router())
 
-
     @app.middleware("http")
     async def add_server_timing_header(request: Request, call_next):
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing

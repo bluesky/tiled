@@ -1,3 +1,4 @@
+appdirs
 entrypoints
 httpx
 msgpack

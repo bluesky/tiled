@@ -3,7 +3,6 @@ import atexit
 import collections
 import collections.abc
 from dataclasses import fields
-import functools
 import importlib
 import itertools
 import time

@@ -24,6 +24,14 @@ def download(
     download(catalog, path=path, available_bytes=available_bytes)
 
 
+@cli_app.command("paths")
+def paths():
+    "Print the locations that the client will search for profiles (configuration)."
+    from tiled.client.profiles import paths
+
+    print("\n".join(paths))
+
+
 @serve_app.command("directory")
 def directory(
     directory: str,
