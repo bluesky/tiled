@@ -2,13 +2,11 @@
 This stores the user passwords *in code* as a toy example.
 Do not use this pattern for anything other than exploration.
 """
-from functools import lru_cache
 import numpy
 
 from tiled.utils import SpecialUsers
 from tiled.readers.array import ArrayAdapter
-from tiled.server.settings import get_settings
-from tiled.server.main import app
+from tiled.server.main import serve_catalog
 from tiled.catalogs.in_memory import Catalog, SimpleAccessPolicy
 
 
@@ -52,21 +50,12 @@ class DictionaryAuthenticator:
         return False
 
 
-@lru_cache(1)
-def override_settings():
-    settings = get_settings()
-    settings.authenticator = DictionaryAuthenticator(fake_users_db)
-    settings.catalog = catalog
-    return settings
-
-
-app.dependency_overrides[get_settings] = override_settings
-
-
 def main():
     # TODO Don't run this from here...use config once we have config....
     import uvicorn
 
+    authenticator = DictionaryAuthenticator(fake_users_db)
+    app = serve_catalog(catalog, authenticator=authenticator)
     uvicorn.run(app)
 
 

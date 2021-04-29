@@ -22,10 +22,7 @@ def get_app(include_routers=None):
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
         app.include_router(declare_search_router())
-        # The authentication routes are added at server startup so that the user
-        # has the opportunity to use a custom Authenticator that may add its own
-        # custom routes. (Not currently supported, but planned.)
-        app.include_router(authentication_router)
+
 
     @app.middleware("http")
     async def add_server_timing_header(request: Request, call_next):
@@ -54,17 +51,21 @@ def get_app(include_routers=None):
     return app
 
 
-def serve_catalog(catalog):
+def serve_catalog(catalog, authenticator=None):
     @lru_cache(1)
     def override_settings():
         settings = get_settings()
         settings.catalog = catalog
+        settings.authenticator = authenticator
         return settings
 
-    # The Catalog has the opporunity to add custom routes to the server here.
-    # (Just for example, a Catalog of BlueskyRuns uses this hook to add a
-    # /documents route.)
-    include_routers = getattr(catalog, "include_routers", [])
+    # The Catalog and Authenticator have the opporunity to add custom routes to
+    # the server here. (Just for example, a Catalog of BlueskyRuns uses this
+    # hook to add a /documents route.) This has to be done before dependency_overrides
+    # are processed, so we cannot just use get_settings to inject this configuration.
+    include_routers = []
+    include_routers.extend(getattr(catalog, "include_routers", []))
+    include_routers.extend(getattr(authenticator, "include_routers", []))
     app = get_app(include_routers=include_routers)
     app.dependency_overrides[get_settings] = override_settings
     return app
