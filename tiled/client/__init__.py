@@ -1,1 +1,1 @@
-from .catalog import direct, from_client, from_uri  # noqa: F401
+from .catalog import direct, from_client, from_uri, generate_token  # noqa: F401
