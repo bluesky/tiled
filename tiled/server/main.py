@@ -13,6 +13,7 @@ from .authentication import authentication_router
 def get_app(include_routers=None):
     app = FastAPI()
     app.include_router(router)
+    app.include_router(authentication_router)
 
     for user_router in include_routers or []:
         app.include_router(user_router)
