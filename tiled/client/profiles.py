@@ -40,7 +40,7 @@ def parse(filepath):
     # TODO Support TOML and maybe others.
     else:
         raise UnrecognizedExtension(
-            f"File {filepath} is not of a recognized type. Extension must be .yaml or .yml"
+            f"File {filepath!r} is not of a recognized type. Extension must be .yaml or .yml"
         )
 
 
@@ -60,13 +60,13 @@ def gather_profiles(paths, strict=True):
                     if strict:
                         raise
                     else:
-                        warnings.warn(f"Failed to parse {filepath}. Skipping.")
+                        warnings.warn(f"Failed to parse {filepath!r}. Skipping.")
                 if not isinstance(content, collections.abc.Mapping):
                     if strict:
                         raise
                     else:
                         warnings.warn(
-                            f"Content of {filepath} is not a mapping. Skipping."
+                            f"Content of {filepath!r} is not a mapping. Skipping."
                         )
                 filepath_to_content[filepath] = content
         levels.append(filepath_to_content)
@@ -159,15 +159,9 @@ def from_profile(name):
     try:
         profile = profiles[name]
     except KeyError as err:
-        NEWLINE = "\n"  # because '\n' cannot be used inside f-string below
         raise ProfileNotFound(
-            f"""Profile {name} not found. Found profiles:
-
-{NEWLINE.join(profiles)}
-
-from configuration in directories:
-
-{NEWLINE.join(paths)}"""
+            f"Profile {name!r} not found. Found profiles {list(profiles)} "
+            f"from searching directories {paths}."
         ) from err
     return from_uri(**profile)
     # TODO Recognize 'direct' profile.
