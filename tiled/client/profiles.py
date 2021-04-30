@@ -50,8 +50,8 @@ def gather_profiles(paths, strict=True):
     """
     levels = []
     for path in paths:
-        filepath_to_content = {}
         if os.path.isdir(path):
+            filepath_to_content = {}
             for filename in os.listdir(path):
                 filepath = os.path.join(path, filename)
                 try:
