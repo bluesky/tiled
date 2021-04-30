@@ -15,7 +15,7 @@ from .in_memory import Catalog as CatalogInMemory
 class HDF5DatasetAdapter(ArrayAdapter):
     # TODO Just wrap h5py.Dataset directly, not via dask.array.
     def __init__(self, dataset):
-        super().__init__(dask.array.from_array(dataset))
+        super().__init__(dask.array.from_array(dataset), metadata=dataset.attrs)
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
