@@ -39,7 +39,9 @@ def parse(filepath):
 
     # TODO Support TOML and maybe others.
     else:
-        raise UnrecognizedExtension("Must be .yaml or .yml")
+        raise UnrecognizedExtension(
+            f"File {filepath} is not of a recognized type. Extension must be .yaml or .yml"
+        )
 
 
 def gather_profiles(paths, strict=True):
