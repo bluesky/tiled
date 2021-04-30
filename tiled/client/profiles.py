@@ -20,7 +20,7 @@ __all__ = ["discover_profiles", "from_profile", "paths"]
 
 # Paths later in the list ("closer" to the user) have higher precedence.
 paths = [
-    os.getenv("TILED_SYSTEM_PROFILES", appdirs.site_config_dir("tiled")),  # system
+    os.getenv("TILED_SITE_PROFILES", appdirs.site_config_dir("tiled")),  # system
     os.path.join(sys.prefix, "etc", "tiled"),  # environment
     os.getenv("TILED_PROFILES", appdirs.user_config_dir("tiled")),  # user
 ]
