@@ -1,9 +1,5 @@
 import typer
 from typing import List, Optional
-import uvicorn
-
-from ..server.main import serve_catalog
-from ..utils import import_object
 
 
 cli_app = typer.Typer()
@@ -48,6 +44,9 @@ def serve_directory(
 ):
     "Serve a Catalog instance from a directory of files."
     import os
+    import uvicorn
+
+    from ..server.main import serve_catalog
 
     if not os.path.isdir(directory):
         raise ValueError(f"{directory} is not a directory")
@@ -66,6 +65,10 @@ def serve_pyobject(
     mimetype: List[str] = typer.Option(None),
 ):
     "Serve a Catalog instance from a Python module."
+    import uvicorn
+
+    from ..server.main import serve_catalog
+    from ..utils import import_object
 
     # Import eagerly so any errors here get raised
     # before server startup.
