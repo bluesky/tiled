@@ -8,7 +8,9 @@ from ..utils import import_object
 
 cli_app = typer.Typer()
 serve_app = typer.Typer()
+profiles_app = typer.Typer()
 cli_app.add_typer(serve_app, name="serve")
+cli_app.add_typer(profiles_app, name="profiles")
 
 
 @cli_app.command("download")
@@ -24,16 +26,24 @@ def download(
     download(catalog, path=path, available_bytes=available_bytes)
 
 
-@cli_app.command("paths")
-def paths():
+@profiles_app.command("paths")
+def profiles_paths():
     "Print the locations that the client will search for profiles (configuration)."
     from tiled.client.profiles import paths
 
     print("\n".join(paths))
 
 
+@profiles_app.command("list")
+def profiles_list():
+    "Print the locations that the client will search for profiles (configuration)."
+    from tiled.client.profiles import discover_profiles
+
+    print("\n".join(discover_profiles()))
+
+
 @serve_app.command("directory")
-def directory(
+def serve_directory(
     directory: str,
 ):
     "Serve a Catalog instance from a directory of files."
@@ -50,7 +60,7 @@ def directory(
 
 
 @serve_app.command("pyobject")
-def pyobject(
+def serve_pyobject(
     object_path: str,  # e.g. "package_name.module_name:object_name"
     glob: List[str] = typer.Option(None),
     mimetype: List[str] = typer.Option(None),
