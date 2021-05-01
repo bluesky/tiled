@@ -78,6 +78,8 @@ def resolve_precedence(levels):
     Given a list of mappings (filename-to-content), resolve precedence.
 
     In the event of irresolvable collisions, drop the offenders and warn.
+
+    The result is a mapping from profile name to (filepath, content).
     """
     # Map each profile_name to the file(s) that define a profile with that name.
     # This is used to track collisions.
@@ -109,19 +111,28 @@ def resolve_precedence(levels):
                 combined.pop(profile_name, None)
             else:
                 (filepath,) = filepaths
-                combined.update(filepath_to_content[filepath])
+                combined[profile_name] = (
+                    filepath,
+                    filepath_to_content[filepath][profile_name],
+                )
     NEWLINE = "\n"  # because '\n' cannot be used inside f-string below
-    for profile_name, filepaths in collisions.items():
-        warnings.warn(
-            f"""More than file in the same directory
+    MSG = f"""More than file in the same directory:
 
 {NEWLINE.join(filepaths)}
 
-defines a profile with the name {profile_name}.
+defines a profile with the name {profile_name!r}.
 
-The profile will be ommiited. Fix this by removing one of the duplicates
-or by overriding them with a user-level profile defined under {paths[-1]}."""
-        )
+The profile will be ommitted. Fix this by removing one of the duplicates"""
+    for profile_name, filepaths in collisions.items():
+        if filepaths[0].startswith(paths[-1]):
+            msg = MSG + "."
+        else:
+            msg = MSG + (
+                "or by defining a profile with that name in a "
+                "file in the user config directory {paths[-1]} "
+                "to override them."
+            )
+        warnings.warn(msg)
     return combined
 
 
@@ -157,13 +168,13 @@ def from_profile(name):
     """
     profiles = discover_profiles()
     try:
-        profile = profiles[name]
+        _, profile_content = profiles[name]
     except KeyError as err:
         raise ProfileNotFound(
             f"Profile {name!r} not found. Found profiles {list(profiles)} "
-            f"from searching directories {paths}."
+            f"from directories {paths}."
         ) from err
-    return from_uri(**profile)
+    return from_uri(**profile_content)
     # TODO Recognize 'direct' profile.
 
 

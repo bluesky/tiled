@@ -24,7 +24,7 @@ def download(
 
 @profiles_app.command("paths")
 def profiles_paths():
-    "Print the locations that the client will search for profiles (configuration)."
+    "List the locations that the client will search for profiles (configuration)."
     from tiled.client.profiles import paths
 
     print("\n".join(paths))
@@ -32,10 +32,21 @@ def profiles_paths():
 
 @profiles_app.command("list")
 def profiles_list():
-    "Print the locations that the client will search for profiles (configuration)."
+    "List the profiles (client-side configuration) found and the files they were read from."
     from tiled.client.profiles import discover_profiles
 
-    print("\n".join(discover_profiles()))
+    profiles = discover_profiles()
+    if not profiles:
+        return
+    max_len = max(len(name) for name in profiles)
+    PADDING = 4
+
+    print(
+        "\n".join(
+            f"{name:<{max_len + PADDING}}{filepath}"
+            for name, (filepath, _) in profiles.items()
+        )
+    )
 
 
 @serve_app.command("directory")
