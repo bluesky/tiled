@@ -56,17 +56,20 @@ def gather_profiles(paths, strict=True):
                 filepath = os.path.join(path, filename)
                 try:
                     content = parse(filepath)
-                except Exception:
+                except Exception as err:
                     if strict:
                         raise
                     else:
-                        warnings.warn(f"Failed to parse {filepath!r}. Skipping.")
+                        warnings.warn(
+                            f"Skipping {filepath!r}. Failed to parse with error: {err!r}."
+                        )
+                        continue
                 if not isinstance(content, collections.abc.Mapping):
                     if strict:
                         raise
                     else:
                         warnings.warn(
-                            f"Content of {filepath!r} is not a mapping. Skipping."
+                            f"Skipping {filepath!r}. Content has invalid structure (not a mapping)."
                         )
                 filepath_to_content[filepath] = content
         levels.append(filepath_to_content)
@@ -115,23 +118,27 @@ def resolve_precedence(levels):
                     filepath,
                     filepath_to_content[filepath][profile_name],
                 )
-    NEWLINE = "\n"  # because '\n' cannot be used inside f-string below
-    MSG = f"""More than file in the same directory:
+    MSG = """More than file in the same directory:
 
-{NEWLINE.join(filepaths)}
+{filepaths}
 
 defines a profile with the name {profile_name!r}.
 
 The profile will be ommitted. Fix this by removing one of the duplicates"""
     for profile_name, filepaths in collisions.items():
         if filepaths[0].startswith(paths[-1]):
-            msg = MSG + "."
-        else:
-            msg = MSG + (
-                "or by defining a profile with that name in a "
-                "file in the user config directory {paths[-1]} "
-                "to override them."
+            msg = (MSG + ".").format(
+                filepaths="\n".join(filepaths), profile_name=profile_name
             )
+        else:
+            msg = (
+                MSG
+                + (
+                    "or by defining a profile with that name in a "
+                    f"file in the user config directory {paths[-1]} "
+                    "to override them."
+                )
+            ).format(filepaths="\n".join(filepaths), profile_name=profile_name)
         warnings.warn(msg)
     return combined
 
