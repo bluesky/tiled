@@ -13,6 +13,7 @@ import warnings
 import appdirs
 
 from .catalog import from_uri
+from ..utils import parse
 
 
 __all__ = ["discover_profiles", "from_profile", "paths"]
@@ -24,24 +25,6 @@ paths = [
     os.path.join(sys.prefix, "etc", "tiled"),  # environment
     os.getenv("TILED_PROFILES", appdirs.user_config_dir("tiled")),  # user
 ]
-
-
-def parse(filepath):
-    """
-    Given a config filepath, detect the format from its name, and parse it.
-    """
-    _, ext = os.path.splitext(filepath)
-    if ext in (".yml", ".yaml"):
-        import yaml
-
-        with open(filepath) as file:
-            return yaml.safe_load(file.read())
-
-    # TODO Support TOML and maybe others.
-    else:
-        raise UnrecognizedExtension(
-            f"File {filepath!r} is not of a recognized type. Extension must be .yaml or .yml"
-        )
 
 
 def gather_profiles(paths, strict=True):
@@ -183,10 +166,6 @@ def from_profile(name):
         ) from err
     return from_uri(**profile_content)
     # TODO Recognize 'direct' profile.
-
-
-class UnrecognizedExtension(ValueError):
-    pass
 
 
 class ProfileNotFound(KeyError):

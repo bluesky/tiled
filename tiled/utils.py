@@ -3,6 +3,7 @@ import enum
 import importlib
 import importlib.util
 import operator
+import os
 import threading
 
 
@@ -277,3 +278,34 @@ def modules_available(*module_names):
         # All modules were found.
         return True
     return False
+
+
+def parse(filepath):
+    """
+    Given a config filepath, detect the format from its name, and parse it.
+    """
+    _, ext = os.path.splitext(filepath)
+    if ext in (".yml", ".yaml"):
+        if not modules_available("yaml"):
+            raise MissingDependency(
+                f"To parse the YAML file at {filepath} "
+                "the package pyyaml must be installed."
+            )
+        import yaml
+
+        with open(filepath) as file:
+            return yaml.safe_load(file.read())
+
+    # TODO Support TOML and maybe others.
+    else:
+        raise UnrecognizedExtension(
+            f"File {filepath!r} is not of a recognized type. Extension must be .yaml or .yml"
+        )
+
+
+class MissingDependency(ModuleNotFoundError):
+    pass
+
+
+class UnrecognizedExtension(ValueError):
+    pass
