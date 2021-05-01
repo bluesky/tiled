@@ -100,8 +100,8 @@ def resolve_precedence(levels):
         for profile_name, filepaths in profile_name_to_filepaths.items():
             # A profile name in this level resolves any collisions in the previous level.
             collisions.pop(profile_name, None)
-            # Does not than one file *in this same level (directory) in the search path*
-            # define a profile with the same name. If so, there is no sure way to decide
+            # Does more than one file *in this same level (directory) in the search path*
+            # define a profile with the same name? If so, there is no sure way to decide
             # precedence so we will omit it and issue a warning, unless something later
             # in the search path overrides it.
             if len(filepaths) > 1:
