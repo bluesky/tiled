@@ -153,7 +153,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             "The function tiled.client.from_profile may be used instead.",
             PendingDeprecationWarning,
         )
-        return from_client(*args, **kwargs)
+        return from_profile(*args, **kwargs)
 
     def __init__(
         self,
