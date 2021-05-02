@@ -128,18 +128,32 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     @classmethod
     def direct(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.direct is deperecated and will be removed. "
-            "Use the function tiled.client.direct instead."
+            "The classmethod Catalog.direct is being considered "
+            "for deperecation and may be removed. "
+            "The function tiled.client.direct may be used instead.",
+            PendingDeprecationWarning,
         )
         return direct(*args, **kwargs)
 
     @classmethod
     def from_uri(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_uri is deperecated and will be removed. "
-            "Use the function tiled.client.from_uri instead."
+            "The classmethod Catalog.from_uri is being considered "
+            "for deperecation and may be removed. "
+            "The function tiled.client.from_uri may be used instead.",
+            PendingDeprecationWarning,
         )
         return from_uri(*args, **kwargs)
+
+    @classmethod
+    def from_profile(cls, *args, **kwargs):
+        warnings.warn(
+            "The classmethod Catalog.from_profile is being considered "
+            "for deperecation and may be removed. "
+            "The function tiled.client.from_profile may be used instead.",
+            PendingDeprecationWarning,
+        )
+        return from_client(*args, **kwargs)
 
     def __init__(
         self,
