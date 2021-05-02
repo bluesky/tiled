@@ -25,7 +25,7 @@ def download(
 @profiles_app.command("paths")
 def profiles_paths():
     "List the locations that the client will search for profiles (configuration)."
-    from tiled.client.profiles import paths
+    from tiled.profiles import paths
 
     print("\n".join(paths))
 
@@ -33,7 +33,7 @@ def profiles_paths():
 @profiles_app.command("list")
 def profiles_list():
     "List the profiles (client-side configuration) found and the files they were read from."
-    from tiled.client.profiles import discover_profiles
+    from tiled.profiles import discover_profiles
 
     profiles = discover_profiles()
     if not profiles:

@@ -691,3 +691,34 @@ def from_client(
         special_clients=special_clients,
         root_client_type=Catalog,
     ).client_for_item(item, path=[], metadata=metadata)
+
+
+def from_profile(name):
+    """
+    Build a Catalog based a 'profile' (a named configuration).
+
+    List available profiles from Python like:
+
+    >>> from tiled.client.profiles import discover_profiles
+    >>> list(discover_profiles())
+
+    or from a CLI like:
+
+    $ tiled profiles list
+    """
+    from ..profiles import discover_profiles, paths
+
+    profiles = discover_profiles()
+    try:
+        _, profile_content = profiles[name]
+    except KeyError as err:
+        raise ProfileNotFound(
+            f"Profile {name!r} not found. Found profiles {list(profiles)} "
+            f"from directories {paths}."
+        ) from err
+    return from_uri(**profile_content)
+    # TODO Recognize 'direct' profile.
+
+
+class ProfileNotFound(KeyError):
+    pass
