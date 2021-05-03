@@ -304,15 +304,18 @@ def parse(file, format="yaml"):
         import yaml
 
         content = yaml.safe_load(file.read())
-    # TODO Support TOML and JSON.
     elif format == "toml":
         if not modules_available("toml"):
             raise MissingDependency(
                 "To parse a TOML-formatted file the package toml must be installed."
             )
-        raise NotImplementedError
+        import toml
+
+        content = toml.load(file)
     elif format == "json":
-        raise NotImplementedError
+        import json
+
+        content = json.load(file)
     else:
         raise ValueError("format must be one of {'yaml', 'toml', 'json'}.")
 
