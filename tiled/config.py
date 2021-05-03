@@ -12,9 +12,11 @@ def construct_serve_catalogs_args_from_config(config):
     """
     Given parsed configuration, construct arguments for serve_catalogs(...).
     """
-    # TODO Enable entrypoint aliases?
     auth_spec = config.get("authenticator")
-    if isinstance(auth_spec, str):
+    # TODO Enable entrypoint as alias for authenticator_class?
+    if auth_spec is None:
+        authenticator = None
+    elif isinstance(auth_spec, str):
         authenticator_class = import_object(auth_spec)
         authenticator = authenticator_class()
     elif isinstance(auth_spec, collections.abc.Mapping):
@@ -22,8 +24,14 @@ def construct_serve_catalogs_args_from_config(config):
         authenticator_class = import_object(key)
         authenticator = authenticator_class(**value)
     catalogs = {}
+    # TODO Enable entrypoint as alias for pycallable?
+    spec_types = {"pyboject", "pycallable", "files"}
+    if "catalogs" not in config:
+        raise ConfigError("The configuration must include a list of 'catalogs'.")
     for item in config["catalogs"]:
-        segments = tuple(segment for segment in item["path"].split("/") if segment)
+        if "location" not in item:
+            raise ConfigError("Each item in 'catalogs' must contain a 'location'.")
+        segments = tuple(segment for segment in item["location"].split("/") if segment)
         if "pyobject" in item:
             object_path = item["pyobject"]
             catalog = import_object(object_path)
@@ -39,10 +47,15 @@ def construct_serve_catalogs_args_from_config(config):
             from tiled.catalogs.files import Catalog
 
             catalog = Catalog.from_directory(**item["files"])
-        # TODO Enable entrypoint aliases?
         else:
-            raise ValueError
+            raise ConfigError(
+                f"Each item in 'catalogs' must contain one of: {spec_types}"
+            )
         if segments in catalogs:
-            raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
+            raise ValueError(f"The location {'/'.join(segments)} was specified twice.")
         catalogs[segments] = catalog
         return {"catalogs": catalogs, "authenticator": authenticator}
+
+
+class ConfigError(ValueError):
+    pass
