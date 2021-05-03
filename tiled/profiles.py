@@ -1,5 +1,7 @@
 """
-This module handles client-side configuration.
+This module handles client configuration.
+
+See config.py for server configuration.
 
 It contains several functions that are factored to facilitate testing,
 but the user-facing functionality is striaghtforward.
@@ -12,7 +14,7 @@ import warnings
 
 import appdirs
 
-from .utils import parse
+from .utils import infer_config_format, parse
 
 
 __all__ = ["discover_profiles", "paths"]
@@ -37,7 +39,9 @@ def gather_profiles(paths, strict=True):
             for filename in os.listdir(path):
                 filepath = os.path.join(path, filename)
                 try:
-                    content = parse(filepath)
+                    format = infer_config_format(filepath)
+                    with open(filepath) as file:
+                        content = parse(file, format=format)
                 except Exception as err:
                     if strict:
                         raise

@@ -280,27 +280,40 @@ def modules_available(*module_names):
     return False
 
 
-def parse(filepath):
-    """
-    Given a config filepath, detect the format from its name, and parse it.
-    """
+def infer_config_format(filepath):
     _, ext = os.path.splitext(filepath)
     if ext in (".yml", ".yaml"):
-        if not modules_available("yaml"):
-            raise MissingDependency(
-                f"To parse the YAML file at {filepath} "
-                "the package pyyaml must be installed."
-            )
-        import yaml
-
-        with open(filepath) as file:
-            return yaml.safe_load(file.read())
-
-    # TODO Support TOML and maybe others.
+        return "yaml"
+    elif ext in (".toml",):
+        return "toml"
+    elif ext in (".json",):
+        return "json"
     else:
         raise UnrecognizedExtension(
-            f"File {filepath!r} is not of a recognized type. Extension must be .yaml or .yml"
+            f"File {filepath!r} is not of a recognized type. "
+            "Extension must be one of: .yml, .yaml, .toml, .json."
         )
+
+
+def parse(file, format="yaml"):
+    """
+    Given a config file and format, parse it.
+    """
+    if format == "yaml":
+        import yaml
+
+        return yaml.safe_load(file.read())
+    # TODO Support TOML and JSON.
+    elif format == "toml":
+        if not modules_available("toml"):
+            raise MissingDependency(
+                "To parse a TOML-formatted file the package toml must be installed."
+            )
+        raise NotImplementedError
+    elif format == "json":
+        raise NotImplementedError
+    else:
+        raise ValueError("format must be one of {'yaml', 'toml', 'json'}.")
 
 
 class MissingDependency(ModuleNotFoundError):

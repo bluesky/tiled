@@ -1,3 +1,5 @@
+import enum
+
 import typer
 from typing import List, Optional
 
@@ -15,8 +17,8 @@ def download(
     path: str,
     available_bytes: Optional[int] = None,
 ):
-    from tiled.client.cache import download
-    from tiled.client.catalog import Catalog
+    from ..client.cache import download
+    from ..client.catalog import Catalog
 
     catalog = Catalog.from_uri(catalog_uri)
     download(catalog, path=path, available_bytes=available_bytes)
@@ -25,7 +27,7 @@ def download(
 @profiles_app.command("paths")
 def profiles_paths():
     "List the locations that the client will search for profiles (configuration)."
-    from tiled.profiles import paths
+    from ..profiles import paths
 
     print("\n".join(paths))
 
@@ -33,7 +35,7 @@ def profiles_paths():
 @profiles_app.command("list")
 def profiles_list():
     "List the profiles (client-side configuration) found and the files they were read from."
-    from tiled.profiles import discover_profiles
+    from ..profiles import discover_profiles
 
     profiles = discover_profiles()
     if not profiles:
@@ -54,18 +56,14 @@ def serve_directory(
     directory: str,
 ):
     "Serve a Catalog instance from a directory of files."
-    import os
-    import uvicorn
-
+    from ..catalogs.files import Catalog
     from ..server.main import serve_catalog
-
-    if not os.path.isdir(directory):
-        raise ValueError(f"{directory} is not a directory")
-
-    from tiled.catalogs.files import Catalog
 
     catalog = Catalog.from_directory(directory)
     web_app = serve_catalog(catalog)
+
+    import uvicorn
+
     uvicorn.run(web_app)
 
 
@@ -76,16 +74,46 @@ def serve_pyobject(
     mimetype: List[str] = typer.Option(None),
 ):
     "Serve a Catalog instance from a Python module."
-    import uvicorn
-
     from ..server.main import serve_catalog
     from ..utils import import_object
 
-    # Import eagerly so any errors here get raised
-    # before server startup.
     catalog = import_object(object_path)
 
     web_app = serve_catalog(catalog)
+
+    import uvicorn
+
+    uvicorn.run(web_app)
+
+
+class ConfigFormats(str, enum.Enum):
+    yaml = "yaml"
+    toml = "toml"
+    json = "json"
+
+
+@serve_app.command("config")
+def serve_config(
+    config: typer.FileText,
+    format: ConfigFormats = typer.Option(None),
+):
+    from ..config import construct_serve_catalogs_args_from_config
+    from ..utils import infer_config_format, parse
+    from ..server.main import serve_catalogs
+
+    if format is None:
+        if config.name == "<stdin>":
+            # We just have to guess because we have no file extension to work with.
+            format = "yaml"
+        else:
+            format = infer_config_format(config.name)
+    parsed_content = parse(config)
+    kwargs = construct_serve_catalogs_args_from_config(parsed_content)
+
+    web_app = serve_catalogs(**kwargs)
+
+    import uvicorn
+
     uvicorn.run(web_app)
 
 

@@ -64,7 +64,6 @@ def entry(
     catalogs: pydantic.BaseSettings = Depends(get_catalogs),
 ):
     path_as_tuple = tuple((path or "").split("/"))
-    print(f"{path_as_tuple=}")
     for prefix, root_catalog in catalogs.items():
         if path_as_tuple[: len(prefix)] == prefix:
             break

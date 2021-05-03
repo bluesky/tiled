@@ -57,7 +57,15 @@ class Catalog(CatalogInMemory):
         metadata=None,
         access_policy=None,
         authenticated_identity=None,
+        error_if_missing=True,
     ):
+        if error_if_missing:
+            if not os.path.isdir(directory):
+                raise ValueError(
+                    f"{directory} is not a directory. "
+                    "To run anyway, in anticipation of the directory "
+                    "appearing later, use error_if_missing=False."
+                )
         if ignore is not None:
             # TODO Support regex or glob (?) patterns to ignore.
             raise NotImplementedError
