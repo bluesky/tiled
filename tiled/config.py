@@ -3,8 +3,6 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
-import collections.abc
-
 from .utils import import_object
 
 
@@ -12,47 +10,39 @@ def construct_serve_catalogs_args_from_config(config):
     """
     Given parsed configuration, construct arguments for serve_catalogs(...).
     """
-    auth_spec = config.get("authenticator")
+    auth_spec = config.get("authentication")
+    auth_aliases = {}
     # TODO Enable entrypoint as alias for authenticator_class?
     if auth_spec is None:
         authenticator = None
-    elif isinstance(auth_spec, str):
-        authenticator_class = import_object(auth_spec)
-        authenticator = authenticator_class()
-    elif isinstance(auth_spec, collections.abc.Mapping):
-        ((key, value),) = auth_spec.items()
-        authenticator_class = import_object(key)
-        authenticator = authenticator_class(**value)
+    else:
+        import_path = auth_aliases.get(
+            auth_spec["authenticator"], auth_spec["authenticator"]
+        )
+        authenticator_class = import_object(import_path)
+        authenticator = authenticator_class(**auth_spec.get("args", {}))
     catalogs = {}
-    # TODO Enable entrypoint as alias for pycallable?
-    spec_types = {"pyboject", "pycallable", "files"}
+    # TODO Enable entrypoint to extend aliases?
+    catalog_aliases = {"files": "tiled.catalog.files:Catalog.from_directory"}
     if "catalogs" not in config:
         raise ConfigError("The configuration must include a list of 'catalogs'.")
     for item in config["catalogs"]:
-        if "location" not in item:
-            raise ConfigError("Each item in 'catalogs' must contain a 'location'.")
-        segments = tuple(segment for segment in item["location"].split("/") if segment)
-        if "pyobject" in item:
-            object_path = item["pyobject"]
-            catalog = import_object(object_path)
-        elif "pycallable" in item:
-            object_path = item["pycallable"]["path"]
-            # We only accept keyword args, and we call them 'args',
-            # following the example of Ansible configuration, thinking
-            # that 'kwargs' is bit too Python-specific for config.
-            kwargs = item["pycallable"]["args"]
-            catalog_factory = import_object(object_path)
-            catalog = catalog_factory(**kwargs)
-        elif "files" in item:
-            from tiled.catalogs.files import Catalog
-
-            catalog = Catalog.from_directory(**item["files"])
+        if "path" not in item:
+            raise ConfigError("Each item in 'catalogs' must contain a key 'path'.")
+        segments = tuple(segment for segment in item["path"].split("/") if segment)
+        if "catalog" not in item:
+            raise ConfigError("Each item in 'catalogs' must contain a key 'catalog'.")
+        catalog_spec = item["catalog"]
+        import_path = catalog_aliases.get(catalog_spec, catalog_spec)
+        obj = import_object(import_path)
+        if "args" in item:
+            # Interpret obj as catalog *factory*.
+            catalog = obj(**item["args"])
         else:
-            raise ConfigError(
-                f"Each item in 'catalogs' must contain one of: {spec_types}"
-            )
+            # Interpret obj as catalog instance.
+            catalog = obj
         if segments in catalogs:
-            raise ValueError(f"The location {'/'.join(segments)} was specified twice.")
+            raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
         catalogs[segments] = catalog
         return {"catalogs": catalogs, "authenticator": authenticator}
 
