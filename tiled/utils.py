@@ -1,4 +1,5 @@
 import collections.abc
+import builtins
 import enum
 import importlib
 import importlib.util
@@ -302,7 +303,7 @@ def parse(file, format="yaml"):
     if format == "yaml":
         import yaml
 
-        return yaml.safe_load(file.read())
+        content = yaml.safe_load(file.read())
     # TODO Support TOML and JSON.
     elif format == "toml":
         if not modules_available("toml"):
@@ -314,6 +315,40 @@ def parse(file, format="yaml"):
         raise NotImplementedError
     else:
         raise ValueError("format must be one of {'yaml', 'toml', 'json'}.")
+
+    return expand_environment_variables(content)
+
+
+def expand_environment_variables(config):
+    """Expand environment variables in a nested config dictionary
+
+    VENDORED FROM dask.config.
+
+    This function will recursively search through any nested dictionaries
+    and/or lists.
+
+    Parameters
+    ----------
+    config : dict, iterable, or str
+        Input object to search for environment variables
+
+    Returns
+    -------
+    config : same type as input
+
+    Examples
+    --------
+    >>> expand_environment_variables({'x': [1, 2, '$USER']})  # doctest: +SKIP
+    {'x': [1, 2, 'my-username']}
+    """
+    if isinstance(config, collections.abc.Mapping):
+        return {k: expand_environment_variables(v) for k, v in config.items()}
+    elif isinstance(config, str):
+        return os.path.expandvars(config)
+    elif isinstance(config, (list, tuple, builtins.set)):
+        return type(config)([expand_environment_variables(v) for v in config])
+    else:
+        return config
 
 
 class MissingDependency(ModuleNotFoundError):
