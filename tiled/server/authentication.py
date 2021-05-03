@@ -19,6 +19,13 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
+def get_authenticator():
+    raise NotImplementedError(
+        "This should be overridden via dependency_overrides. "
+        "See tiled.server.main.serve_catalogs()."
+    )
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str

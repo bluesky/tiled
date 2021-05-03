@@ -4,10 +4,10 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .settings import get_settings
+from .authentication import authentication_router, get_authenticator
+from .core import get_catalogs, PatchedStreamingResponse
 from .router import declare_search_router, router
-from .core import PatchedStreamingResponse
-from .authentication import authentication_router
+from .settings import get_settings
 
 
 def get_app(include_routers=None):
@@ -51,24 +51,71 @@ def get_app(include_routers=None):
     return app
 
 
-def serve_catalog(catalog, authenticator=None):
+def serve_catalogs(catalogs, authenticator=None):
+    """
+    Serve one or more Catalogs.
+
+    Parameters
+    ----------
+    catalogs : Dict[Tuple[str, ...], Catalog]
+        Each key should be a tuple representing a sub-path, i.e. ('a', 'b').
+        Each value should be a Catalog.
+    authenticator : Authenticator
+
+    Examples
+    --------
+
+    Serve one Catalog and the root path /.
+
+    >>> serve_catalogs({(): catalog})
+
+    Serve two Catalogs under /a and /b/c respectively.
+    >>> serve_catalogs({('a'): catalog1, ('b', 'c'): catalog2})
+
+    See Also
+    --------
+    serve_catalog
+    """
+
     @lru_cache(1)
-    def override_settings():
-        settings = get_settings()
-        settings.catalog = catalog
-        settings.authenticator = authenticator
-        return settings
+    def override_get_authenticator():
+        return authenticator
+
+    @lru_cache(1)
+    def override_get_catalogs():
+        return catalogs
 
     # The Catalog and Authenticator have the opporunity to add custom routes to
     # the server here. (Just for example, a Catalog of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
-    # are processed, so we cannot just use get_settings to inject this configuration.
-    include_routers = []
-    include_routers.extend(getattr(catalog, "include_routers", []))
-    include_routers.extend(getattr(authenticator, "include_routers", []))
+    # are processed, so we cannot just inject this configuration via Depends.
+    include_routers = set()
+    # TODO Give some thought to the way that we merge routes from different
+    # Catalogs here. I don't see any show-stopping problems with this but it
+    # feels a bit weird.
+    for catalog in catalogs:
+        include_routers.update(getattr(catalog, "include_routers", []))
+    include_routers.update(getattr(authenticator, "include_routers", []))
     app = get_app(include_routers=include_routers)
-    app.dependency_overrides[get_settings] = override_settings
+    app.dependency_overrides[get_authenticator] = override_get_authenticator
+    app.dependency_overrides[get_catalogs] = override_get_catalogs
     return app
+
+
+def serve_catalog(catalog, authenticator=None):
+    """
+    Serve a Catalogs.
+
+    Parameters
+    ----------
+    catalog : Catalog
+    authenticator : Authenticator
+
+    See Also
+    --------
+    serve_catalogs
+    """
+    return serve_catalogs({(): catalog}, authenticator=authenticator)
 
 
 if __name__ == "__main__":

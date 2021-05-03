@@ -16,7 +16,6 @@ from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
 from .authentication import get_current_user
-from .settings import get_settings
 from ..utils import modules_available
 from ..query_registration import name_to_query_type
 from ..queries import QueryValueError
@@ -44,16 +43,37 @@ if modules_available("xarray"):
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 
 
+def get_catalogs():
+    """
+    Return structure like::
+
+        {
+            ('a', 'b'): catalog,
+            ('a', 'c'): another_catalog,
+        }
+    """
+    raise NotImplementedError(
+        "This should be overridden via dependency_overrides. "
+        "See tiled.server.main.serve_catalogs()."
+    )
+
+
 def entry(
     path: str,
     current_user: str = Depends(get_current_user),
-    settings: pydantic.BaseSettings = Depends(get_settings),
+    catalogs: pydantic.BaseSettings = Depends(get_catalogs),
 ):
+    path_as_tuple = tuple((path or "").split("/"))
+    print(f"{path_as_tuple=}")
+    for prefix, root_catalog in catalogs.items():
+        if path_as_tuple[: len(prefix)] == prefix:
+            break
+    else:
+        raise HTTPException(status_code=404, detail=f"No such entry: {path}")
+    catalog = root_catalog.authenticated_as(current_user)
     try:
-        root_catalog = get_settings().catalog
-        catalog = root_catalog.authenticated_as(current_user)
         # Traverse into sub-catalog(s).
-        for entry in (path or "").split("/"):
+        for entry in path_as_tuple[len(prefix) :]:  # noqa: E203
             if entry:
                 try:
                     catalog = catalog[entry]
