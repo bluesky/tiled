@@ -259,14 +259,15 @@ def import_object(colon_separated_string):
         "Expected string formatted like:\n\n"
         "    package_name.module_name:object_name\n\n"
         "Notice *dots* between modules and a "
-        "*colon* before the object name."
+        f"*colon* before the object name. Received:\n\n{colon_separated_string!r}"
     )
     import_path, _, obj_path = colon_separated_string.partition(":")
     for segment in import_path.split("."):
         if not segment.isidentifier():
             raise ValueError(MESSAGE)
-    if not obj_path.isidentifier():
-        raise ValueError(MESSAGE)
+    for attr in obj_path.split("."):
+        if not attr.isidentifier():
+            raise ValueError(MESSAGE)
     module = importlib.import_module(import_path)
     return operator.attrgetter(obj_path)(module)
 
