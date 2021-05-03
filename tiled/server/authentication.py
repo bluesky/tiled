@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import os
 from secrets import token_hex
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -92,9 +92,9 @@ async def get_current_user(
 @authentication_router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    settings: BaseSettings = Depends(get_settings),
+    authenticator: Any = Depends(get_authenticator),
 ):
-    username = settings.authenticator.authenticate(
+    username = authenticator.authenticate(
         username=form_data.username, password=form_data.password
     )
     if not username:
