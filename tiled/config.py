@@ -6,7 +6,7 @@ See profiles.py for client configuration.
 from .utils import import_object
 
 
-def construct_serve_catalogs_args_from_config(config):
+def construct_serve_catalogs_kwargs(config):
     """
     Given parsed configuration, construct arguments for serve_catalogs(...).
     """
@@ -21,12 +21,10 @@ def construct_serve_catalogs_args_from_config(config):
         )
         authenticator_class = import_object(import_path)
         authenticator = authenticator_class(**auth_spec.get("args", {}))
-    catalogs = {}
     # TODO Enable entrypoint to extend aliases?
-    catalog_aliases = {"files": "tiled.catalog.files:Catalog.from_directory"}
-    if "catalogs" not in config:
-        raise ConfigError("The configuration must include a list of 'catalogs'.")
-    for item in config["catalogs"]:
+    catalog_aliases = {"files": "tiled.catalogs.files:Catalog.from_directory"}
+    catalogs = {}
+    for item in config.get("catalogs", []):
         if "path" not in item:
             raise ConfigError("Each item in 'catalogs' must contain a key 'path'.")
         segments = tuple(segment for segment in item["path"].split("/") if segment)
@@ -45,6 +43,39 @@ def construct_serve_catalogs_args_from_config(config):
             raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
         catalogs[segments] = catalog
         return {"catalogs": catalogs, "authenticator": authenticator}
+
+
+def merge(configs):
+    merged = {"catalogs": []}
+
+    # These two variables are used to produce error messages that point
+    # to the relevant config file(s).
+    authentication_config_source = None
+    paths = {}  # map each item's path to config file that specified it
+
+    for filepath, config in configs.items():
+        if "authentication" in config:
+            if "authentication" in merged:
+                raise ConfigError(
+                    "authentication can only be specified in one file. "
+                    f"It was found in both {authentication_config_source} and "
+                    f"{filepath}"
+                )
+            authentication_config_source = filepath
+            merged["authentication"] = config["authentication"]
+        for item in config.get("catalogs", []):
+            if item["path"] in paths:
+                msg = "A given path may be only be specified once."
+                "The path {item['path']} was found twice in "
+                if filepath == paths[item["path"]]:
+                    msg += f"{filepath}."
+                else:
+                    msg += f"{filepath} and {paths[item['path']]}."
+                raise ConfigError(msg)
+            paths[item["path"]] = filepath
+            merged["catalogs"].append(item)
+        merged["catalogs"]
+    return merged
 
 
 class ConfigError(ValueError):

@@ -1,4 +1,5 @@
 import enum
+from pathlib import Path
 
 import typer
 from typing import List, Optional
@@ -94,21 +95,38 @@ class ConfigFormats(str, enum.Enum):
 
 @serve_app.command("config")
 def serve_config(
-    config: typer.FileText,
+    config: Path,
     format: ConfigFormats = typer.Option(None),
 ):
-    from ..config import construct_serve_catalogs_args_from_config
-    from ..utils import infer_config_format, parse
-    from ..server.main import serve_catalogs
+    if config.is_file():
+        filepaths = [config]
+    elif config.is_dir():
+        filepaths = list(config.iterdir())
+    elif not config.exists():
+        typer.echo(f"The config path {config!s} doesn't exist.")
+        raise typer.Abort()
+    else:
+        assert False, "It should be impossible to reach this line."
 
-    if format is None:
-        if config.name == "<stdin>":
-            # We just have to guess because we have no file extension to work with.
-            format = "yaml"
-        else:
-            format = infer_config_format(config.name)
-    parsed_content = parse(config)
-    kwargs = construct_serve_catalogs_args_from_config(parsed_content)
+    from ..utils import infer_config_format, parse
+
+    parsed_configs = {}
+    # The sorting here is just to make this deterministic.
+    # There is *not* any sorting-based precedence applied.
+    for filepath in sorted(filepaths):
+        # Ignore hidden files.
+        if filepath.parts[-1].startswith("."):
+            continue
+        format_ = format or infer_config_format(filepath)
+        with open(filepath) as file:
+            parsed_configs[filepath] = parse(file, format=format_)
+
+    from ..config import construct_serve_catalogs_kwargs, merge
+
+    merged_config = merge(parsed_configs)
+    kwargs = construct_serve_catalogs_kwargs(merged_config)
+
+    from ..server.main import serve_catalogs
 
     web_app = serve_catalogs(**kwargs)
 
