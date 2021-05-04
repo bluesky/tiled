@@ -4,6 +4,7 @@ msgpack
 pydantic
 python-multipart
 python-jose[cryptography]
+pyyaml
 toolz
 typer
 uvicorn
