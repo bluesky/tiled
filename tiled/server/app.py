@@ -102,13 +102,13 @@ def serve_catalogs(catalogs, authenticator=None):
     # the server here. (Just for example, a Catalog of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
-    include_routers = set()
+    include_routers = []
     # TODO Give some thought to the way that we merge routes from different
     # Catalogs here. I don't see any show-stopping problems with this but it
     # feels a bit weird.
-    for catalog in catalogs:
-        include_routers.update(getattr(catalog, "include_routers", []))
-    include_routers.update(getattr(authenticator, "include_routers", []))
+    for catalog in catalogs.values():
+        include_routers.extend(getattr(catalog, "include_routers", []))
+    include_routers.extend(getattr(authenticator, "include_routers", []))
     app = get_app(include_routers=include_routers)
     app.dependency_overrides[get_authenticator] = override_get_authenticator
     app.dependency_overrides[get_root_catalog] = override_get_root_catalog
