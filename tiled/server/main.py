@@ -5,9 +5,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .authentication import authentication_router, get_authenticator
-from .core import get_catalogs, PatchedStreamingResponse
+from .core import get_root_catalog, PatchedStreamingResponse
 from .router import declare_search_router, router
 from .settings import get_settings
+from ..catalogs.in_memory import Catalog
 
 
 def get_app(include_routers=None):
@@ -82,8 +83,20 @@ def serve_catalogs(catalogs, authenticator=None):
         return authenticator
 
     @lru_cache(1)
-    def override_get_catalogs():
-        return catalogs
+    def override_get_root_catalog():
+        mapping = {}
+        for segments, catalog in catalogs.items():
+            if not segments:
+                # There is one root_catalog to be deployed at '/'.
+                return catalog
+            inner_mapping = mapping
+            for segment in segments[:-1]:
+                if segment in inner_mapping:
+                    inner_mapping = inner_mapping[segment]
+                else:
+                    inner_mapping = inner_mapping[segment] = {}
+            inner_mapping[segments[-1]] = catalog
+        return Catalog(mapping)
 
     # The Catalog and Authenticator have the opporunity to add custom routes to
     # the server here. (Just for example, a Catalog of BlueskyRuns uses this
@@ -98,7 +111,7 @@ def serve_catalogs(catalogs, authenticator=None):
     include_routers.update(getattr(authenticator, "include_routers", []))
     app = get_app(include_routers=include_routers)
     app.dependency_overrides[get_authenticator] = override_get_authenticator
-    app.dependency_overrides[get_catalogs] = override_get_catalogs
+    app.dependency_overrides[get_root_catalog] = override_get_root_catalog
     return app
 
 
@@ -116,10 +129,3 @@ def serve_catalog(catalog, authenticator=None):
     serve_catalogs
     """
     return serve_catalogs({(): catalog}, authenticator=authenticator)
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    app = get_app()
-    uvicorn.run(app, host="0.0.0.0", port=8000)

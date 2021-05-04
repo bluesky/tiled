@@ -42,7 +42,7 @@ def construct_serve_catalogs_kwargs(config):
         if segments in catalogs:
             raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
         catalogs[segments] = catalog
-        return {"catalogs": catalogs, "authenticator": authenticator}
+    return {"catalogs": catalogs, "authenticator": authenticator}
 
 
 def merge(configs):

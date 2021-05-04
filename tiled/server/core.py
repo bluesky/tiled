@@ -43,15 +43,7 @@ if modules_available("xarray"):
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 
 
-def get_catalogs():
-    """
-    Return structure like::
-
-        {
-            ('a', 'b'): catalog,
-            ('a', 'c'): another_catalog,
-        }
-    """
+def get_root_catalog():
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
         "See tiled.server.main.serve_catalogs()."
@@ -61,24 +53,18 @@ def get_catalogs():
 def entry(
     path: str,
     current_user: str = Depends(get_current_user),
-    catalogs: pydantic.BaseSettings = Depends(get_catalogs),
+    root_catalog: pydantic.BaseSettings = Depends(get_root_catalog),
 ):
-    path_as_tuple = tuple((path or "").split("/"))
-    for prefix, root_catalog in catalogs.items():
-        if path_as_tuple[: len(prefix)] == prefix:
-            break
-    else:
-        raise HTTPException(status_code=404, detail=f"No such entry: {path}")
-    catalog = root_catalog.authenticated_as(current_user)
+    segments = tuple(segment for segment in path.split("/") if segment)
+    entry = root_catalog.authenticated_as(current_user)
     try:
         # Traverse into sub-catalog(s).
-        for entry in path_as_tuple[len(prefix) :]:  # noqa: E203
-            if entry:
-                try:
-                    catalog = catalog[entry]
-                except (KeyError, TypeError):
-                    raise NoEntry(path)
-        return catalog
+        for segment in segments:
+            try:
+                entry = entry[segment]
+            except (KeyError, TypeError):
+                raise NoEntry(path)
+        return entry
     except NoEntry:
         raise HTTPException(status_code=404, detail=f"No such entry: {path}")
 
