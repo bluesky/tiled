@@ -1,0 +1,10 @@
+authentication:
+    authenticator: tiled.examples.toy_authentication:DictionaryAuthenticator
+    args:
+        users_to_passwords:
+            alice: ${ALICE_PASSWORD}
+            bob: ${BOB_PASSWORD}
+            cara: ${CARA_PASSWORD}
+catalogs:
+    - path: /
+      catalog: tiled.examples.toy_authentication:catalog
