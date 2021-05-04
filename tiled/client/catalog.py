@@ -522,9 +522,9 @@ def _queries_to_params(*queries):
     for query in queries:
         name = query_type_to_name[type(query)]
         for field in fields(query):
-            params[f"filter[{name}][condition][{field.name}]"] = getattr(
-                query, field.name
-            )
+            value = getattr(query, field.name)
+            if value is not None:
+                params[f"filter[{name}][condition][{field.name}]"] = value
     return params
 
 
