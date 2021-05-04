@@ -619,7 +619,7 @@ def direct(
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
-    from ..server.main import serve_catalog
+    from ..server.app import serve_catalog
 
     app = serve_catalog(catalog)
     # Note: This is important. The Tiled server routes are defined lazily on startup.

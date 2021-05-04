@@ -58,7 +58,7 @@ def serve_directory(
 ):
     "Serve a Catalog instance from a directory of files."
     from ..catalogs.files import Catalog
-    from ..server.main import serve_catalog
+    from ..server.app import serve_catalog
 
     catalog = Catalog.from_directory(directory)
     web_app = serve_catalog(catalog)
@@ -75,7 +75,7 @@ def serve_pyobject(
     mimetype: List[str] = typer.Option(None),
 ):
     "Serve a Catalog instance from a Python module."
-    from ..server.main import serve_catalog
+    from ..server.app import serve_catalog
     from ..utils import import_object
 
     catalog = import_object(object_path)
@@ -126,7 +126,7 @@ def serve_config(
     merged_config = merge(parsed_configs)
     kwargs = construct_serve_catalogs_kwargs(merged_config)
 
-    from ..server.main import serve_catalogs
+    from ..server.app import serve_catalogs
 
     web_app = serve_catalogs(**kwargs)
 
