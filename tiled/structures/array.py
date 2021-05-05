@@ -149,12 +149,17 @@ if modules_available("PIL"):
 
     def save_to_buffer_PIL(array, format):
         from PIL import Image
+        from ._image_serializer_helpers import img_as_ubyte
 
         # Handle too *few* dimensions here, and let PIL raise if there are too
         # *many* because it depends on the shape (RGB, RGBA, etc.)
-        normalized_array = numpy.atleast_2d(array)
+        array = numpy.atleast_2d(array).astype(numpy.float32)
+        # Auto-scale. TODO Use percentile.
+        low = numpy.percentile(array, 1)
+        high = numpy.percentile(array, 99)
+        scaled_array = numpy.clip((array - low) / (high - low), 0, 1)
         file = io.BytesIO()
-        image = Image.fromarray(normalized_array).convert("RGBA")
+        image = Image.fromarray(img_as_ubyte(scaled_array))
         image.save(file, format=format)
         return file.getbuffer()
 
@@ -174,17 +179,6 @@ if modules_available("PIL"):
         "array",
         "image/png",
         lambda buffer, dtype, shape: array_from_buffer_PIL(buffer, "png", dtype, shape),
-    )
-    serialization_registry.register(
-        "array",
-        "text/html",
-        lambda array: (
-            "<html>"
-            '<img src="data:image/png;base64,'
-            f"{base64.b64encode(save_to_buffer_PIL(array, 'png')).decode()!s}\""
-            "/>"
-            "</html>"
-        ),
     )
 if modules_available("tifffile"):
 
@@ -213,3 +207,29 @@ if modules_available("tifffile"):
         "image/tiff",
         array_from_buffer_tifffile,
     )
+
+
+def serialize_html(array):
+    "Try to display as image. Fall back to CSV."
+    try:
+        png_data = serialization_registry("array", "image/png", array)
+    except Exception:
+        csv_data = serialization_registry("array", "text/csv", array)
+        return "<html>" "<body>" f"{csv_data.decode()!s}" "</body>" "</html>"
+    else:
+        return (
+            "<html>"
+            "<body>"
+            '<img src="data:image/png;base64,'
+            f'{base64.b64encode(png_data).decode()!s}"'
+            "/>"
+            "</body>"
+            "</html>"
+        )
+
+
+serialization_registry.register(
+    "array",
+    "text/html",
+    serialize_html,
+)
