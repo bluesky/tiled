@@ -139,7 +139,7 @@ def discover_profiles():
 
     or from a CLI as:
 
-    $ tiled profiles paths
+    $ tiled profile paths
     """
     levels = gather_profiles(paths, strict=False)
     profiles = resolve_precedence(levels)
