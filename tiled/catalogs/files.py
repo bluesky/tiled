@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import threading
 import time
+import warnings
 
 from watchgod.watcher import AllWatcher, Change
 
@@ -54,6 +55,7 @@ class Catalog(CatalogInMemory):
         directory,
         ignore=None,
         readers_by_mimetype=None,
+        mimetypes_by_file_ext=None,
         metadata=None,
         access_policy=None,
         authenticated_identity=None,
@@ -73,6 +75,7 @@ class Catalog(CatalogInMemory):
         readers_by_mimetype = collections.ChainMap(
             readers_by_mimetype or {}, cls.DEFAULT_READERS_BY_MIMETYPE
         )
+        mimetypes_by_file_ext = mimetypes_by_file_ext or {}
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
         # This single index represents the entire nested directory structure. (We
         # could have done this recursively, with each sub-Catalog watching its own
@@ -111,10 +114,14 @@ class Catalog(CatalogInMemory):
                 )
             for filename in files:
                 # Add items to the mapping for this root directory.
-                index[parts][filename] = _reader_factory_for_file(
-                    readers_by_mimetype,
-                    Path(root, filename),
-                )
+                try:
+                    index[parts][filename] = _reader_factory_for_file(
+                        readers_by_mimetype,
+                        mimetypes_by_file_ext,
+                        Path(root, filename),
+                    )
+                except NoReaderAvailable:
+                    pass
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
         initial_scan_complete.append(object())
@@ -199,10 +206,13 @@ def _process_changes(changes, directory, readers_by_mimetype, index):
             raise NotImplementedError
         parent_parts = path.relative_to(directory).parent.parts
         if kind == Change.added:
-            index[parent_parts][path.name] = _reader_factory_for_file(
-                readers_by_mimetype,
-                path,
-            )
+            try:
+                index[parent_parts][path.name] = _reader_factory_for_file(
+                    readers_by_mimetype,
+                    path,
+                )
+            except NoReaderAvailable:
+                pass
         elif kind == Change.deleted:
             index[parent_parts].pop(path.name)
         elif kind == Change.modified:
@@ -211,7 +221,39 @@ def _process_changes(changes, directory, readers_by_mimetype, index):
             pass
 
 
-def _reader_factory_for_file(readers_by_mimetype, path):
-    mimetype, _ = mimetypes.guess_type(path)
-    reader_class = readers_by_mimetype[mimetype]
+def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
+    ext = "".join(path.suffixes)  # e.g. ".h5" or ".tar.gz"
+    if ext in mimetypes_by_file_ext:
+        mimetype = mimetypes_by_file_ext[ext]
+    else:
+        # Use the Python's built-in facility for guessing mimetype
+        # from file extension. This loads data about mimetypes from
+        # the operating system the first time it is used.
+        mimetype, _ = mimetypes.guess_type(path)
+    if mimetype is None:
+        msg = (
+            f"The file at {path} has a file extension {ext} this is not "
+            "recognized. The file will be skipped, pass in a mimetype "
+            "for this file extension via the parameter "
+            "Catalog.from_directory(..., mimetypes_by_file_ext={...}) and "
+            "pass in a Reader than handles this mimetype via "
+            "the parameter Catalog.from_directory(..., readers_by_mimetype={...})."
+        )
+        warnings.warn(msg)
+        raise NoReaderAvailable
+    try:
+        reader_class = readers_by_mimetype[mimetype]
+    except KeyError:
+        msg = (
+            f"The file at {path} was recognized as mimetype {mimetype} "
+            "but there is no reader for that mimetype. The file will be skipped. "
+            "To fix this, pass in a Reader than handles this mimetype via "
+            "the parameter Catalog.from_directory(..., readers_by_mimetype={...})."
+        )
+        warnings.warn(msg)
+        raise NoReaderAvailable
     return functools.partial(reader_class, str(path))
+
+
+class NoReaderAvailable(Exception):
+    pass
