@@ -137,8 +137,8 @@ def serve_config(
     # The sorting here is just to make this deterministic.
     # There is *not* any sorting-based precedence applied.
     for filepath in sorted(filepaths):
-        # Ignore hidden files.
-        if filepath.parts[-1].startswith("."):
+        # Ignore hidden files and .py files.
+        if filepath.parts[-1].startswith(".") or filepath.suffix == ".py":
             continue
         format_ = format or infer_config_format(filepath)
         with open(filepath) as file:

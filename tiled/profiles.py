@@ -43,6 +43,9 @@ def gather_profiles(paths, strict=True):
         if os.path.isdir(path):
             for filename in os.listdir(path):
                 filepath = os.path.join(path, filename)
+                # Ignore hidden files and .py files.
+                if filepath.startswith(".") or filepath.endswith(".py"):
+                    continue
                 try:
                     format = infer_config_format(filepath)
                     with open(filepath) as file:
