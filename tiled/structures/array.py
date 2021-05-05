@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import enum
 import io
 import json
+import os
 import sys
 from typing import Tuple
 
@@ -16,6 +17,10 @@ class Endianness(str, enum.Enum):
     big = "big"
     little = "little"
     not_applicable = "not_applicable"
+
+
+class ObjectArrayTypeDisabled(ValueError):
+    pass
 
 
 class Kind(str, enum.Enum):
@@ -36,6 +41,24 @@ class Kind(str, enum.Enum):
     string = "S"  # fixed-length sequence of char
     unicode = "U"  # fixed-length sequence of Py_UNICODE
     other = "V"  # "V" is for "void" -- generic fixed-size chunk of memory
+
+    # By default, do not tolerate numpy objectg arrays
+    if os.getenv("TILED_ALLOW_OBJECT_ARRAYS", "0") != "0":
+        object = "O"  # Object (i.e. the memory contains a pointer to PyObject)
+
+    @classmethod
+    def _missing_(cls, key):
+        if key == "O":
+            raise ObjectArrayTypeDisabled(
+                "Numpy 'object'-type arrays are not enabled by default "
+                "because their binary representation is not interpretable "
+                "by clients other than Python. "
+                "It is recommended to convert your data to a non-object type "
+                "if possible so that it can be read by non-Python clients. "
+                "If this is not possible, you may enable 'object'-type arrays "
+                "by setting the environment variable TILED_ALLOW_OBJECT_ARRAYS=1 "
+                "in the server."
+            )
 
 
 @dataclass
