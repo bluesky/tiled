@@ -7,9 +7,9 @@ from typing import List, Optional
 
 cli_app = typer.Typer()
 serve_app = typer.Typer()
-profiles_app = typer.Typer()
+profile_app = typer.Typer()
 cli_app.add_typer(serve_app, name="serve")
-cli_app.add_typer(profiles_app, name="profiles")
+cli_app.add_typer(profile_app, name="profile")
 
 
 @cli_app.command("download")
@@ -25,21 +25,22 @@ def download(
     download(catalog, path=path, available_bytes=available_bytes)
 
 
-@profiles_app.command("paths")
-def profiles_paths():
+@profile_app.command("paths")
+def profile_paths():
     "List the locations that the client will search for profiles (configuration)."
     from ..profiles import paths
 
     print("\n".join(paths))
 
 
-@profiles_app.command("list")
-def profiles_list():
+@profile_app.command("list")
+def profile_list():
     "List the profiles (client-side configuration) found and the files they were read from."
     from ..profiles import discover_profiles
 
     profiles = discover_profiles()
     if not profiles:
+        typer.echo("No profiles found.")
         return
     max_len = max(len(name) for name in profiles)
     PADDING = 4
@@ -50,6 +51,25 @@ def profiles_list():
             for name, (filepath, _) in profiles.items()
         )
     )
+
+
+@profile_app.command("show")
+def profile_show(profile_name: str):
+    "Show the content of a profile."
+    import yaml
+    import sys
+
+    from ..profiles import discover_profiles
+
+    profiles = discover_profiles()
+    try:
+        filepath, content = profiles[profile_name]
+    except KeyError:
+        typer.echo(f"The profile {profile_name!r} could not be found.")
+        raise typer.Abort()
+    print(f"Source: {filepath}", file=sys.stderr)
+    print("--", file=sys.stderr)
+    print(yaml.dump(content), file=sys.stdout)
 
 
 @serve_app.command("directory")
