@@ -31,6 +31,12 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self._authenticated_identity = authenticated_identity
         super().__init__()
 
+    @classmethod
+    def from_file(cls, file):
+        if not isinstance(file, h5py.File):
+            file = h5py.File(file, "r")
+        return cls(file)
+
     def __repr__(self):
         return catalog_repr(self, list(self))
 

@@ -46,6 +46,9 @@ class Catalog(CatalogInMemory):
             XLSX_MIME_TYPE: lambda: importlib.import_module(
                 "...readers.excel", Catalog.__module__
             ).ExcelReader.from_file,
+            "application/x-hdf5": lambda: importlib.import_module(
+                "...catalogs.hdf5", Catalog.__module__
+            ).Catalog.from_file,
         }
     )
 
