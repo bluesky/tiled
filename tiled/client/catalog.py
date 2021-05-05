@@ -728,7 +728,7 @@ def from_profile(name):
 
     profiles = discover_profiles()
     try:
-        _, profile_content = profiles[name]
+        filepath, profile_content = profiles[name]
     except KeyError as err:
         raise ProfileNotFound(
             f"Profile {name!r} not found. Found profiles {list(profiles)} "
@@ -739,7 +739,9 @@ def from_profile(name):
         # an app ourselves and use it directly via ASGI.
         from ..config import construct_serve_catalogs_kwargs
 
-        kwargs = construct_serve_catalogs_kwargs(profile_content.pop("direct"))
+        kwargs = construct_serve_catalogs_kwargs(
+            profile_content.pop("direct"), source_filepath=filepath
+        )
 
         return direct(**kwargs, **profile_content)
     else:

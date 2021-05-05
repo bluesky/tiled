@@ -3,10 +3,13 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
+import contextlib
+import os
+
 from .utils import import_object
 
 
-def construct_serve_catalogs_kwargs(config):
+def construct_serve_catalogs_kwargs(config, source_filepath=None):
     """
     Given parsed configuration, construct arguments for serve_catalogs(...).
     """
@@ -34,8 +37,17 @@ def construct_serve_catalogs_kwargs(config):
         import_path = catalog_aliases.get(catalog_spec, catalog_spec)
         obj = import_object(import_path)
         if "args" in item:
+            if not callable(obj):
+                raise ValueError(
+                    f"Object imported from {import_path} cannot take args. "
+                    "It is not callable."
+                )
             # Interpret obj as catalog *factory*.
-            catalog = obj(**item["args"])
+            sys_path_additions = []
+            if source_filepath:
+                sys_path_additions.append(os.path.dirname(source_filepath))
+            with _prepend_to_sys_path(sys_path_additions):
+                catalog = obj(**item["args"])
         else:
             # Interpret obj as catalog instance.
             catalog = obj
@@ -80,3 +92,17 @@ def merge(configs):
 
 class ConfigError(ValueError):
     pass
+
+
+@contextlib.contextmanager
+def _prepend_to_sys_path(path):
+    "Temporarily prepend items to sys.path."
+    import sys
+
+    for item in reversed(path):
+        sys.path.insert(0, item)
+    try:
+        yield
+    finally:
+        for item in path:
+            sys.path.pop(0)
