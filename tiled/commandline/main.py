@@ -134,11 +134,15 @@ def serve_config(
     from ..utils import infer_config_format, parse
 
     parsed_configs = {}
-    # The sorting here is just to make this deterministic.
+    # The sorting here is just to make the order of the results deterministic.
     # There is *not* any sorting-based precedence applied.
     for filepath in sorted(filepaths):
         # Ignore hidden files and .py files.
-        if filepath.parts[-1].startswith(".") or filepath.suffix == ".py":
+        if (
+            filepath.parts[-1].startswith(".")
+            or filepath.suffix == ".py"
+            or filepath.parts[-1] == "__pycache__"
+        ):
             continue
         format_ = format or infer_config_format(filepath)
         with open(filepath) as file:

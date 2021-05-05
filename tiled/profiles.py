@@ -44,7 +44,11 @@ def gather_profiles(paths, strict=True):
             for filename in os.listdir(path):
                 filepath = os.path.join(path, filename)
                 # Ignore hidden files and .py files.
-                if filepath.startswith(".") or filepath.endswith(".py"):
+                if (
+                    filename.startswith(".")
+                    or filename.endswith(".py")
+                    or filename == "__pycache__"
+                ):
                     continue
                 try:
                     format = infer_config_format(filepath)
