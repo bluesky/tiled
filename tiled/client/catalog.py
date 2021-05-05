@@ -735,11 +735,15 @@ def from_profile(name):
             f"from directories {paths}."
         ) from err
     if "direct" in profile_content:
+        # The profiles specifies that there is no server. We should create
+        # an app ourselves and use it directly via ASGI.
         from ..config import construct_serve_catalogs_kwargs
 
         kwargs = construct_serve_catalogs_kwargs(profile_content.pop("direct"))
 
-    return direct(**kwargs, **profile_content)
+        return direct(**kwargs, **profile_content)
+    else:
+        return from_uri(**profile_content)
 
 
 class ProfileNotFound(KeyError):
