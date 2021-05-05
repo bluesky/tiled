@@ -5,7 +5,8 @@ from typing import Any, Optional
 
 from fastapi import Depends, APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
+from fastapi.param_functions import Form
+from jose import ExpiredSignatureError, JWTError, jwt
 from pydantic import BaseModel, BaseSettings
 
 from .settings import get_settings
@@ -15,6 +16,12 @@ from ..utils import SpecialUsers
 # keys to support key rotation. The first key will be used for encryption. Each
 # key will be tried in turn for decryption.
 SECRET_KEYS = os.environ.get("TILED_SERVER_SECRET_KEYS", token_hex(32)).split(";")
+MAX_TOKEN_LIFETIME = int(
+    os.environ.get("TILED_MAX_TOKEN_LIFETIME", 60 * 60 * 24)
+)  # seconds
+DEFAULT_TOKEN_LIFETIME = int(
+    os.environ.get("TILED_DEFAULT_TOKEN_LIFETIME", 60 * 15)
+)  # seconds
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -39,12 +46,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 authentication_router = APIRouter()
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, lifetime: int):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+    expire = datetime.utcnow() + lifetime * timedelta(seconds=1)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEYS[0], algorithm=ALGORITHM)
     return encoded_jwt
@@ -76,6 +80,9 @@ async def get_current_user(
             if username is None:
                 raise credentials_exception
             break
+        except ExpiredSignatureError:
+            raise HTTPException(status_code=403, detail="Access token has expired.")
+
         except JWTError:
             # Try the next key in the key rotation.
             continue
@@ -89,9 +96,33 @@ async def get_current_user(
     return username
 
 
+class CustomOAuth2PasswordRequestForm(OAuth2PasswordRequestForm):
+    "Add a lifetime parameter for setting the JWT expiration (within limits)."
+
+    def __init__(
+        self,
+        grant_type: str = Form(None, regex="password"),
+        username: str = Form(...),
+        password: str = Form(...),
+        scope: str = Form(""),
+        client_id: Optional[str] = Form(None),
+        client_secret: Optional[str] = Form(None),
+        lifetime: Optional[int] = Form(DEFAULT_TOKEN_LIFETIME),
+    ):
+        super().__init__(
+            grant_type=grant_type,
+            username=username,
+            password=password,
+            scope=scope,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+        self.lifetime = lifetime
+
+
 @authentication_router.post("/token", response_model=Token)
 async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    form_data: CustomOAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
 ):
     username = authenticator.authenticate(
@@ -103,8 +134,14 @@ async def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": username}, expires_delta=access_token_expires
-    )
+    if form_data.lifetime > MAX_TOKEN_LIFETIME:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Requested token lifetime {form_data.lifetime} seconds is "
+                f"greater than the maximmum {MAX_TOKEN_LIFETIME} seconds."
+            ),
+        )
+    lifetime = min(form_data.lifetime, MAX_TOKEN_LIFETIME)
+    access_token = create_access_token(data={"sub": username}, lifetime=lifetime)
     return {"access_token": access_token, "token_type": "bearer"}

@@ -29,10 +29,13 @@ from ..catalogs.utils import (
 )
 
 
-def generate_token(uri):
+def generate_token(uri, lifetime=None):
     username = input("Username: ")
     password = getpass.getpass()
     form_data = {"grant_type": "password", "username": username, "password": password}
+    # If lifetime is None, accept the server's default.
+    if lifetime is not None:
+        form_data["lifetime"] = int(lifetime)
     response = httpx.post(uri + "/token", data=form_data)
     handle_error(response)
     return response.json()["access_token"]
