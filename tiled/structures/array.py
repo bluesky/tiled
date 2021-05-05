@@ -131,6 +131,15 @@ serialization_registry.register("array", "application/octet-stream", memoryview)
 serialization_registry.register(
     "array", "application/json", lambda array: json.dumps(array.tolist()).encode()
 )
+
+
+def serialize_csv(array):
+    file = io.StringIO()
+    numpy.savetxt(file, array, fmt="%s", delimiter=",")
+    return file.getvalue().encode()
+
+
+serialization_registry.register("array", "text/csv", serialize_csv)
 deserialization_registry.register(
     "array",
     "application/octet-stream",
