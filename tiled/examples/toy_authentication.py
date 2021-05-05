@@ -39,6 +39,9 @@ class DictionaryAuthenticator:
         self._users_to_passwords = users_to_passwords
 
     def authenticate(self, username: str, password: str):
-        if secrets.compare_digest(self._users_to_passwords.get(username), password):
+        true_password = self._users_to_passwords.get(username)
+        if not true_password:
+            # Username is not valid.
+            return
+        if secrets.compare_digest(true_password, password):
             return username
-        return False
