@@ -2,6 +2,7 @@ import abc
 from collections import defaultdict
 import dataclasses
 from hashlib import md5
+import json
 import math
 from mimetypes import types_map
 import operator
@@ -432,7 +433,39 @@ class MsgpackResponse(Response):
     media_type = "application/x-msgpack"
 
     def render(self, content: Any) -> bytes:
-        return msgpack.packb(content)
+        try:
+            return msgpack.packb(content)
+        except Exception:
+            # HACK! Round-trip through JSON to normalize types.
+            # There is a better way...
+            # But not DO use msgpack-numpy here because we cannot assume the client
+            # (which may not be in Python) can accept that.
+            return msgpack.packb(json.loads(json.dumps(content, cls=_NumpyEncoder)))
+
+
+class _NumpyEncoder(json.JSONEncoder):
+    """
+    A json.JSONEncoder for encoding numpy objects using built-in Python types.
+
+    Examples
+    --------
+
+    Encode a Python object that includes an arbitrarily-nested numpy object.
+
+    >>> json.dumps({'a': {'b': numpy.array([1, 2, 3])}}, cls=NumpyEncoder)
+    """
+
+    # Credit: https://stackoverflow.com/a/47626762/1221924
+    def default(self, obj):
+        import numpy
+
+        if isinstance(obj, bytes):
+            return obj.decode()
+        if isinstance(obj, (numpy.generic, numpy.ndarray)):
+            if numpy.isscalar(obj):
+                return obj.item()
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 
 
 def json_or_msgpack(request_headers, content):
