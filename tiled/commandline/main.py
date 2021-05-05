@@ -65,7 +65,10 @@ def profile_show(profile_name: str):
     try:
         filepath, content = profiles[profile_name]
     except KeyError:
-        typer.echo(f"The profile {profile_name!r} could not be found.")
+        typer.echo(
+            f"The profile {profile_name!r} could not be found. "
+            "Use tiled profile list to see profile names."
+        )
         raise typer.Abort()
     print(f"Source: {filepath}", file=sys.stderr)
     print("--", file=sys.stderr)

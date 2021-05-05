@@ -584,14 +584,15 @@ def from_uri(
 
 
 def direct(
-    catalog,
+    catalogs,
+    authenticator=None,
     structure_clients="numpy",
     *,
     token=None,
     special_clients=None,
 ):
     """
-    Connect to a Catalog directly, running the app in this same process.
+    Connect to Catalogs directly, running the app in this same process.
 
     NOTE: This is experimental. It may need to be re-designed or even removed.
 
@@ -604,8 +605,8 @@ def direct(
 
     Parameters
     ----------
-    client : httpx.Client
-        Should be pre-configured with a base_url and any auth-related headers.
+    catalogs : dict of paths to Catalogs, e.g. {'/': catalog}
+    authenticator : Authenticator, optional
     structure_clients : str or dict
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
@@ -619,9 +620,9 @@ def direct(
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
-    from ..server.app import serve_catalog
+    from ..server.app import serve_catalogs
 
-    app = serve_catalog(catalog)
+    app = serve_catalogs(catalogs, authenticator)
     # Note: This is important. The Tiled server routes are defined lazily on startup.
     asyncio.run(app.router.startup())
 
@@ -718,7 +719,7 @@ def from_profile(name):
 
     or from a CLI like:
 
-    $ tiled profiles list
+    $ tiled profile list
     """
     from ..profiles import discover_profiles, paths
 
@@ -730,8 +731,12 @@ def from_profile(name):
             f"Profile {name!r} not found. Found profiles {list(profiles)} "
             f"from directories {paths}."
         ) from err
-    return from_uri(**profile_content)
-    # TODO Recognize 'direct' profile.
+    if "direct" in profile_content:
+        from ..config import construct_serve_catalogs_kwargs
+
+        kwargs = construct_serve_catalogs_kwargs(profile_content.pop("direct"))
+
+    return direct(**kwargs, **profile_content)
 
 
 class ProfileNotFound(KeyError):
