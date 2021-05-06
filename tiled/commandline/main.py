@@ -1,4 +1,3 @@
-import enum
 from pathlib import Path
 
 import typer
@@ -110,48 +109,21 @@ def serve_pyobject(
     uvicorn.run(web_app)
 
 
-class ConfigFormats(str, enum.Enum):
-    yaml = "yaml"
-    toml = "toml"
-    json = "json"
-
-
 @serve_app.command("config")
 def serve_config(
-    config: Path,
-    format: ConfigFormats = typer.Option(None),
+    config_path: Path,
 ):
-    if config.is_file():
-        filepaths = [config]
-    elif config.is_dir():
-        filepaths = list(config.iterdir())
-    elif not config.exists():
-        typer.echo(f"The config path {config!s} doesn't exist.")
+    from ..config import parse_configs
+
+    try:
+        kwargs = parse_configs(config_path)
+    except Exception as err:
+        (msg,) = err.args
+        typer.echo(msg)
         raise typer.Abort()
-    else:
-        assert False, "It should be impossible to reach this line."
 
-    from ..utils import infer_config_format, parse
-
-    parsed_configs = {}
-    # The sorting here is just to make the order of the results deterministic.
-    # There is *not* any sorting-based precedence applied.
-    for filepath in sorted(filepaths):
-        # Ignore hidden files and .py files.
-        if (
-            filepath.parts[-1].startswith(".")
-            or filepath.suffix == ".py"
-            or filepath.parts[-1] == "__pycache__"
-        ):
-            continue
-        format_ = format or infer_config_format(filepath)
-        with open(filepath) as file:
-            parsed_configs[filepath] = parse(file, format=format_)
-
-    from ..config import construct_serve_catalogs_kwargs, merge
-
-    merged_config = merge(parsed_configs)
-    kwargs = construct_serve_catalogs_kwargs(merged_config)
+    # Delay this import, which is fairly expensive, so that
+    # we can fail faster if config-parsing fails above.
 
     from ..server.app import serve_catalogs
 

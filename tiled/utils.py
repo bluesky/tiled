@@ -282,44 +282,15 @@ def modules_available(*module_names):
     return False
 
 
-def infer_config_format(filepath):
-    _, ext = os.path.splitext(filepath)
-    if ext in (".yml", ".yaml"):
-        return "yaml"
-    elif ext in (".toml",):
-        return "toml"
-    elif ext in (".json",):
-        return "json"
-    else:
-        raise UnrecognizedExtension(
-            f"File {filepath!r} is not of a recognized type. "
-            "Extension must be one of: .yml, .yaml, .toml, .json."
-        )
-
-
-def parse(file, format="yaml"):
+def parse(file):
     """
-    Given a config file and format, parse it.
+    Given a config file, parse it.
+
+    This wraps YAML parsing and environment variable expansion.
     """
-    if format == "yaml":
-        import yaml
+    import yaml
 
-        content = yaml.safe_load(file.read())
-    elif format == "toml":
-        if not modules_available("toml"):
-            raise MissingDependency(
-                "To parse a TOML-formatted file the package toml must be installed."
-            )
-        import toml
-
-        content = toml.load(file)
-    elif format == "json":
-        import json
-
-        content = json.load(file)
-    else:
-        raise ValueError("format must be one of {'yaml', 'toml', 'json'}.")
-
+    content = yaml.safe_load(file.read())
     return expand_environment_variables(content)
 
 

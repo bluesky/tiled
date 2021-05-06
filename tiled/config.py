@@ -5,8 +5,9 @@ See profiles.py for client configuration.
 """
 import contextlib
 import os
+from pathlib import Path
 
-from .utils import import_object
+from .utils import import_object, parse
 
 
 def construct_serve_catalogs_kwargs(config, source_filepath=None):
@@ -88,6 +89,59 @@ def merge(configs):
             merged["catalogs"].append(item)
         merged["catalogs"]
     return merged
+
+
+def parse_configs(config_path):
+    if isinstance(config_path, str):
+        config_path = Path(config_path)
+    if config_path.is_file():
+        filepaths = [config_path]
+    elif config_path.is_dir():
+        filepaths = list(config_path.iterdir())
+    elif not config_path.exists():
+        raise ValueError(f"The config path {config_path!s} doesn't exist.")
+    else:
+        assert False, "It should be impossible to reach this line."
+
+    parsed_configs = {}
+    # The sorting here is just to make the order of the results deterministic.
+    # There is *not* any sorting-based precedence applied.
+    for filepath in sorted(filepaths):
+        # Ignore hidden files and .py files.
+        if (
+            filepath.parts[-1].startswith(".")
+            or filepath.suffix == ".py"
+            or filepath.parts[-1] == "__pycache__"
+        ):
+            continue
+        with open(filepath) as file:
+            parsed_configs[filepath] = parse(file)
+
+    merged_config = merge(parsed_configs)
+    return construct_serve_catalogs_kwargs(merged_config)
+
+
+def direct_access(config_path, catalog_path="/"):
+    """
+    >>> catalog = direct_access("config.yml")  # catalog served at root
+    >>> sub catalog = direct_access("config.yml", ("a", "b"))  # catalog served at /a/b
+    """
+    # Accept path as str "/" or tuple ().
+    if isinstance(catalog_path, str):
+        catalog_path_segments = tuple(
+            segment for segment in catalog_path.split("/") if segment
+        )
+    else:
+        # Assume this is a tuple or a list that we can convert into one.
+        catalog_path_segments = tuple(catalog_path)
+    catalogs = parse_configs(config_path)["catalogs"]
+    try:
+        return catalogs[catalog_path_segments]
+    except KeyError:
+        raise KeyError(
+            f"This configuration serves catalogs at these paths: {list(catalogs)}. "
+            "The path {catalog_path_segments} is not an option."
+        ) from None
 
 
 class ConfigError(ValueError):
