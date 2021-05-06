@@ -82,7 +82,7 @@ def reader(
 
 def block(
     # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., min_length=1, regex="^[0-9](,[0-9])*$"),
+    block: str = Query(..., min_length=1, regex="^[0-9]+(,[0-9]+)*$"),
 ):
     "Specify and parse a block index parameter."
     parsed_block = tuple(map(int, block.split(",")))
