@@ -4,6 +4,8 @@ import importlib
 import mimetypes
 import os
 from pathlib import Path
+import re
+import sys
 import threading
 import time
 import warnings
@@ -13,6 +15,43 @@ from watchgod.watcher import RegExpWatcher, Change
 from ..structures.dataframe import XLSX_MIME_TYPE
 from ..utils import CachingMap, DictView, OneShotCachedMap
 from .in_memory import Catalog as CatalogInMemory
+
+
+# TODO Use logging instead of prints
+
+def _log(*args, **kwargs):
+    kwargs.setdefault("file", sys.stderr)
+    msg, *values = args
+    return print(msg % values, **kwargs)
+
+
+class RegExpWatcherWithLogging(RegExpWatcher):
+
+    def __init__(self, *args, **kwargs):
+        self._logged = set()
+        super().__init__(*args, **kwargs)
+
+    def should_watch_file(self, entry):
+        result = super().should_watch_file(entry)
+        path = entry.path
+        if path not in self._logged:
+            if result:
+                _log("Watching file %s", entry.path)
+            else:
+                _log("Ignoring file %s", entry.path)
+            self._logged.add(path)
+        return result
+
+    def should_watch_dir(self, entry):
+        result = super().should_watch_dir(entry)
+        path = entry.path
+        if path not in self._logged:
+            if result:
+                _log("Watching directory %s", entry.path)
+            else:
+                _log("Ignoring directory %s", entry.path)
+            self._logged.add(path)
+        return result
 
 
 class Catalog(CatalogInMemory):
@@ -98,6 +137,7 @@ class Catalog(CatalogInMemory):
                 ignore_re_dirs,
                 index,
                 merged_readers_by_mimetype,
+                mimetypes_by_file_ext,
                 initial_scan_complete,
                 watcher_thread_kill_switch,
             ),
@@ -105,9 +145,15 @@ class Catalog(CatalogInMemory):
             name="tiled-watch-filesystem-changes",
         )
         watcher_thread.start()
+        compiled_ignore_re_dirs = re.compile(ignore_re_dirs) if ignore_re_dirs is not None else ignore_re_dirs
+        compiled_ignore_re_files = re.compile(ignore_re_files) if ignore_re_files is not None else ignore_re_files
+        ignore_children = set()  # track banned subdirectories
         for root, subdirectories, files in os.walk(directory, topdown=True):
             parts = Path(root).relative_to(directory).parts
             for subdirectory in subdirectories:
+                if (ignore_re_dirs is not None) and compiled_ignore_re_dirs.match(str(Path(*parts))):
+                    ignore_children.add(parts + (subdirectory,))
+                    continue
                 # Make a new mapping and a corresponding Catalog for this subdirectory.
                 mapping = {}
                 index[parts + (subdirectory,)] = mapping
@@ -115,6 +161,8 @@ class Catalog(CatalogInMemory):
                     CatalogInMemory, CachingMap(mapping)
                 )
             for filename in files:
+                if (ignore_re_files is not None) and compiled_ignore_re_files.match(str(Path(*parts))):
+                    continue
                 # Add items to the mapping for this root directory.
                 try:
                     index[parts][filename] = _reader_factory_for_file(
@@ -175,28 +223,28 @@ def _watch(
     ignore_re_dirs,
     index,
     readers_by_mimetype,
+    mimetypes_by_file_ext,
     initial_scan_complete,
     watcher_thread_kill_switch,
     poll_interval=0.2,
 ):
     print(ignore_re_dirs)
-    watcher = RegExpWatcher(directory, re_files=ignore_re_files, re_dirs=ignore_re_dirs)
+    watcher = RegExpWatcherWithLogging(directory, re_files=ignore_re_files, re_dirs=ignore_re_dirs)
     queued_changes = []
     while not watcher_thread_kill_switch:
         changes = watcher.check()
         if initial_scan_complete:
             # Process initial backlog. (This only happens once, ever.)
             if queued_changes:
-                _process_changes(queued_changes, directory, readers_by_mimetype, index)
+                _process_changes(queued_changes, directory, readers_by_mimetype, mimetypes_by_file_ext, index)
             # Process changes just collected.
-            _process_changes(changes, directory, readers_by_mimetype, index)
+            _process_changes(changes, directory, readers_by_mimetype, mimetypes_by_file_ext, index)
         else:
             # The initial scan is still going. Stash the changes for later.
             queued_changes.extend(changes)
         time.sleep(poll_interval)
 
-
-def _process_changes(changes, directory, readers_by_mimetype, index):
+def _process_changes(changes, directory, readers_by_mimetype, mimetypes_by_file_ext, index):
     ignore = set()
     for kind, entry in changes:
         path = Path(entry)
@@ -211,6 +259,7 @@ def _process_changes(changes, directory, readers_by_mimetype, index):
             try:
                 index[parent_parts][path.name] = _reader_factory_for_file(
                     readers_by_mimetype,
+                    mimetypes_by_file_ext,
                     path,
                 )
             except NoReaderAvailable:
@@ -232,6 +281,7 @@ def _process_changes(changes, directory, readers_by_mimetype, index):
             try:
                 index[parent_parts][path.name] = _reader_factory_for_file(
                     readers_by_mimetype,
+                    mimetypes_by_file_ext,
                     path,
                 )
             except NoReaderAvailable:
