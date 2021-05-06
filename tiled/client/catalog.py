@@ -129,14 +129,14 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         return from_client(*args, **kwargs)
 
     @classmethod
-    def direct(cls, *args, **kwargs):
+    def from_catalogs(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.direct is being considered "
+            "The classmethod Catalog.from_catalogs is being considered "
             "for deperecation and may be removed. "
-            "The function tiled.client.direct may be used instead.",
+            "The function tiled.client.from_catalogs may be used instead.",
             PendingDeprecationWarning,
         )
-        return direct(*args, **kwargs)
+        return from_catalogs(*args, **kwargs)
 
     @classmethod
     def from_uri(cls, *args, **kwargs):
@@ -586,7 +586,7 @@ def from_uri(
     )
 
 
-def direct(
+def from_catalogs(
     catalogs,
     authenticator=None,
     structure_clients="numpy",
@@ -743,7 +743,7 @@ def from_profile(name):
             profile_content.pop("direct"), source_filepath=filepath
         )
 
-        return direct(**kwargs, **profile_content)
+        return from_catalogs(**kwargs, **profile_content)
     else:
         return from_uri(**profile_content)
 
