@@ -41,7 +41,11 @@ class ClientDaskArrayAdapter(BaseArrayClientReader):
             self._client,
             self._route + "/" + "/".join(self._path),
             headers={"Accept": media_type},
-            params={"block": ",".join(map(str, block)), **self._params},
+            params={
+                "block": ",".join(map(str, block)),
+                "expected_shape": ",".join(map(str, shape)),
+                **self._params,
+            },
         )
         return deserialization_registry("array", media_type, content, dtype, shape)
 

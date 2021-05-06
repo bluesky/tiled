@@ -8,7 +8,7 @@ from mimetypes import types_map
 import operator
 import re
 import sys
-from typing import Any
+from typing import Any, Optional
 
 import dask.base
 from fastapi import Depends, HTTPException, Query, Response
@@ -85,8 +85,18 @@ def block(
     block: str = Query(..., min_length=1, regex="^[0-9]+(,[0-9]+)*$"),
 ):
     "Specify and parse a block index parameter."
-    parsed_block = tuple(map(int, block.split(",")))
-    return parsed_block
+    return tuple(map(int, block.split(",")))
+
+
+def expected_shape(
+    expected_shape: Optional[str] = Query(
+        None, min_length=1, regex="^[0-9]+(,[0-9]+)*$"
+    ),
+):
+    "Specify and parse an expected_shape parameter."
+    if expected_shape is None:
+        return
+    return tuple(map(int, expected_shape.split(",")))
 
 
 def slice_(

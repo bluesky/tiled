@@ -18,6 +18,7 @@ from .core import (
     construct_resource,
     reader,
     entry,
+    expected_shape,
     json_or_msgpack,
     NoEntry,
     PatchedResponse,
@@ -195,6 +196,7 @@ def array_block(
     reader=Depends(reader),
     block=Depends(block),
     slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -204,6 +206,11 @@ def array_block(
         array = reader.read_block(block, slice=slice)
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -217,6 +224,7 @@ def array_full(
     request: Request,
     reader=Depends(reader),
     slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -233,6 +241,11 @@ def array_full(
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -354,6 +367,7 @@ def variable_block(
     reader=Depends(reader),
     block=Depends(block),
     slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -366,6 +380,11 @@ def variable_block(
             array = array[slice]
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -380,12 +399,18 @@ def variable_block(
 def variable_full(
     request: Request,
     reader=Depends(reader),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
     Fetch a full xarray.Variable.
     """
     array = reader.read()
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -401,6 +426,7 @@ def data_array_variable_full(
     request: Request,
     reader=Depends(reader),
     coord: Optional[str] = Query(None, min_length=1),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -416,6 +442,11 @@ def data_array_variable_full(
                 status_code=400,
                 detail=f"No such coordinate {coord}.",
             )
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -433,6 +464,7 @@ def data_array_block(
     block=Depends(block),
     coord: Optional[str] = Query(None, min_length=1),
     slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -450,6 +482,11 @@ def data_array_block(
             )
         else:
             raise
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -468,6 +505,7 @@ def dataset_block(
     variable: str = Query(..., min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
     slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -487,6 +525,11 @@ def dataset_block(
             status_code=400,
             detail=f"No such coordinate {coord}.",
         )
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -503,6 +546,7 @@ def dataset_data_var_full(
     reader=Depends(reader),
     variable: str = Query(..., min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -523,6 +567,11 @@ def dataset_data_var_full(
                 status_code=400,
                 detail=f"No such coordinate {coord}.",
             )
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
@@ -538,6 +587,7 @@ def dataset_coord_full(
     request: Request,
     reader=Depends(reader),
     coord: str = Query(..., min_length=1),
+    expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
 ):
     """
@@ -549,6 +599,11 @@ def dataset_coord_full(
         raise HTTPException(
             status_code=400,
             detail=f"No such coordinate {coord}.",
+        )
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
         return construct_array_response(array, request.headers, format)
