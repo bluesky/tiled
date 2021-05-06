@@ -7,6 +7,7 @@ import math
 from mimetypes import types_map
 import operator
 import re
+import sys
 from typing import Any
 
 import dask.base
@@ -429,21 +430,7 @@ class PatchedStreamingResponse(StreamingResponse):
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-class MsgpackResponse(Response):
-    media_type = "application/x-msgpack"
-
-    def render(self, content: Any) -> bytes:
-        try:
-            return msgpack.packb(content)
-        except Exception:
-            # HACK! Round-trip through JSON to normalize types.
-            # There is a better way...
-            # But not DO use msgpack-numpy here because we cannot assume the client
-            # (which may not be in Python) can accept that.
-            return msgpack.packb(json.loads(json.dumps(content, cls=_NumpyEncoder)))
-
-
-class _NumpyEncoder(json.JSONEncoder):
+class _NumpySafeJSONEncoder(json.JSONEncoder):
     """
     A json.JSONEncoder for encoding numpy objects using built-in Python types.
 
@@ -455,17 +442,62 @@ class _NumpyEncoder(json.JSONEncoder):
     >>> json.dumps({'a': {'b': numpy.array([1, 2, 3])}}, cls=NumpyEncoder)
     """
 
-    # Credit: https://stackoverflow.com/a/47626762/1221924
     def default(self, obj):
-        import numpy
-
+        # JSON cannot represent the unicode/bytes distinction, so we send str.
+        # Msgpack *does* understand this distinction so clients can use that
+        # format if they care about the distinction.
         if isinstance(obj, bytes):
             return obj.decode()
+        # If numpy has not been imported yet, then we can be sure that obj
+        # is not a numpy object, and we want to avoid triggering a numpy
+        # import. (The server does not have a hard numpy dependency.)
+        if "numpy" in sys.modules:
+            import numpy
+
+            if isinstance(obj, (numpy.generic, numpy.ndarray)):
+                if numpy.isscalar(obj):
+                    return obj.item()
+                return obj.tolist()
+        return super().default(obj)
+
+
+class NumpySafeJSONResponse(JSONResponse):
+    def render(self, content: Any) -> bytes:
+        # Try the built-in rendering. If it fails, do the more
+        # expensive walk to convert any bytes objects to unicode
+        # and any numpy objects to builtins.
+        try:
+            # Fast (optimistic) path
+            super().render(content)
+        except Exception:
+            return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
+
+
+def _numpy_safe_msgpack_encoder(obj):
+    # If numpy has not been imported yet, then we can be sure that obj
+    # is not a numpy object, and we want to avoid triggering a numpy
+    # import. (The server does not have a hard numpy dependency.)
+    if "numpy" in sys.modules:
+        import numpy
+
         if isinstance(obj, (numpy.generic, numpy.ndarray)):
             if numpy.isscalar(obj):
                 return obj.item()
             return obj.tolist()
-        return json.JSONEncoder.default(self, obj)
+    return obj
+
+
+class MsgpackResponse(Response):
+    media_type = "application/x-msgpack"
+
+    def render(self, content: Any) -> bytes:
+        # Try the standard msgpack encoder. If it fails, do the more
+        # expensive walk to convert any numpy objects to builtins.
+        try:
+            # Fast (optimistic) path
+            return msgpack.packb(content)
+        except Exception:
+            return msgpack.packb(content, default=_numpy_safe_msgpack_encoder)
 
 
 def json_or_msgpack(request_headers, content):
@@ -480,7 +512,7 @@ def json_or_msgpack(request_headers, content):
         if media_type == "application/x-msgpack":
             return MsgpackResponse(content_as_dict, headers=headers)
         if media_type == "application/json":
-            return JSONResponse(content_as_dict, headers=headers)
+            return NumpySafeJSONResponse(content_as_dict, headers=headers)
     else:
         # It is commmon in HTTP to fall back on a default representation if
         # none of the requested ones are avaiable. We do not do this for
