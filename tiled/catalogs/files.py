@@ -4,21 +4,16 @@ import importlib
 import mimetypes
 import os
 from pathlib import Path
+import re
 import threading
 import time
 import warnings
 
-from watchgod.watcher import AllWatcher, Change
+from watchgod.watcher import RegExpWatcher, Change
 
 from ..structures.dataframe import XLSX_MIME_TYPE
-from ..utils import CachingMap, DictView, OneShotCachedMap
+from ..utils import CachingMap, import_object, OneShotCachedMap
 from .in_memory import Catalog as CatalogInMemory
-
-
-class Watcher(AllWatcher):
-    def should_watch_file(self, entry) -> bool:
-        # TODO Implement ignoring some files.
-        return super().should_watch_file(entry)
 
 
 class Catalog(CatalogInMemory):
@@ -27,7 +22,6 @@ class Catalog(CatalogInMemory):
     """
 
     __slots__ = (
-        "_readers_by_mimetype",
         "_watcher_thread_kill_switch",
         "_index",
     )
@@ -56,7 +50,8 @@ class Catalog(CatalogInMemory):
     def from_directory(
         cls,
         directory,
-        ignore=None,
+        ignore_re_dirs=None,
+        ignore_re_files=None,
         readers_by_mimetype=None,
         mimetypes_by_file_ext=None,
         metadata=None,
@@ -71,12 +66,15 @@ class Catalog(CatalogInMemory):
                     "To run anyway, in anticipation of the directory "
                     "appearing later, use error_if_missing=False."
                 )
-        if ignore is not None:
-            # TODO Support regex or glob (?) patterns to ignore.
-            raise NotImplementedError
+        readers_by_mimetype = readers_by_mimetype or {}
+        # If readers_by_mimetype comes from a configuration file,
+        # objects are given as importable strings, like "package.module:Reader".
+        for key, value in list(readers_by_mimetype.items()):
+            if isinstance(value, str):
+                readers_by_mimetype[key] = import_object(value)
         # User-provided readers take precedence over defaults.
-        readers_by_mimetype = collections.ChainMap(
-            readers_by_mimetype or {}, cls.DEFAULT_READERS_BY_MIMETYPE
+        merged_readers_by_mimetype = collections.ChainMap(
+            readers_by_mimetype, cls.DEFAULT_READERS_BY_MIMETYPE
         )
         mimetypes_by_file_ext = mimetypes_by_file_ext or {}
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
@@ -97,8 +95,11 @@ class Catalog(CatalogInMemory):
             target=_watch,
             args=(
                 directory,
+                ignore_re_files,
+                ignore_re_dirs,
                 index,
-                readers_by_mimetype,
+                merged_readers_by_mimetype,
+                mimetypes_by_file_ext,
                 initial_scan_complete,
                 watcher_thread_kill_switch,
             ),
@@ -106,8 +107,24 @@ class Catalog(CatalogInMemory):
             name="tiled-watch-filesystem-changes",
         )
         watcher_thread.start()
+        compiled_ignore_re_dirs = (
+            re.compile(ignore_re_dirs) if ignore_re_dirs is not None else ignore_re_dirs
+        )
+        compiled_ignore_re_files = (
+            re.compile(ignore_re_files)
+            if ignore_re_files is not None
+            else ignore_re_files
+        )
         for root, subdirectories, files in os.walk(directory, topdown=True):
             parts = Path(root).relative_to(directory).parts
+            # Account for ignore_re_dirs and update which subdirectories we will traverse.
+            valid_subdirectories = []
+            for d in subdirectories:
+                if (ignore_re_dirs is None) or compiled_ignore_re_dirs.match(
+                    str(Path(*(parts + (d,))))
+                ):
+                    valid_subdirectories.append(d)
+            subdirectories[:] = valid_subdirectories
             for subdirectory in subdirectories:
                 # Make a new mapping and a corresponding Catalog for this subdirectory.
                 mapping = {}
@@ -115,11 +132,23 @@ class Catalog(CatalogInMemory):
                 index[parts][subdirectory] = functools.partial(
                     CatalogInMemory, CachingMap(mapping)
                 )
+            # Account for ignore_re_files and update which files we will traverse.
+            valid_files = []
+            for f in files:
+                if (ignore_re_files is None) or compiled_ignore_re_files.match(
+                    str(Path(*(parts + (f,))))
+                ):
+                    valid_files.append(f)
+            files[:] = valid_files
             for filename in files:
+                if (ignore_re_files is not None) and compiled_ignore_re_files.match(
+                    str(Path(*parts))
+                ):
+                    continue
                 # Add items to the mapping for this root directory.
                 try:
                     index[parts][filename] = _reader_factory_for_file(
-                        readers_by_mimetype,
+                        merged_readers_by_mimetype,
                         mimetypes_by_file_ext,
                         Path(root, filename),
                     )
@@ -132,7 +161,6 @@ class Catalog(CatalogInMemory):
         return cls(
             mapping,
             index=index,
-            readers_by_mimetype=readers_by_mimetype,
             watcher_thread_kill_switch=watcher_thread_kill_switch,
             metadata=metadata,
             authenticated_identity=authenticated_identity,
@@ -143,7 +171,6 @@ class Catalog(CatalogInMemory):
         self,
         mapping,
         index,
-        readers_by_mimetype,
         watcher_thread_kill_switch,
         metadata,
         access_policy,
@@ -155,19 +182,13 @@ class Catalog(CatalogInMemory):
             access_policy=access_policy,
             authenticated_identity=authenticated_identity,
         )
-        self._readers_by_mimetype = readers_by_mimetype
         self._watcher_thread_kill_switch = watcher_thread_kill_switch
         self._index = index
-
-    @property
-    def readers_by_mimetype(self):
-        return DictView(self._readers_by_mimetype)
 
     def new_variation(self, *args, **kwargs):
         return super().new_variation(
             *args,
             watcher_thread_kill_switch=self._watcher_thread_kill_switch,
-            readers_by_mimetype=self._readers_by_mimetype,
             index=self._index,
             **kwargs,
         )
@@ -180,31 +201,53 @@ class Catalog(CatalogInMemory):
 
 def _watch(
     directory,
+    ignore_re_files,
+    ignore_re_dirs,
     index,
     readers_by_mimetype,
+    mimetypes_by_file_ext,
     initial_scan_complete,
     watcher_thread_kill_switch,
     poll_interval=0.2,
 ):
-    watcher = Watcher(directory)
+    watcher = RegExpWatcher(
+        directory,
+        re_files=ignore_re_files,
+        re_dirs=ignore_re_dirs,
+    )
     queued_changes = []
     while not watcher_thread_kill_switch:
         changes = watcher.check()
         if initial_scan_complete:
             # Process initial backlog. (This only happens once, ever.)
             if queued_changes:
-                _process_changes(queued_changes, directory, readers_by_mimetype, index)
+                _process_changes(
+                    queued_changes,
+                    directory,
+                    readers_by_mimetype,
+                    mimetypes_by_file_ext,
+                    index,
+                )
             # Process changes just collected.
-            _process_changes(changes, directory, readers_by_mimetype, index)
+            _process_changes(
+                changes, directory, readers_by_mimetype, mimetypes_by_file_ext, index
+            )
         else:
             # The initial scan is still going. Stash the changes for later.
             queued_changes.extend(changes)
         time.sleep(poll_interval)
 
 
-def _process_changes(changes, directory, readers_by_mimetype, index):
+def _process_changes(
+    changes, directory, readers_by_mimetype, mimetypes_by_file_ext, index
+):
+    ignore = set()
     for kind, entry in changes:
         path = Path(entry)
+        if path in ignore:
+            # We have seen this before and could not find a Reader for it.
+            # Do not try again.
+            continue
         if path.is_dir():
             raise NotImplementedError
         parent_parts = path.relative_to(directory).parent.parts
@@ -212,16 +255,36 @@ def _process_changes(changes, directory, readers_by_mimetype, index):
             try:
                 index[parent_parts][path.name] = _reader_factory_for_file(
                     readers_by_mimetype,
+                    mimetypes_by_file_ext,
                     path,
                 )
             except NoReaderAvailable:
-                pass
+                # Ignore this file in the future.
+                # We already know that we do not know how to find a Reader
+                # for this filename.
+                ignore.add(path)
         elif kind == Change.deleted:
             index[parent_parts].pop(path.name)
         elif kind == Change.modified:
-            # Nothing to do at present, but once we add caching we'll need to
-            # invalidate the relevant cache entry here.
-            pass
+            # Why do we need a try/except here? A reasonable question!
+            # Normally, we would learn about the file first via a Change.added
+            # or via the initial scan. Then, later, when we learn about modification
+            # we can be sure that we already know how to find a Reader for this
+            # filename. But, during that initial scan, there is a race condition
+            # where we might learn about Change.modified before we first add that file
+            # to our index. Therefore, we guard this with a try/except, knowing
+            # that this could be the first time we see this path.
+            try:
+                index[parent_parts][path.name] = _reader_factory_for_file(
+                    readers_by_mimetype,
+                    mimetypes_by_file_ext,
+                    path,
+                )
+            except NoReaderAvailable:
+                # Ignore this file in the future.
+                # We already know that we do not know how to find a Reader
+                # for this filename.
+                ignore.add(path)
 
 
 def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
