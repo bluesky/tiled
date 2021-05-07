@@ -478,7 +478,7 @@ class NumpySafeJSONResponse(JSONResponse):
         # and any numpy objects to builtins.
         try:
             # Fast (optimistic) path
-            super().render(content)
+            return super().render(content)
         except Exception:
             return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
 
