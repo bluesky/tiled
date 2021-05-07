@@ -501,13 +501,7 @@ class MsgpackResponse(Response):
     media_type = "application/x-msgpack"
 
     def render(self, content: Any) -> bytes:
-        # Try the standard msgpack encoder. If it fails, do the more
-        # expensive walk to convert any numpy objects to builtins.
-        try:
-            # Fast (optimistic) path
-            return msgpack.packb(content)
-        except Exception:
-            return msgpack.packb(content, default=_numpy_safe_msgpack_encoder)
+        return msgpack.packb(content, default=_numpy_safe_msgpack_encoder)
 
 
 def json_or_msgpack(request_headers, content):
