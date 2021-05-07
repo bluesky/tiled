@@ -205,6 +205,11 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
+    if reader.structure_family != "array":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /array/block route.",
+        )
     try:
         array = reader.read_block(block, slice=slice)
     except IndexError:
@@ -233,6 +238,11 @@ def array_full(
     """
     Fetch a slice of array-like data.
     """
+    if reader.structure_family != "array":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /array/full route.",
+        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -268,6 +278,11 @@ def dataframe_meta(
     """
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
     """
+    if reader.structure_family != "dataframe":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataframe/meta route.",
+        )
     meta = reader.microstructure().meta
     content = serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta)
     headers = {"ETag": md5(content).hexdigest()}
@@ -291,6 +306,11 @@ def dataframe_divisions(
     """
     Fetch the Apache Arrow serialization of the index values at the partition edges.
     """
+    if reader.structure_family != "dataframe":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataframe/division route.",
+        )
     divisions = reader.microstructure().divisions
     content = serialization_registry(
         "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions
@@ -318,6 +338,11 @@ def dataframe_partition(
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
     """
+    if reader.structure_family != "dataframe":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataframe/parition route.",
+        )
     try:
         # The singular/plural mismatch here of "columns" and "column" is
         # due to the ?column=A&column=B&column=C... encodes in a URL.
@@ -347,6 +372,11 @@ def dataframe_full(
     """
     Fetch all the rows of DataFrame.
     """
+    if reader.structure_family != "dataframe":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataframe/full route.",
+        )
     try:
         # The singular/plural mismatch here of "columns" and "column" is
         # due to the ?column=A&column=B&column=C... encodes in a URL.
@@ -376,6 +406,11 @@ def variable_block(
     """
     Fetch a chunk of array-like data from an xarray.Variable.
     """
+    if reader.structure_family != "variable":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /variable/block route.",
+        )
     try:
         # Lookup block on the `data` attribute of the Variable.
         array = reader.read_block(block, slice=slice)
@@ -408,6 +443,11 @@ def variable_full(
     """
     Fetch a full xarray.Variable.
     """
+    if reader.structure_family != "variable":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /variable/full route.",
+        )
     array = reader.read()
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(
@@ -435,6 +475,11 @@ def data_array_variable_full(
     """
     Fetch a chunk from an xarray.DataArray.
     """
+    if reader.structure_family != "data_array":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /data_array/variable/full route.",
+        )
     # TODO Should read() accept a `coord` argument?
     array = reader.read()
     if coord is not None:
@@ -473,6 +518,11 @@ def data_array_block(
     """
     Fetch a chunk from an xarray.DataArray.
     """
+    if reader.structure_family != "data_array":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /data_array/block route.",
+        )
     try:
         array = reader.read_block(block, coord, slice=slice)
     except IndexError:
@@ -514,6 +564,11 @@ def dataset_block(
     """
     Fetch a chunk from an xarray.Dataset.
     """
+    if reader.structure_family != "dataset":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataset/block route.",
+        )
     try:
         array = reader.read_block(variable, block, coord, slice=slice)
     except IndexError:
@@ -555,6 +610,11 @@ def dataset_data_var_full(
     """
     Fetch a full xarray.Variable from within an xarray.Dataset.
     """
+    if reader.structure_family != "dataset":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataset/data_var/full route.",
+        )
     try:
         array = reader.read_variable(variable)
     except KeyError:
@@ -596,6 +656,11 @@ def dataset_coord_full(
     """
     Fetch a full coordinate from within an xarray.Dataset.
     """
+    if reader.structure_family != "dataset":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataset/coord/full route.",
+        )
     try:
         array = reader.read_variable(coord)
     except KeyError:
@@ -628,6 +693,11 @@ def dataset_full(
     """
     Fetch a full coordinate from within an xarray.Dataset.
     """
+    if reader.structure_family != "dataset":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /dataset/full route.",
+        )
     try:
         # The singular/plural mismatch here of "variables" and "variable" is
         # due to the ?variable=A&variable=B&variable=C... encodes in a URL.
