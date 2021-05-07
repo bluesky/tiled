@@ -14,7 +14,7 @@ import warnings
 
 import appdirs
 
-from .utils import infer_config_format, parse
+from .utils import parse
 
 
 __all__ = ["discover_profiles", "paths"]
@@ -51,9 +51,8 @@ def gather_profiles(paths, strict=True):
                 ):
                     continue
                 try:
-                    format = infer_config_format(filepath)
                     with open(filepath) as file:
-                        content = parse(file, format=format)
+                        content = parse(file)
                 except Exception as err:
                     if strict:
                         raise
