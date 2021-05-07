@@ -68,6 +68,7 @@ class Resource(pydantic.BaseModel):
     id: str
     type: EntryType
     meta: Optional[dict]
+    links: Optional[dict]
 
 
 class CatalogResource(Resource):

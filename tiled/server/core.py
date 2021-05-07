@@ -197,6 +197,7 @@ def construct_entries_response(
     fields,
     filters,
     current_user,
+    base_path,
 ):
     path = path.rstrip("/")
     if not path.startswith("/"):
@@ -233,7 +234,7 @@ def construct_entries_response(
             for key in catalog.keys_indexer[offset : offset + limit]  # noqa: E203
         )
     for key, entry in items:
-        resource = construct_resource(path, key, entry, fields)
+        resource = construct_resource(base_path, path, key, entry, fields)
         data.append(resource)
     return models.Response(data=data, links=links, meta={"count": count})
 
@@ -360,7 +361,7 @@ def construct_dataset_response(dataset, request_headers, format=None):
         )
 
 
-def construct_resource(path, key, entry, fields):
+def construct_resource(base_url, path, key, entry, fields):
     attributes = {}
     if models.EntryFields.metadata in fields:
         attributes["metadata"] = entry.metadata
@@ -374,10 +375,12 @@ def construct_resource(path, key, entry, fields):
                 "id": key,
                 "attributes": models.CatalogAttributes(**attributes),
                 "type": models.EntryType.catalog,
+                "links": {"self": f"{base_url}/metadata/{path}"},
             }
         )
     else:
         structure = {}
+        links = {"self": f"{base_url}/metadata/{path}"}
         if models.EntryFields.structure_family in fields:
             attributes["structure_family"] = entry.structure_family
         if models.EntryFields.macrostructure in fields:
@@ -385,16 +388,28 @@ def construct_resource(path, key, entry, fields):
             if macrostructure is not None:
                 structure["macro"] = dataclasses.asdict(macrostructure)
         if models.EntryFields.microstructure in fields:
-            if entry.structure_family == "dataframe":
+            if entry.structure_family == "array":
+                links["full"] = f"{base_url}/array/full/{path}"
+                block_template = ",".join(
+                    f"{{index_{index}}}"
+                    for index in range(len(structure["macro"]["shape"]))
+                )
+                links["block"] = f"{base_url}/array/block/{path}?block={block_template}"
+            elif entry.structure_family == "dataframe":
                 # Special case: its microstructure is cannot be JSON-serialized
                 # and is therefore available from separate routes. Sends links
                 # instead of the actual payload.
+                links["full"] = f"{base_url}/dataframe/full/{path}"
+                links[
+                    "partition"
+                ] = f"{base_url}/dataframe/partition/{path}?partition={{index}}"
                 structure["micro"] = {
                     "links": {
-                        "meta": f"/dataframe/meta/{path}",
-                        "divisions": f"/dataframe/divisions/{path}",
+                        "meta": f"{base_url}/dataframe/meta/{path}",
+                        "divisions": f"{base_url}/dataframe/divisions/{path}",
                     }
                 }
+            # TODO Fill in links for xarray types.
             else:
                 microstructure = entry.microstructure()
                 if microstructure is not None:
@@ -405,6 +420,7 @@ def construct_resource(path, key, entry, fields):
                 "id": key,
                 "attributes": models.ReaderAttributes(**attributes),
                 "type": models.EntryType.reader,
+                "links": links,
             }
         )
     return resource

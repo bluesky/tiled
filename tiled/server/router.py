@@ -93,6 +93,7 @@ def declare_search_router():
                     fields,
                     filters,
                     current_user,
+                    _get_base_url(request.url, path),
                 ),
             )
         except NoEntry:
@@ -149,9 +150,10 @@ async def metadata(
 ):
     "Fetch the metadata for one Catalog or Reader."
 
+    base_url = _get_base_url(request.url, path)
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
-    resource = construct_resource(path, key, entry, fields)
+    resource = construct_resource(base_url, path, key, entry, fields)
     return json_or_msgpack(request.headers, models.Response(data=resource))
 
 
@@ -180,6 +182,7 @@ async def entries(
                 fields,
                 {},
                 current_user,
+                _get_base_url(request.url, path),
             ),
         )
     except NoEntry:
@@ -636,3 +639,10 @@ def dataset_full(
         return construct_dataset_response(dataset, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+def _get_base_url(url, path):
+    # The intent here is to work even when we are being served in a subpath,
+    # perhaps as a microservice.
+    # TODO Is there a sturdier way to extract the base path?
+    return str(url)[: -(len(path) + len("/metadata/"))]
