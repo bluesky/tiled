@@ -409,7 +409,35 @@ def construct_resource(base_url, path, key, entry, fields):
                         "divisions": f"{base_url}/dataframe/divisions/{path}",
                     }
                 }
-            # TODO Fill in links for xarray types.
+            elif entry.structure_family == "variable":
+                block_template = ",".join(
+                    f"{{index_{index}}}"
+                    for index in range(len(structure["macro"]["shape"]))
+                )
+                links["full"] = f"{base_url}/variable/full/{path}"
+                links[
+                    "block"
+                ] = f"{base_url}/variable/block/{path}?block={block_template}"
+            elif entry.structure_family == "data_array":
+                block_template = ",".join(
+                    f"{{index_{index}}}"
+                    for index in range(len(structure["macro"]["shape"]))
+                )
+                links["full_variable"] = f"{base_url}/data_array/variable/full/{path}"
+                links[
+                    "block"
+                ] = f"{base_url}/data_array/block/{path}?block={block_template}"
+            elif entry.structure_family == "dataset":
+                links[
+                    "full_variable"
+                ] = f"{base_url}/dataset/data_var/full/{path}?variable={{variable}}"
+                links[
+                    "full_coordinate"
+                ] = f"{base_url}/dataset/coord/full/{path}?variable={{variable}}"
+                links["full_dataset"] = f"{base_url}/dataset/full/{path}"
+                links[
+                    "block"
+                ] = f"{base_url}/dataset/block/{path}?variable={{variable}}&block={{block_indexes}}"
             else:
                 microstructure = entry.microstructure()
                 if microstructure is not None:
