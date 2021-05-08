@@ -158,6 +158,16 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         )
         return from_profile(*args, **kwargs)
 
+    @classmethod
+    def from_config_path(cls, *args, **kwargs):
+        warnings.warn(
+            "The classmethod Catalog.from_config_path  is being considered "
+            "for deperecation and may be removed. "
+            "The function tiled.client.from_config_path may be used instead.",
+            PendingDeprecationWarning,
+        )
+        return from_profile(*args, **kwargs)
+
     def __init__(
         self,
         client,
@@ -746,6 +756,32 @@ def from_profile(name):
         return from_catalogs(**kwargs, **profile_content)
     else:
         return from_uri(**profile_content)
+
+
+def from_config_path(config_path, catalog_path="/"):
+    """
+    Build Catalogs directly, running the app in this same process.
+
+    NOTE: This is experimental. It may need to be re-designed or even removed.
+
+    config_path :
+        Path to server-side config (file or directory)
+    catalog_path :
+        Subpath corresponding to the catalog of interest in the config.
+        Typically "/" unless there are multiple catalogs specified in the config.
+    """
+
+    from ..config import direct_access
+
+    if isinstance(catalog_path, str):
+        catalog_path_segments = tuple(
+            segment for segment in catalog_path.split("/") if segment
+        )
+    else:
+        # Assume this is a tuple or a list that we can convert into one.
+        catalog_path_segments = tuple(catalog_path)
+    catalog = direct_access(config_path, catalog_path=catalog_path_segments)
+    return from_catalogs({catalog_path_segments: catalog})
 
 
 class ProfileNotFound(KeyError):
