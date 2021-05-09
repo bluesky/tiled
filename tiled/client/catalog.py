@@ -565,7 +565,7 @@ def from_uri(
     ----------
     uri : str
         e.g. "http://localhost:8000"
-    structure_clients : str or dict
+    structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping
@@ -631,14 +631,20 @@ def from_catalogs(
     ----------
     catalogs : dict of paths to Catalogs, e.g. {'/': catalog}
     authenticator : Authenticator, optional
-    structure_clients : str or dict
+    structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
         ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
-    special_clients : dict
+    token : str, optional
+        Access token. If None, the environment variable TILED_TOKEN is used
+        if it is set. Otherwise, unauthenticated ("public") access is
+        attempted, which may or may not be supported depending on how the
+        service is configured. When TILED_TOKEN is set, you can pass token=""
+        (empty string) to override it and force unauthenticated access.
+    special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
@@ -695,7 +701,7 @@ def from_client(
     ----------
     client : httpx.Client
         Should be pre-configured with a base_url and any auth-related headers.
-    structure_clients : str or dict
+    structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping
@@ -705,7 +711,7 @@ def from_client(
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
-    special_clients : dict
+    special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
@@ -736,7 +742,7 @@ def from_client(
     ).client_for_item(item, path=[], metadata=metadata)
 
 
-def from_profile(name):
+def from_profile(name, **kwargs):
     """
     Build a Catalog based a 'profile' (a named configuration).
 
@@ -748,6 +754,8 @@ def from_profile(name):
     or from a CLI like:
 
     $ tiled profile list
+
+    Any additional kwargs override profile content.
     """
     from ..profiles import discover_profiles, paths
 
@@ -759,18 +767,18 @@ def from_profile(name):
             f"Profile {name!r} not found. Found profiles {list(profiles)} "
             f"from directories {paths}."
         ) from err
+    merged = {**profile_content, **kwargs}
     if "direct" in profile_content:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.
         from ..config import construct_serve_catalogs_kwargs
 
-        kwargs = construct_serve_catalogs_kwargs(
+        serve_catalog_kwargs = construct_serve_catalogs_kwargs(
             profile_content.pop("direct"), source_filepath=filepath
         )
-
-        return from_catalogs(**kwargs, **profile_content)
+        return from_catalogs(**serve_catalog_kwargs, **merged)
     else:
-        return from_uri(**profile_content)
+        return from_uri(**merged)
 
 
 def from_config_path(config_path, catalog_path="/"):
@@ -779,9 +787,11 @@ def from_config_path(config_path, catalog_path="/"):
 
     NOTE: This is experimental. It may need to be re-designed or even removed.
 
-    config_path :
+    Parameters
+    ----------
+    config_path : str
         Path to server-side config (file or directory)
-    catalog_path :
+    catalog_path : str
         Subpath corresponding to the catalog of interest in the config.
         Typically "/" unless there are multiple catalogs specified in the config.
     """
