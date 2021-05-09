@@ -10,9 +10,9 @@ from pathlib import Path
 from .utils import import_object, parse
 
 
-def construct_serve_catalogs_kwargs(config, source_filepath=None):
+def construct_serve_catalog_kwargs(config, source_filepath=None):
     """
-    Given parsed configuration, construct arguments for serve_catalogs(...).
+    Given parsed configuration, construct arguments for serve_catalog(...).
     """
     auth_spec = config.get("authentication")
     auth_aliases = {}
@@ -55,7 +55,25 @@ def construct_serve_catalogs_kwargs(config, source_filepath=None):
         if segments in catalogs:
             raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
         catalogs[segments] = catalog
-    return {"catalogs": catalogs, "authenticator": authenticator}
+    if (len(catalogs) == 1) and () in catalogs:
+        # There is one catalog to be deployed at '/'.
+        root_catalog = catalog
+    else:
+        # There are one or more catalog(s) to be served at
+        # sub-paths. Merged them into one root in-memory Catalog.
+        from .catalogs.in_memory import Catalog
+
+        mapping = {}
+        for segments, catalog in catalogs.items():
+            inner_mapping = mapping
+            for segment in segments[:-1]:
+                if segment in inner_mapping:
+                    inner_mapping = inner_mapping[segment]
+                else:
+                    inner_mapping = inner_mapping[segment] = {}
+            inner_mapping[segments[-1]] = catalog
+        root_catalog = Catalog(mapping)
+    return {"catalog": root_catalog, "authenticator": authenticator}
 
 
 def merge(configs):
@@ -118,30 +136,14 @@ def parse_configs(config_path):
             parsed_configs[filepath] = parse(file)
 
     merged_config = merge(parsed_configs)
-    return construct_serve_catalogs_kwargs(merged_config)
+    return construct_serve_catalog_kwargs(merged_config)
 
 
-def direct_access(config_path, catalog_path="/"):
+def direct_access(config_path):
     """
-    >>> catalog = direct_access("config.yml")  # catalog served at root
-    >>> sub catalog = direct_access("config.yml", ("a", "b"))  # catalog served at /a/b
+    >>> catalog = direct_access("config.yml")
     """
-    # Accept path as str "/" or tuple ().
-    if isinstance(catalog_path, str):
-        catalog_path_segments = tuple(
-            segment for segment in catalog_path.split("/") if segment
-        )
-    else:
-        # Assume this is a tuple or a list that we can convert into one.
-        catalog_path_segments = tuple(catalog_path)
-    catalogs = parse_configs(config_path)["catalogs"]
-    try:
-        return catalogs[catalog_path_segments]
-    except KeyError:
-        raise KeyError(
-            f"This configuration serves catalogs at these paths: {list(catalogs)}. "
-            "The path {catalog_path_segments} is not an option."
-        ) from None
+    return parse_configs(config_path)["catalog"]
 
 
 class ConfigError(ValueError):

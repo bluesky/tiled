@@ -125,9 +125,9 @@ def serve_config(
     # Delay this import, which is fairly expensive, so that
     # we can fail faster if config-parsing fails above.
 
-    from ..server.app import serve_catalogs
+    from ..server.app import serve_catalog
 
-    web_app = serve_catalogs(**kwargs)
+    web_app = serve_catalog(**kwargs)
 
     import uvicorn
 

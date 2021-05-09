@@ -29,7 +29,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 def get_authenticator():
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.serve_catalogs()."
+        "See tiled.server.app.serve_catalog()."
     )
 
 

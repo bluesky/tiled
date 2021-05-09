@@ -8,7 +8,6 @@ from .authentication import authentication_router, get_authenticator
 from .core import get_root_catalog, PatchedStreamingResponse
 from .router import declare_search_router, router
 from .settings import get_settings
-from ..catalogs.in_memory import Catalog
 
 
 def get_app(include_routers=None):
@@ -52,30 +51,14 @@ def get_app(include_routers=None):
     return app
 
 
-def serve_catalogs(catalogs, authenticator=None):
+def serve_catalog(catalog, authenticator=None):
     """
-    Serve one or more Catalogs.
+    Serve a Catalog
 
     Parameters
     ----------
-    catalogs : Dict[Tuple[str, ...], Catalog]
-        Each key should be a tuple representing a sub-path, i.e. ('a', 'b').
-        Each value should be a Catalog.
+    catalog : Catalog
     authenticator : Authenticator
-
-    Examples
-    --------
-
-    Serve one Catalog and the root path /.
-
-    >>> serve_catalogs({(): catalog})
-
-    Serve two Catalogs under /a and /b/c respectively.
-    >>> serve_catalogs({('a'): catalog1, ('b', 'c'): catalog2})
-
-    See Also
-    --------
-    serve_catalog
     """
 
     @lru_cache(1)
@@ -84,48 +67,16 @@ def serve_catalogs(catalogs, authenticator=None):
 
     @lru_cache(1)
     def override_get_root_catalog():
-        mapping = {}
-        for segments, catalog in catalogs.items():
-            if not segments:
-                # There is one root_catalog to be deployed at '/'.
-                return catalog
-            inner_mapping = mapping
-            for segment in segments[:-1]:
-                if segment in inner_mapping:
-                    inner_mapping = inner_mapping[segment]
-                else:
-                    inner_mapping = inner_mapping[segment] = {}
-            inner_mapping[segments[-1]] = catalog
-        return Catalog(mapping)
+        return catalog
 
     # The Catalog and Authenticator have the opporunity to add custom routes to
     # the server here. (Just for example, a Catalog of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
     include_routers = []
-    # TODO Give some thought to the way that we merge routes from different
-    # Catalogs here. I don't see any show-stopping problems with this but it
-    # feels a bit weird.
-    for catalog in catalogs.values():
-        include_routers.extend(getattr(catalog, "include_routers", []))
+    include_routers.extend(getattr(catalog, "include_routers", []))
     include_routers.extend(getattr(authenticator, "include_routers", []))
     app = get_app(include_routers=include_routers)
     app.dependency_overrides[get_authenticator] = override_get_authenticator
     app.dependency_overrides[get_root_catalog] = override_get_root_catalog
     return app
-
-
-def serve_catalog(catalog, authenticator=None):
-    """
-    Serve a Catalogs.
-
-    Parameters
-    ----------
-    catalog : Catalog
-    authenticator : Authenticator
-
-    See Also
-    --------
-    serve_catalogs
-    """
-    return serve_catalogs({(): catalog}, authenticator=authenticator)

@@ -130,14 +130,14 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         return from_client(*args, **kwargs)
 
     @classmethod
-    def from_catalogs(cls, *args, **kwargs):
+    def from_catalog(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_catalogs is being considered "
+            "The classmethod Catalog.from_catalog is being considered "
             "for deperecation and may be removed. "
-            "The function tiled.client.from_catalogs may be used instead.",
+            "The function tiled.client.from_catalog may be used instead.",
             PendingDeprecationWarning,
         )
-        return from_catalogs(*args, **kwargs)
+        return from_catalog(*args, **kwargs)
 
     @classmethod
     def from_uri(cls, *args, **kwargs):
@@ -607,8 +607,8 @@ def from_uri(
     )
 
 
-def from_catalogs(
-    catalogs,
+def from_catalog(
+    catalog,
     authenticator=None,
     structure_clients="numpy",
     *,
@@ -616,7 +616,7 @@ def from_catalogs(
     special_clients=None,
 ):
     """
-    Connect to Catalogs directly, running the app in this same process.
+    Connect to a Catalog directly, running the app in this same process.
 
     NOTE: This is experimental. It may need to be re-designed or even removed.
 
@@ -629,7 +629,7 @@ def from_catalogs(
 
     Parameters
     ----------
-    catalogs : dict of paths to Catalogs, e.g. {'/': catalog}
+    catalog : Catalog
     authenticator : Authenticator, optional
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
@@ -650,9 +650,9 @@ def from_catalogs(
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
-    from ..server.app import serve_catalogs
+    from ..server.app import serve_catalog
 
-    app = serve_catalogs(catalogs, authenticator)
+    app = serve_catalog(catalog, authenticator)
     # Note: This is important. The Tiled server routes are defined lazily on startup.
     asyncio.run(app.router.startup())
 
@@ -771,17 +771,17 @@ def from_profile(name, **kwargs):
     if "direct" in profile_content:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.
-        from ..config import construct_serve_catalogs_kwargs
+        from ..config import construct_serve_catalog_kwargs
 
-        serve_catalog_kwargs = construct_serve_catalogs_kwargs(
+        serve_catalog_kwargs = construct_serve_catalog_kwargs(
             profile_content.pop("direct"), source_filepath=filepath
         )
-        return from_catalogs(**serve_catalog_kwargs, **merged)
+        return from_catalog(**serve_catalog_kwargs, **merged)
     else:
         return from_uri(**merged)
 
 
-def from_config_path(config_path, catalog_path="/"):
+def from_config_path(config_path):
     """
     Build Catalogs directly, running the app in this same process.
 
@@ -791,22 +791,12 @@ def from_config_path(config_path, catalog_path="/"):
     ----------
     config_path : str
         Path to server-side config (file or directory)
-    catalog_path : str
-        Subpath corresponding to the catalog of interest in the config.
-        Typically "/" unless there are multiple catalogs specified in the config.
     """
 
     from ..config import direct_access
 
-    if isinstance(catalog_path, str):
-        catalog_path_segments = tuple(
-            segment for segment in catalog_path.split("/") if segment
-        )
-    else:
-        # Assume this is a tuple or a list that we can convert into one.
-        catalog_path_segments = tuple(catalog_path)
-    catalog = direct_access(config_path, catalog_path=catalog_path_segments)
-    return from_catalogs({catalog_path_segments: catalog})
+    catalog = direct_access(config_path)
+    return from_catalog(catalog)
 
 
 class ProfileNotFound(KeyError):

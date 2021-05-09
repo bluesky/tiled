@@ -48,7 +48,7 @@ _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\
 def get_root_catalog():
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.serve_catalogs()."
+        "See tiled.server.app.serve_catalog()."
     )
 
 
