@@ -5,6 +5,7 @@ import collections.abc
 from dataclasses import fields
 import importlib
 import itertools
+import os
 import time
 import warnings
 
@@ -574,14 +575,24 @@ def from_uri(
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
-    special_clients : dict
+    token : str, optional
+        Access token. If None, the environment variable TILED_TOKEN is used
+        if it is set. Otherwise, unauthenticated ("public") access is
+        attempted, which may or may not be supported depending on how the
+        service is configured. When TILED_TOKEN is set, you can pass token=""
+        (empty string) to override it and force unauthenticated access.
+    special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
     headers = {}
-    if token is not None:
+    if token is None:
+        token = os.getenv("TILED_TOKEN")
+        # But if token == "" let that override the environment variable
+        # and force an unauthenticated connection.
+    if token:
         headers["Authorization"] = f"Bearer {token}"
     client = httpx.Client(
         base_url=uri.rstrip("/"),
@@ -640,7 +651,11 @@ def from_catalogs(
     asyncio.run(app.router.startup())
 
     headers = {}
-    if token is not None:
+    if token is None:
+        token = os.getenv("TILED_TOKEN")
+        # But if token == "" let that override the environment variable
+        # and force an unauthenticated connection.
+    if token:
         headers["Authorization"] = f"Bearer {token}"
     # Only an AsyncClient can be used over ASGI.
     # We wrap all the async methods in a call to asyncio.run(...).
