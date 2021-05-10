@@ -17,7 +17,7 @@ import appdirs
 from .utils import parse
 
 
-__all__ = ["discover_profiles", "paths"]
+__all__ = ["list_profiles", "load_profiles", "paths"]
 
 
 # Paths later in the list ("closer" to the user) have higher precedence.
@@ -140,18 +140,45 @@ The profile will be ommitted. Fix this by removing one of the duplicates"""
     return combined
 
 
-def discover_profiles():
+def load_profiles():
     """
-    Return a mapping of profile names to profiles.
+    Return a mapping of profile_name to (source_path, content).
 
-    Search path is available from Python as:
+    The search path for the source files is available from Python as:
 
     >>> tiled.client.profiles.paths
 
     or from a CLI as:
 
     $ tiled profile paths
+
+    See also
+
+    $ tiled profile list
+    $ tiled profile show PROFILE_NAME
     """
     levels = gather_profiles(paths, strict=False)
     profiles = resolve_precedence(levels)
     return profiles
+
+
+def list_profiles():
+    """
+    Return a mapping of profile names to source filepath.
+
+    The search path for the source files is available from Python as:
+
+    >>> tiled.client.profiles.paths
+
+    or from a CLI as:
+
+    $ tiled profile paths
+
+    See also
+
+    $ tiled profile list
+    $ tiled profile show PROFILE_NAME
+    """
+    levels = gather_profiles(paths, strict=False)
+    profiles = resolve_precedence(levels)
+    return {name: source_filepath for name, (source_filepath, _) in profiles.items()}

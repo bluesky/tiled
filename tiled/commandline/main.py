@@ -35,9 +35,9 @@ def profile_paths():
 @profile_app.command("list")
 def profile_list():
     "List the profiles (client-side configuration) found and the files they were read from."
-    from ..profiles import discover_profiles
+    from ..profiles import load_profiles
 
-    profiles = discover_profiles()
+    profiles = load_profiles()
     if not profiles:
         typer.echo("No profiles found.")
         return
@@ -58,9 +58,9 @@ def profile_show(profile_name: str):
     import yaml
     import sys
 
-    from ..profiles import discover_profiles
+    from ..profiles import load_profiles
 
-    profiles = discover_profiles()
+    profiles = load_profiles()
     try:
         filepath, content = profiles[profile_name]
     except KeyError:

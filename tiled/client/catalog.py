@@ -750,20 +750,29 @@ def from_profile(name, **kwargs):
     """
     Build a Catalog based a 'profile' (a named configuration).
 
-    List available profiles from Python like:
+    List available profiles and the source filepaths from Python like:
 
-    >>> from tiled.client.profiles import discover_profiles
-    >>> list(discover_profiles())
+    >>> from tiled.client.profiles import list_profiles
+    >>> list_profiles()
 
     or from a CLI like:
 
     $ tiled profile list
 
+    Or show the file contents like:
+
+    >>> from tiled.client.profiles import load_profiles
+    >>> load_profiles()
+
+    or from a CLI like:
+
+    $ tiled profile show PROFILE_NAME
+
     Any additional kwargs override profile content.
     """
-    from ..profiles import discover_profiles, paths
+    from ..profiles import load_profiles, paths
 
-    profiles = discover_profiles()
+    profiles = load_profiles()
     try:
         filepath, profile_content = profiles[name]
     except KeyError as err:
