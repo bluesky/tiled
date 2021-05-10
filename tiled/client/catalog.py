@@ -305,6 +305,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             path = self._path
         if metadata is UNCHANGED:
             metadata = self._metadata
+        if isinstance(structure_clients, str):
+            structure_clients = Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
+                structure_clients
+            ]
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
         if special_clients is UNCHANGED:
