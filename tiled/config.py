@@ -64,6 +64,7 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
         from .catalogs.in_memory import Catalog
 
         mapping = {}
+        include_routers = []
         for segments, catalog in catalogs.items():
             inner_mapping = mapping
             for segment in segments[:-1]:
@@ -72,7 +73,12 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
                 else:
                     inner_mapping = inner_mapping[segment] = {}
             inner_mapping[segments[-1]] = catalog
+            routers = getattr(catalog, "include_routers", [])
+            for router in routers:
+                if router not in include_routers:
+                    include_routers.append(router)
         root_catalog = Catalog(mapping)
+        root_catalog.include_routers.extend(include_routers)
     return {"catalog": root_catalog, "authenticator": authenticator}
 
 

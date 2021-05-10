@@ -15,6 +15,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     __slots__ = (
         "_access_policy",
         "_authenticated_identity",
+        "include_routers",
         "_mapping",
         "_metadata",
     )
@@ -46,6 +47,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
+        self.include_routers = []
         super().__init__()
 
     @property
