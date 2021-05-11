@@ -781,13 +781,13 @@ def from_profile(name, **kwargs):
             f"from directories {paths}."
         ) from err
     merged = {**profile_content, **kwargs}
-    if "direct" in profile_content:
+    if "direct" in merged:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.
         from ..config import construct_serve_catalog_kwargs
 
         serve_catalog_kwargs = construct_serve_catalog_kwargs(
-            profile_content.pop("direct"), source_filepath=filepath
+            merged.pop("direct"), source_filepath=filepath
         )
         return from_catalog(**serve_catalog_kwargs, **merged)
     else:
