@@ -142,14 +142,51 @@ def parse_configs(config_path):
             parsed_configs[filepath] = parse(file)
 
     merged_config = merge(parsed_configs)
-    return construct_serve_catalog_kwargs(merged_config)
+    return merged_config
 
 
-def direct_access(config_path):
+def direct_access(config):
     """
-    >>> catalog = direct_access("config.yml")
+    Return the server-side Catalog object defined by a configuration.
+
+    Parameters
+    ----------
+    config : str or dict
+        May be:
+
+        * Path to config file
+        * Path to directory of config files
+        * Dict of config
+
+    Examples
+    --------
+
+    From config file:
+
+    >>> from_config("path/to/file.yml")
+
+    From directory of config files:
+
+    >>> from_config("path/to/directory")
+
+    From configuration given directly, as dict:
+
+    >>> from_config(
+            {
+                "catalogs":
+                    [
+                        "path": "/",
+                        "catalog": "tiled.files.Catalog.from_files",
+                        "args": {"diretory": "path/to/files"}
+                    ]
+            }
+        )
     """
-    return parse_configs(config_path)["catalog"]
+    if isinstance(config, (str, Path)):
+        parsed_config = parse_configs(config)
+    else:
+        parsed_config = config
+    return construct_serve_catalog_kwargs(parsed_config)["catalog"]
 
 
 class ConfigError(ValueError):

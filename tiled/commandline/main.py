@@ -113,10 +113,10 @@ def serve_pyobject(
 def serve_config(
     config_path: Path,
 ):
-    from ..config import parse_configs
+    from ..config import construct_serve_catalog_kwargs, parse_configs
 
     try:
-        kwargs = parse_configs(config_path)
+        parsed_config = parse_configs(config_path)
     except Exception as err:
         (msg,) = err.args
         typer.echo(msg)
@@ -127,7 +127,10 @@ def serve_config(
 
     from ..server.app import serve_catalog
 
+    kwargs = construct_serve_catalog_kwargs(parsed_config)
     web_app = serve_catalog(**kwargs)
+
+    # Likewise, delay this import.
 
     import uvicorn
 

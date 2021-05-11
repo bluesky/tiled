@@ -160,11 +160,11 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         return from_profile(*args, **kwargs)
 
     @classmethod
-    def from_config_path(cls, *args, **kwargs):
+    def from_config(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_config_path  is being considered "
+            "The classmethod Catalog.from_config is being considered "
             "for deperecation and may be removed. "
-            "The function tiled.client.from_config_path may be used instead.",
+            "The function tiled.client.from_config may be used instead.",
             PendingDeprecationWarning,
         )
         return from_profile(*args, **kwargs)
@@ -794,7 +794,7 @@ def from_profile(name, **kwargs):
         return from_uri(**merged)
 
 
-def from_config_path(config_path):
+def from_config(config):
     """
     Build Catalogs directly, running the app in this same process.
 
@@ -802,13 +802,41 @@ def from_config_path(config_path):
 
     Parameters
     ----------
-    config_path : str
-        Path to server-side config (file or directory)
+    config : str or dict
+        May be:
+
+        * Path to config file
+        * Path to directory of config files
+        * Dict of config
+
+    Examples
+    --------
+
+    From config file:
+
+    >>> from_config("path/to/file.yml")
+
+    From directory of config files:
+
+    >>> from_config("path/to/directory")
+
+    From configuration given directly, as dict:
+
+    >>> from_config(
+            {
+                "catalogs":
+                    [
+                        "path": "/",
+                        "catalog": "tiled.files.Catalog.from_files",
+                        "args": {"diretory": "path/to/files"}
+                    ]
+            }
+        )
     """
 
     from ..config import direct_access
 
-    catalog = direct_access(config_path)
+    catalog = direct_access(config)
     return from_catalog(catalog)
 
 
