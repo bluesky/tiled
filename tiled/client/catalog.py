@@ -784,7 +784,7 @@ def from_profile(name, **kwargs):
         from ..config import construct_serve_catalog_kwargs
 
         serve_catalog_kwargs = construct_serve_catalog_kwargs(
-            merged.pop("direct"), source_filepath=filepath
+            merged.pop("direct", None), source_filepath=filepath
         )
         return from_catalog(**serve_catalog_kwargs, **merged)
     else:
