@@ -5,7 +5,6 @@ from typing import Any, Optional
 
 from fastapi import Depends, APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.param_functions import Form
 from jose import ExpiredSignatureError, JWTError, jwt
 from pydantic import BaseModel, BaseSettings
 
@@ -16,13 +15,8 @@ from ..utils import SpecialUsers
 # keys to support key rotation. The first key will be used for encryption. Each
 # key will be tried in turn for decryption.
 SECRET_KEYS = os.environ.get("TILED_SERVER_SECRET_KEYS", token_hex(32)).split(";")
-MAX_TOKEN_LIFETIME = int(
-    os.environ.get("TILED_MAX_TOKEN_LIFETIME", 60 * 60 * 24)
-)  # seconds
-DEFAULT_TOKEN_LIFETIME = int(
-    os.environ.get("TILED_DEFAULT_TOKEN_LIFETIME", 60 * 15)
-)  # seconds
 ALGORITHM = "HS256"
+ACCESS_TOKEN_LIFETIME_MINUTES = 15
 
 
 def get_authenticator():
@@ -45,9 +39,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 authentication_router = APIRouter()
 
 
-def create_access_token(data: dict, lifetime: int):
+def create_access_token(data: dict, expires_delta):
     to_encode = data.copy()
-    expire = datetime.utcnow() + lifetime * timedelta(seconds=1)
+    expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEYS[0], algorithm=ALGORITHM)
     return encoded_jwt
@@ -95,33 +89,9 @@ async def get_current_user(
     return username
 
 
-class CustomOAuth2PasswordRequestForm(OAuth2PasswordRequestForm):
-    "Add a lifetime parameter for setting the JWT expiration (within limits)."
-
-    def __init__(
-        self,
-        grant_type: str = Form(None, regex="password"),
-        username: str = Form(...),
-        password: str = Form(...),
-        scope: str = Form(""),
-        client_id: Optional[str] = Form(None),
-        client_secret: Optional[str] = Form(None),
-        lifetime: Optional[int] = Form(DEFAULT_TOKEN_LIFETIME),
-    ):
-        super().__init__(
-            grant_type=grant_type,
-            username=username,
-            password=password,
-            scope=scope,
-            client_id=client_id,
-            client_secret=client_secret,
-        )
-        self.lifetime = lifetime
-
-
 @authentication_router.post("/token", response_model=Token)
 async def login_for_access_token(
-    form_data: CustomOAuth2PasswordRequestForm = Depends(),
+    form_data: OAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
 ):
     username = authenticator.authenticate(
@@ -133,14 +103,8 @@ async def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if form_data.lifetime > MAX_TOKEN_LIFETIME:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Requested token lifetime {form_data.lifetime} seconds is "
-                f"greater than the maximmum {MAX_TOKEN_LIFETIME} seconds."
-            ),
-        )
-    lifetime = min(form_data.lifetime, MAX_TOKEN_LIFETIME)
-    access_token = create_access_token(data={"sub": username}, lifetime=lifetime)
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_LIFETIME_MINUTES)
+    access_token = create_access_token(
+        data={"sub": username}, expires_delta=access_token_expires
+    )
     return {"access_token": access_token, "token_type": "bearer"}
