@@ -23,7 +23,6 @@ DEFAULT_TOKEN_LIFETIME = int(
     os.environ.get("TILED_DEFAULT_TOKEN_LIFETIME", 60 * 15)
 )  # seconds
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 def get_authenticator():
@@ -89,7 +88,7 @@ async def get_current_user(
     else:
         raise credentials_exception
     # The user has a valid token for 'username' so we know that
-    # within ACCESS_TOKEN_EXPIRE_MINUTES they successfully validated.
+    # within the expiration time they successfully validated.
     # Do we want to re-verify that the user still exists and is
     # authorized at this point? This only makes sense if we grow
     # some server-side database.
