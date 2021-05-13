@@ -107,11 +107,20 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     # The following three methods are used by IndexersMixin
     # to define keys_indexer, items_indexer, and values_indexer.
 
-    def _keys_slice(self, start, stop):
-        return list(self._node)[start:stop]
+    def _keys_slice(self, start, stop, direction):
+        keys = list(self._node)
+        if direction < 0:
+            keys = reversed(keys)
+        return keys[start:stop]
 
-    def _items_slice(self, start, stop):
-        return [(key, self[key]) for key in list(self)[start:stop]]
+    def _items_slice(self, start, stop, direction):
+        items = [(key, self[key]) for key in list(self)]
+        if direction < 0:
+            items = reversed(items)
+        return items[start:stop]
 
-    def _item_by_index(self, index):
-        return self[list(self)[index]]
+    def _item_by_index(self, index, direction):
+        keys = list(self)
+        if direction < 0:
+            keys = reversed(keys)
+        return keys[index]

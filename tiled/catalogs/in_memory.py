@@ -149,13 +149,16 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         # self._mapping.values() because self._mapping may be a OneShotCachedMap which
         # only constructs its values at access time. With this in mind, we
         # identify the key(s) of interest and then only access those values.
-        yield from ((key, self._mapping[key]) for key in self._keys_slice(start, stop, direction))
+        yield from (
+            (key, self._mapping[key])
+            for key in self._keys_slice(start, stop, direction)
+        )
 
     def _item_by_index(self, index, direction):
         if direction > 0:
             key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
         else:
-            key = (itertools.islice(self._mapping.keys(), len(self._mapping) - index))
+            key = itertools.islice(self._mapping.keys(), len(self._mapping) - index)
         return (key, self._mapping[key])
 
 

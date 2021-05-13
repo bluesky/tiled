@@ -3,7 +3,7 @@ import enum
 import pydantic
 import pydantic.dataclasses
 import pydantic.generics
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
 
 DataT = TypeVar("DataT")
 
@@ -46,6 +46,7 @@ class EntryFields(str, enum.Enum):
 class CatalogAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     count: Optional[int]
+    sorting: Optional[List[Tuple[str, int]]]
     client_type_hint: Optional[str]
 
 

@@ -179,6 +179,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         special_clients,
         params=None,
         queries=None,
+        sorting=None,
     ):
         "This is not user-facing. Use Catalog.from_uri."
 
@@ -196,7 +197,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self._path = tuple(path or [])
         self._queries = tuple(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
-        self._sorting = [("time", 1)]
+        self._sorting = sorting or []
         self._sorting_params = {
             "sort": ",".join(
                 f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
@@ -214,7 +215,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
-        return catalog_repr(self, self._keys_slice(0, N))
+        return catalog_repr(self, self._keys_slice(0, N, direction=1))
 
     @property
     def metadata(self):
@@ -223,6 +224,10 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._metadata)
+
+    @property
+    def sorting(self):
+        return list(self._sorting)
 
     def touch(self):
         """
@@ -267,7 +272,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         # repsect that.
         return self._root_client_type
 
-    def client_for_item(self, item, path, metadata):
+    def client_for_item(self, item, path, metadata, sorting):
         class_ = self._get_class(item)
         if item["type"] == "catalog":
             return class_(
@@ -280,6 +285,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 special_clients=self.special_clients,
                 params=self._params,
                 queries=None,
+                sorting=sorting,
                 root_client_type=self._root_client_type,
             )
         else:  # item["type"] == "reader"
@@ -421,6 +427,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             item,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
+            sorting=item["attributes"].get("sorting"),
         )
 
     def items(self):
@@ -450,6 +457,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                     item,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
+                    sorting=item["attributes"].get("sorting"),
                 )
                 yield key, value
             next_page_url = content["links"]["next"]
@@ -530,6 +538,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                     item,
                     path=self._path + (item["id"],),
                     metadata=item["attributes"]["metadata"],
+                    sorting=item["attributes"].get("sorting"),
                 )
             next_page_url = content["links"]["next"]
 
@@ -562,12 +571,18 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             item,
             path=self._path + (item["id"],),
             metadata=item["attributes"]["metadata"],
+            sorting=item["attributes"].get("sorting"),
         )
         return (key, value)
 
     def search(self, query):
         return self.new_variation(
             queries=self._queries + (query,),
+        )
+
+    def sort(self, sorting):
+        return self.new_variation(
+            sorting=sorting,
         )
 
 
@@ -780,7 +795,9 @@ def from_client(
         cache=cache,
         special_clients=special_clients,
         root_client_type=Catalog,
-    ).client_for_item(item, path=[], metadata=metadata)
+    ).client_for_item(
+        item, path=[], metadata=metadata, sorting=item["attributes"].get("sorting")
+    )
 
 
 def from_profile(name, **kwargs):

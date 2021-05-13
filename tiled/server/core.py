@@ -216,16 +216,20 @@ def construct_entries_response(
         queries[name][field] = value
     sorting = []
     for item in sort.split(","):
-        if item.startswith("-"):
-            sorting.append((item[1:], -1))
-        else:
-            sorting.append((item, 1))
-    catalog = catalog.sort(sorting)
+        if item:
+            if item.startswith("-"):
+                sorting.append((item[1:], -1))
+            else:
+                sorting.append((item, 1))
+    if sorting:
+        breakpoint()
+        catalog = catalog.sort(sorting)
     # Apply the queries and obtain a narrowed catalog.
     for name, parameters in queries.items():
         query_class = name_to_query_type[name]
         try:
             query = query_class(**parameters)
+            catalog = catalog.search(query)
         except QueryValueError as err:
             raise HTTPException(status_code=400, detail=err.args[0])
     count = len_or_approx(catalog)
@@ -377,6 +381,8 @@ def construct_resource(base_url, path, key, entry, fields):
     if isinstance(entry, DuckCatalog):
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
+            if hasattr(entry, "sorting"):
+                attributes["sorting"] = entry.sorting
         resource = models.CatalogResource(
             **{
                 "id": key,
