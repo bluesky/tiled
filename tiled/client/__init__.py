@@ -1,4 +1,6 @@
 from .catalog import (  # noqa: F401
+    ASCENDING,
+    DESCENDING,
     from_catalog,
     from_client,
     from_config,

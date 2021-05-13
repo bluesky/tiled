@@ -18,6 +18,7 @@ from ..queries import KeyLookup
 from ..utils import (
     DictView,
     OneShotCachedMap,
+    Sentinel,
 )
 from .utils import (
     get_json_with_cache,
@@ -197,7 +198,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self._path = tuple(path or [])
         self._queries = tuple(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
-        self._sorting = sorting or []
+        self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
         self._sorting_params = {
             "sort": ",".join(
                 f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
@@ -900,3 +901,19 @@ def from_config(config):
 
 class ProfileNotFound(KeyError):
     pass
+
+
+class Ascending(Sentinel):
+    "Intended for more readable sorting operations. An alias for 1."
+    def __index__(self):
+        return 1
+
+
+class Descending(Sentinel):
+    "Intended for more readable sorting operations. An alias for -1."
+    def __index__(self):
+        return -1
+
+
+ASCENDING = Ascending("ASCENDING")
+DESCENDING = Descending("DESCENDING")
