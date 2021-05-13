@@ -51,68 +51,98 @@ class IndexersMixin:
     # There is some code reptition here, but let's live with it rather than add
     # yet more depth to the call stack....
 
-    def _keys_indexer(self, index):
-        length = len(self)
-        if isinstance(index, int):
-            if (index >= length) or (index < -length):
-                raise IndexError(f"index {index} out of range for length {length}")
-            if index < 0:
-                index = length + index
-            key, _value = self._item_by_index(index)
+    def _keys_indexer(self, index_or_slice):
+        if isinstance(index_or_slice, int):
+            if index_or_slice < 0:
+                index_or_slice = 1 - index_or_slice
+                direction = -1
+            else:
+                direction = 1
+            key, _value = self._item_by_index(index_or_slice, direction)
             return key
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index, length)
-            return list(self._keys_slice(start, stop))
+        elif isinstance(index_or_slice, slice):
+            start, stop, direction = slice_to_interval(index_or_slice)
+            return list(self._keys_slice(start, stop, direction))
         else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
+            raise TypeError(
+                f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
+            )
 
-    def _items_indexer(self, index):
-        length = len(self)
-        if isinstance(index, int):
-            if (index >= length) or (index < -length):
-                raise IndexError(f"index {index} out of range for length {length}")
-            if index < 0:
-                index = length + index
-            return self._item_by_index(index)
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index, length)
-            return list(self._items_slice(start, stop))
+    def _items_indexer(self, index_or_slice):
+        if isinstance(index_or_slice, int):
+            if index_or_slice < 0:
+                index_or_slice = 1 - index_or_slice
+                direction = -1
+            else:
+                direction = 1
+            return self._item_by_index(index_or_slice, direction)
+        elif isinstance(index_or_slice, slice):
+            start, stop, direction = slice_to_interval(index_or_slice)
+            return list(self._items_slice(start, stop, direction))
         else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
+            raise TypeError(
+                f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
+            )
 
-    def _values_indexer(self, index):
-        length = len(self)
-        if isinstance(index, int):
-            if (index >= length) or (index < -length):
-                raise IndexError(f"index {index} out of range for length {length}")
-            if index < 0:
-                index = length + index
-            _key, value = self._item_by_index(index)
+    def _values_indexer(self, index_or_slice):
+        if isinstance(index_or_slice, int):
+            if index_or_slice < 0:
+                index_or_slice = 1 - index_or_slice
+                direction = -1
+            else:
+                direction = 1
+            _key, value = self._item_by_index(index_or_slice, direction)
             return value
-        elif isinstance(index, slice):
-            start, stop = slice_to_interval(index, length)
-            return [value for _key, value in self._items_slice(start, stop)]
+        elif isinstance(index_or_slice, slice):
+            start, stop, direction = slice_to_interval(index_or_slice)
+            return [value for _key, value in self._items_slice(start, stop, direction)]
         else:
-            raise TypeError(f"{index} must be an int or slice, not {type(index)}")
+            raise TypeError(
+                f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
+            )
 
 
-def slice_to_interval(slice_, length):
-    "Convert slice object to (start, stop) where both are whole numbers."
-    if (slice_.step is not None) and (slice_.step != 1):
-        raise NotImplementedError(
-            f"A slice with a step {slice_.step} is not supported. Only 1 (or None) is."
-        )
+def slice_to_interval(slice_):
+    """
+    Convert slice object to (start, stop, direction).
+    """
     start = slice_.start or 0  # Handles case where slice_.start is None.
-    if start < 0:
-        start = max(length + start, 0)
-    stop = slice_.stop
-    if stop is None:
-        stop = length
-    elif stop < 0:
-        stop = max(length + stop, 0)
-    assert start >= 0
-    assert stop >= 0
-    return start, stop
+    step = slice_.step or 1  # Handles case where slice_.step is None.
+    if step == 1:
+        if start < 0:
+            raise ValueError(
+                "Catalog sequence slices with step=-1 must have start >= 0."
+            )
+        if (slice_.stop is not None) and (slice_.stop < start):
+            raise ValueError(
+                "Catalog sequence slices with step=1 must have stop >= start."
+            )
+        start_ = start
+        stop_ = slice_.stop
+        direction = 1
+    if step == -1:
+        if start >= 0:
+            raise ValueError(
+                "Catalog sequence slices with step=-1 must have start < 0."
+            )
+        if slice_.stop is not None:
+            if slice_.stop > start:
+                raise ValueError(
+                    "Catalog sequence slices with step=-1 must have stop =< start."
+                )
+            stop_ = 1 - slice_.stop
+        else:
+            stop_ = slice_.stop
+        start_ = 1 - start
+        direction = -1
+    else:
+        raise ValueError(
+            "Only step of 1 or -1 is supported in a Catalog sequence slice. "
+            "Step {slice_.step} is disallowed."
+        )
+    assert start_ >= 0
+    assert (stop_ is None) or (stop_ >= start_)
+    return start_, stop_, direction
 
 
 UNCHANGED = Sentinel("UNCHANGED")

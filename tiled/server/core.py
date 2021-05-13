@@ -196,6 +196,7 @@ def construct_entries_response(
     limit,
     fields,
     filters,
+    sort,
     current_user,
     base_path,
 ):
@@ -213,12 +214,18 @@ def construct_entries_response(
             continue
         name, field = _FILTER_PARAM_PATTERN.match(key).groups()
         queries[name][field] = value
+    sorting = []
+    for item in sort.split(","):
+        if item.startswith("-"):
+            sorting.append((item[1:], -1))
+        else:
+            sorting.append((item, 1))
     # Apply the queries and obtain a narrowed catalog.
     for name, parameters in queries.items():
         query_class = name_to_query_type[name]
         try:
             query = query_class(**parameters)
-            catalog = catalog.search(query)
+            catalog = catalog.sort(sorting).search(query)
         except QueryValueError as err:
             raise HTTPException(status_code=400, detail=err.args[0])
     count = len_or_approx(catalog)
