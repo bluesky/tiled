@@ -119,10 +119,13 @@ def slice_(
 
 
 def len_or_approx(catalog):
+    """
+    Prefer approximate length if implemented. (It's cheaper.)
+    """
     try:
-        return len(catalog)
-    except TypeError:
         return operator.length_hint(catalog)
+    except TypeError:
+        return len(catalog)
 
 
 def pagination_links(route, path, offset, limit, length_hint):
