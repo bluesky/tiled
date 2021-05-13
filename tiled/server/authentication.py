@@ -2,10 +2,16 @@ from datetime import datetime, timedelta
 import os
 from secrets import token_hex
 from typing import Any, Optional
+import warnings
 
 from fastapi import Depends, APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import ExpiredSignatureError, JWTError, jwt
+# To hide third-party warning
+# .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
+#     int_from_bytes is deprecated, use int.from_bytes instead
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from jose import ExpiredSignatureError, JWTError, jwt
 from pydantic import BaseModel, BaseSettings
 
 from .settings import get_settings
