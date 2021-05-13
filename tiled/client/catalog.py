@@ -829,7 +829,7 @@ def from_profile(name, **kwargs):
 
     Any additional kwargs override profile content.
     """
-    from ..profiles import load_profiles, paths
+    from ..profiles import load_profiles, paths, ProfileNotFound
 
     profiles = load_profiles()
     try:
@@ -899,18 +899,16 @@ def from_config(config):
     return from_catalog(catalog)
 
 
-class ProfileNotFound(KeyError):
-    pass
-
-
 class Ascending(Sentinel):
     "Intended for more readable sorting operations. An alias for 1."
+
     def __index__(self):
         return 1
 
 
 class Descending(Sentinel):
     "Intended for more readable sorting operations. An alias for -1."
+
     def __index__(self):
         return -1
 

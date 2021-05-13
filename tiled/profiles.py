@@ -182,3 +182,7 @@ def list_profiles():
     levels = gather_profiles(paths, strict=False)
     profiles = resolve_precedence(levels)
     return {name: source_filepath for name, (source_filepath, _) in profiles.items()}
+
+
+class ProfileNotFound(KeyError):
+    pass

@@ -46,7 +46,11 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
             # Interpret obj as catalog *factory*.
             sys_path_additions = []
             if source_filepath:
-                sys_path_additions.append(os.path.dirname(source_filepath))
+                if os.path.isdir(source_filepath):
+                    directory = source_filepath
+                else:
+                    directory = os.path.dirname(source_filepath)
+                sys_path_additions.append(directory)
             with _prepend_to_sys_path(sys_path_additions):
                 catalog = obj(**item["args"])
         else:
@@ -145,7 +149,7 @@ def parse_configs(config_path):
     return merged_config
 
 
-def direct_access(config):
+def direct_access(config, source_filepath=None):
     """
     Return the server-side Catalog object defined by a configuration.
 
@@ -186,7 +190,44 @@ def direct_access(config):
         parsed_config = parse_configs(config)
     else:
         parsed_config = config
-    return construct_serve_catalog_kwargs(parsed_config)["catalog"]
+    return construct_serve_catalog_kwargs(parsed_config, source_filepath)["catalog"]
+
+
+def direct_access_from_profile(name):
+    """
+    Return the server-side Catalog object from a profile.
+
+    Some profiles are purely client side, providing an address like
+
+    uri: ...
+
+    Others have the service-side configuration inline like:
+
+    direct:
+      - path: /
+        catalog: ...
+
+    This function only works on the latter kind. It returns the
+    service-side Catalog instance directly, not wrapped in a client.
+    """
+
+    from .profiles import load_profiles, paths, ProfileNotFound
+
+    profiles = load_profiles()
+    try:
+        filepath, profile_content = profiles[name]
+    except KeyError as err:
+        raise ProfileNotFound(
+            f"Profile {name!r} not found. Found profiles {list(profiles)} "
+            f"from directories {paths}."
+        ) from err
+    if "direct" not in profile_content:
+        raise ValueError(
+            "The function direct_access_from_profile only works on "
+            "profiles with a 'direct:' section that contain the "
+            "service-side configuration inline."
+        )
+    return direct_access(profile_content["direct"], source_filepath=filepath)
 
 
 class ConfigError(ValueError):
