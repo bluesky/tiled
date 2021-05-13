@@ -199,12 +199,12 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self._sorting = [("time", 1)]
         self._sorting_params = {
             "sort": ",".join(
-                f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
+                f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
             )
         }
         self._reversed_sorting_params = {
             "sort": ",".join(
-                f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
+                f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
             )
         }
         self._params = params or {}
@@ -464,7 +464,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     # to define keys_indexer, items_indexer, and values_indexer.
 
     def _keys_slice(self, start, stop, direction):
-        if direction > 1:
+        if direction > 0:
             sorting_params = self._sorting_params
         else:
             sorting_params = self._reversed_sorting_params
@@ -496,7 +496,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def _items_slice(self, start, stop, direction):
-        if direction > 1:
+        if direction > 0:
             sorting_params = self._sorting_params
         else:
             sorting_params = self._reversed_sorting_params
@@ -534,7 +534,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def _item_by_index(self, index, direction):
-        if direction > 1:
+        if direction > 0:
             sorting_params = self._sorting_params
         else:
             sorting_params = self._reversed_sorting_params
