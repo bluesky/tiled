@@ -309,6 +309,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         cache=UNCHANGED,
         params=UNCHANGED,
         queries=UNCHANGED,
+        sorting=UNCHANGED,
     ):
         """
         This is intended primarily for intenal use and use by subclasses.
@@ -333,6 +334,8 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             params = self._params
         if queries is UNCHANGED:
             queries = self._queries
+        if sorting is UNCHANGED:
+            sorting = self._sorting
         return type(self)(
             client=self._client,
             cache=cache,
@@ -343,6 +346,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             special_clients=special_clients,
             params=params,
             queries=queries,
+            sorting=sorting,
             root_client_type=self._root_client_type,
         )
 
