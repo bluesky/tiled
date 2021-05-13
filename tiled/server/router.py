@@ -31,6 +31,9 @@ from . import models
 from .. import __version__
 
 
+DEFAULT_PAGE_SIZE = 20
+
+
 router = APIRouter()
 
 
@@ -76,7 +79,7 @@ def declare_search_router():
         path: Optional[str] = "/",
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
         offset: Optional[int] = Query(0, alias="page[offset]"),
-        limit: Optional[int] = Query(10, alias="page[limit]"),
+        limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
         entry: Any = Depends(entry),
         current_user: str = Depends(get_current_user),
@@ -165,7 +168,7 @@ async def entries(
     request: Request,
     path: Optional[str] = "/",
     offset: Optional[int] = Query(0, alias="page[offset]"),
-    limit: Optional[int] = Query(10, alias="page[limit]"),
+    limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
     sort: Optional[str] = Query(None),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     current_user: str = Depends(get_current_user),
