@@ -222,7 +222,6 @@ def construct_entries_response(
             else:
                 sorting.append((item, 1))
     if sorting:
-        breakpoint()
         catalog = catalog.sort(sorting)
     # Apply the queries and obtain a narrowed catalog.
     for name, parameters in queries.items():
