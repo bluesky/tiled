@@ -222,6 +222,10 @@ def construct_entries_response(
             else:
                 sorting.append((item, 1))
     if sorting:
+        if not hasattr(catalog, "sort"):
+            raise HTTPException(
+                status_code=400, detail="This Catalog does not support sorting."
+            )
         catalog = catalog.sort(sorting)
     # Apply the queries and obtain a narrowed catalog.
     for name, parameters in queries.items():
