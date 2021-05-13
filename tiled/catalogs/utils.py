@@ -111,11 +111,16 @@ def slice_to_interval(slice_):
     if step == 1:
         if start < 0:
             raise ValueError(
-                "Catalog sequence slices with step=-1 must have start >= 0."
+                "Catalog sequence slices with start < 0 must have step=-1. "
+                f"Use for example [{slice_.start}:{slice_.stop}:-1]"
+                "(This is a limitation of slicing on Catalog sequences "
+                "that does not apply to Python sequences in general.)"
             )
         if (slice_.stop is not None) and (slice_.stop < start):
             raise ValueError(
-                "Catalog sequence slices with step=1 must have stop >= start."
+                "Catalog sequence slices with step=1 must have stop >= start. "
+                "(This is a limitation of slicing on Catalog sequences "
+                "that does not apply to Python sequences in general.)"
             )
         start_ = start
         stop_ = slice_.stop
@@ -123,12 +128,14 @@ def slice_to_interval(slice_):
     elif step == -1:
         if start >= 0:
             raise ValueError(
-                "Catalog sequence slices with step=-1 must have start < 0."
+                "Catalog sequence slices with start >= 0 must have step=1. "
+                "(This is a limitation of slicing on Catalog sequences "
+                "that does not apply to Python sequences in general.)"
             )
         if slice_.stop is not None:
             if slice_.stop > start:
                 raise ValueError(
-                    "Catalog sequence slices with step=-1 must have stop =< start."
+                    "Catalog sequence slices with step=-1 must have stop <= start."
                 )
             stop_ = 1 - slice_.stop
         else:
@@ -138,7 +145,7 @@ def slice_to_interval(slice_):
     else:
         raise ValueError(
             "Only step of 1 or -1 is supported in a Catalog sequence slice. "
-            "Step {slice_.step} is disallowed."
+            f"Step {slice_.step} is disallowed."
         )
     assert start_ >= 0
     assert (stop_ is None) or (stop_ >= start_)
