@@ -197,12 +197,16 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self._queries = tuple(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
         self._sorting = [("time", 1)]
-        self._sorting_params = ",".join(
-            f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
-        )
-        self._reversed_sorting_params = ",".join(
-            f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
-        )
+        self._sorting_params = {
+            "sort": ",".join(
+                f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
+            )
+        }
+        self._reversed_sorting_params = {
+            "sort": ",".join(
+                f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
+            )
+        }
         self._params = params or {}
         super().__init__()
 
@@ -535,8 +539,6 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         else:
             sorting_params = self._reversed_sorting_params
         assert index >= 0
-        if index >= len(self):
-            raise IndexError(f"index {index} out of range for length {len(self)}")
         url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
         content = get_json_with_cache(
             self._cache,

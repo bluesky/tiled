@@ -54,7 +54,7 @@ class IndexersMixin:
     def _keys_indexer(self, index_or_slice):
         if isinstance(index_or_slice, int):
             if index_or_slice < 0:
-                index_or_slice = 1 - index_or_slice
+                index_or_slice = -1 - index_or_slice
                 direction = -1
             else:
                 direction = 1
@@ -71,7 +71,7 @@ class IndexersMixin:
     def _items_indexer(self, index_or_slice):
         if isinstance(index_or_slice, int):
             if index_or_slice < 0:
-                index_or_slice = 1 - index_or_slice
+                index_or_slice = -1 - index_or_slice
                 direction = -1
             else:
                 direction = 1
@@ -87,7 +87,7 @@ class IndexersMixin:
     def _values_indexer(self, index_or_slice):
         if isinstance(index_or_slice, int):
             if index_or_slice < 0:
-                index_or_slice = 1 - index_or_slice
+                index_or_slice = -1 - index_or_slice
                 direction = -1
             else:
                 direction = 1
@@ -120,7 +120,7 @@ def slice_to_interval(slice_):
         start_ = start
         stop_ = slice_.stop
         direction = 1
-    if step == -1:
+    elif step == -1:
         if start >= 0:
             raise ValueError(
                 "Catalog sequence slices with step=-1 must have start < 0."

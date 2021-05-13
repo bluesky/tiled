@@ -124,22 +124,38 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     # The following three methods are used by IndexersMixin
     # to define keys_indexer, items_indexer, and values_indexer.
 
-    def _keys_slice(self, start, stop):
-        yield from itertools.islice(
-            self._mapping.keys(),
-            start,
-            stop,
-        )
+    def _keys_slice(self, start, stop, direction):
+        if direction > 0:
+            yield from itertools.islice(
+                self._mapping.keys(),
+                start,
+                stop,
+            )
+        else:
+            keys_to_slice = reversed(
+                list(
+                    itertools.islice(
+                        self._mapping.keys(),
+                        0,
+                        len(self._mapping) - start,
+                    )
+                )
+            )
+            keys = keys_to_slice[start:stop]
+            return keys
 
-    def _items_slice(self, start, stop):
+    def _items_slice(self, start, stop, direction):
         # A goal of this implementation is to avoid iterating over
         # self._mapping.values() because self._mapping may be a OneShotCachedMap which
         # only constructs its values at access time. With this in mind, we
         # identify the key(s) of interest and then only access those values.
-        yield from ((key, self._mapping[key]) for key in self._keys_slice(start, stop))
+        yield from ((key, self._mapping[key]) for key in self._keys_slice(start, stop, direction))
 
-    def _item_by_index(self, index):
-        key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
+    def _item_by_index(self, index, direction):
+        if direction > 0:
+            key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
+        else:
+            key = (itertools.islice(self._mapping.keys(), len(self._mapping) - index))
         return (key, self._mapping[key])
 
 
