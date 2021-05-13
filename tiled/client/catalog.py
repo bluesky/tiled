@@ -196,7 +196,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             raise ValueError("path is expected to be a list of segments")
         # Stash *immutable* copies just to be safe.
         self._path = tuple(path or [])
-        self._queries = tuple(queries or [])
+        self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
         self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
         self._sorting_params = {
@@ -582,7 +582,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     def search(self, query):
         return self.new_variation(
-            queries=self._queries + (query,),
+            queries=self._queries + [query],
         )
 
     def sort(self, sorting):
