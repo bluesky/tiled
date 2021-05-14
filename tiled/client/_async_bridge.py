@@ -41,10 +41,15 @@ class AsyncClientBridge:
         self._thread.start()
         # We could use any object here, but Sentinel is clearer for debugging.
         self._shutdown_sentinel = Sentinel("SHUTDOWN")
-        # TODO This finalizer is not working as intended.
+        # When this AsyncClientBridge is garbage collected, cleanly shutdown the worker.
         self._finalizer = weakref.finalize(
             self, self._queue.put, self._shutdown_sentinel
         )
+        # If the worker takes more than 2 seconds to start and set up the
+        # instance state something has gone very wrong. Give up.
+        # (This is in fact an overly generous timeout, but sometimes
+        # in CI environments where resources are constrained and uneven
+        # this kinds of overly-long tolerances are needed.)
         self._instance_state_setup_complete.wait(timeout=1)
 
     def _worker(self, client_kwargs):
