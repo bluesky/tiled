@@ -589,6 +589,27 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             sorting=sorting,
         )
 
+    def _ipython_key_completions_(self):
+        """
+        Provide method for the key-autocompletions in IPython.
+
+        See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
+        """
+        MAX_ENTRIES_SUPPORTED = 40
+        try:
+            if len(self) > MAX_ENTRIES_SUPPORTED:
+                MSG = (
+                    "Tab-completition is not supported on this particular Catalog "
+                    "because it has a large number of entries."
+                )
+                warnings.warn(MSG)
+                return []
+            else:
+                return list(self)
+        except Exception:
+            # Do not print messy traceback from thread. Just fail silently.
+            return []
+
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
