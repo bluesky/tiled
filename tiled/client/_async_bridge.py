@@ -1,0 +1,71 @@
+import asyncio
+import queue
+import threading
+import weakref
+
+import httpx
+
+from .utils import Sentinel
+
+
+class ClientBridge:
+    def __init__(self, **client_kwargs):
+        self._loop_starting = threading.Event()
+        self._queue = queue.Queue()
+        self._thread = threading.Thread(target=self._worker, args=(client_kwargs,))
+        self._thread.start()
+        self._loop_starting.wait(timeout=1)
+        # We could use any object here, but Sentinel is clearer for debugging.
+        self._shutdown_sentinel = Sentinel("SHUTDOWN")
+        self._finalizer = weakref.finalize(
+            self, self._queue.put, self._shutdown_sentinel
+        )
+
+    def _worker(self, client_kwargs):
+
+        self._client = httpx.AsyncClient(**client_kwargs)
+
+        async def loop():
+            loop = asyncio.get_running_loop()
+            self._loop_starting.set()
+            while True:
+                try:
+                    item = self._queue.get_nowait()
+                except queue.Empty:
+                    await asyncio.sleep(1)
+                    continue
+                if item is self._shutdown_sentinel:
+                    break
+                args, kwargs, callback = item
+                future = asyncio.run_coroutine_threadsafe(
+                    self._task(*args, **kwargs), loop
+                )
+                future.add_done_callback(callback)
+
+        asyncio.run(loop())
+
+    async def _task(self, *args, **kwargs):
+        response = await self._client.get(*args, **kwargs)
+        print(response)
+
+    def get(self, *args, **kwargs):
+        response_queue = queue.Queue()
+
+        def callback(future):
+            try:
+                result = future.result()
+            except Exception:
+                result = future.exception()
+            response_queue.put(result)
+
+        self._queue.put((args, kwargs, callback))
+        result = response_queue.get()
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    def shutdown(self, wait=True):
+        print("shutdown")
+        self._queue.put(self._shutdown_sentinel)
+        if wait:
+            self._thread.join()
