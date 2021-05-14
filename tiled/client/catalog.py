@@ -727,13 +727,15 @@ def from_catalog(
     # Only an AsyncClient can be used over ASGI.
     # We wrap all the async methods in a call to asyncio.run(...).
     # Someday we should explore asynchronous Tiled Client objects.
-    client = httpx.AsyncClient(
+    from ._async_bridge import AsyncClientBridge
+
+    client = AsyncClientBridge(
         base_url="http://local-tiled-app",
         headers=headers,
         app=app,
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
-    atexit.register(asyncio.run, client.aclose())
+    atexit.register(client.shutdown)
 
     return from_client(
         client,

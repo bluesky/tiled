@@ -1,4 +1,3 @@
-import asyncio
 from inspect import iscoroutine
 
 import httpx
@@ -75,12 +74,9 @@ def _send(client, request, timeout):
     in the same process via ASGI.
     """
     if timeout is UNSET:
-        result = client.send(request)
+        return client.send(request)
     else:
-        result = client.send(request, timeout=timeout)
-    if iscoroutine(result):
-        return asyncio.run(result)
-    return result
+        return client.send(request, timeout=timeout)
 
 
 def handle_error(response):
