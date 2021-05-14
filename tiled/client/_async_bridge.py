@@ -50,7 +50,7 @@ class AsyncClientBridge:
         # (This is in fact an overly generous timeout, but sometimes
         # in CI environments where resources are constrained and uneven
         # this kinds of overly-long tolerances are needed.)
-        self._instance_state_setup_complete.wait(timeout=1)
+        self._instance_state_setup_complete.wait(timeout=2)
 
     def _worker(self, client_kwargs):
 
