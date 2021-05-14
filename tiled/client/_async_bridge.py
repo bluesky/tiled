@@ -22,7 +22,9 @@ class AsyncClientBridge:
     construction. If we want a sync API, we need to bridge sync--async
     somewhere.
     """
-    def __init__(self, **client_kwargs):
+
+    def __init__(self, *, _startup_hook, **client_kwargs):
+        self._startup_hook = _startup_hook
         # This will signal that the all the instance state that is defined in the
         # # worker thread (e.g. self._client) has been defined.
         # We will block on it before returning from __init__ to ensure that
@@ -31,7 +33,8 @@ class AsyncClientBridge:
         # This queue accepts requets like (callback, method_name, args, kwargs).
         self._queue = queue.Queue()
         self._thread = threading.Thread(
-            target=self._worker, args=(client_kwargs,), name="AsyncClient-worker")
+            target=self._worker, args=(client_kwargs,), name="AsyncClient-worker"
+        )
         self._thread.start()
         # We could use any object here, but Sentinel is clearer for debugging.
         self._shutdown_sentinel = Sentinel("SHUTDOWN")
@@ -48,8 +51,7 @@ class AsyncClientBridge:
         async def loop():
             loop = asyncio.get_running_loop()
 
-            # Note: This is important. The Tiled server routes are defined lazily on startup.
-            await self._client._transport.app.router.startup()
+            await self._startup_hook()
 
             self._instance_state_setup_complete.set()
             while True:

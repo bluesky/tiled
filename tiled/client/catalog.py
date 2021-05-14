@@ -747,10 +747,16 @@ def from_catalog(
     # Someday we should explore asynchronous Tiled Client objects.
     from ._async_bridge import AsyncClientBridge
 
+    async def startup():
+        # Note: This is important. The Tiled server routes are defined lazily on
+        # startup.
+        await app.router.startup()
+
     client = AsyncClientBridge(
         base_url="http://local-tiled-app",
         headers=headers,
         app=app,
+        _startup_hook=startup,
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
     atexit.register(client.shutdown)
