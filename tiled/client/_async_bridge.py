@@ -27,6 +27,10 @@ class AsyncClientBridge:
 
         async def loop():
             loop = asyncio.get_running_loop()
+
+            # Note: This is important. The Tiled server routes are defined lazily on startup.
+            await self._client._transport.app.router.startup()
+
             self._loop_starting.set()
             while True:
                 try:
@@ -64,7 +68,7 @@ class AsyncClientBridge:
         if isinstance(result, Exception):
             raise result
         return result
-    
+
     def shutdown(self, wait=True):
         print("shutdown")
         self._queue.put(self._shutdown_sentinel)

@@ -1,4 +1,3 @@
-import asyncio
 import atexit
 import collections
 import collections.abc
@@ -714,8 +713,6 @@ def from_catalog(
     from ..server.app import serve_catalog
 
     app = serve_catalog(catalog, authenticator)
-    # Note: This is important. The Tiled server routes are defined lazily on startup.
-    asyncio.run(app.router.startup())
 
     headers = {}
     if token is None:

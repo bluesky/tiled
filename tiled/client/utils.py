@@ -1,5 +1,3 @@
-from inspect import iscoroutine
-
 import httpx
 import msgpack
 
@@ -68,10 +66,9 @@ def get_json_with_cache(cache, offline, client, path, **kwargs):
 
 def _send(client, request, timeout):
     """
-    EXPERIMENTAL: Tolerate sync httpx.Client or httpx.AsyncClient.
-
-    The AsyncClient is interesting because it can interface directly with FastAPI app
-    in the same process via ASGI.
+    Handle httpx's timeout API, which uses a special internal sentinel to mean
+    "no timeout" and therefore must not be passed any value (including None)
+    if we want no timeout.
     """
     if timeout is UNSET:
         return client.send(request)
