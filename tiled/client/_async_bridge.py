@@ -33,7 +33,10 @@ class AsyncClientBridge:
         # This queue accepts requets like (callback, method_name, args, kwargs).
         self._queue = queue.Queue()
         self._thread = threading.Thread(
-            target=self._worker, args=(client_kwargs,), name="AsyncClient-worker"
+            target=self._worker,
+            args=(client_kwargs,),
+            name="AsyncClient-worker",
+            daemon=True,
         )
         self._thread.start()
         # We could use any object here, but Sentinel is clearer for debugging.
@@ -94,8 +97,6 @@ class AsyncClientBridge:
         return result
 
     def shutdown(self, wait=True):
-        # TODO Why isn't this called at Python exit?
-        print("shutdown")
         self._queue.put(self._shutdown_sentinel)
         if wait:
             self._thread.join()
