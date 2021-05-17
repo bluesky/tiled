@@ -101,6 +101,7 @@ class AsyncClientBridge:
         return result
 
     def shutdown(self, wait=True):
+        # Shutdown worker.
         self._queue.put(self._shutdown_sentinel)
         if wait:
             self._thread.join()
@@ -110,6 +111,10 @@ class AsyncClientBridge:
 
     def build_request(self, *args, **kwargs):
         return self._client.build_request(*args, **kwargs)
+
+    def close(self):
+        self._run(self._client.aclose)
+        self.shutdown()
 
     @property
     def base_url(self):

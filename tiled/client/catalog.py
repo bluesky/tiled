@@ -759,7 +759,7 @@ def from_catalog(
         _startup_hook=startup,
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
-    atexit.register(client.shutdown)
+    atexit.register(client.close)
 
     return from_client(
         client,
