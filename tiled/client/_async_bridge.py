@@ -71,20 +71,19 @@ class AsyncClientBridge:
                     continue
                 if item is self._shutdown_sentinel:
                     break
-                callback, method_name, args, kwargs = item
+                callback, func, args, kwargs = item
                 future = asyncio.run_coroutine_threadsafe(
-                    self._task(method_name, *args, **kwargs), loop
+                    self._task(func, *args, **kwargs), loop
                 )
                 future.add_done_callback(callback)
 
         asyncio.run(loop())
 
-    async def _task(self, method_name, *args, **kwargs):
-        method = getattr(self._client, method_name)
-        result = await method(*args, **kwargs)
+    async def _task(self, func, *args, **kwargs):
+        result = await func(*args, **kwargs)
         return result
 
-    def _run(self, method_name, *args, **kwargs):
+    def _run(self, func, *args, **kwargs):
         "Submit to the worker. Return the result or raise the exception."
         response_queue = queue.Queue()
 
@@ -95,7 +94,7 @@ class AsyncClientBridge:
                 result = future.exception()
             response_queue.put(result)
 
-        self._queue.put((callback, method_name, args, kwargs))
+        self._queue.put((callback, func, args, kwargs))
         result = response_queue.get()
         if isinstance(result, Exception):
             raise result
@@ -107,7 +106,7 @@ class AsyncClientBridge:
             self._thread.join()
 
     def send(self, *args, **kwargs):
-        return self._run("send", *args, **kwargs)
+        return self._run(self._client.send, *args, **kwargs)
 
     def build_request(self, *args, **kwargs):
         return self._client.build_request(*args, **kwargs)
