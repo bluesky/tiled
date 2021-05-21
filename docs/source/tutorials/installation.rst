@@ -20,9 +20,15 @@ We strongly recommend creating a fresh environment.
    python3 -m venv try-tiled
    source try-tiled/bin/activate
 
-Install Tiled from PyPI. There are many "extras" to opt in to optional dependencies.
-The base package has no dependencies at all. Which ones you'll need depends on what
-whether you are publishing data as a ``server``, reading data as a ``client`` or both.
+Install Tiled from PyPI. If you want to just grab everything you might need
+without worrying about keeping dependencies low:
+
+.. code:: bash
+
+   python3 -m pip install 'tiled[complete]'
+
+To install dependencies more selectively, decide whether you are
+publishing data as a ``server``, reading data as a ``client`` or both.
 
 .. code:: bash
 
@@ -38,13 +44,6 @@ still publish and/or read *metadata* but cannot pull any actual data.
 .. code:: bash
 
    python3 -m pip install 'tiled[array,dataframe,xarray]'
-
-If you want to just grab everything you might need without worrying about keeping
-dependencies low:
-
-.. code:: bash
-
-   python3 -m pip install 'tiled[complete]'
 
 Source
 ------

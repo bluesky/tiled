@@ -1,6 +1,5 @@
 authentication:
-    allow_anonymous_access: True
-    authenticator: tiled.examples.toy_authentication:DictionaryAuthenticator
+    authenticator: tiled.authenticators:DictionaryAuthenticator
     args:
         users_to_passwords:
             alice: ${ALICE_PASSWORD}

@@ -3,7 +3,6 @@ See example_configs/toy_authentication.yml for
 server configuration that runs this example.
 """
 import numpy
-import secrets
 
 from tiled.utils import SpecialUsers
 from tiled.readers.array import ArrayAdapter
@@ -30,18 +29,3 @@ catalog = Catalog(
     },
     access_policy=access_policy,
 )
-
-
-class DictionaryAuthenticator:
-    "For demo purposes only!"
-
-    def __init__(self, users_to_passwords):
-        self._users_to_passwords = users_to_passwords
-
-    def authenticate(self, username: str, password: str):
-        true_password = self._users_to_passwords.get(username)
-        if not true_password:
-            # Username is not valid.
-            return
-        if secrets.compare_digest(true_password, password):
-            return username
