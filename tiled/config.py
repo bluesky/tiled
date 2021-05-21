@@ -14,10 +14,11 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
     """
     Given parsed configuration, construct arguments for serve_catalog(...).
     """
-    auth_spec = config.get("authentication")
+    auth_spec = config.get("authentication", {})
+    allow_anonymous_access = bool(auth_spec.get("allow_anonymous_access"))
     auth_aliases = {}
     # TODO Enable entrypoint as alias for authenticator_class?
-    if auth_spec is None:
+    if auth_spec.get("authenticator") is None:
         authenticator = None
     else:
         import_path = auth_aliases.get(
@@ -83,7 +84,11 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
                     include_routers.append(router)
         root_catalog = Catalog(mapping)
         root_catalog.include_routers.extend(include_routers)
-    return {"catalog": root_catalog, "authenticator": authenticator}
+    return {
+        "catalog": root_catalog,
+        "authenticator": authenticator,
+        "allow_anonymous_access": allow_anonymous_access,
+    }
 
 
 def merge(configs):

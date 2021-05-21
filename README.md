@@ -21,7 +21,7 @@ Serve a "Catalog", a Python object backed by some generated data, directory
 of files, network resource, or database
 
 ```
-tiled serve pyobject tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:demo
 ```
 
 And then access the data efficiently via the Python client, a web browser, or

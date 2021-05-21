@@ -6,7 +6,7 @@ need. We'll also use dask to delay download computation.
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
 ```
-tiled serve pyobject tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:demo
 ```
 
 Now, in a Python interpreter, connect with the Python client.

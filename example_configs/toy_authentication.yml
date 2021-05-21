@@ -1,4 +1,5 @@
 authentication:
+    allow_anonymous_access: True
     authenticator: tiled.examples.toy_authentication:DictionaryAuthenticator
     args:
         users_to_passwords:

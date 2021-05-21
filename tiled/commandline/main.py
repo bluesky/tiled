@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import typer
-from typing import List, Optional
+from typing import Optional
 
 
 cli_app = typer.Typer()
@@ -77,13 +77,15 @@ def profile_show(profile_name: str):
 @serve_app.command("directory")
 def serve_directory(
     directory: str,
+    public: bool = typer.Option(False, "--public"),
 ):
     "Serve a Catalog instance from a directory of files."
     from ..catalogs.files import Catalog
-    from ..server.app import serve_catalog
+    from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
     catalog = Catalog.from_directory(directory)
-    web_app = serve_catalog(catalog)
+    web_app = serve_catalog(catalog, allow_anonymous_access=public)
+    print_admin_api_key_if_generated(web_app)
 
     import uvicorn
 
@@ -93,16 +95,16 @@ def serve_directory(
 @serve_app.command("pyobject")
 def serve_pyobject(
     object_path: str,  # e.g. "package_name.module_name:object_name"
-    glob: List[str] = typer.Option(None),
-    mimetype: List[str] = typer.Option(None),
+    public: bool = typer.Option(False, "--public"),
 ):
     "Serve a Catalog instance from a Python module."
-    from ..server.app import serve_catalog
+    from ..server.app import serve_catalog, print_admin_api_key_if_generated
     from ..utils import import_object
 
     catalog = import_object(object_path)
 
-    web_app = serve_catalog(catalog)
+    web_app = serve_catalog(catalog, allow_anonymous_access=public)
+    print_admin_api_key_if_generated(web_app)
 
     import uvicorn
 
@@ -125,10 +127,11 @@ def serve_config(
     # Delay this import, which is fairly expensive, so that
     # we can fail faster if config-parsing fails above.
 
-    from ..server.app import serve_catalog
+    from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
     kwargs = construct_serve_catalog_kwargs(parsed_config)
     web_app = serve_catalog(**kwargs)
+    print_admin_api_key_if_generated(web_app)
 
     # Likewise, delay this import.
 

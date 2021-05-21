@@ -6,7 +6,7 @@ over the entries' metadata.
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
 ```
-tiled serve pyobject tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:demo
 ```
 
 ## Search Using the Python Client

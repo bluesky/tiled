@@ -5,7 +5,7 @@ In this tutorial we will navigate a collection of datasets from Python.
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
 ```
-tiled serve pyobject tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:demo
 ```
 
 Now, in a Python interpreter, connect, with the Python client.

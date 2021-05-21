@@ -4,8 +4,9 @@ from secrets import token_hex
 from typing import Any, Optional
 import warnings
 
-from fastapi import Depends, APIRouter, HTTPException, status
+from fastapi import Depends, APIRouter, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security.api_key import APIKeyCookie, APIKeyQuery, APIKeyHeader
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -43,6 +44,9 @@ class TokenData(BaseModel):
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+api_key_query = APIKeyQuery(name="api_key", auto_error=False)
+api_key_header = APIKeyHeader(name="X-TILED-API-KEY", auto_error=False)
+api_key_cookie = APIKeyCookie(name="TILED_API_KEY", auto_error=False)
 authentication_router = APIRouter()
 
 
@@ -54,15 +58,33 @@ def create_access_token(data: dict, expires_delta):
     return encoded_jwt
 
 
+async def check_single_user_api_key(
+    api_key_query: str = Security(api_key_query),
+    api_key_header: str = Security(api_key_header),
+    api_key_cookie: str = Security(api_key_cookie),
+    settings: BaseSettings = Depends(get_settings),
+):
+    for api_key in [api_key_query, api_key_header, api_key_cookie]:
+        if api_key is not None:
+            if api_key == settings.single_user_api_key:
+                return True
+            raise HTTPException(status_code=401, detail="Invalid API key")
+    return False
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
+    has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
+    authenticator=Depends(get_authenticator),
 ):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if (authenticator is None) and has_single_user_api_key:
+        return SpecialUsers.admin
     if token is None:
         if settings.allow_anonymous_access:
             # Any user who can see the server can make unauthenticated requests.
@@ -72,7 +94,7 @@ async def get_current_user(
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
-            raise HTTPException(status_code=403, detail="Not authenticated")
+            raise HTTPException(status_code=401, detail="Not authenticated")
     for secret_key in SECRET_KEYS:
         try:
             payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
@@ -81,7 +103,7 @@ async def get_current_user(
                 raise credentials_exception
             break
         except ExpiredSignatureError:
-            raise HTTPException(status_code=403, detail="Access token has expired.")
+            raise HTTPException(status_code=401, detail="Access token has expired.")
 
         except JWTError:
             # Try the next key in the key rotation.

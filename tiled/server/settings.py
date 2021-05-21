@@ -1,13 +1,9 @@
 from functools import lru_cache
 import os
+import secrets
 from typing import Any, List
 
 from pydantic import BaseSettings
-
-
-class DummyAuthenticator:
-    def authenticate(self, username: str, password: str):
-        return username
 
 
 class Settings(BaseSettings):
@@ -16,11 +12,13 @@ class Settings(BaseSettings):
     allow_anonymous_access: bool = bool(
         int(os.getenv("TILED_ALLOW_ANONYMOUS_ACCESS", True))
     )
-    # TODO Should we use PAM by default? Or raise an error by default?
-    authenticator: Any = DummyAuthenticator()
     allow_origins: List[str] = [
         item for item in os.getenv("TILED_ALLOW_ORIGINS", "").split() if item
     ]
+    authenticator: Any = None
+    # These 'single user' settings are only applicable if authenticator is None.
+    single_user_api_key = os.getenv("TILED_SINGLE_USER_API_KEY", secrets.token_hex(32))
+    single_user_api_key_generated = not ("TILED_SINGLE_USER_API_KEY" in os.environ)
 
 
 @lru_cache()

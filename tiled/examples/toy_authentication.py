@@ -1,5 +1,5 @@
 """
-See tiled/example_configurations/toy_authentication for
+See example_configs/toy_authentication.yml for
 server configuration that runs this example.
 """
 import numpy

@@ -675,10 +675,18 @@ def from_uri(
         # and force an unauthenticated connection.
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    client = httpx.Client(
-        base_url=uri.rstrip("/"),
-        headers=headers,
-    )
+    url = httpx.URL(uri)
+    params = url.query.split(b"&")
+    for item in params:
+        if b"=" in item:
+            key, value = item.split(b"=")
+            if key == b"api_key":
+                headers["X-TILED-API-KEY"] = value.decode()
+    base_url = f"{url.scheme}://{url.host}"
+    if url.port:
+        base_url += f":{url.port}"
+    base_url += url.path.rstrip("/")
+    client = httpx.Client(base_url=base_url, headers=headers)
     return from_client(
         client,
         cache=cache,

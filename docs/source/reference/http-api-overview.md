@@ -4,7 +4,7 @@ To view and try the interactive docs, start the Tiled server with the demo
 Catalog from a Terminal
 
 ```
-tiled serve pyobject tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:demo
 ```
 
 and navigate your browser to http://localhost:8000/docs.

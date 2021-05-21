@@ -43,7 +43,7 @@ The full strucutre looks like
 We can serve this directory using Tiled.
 
 ```
-tiled serve directory example_files
+tiled serve directory --public example_files
 ```
 
 Tiled walks the directory, identifies files that it recognizes and has

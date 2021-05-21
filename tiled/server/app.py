@@ -1,4 +1,5 @@
 from functools import lru_cache
+import sys
 import time
 
 from fastapi import FastAPI, Request
@@ -40,6 +41,29 @@ def get_app(include_routers=None):
         response.headers["Server-Timing"] = f"app;dur={1000 * process_time:.1f}"
         return response
 
+    @app.middleware("http")
+    async def set_api_key_cookie(request: Request, call_next):
+        # If the API key is provided via a header or query, set it as a cookie.
+        response = await call_next(request)
+        if ("X-TILED-API-KEY" in request.headers) and (response.status_code < 400):
+            response.set_cookie(
+                key="TILED_API_KEY",
+                value=request.headers["X-TILED-API-KEY"],
+                domain=request.url.hostname,
+            )
+        elif ("api_key" in request.url.query) and (response.status_code < 400):
+            params = request.url.query.split("&")
+            for item in params:
+                if "=" in item:
+                    key, value = item.split("=")
+                    if key == "api_key":
+                        response.set_cookie(
+                            key="TILED_API_KEY",
+                            value=value,
+                            domain=request.url.hostname,
+                        )
+        return response
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_settings().allow_origins,
@@ -51,7 +75,7 @@ def get_app(include_routers=None):
     return app
 
 
-def serve_catalog(catalog, authenticator=None):
+def serve_catalog(catalog, authenticator=None, allow_anonymous_access=False):
     """
     Serve a Catalog
 
@@ -59,6 +83,8 @@ def serve_catalog(catalog, authenticator=None):
     ----------
     catalog : Catalog
     authenticator : Authenticator
+    allow_anonymous_access : bool
+        Default is False.
     """
 
     @lru_cache(1)
@@ -68,6 +94,12 @@ def serve_catalog(catalog, authenticator=None):
     @lru_cache(1)
     def override_get_root_catalog():
         return catalog
+
+    @lru_cache(1)
+    def override_get_settings():
+        settings = get_settings()
+        settings.allow_anonymous_access = allow_anonymous_access
+        return settings
 
     # The Catalog and Authenticator have the opporunity to add custom routes to
     # the server here. (Just for example, a Catalog of BlueskyRuns uses this
@@ -79,4 +111,32 @@ def serve_catalog(catalog, authenticator=None):
     app = get_app(include_routers=include_routers)
     app.dependency_overrides[get_authenticator] = override_get_authenticator
     app.dependency_overrides[get_root_catalog] = override_get_root_catalog
+    app.dependency_overrides[get_settings] = override_get_settings
     return app
+
+
+def print_admin_api_key_if_generated(web_app):
+    settings = web_app.dependency_overrides.get(get_settings, get_settings)()
+    authenticator = web_app.dependency_overrides.get(
+        get_authenticator, get_authenticator
+    )()
+    if settings.allow_anonymous_access:
+        print(
+            """
+
+    Tiled server is running in "public" mode, permitting open, anonymous access.
+    Any data that is not specifically controlled with an access policy
+    will be visible to anyone who can connect to this server.
+""",
+            file=sys.stderr,
+        )
+    elif (authenticator is None) and settings.single_user_api_key_generated:
+        print(
+            f"""
+
+    Use the following URL to connect to Tiled:
+
+    "http://127.0.0.1:8000?api_key={settings.single_user_api_key}"
+""",
+            file=sys.stderr,
+        )
