@@ -16,6 +16,7 @@ tutorials/plotly-integration
 ```{toctree}
 :caption: How To Guides
 
+how-to/configuration
 how-to/scaling
 ```
 

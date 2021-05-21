@@ -1,4 +1,4 @@
-# Controlling Speed, Memory Usage, and Disk Usage
+# Control Speed, Memory Usage, and Disk Usage
 
 *There are no solutions, only trade-offs.*
 
