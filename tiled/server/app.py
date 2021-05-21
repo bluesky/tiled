@@ -1,4 +1,5 @@
 from functools import lru_cache
+import secrets
 import sys
 import time
 
@@ -51,6 +52,11 @@ def get_app(include_routers=None):
                 value=request.headers["X-TILED-API-KEY"],
                 domain=request.url.hostname,
             )
+            response.set_cookie(
+                key="TILED_CSRF_TOKEN",
+                value=secrets.token_hex(32),
+                domain=request.url.hostname,
+            )
         elif ("api_key" in request.url.query) and (response.status_code < 400):
             params = request.url.query.split("&")
             for item in params:
@@ -62,6 +68,11 @@ def get_app(include_routers=None):
                             value=value,
                             domain=request.url.hostname,
                         )
+            response.set_cookie(
+                key="TILED_CSRF_TOKEN",
+                value=secrets.token_hex(32),
+                domain=request.url.hostname,
+            )
         return response
 
     app.add_middleware(

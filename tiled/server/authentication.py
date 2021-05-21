@@ -4,7 +4,17 @@ from secrets import token_hex
 from typing import Any, Optional
 import warnings
 
-from fastapi import Depends, APIRouter, HTTPException, Security, status
+from fastapi import (
+    Cookie,
+    Depends,
+    APIRouter,
+    HTTPException,
+    Query,
+    Security,
+    status,
+    Response,
+    Request,
+)
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.api_key import APIKeyCookie, APIKeyQuery, APIKeyHeader
 
@@ -137,3 +147,18 @@ async def login_for_access_token(
         data={"sub": username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@authentication_router.post("/logout")
+async def logout(
+    request: Request,
+    response: Response,
+    csrf_token: str = Query(...),
+    TILED_CSRF_TOKEN=Cookie(...),
+):
+    if csrf_token != TILED_CSRF_TOKEN:
+        raise HTTPException(status_code=401, detail="invalid csrf_token")
+    domain = request.url.hostname
+    response.delete_cookie("TILED_API_KEY", domain=domain)
+    response.delete_cookie("TILED_CSRF_TOKEN", domain=domain)
+    return {}
