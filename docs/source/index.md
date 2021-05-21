@@ -17,6 +17,7 @@ tutorials/plotly-integration
 :caption: How To Guides
 
 how-to/configuration
+how-to/direct-client
 how-to/scaling
 ```
 
