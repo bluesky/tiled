@@ -1,4 +1,4 @@
-# Serving a Directory of Files
+# Serve a Directory of Files
 
 In this tutorial, we will use Tiled to browse a directory of 
 spreadsheets and image files from Python and read the data as pandas

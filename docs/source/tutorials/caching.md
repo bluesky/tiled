@@ -1,4 +1,4 @@
-# Keeping a Local Copy
+# Keep a Local Copy
 
 There are several modes of *caching* supported by Tiled. They cover different
 situations. Each one is addressed here with a hypthoetical scenario.

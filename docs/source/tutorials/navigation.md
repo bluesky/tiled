@@ -1,4 +1,4 @@
-# Navigating a Catalog
+# Navigate a Catalog
 
 In this tutorial we will navigate a collection of datasets from Python.
 

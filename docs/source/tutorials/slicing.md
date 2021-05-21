@@ -1,4 +1,4 @@
-# Loading Slices of Data
+# Load Slices of Data
 
 In this tutorial we will slice datasets to download only the parts that we
 need. We'll also use dask to delay download computation.
