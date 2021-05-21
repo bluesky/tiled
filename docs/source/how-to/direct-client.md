@@ -61,7 +61,7 @@ From a directory of configuration files:
 catalog = from_config("path/to/directory/")
 ```
 
-## Direct access to the serice-side object
+## Direct access to the service-side object
 
 For advanced debugging, it is sometimes useful to set aside the client
 entirely and working directly with the "service-side" Catalog object.
