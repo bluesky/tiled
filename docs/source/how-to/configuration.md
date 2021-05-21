@@ -80,6 +80,9 @@ catalogs:
       catalog: tiled.examples.generated:demo
 ```
 
+See {doc}`../explanations/security` and {doc}`../explanations/access-control` for examples addressing
+authentication and authorization.
+
 ## Configuration merging rules
 
 If there are multiple configuration files:
