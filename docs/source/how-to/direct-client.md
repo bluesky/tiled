@@ -4,13 +4,13 @@ Tiled is designed "service-first", and all clients including the Python one
 typically operate using HTTP over TCP. But in some situations it can be
 convenient to access a Catalog's data more directly in Python. Such as:
 
-* You only care about accessing the data from Python, and you don't want to pay
-  for transporting it through the network from service to client.
+* You only care about accessing the data from Python, you don't care about
+  enforcing any access controls (the user is trusted), and you don't want to pay
+  for transporting the data through the network from service to client.
 * You are developing or debugging, and you'd like exceptions from the service
   to be raised directly in the client process.
 
-In this case, you can run the service and the client in the same process. There
-are a couple ways to do this.
+In these situations, you may run the service and the client in the same process.
 
 ## From a (service-side) Catalog instance 
 
