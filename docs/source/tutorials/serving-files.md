@@ -94,4 +94,5 @@ array([[1., 1., 1., ..., 1., 1., 1.],
 ```
 
 Try deleting, moving, or adding files, and notice that the ``catalog`` object
-updates its structure.
+updates its structure. It continually watches the filesystem for changes in an
+efficient fashion.
