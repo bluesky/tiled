@@ -22,6 +22,7 @@ how-to/scaling
 ```{toctree}
 :caption: Explanations
 
+explanations/security
 explanations/access-control
 explanations/faq
 explanations/lineage

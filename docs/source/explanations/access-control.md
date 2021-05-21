@@ -1,12 +1,33 @@
 # Access Control
 
-Tiled supports basic access control. The primary use case in mind is
-controlling users' access to data based on a particular field in a database
-indicating the "proposal" or "data session" to which a given dataset belongs,
-and resolving that via some external user managmenet system.
+Tiled offers control of which users can see which entries.
+This is done using an "Access Policy" object, which implements
+a given policy for a given Catalog. It can do this in one of two ways
 
-The server current supports authentication using OAuth2 with JWT, where
-the underlying user management and authentication system is pluggable in
-exactly the same fashion as JupyterHub. To start, as a proof of concept, two
-"Authenticator" plugins are implemented. See
-https://github.com/bluesky/tiled/issues/3 for discussion and plans.
+1. Brute checking the entries one at a time
+2. Using a query to narrow down search results to those that
+   the authenticated user is allowed to access.
+
+(1) is easier to implement and suitable for small- to medium-sized Catalogs
+in memory or backed by a modestly-sized directory. (2) is necessary for large
+Catalogs backed by databases or other external services.
+
+This is an example of (1):
+
+```{eval-rst}
+.. literalinclude:: ../../../tiled/examples/toy_authentication.py
+```
+
+
+Here is an example configuration serving that catalog with a
+"toy" authenticator that defines some users.
+
+```{eval-rst}
+.. literalinclude:: ../../../example_configs/toy_authentication.yml
+```
+
+If the configuration above is saved at ``config.yml``, it can be served with:
+
+```
+ALICE_PASSWORD=secret BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config config.yml
+```
