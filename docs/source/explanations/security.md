@@ -21,7 +21,6 @@ At startup, a secret token is generated and logged in the terminal.
 ```
 $ tiled serve pyobject tiled.examples.generated_minimal:catalog
 
-
     Use the following URL to connect to Tiled:
 
     "http://127.0.0.1:8000?api_key=a4062c3dd6ab2af0d28fdb7eb278dd985c462ecf08d39f33233554c7fdaa42e7"
@@ -69,7 +68,6 @@ the following:
 
 ```
 $ tiled serve pyobject --public tiled.examples.generated_minimal:catalog
-
 
     Tiled server is running in "public" mode, permitting open, anonymous access.
     Any data that is not specifically controlled with an access policy

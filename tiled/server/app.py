@@ -134,7 +134,6 @@ def print_admin_api_key_if_generated(web_app):
     if settings.allow_anonymous_access:
         print(
             """
-
     Tiled server is running in "public" mode, permitting open, anonymous access.
     Any data that is not specifically controlled with an access policy
     will be visible to anyone who can connect to this server.
@@ -144,7 +143,6 @@ def print_admin_api_key_if_generated(web_app):
     elif (authenticator is None) and settings.single_user_api_key_generated:
         print(
             f"""
-
     Use the following URL to connect to Tiled:
 
     "http://127.0.0.1:8000?api_key={settings.single_user_api_key}"
