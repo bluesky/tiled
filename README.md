@@ -27,9 +27,9 @@ Tiled implements extensible **access control enforcement** based on web security
 standards. Like Jupyter, Tiled can be used by a single user or deployed as
 a shared resource.
 
-Tiled supports **local caching** in a standard web browser or in Tiled's Python
-client, facilitating efficient use of bandwidth and even an offlien "airplane
-mode."
+Tiled facilitates **local caching** in a standard web browser or in Tiled's
+Python client, making efficient use of bandwidth and enabling an offline
+"airplane mode."
 
 ## Example
 
