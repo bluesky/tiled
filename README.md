@@ -6,16 +6,32 @@ Data analysis is easier and better when we load and operate on data in simple,
 self-describing structures that keep our mind on the science rather the
 book-keeping of filenames and file formats.
 
-Tiled is a **data access** tool that enables **search** and **structured,
-chunkwise access** to data in a **variety of formats**, regardless of the
-format the data happens to be stored in at rest. Like Jupyter, Tiled can be
-used solo or deployed as a shared resource. Tiled provides data, locally or
-over the web, in a choice of formats, spanning slow but widespread
-interchange formats (e.g. CSV, JSON, TIFF) and fast, efficient ones (e.g. C
-buffers, Apache Arrow DataFrames). Tiled enables slicing and sub-selection
-for accessing only the data of interest, and it enables parallelized download
-of many chunks at once. Users can access data with very light software
-dependencies and fast partial downloads.
+Tiled is a **data access** service for data-aware portals and data science tools.
+It enables **search** and **structured, chunkwise access** to data in an
+extensible **variety of appropriate formats**, regardless of the format the data
+happens to *be stored in at rest, spanning slow but widespread interchange
+formats (e.g. CSV, JSON, TIFF) and fast, efficient ones (e.g. C buffers, Apache
+Arrow DataFrames). Tiled enables slicing and sub-selection for accessing only
+the data of interest, and it enables parallelized download of many chunks at
+once. Users can access data with very light software dependencies and fast
+partial downloads.
+
+Tiled takes a forward-looking emphasis on **structures** rather than formats,
+including:
+
+* N-dimensional strided arrays (i.e. numpy-like arrays)
+* Tabular data (i.e. pandas-like "dataframes")
+* Hierarchical structures thereof (e.g. xarrays, HDF5-compatible structures)
+
+Tiled implements extensible **access control enforcement** based on web security
+standards. Like Jupyter, Tiled can be used by a single user or deployed as
+a shared resource.
+
+Tiled supports **local caching** in a standard web browser or in Tiled's Python
+client, facilitating efficient use of bandwidth and even an offlien "airplane
+mode."
+
+## Example
 
 Serve a "Catalog", a Python object backed by some generated data, directory
 of files, network resource, or database
@@ -80,7 +96,7 @@ index
 [100 rows x 2 columns]
 ```
 
-Using an Internet browser or a commandline HTTP client like
+Using an Internet browser or a command-line HTTP client like
 [curl](https://curl.se/) or [httpie](https://httpie.io/) you can download the
 data in whole or in efficiently-chunked parts in the format of your choice:
 
@@ -112,15 +128,3 @@ for large longitudinal analyses. Yet, it is not always practical to transcode
 the data into a chunk-friendly format or build a custom tile-based-access
 solution. (Though if you can do either of those things, you should consider
 them instead!)
-
-In more technical language, Tiled is a service providing "tiled" chunk-based
-access to strided arrays, tablular datasets ("dataframes"), and nested
-structures thereof. It is centered on these *structures* (backed by numpy,
-pandas, xarray, various mappings in the server) rather than particular
-formats. The structures may be read from an extensible range of formats; the
-web client receives them as one of an extensible range of MIME types, and it
-can pose requests that sub-select and slice the data before it is read or
-served. The server incorporates search capability, which may be backed by a
-proper database solution at large scales or a simple in-memory index at small
-scales, as well as access controls. A Python client provides a friendly
-h5py-like interface and supports offline caching.

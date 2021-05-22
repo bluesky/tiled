@@ -1,5 +1,8 @@
 # Security
 
+Tiled employs modern web security standards to enforce access control with
+minimum inconvenience to the user.
+
 There are four use cases for the Tiled server.
 
 1. Secure single-user server, analogous to how people use ``jupyter notebook``
@@ -77,33 +80,81 @@ $ tiled serve pyobject --public tiled.examples.generated_minimal:catalog
 
 ## Private multi-user data service
 
-In this mode, users *must* log in to access anything other than the root ``/``
-and documentation ``/docs`` routes.
+In this mode, users *must* log in to access anything other than the root ``GET /``
+and documentation ``GET /docs`` routes.
 
-Tiled is designed to integrate with external user-management system via a plugglabe
+Tiled is designed to integrate with external user-management systems via a pluggable
 Authenticator interface. For those familiar with JupyterHub, these are very
-similar to JupyterHub Authenticators. These fall into two groups:
+similar to JupyterHub Authenticators. Authenticators fall into two groups:
 
-* Authenticators that accept user credentials directly at the ``/login`` endpoint,
-  following the OAuth2 and OpenAPI standards, and validate the credentials using
-  some underlying system such as PAM.
-* Authenticators that use OAuth2 code flow to validate user credentials without
-  directly handling them. (None of these have been written yet for Tiled, but
-  track to do so has been laid, closely following the pattern established by
-  JupyterHub.)
+* Authenticators that accept user credentials directly at the ``POST /token``
+  endpoint, following the OAuth2 and OpenAPI standards as shown below, and
+  validate the credentials using some underlying authentication mechanism, such
+  as PAM.
+* Authenticators that use OAuth2 code flow to validate user credentials
+  without directly handling them. (No such Authenticators have been written yet
+  for Tiled, but track to do so has been laid, closely following the pattern
+  established by JupyterHub.)
 
-There are currently three authenticators included with Tiled, two of which are
-toy examples for development and testing. More are planned, integrating with
-services like GitHub, Globus, and Orchid.
-
-This mode can only be use with configuration files, as in
+This mode requires configuration files to be used, as in
 
 ```
 tiled serve config path/to/config_file(s)
 ```
 
+in order to specify the Authenticator and, when applicable, any parameters.
 The shorthands ``tiled serve pyobject ...`` and ``tiled serve directory ...``
 do not currently support this mode.
+
+Users can authenticate by POST form-encoded credentials to the ``/token``
+endpoint, as in:
+
+```
+$ http --form --body :8000/token username=alice password=foo
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTYyMTY0NTk2NH0.Oz65lrf6gYjIgGa4Pf6E8XwjOcRihP4QCR8a8GQN0M4",
+    "token_type": "bearer"
+}
+```
+
+The body includes a JWT access token with a short (15 minute) lifetime. Refresh
+tokens are planned but not yet implemented.
+
+The JWTs are signed using a secret key that is generated at server startup.
+Set the secret manually to ensure that tokens remain valid after a server
+restart, or across horizontally-scaled deployments of multiple servers.
+
+A good way to generate a secure secret is:
+
+```
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Apply it by setting the ``TILED_SERVER_SECRET_KEYS`` environment variable, as in:
+
+```
+TILED_SERVER_SECRET_KEYS=secret tiled serve ...
+```
+
+To rotate keys with a smooth transition, set ``TILED_SERVER_SECRET_KEYS`` to
+``;``-separated values, as in
+
+```
+TILED_SERVER_SECRET_KEYS=secret1;secret2
+```
+
+The first secret value is always used to *encode* new tokens, but all values are
+tried to *decode* existing tokens until one works or all fail.
+
+The Python client provides a convenience function for generating a token.
+
+```python
+>>> from tiled.client import generate_token, from_uri
+>>> token = generate_token("http://localhost:8000")
+Username:
+Password:
+>>> catalog = from_uri("http://localhost:8000", token=token)
+```
 
 ### Authenticate with local Linux/UNIX users
 
@@ -183,7 +234,7 @@ To control which users can see which entries in the Catalogs, see
 ## Multi-user data service with some public and some private content
 
 When an Authenticator is used in conjunction with {doc}`access-control`,
-certain entries be designated as "public", visible to any user. By default,
+certain entries may be designated as "public", visible to any user. By default,
 visitors still need to be authenticated (as any user) to see these entries.
 To make such entries visible to *anonymous*, unauthenticated users as well,
 include the configuration:
