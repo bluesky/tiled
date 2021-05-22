@@ -118,7 +118,7 @@ tiled serve config path/to/config_file(s)
 
 in order to specify the Authenticator and, when applicable, any parameters.
 The shorthands ``tiled serve pyobject ...`` and ``tiled serve directory ...``
-do not currently support this mode.
+do not currently support this mode. See below for example configurations.
 
 Users can authenticate by POST form-encoded credentials to the ``/token``
 endpoint, as in:
