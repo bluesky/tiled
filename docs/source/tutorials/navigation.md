@@ -16,8 +16,8 @@ from tiled.client import from_uri
 catalog = from_uri("http://localhost:8000")
 ```
 
-A Catalog is a nested strucutre of data. Conceptually, it corresponds well to
-a directory of files or heirarhcical structure like an HDF5 file.
+A Catalog is a nested structure of data. Conceptually, it corresponds well to
+a directory of files or hierarchical structure like an HDF5 file.
 
 Tiled provides a utility for visualizing Catalog's nested structure.
 

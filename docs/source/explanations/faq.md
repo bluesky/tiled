@@ -12,7 +12,7 @@ Tiled is aiming for that same span of a use cases. It could be a tool for:
 * Serving a public or private data repository for use by collaborators or the
   public
 
-**What's the relatinoship to [TileDB](https://tiledb.com/) and [Zarr](https://zarr.readthedocs.io/en/stable/)?**
+**What's the relationship to [TileDB](https://tiledb.com/) and [Zarr](https://zarr.readthedocs.io/en/stable/)?**
 
 TileDB and Zarr are modern chunk-based storage formats that work on key--value
 stores including traditional file systems and blob (e.g. S3) storage. They have

@@ -72,7 +72,7 @@ catalog = Catalog(
 ```
 
 * Server startup is **fast** because nothing is generated or read up front.
-* The first acccess for each item is **slow** because the data is generated or
+* The first access for each item is **slow** because the data is generated or
   read on demand. Subsequent access is **fast**.
 * The machine running the server must have sufficient RAM for all the entries
   in the Catalog. The memory usage will grow monotonically as items are
@@ -152,7 +152,7 @@ catalog = Catalog(
 ```
 
 * Server startup is **fast** because nothing is generated or read up front.
-* The first acccess for each item is **slow** because the data is generated or
+* The first access for each item is **slow** because the data is generated or
   read on demand. Later access may be **fast or slow** depending on whether
   the item has been evicted from the cache.
 * With an appropriately-scaled cache, this **is** scalable for large Catalogs

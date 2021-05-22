@@ -72,4 +72,4 @@ In summary:
 * Tiled can use PIMS internally to efficiently slice and read image series.
 * Tiled can probably be made interoperate with Intake objects.
 * Databroker will evolve to be a thin wrapper around Tiled, adding
-  concepts and capabilties specific to the Bluesky "Document Model".
+  concepts and capabilities specific to the Bluesky "Document Model".

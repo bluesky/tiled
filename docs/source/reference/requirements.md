@@ -7,9 +7,9 @@ in tandem with the exploratory implementation.*
   responses, as well as binary blob responses for chunked data
 * Be usable from any HTTP client and from languages other that Python. Avoid
   baking any Python-isms deeply into it. No pickle, no msgpack-python. (Those
-  can be *options*, for the purpose of communnicating with a Python client, but
-  they should be priviledged or default.)
-* Effeciently list and access entries, with pagation and random access.
+  can be *options*, for the purpose of communicating with a Python client, but
+  they should be privileged or default.)
+* Efficiently list and access entries, with pagination and random access.
 * Efficiently search entries using an extensible text of queries including broad
   ones like "full text search" and more application- and dataset-specific
   queries.

@@ -29,7 +29,7 @@ $ tiled serve pyobject tiled.examples.generated_minimal:catalog
 where the token after ``api_key=`` will be different each time you start the
 server. Once you have visited this URL with your web browser or the Tiled Python
 client, a cookie will be set in your client and you won’t need to use the token
-again.
+again. It is valid indefinitely.
 
 For horizontally-scaled deployments where you need multiple instances of the
 server to share the same secret, you can set it via an environment variable like
@@ -82,7 +82,15 @@ and documentation ``/docs`` routes.
 
 Tiled is designed to integrate with external user-management system via a plugglabe
 Authenticator interface. For those familiar with JupyterHub, these are very
-similar to JupyterHub Authenticators.
+similar to JupyterHub Authenticators. These fall into two groups:
+
+* Authenticators that accept user credentials directly at the ``/login`` endpoint,
+  following the OAuth2 and OpenAPI standards, and validate the credentials using
+  some underlying system such as PAM.
+* Authenticators that use OAuth2 code flow to validate user credentials without
+  directly handling them. (None of these have been written yet for Tiled, but
+  track to do so has been laid, closely following the pattern established by
+  JupyterHub.)
 
 There are currently three authenticators included with Tiled, two of which are
 toy examples for development and testing. More are planned, integrating with
@@ -133,7 +141,7 @@ Authenticate using a system user account and password.
 
 The ``DictionaryAuthenticator`` authenticates using usernames and passwords
 specified directly in the configuration. The passwords may be extracted from
-environment varibles, as shown. This is not a robust user management system and
+environment variables, as shown. This is not a robust user management system and
 should only for used for development and demos.
 
 ```yaml
@@ -174,7 +182,7 @@ To control which users can see which entries in the Catalogs, see
 
 ## Multi-user data service with some public and some private content
 
-When an Authenticator is used in conjection with {doc}`access-control`,
+When an Authenticator is used in conjunction with {doc}`access-control`,
 certain entries be designated as "public", visible to any user. By default,
 visitors still need to be authenticated (as any user) to see these entries.
 To make such entries visible to *anonymous*, unauthenticated users as well,

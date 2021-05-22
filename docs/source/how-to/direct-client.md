@@ -69,7 +69,7 @@ To construct one from configuration:
 
 ```py
 
-from tiled.confg import direct_access
+from tiled.config import direct_access
 
 direct_access(config)
 ```
@@ -80,7 +80,7 @@ or filepath.
 To construct one from a profile name:
 
 ```py
-from tiled.confg import direct_access_from_profile
+from tiled.config import direct_access_from_profile
 
 direct_access_from_profile("profile_name")
 ```

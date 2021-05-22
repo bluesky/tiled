@@ -59,7 +59,6 @@ Reader as well as a sample HTTP API based on
   cache in memory) but MUST implement a method ``close()`` which releases those
   resources. It MUST also implement the context manager API and call ``close()``
   on exiting the context.
-
 * Readers MAY implement other methods beyond these for application-specific
   needs or usability.
 
@@ -145,7 +144,7 @@ We envision a custom ``AccessPolicy`` will be needed for every combination of
 
 An ``AccessPolicy`` gets two opportunities to restrict the entries that a caller
 can see. First, a Catalog gives it the opportunity to modify a query before it
-is processed in order to restirct the set of results marshalled from storage.
+is processed in order to restrict the set of results marshalled from storage.
 Second, it may filter the query results before they are returned to the user.
 Depending on the storage and the complexity of the data access rules, one or
 both of these modes may be used by a given AccessPolicy.

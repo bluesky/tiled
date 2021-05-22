@@ -1,7 +1,7 @@
 # Keep a Local Copy
 
-There are several modes of *caching* supported by Tiled. They cover different
-situations. Each one is addressed here with a hypthoetical scenario.
+There are several modes of client-side *caching* supported by Tiled. They cover
+different situations. Each one is addressed here with a hypothetical scenario.
 
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
@@ -91,7 +91,7 @@ catalog = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_direct
 ```
 
 This works exactly the same as before, but now the data is stored in files on disk.
-The data can be shared across processes and reused betweening working sessions.
+The data can be shared across processes and reused between working sessions.
 
 Some things to know:
 
@@ -133,7 +133,7 @@ TO DO: Demonstrate downloading only a *portion* of a Catalog.
 
 ```{note}
 
-Alternatively, a basic download can be performed from the commandline via the
+Alternatively, a basic download can be performed from the command line via the
 tiled CLI.
 
     $ tiled download "http://localhost:8000" my_cache_direcotry
@@ -182,7 +182,7 @@ software, we need to generate ordinary files on disk. Tiled provides a
 utility in the Python client to make that easier.
 
 The Tiled server and client can translate arrays, dataframes, xarrays, and
-heirarchical structures to various formats. It's a very basic export functionality,
+hierarchical structures to various formats. It's a very basic export functionality,
 intentionally not very configurable.
 
 ```python

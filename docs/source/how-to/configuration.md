@@ -23,14 +23,13 @@ There is no automatic search path or standard location for server-side
 configuration.
 
 ## Simple examples
-
 The simple deployment
 
 ```
 tiled serve directory path/to/files
 ```
 
-is equavalent to
+is equivalent to
 
 ```yaml
 catalogs:

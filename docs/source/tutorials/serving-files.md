@@ -25,7 +25,7 @@ $ ls example_files
 a.tif  b.tif  c.tif  even_more  more
 ```
 
-The full strucutre looks like
+The full structure looks like
 
 ```
 ├── another_table.csv
