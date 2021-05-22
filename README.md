@@ -9,19 +9,19 @@ book-keeping of filenames and file formats.
 Tiled is a **data access** service for data-aware portals and data science tools.
 It enables **search** and **structured, chunkwise access** to data in an
 extensible **variety of appropriate formats**, regardless of the format the data
-happens to *be stored in at rest, spanning slow but widespread interchange
-formats (e.g. CSV, JSON, TIFF) and fast, efficient ones (e.g. C buffers, Apache
-Arrow DataFrames). Tiled enables slicing and sub-selection for accessing only
-the data of interest, and it enables parallelized download of many chunks at
-once. Users can access data with very light software dependencies and fast
-partial downloads.
+happens to be stored in at rest. The natively supported formats span slow but
+widespread interchange formats (e.g. CSV, JSON) and fast, efficient ones
+(e.g. C buffers, Apache Arrow DataFrames). Tiled enables slicing and
+sub-selection to read and transfer only the data of interest, and it enables
+parallelized download of many chunks at once. Users can access data with very
+light software dependencies and fast partial downloads.
 
 Tiled takes a forward-looking emphasis on **structures** rather than formats,
 including:
 
 * N-dimensional strided arrays (i.e. numpy-like arrays)
 * Tabular data (i.e. pandas-like "dataframes")
-* Hierarchical structures thereof (e.g. xarrays, HDF5-compatible structures)
+* Hierarchical structures thereof (e.g. xarrays, HDF5-compatible structures like NeXus)
 
 Tiled implements extensible **access control enforcement** based on web security
 standards. Like Jupyter, Tiled can be used by a single user or deployed as
