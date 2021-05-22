@@ -120,7 +120,7 @@ in order to specify the Authenticator and, when applicable, any parameters.
 The shorthands ``tiled serve pyobject ...`` and ``tiled serve directory ...``
 do not currently support this mode. See below for example configurations.
 
-Users can authenticate by POST form-encoded credentials to the ``/token``
+Users can authenticate by POST-ing form-encoded credentials to the ``/token``
 endpoint, as in:
 
 ```
@@ -131,12 +131,13 @@ $ http --form --body :8000/token username=alice password=foo
 }
 ```
 
-The body includes a JWT access token with a short (15 minute) lifetime. Refresh
-tokens are planned but not yet implemented.
+The response body includes an access token with a short (15 minute) lifetime.
+Refresh tokens are planned but not yet implemented.
 
-The JWTs are signed using a secret key that is generated at server startup.
-Set the secret manually to ensure that tokens remain valid after a server
-restart, or across horizontally-scaled deployments of multiple servers.
+The access tokens are signed using a secret key that, by default, is generated
+automatically at server startup. Set the secret manually to ensure that existing
+tokens remain valid after a server restart or across horizontally-scaled
+deployments of multiple servers.
 
 ```{note}
 
@@ -168,7 +169,13 @@ TILED_SERVER_SECRET_KEYS=secret1;secret2
 The first secret value is always used to *encode* new tokens, but all values are
 tried to *decode* existing tokens until one works or all fail.
 
-The Python client provides a convenience function for generating a token.
+The Python client provides a convenience function for requesting a token
+in exchange for credentials.
+
+```{warning}
+
+This interface is experimental and likely to change in a backward-incompatible way.
+```
 
 ```python
 >>> from tiled.client import generate_token, from_uri
