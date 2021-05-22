@@ -44,6 +44,20 @@ TILED_SINGLE_USER_API_KEY=YOUR_SECRET tiled serve ...
 
 When the secret is set manually it this way, it is *not* logged in the terminal.
 
+```{note}
+
+Two equally-good ways to generate a secure secret...
+
+With ``openssl``:
+
+    openssl rand -hex 32
+
+With ``python``:
+
+    python -c "import secrets; print(secrets.token_hex(32))"
+
+```
+
 ## Public data service
 
 Tiled can serve a public data repository with no authentication required. To
@@ -124,10 +138,18 @@ The JWTs are signed using a secret key that is generated at server startup.
 Set the secret manually to ensure that tokens remain valid after a server
 restart, or across horizontally-scaled deployments of multiple servers.
 
-A good way to generate a secure secret is:
+```{note}
 
-```
-python -c "import secrets; print(secrets.token_hex(32))"
+Two equally-good ways to generate a secure secret...
+
+With ``openssl``:
+
+    openssl rand -hex 32
+
+With ``python``:
+
+    python -c "import secrets; print(secrets.token_hex(32))"
+
 ```
 
 Apply it by setting the ``TILED_SERVER_SECRET_KEYS`` environment variable, as in:
