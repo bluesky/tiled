@@ -242,7 +242,7 @@ catalogs:
 ALICE_PASSWORD=secret BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config dictionary_config.yml
 ```
 
-The ``DummyAuthenticator`` *any* username and password combination.
+The ``DummyAuthenticator`` accepts *any* username and password combination.
 
 ```yaml
 # dummy_config.yml
