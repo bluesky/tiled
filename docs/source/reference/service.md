@@ -73,6 +73,19 @@ assumption about your metadata / data and its meaning.
    tiled.query_registration.query_type_to_name
 ```
 
+## Media Type (Format) Registry
+
+This is a registry of formats that the service can *write* upon a client's request.
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.media_type_registration.Registry
+   tiled.media_type_registration.serialization_registry
+```
+
 ## Structures
 
 For each data structure supported by tiled, there are dataclasses that encode
