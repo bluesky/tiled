@@ -13,6 +13,14 @@ from .settings import get_settings
 
 
 def get_app(include_routers=None):
+    """
+    Construct an instance of the FastAPI application.
+
+    Parameters
+    ----------
+    include_routers : list, optional
+        List of additional FastAPI.Router objects to be included (merged) into the app
+    """
     app = FastAPI()
     app.include_router(router)
     app.include_router(authentication_router)

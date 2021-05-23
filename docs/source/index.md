@@ -33,6 +33,7 @@ explanations/lineage
 ```{toctree}
 :caption: Reference
 
+reference/commandline
 reference/service
 reference/http-api-overview
 reference/python-client

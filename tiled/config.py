@@ -125,6 +125,16 @@ def merge(configs):
 
 
 def parse_configs(config_path):
+    """
+    Parse configuration file or directory of configuration files.
+
+    If a directory is given it is expected to contain only valid
+    configuration files, except for the following which are ignored:
+
+    * Hidden files or directories (starting with .)
+    * Python scripts (ending in .py)
+    * The __pycache__ directory
+    """
     if isinstance(config_path, str):
         config_path = Path(config_path)
     if config_path.is_file():

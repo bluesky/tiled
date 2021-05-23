@@ -30,6 +30,17 @@ or its dask counterpart. They can be used to build other Readers.
    tiled.readers.hdf5.HDF5Reader
 ```
 
+## Catalogs
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.catalogs.files.Catalog
+   tiled.catalogs.in_memory.Catalog
+   tiled.catalogs.utils
+```
+
 ## Structures
 
 For each data structure supported by tiled, there are dataclasses that encode
@@ -110,13 +121,23 @@ structures.
    tiled.structures.xarray.DatasetMacroStructure
 ```
 
-## Catalogs
+## Configuration Parsing
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.catalogs.files.Catalog
-   tiled.catalogs.in_memory.Catalog
-   tiled.catalogs.utils
+   tiled.config.parse_configs
+   tiled.config.direct_access
+   tiled.config.direct_access_from_profile
+   tiled.config.construct_serve_catalog_kwargs
+```
+## HTTP Server Application
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.server.app.serve_catalog
+   tiled.server.app.get_app
 ```

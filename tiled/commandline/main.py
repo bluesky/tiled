@@ -17,6 +17,9 @@ def download(
     path: str,
     available_bytes: Optional[int] = None,
 ):
+    """
+    Download content from a Catalog to an on-disk cache.
+    """
     from ..client.cache import download
     from ..client.catalog import Catalog
 
@@ -26,7 +29,7 @@ def download(
 
 @profile_app.command("paths")
 def profile_paths():
-    "List the locations that the client will search for profiles (configuration)."
+    "List the locations that the client will search for profiles (client-side configuration)."
     from ..profiles import paths
 
     print("\n".join(paths))
@@ -115,6 +118,7 @@ def serve_pyobject(
 def serve_config(
     config_path: Path,
 ):
+    "Serve a Catalog as specified in configuration file(s)."
     from ..config import construct_serve_catalog_kwargs, parse_configs
 
     try:
@@ -156,5 +160,9 @@ def _parse_kwargs(arg):
 
 
 main = cli_app
+
 if __name__ == "__main__":
     main()
+
+# This object is used by the auto-generated documentation.
+typer_click_object = typer.main.get_command(cli_app)
