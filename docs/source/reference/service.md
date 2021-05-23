@@ -77,13 +77,18 @@ assumption about your metadata / data and its meaning.
 
 This is a registry of formats that the service can *write* upon a client's request.
 
+When registering new types, make reference to the
+[IANA Media Types (formerly known as MIME types)](https://www.iana.org/assignments/media-types/media-types.xhtml).
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.media_type_registration.Registry
    tiled.media_type_registration.serialization_registry
+   tiled.media_type_registration.Registry
+   tiled.media_type_registration.Registry.register
+   tiled.media_type_registration.Registry.media_types
+   tiled.media_type_registration.Registry.aliases
 ```
 
 ## Structures
