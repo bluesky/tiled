@@ -8,11 +8,11 @@ from ..structures.dataframe import (
     DataFrameStructure,
 )
 from ..media_type_registration import deserialization_registry
-from .base import BaseClientReader
+from .base import BaseClient
 from .utils import get_content_with_cache, get_json_with_cache
 
 
-class ClientDaskDataFrameAdapter(BaseClientReader):
+class DaskDataFrameClient(BaseClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     def __init__(self, *args, **kwargs):
@@ -209,7 +209,7 @@ class ClientDaskDataFrameAdapter(BaseClientReader):
     # of rows" which is expensive to compute.
 
 
-class ClientDataFrameAdapter(ClientDaskDataFrameAdapter):
+class DataFrameClient(DaskDataFrameClient):
     "Client-side wrapper around a dataframe-like that returns in-memory dataframes"
 
     def read_partition(self, partition, columns=None):

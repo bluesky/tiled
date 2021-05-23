@@ -33,10 +33,10 @@ explanations/lineage
 ```{toctree}
 :caption: Reference
 
-reference/commandline
 reference/service
 reference/http-api-overview
 reference/python-client
+reference/commandline
 reference/design-documents/index
 reference/release-history
 reference/min-versions

@@ -5,11 +5,11 @@ import dask.array
 
 from ..structures.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
-from .base import BaseArrayClientReader
+from .base import BaseArrayClient
 from .utils import get_content_with_cache
 
 
-class ClientDaskArrayAdapter(BaseArrayClientReader):
+class DaskArrayClient(BaseArrayClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     STRUCTURE_TYPE = ArrayStructure
@@ -51,7 +51,7 @@ class ClientDaskArrayAdapter(BaseArrayClientReader):
 
     def read_block(self, block, slice=None):
         """
-        Acess the data for one block of this chunked (dask) array.
+        Access the data for one block of this chunked (dask) array.
 
         Optionally, access only a slice *within* this block.
         """
@@ -130,11 +130,19 @@ class ClientDaskArrayAdapter(BaseArrayClientReader):
         self.read().compute()
 
 
-class ClientArrayAdapter(ClientDaskArrayAdapter):
+class ArrayClient(DaskArrayClient):
     "Client-side wrapper around an array-like that returns in-memory arrays"
 
     def read(self, slice=None):
+        """
+        Acess the entire array or a slice.
+        """
         return super().read(slice).compute()
 
     def read_block(self, block, slice=None):
+        """
+        Access the data for one block of this chunked array.
+
+        Optionally, access only a slice *within* this block.
+        """
         return super().read_block(block, slice).compute()

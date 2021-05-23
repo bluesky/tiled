@@ -14,7 +14,7 @@ and navigate your browser to http://localhost:8000/docs.
 The API is based on the [JSON API standard](https://jsonapi.org/), but no
 firm decision has been made yet about whether this is a good fit for Tiled.
 
-The routes are generally spelled like ``/{action}/{path}/``, like GitHub
+The routes are generally spelled like ``GET /{action}/{path}/``, like GitHub
 repository URLs, with the path following the structure of the Catalog
 entries.
 
@@ -30,3 +30,6 @@ as appropriate to the data structure. Generic clients, like a web browser,
 should use the "full" route, which sends the entire (sliced) result in one
 response. More sophisticated clients that can reassemble tiled results should
 use the other routes, which support efficient chunk-based access.
+
+The ``POST /token`` route accepts form-encoded credentials and responds with
+an access token, as described in {doc}`../explanations/security`.

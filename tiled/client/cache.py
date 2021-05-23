@@ -27,7 +27,7 @@ def download(*entries, path=None, available_bytes=None, cache=None):
 
     Parameters
     ----------
-    *entries : Catalog(s) or ClientReader(s)
+    *entries : Catalog(s) or structure client(s)
     path : Path or str
         A directory will be created at this path if it does not yet exist.
         It is safe to reuse an existing cache directory and to share a cache

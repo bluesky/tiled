@@ -71,7 +71,7 @@ To construct one from configuration:
 
 from tiled.config import direct_access
 
-direct_access(config)
+service_side_catalog = direct_access(config)
 ```
 
 where, as in the section above, ``config`` may be a dictionary of configuration
@@ -82,5 +82,5 @@ To construct one from a profile name:
 ```py
 from tiled.config import direct_access_from_profile
 
-direct_access_from_profile("profile_name")
+service_side_catalog = direct_access_from_profile("profile_name")
 ```

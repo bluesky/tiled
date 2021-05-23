@@ -36,7 +36,7 @@ server and receive a response. For example...
 DictView({})
 
 >>> catalog['dataframes']['df']  # fetches column names
-<ClientDaskDataFrameAdapter ['A', 'B', 'C']>
+<DataFrameClient ['A', 'B', 'C']>
 
 >>> catalog['dataframes']['df'].metadata  # fetches metadata (in this case empty)
 DictView({})

@@ -55,7 +55,7 @@ any HTTP client.
 <Catalog {'large', 'medium', 'small', 'tiny'}>
 
 >>> catalog['arrays']['medium']
-<ClientDaskArrayAdapter>
+<ArrayClient>
 
 >>> catalog['arrays']['medium'][:]
 array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
@@ -76,7 +76,7 @@ array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
 <Catalog {'df'}>
 
 >>> catalog['dataframes']['df']
-<ClientDaskDataFrameAdapter ['A', 'B', 'C']>
+<DataFrameClient ['A', 'B', 'C']>
 
 >>> catalog['dataframes']['df'][['A', 'B']]
               A         B

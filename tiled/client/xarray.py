@@ -10,15 +10,15 @@ from ..structures.xarray import (
     VariableStructure,
 )
 
-from .array import ClientArrayAdapter, ClientDaskArrayAdapter
-from .base import BaseArrayClientReader
+from .array import ArrayClient, DaskArrayClient
+from .base import BaseArrayClient
 from .utils import get_json_with_cache
 
 
-class ClientDaskVariableAdapter(BaseArrayClientReader):
+class DaskVariableClient(BaseArrayClient):
 
     STRUCTURE_TYPE = VariableStructure  # used by base class
-    ARRAY_READER = ClientDaskArrayAdapter  # overridden by subclass
+    ARRAY_READER = DaskArrayClient  # overridden by subclass
 
     def __init__(self, *args, route="/variable/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -71,15 +71,15 @@ class ClientDaskVariableAdapter(BaseArrayClientReader):
         self.read().compute()
 
 
-class ClientVariableAdapter(ClientDaskVariableAdapter):
+class VariableClient(DaskVariableClient):
 
-    ARRAY_READER = ClientArrayAdapter
+    ARRAY_READER = ArrayClient
 
 
-class ClientDaskDataArrayAdapter(BaseArrayClientReader):
+class DaskDataArrayClient(BaseArrayClient):
 
     STRUCTURE_TYPE = DataArrayStructure  # used by base class
-    VARIABLE_READER = ClientDaskVariableAdapter  # overriden in subclass
+    VARIABLE_READER = DaskVariableClient  # overriden in subclass
 
     def __init__(self, *args, route="/data_array/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -180,16 +180,16 @@ class ClientDaskDataArrayAdapter(BaseArrayClientReader):
         self.read().compute()
 
 
-class ClientDataArrayAdapter(ClientDaskDataArrayAdapter):
+class DataArrayClient(DaskDataArrayClient):
 
-    VARIABLE_READER = ClientVariableAdapter
+    VARIABLE_READER = VariableClient
 
 
-class ClientDaskDatasetAdapter(BaseArrayClientReader):
+class DaskDatasetClient(BaseArrayClient):
 
     STRUCTURE_TYPE = DatasetStructure  # used by base class
-    DATA_ARRAY_READER = ClientDaskDataArrayAdapter  # overridden by subclass
-    VARIABLE_READER = ClientDaskVariableAdapter  # overridden by subclass
+    DATA_ARRAY_READER = DaskDataArrayClient  # overridden by subclass
+    VARIABLE_READER = DaskVariableClient  # overridden by subclass
 
     def __init__(self, *args, route="/dataset/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -329,7 +329,7 @@ class ClientDaskDatasetAdapter(BaseArrayClientReader):
         yield from self.structure().macro.data_vars
 
 
-class ClientDatasetAdapter(ClientDaskDatasetAdapter):
+class DatasetClient(DaskDatasetClient):
 
-    DATA_ARRAY_READER = ClientDataArrayAdapter
-    VARIABLE_READER = ClientVariableAdapter
+    DATA_ARRAY_READER = DataArrayClient
+    VARIABLE_READER = VariableClient

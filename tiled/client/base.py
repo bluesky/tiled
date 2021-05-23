@@ -3,7 +3,7 @@ from .utils import get_json_with_cache
 from ..catalogs.utils import UNCHANGED
 
 
-class BaseClientReader:
+class BaseClient:
     def __init__(
         self,
         client,
@@ -44,7 +44,7 @@ class BaseClientReader:
         structure=UNCHANGED,
     ):
         """
-        This is intended primarily for intenal use and use by subclasses.
+        This is intended primarily for internal use and use by subclasses.
         """
         if offline is UNCHANGED:
             self._offline = offline
@@ -70,15 +70,22 @@ class BaseClientReader:
 
     def touch(self):
         """
-        Access all the data from the Reader.
+        Access all the data.
 
         This causes it to be cached if the client is configured with a cache.
         """
         repr(self)
         self.read()
 
+    def structure(self):
+        """
+        Return a dataclass describing the structure of the data.
+        """
+        # This is implemented by subclasses.
+        pass
 
-class BaseArrayClientReader(BaseClientReader):
+
+class BaseArrayClient(BaseClient):
     """
     Shared by Array, DataArray, Dataset
 

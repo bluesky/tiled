@@ -49,38 +49,38 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             {
                 "array": lambda: importlib.import_module(
                     "..array", Catalog.__module__
-                ).ClientArrayAdapter,
+                ).ArrayClient,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Catalog.__module__
-                ).ClientDataFrameAdapter,
+                ).DataFrameClient,
                 "variable": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientVariableAdapter,
+                ).VariableClient,
                 "data_array": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDataArrayAdapter,
+                ).DataArrayClient,
                 "dataset": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDatasetAdapter,
+                ).DatasetClient,
             }
         ),
         "dask": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
                     "..array", Catalog.__module__
-                ).ClientDaskArrayAdapter,
+                ).DaskArrayClient,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Catalog.__module__
-                ).ClientDaskDataFrameAdapter,
+                ).DaskDataFrameClient,
                 "variable": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDaskVariableAdapter,
+                ).DaskVariableClient,
                 "data_array": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDaskDataArrayAdapter,
+                ).DaskDataArrayClient,
                 "dataset": lambda: importlib.import_module(
                     "..xarray", Catalog.__module__
-                ).ClientDaskDatasetAdapter,
+                ).DaskDatasetClient,
             }
         ),
     }
@@ -227,6 +227,12 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     @property
     def sorting(self):
+        """
+        The current sorting of this Catalog
+
+        Given as a list of tuples where the first entry is the sorting key
+        and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
+        """
         return list(self._sorting)
 
     def touch(self):
@@ -273,6 +279,11 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         return self._root_client_type
 
     def client_for_item(self, item, path, metadata, sorting):
+        """
+        Create an instance of the appropriate client class for an item.
+
+        This is intended primarily for internal use and use by subclasses.
+        """
         class_ = self._get_class(item)
         if item["type"] == "catalog":
             return class_(
@@ -312,6 +323,8 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         sorting=UNCHANGED,
     ):
         """
+        Create a copy of this Catalog, optionally varying some parameters.
+
         This is intended primarily for intenal use and use by subclasses.
         """
         if offline is UNCHANGED:
@@ -580,11 +593,34 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         return (key, value)
 
     def search(self, query):
+        """
+        Make a Catalog with a subset of this Catalog's entries, filtered by query.
+
+        Examples
+        --------
+
+        >>> from tiled.queries import FullText
+        >>> catalog.search(FullText("hello"))
+        """
         return self.new_variation(
             queries=self._queries + [query],
         )
 
     def sort(self, sorting):
+        """
+        Make a Catalog with the same entries but sorted according to `sorting`.
+
+        Examples
+        --------
+
+        Sort by "color" in ascending order, and then by "height" in descending order.
+
+        >>> from tiled.client import ASCENDING, DESCENDING
+        >>> catalog.sort([("color", ASCENDING), ("height", DESCENDING)])
+
+        Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
+        may be used as a synonym for ``DESCENDING``.
+        """
         return self.new_variation(
             sorting=sorting,
         )
@@ -948,4 +984,6 @@ class Descending(Sentinel):
 
 
 ASCENDING = Ascending("ASCENDING")
+"Ascending sort order. An alias for 1."
 DESCENDING = Descending("DESCENDING")
+"Decending sort order. An alias for -1."

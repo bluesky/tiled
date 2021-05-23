@@ -69,7 +69,7 @@ disk, and we can slice and access the data.
 <Catalog {'d.tif'}>
 
 >>> catalog['more']['d.tif']
-<ClientDaskArrayAdapter>
+<ArrayClient>
 
 >>> catalog['more']['d.tif'].read()
 array([[1., 1., 1., ..., 1., 1., 1.],
@@ -84,7 +84,7 @@ array([[1., 1., 1., ..., 1., 1., 1.],
 <Catalog {'Sheet 1', 'Sheet 2'}>
 
 >>> catalog['tables.xlsx']['Sheet 1']
-<ClientDataFrameAdapter ['A', 'B']>
+<DataFrameClient ['A', 'B']>
 
 >>> catalog['tables.xlsx']['Sheet 1'].read()
    A  B

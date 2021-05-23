@@ -60,7 +60,7 @@ We might next stash it in a variable and drill further down.
 >>> results['medium']
 <Catalog {'ones', 'tens', 'hundreds'}>
 >>> results['medium']['ones']
-<ClientArrayAdapter>
+<ArrayClient>
 >>> results['medium']['ones'][:]
 array([[0.90346422, 0.88209766, 0.50729484, ..., 0.85845848, 0.40995339,
         0.62513141],

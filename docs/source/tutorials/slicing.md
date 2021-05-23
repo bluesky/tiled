@@ -23,7 +23,7 @@ Navigate to an array dataset in the demo catalog.
 
 ```python
 >>> catalog['arrays']['medium']
-<ClientArrayAdapter>
+<ArrayClient>
 ```
 
 Slice ``[:]`` to read it. (This syntax may be familiar to h5py users.)
@@ -63,7 +63,7 @@ Navigate to a DataFrame dataset in the demo catalog.
 
 ```python
 >>> catalog['dataframes']['df']
-<ClientDataFrameAdapter ['A', 'B', 'C']>
+<DataFrameClient ['A', 'B', 'C']>
 ```
 
 The columns are display in the output. You can also access them
