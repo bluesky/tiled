@@ -218,12 +218,13 @@ def construct_entries_response(
         name, field = _FILTER_PARAM_PATTERN.match(key).groups()
         queries[name][field] = value
     sorting = []
-    for item in sort.split(","):
-        if item:
-            if item.startswith("-"):
-                sorting.append((item[1:], -1))
-            else:
-                sorting.append((item, 1))
+    if sort is not None:
+        for item in sort.split(","):
+            if item:
+                if item.startswith("-"):
+                    sorting.append((item[1:], -1))
+                else:
+                    sorting.append((item, 1))
     if sorting:
         if not hasattr(catalog, "sort"):
             raise HTTPException(
