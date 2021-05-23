@@ -18,7 +18,12 @@ from .in_memory import Catalog as CatalogInMemory
 
 class Catalog(CatalogInMemory):
     """
-    Make a Catalog from files.
+    A Catalog constructed by walking a directory and watching it for changes.
+
+    Examples
+    --------
+
+    >>> Catalog.from_directory("path/to/directory")
     """
 
     __slots__ = (
@@ -41,8 +46,8 @@ class Catalog(CatalogInMemory):
                 "...readers.excel", Catalog.__module__
             ).ExcelReader.from_file,
             "application/x-hdf5": lambda: importlib.import_module(
-                "...catalogs.hdf5", Catalog.__module__
-            ).Catalog.from_file,
+                "...readers.hdf5", Catalog.__module__
+            ).HDF5Reader.from_file,
         }
     )
 

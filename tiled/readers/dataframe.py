@@ -32,6 +32,19 @@ class DataFrameAdapter:
 
     @classmethod
     def read_csv(cls, *args, **kwargs):
+        """
+        Read a CSV.
+
+        Internally, this uses dask.dataframe.read_csv.
+        It forward all parameters to that function. See
+        https://docs.dask.org/en/latest/dataframe-api.html#dask.dataframe.read_csv
+
+        Examples
+        --------
+
+        >>> DataFrameAdapter.read_csv("myfiles.*.csv")
+        >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
+        """
         return cls(dask.dataframe.read_csv(*args, **kwargs))
 
     @classmethod

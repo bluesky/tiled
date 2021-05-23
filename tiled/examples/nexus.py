@@ -3,7 +3,7 @@ import os
 
 import h5py
 import httpx
-from tiled.catalogs.hdf5 import Catalog
+from tiled.readers.hdf5 import HDF5Reader
 
 
 # Download a Nexus file into a memory buffer.
@@ -12,4 +12,4 @@ buffer = io.BytesIO(httpx.get(os.getenv("NEXUS_URL", DEFAULT_EXAMPLE_URL)).conte
 # Access the buffer with h5py, which can treat it like a "file".
 file = h5py.File(buffer, "r")
 # Wrap the h5py.File in a Catalog to serve it with Tiled.
-catalog = Catalog(file)
+catalog = HDF5Reader(file)

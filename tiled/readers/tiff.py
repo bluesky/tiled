@@ -7,6 +7,15 @@ from ..structures.array import (
 
 
 class TiffReader:
+    """
+    Read a TIFF file.
+
+    Examples
+    --------
+
+    >>> TiffReader("path/to/file.tiff")
+    """
+
     structure_family = "array"
 
     def __init__(self, path):

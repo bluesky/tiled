@@ -6,9 +6,11 @@ flake8
 pytest
 sphinx
 # These are dependencies of various sphinx extensions for documentation.
+h5py
 ipython
 matplotlib
 myst-parser
 numpydoc
 sphinx-copybutton
 sphinx_rtd_theme
+tifffile

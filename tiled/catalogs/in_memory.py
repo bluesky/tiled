@@ -11,6 +11,9 @@ from .utils import IndexersMixin, UNCHANGED
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
+    """
+    A Catalog backed by a mapping.
+    """
 
     __slots__ = (
         "_access_policy",

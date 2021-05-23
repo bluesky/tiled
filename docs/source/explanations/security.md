@@ -197,7 +197,7 @@ The configuration file(s) should include:
 
 ```yaml
 authentication:
-    authenticator: tiled.authenticators.PAMAuthenticator
+    authenticator: tiled.authenticators:PAMAuthenticator
 ```
 
 Here is a complete working example:
@@ -205,7 +205,7 @@ Here is a complete working example:
 ```yaml
 # pam_config.yml
 authentication:
-    authenticator: tiled.authenticators.PAMAuthenticator
+    authenticator: tiled.authenticators:PAMAuthenticator
 catalogs:
     - path: /
       catalog: tiled.examples.generated_minimal:catalog

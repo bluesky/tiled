@@ -5,11 +5,11 @@ import dask.array
 import h5py
 import numpy
 
-from ..readers.array import ArrayAdapter
+from .array import ArrayAdapter
 from ..utils import DictView
-from .utils import catalog_repr, IndexersMixin
+from ..catalogs.utils import catalog_repr, IndexersMixin
+from ..catalogs.in_memory import Catalog as CatalogInMemory
 from ..queries import KeyLookup
-from .in_memory import Catalog as CatalogInMemory
 
 
 class HDF5DatasetAdapter(ArrayAdapter):
@@ -18,7 +18,34 @@ class HDF5DatasetAdapter(ArrayAdapter):
         super().__init__(dask.array.from_array(dataset), metadata=dataset.attrs)
 
 
-class Catalog(collections.abc.Mapping, IndexersMixin):
+class HDF5Reader(collections.abc.Mapping, IndexersMixin):
+    """
+    Read an HDF5 file or a group within one.
+
+    This map the structure of an HDF5 file onto a "Catalog" of array structures.
+
+    Examples
+    --------
+
+    From the root node of a file given a filepath
+
+    >>> import h5py
+    >>> HDF5Reader.from_file("path/to/file.h5")
+
+    From the root node of a file given an h5py.File object
+
+    >>> import h5py
+    >>> file = h5py.File("path/to/file.h5")
+    >>> HDF5Reader.from_file(file)
+
+    From a group within a file
+
+    >>> import h5py
+    >>> file = h5py.File("path/to/file.h5")
+    >>> HDF5Reader(file["some_group']["some_sub_group"])
+
+    """
+
     def __init__(self, node, access_policy=None, authenticated_identity=None):
         self._node = node
         if (access_policy is not None) and (
@@ -78,7 +105,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def __getitem__(self, key):
         value = self._node[key]
         if isinstance(value, h5py.Group):
-            return Catalog(value)
+            return HDF5Reader(value)
         else:
             if value.dtype == numpy.dtype("O"):
                 warnings.warn(
