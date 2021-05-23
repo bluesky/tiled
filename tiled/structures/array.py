@@ -14,6 +14,10 @@ from ..utils import modules_available
 
 
 class Endianness(str, enum.Enum):
+    """
+    An enum of endian values: big, little, not_applicable.
+    """
+
     big = "big"
     little = "little"
     not_applicable = "not_applicable"
@@ -28,6 +32,18 @@ class Kind(str, enum.Enum):
     See https://numpy.org/devdocs/reference/arrays.interface.html#object.__array_interface__
 
     The term "kind" comes from the numpy API as well.
+
+    Note: At import time, the environment variable ``TILED_ALLOW_OBJECT_ARRAYS``
+    is checked. If it is set to anything other than ``"0"``, then this
+    Enum gets an additional member::
+
+        object = "O"
+
+    to support numpy 'object'-type arrays which hold generic Python objects.
+    Numpy 'object'-type arrays are not enabled by default because their binary
+    representation is not interpretable by clients other than Python.  It is
+    recommended to convert your data to a non-object type if possible so that it
+    can be read by non-Python clients.
     """
 
     bit_field = "t"
