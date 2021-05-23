@@ -9,10 +9,11 @@ potentially any language.
 
 Five structure families are currently supported. The most widespread are:
 
-* array --- a strided array, like a numpy array
-* dataframe --- a table with column labels an index(es), as in Apache Arrow or pandas
+* array --- a strided array, like a [numpy](https://numpy.org) array
+* dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
+  [pandas](https://pandas.pydata.org/)
 
-These additional three structures come from
+Three additional structures come from
 [xarray](https://xarray.pydata.org/en/stable/). They may be considered
 *containers* for one or more strided arrays, grouped together and marked up with
 some additional metadata, such as labeled dimensions.
