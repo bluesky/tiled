@@ -54,6 +54,7 @@ def get_app(include_routers=None):
     async def set_api_key_cookie(request: Request, call_next):
         # If the API key is provided via a header or query, set it as a cookie.
         response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         if ("X-TILED-API-KEY" in request.headers) and (response.status_code < 400):
             response.set_cookie(
                 key="TILED_API_KEY",

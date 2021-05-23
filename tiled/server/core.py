@@ -407,6 +407,20 @@ def construct_resource(base_url, path, key, entry, fields):
             if macrostructure is not None:
                 structure["macro"] = dataclasses.asdict(macrostructure)
         if models.EntryFields.microstructure in fields:
+            if entry.structure_family == "dataframe":
+                # Special case: its microstructure is cannot be JSON-serialized
+                # and is therefore available from separate routes. Sends links
+                # instead of the actual payload.
+                structure["micro"] = {
+                    "links": {
+                        "meta": f"{base_url}/dataframe/meta/{path}",
+                        "divisions": f"{base_url}/dataframe/divisions/{path}",
+                    }
+                }
+            else:
+                microstructure = entry.microstructure()
+                if microstructure is not None:
+                    structure["micro"] = dataclasses.asdict(microstructure)
             if entry.structure_family == "array":
                 links["full"] = f"{base_url}/array/full/{path}"
                 block_template = ",".join(
@@ -415,19 +429,10 @@ def construct_resource(base_url, path, key, entry, fields):
                 )
                 links["block"] = f"{base_url}/array/block/{path}?block={block_template}"
             elif entry.structure_family == "dataframe":
-                # Special case: its microstructure is cannot be JSON-serialized
-                # and is therefore available from separate routes. Sends links
-                # instead of the actual payload.
                 links["full"] = f"{base_url}/dataframe/full/{path}"
                 links[
                     "partition"
                 ] = f"{base_url}/dataframe/partition/{path}?partition={{index}}"
-                structure["micro"] = {
-                    "links": {
-                        "meta": f"{base_url}/dataframe/meta/{path}",
-                        "divisions": f"{base_url}/dataframe/divisions/{path}",
-                    }
-                }
             elif entry.structure_family == "variable":
                 block_template = ",".join(
                     f"{{index_{index}}}"
@@ -457,10 +462,7 @@ def construct_resource(base_url, path, key, entry, fields):
                 links[
                     "block"
                 ] = f"{base_url}/dataset/block/{path}?variable={{variable}}&block={{block_indexes}}"
-            else:
                 microstructure = entry.microstructure()
-                if microstructure is not None:
-                    structure["micro"] = dataclasses.asdict(microstructure)
         attributes["structure"] = structure
         resource = models.ReaderResource(
             **{
