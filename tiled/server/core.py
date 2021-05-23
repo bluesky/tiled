@@ -437,7 +437,9 @@ def construct_resource(base_url, path, key, entry, fields):
             elif entry.structure_family == "variable":
                 block_template = ",".join(
                     f"{{index_{index}}}"
-                    for index in range(len(structure["macro"]["data"]["macro"]["shape"]))
+                    for index in range(
+                        len(structure["macro"]["data"]["macro"]["shape"])
+                    )
                 )
                 links["full"] = f"{base_url}/variable/full/{path}"
                 links[
@@ -446,7 +448,9 @@ def construct_resource(base_url, path, key, entry, fields):
             elif entry.structure_family == "data_array":
                 block_template = ",".join(
                     f"{{index_{index}}}"
-                    for index in range(len(structure["macro"]["shape"]))
+                    for index in range(
+                        len(structure["macro"]["variable"]["macro"]["data"])
+                    )
                 )
                 links["full_variable"] = f"{base_url}/data_array/variable/full/{path}"
                 links[
