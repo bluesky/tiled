@@ -1,6 +1,4 @@
 from datetime import datetime, timedelta
-import os
-from secrets import token_hex
 from typing import Any, Optional
 import warnings
 
@@ -29,10 +27,6 @@ from pydantic import BaseModel, BaseSettings
 from .settings import get_settings
 from ..utils import SpecialUsers
 
-# The TILED_SERVER_SECRET_KEYS may be a single key or a ;-separated list of
-# keys to support key rotation. The first key will be used for encryption. Each
-# key will be tried in turn for decryption.
-SECRET_KEYS = os.environ.get("TILED_SERVER_SECRET_KEYS", token_hex(32)).split(";")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_LIFETIME_MINUTES = 15
 
@@ -60,11 +54,12 @@ api_key_cookie = APIKeyCookie(name="TILED_API_KEY", auto_error=False)
 authentication_router = APIRouter()
 
 
-def create_access_token(data: dict, expires_delta):
+def create_access_token(data: dict, expires_delta, secret_key):
+    print(secret_key)
     to_encode = data.copy()
     expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEYS[0], algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
     return encoded_jwt
 
 
@@ -105,7 +100,10 @@ async def get_current_user(
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
             raise HTTPException(status_code=401, detail="Not authenticated")
-    for secret_key in SECRET_KEYS:
+    # The first key in settings.secret_keys is used for *encoding*.
+    # All keys are tried for *decoding* until one works or they all
+    # fail. They supports key rotation.
+    for secret_key in settings.secret_keys:
         try:
             payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
             username: str = payload.get("sub")
@@ -132,6 +130,7 @@ async def get_current_user(
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
+    settings: BaseSettings = Depends(get_settings),
 ):
     username = authenticator.authenticate(
         username=form_data.username, password=form_data.password
@@ -144,7 +143,9 @@ async def login_for_access_token(
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_LIFETIME_MINUTES)
     access_token = create_access_token(
-        data={"sub": username}, expires_delta=access_token_expires
+        data={"sub": username},
+        expires_delta=access_token_expires,
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
     return {"access_token": access_token, "token_type": "bearer"}
 

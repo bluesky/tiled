@@ -95,16 +95,23 @@ def get_app(include_routers=None):
     return app
 
 
-def serve_catalog(catalog, authenticator=None, allow_anonymous_access=False):
+def serve_catalog(
+    catalog, authenticator=None, allow_anonymous_access=None, secret_keys=None
+):
     """
     Serve a Catalog
 
     Parameters
     ----------
     catalog : Catalog
-    authenticator : Authenticator
-    allow_anonymous_access : bool
+    authenticator : Authenticator, optional
+    allow_anonymous_access : bool, optional
         Default is False.
+    secret_keys : List[str], optional
+        This list may contain one or more keys.
+        The first key is used for *encoding*. All keys are tried for *decoding*
+        until one works or they all fail. This supports key rotation.
+        If None, a secure secret is generated.
     """
 
     @lru_cache(1)
@@ -118,7 +125,10 @@ def serve_catalog(catalog, authenticator=None, allow_anonymous_access=False):
     @lru_cache(1)
     def override_get_settings():
         settings = get_settings()
-        settings.allow_anonymous_access = allow_anonymous_access
+        if allow_anonymous_access is not None:
+            settings.allow_anonymous_access = allow_anonymous_access
+        if secret_keys is not None:
+            settings.secret_keys = secret_keys
         return settings
 
     # The Catalog and Authenticator have the opporunity to add custom routes to

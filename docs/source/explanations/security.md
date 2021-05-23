@@ -46,7 +46,9 @@ When the secret is set manually it this way, it is *not* logged in the terminal.
 
 ```{note}
 
-Two equally-good ways to generate a secure secret...
+When generating a secret, is important to produce a difficult-to-guess random
+number, and make it different each time you start up a server.  Two equally good
+ways to generate a secure secret...
 
 With ``openssl``:
 
@@ -141,7 +143,9 @@ deployments of multiple servers.
 
 ```{note}
 
-Two equally-good ways to generate a secure secret...
+When generating a secret, is important to produce a difficult-to-guess random
+number, and make it different each time you start up a server.  Two equally good
+ways to generate a secure secret...
 
 With ``openssl``:
 
@@ -153,17 +157,37 @@ With ``python``:
 
 ```
 
-Apply it by setting the ``TILED_SERVER_SECRET_KEYS`` environment variable, as in:
+Apply it by including the configuration
+
+```yaml
+authentication:
+    secret_keys:
+        - "SECRET"
+```
+
+or by setting the ``TILED_SERVER_SECRET_KEYS``.
+
+If you prefer, you can extract the keys from the environment like:
+
+```yaml
+authentication:
+    secret_keys:
+        - "${SECRET}"  # will be replaced by the environment variable
+```
+
+To rotate keys with a smooth transition, provide multiple keys
+
+```yaml
+authentication:
+    secret_keys:
+        - "NEW_SECRET"
+        - "OLD_SECRET"
+```
+
+or set ``TILED_SERVER_SECRET_KEYS`` to ``;``-separated values, as in
 
 ```
-TILED_SERVER_SECRET_KEYS=secret tiled serve ...
-```
-
-To rotate keys with a smooth transition, set ``TILED_SERVER_SECRET_KEYS`` to
-``;``-separated values, as in
-
-```
-TILED_SERVER_SECRET_KEYS=secret1;secret2
+TILED_SERVER_SECRET_KEYS=NEW_SECRET;OLD_SECRET
 ```
 
 The first secret value is always used to *encode* new tokens, but all values are

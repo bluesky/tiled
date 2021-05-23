@@ -1,8 +1,7 @@
 # Serve Catalogs using Configuration Files
 
-For all but simplest deployments, a configuration file is needed to spell out
-all the options.
-
+For all but the simplest deployments, a configuration file is needed to spell
+out all the options.
 
 ## Where?
 

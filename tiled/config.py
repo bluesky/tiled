@@ -88,6 +88,7 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
         "catalog": root_catalog,
         "authenticator": authenticator,
         "allow_anonymous_access": allow_anonymous_access,
+        "secret_keys": auth_spec.get("secret_keys"),
     }
 
 
