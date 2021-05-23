@@ -4,7 +4,7 @@
 
 These are functions for constructing a client object.
 
-### Basic constructors
+### Standard constructors
 
 ```{eval-rst}
 .. autosummary::
@@ -30,11 +30,13 @@ These are typically used for development and debugging only.
 ## Client Catalog
 
 The Catalog interface extends the ``collections.abc.Mapping`` (i.e. read-only
-dict) interface, so it supports these standard methods, as well as:
+dict) interface, so it supports these standard "magic methods":
 
 * `__getitem__` (lookup with `[]`)
 * `__iter__` (iteration, use in for-loops for example)
 * `__len__` (has a length, can be passed to `len`)
+
+as well as:
 
 ```{eval-rst}
 .. autosummary::

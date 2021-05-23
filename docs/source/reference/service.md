@@ -81,17 +81,7 @@ inexpensively construct and a communicate a representation of the data's
 shape and chunk/partition structure to the client so that it can formulate
 requests for slices of data and decode the responses.
 
-The structures are designed to be as unoriginal as possible, using standard
-names from numpy, pandas/Arrow, and xarray.
-
-The structures are encoded in two parts:
-
-* **Macrostructure** --- This is the high-level structure including things like
-  shape, chunk shape, number of partitions, and column names. This structure
-  *has meaning to the server* and shows up in the HTTP API.
-* **Microstructure** --- This is low-level structure including things like
-  machine data type(s) and partition boundary locations. It enables the
-  service-side reader to communicate to the client how to decode the bytes.
+See {doc}`../explanations/structures` for more context.
 
 ### Array
 
