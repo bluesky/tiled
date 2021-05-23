@@ -447,8 +447,9 @@ class Scorer:
     provide a score for the key used by the ``Cache`` object, which is the main
     usable object.
 
-    Example
-    -------
+    Examples
+    --------
+
     >>> s = Scorer(halflife=10)
     >>> s.touch('x', cost=2)  # score is similar to cost
     2
