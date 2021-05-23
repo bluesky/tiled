@@ -20,7 +20,7 @@ class FullText:
 @dataclass
 class KeyLookup:
     """
-    Match a specific Entry by key.
+    Match a specific Entry by key. Mostly for internal use.
 
     This is necessary to support item lookup within search results, as in:
 

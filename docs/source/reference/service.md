@@ -41,6 +41,38 @@ or its dask counterpart. They can be used to build other Readers.
    tiled.catalogs.utils
 ```
 
+## Search Queries
+
+### Built-in Search Query Types
+
+These are simple, JSON-serializable dataclasses that define the *data*
+in a query. They do not defined *how* to execute a query on a given Catalog.
+
+```{note}
+The list of built-in queries is short. Most of the power of queries comes from
+registering *custom* queries that fit your use case and can make specific
+assumption about your metadata / data and its meaning.
+```
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.queries.FullText
+   tiled.queries.KeyLookup
+```
+
+### Custom Search Query Registration
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.query_registration.register
+   tiled.query_registration.name_to_query_type
+   tiled.query_registration.query_type_to_name
+```
+
 ## Structures
 
 For each data structure supported by tiled, there are dataclasses that encode

@@ -34,6 +34,9 @@ class QueryRegistry:
         return DictView(self._query_type_to_name)
 
     def register(self, name=None, overwrite=False):
+        """
+        Register a new type of query.
+        """
         if "___" in name:
             raise Exception("Names must not contain triple underscores ('___').")
             # Why? This would create ambiguity in the server's handling of
@@ -77,8 +80,11 @@ class QueryRegistry:
 # Make a global registry.
 _query_registry = QueryRegistry()
 register = _query_registry.register
+"""Register a new type of query."""
 name_to_query_type = _query_registry.name_to_query_type
+"""Maps query name like "fulltext" to query type like tiled.queries.FullText."""
 query_type_to_name = _query_registry.query_type_to_name
+"""Maps query type like tiled.queries.FullText to query name like "fulltext"."""
 
 
 class QueryTranslationRegistry:
