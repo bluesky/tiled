@@ -12,7 +12,7 @@ cli_app.add_typer(profile_app, name="profile")
 
 
 @cli_app.command("tree")
-def tree(catalog_uri: str, N: int = 20):
+def tree(catalog_uri: str, max_lines: int = typer.Argument(20)):
     """
     Show the names of entries in a Catalog.
 
@@ -22,7 +22,6 @@ def tree(catalog_uri: str, N: int = 20):
     from ..client.catalog import Catalog
 
     catalog = Catalog.from_uri(catalog_uri)
-    max_lines = N
     for counter, line in enumerate(gen_tree(catalog), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(

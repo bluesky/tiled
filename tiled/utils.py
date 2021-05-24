@@ -196,12 +196,27 @@ def walk(catalog, nodes=None):
 
 def gen_tree(catalog, nodes=None, last=None):
     "A generator of lines for the tree utility"
+
+    # Normally, traversing a Catalog will cause the structure clients to be
+    # instanitated which in turn triggers import of the associated libraries like
+    # numpy, pandas, and xarray. We want to avoid paying for that, especially
+    # when this function is used in a CLI where import overhead can accumulate to
+    # about 2 seconds, the bulk of the time. Therefore, we do something a bit
+    # "clever" here to override the normal structure clients with dummy placeholders.
+
+    def dummy_client(*args, **kwargs):
+        return None
+
+    fast_catalog = catalog.new_variation(
+        structure_clients=collections.defaultdict(lambda: dummy_client)
+    )
+
     if nodes is None:
-        last_index = len(catalog) - 1
-        for index, node in enumerate(catalog):
-            yield from gen_tree(catalog, [node], [index == last_index])
+        last_index = len(fast_catalog) - 1
+        for index, node in enumerate(fast_catalog):
+            yield from gen_tree(fast_catalog, [node], [index == last_index])
     else:
-        value = catalog[nodes[-1]]
+        value = fast_catalog[nodes[-1]]
         if hasattr(value, "items"):
             yield _line(nodes, last)
             last_index = len(value) - 1
