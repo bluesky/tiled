@@ -179,18 +179,22 @@ It has two parts:
 * `meta` --- This contains the names and data types of the columns and index. To
   generate this we build a dataframe with zero rows in it but the same columns
   and indexes as the original, and then serialize that with Arrow.
-* `divisions` --- This contains the index values the delineate each partition.
+* `divisions` --- This contains the index values that delineate each partition.
   We generate this in a similar way.
 
 Both of the concepts (and their names) are borrowed directly from
 dask.dataframe. They should enable any client, including in languages other than
 Python, to perform the same function.
 
-### Variable
+## Structures from xarray
 
 As stated above, in this context all xarray structures can be thought of as
 containers of array structures. They have no microstructure of their own, only a
 macrostructure that contains array structures.
+### Variable
+[Variable](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Variable) is a 
+low-leve class in xarray that describes a single array. 
+
 
 ```
 $ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure
@@ -237,11 +241,15 @@ $ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure
 }
 ```
 
+
+
+### DataArray
+[DataArray](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-DataArray) is a multi-dimensional 
+array, like Variable, but with the addition of labels (in the form of dimension names, coordinates and attributes)
+
 ```
 $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
 ```
-
-### Data Array
 
 ```json
 {
@@ -345,6 +353,8 @@ $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
 ```
 
 ### Dataset
+
+[Dataset](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Dataset) is a dict-like collection of DataArrays.
 
 ```
 $ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
