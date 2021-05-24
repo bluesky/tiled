@@ -1,4 +1,3 @@
-import atexit
 import collections
 import collections.abc
 from dataclasses import fields
@@ -803,6 +802,8 @@ def from_catalog(
         _startup_hook=startup,
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
+    import atexit
+
     atexit.register(client.close)
 
     return from_client(
