@@ -81,7 +81,7 @@ Place a file in one of the directories listed in the previous section.
 The last directory in the list, the "user" one, is a good place to start.
 The filename can be anything. To start, `profiles.yml` is as good a name as any.
 
-Give in the content:
+As an example, use the content:
 
 ```yaml
 # profiles.yml
@@ -99,7 +99,13 @@ local_dask:
 ```
 
 Now we have two profiles that aim at a local server, one with default (numpy)
-clients and one with dask clients. We can use them like:
+clients and one with dask clients. While running a local tiled server such as
+
+```
+tiled serve pyobject --public tiled.examples.generated_minimal:catalog
+```
+
+we can succinctly create clients like
 
 ```py
 from tiled.client import from_profile
