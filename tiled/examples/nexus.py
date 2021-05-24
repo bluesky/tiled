@@ -19,7 +19,6 @@ catalogs:
 tiled serve config config.yml
 """
 import io
-import os
 
 import h5py
 import httpx
