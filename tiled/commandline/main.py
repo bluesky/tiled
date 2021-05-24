@@ -7,26 +7,32 @@ from typing import Optional
 cli_app = typer.Typer()
 serve_app = typer.Typer()
 profile_app = typer.Typer()
-cli_app.add_typer(serve_app, name="serve")
-cli_app.add_typer(profile_app, name="profile")
+cli_app.add_typer(serve_app, name="serve", help="Launch a Tiled server.")
+cli_app.add_typer(
+    profile_app, name="profile", help="Examine Tiled 'profiles' (client-side config)."
+)
 
 
 @cli_app.command("tree")
-def tree(catalog_uri: str, max_lines: int = typer.Argument(20)):
+def tree(
+    catalog: str = typer.Argument(
+        ..., help="Catalog URI (http://...) or a profile name."
+    ),
+    max_lines: int = typer.Argument(20, help="Max lines to show."),
+):
     """
     Show the names of entries in a Catalog.
 
     This is similar to the UNIX utility `tree` for listing nested directories.
     """
     from ..utils import gen_tree
-    from ..client.catalog import Catalog
 
-    catalog = Catalog.from_uri(catalog_uri)
-    for counter, line in enumerate(gen_tree(catalog), start=1):
+    catalog_obj = _catalog_from_uri_or_profile(catalog)
+    for counter, line in enumerate(gen_tree(catalog_obj), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
                 f"Output truncated at {max_lines} lines. "
-                "Use `tiled tree URL <N>` to see <N> lines."
+                "Use `tiled tree CATALOG <N>` to see <N> lines."
             )
             break
         print(line)
@@ -34,18 +40,19 @@ def tree(catalog_uri: str, max_lines: int = typer.Argument(20)):
 
 @cli_app.command("download")
 def download(
-    catalog_uri: str,
-    path: str,
+    catalog: str = typer.Argument(
+        ..., help="Catalog URI (http://...) or a profile name."
+    ),
+    cache_path: str = typer.Argument(..., help="Local directory for cache storage"),
     available_bytes: Optional[int] = None,
 ):
     """
     Download content from a Catalog to an on-disk cache.
     """
     from ..client.cache import download
-    from ..client.catalog import Catalog
 
-    catalog = Catalog.from_uri(catalog_uri)
-    download(catalog, path=path, available_bytes=available_bytes)
+    catalog_obj = _catalog_from_uri_or_profile(catalog)
+    download(catalog_obj, path=cache_path, available_bytes=available_bytes)
 
 
 @profile_app.command("paths")
@@ -118,7 +125,9 @@ def serve_directory(
 
 @serve_app.command("pyobject")
 def serve_pyobject(
-    object_path: str,  # e.g. "package_name.module_name:object_name"
+    object_path: str = typer.Argument(
+        ..., help="Object path, as in 'package.subpackage.module:object_name'"
+    ),
     public: bool = typer.Option(False, "--public"),
 ):
     "Serve a Catalog instance from a Python module."
@@ -137,7 +146,9 @@ def serve_pyobject(
 
 @serve_app.command("config")
 def serve_config(
-    config_path: Path,
+    config_path: Path = typer.Argument(
+        ..., help="Path to a config file or directory of config files"
+    ),
 ):
     "Serve a Catalog as specified in configuration file(s)."
     from ..config import construct_serve_catalog_kwargs, parse_configs
@@ -163,6 +174,29 @@ def serve_config(
     import uvicorn
 
     uvicorn.run(web_app)
+
+
+def _catalog_from_uri_or_profile(catalog):
+    from ..client import from_uri, from_profile
+
+    if catalog.startswith("http://") or catalog.startswith("https://"):
+        # This looks like a URI.
+        uri = catalog
+        return from_uri(uri)
+    else:
+        from ..profiles import list_profiles
+
+        # Is this a profile name?
+        if catalog in list_profiles():
+            profile_name = catalog
+            return from_profile(profile_name)
+        typer.echo(
+            f"Not sure what to do with catalog {catalog!r}. "
+            "It does not look like a URI (it does not start with http[s]://) "
+            "and it does not match any profiles. Use `tiled profiles list` to "
+            "see profiles."
+        )
+        raise typer.Abort()
 
 
 main = cli_app
