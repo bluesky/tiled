@@ -22,17 +22,21 @@ some additional metadata, such as labeled dimensions.
 * data_array --- one or more strided arrays (the extras are "coordinates")
 * dataset --- a group of strided arrays with shared coordinates
 
-Support [Awkward Array](https://awkward-array.org/) is planned.
+Support for [Awkward Array](https://awkward-array.org/) is planned.
 
 Adding support for a new structure is one of the few things in Tiled that is
-*not* "pluggable" or extensible by downstream code. It requires a deep change in
+*not* "pluggable" or extensible by downstream code. It requires a change deep in
 the server and touches several aspects of the library.
 
 ## How structure is encoded
 
-The structures are designed to be as unoriginal as possible, using established
-standards and, where some invention is required, using established names from
-numpy, pandas/Arrow, xarray, and dask.
+Tiled can describe a structure---its shape, chunking, labels, and so on--- for
+the client so that the  client can intelligently request the pieces that it
+wants.
+
+The structures encodings are designed to be as unoriginal as possible, using
+established standards and, where some invention is required, using established
+names from numpy, pandas/Arrow, xarray, and dask.
 
 The structures are encoded in two parts:
 
@@ -41,7 +45,8 @@ The structures are encoded in two parts:
   *has meaning to the server* and shows up in the HTTP API.
 * **Microstructure** --- This is low-level structure including things like
   machine data type(s) and partition boundary locations. It enables the
-  service-side reader to communicate to the client how to decode the bytes.
+  service-side reader to communicate to the client how to interpret the bytes
+  that represent a given "tile" of data.
 
 ## Examples
 
