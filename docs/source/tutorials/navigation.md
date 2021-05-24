@@ -1,6 +1,7 @@
 # Navigate a Catalog
 
-In this tutorial we will navigate a collection of datasets from Python.
+In this tutorial we will navigate a collection of datasets using Tiled's Python
+client.
 
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
