@@ -128,7 +128,7 @@ $ http :8000/metadata/arrays/large | jq .data.attributes.structure
 }
 ```
 
-This `(10000, 10000)`-shaped array is subdivided into 16 chunks,
+This `(10000, 10000)`-shaped array is subdivided into 4 × 4 = 16 chunks,
 `(2500, 2500)`. Chunks do *not* in general have to be equally-sized,
 which is why the size of each chunk is given explicitly.
 
