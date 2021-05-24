@@ -179,7 +179,7 @@ by external code.) Therefore, we direct the client to endpoints that serve
 (binary) Apache Arrow-encoded data to express the microstructure because we
 have no reasonable way of placing it inline in the response.
 
-It has two parts:
+The microstructure has two parts:
 
 * `meta` --- This contains the names and data types of the columns and index. To
   generate this we build a dataframe with zero rows in it but the same columns
