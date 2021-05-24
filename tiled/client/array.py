@@ -146,3 +146,9 @@ class ArrayClient(DaskArrayClient):
         Optionally, access only a slice *within* this block.
         """
         return super().read_block(block, slice).compute()
+
+    def touch(self):
+        # Do not run super().touch() because DaskArrayClient calls compute()
+        # which does not apply here.
+        BaseArrayClient.touch(self)
+        self.read()

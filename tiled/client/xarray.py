@@ -75,6 +75,12 @@ class VariableClient(DaskVariableClient):
 
     ARRAY_READER = ArrayClient
 
+    def touch(self):
+        # Do not run super().touch() because DaskVariableClient calls compute()
+        # which does not apply here.
+        BaseArrayClient.touch(self)
+        self.read()
+
 
 class DaskDataArrayClient(BaseArrayClient):
 
@@ -183,6 +189,12 @@ class DaskDataArrayClient(BaseArrayClient):
 class DataArrayClient(DaskDataArrayClient):
 
     VARIABLE_READER = VariableClient
+
+    def touch(self):
+        # Do not run super().touch() because DaskDataArrayClient calls compute()
+        # which does not apply here.
+        BaseArrayClient.touch(self)
+        self.read()
 
 
 class DaskDatasetClient(BaseArrayClient):
@@ -333,3 +345,10 @@ class DatasetClient(DaskDatasetClient):
 
     DATA_ARRAY_READER = DataArrayClient
     VARIABLE_READER = VariableClient
+
+    def touch(self):
+        # Do not run super().touch() because DaskDatasetClient calls compute()
+        # which does not apply here.
+        BaseArrayClient.touch(self)
+        self._ipython_key_completions_()
+        self.read()

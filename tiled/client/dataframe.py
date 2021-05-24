@@ -223,3 +223,10 @@ class DataFrameClient(DaskDataFrameClient):
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
         return super().read(columns).compute()
+
+    def touch(self):
+        # Do not run super().touch() because DaskDataFrameClient calls compute()
+        # which does not apply here.
+        BaseClient.touch(self)
+        self._ipython_key_completions_()
+        self.read()
