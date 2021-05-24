@@ -31,6 +31,13 @@ Tiled facilitates **local caching** in a standard web browser or in Tiled's
 Python client, making efficient use of bandwidth and enabling an offline
 "airplane mode."
 
+| Distribution   | Where to get it                                              |
+| -------------- | ------------------------------------------------------------ |
+| PyPI           | `pip install tiled`                                          |
+| Conda          | Coming Soon                                                  |
+| Source code    | [github.com/bluesky/tiled](https://github.com/bluesky/tiled) |
+| Documentation  | [blueskyproject.io/tiled](https://blueskyproject.io/tiled)   |
+
 ## Example
 
 Serve a "Catalog", a Python object backed by some generated data, directory
