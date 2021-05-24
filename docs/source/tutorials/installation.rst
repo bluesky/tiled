@@ -7,9 +7,6 @@ This tutorial covers
 * Installation using pip
 * Installation from source
 
-Optional Dependencies
----------------------
-
 Pip
 ---
 
