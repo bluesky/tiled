@@ -22,17 +22,21 @@ some additional metadata, such as labeled dimensions.
 * data_array --- one or more strided arrays (the extras are "coordinates")
 * dataset --- a group of strided arrays with shared coordinates
 
-Support [Awkward Array](https://awkward-array.org/) is planned.
+Support for [Awkward Array](https://awkward-array.org/) is planned.
 
 Adding support for a new structure is one of the few things in Tiled that is
-*not* "pluggable" or extensible by downstream code. It requires a deep change in
+*not* "pluggable" or extensible by downstream code. It requires a change deep in
 the server and touches several aspects of the library.
 
 ## How structure is encoded
 
-The structures are designed to be as unoriginal as possible, using established
-standards and, where some invention is required, using established names from
-numpy, pandas/Arrow, xarray, and dask.
+Tiled can describe a structure---its shape, chunking, labels, and so on--- for
+the client so that the  client can intelligently request the pieces that it
+wants.
+
+The structures encodings are designed to be as unoriginal as possible, using
+established standards and, where some invention is required, using established
+names from numpy, pandas/Arrow, xarray, and dask.
 
 The structures are encoded in two parts:
 
@@ -41,7 +45,8 @@ The structures are encoded in two parts:
   *has meaning to the server* and shows up in the HTTP API.
 * **Microstructure** --- This is low-level structure including things like
   machine data type(s) and partition boundary locations. It enables the
-  service-side reader to communicate to the client how to decode the bytes.
+  service-side reader to communicate to the client how to interpret the bytes
+  that represent a given "tile" of data.
 
 ## Examples
 
@@ -123,7 +128,7 @@ $ http :8000/metadata/arrays/large | jq .data.attributes.structure
 }
 ```
 
-This `(10000, 10000)`-shaped array is subdivided into 16 chunks,
+This `(10000, 10000)`-shaped array is subdivided into 4 × 4 = 16 chunks,
 `(2500, 2500)`. Chunks do *not* in general have to be equally-sized,
 which is why the size of each chunk is given explicitly.
 
@@ -179,21 +184,38 @@ It has two parts:
 * `meta` --- This contains the names and data types of the columns and index. To
   generate this we build a dataframe with zero rows in it but the same columns
   and indexes as the original, and then serialize that with Arrow.
-* `divisions` --- This contains the index values the delineate each partition.
+* `divisions` --- This contains the index values that delineate each partition.
   We generate this in a similar way.
 
 Both of the concepts (and their names) are borrowed directly from
 dask.dataframe. They should enable any client, including in languages other than
 Python, to perform the same function.
 
-### Variable
+### Variable (xarray)
 
 As stated above, in this context all xarray structures can be thought of as
 containers of array structures. They have no microstructure of their own, only a
 macrostructure that contains array structures.
 
+[Variable](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Variable)
+is a low-level structure in xarray that describes a single N-dimensional array,
+adding names to each dimension (`dims`) and a dict of metadata (`attrs`).
+
+```{note}
+In xarray, there is a *soft* requirement that `attrs` contain only
+JSON-serializable types like strings, numbers, and lists, and dicts. Most parts
+of xarray will work even if this does not hold, but certain export functions
+will not work. Likewise, Tiled can only serve xarray objects where the `attrs`
+are JSON serializable.
+
+Tiled *does* accept numpy scalars and arrays in `attrs` (or any metadata).
+Before serializing to JSON or msgpack, it converts them to built-in numeric
+types and lists, respectively. This works well as long as the arrays are not
+large; `attrs` is not intended to hold large data.
 ```
-$ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure
+
+```
+$ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure ```
 ```
 
 ```json
@@ -237,11 +259,18 @@ $ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure
 }
 ```
 
+### DataArray (xarray)
+
+A
+[DataArray](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-DataArray)
+contains one Variable alongside coordinates (`coords`) that are meant to serve as "tick
+labels" for the primary Variable. The "coordinates" are themselves Variables.
+Therefore, DataArray can be described as a container for one Variable and (optional)
+additional Variables.
+
 ```
 $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
 ```
-
-### Data Array
 
 ```json
 {
@@ -344,7 +373,11 @@ $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
 }
 ```
 
-### Dataset
+### Dataset (xarray)
+
+A
+[Dataset](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Dataset)
+is a dict-like collection of DataArrays that may share coordinates.
 
 ```
 $ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
