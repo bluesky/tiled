@@ -186,12 +186,11 @@ Both of the concepts (and their names) are borrowed directly from
 dask.dataframe. They should enable any client, including in languages other than
 Python, to perform the same function.
 
-## Structures from xarray
 
 As stated above, in this context all xarray structures can be thought of as
 containers of array structures. They have no microstructure of their own, only a
 macrostructure that contains array structures.
-### Variable
+### Variable (xarray)
 [Variable](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Variable) is a 
 low-leve class in xarray that describes a single array. 
 
@@ -243,7 +242,7 @@ $ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure
 
 
 
-### DataArray
+### DataArray (xarray)
 [DataArray](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-DataArray) is a multi-dimensional 
 array, like Variable, but with the addition of labels (in the form of dimension names, coordinates and attributes)
 
@@ -352,7 +351,7 @@ $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
 }
 ```
 
-### Dataset
+### Dataset (xarray)
 
 [Dataset](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Dataset) is a dict-like collection of DataArrays.
 
