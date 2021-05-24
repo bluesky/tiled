@@ -3,7 +3,7 @@
 ## What problem do profiles solve?
 
 Profiles provide a shorthand for constructing clients. A profile stores client
-parameters in a file and gives them an alias, so that this:
+parameters in a file and gives them an alias, so that something like this:
 
 ```py
 from tiled.client import from_uri
@@ -20,12 +20,21 @@ from tiled.client import from_profile
 catalog = from_profile("my_catalog")
 ```
 
-where `my_catalog` can be any name you wish.
+where `my_catalog` can be any name you wish and the parameters are written down
+once like so:
 
-## Where are profiles configured?
+```yaml
+my_catalog:
+    uri: "http://some_server_address"
+    cache:
+        disk:
+            path: "path/to/cache"
+```
 
-Profiles are configured in YAML files located in any of several locations.
-To list where Tiled looks for Profiles on your system, use the command line:
+## Where are profiles kept?
+
+Profiles are specified in YAML files located in any of several locations. To
+list where Tiled looks for profiles on your system, use the command line:
 
 ```
 $ tiled profile paths
@@ -78,9 +87,15 @@ Give in the content:
 # profiles.yml
 local:
    uri: "http://localhost:8000"
+   cache:
+       memory:
+           available_bytes: 2_000_000_000  # 2 GB
 local_dask:
    uri: "http://localhost:8000"
    structure_clients: "dask"
+   cache:
+       memory:
+           available_bytes: 2_000_000_000  # 2 GB
 ```
 
 Now we have two profiles that aim at a local server, one with default (numpy)

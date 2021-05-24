@@ -910,6 +910,25 @@ def from_profile(name, **kwargs):
             f"from directories {paths}."
         ) from err
     merged = {**profile_content, **kwargs}
+    cache_config = merged.pop("cache")
+    if cache_config is not None:
+        from tiled.client.cache import Cache
+
+        MSG = f"Failed to apply cache configuration {cache_config!r}"
+        # cache_config should be one of:
+        # {"memory": {...}}
+        # {"disk": {...}}
+        try:
+            ((key, value),) = cache_config.items()
+        except Exception:
+            raise ValueError(MSG)
+        if key == "memory":
+            cache = Cache.in_memory(**value)
+        elif key == "disk":
+            cache = Cache.on_disk(**value)
+        else:
+            raise ValueError(MSG)
+        merged["cache"] = cache
     if "direct" in merged:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.
