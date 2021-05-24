@@ -11,6 +11,28 @@ cli_app.add_typer(serve_app, name="serve")
 cli_app.add_typer(profile_app, name="profile")
 
 
+@cli_app.command("tree")
+def tree(catalog_uri: str, N: int = 20):
+    """
+    Show the names of entries in a Catalog.
+
+    This is similar to the UNIX utility `tree` for listing nested directories.
+    """
+    from ..utils import gen_tree
+    from ..client.catalog import Catalog
+
+    catalog = Catalog.from_uri(catalog_uri)
+    max_lines = N
+    for counter, line in enumerate(gen_tree(catalog), start=1):
+        if (max_lines is not None) and (counter > max_lines):
+            print(
+                f"Output truncated at {max_lines} lines. "
+                "Use `tiled tree URL <N>` to see <N> lines."
+            )
+            break
+        print(line)
+
+
 @cli_app.command("download")
 def download(
     catalog_uri: str,

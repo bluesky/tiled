@@ -194,19 +194,19 @@ def walk(catalog, nodes=None):
             yield nodes
 
 
-def _tree_gen(catalog, nodes=None, last=None):
+def gen_tree(catalog, nodes=None, last=None):
     "A generator of lines for the tree utility"
     if nodes is None:
         last_index = len(catalog) - 1
         for index, node in enumerate(catalog):
-            yield from _tree_gen(catalog, [node], [index == last_index])
+            yield from gen_tree(catalog, [node], [index == last_index])
     else:
         value = catalog[nodes[-1]]
         if hasattr(value, "items"):
             yield _line(nodes, last)
             last_index = len(value) - 1
             for index, (k, v) in enumerate(value.items()):
-                yield from _tree_gen(value, nodes + [k], last + [index == last_index])
+                yield from gen_tree(value, nodes + [k], last + [index == last_index])
         else:
             yield _line(nodes, last)
 
@@ -236,7 +236,7 @@ def tree(catalog, max_lines=20):
         └── wolf
 
     """
-    for counter, line in enumerate(_tree_gen(catalog), start=1):
+    for counter, line in enumerate(gen_tree(catalog), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
                 f"<Output truncated at {max_lines} lines. "
