@@ -215,8 +215,7 @@ large; `attrs` is not intended to hold large data.
 ```
 
 ```
-$ http :8000/metadata/xarrays/large/variable | jq
-.data.attributes.structure ```
+$ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure ```
 ```
 
 ```json
