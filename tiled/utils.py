@@ -8,6 +8,31 @@ import os
 import threading
 
 
+class ListView(collections.abc.Sequence):
+    "An immutable view of a list."
+
+    def __init__(self, seq):
+        self._internal_list = list(seq)
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self._internal_list!r})"
+
+    def __getitem__(self, index):
+        return self._internal_list[index]
+
+    def __iter__(self):
+        yield from self._internal_list
+
+    def __len__(self):
+        return len(self._internal_list)
+
+    def __setitem__(self, index, value):
+        raise TypeError("Setting values is not allowed.")
+
+    def __delitem__(self, index):
+        raise TypeError("Deleting values is not allowed.")
+
+
 class DictView(collections.abc.Mapping):
     "An immutable view of a dict."
 

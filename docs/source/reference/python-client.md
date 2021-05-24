@@ -56,6 +56,8 @@ It adds the following attributes
 
    tiled.client.catalog.Catalog.metadata
    tiled.client.catalog.Catalog.sorting
+   tiled.client.catalog.Catalog.path
+   tiled.client.catalog.Catalog.uri
 ```
 
 And it adds these methods, which return a new Catalog instance.
@@ -115,6 +117,8 @@ Tiled currently includes two clients for each structure family:
 
    tiled.client.base.BaseClient
    tiled.client.base.BaseClient.metadata
+   tiled.client.base.BaseClient.path
+   tiled.client.catalog.Catalog.uri
    tiled.client.base.BaseClient.structure
    tiled.client.base.BaseClient.new_variation
    tiled.client.base.BaseClient.touch

@@ -5,6 +5,7 @@ import importlib
 import itertools
 import os
 import time
+import urllib.parse
 import warnings
 
 import entrypoints
@@ -15,6 +16,7 @@ from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
 from ..utils import (
     DictView,
+    ListView,
     OneShotCachedMap,
     Sentinel,
 )
@@ -223,6 +225,16 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._metadata)
+
+    @property
+    def path(self):
+        "Sequence of entry names from the root Catalog to this entry"
+        return ListView(self._path)
+
+    @property
+    def uri(self):
+        "Direct link to this entry"
+        return f"{self._client.base_url}/metadata/{'/'.join(self.path)}"
 
     @property
     def sorting(self):
@@ -711,22 +723,31 @@ def from_uri(
     if token:
         headers["Authorization"] = f"Bearer {token}"
     url = httpx.URL(uri)
-    params = url.query.split(b"&")
-    for item in params:
-        if b"=" in item:
-            key, value = item.split(b"=")
-            if key == b"api_key":
-                headers["X-TILED-API-KEY"] = value.decode()
-    base_url = f"{url.scheme}://{url.host}"
-    if url.port:
-        base_url += f":{url.port}"
-    base_url += url.path.rstrip("/")
+    parsed_query = urllib.parse.parse_qs(url.query.decode())
+    api_key_list = parsed_query.pop("api_key", None)
+    if api_key_list is not None:
+        if len(api_key_list) != 1:
+            raise ValueError("Cannot handle two api_key query parameters")
+        (api_key,) = api_key_list
+        headers["X-TILED-API-KEY"] = api_key
+    query = urllib.parse.urlencode(parsed_query, doseq=True)
+    path = [segment for segment in url.path.rstrip("/").split("/") if segment]
+    if path:
+        if path[0] != "metadata":
+            raise ValueError(
+                "When the URI has a path, the path expected to begin with '/metadata/'"
+            )
+        path.pop(0)  # ["metadata", "stuff", "things"] -> ["stuff", "things"]
+    base_url = urllib.parse.urlunsplit(
+        (url.scheme, url.netloc, "", query, url.fragment)
+    )
     client = httpx.Client(base_url=base_url, headers=headers)
     return from_client(
         client,
+        structure_clients=structure_clients,
+        path=path,
         cache=cache,
         offline=offline,
-        structure_clients=structure_clients,
         special_clients=special_clients,
     )
 
@@ -822,6 +843,7 @@ def from_client(
     client,
     structure_clients="numpy",
     *,
+    path=None,
     cache=None,
     offline=False,
     special_clients=None,
@@ -852,6 +874,7 @@ def from_client(
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
         structure_clients = Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
+    path = path or []
     # Do entrypoint discovery if it hasn't yet been done.
     if Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
         Catalog.discover_special_clients()
@@ -859,20 +882,20 @@ def from_client(
         special_clients or {},
         Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
-    content = get_json_with_cache(cache, offline, client, "/metadata/")
+    content = get_json_with_cache(cache, offline, client, f"/metadata/{'/'.join(path)}")
     item = content["data"]
     metadata = item["attributes"]["metadata"]
     return Catalog(
         client,
         offline=offline,
-        path=[],
+        path=path,
         metadata=metadata,
         structure_clients=structure_clients,
         cache=cache,
         special_clients=special_clients,
         root_client_type=Catalog,
     ).client_for_item(
-        item, path=[], metadata=metadata, sorting=item["attributes"].get("sorting")
+        item, path=path, metadata=metadata, sorting=item["attributes"].get("sorting")
     )
 
 

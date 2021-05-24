@@ -1,4 +1,4 @@
-from ..utils import DictView
+from ..utils import DictView, ListView
 from .utils import get_json_with_cache
 from ..catalogs.utils import UNCHANGED
 
@@ -33,6 +33,16 @@ class BaseClient:
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._metadata)
+
+    @property
+    def path(self):
+        "Sequence of entry names from the root Catalog to this entry"
+        return ListView(self._path)
+
+    @property
+    def uri(self):
+        "Direct link to this entry"
+        return f"{self._client.base_url}/metadata/{'/'.join(self.path)}"
 
     def new_variation(
         self,
