@@ -116,7 +116,8 @@ lazy_catalog = from_profile("local_dask")
 
 ## List profiles
 
-To list profiles on your system...
+To list the names of the profiles on your system, along with the path to the
+file where each one is defined...
 
 From the shell:
 
@@ -197,3 +198,45 @@ therefore become irrelevant and will be ignored.
 
 If the collision occurs in the user directory, then you (of course) have
 the access necessary to fix it, and you should.
+
+## Advanced: "Direct" Profiles
+
+```{note}
+Return to this section after reading  {doc}`direct-client`.
+```
+
+For development and debugging, it can be convenient to place service and client
+configuration together in a profile. To do this, include the special key
+`direct:` with the *service-side* configuration nested inside of it.
+
+Here is a complete example.
+
+```yaml
+# profiles.yml
+my_profile:
+    direct:
+        catalogs:
+            - path: /
+            catalog: tiled.catalogs.files:Catalog.from_directory
+            args:
+                directory: "path/to/files"
+```
+
+This takes the place of the `uri:` parameter. A profile must contain
+*either* `uri:` or `direct:` but not both. It can sit alongside other
+usual client-side configuration, such as
+
+
+```yaml
+# profiles.yml
+my_profile:
+    direct:
+        catalogs:
+            - path: /
+            catalog: tiled.catalogs.files:Catalog.from_directory
+            args:
+                directory: "path/to/files"
+    cache:
+        memory:
+            available_bytes: 2_000_000_000 # 2 GB
+```
