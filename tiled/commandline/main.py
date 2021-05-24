@@ -144,21 +144,6 @@ def serve_config(
     uvicorn.run(web_app)
 
 
-def _parse_kwargs(arg):
-    # Parse
-    # --arg a="x" --arg b=1
-    # into
-    # {"a": "x", "b": 1}
-    import ast
-
-    kwargs = {}
-    for full_str in arg:
-        keyword, value_str = full_str.split("=", 1)
-        value = ast.literal_eval(value_str)
-        kwargs[keyword] = value
-    return kwargs
-
-
 main = cli_app
 
 if __name__ == "__main__":
