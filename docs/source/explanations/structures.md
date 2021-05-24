@@ -191,17 +191,32 @@ Both of the concepts (and their names) are borrowed directly from
 dask.dataframe. They should enable any client, including in languages other than
 Python, to perform the same function.
 
+### Variable (xarray)
 
 As stated above, in this context all xarray structures can be thought of as
 containers of array structures. They have no microstructure of their own, only a
 macrostructure that contains array structures.
-### Variable (xarray)
-[Variable](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Variable) is a 
-low-leve class in xarray that describes a single array. 
 
+[Variable](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Variable)
+is a low-level structure in xarray that describes a single N-dimensional array,
+adding names to each dimension (`dims`) and a dict of metadata (`attrs`).
+
+```{note}
+In xarray, there is a *soft* requirement that `attrs` contain only
+JSON-serializable types like strings, numbers, and lists, and dicts. Most parts
+of xarray will work even if this does not hold, but certain export functions
+will not work. Likewise, Tiled can only serve xarray objects where the `attrs`
+are JSON serializable.
+
+Tiled *does* accept numpy scalars and arrays in `attrs` (or any metadata).
+Before serializing to JSON or msgpack, it converts them to built-in numeric
+types and lists, respectively. This works well as long as the arrays are not
+large; `attrs` is not intended to hold large data.
+```
 
 ```
-$ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure
+$ http :8000/metadata/xarrays/large/variable | jq
+.data.attributes.structure ```
 ```
 
 ```json
@@ -245,11 +260,14 @@ $ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure
 }
 ```
 
-
-
 ### DataArray (xarray)
-[DataArray](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-DataArray) is a multi-dimensional 
-array, like Variable, but with the addition of labels (in the form of dimension names, coordinates and attributes)
+
+A
+[DataArray](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-DataArray)
+contains one Variable alongside coordinates (`coords`) that are meant to serve as "tick
+labels" for the primary Variable. The "coordinates" are themselves Variables.
+Therefore, DataArray can be described as a container for one Variable and (optional)
+additional Variables.
 
 ```
 $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
@@ -358,7 +376,9 @@ $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
 
 ### Dataset (xarray)
 
-[Dataset](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Dataset) is a dict-like collection of DataArrays.
+A
+[Dataset](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Dataset)
+is a dict-like collection of DataArrays that may share coordinates.
 
 ```
 $ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
