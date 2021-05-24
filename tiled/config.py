@@ -3,6 +3,7 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
+import collections.abc
 import contextlib
 import os
 from pathlib import Path
@@ -159,7 +160,15 @@ def parse_configs(config_path):
         ):
             continue
         with open(filepath) as file:
-            parsed_configs[filepath] = parse(file)
+            config = parse(file)
+            if not isinstance(config, collections.abc.Mapping):
+                if config is None:
+                    raise ValueError(f"The file at {filepath!r} is empty.")
+                else:
+                    raise ValueError(
+                        f"Content of {filepath!r} has invalid structure (not a mapping)."
+                    )
+            parsed_configs[filepath] = config
 
     merged_config = merge(parsed_configs)
     return merged_config
