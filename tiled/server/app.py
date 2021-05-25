@@ -2,8 +2,9 @@ from functools import lru_cache
 import secrets
 import sys
 import time
+import urllib.parse
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .authentication import authentication_router, get_authenticator
@@ -52,35 +53,45 @@ def get_app(include_routers=None):
 
     @app.middleware("http")
     async def set_api_key_cookie(request: Request, call_next):
-        # If the API key is provided via a header or query, set it as a cookie.
+        "If the API key is provided via a header or query, set it as a cookie."
+        # TODO Can we avoid the overhead of doing this in middleware?
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         if ("X-TILED-API-KEY" in request.headers) and (response.status_code < 400):
             response.set_cookie(
-                key="TILED_API_KEY",
+                key="tiled_api_key",
                 value=request.headers["X-TILED-API-KEY"],
-                domain=request.url.hostname,
+                httponly=True,
+                samesite="lax",
             )
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             response.set_cookie(
-                key="TILED_CSRF_TOKEN",
+                key="tiled_csrf_token",
                 value=secrets.token_hex(32),
-                domain=request.url.hostname,
+                httponly=True,
+                samesite="lax",
             )
         elif ("api_key" in request.url.query) and (response.status_code < 400):
-            params = request.url.query.split("&")
-            for item in params:
-                if "=" in item:
-                    key, value = item.split("=")
-                    if key == "api_key":
-                        response.set_cookie(
-                            key="TILED_API_KEY",
-                            value=value,
-                            domain=request.url.hostname,
-                        )
+            # Pick off the api_key query parameter and set the value in a cookie.
+            parsed_query = urllib.parse.parse_qs(request.url.query)
+            api_key_list = parsed_query.pop("api_key", None)
+            if len(api_key_list) != 1:
+                raise HTTPException(
+                    status_code=400, detail="Cannot handle two api_key query parameters"
+                )
+            (api_key,) = api_key_list
             response.set_cookie(
-                key="TILED_CSRF_TOKEN",
+                key="tiled_api_key",
+                value=api_key,
+                httponly=True,
+                samesite="lax",
+            )
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+            response.set_cookie(
+                key="tiled_csrf_token",
                 value=secrets.token_hex(32),
-                domain=request.url.hostname,
+                httponly=True,
+                samesite="lax",
             )
         return response
 

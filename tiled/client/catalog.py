@@ -3,14 +3,10 @@ import collections.abc
 from dataclasses import fields
 import importlib
 import itertools
-import os
 import time
-import urllib.parse
 import warnings
 
 import entrypoints
-import getpass
-import httpx
 
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
@@ -20,24 +16,17 @@ from ..utils import (
     OneShotCachedMap,
     Sentinel,
 )
+from .authentication import authenticate_client
 from .utils import (
+    client_and_path_from_uri,
+    client_from_catalog,
     get_json_with_cache,
-    handle_error,
 )
 from ..catalogs.utils import (
     catalog_repr,
     IndexersMixin,
     UNCHANGED,
 )
-
-
-def generate_token(uri):
-    username = input("Username: ")
-    password = getpass.getpass()
-    form_data = {"grant_type": "password", "username": username, "password": password}
-    response = httpx.post(uri + "/token", data=form_data)
-    handle_error(response)
-    return response.json()["access_token"]
 
 
 class Catalog(collections.abc.Mapping, IndexersMixin):
@@ -683,7 +672,7 @@ def from_uri(
     *,
     cache=None,
     offline=False,
-    token=None,
+    username=None,
     special_clients=None,
 ):
     """
@@ -703,48 +692,20 @@ def from_uri(
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
-    token : str, optional
-        Access token. If None, the environment variable TILED_TOKEN is used
-        if it is set. Otherwise, unauthenticated ("public") access is
-        attempted, which may or may not be supported depending on how the
-        service is configured. When TILED_TOKEN is set, you can pass token=""
-        (empty string) to override it and force unauthenticated access.
+    username : str, optional
+    token_cache = str or dict, optional
+        Path to directory or dict
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
-    headers = {}
-    if token is None:
-        token = os.getenv("TILED_TOKEN")
-        # But if token == "" let that override the environment variable
-        # and force an unauthenticated connection.
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    url = httpx.URL(uri)
-    parsed_query = urllib.parse.parse_qs(url.query.decode())
-    api_key_list = parsed_query.pop("api_key", None)
-    if api_key_list is not None:
-        if len(api_key_list) != 1:
-            raise ValueError("Cannot handle two api_key query parameters")
-        (api_key,) = api_key_list
-        headers["X-TILED-API-KEY"] = api_key
-    query = urllib.parse.urlencode(parsed_query, doseq=True)
-    path = [segment for segment in url.path.rstrip("/").split("/") if segment]
-    if path:
-        if path[0] != "metadata":
-            raise ValueError(
-                "When the URI has a path, the path expected to begin with '/metadata/'"
-            )
-        path.pop(0)  # ["metadata", "stuff", "things"] -> ["stuff", "things"]
-    base_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc, "", query, url.fragment)
-    )
-    client = httpx.Client(base_url=base_url, headers=headers)
+    client, path = client_and_path_from_uri(uri)
     return from_client(
         client,
         structure_clients=structure_clients,
+        username=username,
         path=path,
         cache=cache,
         offline=offline,
@@ -755,6 +716,8 @@ def from_uri(
 def from_catalog(
     catalog,
     authenticator=None,
+    allow_anonymous_access=None,
+    secret_keys=None,
     structure_clients="numpy",
     *,
     token=None,
@@ -795,38 +758,9 @@ def from_catalog(
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     """
-    from ..server.app import serve_catalog
-
-    app = serve_catalog(catalog, authenticator)
-
-    headers = {}
-    if token is None:
-        token = os.getenv("TILED_TOKEN")
-        # But if token == "" let that override the environment variable
-        # and force an unauthenticated connection.
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    # Only an AsyncClient can be used over ASGI.
-    # We wrap all the async methods in a call to asyncio.run(...).
-    # Someday we should explore asynchronous Tiled Client objects.
-    from ._async_bridge import AsyncClientBridge
-
-    async def startup():
-        # Note: This is important. The Tiled server routes are defined lazily on
-        # startup.
-        await app.router.startup()
-
-    client = AsyncClientBridge(
-        base_url="http://local-tiled-app",
-        headers=headers,
-        app=app,
-        _startup_hook=startup,
+    client = client_from_catalog(
+        catalog, authenticator, allow_anonymous_access, secret_keys
     )
-    # TODO How to close the httpx.AsyncClient more cleanly?
-    import atexit
-
-    atexit.register(client.close)
-
     return from_client(
         client,
         structure_clients=structure_clients,
@@ -843,10 +777,12 @@ def from_client(
     client,
     structure_clients="numpy",
     *,
+    username=None,
     path=None,
     cache=None,
     offline=False,
     special_clients=None,
+    token_cache=None,
 ):
     """
     Advanced: Connect to a Catalog using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -870,6 +806,7 @@ def from_client(
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+    token_cache: ...
     """
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
@@ -882,6 +819,8 @@ def from_client(
         special_clients or {},
         Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
+    if username is not None:
+        authenticate_client(client, username, token_cache)
     content = get_json_with_cache(cache, offline, client, f"/metadata/{'/'.join(path)}")
     item = content["data"]
     metadata = item["attributes"]["metadata"]

@@ -83,3 +83,4 @@ target/
 
 example_files/
 *.yml
+*.json

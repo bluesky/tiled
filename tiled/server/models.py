@@ -82,9 +82,16 @@ class ReaderResource(Resource):
     attributes: ReaderAttributes
 
 
-class Token(pydantic.BaseModel):
+class AccessAndRefreshTokens(pydantic.BaseModel):
     access_token: str
+    expires_in: int
+    refresh_token: str
+    refresh_token_expires_in: int
     token_type: str
+
+
+class RefreshToken(pydantic.BaseModel):
+    refresh_token: str
 
 
 class TokenData(pydantic.BaseModel):

@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta
+from tiled.server.models import AccessAndRefreshTokens, RefreshToken
 from typing import Any, Optional
+import secrets
+import uuid
 import warnings
 
 from fastapi import (
@@ -9,7 +12,6 @@ from fastapi import (
     HTTPException,
     Query,
     Security,
-    status,
     Response,
     Request,
 )
@@ -28,7 +30,7 @@ from .settings import get_settings
 from ..utils import SpecialUsers
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_LIFETIME_MINUTES = 15
+UNIT_SECOND = timedelta(seconds=1)
 
 
 def get_authenticator():
@@ -50,17 +52,67 @@ class TokenData(BaseModel):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
 api_key_header = APIKeyHeader(name="X-TILED-API-KEY", auto_error=False)
-api_key_cookie = APIKeyCookie(name="TILED_API_KEY", auto_error=False)
+api_key_cookie = APIKeyCookie(name="tiled_api_key", auto_error=False)
 authentication_router = APIRouter()
 
 
 def create_access_token(data: dict, expires_delta, secret_key):
-    print(secret_key)
     to_encode = data.copy()
     expire = datetime.utcnow() + expires_delta
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def create_refresh_token(
+    data: dict, secret_key, session_id=None, session_creation_time=None
+):
+    to_encode = data.copy()
+    issued_at_time = datetime.utcnow()
+    session_id = session_id or uuid.uuid4().int
+    session_creation_time = session_creation_time or issued_at_time
+    to_encode.update(
+        {
+            "type": "refresh",
+            # This is used to compute expiry.
+            # We do not use "exp" in refresh tokens because we want the freedom
+            # to adjust the max age and have that respected immediately.
+            "iat": issued_at_time.timestamp(),
+            # The session ID is the same for a whole chain of refresh tokens,
+            # and it can be potentially used to revoke all of them if
+            # we believe the session is compromised.
+            "sid": session_id,
+            # This is used to enforce a maximum session age.
+            "sct": session_creation_time.timestamp(),  # nonstandard claim
+        }
+    )
+    encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def decode_token(token, secret_keys, expected_type):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    # The first key in settings.secret_keys is used for *encoding*.
+    # All keys are tried for *decoding* until one works or they all
+    # fail. They supports key rotation.
+    for secret_key in secret_keys:
+        try:
+            payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+            break
+        except ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Access token has expired.")
+        except JWTError:
+            # Try the next key in the key rotation.
+            continue
+    else:
+        raise credentials_exception
+    if payload.get("type") != expected_type:
+        raise credentials_exception
+    return payload
 
 
 async def check_single_user_api_key(
@@ -83,11 +135,6 @@ async def get_current_user(
     settings: BaseSettings = Depends(get_settings),
     authenticator=Depends(get_authenticator),
 ):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     if (authenticator is None) and has_single_user_api_key:
         return SpecialUsers.admin
     if token is None:
@@ -100,34 +147,14 @@ async def get_current_user(
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
             raise HTTPException(status_code=401, detail="Not authenticated")
-    # The first key in settings.secret_keys is used for *encoding*.
-    # All keys are tried for *decoding* until one works or they all
-    # fail. They supports key rotation.
-    for secret_key in settings.secret_keys:
-        try:
-            payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
-            username: str = payload.get("sub")
-            if username is None:
-                raise credentials_exception
-            break
-        except ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Access token has expired.")
-
-        except JWTError:
-            # Try the next key in the key rotation.
-            continue
-    else:
-        raise credentials_exception
-    # The user has a valid token for 'username' so we know that
-    # within the expiration time they successfully validated.
-    # Do we want to re-verify that the user still exists and is
-    # authorized at this point? This only makes sense if we grow
-    # some server-side database.
+    payload = decode_token(token, settings.secret_keys, "access")
+    username: str = payload.get("sub")
     return username
 
 
-@authentication_router.post("/token", response_model=Token)
+@authentication_router.post("/token", response_model=AccessAndRefreshTokens)
 async def login_for_access_token(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
     settings: BaseSettings = Depends(get_settings),
@@ -137,29 +164,106 @@ async def login_for_access_token(
     )
     if not username:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=401,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_LIFETIME_MINUTES)
     access_token = create_access_token(
         data={"sub": username},
-        expires_delta=access_token_expires,
+        expires_delta=settings.access_token_max_age,
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token = create_refresh_token(
+        data={"sub": username},
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    response.set_cookie(
+        key="tiled_csrf_token",
+        value=secrets.token_hex(32),
+        httponly=True,
+        samesite="lax",
+    )
+    return {
+        "access_token": access_token,
+        "expires_in": settings.access_token_max_age / UNIT_SECOND,
+        "refresh_token": refresh_token,
+        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+        "token_type": "bearer",
+    }
+
+
+@authentication_router.post("/token/refresh", response_model=AccessAndRefreshTokens)
+async def refresh(
+    refresh_token: RefreshToken,
+    request: Request,
+    csrf_token: str = Query(None),
+    tiled_csrf_token=Cookie(...),
+    settings: BaseSettings = Depends(get_settings),
+):
+    "Obtain a new access token and refresh token."
+    check_csrf_double_submit_cookie(request.headers, csrf_token, tiled_csrf_token)
+    payload = decode_token(refresh_token.refresh_token, settings.secret_keys, "refresh")
+    now = datetime.utcnow().timestamp()
+    # Enforce refresh token max age.
+    # We do this here rather than with an "exp" claim in the token so that we can
+    # change the configuration and have that change respected.
+    if timedelta(seconds=(now - payload["iat"])) > settings.refresh_token_max_age:
+        raise HTTPException(
+            status_code=401, detail="Session has expired. Please re-authenticate."
+        )
+    # Enforce maximum session age, if set.
+    if settings.session_max_age is not None:
+        if timedelta(seconds=(now - payload["sct"])) > settings.session_max_age:
+            raise HTTPException(
+                status_code=401, detail="Session has expired. Please re-authenticate."
+            )
+    new_refresh_token = create_refresh_token(
+        data={"sub": payload["sub"]},
+        session_id=payload["sid"],
+        session_creation_time=datetime.fromtimestamp(payload["sct"]),
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    access_token = create_access_token(
+        data={"sub": payload["sub"]},
+        expires_delta=settings.access_token_max_age,
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    return {
+        "access_token": access_token,
+        "expires_in": settings.access_token_max_age / UNIT_SECOND,
+        "refresh_token": new_refresh_token,
+        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+        "token_type": "bearer",
+    }
 
 
 @authentication_router.post("/logout")
 async def logout(
     request: Request,
     response: Response,
-    csrf_token: str = Query(...),
-    TILED_CSRF_TOKEN=Cookie(...),
+    csrf_token: str = Query(None),
+    tiled_csrf_token=Cookie(...),
 ):
-    if csrf_token != TILED_CSRF_TOKEN:
-        raise HTTPException(status_code=401, detail="invalid csrf_token")
-    domain = request.url.hostname
-    response.delete_cookie("TILED_API_KEY", domain=domain)
-    response.delete_cookie("TILED_CSRF_TOKEN", domain=domain)
+    check_csrf_double_submit_cookie(request.headers, csrf_token, tiled_csrf_token)
+    response.delete_cookie("tiled_api_key")
+    response.delete_cookie("tiled_csrf_token")
     return {}
+
+
+def check_csrf_double_submit_cookie(headers, query, cookie):
+    # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie  # noqa
+
+    # Get the token from the Header or (if not there) the query parameter.
+    csrf_token = headers.get("X-TILED-CSRF-TOKEN", query)
+    # Securely compare it with the cookie.
+    if not cookie:
+        raise HTTPException(status_code=401, detail="Expected tiled_csrf_token cookie")
+    if not csrf_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Expected csrf_token query parameter or x-tiled-csrf-token header",
+        )
+    if not secrets.compare_digest(csrf_token, cookie):
+        raise HTTPException(
+            status_code=401, detail="Double-submit CSRF tokens do not match"
+        )

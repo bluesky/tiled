@@ -1,3 +1,5 @@
+import urllib.parse
+
 import httpx
 import msgpack
 
@@ -101,3 +103,54 @@ class ClientError(httpx.HTTPStatusError):
 
 class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."
+
+
+def client_from_catalog(catalog, authenticator, allow_anonymous_access, secret_keys):
+    from ..server.app import serve_catalog
+
+    app = serve_catalog(catalog, authenticator, allow_anonymous_access, secret_keys)
+
+    # Only an AsyncClient can be used over ASGI.
+    # We wrap all the async methods in a call to asyncio.run(...).
+    # Someday we should explore asynchronous Tiled Client objects.
+    from ._async_bridge import AsyncClientBridge
+
+    async def startup():
+        # Note: This is important. The Tiled server routes are defined lazily on
+        # startup.
+        await app.router.startup()
+
+    client = AsyncClientBridge(
+        base_url="http://local-tiled-app",
+        app=app,
+        _startup_hook=startup,
+    )
+    # TODO How to close the httpx.AsyncClient more cleanly?
+    import atexit
+
+    atexit.register(client.close)
+
+
+def client_and_path_from_uri(uri):
+    headers = {}
+    url = httpx.URL(uri)
+    parsed_query = urllib.parse.parse_qs(url.query.decode())
+    api_key_list = parsed_query.pop("api_key", None)
+    if api_key_list is not None:
+        if len(api_key_list) != 1:
+            raise ValueError("Cannot handle two api_key query parameters")
+        (api_key,) = api_key_list
+        headers["X-TILED-API-KEY"] = api_key
+    query = urllib.parse.urlencode(parsed_query, doseq=True)
+    path = [segment for segment in url.path.rstrip("/").split("/") if segment]
+    if path:
+        if path[0] != "metadata":
+            raise ValueError(
+                "When the URI has a path, the path expected to begin with '/metadata/'"
+            )
+        path.pop(0)  # ["metadata", "stuff", "things"] -> ["stuff", "things"]
+    base_url = urllib.parse.urlunsplit(
+        (url.scheme, url.netloc, "", query, url.fragment)
+    )
+    client = httpx.Client(base_url=base_url, headers=headers)
+    return client, path

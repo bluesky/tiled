@@ -1,9 +1,18 @@
+from datetime import timedelta
 from functools import lru_cache
 import os
 import secrets
-from typing import Any, List
+from typing import Any, List, Optional
 
 from pydantic import BaseSettings
+
+
+if os.getenv("TILED_SESSION_MAX_AGE"):
+    DEFAULT_SESSION_MAX_AGE = timedelta(
+        sections=int(os.getenv("TILED_SESSION_MAX_AGE"))
+    )
+else:
+    DEFAULT_SESSION_MAX_AGE = None
 
 
 class Settings(BaseSettings):
@@ -25,6 +34,15 @@ class Settings(BaseSettings):
     secret_keys: List[str] = os.getenv(
         "TILED_SERVER_SECRET_KEYS", secrets.token_hex(32)
     ).split(";")
+    access_token_max_age: timedelta = timedelta(
+        seconds=int(os.getenv("TILED_ACCESS_TOKEN_MAX_AGE", 15 * 60))  # 15 minutes
+    )
+    refresh_token_max_age: timedelta = timedelta(
+        seconds=int(
+            os.getenv("TILED_REFRESH_TOKEN_MAX_AGE", 7 * 24 * 60 * 60)
+        )  # 7 days
+    )
+    session_max_age: Optional[timedelta] = DEFAULT_SESSION_MAX_AGE  # None
 
 
 @lru_cache()

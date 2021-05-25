@@ -1,3 +1,4 @@
+from .authentication import login  # noqa: F401
 from .catalog import (  # noqa: F401
     ASCENDING,
     DESCENDING,
@@ -6,5 +7,4 @@ from .catalog import (  # noqa: F401
     from_config,
     from_profile,
     from_uri,
-    generate_token,
 )
