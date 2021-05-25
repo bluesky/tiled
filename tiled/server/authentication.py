@@ -1,19 +1,15 @@
 from datetime import datetime, timedelta
 from tiled.server.models import AccessAndRefreshTokens, RefreshToken
 from typing import Any, Optional
-import secrets
 import uuid
 import warnings
 
 from fastapi import (
-    Cookie,
     Depends,
     APIRouter,
     HTTPException,
-    Query,
     Security,
     Response,
-    Request,
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.api_key import APIKeyCookie, APIKeyQuery, APIKeyHeader
@@ -31,6 +27,8 @@ from ..utils import SpecialUsers
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
+API_KEY_COOKIE_NAME = "tiled_api_key"
+CSRF_COOKIE_NAME = "tiled_csrf"
 
 
 def get_authenticator():
@@ -177,12 +175,6 @@ async def login_for_access_token(
         data={"sub": username},
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
-    response.set_cookie(
-        key="tiled_csrf_token",
-        value=secrets.token_hex(32),
-        httponly=True,
-        samesite="lax",
-    )
     return {
         "access_token": access_token,
         "expires_in": settings.access_token_max_age / UNIT_SECOND,
@@ -195,13 +187,9 @@ async def login_for_access_token(
 @authentication_router.post("/token/refresh", response_model=AccessAndRefreshTokens)
 async def refresh(
     refresh_token: RefreshToken,
-    request: Request,
-    csrf_token: str = Query(None),
-    tiled_csrf_token=Cookie(...),
     settings: BaseSettings = Depends(get_settings),
 ):
     "Obtain a new access token and refresh token."
-    check_csrf_double_submit_cookie(request.headers, csrf_token, tiled_csrf_token)
     payload = decode_token(refresh_token.refresh_token, settings.secret_keys, "refresh")
     now = datetime.utcnow().timestamp()
     # Enforce refresh token max age.
@@ -239,31 +227,8 @@ async def refresh(
 
 @authentication_router.post("/logout")
 async def logout(
-    request: Request,
     response: Response,
-    csrf_token: str = Query(None),
-    tiled_csrf_token=Cookie(...),
 ):
-    check_csrf_double_submit_cookie(request.headers, csrf_token, tiled_csrf_token)
-    response.delete_cookie("tiled_api_key")
-    response.delete_cookie("tiled_csrf_token")
+    response.delete_cookie(API_KEY_COOKIE_NAME)
+    response.delete_cookie(CSRF_COOKIE_NAME)
     return {}
-
-
-def check_csrf_double_submit_cookie(headers, query, cookie):
-    # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie  # noqa
-
-    # Get the token from the Header or (if not there) the query parameter.
-    csrf_token = headers.get("X-TILED-CSRF-TOKEN", query)
-    # Securely compare it with the cookie.
-    if not cookie:
-        raise HTTPException(status_code=401, detail="Expected tiled_csrf_token cookie")
-    if not csrf_token:
-        raise HTTPException(
-            status_code=401,
-            detail="Expected csrf_token query parameter or x-tiled-csrf-token header",
-        )
-    if not secrets.compare_digest(csrf_token, cookie):
-        raise HTTPException(
-            status_code=401, detail="Double-submit CSRF tokens do not match"
-        )

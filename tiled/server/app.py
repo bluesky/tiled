@@ -7,10 +7,21 @@ import urllib.parse
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .authentication import authentication_router, get_authenticator
+from .authentication import (
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    authentication_router,
+    get_authenticator,
+)
 from .core import get_root_catalog, PatchedStreamingResponse
 from .router import declare_search_router, router
 from .settings import get_settings
+
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+SENSITIVE_COOKIES = {API_KEY_COOKIE_NAME}
+CSRF_HEADER_NAME = "x-csrf"
+CSRF_QUERY_PARAMETER = "csrf"
 
 
 def get_app(include_routers=None):
@@ -52,6 +63,44 @@ def get_app(include_routers=None):
         return response
 
     @app.middleware("http")
+    async def double_submit_cookie_csrf_protection(request: Request, call_next):
+        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+        csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
+        if (request.method not in SAFE_METHODS) and set(request.cookies).intersection(
+            SENSITIVE_COOKIES
+        ):
+            if not csrf_cookie:
+                raise HTTPException(
+                    status_code=403, detail="Expected tiled_csrf_token cookie"
+                )
+            # Get the token from the Header or (if not there) the query parameter.
+            csrf_token = request.headers.get(CSRF_HEADER_NAME)
+            if csrf_token is None:
+                parsed_query = urllib.parse.parse_qs(request.url.query)
+                csrf_token = parsed_query.get(CSRF_QUERY_PARAMETER)
+            if not csrf_token:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Expected csrf_token query parameter or x-tiled-csrf-token header",
+                )
+            # Securely compare the token with the cookie.
+            if not secrets.compare_digest(csrf_token, csrf_cookie):
+                raise HTTPException(
+                    status_code=403, detail="Double-submit CSRF tokens do not match"
+                )
+
+        response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        if not csrf_cookie:
+            response.set_cookie(
+                key=CSRF_COOKIE_NAME,
+                value=secrets.token_urlsafe(32),
+                httponly=True,
+                samesite="lax",
+            )
+        return response
+
+    @app.middleware("http")
     async def set_api_key_cookie(request: Request, call_next):
         "If the API key is provided via a header or query, set it as a cookie."
         # TODO Can we avoid the overhead of doing this in middleware?
@@ -59,18 +108,12 @@ def get_app(include_routers=None):
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         if ("X-TILED-API-KEY" in request.headers) and (response.status_code < 400):
             response.set_cookie(
-                key="tiled_api_key",
+                key=API_KEY_COOKIE_NAME,
                 value=request.headers["X-TILED-API-KEY"],
                 httponly=True,
                 samesite="lax",
             )
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-            response.set_cookie(
-                key="tiled_csrf_token",
-                value=secrets.token_hex(32),
-                httponly=True,
-                samesite="lax",
-            )
         elif ("api_key" in request.url.query) and (response.status_code < 400):
             # Pick off the api_key query parameter and set the value in a cookie.
             parsed_query = urllib.parse.parse_qs(request.url.query)
@@ -81,15 +124,8 @@ def get_app(include_routers=None):
                 )
             (api_key,) = api_key_list
             response.set_cookie(
-                key="tiled_api_key",
+                key=API_KEY_COOKIE_NAME,
                 value=api_key,
-                httponly=True,
-                samesite="lax",
-            )
-            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-            response.set_cookie(
-                key="tiled_csrf_token",
-                value=secrets.token_hex(32),
                 httponly=True,
                 samesite="lax",
             )
