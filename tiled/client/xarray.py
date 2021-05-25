@@ -12,7 +12,6 @@ from ..structures.xarray import (
 
 from .array import ArrayClient, DaskArrayClient
 from .base import BaseArrayClient
-from .utils import get_json_with_cache
 
 
 class DaskVariableClient(BaseArrayClient):
@@ -217,10 +216,7 @@ class DaskDatasetClient(BaseArrayClient):
         # for long.
         TIMEOUT = 0.2  # seconds
         try:
-            content = get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
+            content = self._get_json_with_cache(
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
@@ -249,10 +245,7 @@ class DaskDatasetClient(BaseArrayClient):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         try:
-            content = get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
+            content = self._get_json_with_cache(
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
             )

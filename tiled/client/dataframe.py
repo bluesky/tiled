@@ -9,7 +9,6 @@ from ..structures.dataframe import (
 )
 from ..media_type_registration import deserialization_registry
 from .base import BaseStructureClient
-from .utils import get_content_with_cache, get_json_with_cache
 
 
 class DaskDataFrameClient(BaseStructureClient):
@@ -28,10 +27,7 @@ class DaskDataFrameClient(BaseStructureClient):
         # for long.
         TIMEOUT = 0.2  # seconds
         try:
-            content = get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
+            content = self._get_json_with_cache(
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
@@ -59,10 +55,7 @@ class DaskDataFrameClient(BaseStructureClient):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         try:
-            content = get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
+            content = self._get_json_with_cache(
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
             )
@@ -78,20 +71,14 @@ class DaskDataFrameClient(BaseStructureClient):
         self.read().compute()
 
     def structure(self):
-        meta_content = get_content_with_cache(
-            self._cache,
-            self._offline,
-            self._client,
+        meta_content = self._get_content_with_cache(
             f"/dataframe/meta/{'/'.join(self._path)}",
             params=self._params,
         )
         meta = deserialization_registry(
             "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_content
         )
-        divisions_content = get_content_with_cache(
-            self._cache,
-            self._offline,
-            self._client,
+        divisions_content = self._get_content_with_cache(
             f"/dataframe/divisions/{'/'.join(self._path)}",
             params=self._params,
         )
@@ -119,10 +106,7 @@ class DaskDataFrameClient(BaseStructureClient):
             # Note: The singular/plural inconsistency here is due to the fact that
             # ["A", "B"] will be encoded in the URL as column=A&column=B
             params["column"] = columns
-        content = get_content_with_cache(
-            self._cache,
-            self._offline,
-            self._client,
+        content = self._get_content_with_cache(
             "/dataframe/partition/" + "/".join(self._path),
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params={**params, **self._params},

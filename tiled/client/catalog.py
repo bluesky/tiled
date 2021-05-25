@@ -14,7 +14,7 @@ from ..utils import (
     OneShotCachedMap,
     Sentinel,
 )
-from .authentication import authenticate_client, DEFAULT_TOKEN_CACHE
+from .authentication import DEFAULT_TOKEN_CACHE, reauthenticate_client
 from .base import BaseClient
 from .utils import (
     client_and_path_from_uri,
@@ -783,7 +783,7 @@ def from_client(
         Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
     if username is not None:
-        authenticate_client(client, username, token_cache=token_cache)
+        reauthenticate_client(client, username, token_cache=token_cache)
     instance = Catalog(
         client,
         item=NEEDS_INITIALIZATION,

@@ -6,7 +6,6 @@ import dask.array
 from ..structures.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
 from .base import BaseArrayClient
-from .utils import get_content_with_cache
 
 
 class DaskArrayClient(BaseArrayClient):
@@ -35,10 +34,7 @@ class DaskArrayClient(BaseArrayClient):
             raise NotImplementedError(
                 "Slicing less than one block is not yet supported."
             )
-        content = get_content_with_cache(
-            self._cache,
-            self._offline,
-            self._client,
+        content = self._get_content_with_cache(
             self._route + "/" + "/".join(self._path),
             headers={"Accept": media_type},
             params={
