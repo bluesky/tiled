@@ -28,6 +28,8 @@ from ..utils import SpecialUsers
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
 API_KEY_COOKIE_NAME = "tiled_api_key"
+API_KEY_HEADER_NAME = "x-tiled-api-key"
+API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
 
@@ -49,7 +51,7 @@ class TokenData(BaseModel):
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
-api_key_header = APIKeyHeader(name="X-TILED-API-KEY", auto_error=False)
+api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
 api_key_cookie = APIKeyCookie(name="tiled_api_key", auto_error=False)
 authentication_router = APIRouter()
 

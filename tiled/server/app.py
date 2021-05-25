@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .authentication import (
     API_KEY_COOKIE_NAME,
+    API_KEY_HEADER_NAME,
+    API_KEY_QUERY_PARAMETER,
     CSRF_COOKIE_NAME,
     authentication_router,
     get_authenticator,
@@ -106,18 +108,20 @@ def get_app(include_routers=None):
         # TODO Can we avoid the overhead of doing this in middleware?
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        if ("X-TILED-API-KEY" in request.headers) and (response.status_code < 400):
+        if (API_KEY_HEADER_NAME in request.headers) and (response.status_code < 400):
             response.set_cookie(
                 key=API_KEY_COOKIE_NAME,
-                value=request.headers["X-TILED-API-KEY"],
+                value=request.headers[API_KEY_HEADER_NAME],
                 httponly=True,
                 samesite="lax",
             )
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        elif ("api_key" in request.url.query) and (response.status_code < 400):
+        elif (API_KEY_QUERY_PARAMETER in request.url.query) and (
+            response.status_code < 400
+        ):
             # Pick off the api_key query parameter and set the value in a cookie.
             parsed_query = urllib.parse.parse_qs(request.url.query)
-            api_key_list = parsed_query.pop("api_key", None)
+            api_key_list = parsed_query.pop(API_KEY_QUERY_PARAMETER, None)
             if len(api_key_list) != 1:
                 raise HTTPException(
                     status_code=400, detail="Cannot handle two api_key query parameters"

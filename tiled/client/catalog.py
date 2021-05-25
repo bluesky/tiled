@@ -11,25 +11,23 @@ import entrypoints
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
 from ..utils import (
-    DictView,
-    ListView,
     OneShotCachedMap,
     Sentinel,
 )
-from .authentication import authenticate_client
+from .authentication import authenticate_client, DEFAULT_TOKEN_CACHE
+from .base import BaseClient
 from .utils import (
     client_and_path_from_uri,
     client_from_catalog,
-    get_json_with_cache,
+    NEEDS_INITIALIZATION,
 )
 from ..catalogs.utils import (
     catalog_repr,
-    IndexersMixin,
     UNCHANGED,
 )
 
 
-class Catalog(collections.abc.Mapping, IndexersMixin):
+class Catalog(BaseClient):
 
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
@@ -160,31 +158,25 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self,
         client,
         *,
+        username,
         offline,
         path,
+        item,
         metadata,
         root_client_type,
         structure_clients,
         cache,
         special_clients,
+        token_cache,
         params=None,
         queries=None,
         sorting=None,
     ):
         "This is not user-facing. Use Catalog.from_uri."
 
-        self._client = client
-        self._offline = offline
-        self._metadata = metadata
-        self._cache = cache
-        self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
         self.special_clients = special_clients
         self._root_client_type = root_client_type
-        if isinstance(path, str):
-            raise ValueError("path is expected to be a list of segments")
-        # Stash *immutable* copies just to be safe.
-        self._path = tuple(path or [])
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
         self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
@@ -198,32 +190,28 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
             )
         }
-        self._params = params or {}
-        super().__init__()
+        super().__init__(
+            client=client,
+            item=item,
+            username=username,
+            token_cache=token_cache,
+            cache=cache,
+            offline=offline,
+            path=path,
+            metadata=metadata,
+            params=params,
+        )
+        if metadata is NEEDS_INITIALIZATION:
+            content = self._get_json_with_cache(f"/metadata/{'/'.join(path)}")
+            item = content["data"]
+            self._metadata.update(item["attributes"]["metadata"])
+            self._item = item
 
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
         return catalog_repr(self, self._keys_slice(0, N, direction=1))
-
-    @property
-    def metadata(self):
-        "Metadata about this Catalog."
-        # Ensure this is immutable (at the top level) to help the user avoid
-        # getting the wrong impression that editing this would update anything
-        # persistent.
-        return DictView(self._metadata)
-
-    @property
-    def path(self):
-        "Sequence of entry names from the root Catalog to this entry"
-        return ListView(self._path)
-
-    @property
-    def uri(self):
-        "Direct link to this entry"
-        return f"{self._client.base_url}/metadata/{'/'.join(self.path)}"
 
     @property
     def sorting(self):
@@ -241,7 +229,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
         This causes it to be cached if the client is configured with a cache.
         """
-        get_json_with_cache(self._cache, self._offline, self._client, "/metadata/")
+        self._get_json_with_cache("/metadata/")
         repr(self)
         for key in self:
             entry = self[key]
@@ -288,12 +276,15 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         if item["type"] == "catalog":
             return class_(
                 client=self._client,
+                username=self._username,
+                item=item,
                 offline=self._offline,
                 cache=self._cache,
                 path=path,
                 metadata=metadata,
                 structure_clients=self.structure_clients,
                 special_clients=self.special_clients,
+                token_cache=self._token_cache,
                 params=self._params,
                 queries=None,
                 sorting=sorting,
@@ -302,6 +293,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         else:  # item["type"] == "reader"
             return class_(
                 client=self._client,
+                item=item,
                 offline=self._offline,
                 cache=self._cache,
                 path=path,
@@ -312,27 +304,17 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def new_variation(
         self,
         *,
-        offline=UNCHANGED,
-        path=UNCHANGED,
-        metadata=UNCHANGED,
         structure_clients=UNCHANGED,
         special_clients=UNCHANGED,
-        cache=UNCHANGED,
-        params=UNCHANGED,
         queries=UNCHANGED,
         sorting=UNCHANGED,
+        **kwargs,
     ):
         """
         Create a copy of this Catalog, optionally varying some parameters.
 
         This is intended primarily for intenal use and use by subclasses.
         """
-        if offline is UNCHANGED:
-            offline = self._offline
-        if path is UNCHANGED:
-            path = self._path
-        if metadata is UNCHANGED:
-            metadata = self._metadata
         if isinstance(structure_clients, str):
             structure_clients = Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
                 structure_clients
@@ -341,26 +323,18 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             structure_clients = self.structure_clients
         if special_clients is UNCHANGED:
             special_clients = self.special_clients
-        if cache is UNCHANGED:
-            cache = self._cache
-        if params is UNCHANGED:
-            params = self._params
         if queries is UNCHANGED:
             queries = self._queries
         if sorting is UNCHANGED:
             sorting = self._sorting
         return type(self)(
             client=self._client,
-            cache=cache,
-            offline=offline,
-            path=path,
-            metadata=metadata,
             structure_clients=structure_clients,
             special_clients=special_clients,
-            params=params,
             queries=queries,
             sorting=sorting,
             root_client_type=self._root_client_type,
+            **kwargs,
         )
 
     def __len__(self):
@@ -370,10 +344,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             if now < deadline:
                 # Used the cached value and do not make any request.
                 return length
-        content = get_json_with_cache(
-            self._cache,
-            self._offline,
-            self._client,
+        content = self._get_json_with_cache(
             f"/search/{'/'.join(self._path)}",
             params={
                 "fields": "",
@@ -394,10 +365,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
     def __iter__(self):
         next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            content = get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
+            content = self._get_json_with_cache(
                 next_page_url,
                 params={
                     "fields": "",
@@ -416,10 +384,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     def __getitem__(self, key):
         # Lookup this key *within the search results* of this Catalog.
-        content = get_json_with_cache(
-            self._cache,
-            self._offline,
-            self._client,
+        content = self._get_json_with_cache(
             f"/search/{'/'.join(self._path )}",
             params={
                 "fields": ["metadata", "structure_family", "client_type_hint"],
@@ -452,10 +417,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         # one HTTP request per item. Pull pages instead.
         next_page_url = f"/search/{'/'.join(self._path)}"
         while next_page_url is not None:
-            content = get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
+            content = self._get_json_with_cache(
                 next_page_url,
                 params={
                     "fields": ["metadata", "structure_family", "client_type_hint"],
@@ -498,10 +460,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
+            content = self._get_json_with_cache(
                 next_page_url,
                 params={
                     "fields": "",
@@ -530,7 +489,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = get_json_with_cache(
+            content = self._get_json_with_cache(
                 self._cache,
                 self._offline,
                 self._client,
@@ -566,10 +525,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             sorting_params = self._reversed_sorting_params
         assert index >= 0
         url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
-        content = get_json_with_cache(
-            self._cache,
-            self._offline,
-            self._client,
+        content = self._get_json_with_cache(
             url,
             params={
                 "fields": ["metadata", "structure_family", "client_type_hint"],
@@ -673,6 +629,7 @@ def from_uri(
     cache=None,
     offline=False,
     username=None,
+    token_cache=DEFAULT_TOKEN_CACHE,
     special_clients=None,
 ):
     """
@@ -693,8 +650,9 @@ def from_uri(
     offline : bool, optional
         False by default. If True, rely on cache only.
     username : str, optional
-    token_cache = str or dict, optional
-        Path to directory or dict
+        Username for authenticated access.
+    token_cache: str or dict, optional
+        Path to directory of tokens, or dict (for development, testing).
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
@@ -710,6 +668,7 @@ def from_uri(
         cache=cache,
         offline=offline,
         special_clients=special_clients,
+        token_cache=token_cache,
     )
 
 
@@ -720,8 +679,9 @@ def from_catalog(
     secret_keys=None,
     structure_clients="numpy",
     *,
-    token=None,
+    username=None,
     special_clients=None,
+    token_cache=None,
 ):
     """
     Connect to a Catalog directly, running the app in this same process.
@@ -739,6 +699,8 @@ def from_catalog(
     ----------
     catalog : Catalog
     authenticator : Authenticator, optional
+    username : str, optional
+        Username for authenticated access.
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
@@ -746,17 +708,13 @@ def from_catalog(
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
         ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
-    token : str, optional
-        Access token. If None, the environment variable TILED_TOKEN is used
-        if it is set. Otherwise, unauthenticated ("public") access is
-        attempted, which may or may not be supported depending on how the
-        service is configured. When TILED_TOKEN is set, you can pass token=""
-        (empty string) to override it and force unauthenticated access.
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+    token_cache: str or dict, optional
+        Path to directory of tokens, or dict (for development, testing).
     """
     client = client_from_catalog(
         catalog, authenticator, allow_anonymous_access, secret_keys
@@ -764,12 +722,14 @@ def from_catalog(
     return from_client(
         client,
         structure_clients=structure_clients,
+        username=username,
         # The cache and "offline" mode do not make much sense when we have an
         # in-process connection. It's also not clear what URL we would use for the cache
         # even if we wanted to.... but it might be worth rethinking this someday.
         cache=None,
         offline=False,
         special_clients=special_clients,
+        token_cache=token_cache,
     )
 
 
@@ -778,9 +738,9 @@ def from_client(
     structure_clients="numpy",
     *,
     username=None,
-    path=None,
     cache=None,
     offline=False,
+    path=None,
     special_clients=None,
     token_cache=None,
 ):
@@ -798,6 +758,8 @@ def from_client(
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
         ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+    username : str, optional
+        Username for authenticated access.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
@@ -806,7 +768,8 @@ def from_client(
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
-    token_cache: ...
+    token_cache: str or dict, optional
+        Path to directory of tokens, or dict (for development, testing).
     """
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
@@ -820,20 +783,24 @@ def from_client(
         Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
     if username is not None:
-        authenticate_client(client, username, token_cache)
-    content = get_json_with_cache(cache, offline, client, f"/metadata/{'/'.join(path)}")
-    item = content["data"]
-    metadata = item["attributes"]["metadata"]
-    return Catalog(
+        authenticate_client(client, username, token_cache=token_cache)
+    instance = Catalog(
         client,
+        item=NEEDS_INITIALIZATION,
+        username=username,
         offline=offline,
         path=path,
-        metadata=metadata,
+        metadata=NEEDS_INITIALIZATION,
         structure_clients=structure_clients,
         cache=cache,
         special_clients=special_clients,
         root_client_type=Catalog,
-    ).client_for_item(
+        token_cache=token_cache,
+    )
+
+    item = instance.item
+    metadata = item["attributes"]["metadata"]
+    return instance.client_for_item(
         item, path=path, metadata=metadata, sorting=item["attributes"].get("sorting")
     )
 

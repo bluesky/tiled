@@ -1,81 +1,12 @@
 import urllib.parse
 
 import httpx
-import msgpack
 
 from ..utils import Sentinel
 
 
-class UNSET(Sentinel):
-    pass
-
-
-def get_content_with_cache(
-    cache, offline, client, path, accept=None, timeout=UNSET, **kwargs
-):
-    request = client.build_request("GET", path, **kwargs)
-    if accept:
-        request.headers["Accept"] = accept
-    url = request.url.raw  # URL as tuple
-    if offline:
-        # We must rely on the cache alone.
-        reservation = cache.get_reservation(url)
-        if reservation is None:
-            raise NotAvailableOffline(url)
-        content = reservation.load_content()
-        if content is None:
-            # TODO Do we ever get here?
-            raise NotAvailableOffline(url)
-        return content
-    if cache is None:
-        # No cache, so we can use the client straightforwardly.
-        response = _send(client, request, timeout=timeout)
-        handle_error(response)
-        return response.content
-    # If we get this far, we have an online client and a cache.
-    reservation = cache.get_reservation(url)
-    try:
-        if reservation is not None:
-            request.headers["If-None-Match"] = reservation.etag
-        response = _send(client, request, timeout=timeout)
-        handle_error(response)
-        if response.status_code == 304:  # HTTP 304 Not Modified
-            # Read from the cache
-            content = reservation.load_content()
-        elif response.status_code == 200:
-            etag = response.headers.get("ETag")
-            content = response.content
-            # TODO Respect Cache-control headers (e.g. "no-store")
-            if etag is not None:
-                # Write to cache.
-                cache.put_etag_for_url(url, etag)
-                cache.put_content(etag, content)
-        else:
-            raise NotImplementedError(f"Unexpected status_code {response.status_code}")
-    finally:
-        if reservation is not None:
-            reservation.ensure_released()
-    return content
-
-
-def get_json_with_cache(cache, offline, client, path, **kwargs):
-    return msgpack.unpackb(
-        get_content_with_cache(
-            cache, offline, client, path, accept="application/x-msgpack", **kwargs
-        )
-    )
-
-
-def _send(client, request, timeout):
-    """
-    Handle httpx's timeout API, which uses a special internal sentinel to mean
-    "no timeout" and therefore must not be passed any value (including None)
-    if we want no timeout.
-    """
-    if timeout is UNSET:
-        return client.send(request)
-    else:
-        return client.send(request, timeout=timeout)
+UNSET = Sentinel("UNSET")
+NEEDS_INITIALIZATION = Sentinel("NEEDS_INITIALIZATION")
 
 
 def handle_error(response):

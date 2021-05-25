@@ -8,11 +8,11 @@ from ..structures.dataframe import (
     DataFrameStructure,
 )
 from ..media_type_registration import deserialization_registry
-from .base import BaseClient
+from .base import BaseStructureClient
 from .utils import get_content_with_cache, get_json_with_cache
 
 
-class DaskDataFrameClient(BaseClient):
+class DaskDataFrameClient(BaseStructureClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     def __init__(self, *args, **kwargs):
@@ -227,6 +227,6 @@ class DataFrameClient(DaskDataFrameClient):
     def touch(self):
         # Do not run super().touch() because DaskDataFrameClient calls compute()
         # which does not apply here.
-        BaseClient.touch(self)
+        BaseStructureClient.touch(self)
         self._ipython_key_completions_()
         self.read()
