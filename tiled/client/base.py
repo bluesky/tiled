@@ -175,7 +175,9 @@ class BaseClient:
             # Parse the error message? Add a special header from the server?
             if self._username is not None:
                 reauthenticate_client(
-                    self._client, self._username, token_cache=self._token_cache,
+                    self._client,
+                    self._username,
+                    token_cache=self._token_cache,
                 )
                 request.headers["authorization"] = self._client.headers["authorization"]
                 return self._send(request, timeout, attempts=1)
