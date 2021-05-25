@@ -10,10 +10,10 @@ from .utils import (
     NotAvailableOffline,
     UNSET,
 )
-from ..catalogs.utils import IndexersMixin, UNCHANGED
+from ..catalogs.utils import UNCHANGED
 
 
-class BaseClient(collections.abc.Mapping, IndexersMixin):
+class BaseClient:
     def __init__(
         self,
         client,
@@ -173,11 +173,12 @@ class BaseClient(collections.abc.Mapping, IndexersMixin):
             # Try refreshing the token.
             # TODO Use a more targeted signal to know that refreshing the token will help.
             # Parse the error message? Add a special header from the server?
-            reauthenticate_client(
-                self._client, self._username, token_cache=self._token_cache
-            )
-            request.headers["authorization"] = self._client.headers["authorization"]
-            return self._send(request, timeout, attempts=1)
+            if self._username is not None:
+                reauthenticate_client(
+                    self._client, self._username, token_cache=self._token_cache,
+                )
+                request.headers["authorization"] = self._client.headers["authorization"]
+                return self._send(request, timeout, attempts=1)
         return response
 
 
@@ -214,7 +215,7 @@ class BaseStructureClient(BaseClient):
         pass
 
 
-class BaseArrayClient(BaseClient):
+class BaseArrayClient(BaseStructureClient):
     """
     Shared by Array, DataArray, Dataset
 

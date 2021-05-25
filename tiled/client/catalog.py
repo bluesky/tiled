@@ -23,11 +23,12 @@ from .utils import (
 )
 from ..catalogs.utils import (
     catalog_repr,
+    IndexersMixin,
     UNCHANGED,
 )
 
 
-class Catalog(BaseClient):
+class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
@@ -299,6 +300,8 @@ class Catalog(BaseClient):
                 path=path,
                 metadata=metadata,
                 params=self._params,
+                username=self._username,
+                token_cache=self._token_cache,
             )
 
     def new_variation(
@@ -651,8 +654,8 @@ def from_uri(
         False by default. If True, rely on cache only.
     username : str, optional
         Username for authenticated access.
-    token_cache: str or dict, optional
-        Path to directory of tokens, or dict (for development, testing).
+    token_cache : str, optional
+        Path to directory for storing refresh tokens.
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
@@ -681,7 +684,7 @@ def from_catalog(
     *,
     username=None,
     special_clients=None,
-    token_cache=None,
+    token_cache=DEFAULT_TOKEN_CACHE,
 ):
     """
     Connect to a Catalog directly, running the app in this same process.
@@ -713,8 +716,8 @@ def from_catalog(
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
-    token_cache: str or dict, optional
-        Path to directory of tokens, or dict (for development, testing).
+    token_cache : str, optional
+        Path to directory for storing refresh tokens.
     """
     client = client_from_catalog(
         catalog, authenticator, allow_anonymous_access, secret_keys
@@ -742,7 +745,7 @@ def from_client(
     offline=False,
     path=None,
     special_clients=None,
-    token_cache=None,
+    token_cache=DEFAULT_TOKEN_CACHE,
 ):
     """
     Advanced: Connect to a Catalog using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -768,8 +771,8 @@ def from_client(
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
-    token_cache: str or dict, optional
-        Path to directory of tokens, or dict (for development, testing).
+    token_cache : str, optional
+        Path to directory for storing refresh tokens.
     """
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
