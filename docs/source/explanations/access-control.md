@@ -37,7 +37,7 @@ Here is an example configuration serving that catalog with a
 If the configuration above is saved at ``config.yml``, it can be served with:
 
 ```
-ALICE_PASSWORD=secret BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config config.yml
+ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config config.yml
 ```
 
 There are no examples of (2) yet. The interface for doing so has been specified

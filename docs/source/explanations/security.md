@@ -69,7 +69,19 @@ launch it in this mode, use the ``--public`` flag as in
 tiled serve {pyobject, directory} --public ...
 ```
 
-or, if using a configuration file as in
+When the server is started in this way, it will log a notice like
+the following:
+
+```
+$ tiled serve pyobject --public tiled.examples.generated_minimal:catalog
+
+    Tiled server is running in "public" mode, permitting open, anonymous access.
+    Any data that is not specifically controlled with an access policy
+    will be visible to anyone who can connect to this server.
+
+```
+
+Alternatively, if using a configuration file as in
 
 ```
 tiled serve config ...
@@ -82,17 +94,22 @@ authentication:
     allow_anonymous_access: true
 ```
 
-When the server is started in this way, it will log a notice like
-the following:
+This is a complete working example:
+
+```yaml
+# config.yml
+authentication:
+    allow_anonymous_access: true
+catalogs:
+    - path: /
+      catalog: tiled.examples.generated_minimal:catalog
+```
 
 ```
-$ tiled serve pyobject --public tiled.examples.generated_minimal:catalog
-
-    Tiled server is running in "public" mode, permitting open, anonymous access.
-    Any data that is not specifically controlled with an access policy
-    will be visible to anyone who can connect to this server.
-
+tiled serve config config.yml
 ```
+
+As above, a notice will be logged that the server is public.
 
 ## Private multi-user data service
 
@@ -120,94 +137,20 @@ tiled serve config path/to/config_file(s)
 
 in order to specify the Authenticator and, when applicable, any parameters.
 The shorthands ``tiled serve pyobject ...`` and ``tiled serve directory ...``
-do not currently support this mode. See below for example configurations.
+do not currently support this mode. See below for complete working examples.
 
-Users can authenticate by POST-ing form-encoded credentials to the ``/token``
-endpoint, as in:
+The server implements "sliding sessions", meaning that the user provides their
+login credentials once and the server keep their session alive for as long as
+they are actively using it---up to some optional, configurable limit.
 
-```
-$ http --form --body :8000/token username=alice password=foo
-{
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTYyMTY0NTk2NH0.Oz65lrf6gYjIgGa4Pf6E8XwjOcRihP4QCR8a8GQN0M4",
-    "token_type": "bearer"
-}
-```
+You may configure:
 
-The response body includes an access token with a short (15 minute) lifetime.
-Refresh tokens are planned but not yet implemented.
+* The maximum time to keep an *inactive* session alive (default is one week)
+* The maximum session lifetime (default is unlimited)
+* Access token lifetime. This is internal from the user's point of view
+  It should be short. (Default 15 minutes.)
 
-The access tokens are signed using a secret key that, by default, is generated
-automatically at server startup. Set the secret manually to ensure that existing
-tokens remain valid after a server restart or across horizontally-scaled
-deployments of multiple servers.
-
-```{note}
-
-When generating a secret, is important to produce a difficult-to-guess random
-number, and make it different each time you start up a server.  Two equally good
-ways to generate a secure secret...
-
-With ``openssl``:
-
-    openssl rand -hex 32
-
-With ``python``:
-
-    python -c "import secrets; print(secrets.token_hex(32))"
-
-```
-
-Apply it by including the configuration
-
-```yaml
-authentication:
-    secret_keys:
-        - "SECRET"
-```
-
-or by setting the ``TILED_SERVER_SECRET_KEYS``.
-
-If you prefer, you can extract the keys from the environment like:
-
-```yaml
-authentication:
-    secret_keys:
-        - "${SECRET}"  # will be replaced by the environment variable
-```
-
-To rotate keys with a smooth transition, provide multiple keys
-
-```yaml
-authentication:
-    secret_keys:
-        - "NEW_SECRET"
-        - "OLD_SECRET"
-```
-
-or set ``TILED_SERVER_SECRET_KEYS`` to ``;``-separated values, as in
-
-```
-TILED_SERVER_SECRET_KEYS=NEW_SECRET;OLD_SECRET
-```
-
-The first secret value is always used to *encode* new tokens, but all values are
-tried to *decode* existing tokens until one works or all fail.
-
-The Python client provides a convenience function for requesting a token
-in exchange for credentials.
-
-```{warning}
-
-This interface is experimental and likely to change in a backward-incompatible way.
-```
-
-```python
->>> from tiled.client import generate_token, from_uri
->>> token = generate_token("http://localhost:8000")
-Username:
-Password:
->>> catalog = from_uri("http://localhost:8000", token=token)
-```
+See {doc}`../reference/authentication`
 
 ### Authenticate with local Linux/UNIX users
 
@@ -263,7 +206,7 @@ catalogs:
 ```
 
 ```
-ALICE_PASSWORD=secret BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config dictionary_config.yml
+ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config dictionary_config.yml
 ```
 
 The ``DummyAuthenticator`` accepts *any* username and password combination.

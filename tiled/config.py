@@ -16,17 +16,15 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
     Given parsed configuration, construct arguments for serve_catalog(...).
     """
     auth_spec = config.get("authentication", {})
-    allow_anonymous_access = bool(auth_spec.get("allow_anonymous_access"))
     auth_aliases = {}
     # TODO Enable entrypoint as alias for authenticator_class?
-    if auth_spec.get("authenticator") is None:
-        authenticator = None
-    else:
+    if auth_spec.get("authenticator") is not None:
         import_path = auth_aliases.get(
             auth_spec["authenticator"], auth_spec["authenticator"]
         )
         authenticator_class = import_object(import_path)
         authenticator = authenticator_class(**auth_spec.get("args", {}))
+        auth_spec["authenticator"] = authenticator
     # TODO Enable entrypoint to extend aliases?
     catalog_aliases = {"files": "tiled.catalogs.files:Catalog.from_directory"}
     catalogs = {}
@@ -85,12 +83,7 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
                     include_routers.append(router)
         root_catalog = Catalog(mapping)
         root_catalog.include_routers.extend(include_routers)
-    return {
-        "catalog": root_catalog,
-        "authenticator": authenticator,
-        "allow_anonymous_access": allow_anonymous_access,
-        "secret_keys": auth_spec.get("secret_keys"),
-    }
+    return {"catalog": root_catalog, "authentication": auth_spec}
 
 
 def merge(configs):

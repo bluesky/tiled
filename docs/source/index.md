@@ -38,6 +38,7 @@ explanations/lineage
 reference/service
 reference/http-api-overview
 reference/python-client
+reference/authentication
 reference/commandline
 reference/design-documents/index
 reference/release-history

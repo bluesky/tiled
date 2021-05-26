@@ -148,10 +148,7 @@ def get_app(include_routers=None):
 
 def serve_catalog(
     catalog,
-    authenticator=None,
-    allow_anonymous_access=None,
-    single_user_api_key=None,
-    secret_keys=None,
+    authentication=None,
 ):
     """
     Serve a Catalog
@@ -159,18 +156,11 @@ def serve_catalog(
     Parameters
     ----------
     catalog : Catalog
-    authenticator : Authenticator, optional
-    allow_anonymous_access : bool, optional
-        Default is False.
-    single_user_api_key: str, optional
-        Mutually exclusive with authenticator.
-        If None, a secure random secret is generated.
-    secret_keys : List[str], optional
-        This list may contain one or more keys.
-        The first key is used for *encoding*. All keys are tried for *decoding*
-        until one works or they all fail. This supports key rotation.
-        If None, a secure secret is generated.
+    authentication: dict, optional
+        Dict of authentication configuration.
     """
+    authentication = authentication or {}
+    authenticator = authentication.get("authenticator")
 
     @lru_cache(1)
     def override_get_authenticator():
@@ -183,12 +173,16 @@ def serve_catalog(
     @lru_cache(1)
     def override_get_settings():
         settings = get_settings()
-        if allow_anonymous_access is not None:
-            settings.allow_anonymous_access = allow_anonymous_access
-        if secret_keys is not None:
-            settings.secret_keys = secret_keys
-        if single_user_api_key is not None:
-            settings.single_user_api_key = single_user_api_key
+        for item in [
+            "allow_anonymous_acccess",
+            "secret_keys",
+            "single_user_api_key",
+            "access_token_max_age",
+            "refresh_token_max_age",
+            "session_max_age",
+        ]:
+            if authentication.get(item) is not None:
+                setattr(settings, item, authentication[item])
         return settings
 
     # The Catalog and Authenticator have the opporunity to add custom routes to

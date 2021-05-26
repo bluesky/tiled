@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     catalog: Any = None
     allow_anonymous_access: bool = bool(
-        int(os.getenv("TILED_ALLOW_ANONYMOUS_ACCESS", True))
+        int(os.getenv("TILED_ALLOW_ANONYMOUS_ACCESS", False))
     )
     allow_origins: List[str] = [
         item for item in os.getenv("TILED_ALLOW_ORIGINS", "").split() if item

@@ -675,10 +675,7 @@ def from_uri(
 
 def from_catalog(
     catalog,
-    authenticator=None,
-    allow_anonymous_access=None,
-    single_user_api_key=None,
-    secret_keys=None,
+    authentication=None,
     structure_clients="numpy",
     *,
     username=None,
@@ -700,17 +697,8 @@ def from_catalog(
     Parameters
     ----------
     catalog : Catalog
-    authenticator : Authenticator, optional
-    allow_anonymous_access : bool, optional
-        Default is False.
-    single_user_api_key: str, optional
-        Mutually exclusive with authenticator.
-        If None, a secure random secret is generated.
-    secret_keys : List[str], optional
-        This list may contain one or more keys.
-        The first key is used for *encoding*. All keys are tried for *decoding*
-        until one works or they all fail. This supports key rotation.
-        If None, a secure secret is generated.
+    authentication : dict, optional
+        Dict of authentication configuration.
     username : str, optional
         Username for authenticated access.
     structure_clients : str or dict, optional
@@ -730,10 +718,7 @@ def from_catalog(
     """
     client = client_from_catalog(
         catalog=catalog,
-        authenticator=authenticator,
-        allow_anonymous_access=allow_anonymous_access,
-        single_user_api_key=single_user_api_key,
-        secret_keys=secret_keys,
+        authentication=authentication,
     )
     return from_client(
         client,
