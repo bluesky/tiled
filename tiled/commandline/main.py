@@ -21,6 +21,7 @@ def login(
 ):
     from tiled.client.authentication import CatalogValueError, login
     from tiled.client.utils import ClientError
+
     try:
         login(catalog)
     except (CatalogValueError, ClientError) as err:
