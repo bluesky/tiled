@@ -143,11 +143,15 @@ def _client_and_uri_from_uri_or_profile(uri_or_profile):
             else:
                 raise ValueError("Invalid profile content")
 
-    raise ValueError(
+    raise CatalogValueError(
         f"Not sure what to do with catalog {uri_or_profile!r}. "
         "It does not look like a URI (it does not start with http[s]://) "
         "and it does not match any profiles."
     )
+
+
+class CatalogValueError(ValueError):
+    pass
 
 
 class CannotRefreshAuthentication(Exception):

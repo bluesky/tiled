@@ -13,6 +13,22 @@ cli_app.add_typer(
 )
 
 
+@cli_app.command("login")
+def login(
+    catalog: str = typer.Argument(
+        ..., help="Catalog URI (http://...) or a profile name."
+    ),
+):
+    from tiled.client.authentication import CatalogValueError, login
+    from tiled.client.utils import ClientError
+    try:
+        login(catalog)
+    except (CatalogValueError, ClientError) as err:
+        (msg,) = err.args
+        typer.echo(msg)
+        raise typer.Abort()
+
+
 @cli_app.command("tree")
 def tree(
     catalog: str = typer.Argument(
