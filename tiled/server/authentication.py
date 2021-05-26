@@ -9,6 +9,7 @@ from fastapi import (
     APIRouter,
     HTTPException,
     Security,
+    Request,
     Response,
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -130,12 +131,17 @@ async def check_single_user_api_key(
 
 
 async def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticator=Depends(get_authenticator),
 ):
     if (authenticator is None) and has_single_user_api_key:
+        if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
+            request.state.cookies_to_set.append(
+                (API_KEY_COOKIE_NAME, settings.single_user_api_key)
+            )
         return SpecialUsers.admin
     if token is None:
         if settings.allow_anonymous_access:

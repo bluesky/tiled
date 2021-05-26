@@ -4,9 +4,16 @@ import inspect
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseSettings
 
 from ..query_registration import name_to_query_type
-from .authentication import get_current_user
+from .authentication import (
+    API_KEY_COOKIE_NAME,
+    get_authenticator,
+    get_current_user,
+    check_single_user_api_key,
+)
+from .settings import get_settings
 
 from .core import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -38,12 +45,22 @@ router = APIRouter()
 
 
 @router.get("/", response_model=models.About)
-async def about(request: Request):
+async def about(
+    request: Request,
+    has_single_user_api_key: str = Depends(check_single_user_api_key),
+    settings: BaseSettings = Depends(get_settings),
+    authenticator=Depends(get_authenticator),
+):
     # TODO The lazy import of reader modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
     # helpful for discovery! The registration can be made non-lazy, while the
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
     # etc.) can remain lazy.
+    if (authenticator is None) and has_single_user_api_key:
+        if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
+            request.state.cookies_to_set.append(
+                (API_KEY_COOKIE_NAME, settings.single_user_api_key)
+            )
     return json_or_msgpack(
         request.headers,
         models.About(

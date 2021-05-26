@@ -9,8 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .authentication import (
     API_KEY_COOKIE_NAME,
-    API_KEY_HEADER_NAME,
-    API_KEY_QUERY_PARAMETER,
     CSRF_COOKIE_NAME,
     authentication_router,
     get_authenticator,
@@ -103,33 +101,15 @@ def get_app(include_routers=None):
         return response
 
     @app.middleware("http")
-    async def set_api_key_cookie(request: Request, call_next):
-        "If the API key is provided via a header or query, set it as a cookie."
-        # TODO Can we avoid the overhead of doing this in middleware?
+    async def set_cookies(request: Request, call_next):
+        "This enables dependencies to inject cookies that they want to be set."
+        request.state.cookies_to_set = []
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        if (API_KEY_HEADER_NAME in request.headers) and (response.status_code < 400):
+        for key, value in request.state.cookies_to_set:
             response.set_cookie(
-                key=API_KEY_COOKIE_NAME,
-                value=request.headers[API_KEY_HEADER_NAME],
-                httponly=True,
-                samesite="lax",
-            )
-            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        elif (API_KEY_QUERY_PARAMETER in request.url.query) and (
-            response.status_code < 400
-        ):
-            # Pick off the api_key query parameter and set the value in a cookie.
-            parsed_query = urllib.parse.parse_qs(request.url.query)
-            api_key_list = parsed_query.pop(API_KEY_QUERY_PARAMETER, None)
-            if len(api_key_list) != 1:
-                raise HTTPException(
-                    status_code=400, detail="Cannot handle two api_key query parameters"
-                )
-            (api_key,) = api_key_list
-            response.set_cookie(
-                key=API_KEY_COOKIE_NAME,
-                value=api_key,
+                key=key,
+                value=value,
                 httponly=True,
                 samesite="lax",
             )
