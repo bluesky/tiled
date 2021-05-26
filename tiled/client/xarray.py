@@ -17,14 +17,14 @@ from .base import BaseArrayClient
 class DaskVariableClient(BaseArrayClient):
 
     STRUCTURE_TYPE = VariableStructure  # used by base class
-    ARRAY_READER = DaskArrayClient  # overridden by subclass
+    ARRAY_CLIENT = DaskArrayClient  # overridden by subclass
 
     def __init__(self, *args, route="/variable/block", **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
 
     def _build_array_reader(self, structure):
-        return self.ARRAY_READER(
+        return self.ARRAY_CLIENT(
             client=self._client,
             item=self._item,
             username=self._username,
@@ -75,7 +75,7 @@ class DaskVariableClient(BaseArrayClient):
 
 class VariableClient(DaskVariableClient):
 
-    ARRAY_READER = ArrayClient
+    ARRAY_CLIENT = ArrayClient
 
     def touch(self):
         # Do not run super().touch() because DaskVariableClient calls compute()
@@ -87,7 +87,7 @@ class VariableClient(DaskVariableClient):
 class DaskDataArrayClient(BaseArrayClient):
 
     STRUCTURE_TYPE = DataArrayStructure  # used by base class
-    VARIABLE_READER = DaskVariableClient  # overriden in subclass
+    VARIABLE_CLIENT = DaskVariableClient  # overriden in subclass
 
     def __init__(self, *args, route="/data_array/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -101,7 +101,7 @@ class DaskDataArrayClient(BaseArrayClient):
         """
         structure = self.structure().macro
         variable = structure.variable
-        variable_source = self.VARIABLE_READER(
+        variable_source = self.VARIABLE_CLIENT(
             client=self._client,
             item=self._item,
             username=self._username,
@@ -126,7 +126,7 @@ class DaskDataArrayClient(BaseArrayClient):
         structure = self.structure().macro
         result = {}
         for name, variable in structure.coords.items():
-            variable_source = self.VARIABLE_READER(
+            variable_source = self.VARIABLE_CLIENT(
                 client=self._client,
                 item=self._item,
                 username=self._username,
@@ -151,7 +151,7 @@ class DaskDataArrayClient(BaseArrayClient):
             slice = tuple([slice])
         structure = self.structure().macro
         variable = structure.variable
-        variable_source = self.VARIABLE_READER(
+        variable_source = self.VARIABLE_CLIENT(
             client=self._client,
             item=self._item,
             username=self._username,
@@ -169,7 +169,7 @@ class DaskDataArrayClient(BaseArrayClient):
         for coord_slice, (name, variable) in itertools.zip_longest(
             slice, structure.coords.items(), fillvalue=builtins.slice(None, None)
         ):
-            variable_source = self.VARIABLE_READER(
+            variable_source = self.VARIABLE_CLIENT(
                 client=self._client,
                 item=self._item,
                 username=self._username,
@@ -202,7 +202,7 @@ class DaskDataArrayClient(BaseArrayClient):
 
 class DataArrayClient(DaskDataArrayClient):
 
-    VARIABLE_READER = VariableClient
+    VARIABLE_CLIENT = VariableClient
 
     def touch(self):
         # Do not run super().touch() because DaskDataArrayClient calls compute()
@@ -214,8 +214,8 @@ class DataArrayClient(DaskDataArrayClient):
 class DaskDatasetClient(BaseArrayClient):
 
     STRUCTURE_TYPE = DatasetStructure  # used by base class
-    DATA_ARRAY_READER = DaskDataArrayClient  # overridden by subclass
-    VARIABLE_READER = DaskVariableClient  # overridden by subclass
+    DATA_ARRAY_CLIENT = DaskDataArrayClient  # overridden by subclass
+    VARIABLE_CLIENT = DaskVariableClient  # overridden by subclass
 
     def __init__(self, *args, route="/dataset/block", **kwargs):
         super().__init__(*args, **kwargs)
@@ -291,7 +291,7 @@ class DaskDatasetClient(BaseArrayClient):
         for name, data_array in structure.data_vars.items():
             if (variables is not None) and (name not in variables):
                 continue
-            data_array_source = self.DATA_ARRAY_READER(
+            data_array_source = self.DATA_ARRAY_CLIENT(
                 client=self._client,
                 item=self._item,
                 username=self._username,
@@ -312,7 +312,7 @@ class DaskDatasetClient(BaseArrayClient):
         for name, variable in structure.coords.items():
             if (variables is not None) and (name not in variables):
                 continue
-            variable_source = self.VARIABLE_READER(
+            variable_source = self.VARIABLE_CLIENT(
                 client=self._client,
                 item=self._item,
                 username=self._username,
@@ -357,8 +357,8 @@ class DaskDatasetClient(BaseArrayClient):
 
 class DatasetClient(DaskDatasetClient):
 
-    DATA_ARRAY_READER = DataArrayClient
-    VARIABLE_READER = VariableClient
+    DATA_ARRAY_CLIENT = DataArrayClient
+    VARIABLE_CLIENT = VariableClient
 
     def touch(self):
         # Do not run super().touch() because DaskDatasetClient calls compute()
