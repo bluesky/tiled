@@ -34,12 +34,14 @@ def authenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE):
     if "tiled_csrf" not in client.cookies:
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # We could also use this to check the API version.
-        handshake_response = client.get("/")
+        handshake_request = client.build_request("GET", "/")
+        handshake_response = client.send(handshake_request)
         handle_error(handshake_response)
     username = username or input("Username: ")
     password = getpass.getpass()
     form_data = {"grant_type": "password", "username": username, "password": password}
-    token_response = client.post("/token", data=form_data)
+    token_request = client.build_request("POST", "/token", data=form_data)
+    token_response = client.send(token_request)
     handle_error(token_response)
     data = token_response.json()
     if token_cache:
@@ -71,7 +73,8 @@ def _reauthenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE)
     if "tiled_csrf" not in client.cookies:
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # We could also use this to check the API version.
-        handshake_response = client.get("/")
+        handshake_request = client.build_request("GET", "/")
+        handshake_response = client.send(handshake_request)
         handle_error(handshake_response)
     if token_cache:
         # We are using a token_cache.
@@ -81,11 +84,13 @@ def _reauthenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE)
             # There is a token file.
             with open(filepath, "r") as file:
                 refresh_token = file.read()
-            token_response = client.post(
+            token_request = client.build_request(
+                "POST",
                 "/token/refresh",
                 json={"refresh_token": refresh_token},
                 headers={"x-csrf": client.cookies["tiled_csrf"]},
             )
+            token_response = client.send(token_request)
             if token_response.status_code == 401:
                 # Refreshing the token failed.
                 # Discard the expired (or otherwise invalid) refresh_token.json file.
