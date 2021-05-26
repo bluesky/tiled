@@ -1,3 +1,5 @@
+import os
+import secrets
 import urllib.parse
 
 import httpx
@@ -36,10 +38,22 @@ class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."
 
 
-def client_from_catalog(catalog, authenticator, allow_anonymous_access, secret_keys):
+def client_from_catalog(
+    catalog, authenticator, allow_anonymous_access, single_user_api_key, secret_keys
+):
     from ..server.app import serve_catalog
 
-    app = serve_catalog(catalog, authenticator, allow_anonymous_access, secret_keys)
+    params = {}
+    if (authenticator is None) and (single_user_api_key is None):
+        # Generate the key here instead of letting serve_catalog do it for us,
+        # so that we can give it to the client below.
+        single_user_api_key = os.getenv(
+            "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
+        )
+        params["api_key"] = single_user_api_key
+    app = serve_catalog(
+        catalog, authenticator, allow_anonymous_access, single_user_api_key, secret_keys
+    )
 
     # Only an AsyncClient can be used over ASGI.
     # We wrap all the async methods in a call to asyncio.run(...).
@@ -53,6 +67,7 @@ def client_from_catalog(catalog, authenticator, allow_anonymous_access, secret_k
 
     client = AsyncClientBridge(
         base_url="http://local-tiled-app",
+        params=params,
         app=app,
         _startup_hook=startup,
     )
@@ -60,6 +75,7 @@ def client_from_catalog(catalog, authenticator, allow_anonymous_access, secret_k
     import atexit
 
     atexit.register(client.close)
+    return client
 
 
 def client_and_path_from_uri(uri):

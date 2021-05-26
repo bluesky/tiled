@@ -147,7 +147,11 @@ def get_app(include_routers=None):
 
 
 def serve_catalog(
-    catalog, authenticator=None, allow_anonymous_access=None, secret_keys=None
+    catalog,
+    authenticator=None,
+    allow_anonymous_access=None,
+    single_user_api_key=None,
+    secret_keys=None,
 ):
     """
     Serve a Catalog
@@ -158,6 +162,9 @@ def serve_catalog(
     authenticator : Authenticator, optional
     allow_anonymous_access : bool, optional
         Default is False.
+    single_user_api_key: str, optional
+        Mutually exclusive with authenticator.
+        If None, a secure random secret is generated.
     secret_keys : List[str], optional
         This list may contain one or more keys.
         The first key is used for *encoding*. All keys are tried for *decoding*
@@ -180,6 +187,8 @@ def serve_catalog(
             settings.allow_anonymous_access = allow_anonymous_access
         if secret_keys is not None:
             settings.secret_keys = secret_keys
+        if single_user_api_key is not None:
+            settings.single_user_api_key = single_user_api_key
         return settings
 
     # The Catalog and Authenticator have the opporunity to add custom routes to

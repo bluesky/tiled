@@ -203,6 +203,8 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
             params=params,
         )
         if metadata is NEEDS_INITIALIZATION:
+            # TO DO: This is a big wart, a side-effect refactor to support
+            # refresh tokens. Needs rethinking.
             content = self._get_json_with_cache(f"/metadata/{'/'.join(path)}")
             item = content["data"]
             self._metadata.update(item["attributes"]["metadata"])
@@ -330,8 +332,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
             queries = self._queries
         if sorting is UNCHANGED:
             sorting = self._sorting
-        return type(self)(
-            client=self._client,
+        return super().new_variation(
             structure_clients=structure_clients,
             special_clients=special_clients,
             queries=queries,
@@ -493,9 +494,6 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         item_counter = itertools.count(start)
         while next_page_url is not None:
             content = self._get_json_with_cache(
-                self._cache,
-                self._offline,
-                self._client,
                 next_page_url,
                 params={
                     "fields": ["metadata", "structure_family", "client_type_hint"],
@@ -679,6 +677,7 @@ def from_catalog(
     catalog,
     authenticator=None,
     allow_anonymous_access=None,
+    single_user_api_key=None,
     secret_keys=None,
     structure_clients="numpy",
     *,
@@ -702,6 +701,16 @@ def from_catalog(
     ----------
     catalog : Catalog
     authenticator : Authenticator, optional
+    allow_anonymous_access : bool, optional
+        Default is False.
+    single_user_api_key: str, optional
+        Mutually exclusive with authenticator.
+        If None, a secure random secret is generated.
+    secret_keys : List[str], optional
+        This list may contain one or more keys.
+        The first key is used for *encoding*. All keys are tried for *decoding*
+        until one works or they all fail. This supports key rotation.
+        If None, a secure secret is generated.
     username : str, optional
         Username for authenticated access.
     structure_clients : str or dict, optional
@@ -720,7 +729,11 @@ def from_catalog(
         Path to directory for storing refresh tokens.
     """
     client = client_from_catalog(
-        catalog, authenticator, allow_anonymous_access, secret_keys
+        catalog=catalog,
+        authenticator=authenticator,
+        allow_anonymous_access=allow_anonymous_access,
+        single_user_api_key=single_user_api_key,
+        secret_keys=secret_keys,
     )
     return from_client(
         client,
@@ -843,12 +856,14 @@ def from_profile(name, **kwargs):
             f"from directories {paths}."
         ) from err
     merged = {**profile_content, **kwargs}
-    cache_config = merged.pop("cache")
+    cache_config = merged.pop("cache", None)
     if cache_config is not None:
         from tiled.client.cache import Cache
 
         MSG = f"Failed to apply cache configuration {cache_config!r}"
         # cache_config should be one of:
+        6
+        6
         # {"memory": {...}}
         # {"disk": {...}}
         try:

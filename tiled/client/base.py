@@ -1,5 +1,3 @@
-import collections.abc
-
 import msgpack
 
 from ..utils import DictView, ListView
@@ -44,6 +42,7 @@ class BaseClient:
         self._cached_len = None  # a cache just for __len__
         self._params = params or {}
         self._cache = cache
+        super().__init__()
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -82,20 +81,21 @@ class BaseClient:
         metadata=UNCHANGED,
         path=UNCHANGED,
         params=UNCHANGED,
+        **kwargs,
     ):
         """
         This is intended primarily for internal use and use by subclasses.
         """
         if offline is UNCHANGED:
-            self._offline = offline
+            offline = self._offline
         if cache is UNCHANGED:
-            self._cache = offline
+            cache = self._cache
         if metadata is UNCHANGED:
-            self._metadata = metadata
+            metadata = self._metadata
         if path is UNCHANGED:
-            self._path = path
+            path = self._path
         if params is UNCHANGED:
-            self._params = params
+            params = self._params
         return type(self)(
             client=self._client,
             item=self._item,
@@ -105,6 +105,8 @@ class BaseClient:
             metadata=metadata,
             path=path,
             params=params,
+            token_cache=self._token_cache,
+            **kwargs,
         )
 
     def _get_content_with_cache(self, path, accept=None, timeout=UNSET, **kwargs):

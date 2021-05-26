@@ -26,6 +26,9 @@ class DaskVariableClient(BaseArrayClient):
     def _build_array_reader(self, structure):
         return self.ARRAY_READER(
             client=self._client,
+            item=self._item,
+            username=self._username,
+            token_cache=self._token_cache,
             offline=self._offline,
             cache=self._cache,
             path=self._path,
@@ -100,6 +103,9 @@ class DaskDataArrayClient(BaseArrayClient):
         variable = structure.variable
         variable_source = self.VARIABLE_READER(
             client=self._client,
+            item=self._item,
+            username=self._username,
+            token_cache=self._token_cache,
             offline=self._offline,
             cache=self._cache,
             path=self._path,
@@ -122,6 +128,9 @@ class DaskDataArrayClient(BaseArrayClient):
         for name, variable in structure.coords.items():
             variable_source = self.VARIABLE_READER(
                 client=self._client,
+                item=self._item,
+                username=self._username,
+                token_cache=self._token_cache,
                 offline=self._offline,
                 cache=self._cache,
                 path=self._path,
@@ -144,6 +153,9 @@ class DaskDataArrayClient(BaseArrayClient):
         variable = structure.variable
         variable_source = self.VARIABLE_READER(
             client=self._client,
+            item=self._item,
+            username=self._username,
+            token_cache=self._token_cache,
             offline=self._offline,
             cache=self._cache,
             path=self._path,
@@ -159,6 +171,9 @@ class DaskDataArrayClient(BaseArrayClient):
         ):
             variable_source = self.VARIABLE_READER(
                 client=self._client,
+                item=self._item,
+                username=self._username,
+                token_cache=self._token_cache,
                 offline=self._offline,
                 cache=self._cache,
                 path=self._path,
@@ -278,6 +293,9 @@ class DaskDatasetClient(BaseArrayClient):
                 continue
             data_array_source = self.DATA_ARRAY_READER(
                 client=self._client,
+                item=self._item,
+                username=self._username,
+                token_cache=self._token_cache,
                 offline=self._offline,
                 cache=self._cache,
                 path=self._path,
@@ -296,6 +314,9 @@ class DaskDatasetClient(BaseArrayClient):
                 continue
             variable_source = self.VARIABLE_READER(
                 client=self._client,
+                item=self._item,
+                username=self._username,
+                token_cache=self._token_cache,
                 offline=self._offline,
                 cache=self._cache,
                 path=self._path,

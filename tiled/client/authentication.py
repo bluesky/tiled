@@ -1,7 +1,6 @@
 import getpass
 import os
 from pathlib import Path
-from re import T
 import urllib.parse
 
 import appdirs

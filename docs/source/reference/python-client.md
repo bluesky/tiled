@@ -118,11 +118,15 @@ Tiled currently includes two clients for each structure family:
    tiled.client.base.BaseClient
    tiled.client.base.BaseClient.metadata
    tiled.client.base.BaseClient.path
-   tiled.client.catalog.Catalog.uri
-   tiled.client.base.BaseClient.structure
+   tiled.client.base.BaseClient.uri
+   tiled.client.base.BaseClient.username
+   tiled.client.base.BaseClient.item
    tiled.client.base.BaseClient.new_variation
-   tiled.client.base.BaseClient.touch
+   tiled.client.base.BaseStructureClient.touch
+   tiled.client.base.BaseStructureClient.structure
+   tiled.client.base.BaseArrayClient.structure
 ```
+
 
 ### Array
 
