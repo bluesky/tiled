@@ -28,6 +28,8 @@ from ..utils import SpecialUsers
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
+ACCESS_TOKEN_COOKIE_NAME = "tiled_access_token"
+REFRESH_TOKEN_COOKIE_NAME = "tiled_refresh_token"
 API_KEY_COOKIE_NAME = "tiled_api_key"
 API_KEY_HEADER_NAME = "x-tiled-api-key"
 API_KEY_QUERY_PARAMETER = "api_key"
@@ -105,7 +107,8 @@ def decode_token(token, secret_keys, expected_type):
             payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
             break
         except ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Access token has expired.")
+            # Do not let this be caught below with the other JWTError types.
+            raise
         except JWTError:
             # Try the next key in the key rotation.
             continue
@@ -132,7 +135,7 @@ async def check_single_user_api_key(
 
 async def get_current_user(
     request: Request,
-    token: str = Depends(oauth2_scheme),
+    access_token: str = Depends(oauth2_scheme),
     has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticator=Depends(get_authenticator),
@@ -143,7 +146,11 @@ async def get_current_user(
                 (API_KEY_COOKIE_NAME, settings.single_user_api_key)
             )
         return SpecialUsers.admin
-    if token is None:
+    # If the token isn't in the Authorization header, check the cookies.
+    if access_token is None:
+        access_token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+    if access_token is None:
+        # No access token anywhere. Is anonymous public access permitted?
         if settings.allow_anonymous_access:
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
@@ -153,14 +160,34 @@ async def get_current_user(
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
             raise HTTPException(status_code=401, detail="Not authenticated")
-    payload = decode_token(token, settings.secret_keys, "access")
+    try:
+        payload = decode_token(access_token, settings.secret_keys, "access")
+    except ExpiredSignatureError:
+        # If the cookie REFRESH_TOKEN_COOKIE_NAME is set and still valid,
+        # use that to generate a fresh access token and refresh token pair,
+        refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)
+        if refresh_token is not None:
+            # The slide_session function may raise 401 if the refresh token
+            # is not valid.
+            new_tokens = slide_session(refresh_token, settings)
+            payload = decode_token(
+                new_tokens["access_token"], settings.secret_keys, "access"
+            )
+            request.state.cookies_to_set.append(
+                (ACCESS_TOKEN_COOKIE_NAME, new_tokens["access_token"])
+            )
+            request.state.cookies_to_set.append(
+                (REFRESH_TOKEN_COOKIE_NAME, new_tokens["refresh_token"])
+            )
+        else:
+            raise HTTPException(status_code=401, detail="Access token has expired.")
     username: str = payload.get("sub")
     return username
 
 
 @authentication_router.post("/token", response_model=AccessAndRefreshTokens)
 async def login_for_access_token(
-    response: Response,
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
     settings: BaseSettings = Depends(get_settings),
@@ -192,6 +219,8 @@ async def login_for_access_token(
         data={"sub": username},
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
+    request.state.cookies_to_set.append((ACCESS_TOKEN_COOKIE_NAME, access_token))
+    request.state.cookies_to_set.append((REFRESH_TOKEN_COOKIE_NAME, refresh_token))
     return {
         "access_token": access_token,
         "expires_in": settings.access_token_max_age / UNIT_SECOND,
@@ -207,7 +236,11 @@ async def refresh(
     settings: BaseSettings = Depends(get_settings),
 ):
     "Obtain a new access token and refresh token."
-    payload = decode_token(refresh_token.refresh_token, settings.secret_keys, "refresh")
+    return slide_session(refresh_token.refresh_token, settings)
+
+
+def slide_session(refresh_token, settings):
+    payload = decode_token(refresh_token, settings.secret_keys, "refresh")
     now = datetime.utcnow().timestamp()
     # Enforce refresh token max age.
     # We do this here rather than with an "exp" claim in the token so that we can

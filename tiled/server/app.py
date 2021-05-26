@@ -103,6 +103,7 @@ def get_app(include_routers=None):
     @app.middleware("http")
     async def set_cookies(request: Request, call_next):
         "This enables dependencies to inject cookies that they want to be set."
+        # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
