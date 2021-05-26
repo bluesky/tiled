@@ -27,7 +27,7 @@ Most things that we do with a Catalog or dataset make an HTTP request to the
 server and receive a response. For example...
 
 ```python
->>> catalog = from_uri("http://localhost:8000", "dask", cache=Cache.in_memory(2e9))  # fetches some metadata
+>>> catalog = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
 
 >>> catalog
 <Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
