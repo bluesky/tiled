@@ -185,7 +185,7 @@ def serve_catalog(
                 setattr(settings, item, authentication[item])
         return settings
 
-    # The Catalog and Authenticator have the opporunity to add custom routes to
+    # The Catalog and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Catalog of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.

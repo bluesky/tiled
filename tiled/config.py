@@ -59,6 +59,8 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
         if segments in catalogs:
             raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
         catalogs[segments] = catalog
+    if not len(catalogs):
+        raise ValueError("Configuration contains no catalogs")
     if (len(catalogs) == 1) and () in catalogs:
         # There is one catalog to be deployed at '/'.
         root_catalog = catalog

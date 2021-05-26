@@ -155,8 +155,7 @@ def serve_config(
     try:
         parsed_config = parse_configs(config_path)
     except Exception as err:
-        (msg,) = err.args
-        typer.echo(msg)
+        typer.echo(repr(err))
         raise typer.Abort()
 
     # Delay this import, which is fairly expensive, so that
