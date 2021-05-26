@@ -15,7 +15,7 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
     """
     Given parsed configuration, construct arguments for serve_catalog(...).
     """
-    auth_spec = config.get("authentication", {})
+    auth_spec = config.get("authentication", {}) or {}
     auth_aliases = {}
     # TODO Enable entrypoint as alias for authenticator_class?
     if auth_spec.get("authenticator") is not None:
