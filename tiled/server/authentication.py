@@ -159,6 +159,15 @@ async def login_for_access_token(
     authenticator: Any = Depends(get_authenticator),
     settings: BaseSettings = Depends(get_settings),
 ):
+    if authenticator is None:
+        if settings.allow_anonymous_access:
+            msg = "This is a public Tiled server with no login."
+        else:
+            msg = (
+                "This is a single-user Tiled server. "
+                "To authenticate, use the API key logged at server startup."
+            )
+        raise HTTPException(status_code=404, detail=msg)
     username = authenticator.authenticate(
         username=form_data.username, password=form_data.password
     )
