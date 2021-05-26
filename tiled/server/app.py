@@ -174,7 +174,7 @@ def serve_catalog(
     def override_get_settings():
         settings = get_settings()
         for item in [
-            "allow_anonymous_acccess",
+            "allow_anonymous_access",
             "secret_keys",
             "single_user_api_key",
             "access_token_max_age",
