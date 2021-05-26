@@ -48,7 +48,7 @@ def authenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE):
         # We are using a token cache. Store the new refresh token.
         directory = _token_directory(token_cache, client.base_url.netloc, username)
         directory.mkdir(exist_ok=True, parents=True)
-        filepath = directory / "refresh_token.json"
+        filepath = directory / "refresh_token"
         filepath.touch(mode=0o600)  # Set permissions.
         with open(filepath, "w") as file:
             file.write(data["refresh_token"])
@@ -79,7 +79,7 @@ def _reauthenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE)
     if token_cache:
         # We are using a token_cache.
         directory = _token_directory(token_cache, client.base_url.netloc, username)
-        filepath = directory / "refresh_token.json"
+        filepath = directory / "refresh_token"
         if filepath.is_file():
             # There is a token file.
             with open(filepath, "r") as file:
@@ -93,7 +93,7 @@ def _reauthenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE)
             token_response = client.send(token_request)
             if token_response.status_code == 401:
                 # Refreshing the token failed.
-                # Discard the expired (or otherwise invalid) refresh_token.json file.
+                # Discard the expired (or otherwise invalid) refresh_token file.
                 filepath.unlink(missing_ok=True)
                 raise CannotRefreshAuthentication(
                     "Server rejected attempt to refresh token"
