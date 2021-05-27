@@ -48,6 +48,7 @@ def get_app(include_routers=None):
         List of additional FastAPI.Router objects to be included (merged) into the app
     """
     app = FastAPI()
+    app.state.allow_origins = []
     app.include_router(router)
     app.include_router(authentication_router)
 
@@ -59,6 +60,9 @@ def get_app(include_routers=None):
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
         app.include_router(declare_search_router())
+        app.state.allow_origins.extend(
+            app.dependency_overrides[get_settings]().allow_origins
+        )
 
     @app.middleware("http")
     async def add_server_timing_header(request: Request, call_next):
@@ -138,7 +142,7 @@ def get_app(include_routers=None):
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=get_settings().allow_origins,
+        allow_origins=app.state.allow_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -150,6 +154,7 @@ def get_app(include_routers=None):
 def serve_catalog(
     catalog,
     authentication=None,
+    server_settings=None,
 ):
     """
     Serve a Catalog
@@ -159,8 +164,11 @@ def serve_catalog(
     catalog : Catalog
     authentication: dict, optional
         Dict of authentication configuration.
+    server_settings: dict, optional
+        Dict of other server configuration.
     """
     authentication = authentication or {}
+    server_settings = server_settings or {}
     authenticator = authentication.get("authenticator")
 
     @lru_cache(1)
@@ -184,6 +192,9 @@ def serve_catalog(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
+        for item in ["allow_origins"]:
+            if server_settings.get(item) is not None:
+                setattr(settings, item, server_settings[item])
         return settings
 
     # The Catalog and Authenticator have the opportunity to add custom routes to

@@ -104,7 +104,13 @@ def construct_serve_catalog_kwargs(config, source_filepath=None, validate=True):
                     include_routers.append(router)
         root_catalog = Catalog(mapping)
         root_catalog.include_routers.extend(include_routers)
-    return {"catalog": root_catalog, "authentication": auth_spec}
+    server_settings = {}
+    server_settings["allow_origins"] = config.get("allow_origins")
+    return {
+        "catalog": root_catalog,
+        "authentication": auth_spec,
+        "server_settings": server_settings,
+    }
 
 
 def merge(configs):
@@ -113,9 +119,11 @@ def merge(configs):
     # These two variables are used to produce error messages that point
     # to the relevant config file(s).
     authentication_config_source = None
+    allow_origins = []
     paths = {}  # map each item's path to config file that specified it
 
     for filepath, config in configs.items():
+        allow_origins.extend(config.get("allow_origins", []))
         if "authentication" in config:
             if "authentication" in merged:
                 raise ConfigError(
@@ -136,7 +144,7 @@ def merge(configs):
                 raise ConfigError(msg)
             paths[item["path"]] = filepath
             merged["catalogs"].append(item)
-        merged["catalogs"]
+    merged["allow_origins"] = allow_origins
     return merged
 
 

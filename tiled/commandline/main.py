@@ -132,7 +132,7 @@ def serve_directory(
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
     catalog = Catalog.from_directory(directory)
-    web_app = serve_catalog(catalog, {"allow_anonymous_access": public})
+    web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
     print_admin_api_key_if_generated(web_app)
 
     import uvicorn
@@ -152,7 +152,7 @@ def serve_pyobject(
     from ..utils import import_object
 
     catalog = import_object(object_path)
-    web_app = serve_catalog(catalog, {"allow_anonymous_access": public})
+    web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
     print_admin_api_key_if_generated(web_app)
 
     import uvicorn

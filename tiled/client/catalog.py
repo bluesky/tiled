@@ -676,6 +676,7 @@ def from_uri(
 def from_catalog(
     catalog,
     authentication=None,
+    server_settings=None,
     structure_clients="numpy",
     *,
     username=None,
@@ -719,6 +720,7 @@ def from_catalog(
     client = client_from_catalog(
         catalog=catalog,
         authentication=authentication,
+        server_settings=server_settings,
     )
     return from_client(
         client,

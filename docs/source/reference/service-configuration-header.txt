@@ -1,0 +1,13 @@
+DO NOT EDIT THIS LINE. This file is used in `conf.py to generate schema.md`. Edit below and changes will propagate to the build.
+---
+orphan: true
+
+---
+
+# Service Configuration Reference
+
+This is a comprehensive reference. See also {doc}`../how-to/configuration` for a
+practical guide with examples.
+
+The content below is automatically generated from a schema that is used
+to validate configuration files when they are read.

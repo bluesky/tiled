@@ -38,7 +38,7 @@ class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."
 
 
-def client_from_catalog(catalog, authentication):
+def client_from_catalog(catalog, authentication, server_settings):
     from ..server.app import serve_catalog
 
     params = {}
@@ -52,7 +52,7 @@ def client_from_catalog(catalog, authentication):
         )
         authentication["single_user_api_key"] = single_user_api_key
         params["api_key"] = single_user_api_key
-    app = serve_catalog(catalog, authentication)
+    app = serve_catalog(catalog, authentication, server_settings)
 
     # Only an AsyncClient can be used over ASGI.
     # We wrap all the async methods in a call to asyncio.run(...).
