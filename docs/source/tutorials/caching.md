@@ -136,7 +136,7 @@ TO DO: Demonstrate downloading only a *portion* of a Catalog.
 Alternatively, a basic download can be performed from the command line via the
 tiled CLI.
 
-    $ tiled download "http://localhost:8000" my_cache_direcotry
+    $ tiled download "http://localhost:8000" my_cache_directory
 
 ```
 
@@ -151,7 +151,7 @@ attempt to connect and to rely entirely on its local cache.
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-catalog = Catalog.from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
+catalog = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
 ```
 
 If you attempt to access something that was not downloaded a
