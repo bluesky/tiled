@@ -1,19 +1,23 @@
 from datetime import datetime, timedelta
 from tiled.server.models import AccessAndRefreshTokens, RefreshToken
 from typing import Any, Optional
+import urllib.parse
 import uuid
 import warnings
 
 from fastapi import (
+    Cookie,
     Depends,
     APIRouter,
     HTTPException,
     Security,
+    Query,
     Request,
     Response,
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.api_key import APIKeyCookie, APIKeyQuery, APIKeyHeader
+from starlette.responses import RedirectResponse
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -143,13 +147,14 @@ async def get_current_user(
     if (authenticator is None) and has_single_user_api_key:
         if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
             request.state.cookies_to_set.append(
-                (API_KEY_COOKIE_NAME, settings.single_user_api_key)
+                {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
             )
         return SpecialUsers.admin
-    # If the token isn't in the Authorization header, check the cookies.
-    if access_token is None:
-        access_token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
-    if access_token is None:
+    # Check cookies and then the Authorization header.
+    access_token_from_either_location = request.cookies.get(
+        ACCESS_TOKEN_COOKIE_NAME, access_token
+    )
+    if access_token_from_either_location is None:
         # No access token anywhere. Is anonymous public access permitted?
         if settings.allow_anonymous_access:
             # Any user who can see the server can make unauthenticated requests.
@@ -160,27 +165,11 @@ async def get_current_user(
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
             raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = decode_token(access_token, settings.secret_keys, "access")
-    except ExpiredSignatureError:
-        # If the cookie REFRESH_TOKEN_COOKIE_NAME is set and still valid,
-        # use that to generate a fresh access token and refresh token pair,
-        refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)
-        if refresh_token is not None:
-            # The slide_session function may raise 401 if the refresh token
-            # is not valid.
-            new_tokens = slide_session(refresh_token, settings)
-            payload = decode_token(
-                new_tokens["access_token"], settings.secret_keys, "access"
-            )
-            request.state.cookies_to_set.append(
-                (ACCESS_TOKEN_COOKIE_NAME, new_tokens["access_token"])
-            )
-            request.state.cookies_to_set.append(
-                (REFRESH_TOKEN_COOKIE_NAME, new_tokens["refresh_token"])
-            )
-        else:
-            raise HTTPException(status_code=401, detail="Access token has expired.")
+    # Note: decode_token may raise ExpiredSignatureError, which is
+    # handled in tiled.server.app and redirects to /token/refresh.
+    payload = decode_token(
+        access_token_from_either_location, settings.secret_keys, "access"
+    )
     username: str = payload.get("sub")
     return username
 
@@ -219,8 +208,16 @@ async def login_for_access_token(
         data={"sub": username},
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
-    request.state.cookies_to_set.append((ACCESS_TOKEN_COOKIE_NAME, access_token))
-    request.state.cookies_to_set.append((REFRESH_TOKEN_COOKIE_NAME, refresh_token))
+    request.state.cookies_to_set.append(
+        {"key": ACCESS_TOKEN_COOKIE_NAME, "value": access_token}
+    )
+    request.state.cookies_to_set.append(
+        {
+            "key": REFRESH_TOKEN_COOKIE_NAME,
+            "value": refresh_token,
+            "path": "/token/refresh",
+        }
+    )
     return {
         "access_token": access_token,
         "expires_in": settings.access_token_max_age / UNIT_SECOND,
@@ -230,13 +227,41 @@ async def login_for_access_token(
     }
 
 
+@authentication_router.get("/token/refresh")
+async def get_token_refresh(
+    request: Request,
+    settings: BaseSettings = Depends(get_settings),
+    next: str = Query(...),
+    tiled_refresh_token: str = Cookie(None),
+):
+    "Obtain a new access token and refresh token."
+    if tiled_refresh_token is None:
+        raise HTTPException(status_code=401, detail="Could not authenticate")
+    new_tokens = slide_session(tiled_refresh_token, settings)
+    request.state.cookies_to_set.append(
+        {"key": ACCESS_TOKEN_COOKIE_NAME, "value": new_tokens["access_token"]}
+    )
+    request.state.cookies_to_set.append(
+        {"key": REFRESH_TOKEN_COOKIE_NAME, "value": new_tokens["refresh_token"]}
+    )
+    return RedirectResponse(url=urllib.parse.unquote_plus(next))
+
+
 @authentication_router.post("/token/refresh", response_model=AccessAndRefreshTokens)
-async def refresh(
+async def post_token_refresh(
+    request: Request,
     refresh_token: RefreshToken,
     settings: BaseSettings = Depends(get_settings),
 ):
     "Obtain a new access token and refresh token."
-    return slide_session(refresh_token.refresh_token, settings)
+    new_tokens = slide_session(refresh_token.refresh_token, settings)
+    request.state.cookies_to_set.append(
+        {"key": ACCESS_TOKEN_COOKIE_NAME, "value": new_tokens["access_token"]}
+    )
+    request.state.cookies_to_set.append(
+        {"key": REFRESH_TOKEN_COOKIE_NAME, "value": new_tokens["refresh_token"]}
+    )
+    return new_tokens
 
 
 def slide_session(refresh_token, settings):
