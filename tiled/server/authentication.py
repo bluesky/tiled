@@ -242,7 +242,11 @@ async def get_token_refresh(
         {"key": ACCESS_TOKEN_COOKIE_NAME, "value": new_tokens["access_token"]}
     )
     request.state.cookies_to_set.append(
-        {"key": REFRESH_TOKEN_COOKIE_NAME, "value": new_tokens["refresh_token"]}
+        {
+            "key": REFRESH_TOKEN_COOKIE_NAME,
+            "value": new_tokens["refresh_token"],
+            "path": "/token/refresh",
+        }
     )
     return RedirectResponse(url=urllib.parse.unquote_plus(next))
 
@@ -259,7 +263,11 @@ async def post_token_refresh(
         {"key": ACCESS_TOKEN_COOKIE_NAME, "value": new_tokens["access_token"]}
     )
     request.state.cookies_to_set.append(
-        {"key": REFRESH_TOKEN_COOKIE_NAME, "value": new_tokens["refresh_token"]}
+        {
+            "key": REFRESH_TOKEN_COOKIE_NAME,
+            "value": new_tokens["refresh_token"],
+            "path": "/token/refresh",
+        }
     )
     return new_tokens
 
