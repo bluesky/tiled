@@ -5,13 +5,15 @@ import time
 import urllib.parse
 import warnings
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 
 from .authentication import (
+    ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
+    REFRESH_TOKEN_COOKIE_NAME,
     authentication_router,
     get_authenticator,
 )
@@ -27,7 +29,11 @@ with warnings.catch_warnings():
     from jose import ExpiredSignatureError
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
-SENSITIVE_COOKIES = {API_KEY_COOKIE_NAME}
+SENSITIVE_COOKIES = {
+    API_KEY_COOKIE_NAME,
+    ACCESS_TOKEN_COOKIE_NAME,
+    REFRESH_TOKEN_COOKIE_NAME,
+}
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
@@ -78,8 +84,8 @@ def get_app(include_routers=None):
             SENSITIVE_COOKIES
         ):
             if not csrf_cookie:
-                raise HTTPException(
-                    status_code=403, detail="Expected tiled_csrf_token cookie"
+                return Response(
+                    status_code=403, content="Expected tiled_csrf_token cookie"
                 )
             # Get the token from the Header or (if not there) the query parameter.
             csrf_token = request.headers.get(CSRF_HEADER_NAME)
@@ -87,14 +93,14 @@ def get_app(include_routers=None):
                 parsed_query = urllib.parse.parse_qs(request.url.query)
                 csrf_token = parsed_query.get(CSRF_QUERY_PARAMETER)
             if not csrf_token:
-                raise HTTPException(
+                return Response(
                     status_code=403,
-                    detail="Expected csrf_token query parameter or x-tiled-csrf-token header",
+                    content=f"Expected {CSRF_QUERY_PARAMETER} query parameter or {CSRF_HEADER_NAME} header",
                 )
             # Securely compare the token with the cookie.
             if not secrets.compare_digest(csrf_token, csrf_cookie):
-                raise HTTPException(
-                    status_code=403, detail="Double-submit CSRF tokens do not match"
+                return Response(
+                    status_code=403, content="Double-submit CSRF tokens do not match"
                 )
 
         response = await call_next(request)
