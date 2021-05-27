@@ -8,7 +8,7 @@ This page addresses technical details relevant to:
 
 ## Configure session lifetime parameters
 
-The server implementing "sliding sessions". The following are tunable:
+The server implements "sliding sessions". The following are tunable:
 
 * Maximum inactive session age --- Time after which inactive sessions
   (sessions that have not refreshed tokens) will time out.
@@ -37,6 +37,8 @@ TILED_REFRESH_TOKEN_MAX_AGE
 TILED_SESSION_MAX_AGE
 TILED_ACCESS_TOKEN_MAX_AGE
 ```
+
+See also {doc}`service-configuration`.
 
 ## Set and Rotate the Signing Key
 

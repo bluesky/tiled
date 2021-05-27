@@ -172,7 +172,7 @@ def serve_config(
     try:
         parsed_config = parse_configs(config_path)
     except Exception as err:
-        typer.echo(repr(err))
+        typer.echo(str(err))
         raise typer.Abort()
 
     # Delay this import, which is fairly expensive, so that
@@ -180,7 +180,8 @@ def serve_config(
 
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
-    kwargs = construct_serve_catalog_kwargs(parsed_config)
+    # This config was already validated when it was parsed. Do not re-validate.
+    kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
     web_app = serve_catalog(**kwargs)
     print_admin_api_key_if_generated(web_app)
 

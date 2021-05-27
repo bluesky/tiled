@@ -3,18 +3,41 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
-import collections.abc
 import contextlib
+from functools import lru_cache
 import os
 from pathlib import Path
+
+import jsonschema
 
 from .utils import import_object, parse
 
 
-def construct_serve_catalog_kwargs(config, source_filepath=None):
+@lru_cache(maxsize=1)
+def schema():
+    "Load the schema for service-side configuration."
+    import yaml
+
+    here = Path(__file__).parent.absolute()
+    schema_path = here / "schemas" / "service_configuration.yml"
+    with open(schema_path, "r") as file:
+        return yaml.safe_load(file)
+
+
+def construct_serve_catalog_kwargs(config, source_filepath=None, validate=True):
     """
     Given parsed configuration, construct arguments for serve_catalog(...).
     """
+    if validate:
+        try:
+            jsonschema.validate(instance=config, schema=schema())
+        except jsonschema.ValidationError as err:
+            original_msg = err.args[0]
+            if source_filepath is None:
+                msg = f"ValidationError while parsing configuration: {original_msg}"
+            else:
+                msg = f"ValidationError while parsing configuration file {source_filepath}: {original_msg}"
+            raise ConfigError(msg) from err
     auth_spec = config.get("authentication", {}) or {}
     auth_aliases = {}
     # TODO Enable entrypoint as alias for authenticator_class?
@@ -29,11 +52,7 @@ def construct_serve_catalog_kwargs(config, source_filepath=None):
     catalog_aliases = {"files": "tiled.catalogs.files:Catalog.from_directory"}
     catalogs = {}
     for item in config.get("catalogs", []):
-        if "path" not in item:
-            raise ConfigError("Each item in 'catalogs' must contain a key 'path'.")
         segments = tuple(segment for segment in item["path"].split("/") if segment)
-        if "catalog" not in item:
-            raise ConfigError("Each item in 'catalogs' must contain a key 'catalog'.")
         catalog_spec = item["catalog"]
         import_path = catalog_aliases.get(catalog_spec, catalog_spec)
         obj = import_object(import_path)
@@ -156,13 +175,13 @@ def parse_configs(config_path):
             continue
         with open(filepath) as file:
             config = parse(file)
-            if not isinstance(config, collections.abc.Mapping):
-                if config is None:
-                    raise ValueError(f"The file at {filepath!r} is empty.")
-                else:
-                    raise ValueError(
-                        f"Content of {filepath!r} has invalid structure (not a mapping)."
-                    )
+            try:
+                jsonschema.validate(instance=config, schema=schema())
+            except jsonschema.ValidationError as err:
+                msg = err.args[0]
+                raise ConfigError(
+                    f"ValidationError while parsing configuration file {filepath}: {msg}"
+                ) from err
             parsed_configs[filepath] = config
 
     merged_config = merge(parsed_configs)
@@ -208,9 +227,15 @@ def direct_access(config, source_filepath=None):
     """
     if isinstance(config, (str, Path)):
         parsed_config = parse_configs(config)
+        # parse_configs validated for us, so we do not need to do it a second time.
+        validate = False
     else:
         parsed_config = config
-    return construct_serve_catalog_kwargs(parsed_config, source_filepath)["catalog"]
+        # We do not know where this config came from. It may not yet have been validated.
+        validate = True
+    return construct_serve_catalog_kwargs(
+        parsed_config, source_filepath, validate=validate
+    )["catalog"]
 
 
 def direct_access_from_profile(name):

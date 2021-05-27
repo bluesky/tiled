@@ -202,3 +202,74 @@ intersphinx_mapping = {
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable', None),
     'matplotlib': ('https://matplotlib.org', None),
 }
+
+import yaml
+
+def generate_schema_documentation(header, schema, target):
+
+    # header
+    with open(header, "r") as f:
+        header_md = f.readlines()
+    header_md = header_md[1:]
+    header_md = [ln.strip("\n") for ln in header_md]
+
+    # schema
+    with open(schema, "r") as f:
+        data = yaml.safe_load(f)
+
+
+    def parse_schema(d, md=[], depth=0, pre=""):
+        """
+        Generate markdown headers from a passed python dictionary created by
+        parsing a schema.yaml file.
+        """
+        if "then" in d:
+            d = d["then"]
+
+        if "properties" in d:
+            depth += 1
+            # Create markdown headers for each schema level
+            for key, val in d["properties"].items():
+                md.append("(schema_%s)=" % (pre + key))
+                md.append("#" * (depth + 1) + " " + pre + key)
+                md.append("")
+                if "description" in val:
+                    for ln in val["description"].split("\n"):
+                        md.append(ln)
+                    md.append("")
+
+                parse_schema(val, md, depth, pre + "{}.".format(key))
+            depth -= 1
+
+        if "items" in d:
+            depth += 1
+            # Create markdown headers for each schema level
+            if "properties" in d["items"]:
+                for key, val in d["items"]["properties"].items():
+                    md.append("(schema_%s)=" % (pre + key))
+                    md.append("#" * (depth + 1) + " " + pre[:-1] + "[item]." + key)
+                    md.append("")
+                    if "description" in val:
+                        for ln in val["description"].split("\n"):
+                            md.append(ln)
+                        md.append("")
+
+                parse_schema(val, md, depth, pre + "{}.".format(key))
+            depth -= 1
+
+        return md
+
+
+    schema_md = parse_schema(data)
+
+    # reference = header + schema
+    reference_md = header_md + schema_md
+    with open(target, "w") as f:
+        f.write("\n".join(reference_md))
+
+
+generate_schema_documentation(
+    "reference/service-configuration-header.txt",
+    "../../tiled/schemas/service_configuration.yml",
+    "reference/service-configuration.md",
+)

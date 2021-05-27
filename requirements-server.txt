@@ -1,5 +1,6 @@
 dask
 fastapi
+jsonschema
 msgpack
 pydantic
 python-multipart

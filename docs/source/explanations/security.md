@@ -42,6 +42,13 @@ so.
 TILED_SINGLE_USER_API_KEY=YOUR_SECRET tiled serve ...
 ```
 
+or via the configuration parameter
+
+```yaml
+authentication:
+  single_user_api_key: "..."
+```
+
 When the secret is set manually it this way, it is *not* logged in the terminal.
 
 ```{note}
@@ -240,3 +247,5 @@ include the configuration:
 authentication:
     allow_anonymous_access: true
 ```
+
+See also {doc}`../reference/service-configuration`.
