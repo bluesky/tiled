@@ -59,7 +59,7 @@ async def about(
     if (authenticator is None) and has_single_user_api_key:
         if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
             request.state.cookies_to_set.append(
-                (API_KEY_COOKIE_NAME, settings.single_user_api_key)
+                {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
             )
     return json_or_msgpack(
         request.headers,
