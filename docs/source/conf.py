@@ -275,6 +275,6 @@ generate_schema_documentation(
 )
 generate_schema_documentation(
     "reference/client-profiles-header.txt",
-    "../../tiled/schemas/profiles_configuration.yml",
+    "../../tiled/schemas/client_profiles.yml",
     "reference/client-profiles.md",
 )

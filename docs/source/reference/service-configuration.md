@@ -180,3 +180,21 @@ Even *active* sessions are timed out after this
 limit, and the user is required to resubmit credentials. By default,
 this is unset and active session are never shut down.
 
+
+(schema_allow_origins)=
+## allow_origins
+
+This list of domains enables web apps served from other domains to make
+requests to the tiled serve.
+
+Example:
+
+```yaml
+allow_origins:
+  - https://chart-studio.plotly.com
+```
+
+Read more about Cross-Origin Resource Sharing (CORS)
+from Mozilla's web developer documentation.
+
+https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS

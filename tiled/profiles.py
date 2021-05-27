@@ -67,13 +67,28 @@ def gather_profiles(paths, strict=True):
                 try:
                     with open(filepath) as file:
                         content = parse(file)
-                        try:
-                            jsonschema.validate(instance=content, schema=schema())
-                        except jsonschema.ValidationError as validation_err:
-                            original_msg = validation_err.args[0]
+                        if content is None:
+                            raise ProfileError("File {filepath} is empty.")
+                        if not isinstance(content, collections.abc.Mapping):
                             raise ProfileError(
-                                f"ValidationError while parsing configuration file {filepath}: {original_msg}"
-                            ) from validation_err
+                                "File {filepath} does not have the expected structure."
+                            )
+                        for profile_name, profile_content in content.items():
+                            try:
+                                jsonschema.validate(
+                                    instance=profile_content, schema=schema()
+                                )
+                            except jsonschema.ValidationError as validation_err:
+                                original_msg = validation_err.args[0]
+                                raise ProfileError(
+                                    f"ValidationError while parsing profile {profile_name} "
+                                    f"in file {filepath}: {original_msg}"
+                                ) from validation_err
+                            if len(profile_content.get("cache", {})) > 1:
+                                raise ProfileError(
+                                    "The profile's 'cache' property contains more than on entry. "
+                                    "At most one is allowed."
+                                )
                 except Exception as err:
                     if strict:
                         raise
