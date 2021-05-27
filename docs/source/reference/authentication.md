@@ -1,4 +1,4 @@
-# Authentication
+# Authentication Details
 
 See {doc}`../explanations/security` for an overview.
 This page addresses technical details relevant to:

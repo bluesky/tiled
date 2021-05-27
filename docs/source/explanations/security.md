@@ -150,7 +150,8 @@ You may configure:
 * Access token lifetime. This is internal from the user's point of view
   It should be short. (Default 15 minutes.)
 
-See {doc}`../reference/authentication`
+See {doc}`../reference/authentication` for advanced customization options and
+additional details.
 
 ### Authenticate with local Linux/UNIX users
 
