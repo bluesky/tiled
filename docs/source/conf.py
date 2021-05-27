@@ -273,3 +273,8 @@ generate_schema_documentation(
     "../../tiled/schemas/service_configuration.yml",
     "reference/service-configuration.md",
 )
+generate_schema_documentation(
+    "reference/client-profiles-header.txt",
+    "../../tiled/schemas/profiles_configuration.yml",
+    "reference/client-profiles.md",
+)

@@ -8,16 +8,30 @@ but the user-facing functionality is striaghtforward.
 """
 import collections
 import collections.abc
+from functools import lru_cache
 import os
+from pathlib import Path
 import sys
 import warnings
 
 import appdirs
+import jsonschema
 
 from .utils import parse
 
 
 __all__ = ["list_profiles", "load_profiles", "paths"]
+
+
+@lru_cache(maxsize=1)
+def schema():
+    "Load the schema for profiles."
+    import yaml
+
+    here = Path(__file__).parent.absolute()
+    schema_path = here / "schemas" / "client_profiles.yml"
+    with open(schema_path, "r") as file:
+        return yaml.safe_load(file)
 
 
 # Paths later in the list ("closer" to the user) have higher precedence.
@@ -53,6 +67,13 @@ def gather_profiles(paths, strict=True):
                 try:
                     with open(filepath) as file:
                         content = parse(file)
+                        try:
+                            jsonschema.validate(instance=content, schema=schema())
+                        except jsonschema.ValidationError as validation_err:
+                            original_msg = validation_err.args[0]
+                            raise ProfileError(
+                                f"ValidationError while parsing configuration file {filepath}: {original_msg}"
+                            ) from validation_err
                 except Exception as err:
                     if strict:
                         raise
@@ -185,4 +206,8 @@ def list_profiles():
 
 
 class ProfileNotFound(KeyError):
+    pass
+
+
+class ProfileError(ValueError):
     pass
