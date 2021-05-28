@@ -1,4 +1,5 @@
 import os
+from pathlib import Path, PurePosixPath
 import secrets
 import urllib.parse
 
@@ -79,7 +80,10 @@ def client_from_catalog(catalog, authentication, server_settings):
 
 def client_and_path_from_uri(uri):
     headers = {}
+    # The uri is expected to reach the root or /metadata route.
     url = httpx.URL(uri)
+
+    # If ?api_key=... is present, move it from the query into a header.
     parsed_query = urllib.parse.parse_qs(url.query.decode())
     api_key_list = parsed_query.pop("api_key", None)
     if api_key_list is not None:
@@ -87,16 +91,75 @@ def client_and_path_from_uri(uri):
             raise ValueError("Cannot handle two api_key query parameters")
         (api_key,) = api_key_list
         headers["X-TILED-API-KEY"] = api_key
-    query = urllib.parse.urlencode(parsed_query, doseq=True)
-    path = [segment for segment in url.path.rstrip("/").split("/") if segment]
-    if path:
-        if path[0] != "metadata":
-            raise ValueError(
-                "When the URI has a path, the path expected to begin with '/metadata/'"
-            )
-        path.pop(0)  # ["metadata", "stuff", "things"] -> ["stuff", "things"]
-    base_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc, "", query, url.fragment)
+    params = urllib.parse.urlencode(parsed_query, doseq=True)
+
+    # Construct the URL *without* the params, which we will pass in separately.
+    handshake_url = urllib.parse.urlunsplit(
+        (url.scheme, url.netloc, url.path, {}, url.fragment)
     )
-    client = httpx.Client(base_url=base_url, headers=headers)
-    return client, path
+
+    # First, ask the client what the base_path is. It's usually "" but Tiled
+    # may be serving on a sub-path.
+    client = httpx.Client(headers=headers, params=params)
+    # This is the only place where we use client.get *directly*, circumventing
+    # the usual "get with cache" logic.
+    response = client.get(handshake_url, params={"base_path": None})
+    handle_error(response)
+    data = response.json()
+    base_path = data["meta"]["base_path"]
+    base_url = urllib.parse.urlunsplit(
+        (url.scheme, url.netloc, base_path, {}, url.fragment)
+    )
+    client.base_url = base_url
+    path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
+    if path_parts:
+        # Strip "/metadata"
+        path_parts.pop(0)
+    return client, path_parts
+
+
+def export_util(file, format, get, link, params):
+    """
+    Download client data in some format and write to a file.
+
+    This is used by the export method on clients. It intended for internal use.
+
+    Parameters
+    ----------
+    file: str or buffer
+        Filepath or writeable buffer.
+    format : str, optional
+        If format is None and `file` is a filepath, the format is inferred
+        from the name, like 'table.csv' implies format="text/csv". The format
+        may be given as a file extension ("csv") or a media type ("text/csv").
+    get : callable
+        Client's internal GET method
+    link: str
+        URL to download full data
+    params : dict
+        Additional parameters for the request, which may be used to subselect
+        or slice, for example.
+    """
+
+    # The server accpets a media type like "text/csv" or a file extension like
+    # "csv" (no dot) as a "format".
+    if "format" in params:
+        raise ValueError("params may not include 'format'. Use the format parameter.")
+    if isinstance(format, str) and format.startswith("."):
+        format = format[1:]  # e.g. ".csv" -> "csv"
+    if isinstance(file, str):
+        # Infer that `file` is a filepath.
+        if format is None:
+            format = ".".join(
+                suffix[1:] for suffix in Path(file).suffixes
+            )  # e.g. "csv"
+        content = get(link, params={"format": format, **params})
+        with open(file, "wb") as file:
+            file.write(content)
+    else:
+        # Infer that `file` is a writeable buffer.
+        if format is None:
+            # We have no filepath to infer to format from.
+            raise ValueError("format must be specified when file is writeable buffer")
+        content = get(link, params={"format": format, **params})
+        file.write(content)

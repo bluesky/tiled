@@ -1,7 +1,8 @@
 # Keep a Local Copy
 
-There are several modes of client-side *caching* supported by Tiled. They cover
-different situations. Each one is addressed here with a hypothetical scenario.
+Tiled can use a local *cache* to make efficient use of network bandwidth and the
+user's time. It avoids downloading something twice if it hasn't changed.
+This also enables an offline "airplane mode".
 
 To follow along, start the Tiled server with the demo Catalog from a Terminal.
 
@@ -157,48 +158,10 @@ catalog = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_direct
 If you attempt to access something that was not downloaded a
 ``NotAvailableOffline`` error will be raised.
 
-## Export files for use by external programs ("deliberate export")
+## Comparison to "deliberate export"
 
-```{warning}
+When caching, Tiled takes control of the data. The format, layout, and naming of
+the files in the cache should be treated as internal to Tiled. It is up to Tiled
+to manage them, and they should not be modified or directly accessed by user code.
 
-This is "documentation-driven development". The feature described in
-this section is not yet implemented!
-```
-
-First, consider alternatives:
-
-If you data analysis is taking place in Python, then you may have
-no need to export files. Your code will be faster and simpler if you
-work numpy, pandas, and/or xarray structures directly.
-
-If your data analysis is in another language, can it access the data
-from the Tiled server directly over HTTP? Tiled supports efficient
-formats (e.g. numpy C buffers, Apache Arrow DataFrames) and universal
-interchange formats (e.g. CSV, JSON) and perhaps one of those will be the
-fastest way to get data into your program.
-
-But sometimes, to integrate with existing software, especially closed-source
-software, we need to generate ordinary files on disk. Tiled provides a
-utility in the Python client to make that easier.
-
-The Tiled server and client can translate arrays, dataframes, xarrays, and
-hierarchical structures to various formats. It's a very basic export functionality,
-intentionally not very configurable.
-
-```python
-from tiled.utils import export
-
-export(catalog["dataframes"]["df"], "table.csv")
-```
-
-To do more sophisticated export, use standard Python tools, as in:
-
-```python
-catalog["dataframes"]["df"].to_csv("table.csv", ...)
-```
-
-```{note}
-
-The set off formats supported is extensible and depends on the software
-environment (i.e. what's installed).
-```
+To save files for use by user code or other software, use {doc}`export`.

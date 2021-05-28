@@ -394,18 +394,18 @@ def construct_resource(base_url, path, key, entry, fields):
                 "id": key,
                 "attributes": models.CatalogAttributes(**attributes),
                 "type": models.EntryType.catalog,
-                "links": {"self": f"{base_url}/metadata/{path}"},
+                "links": {"self": f"{base_url}metadata/{path}"},
             }
         )
     else:
-        links = {"self": f"{base_url}/metadata/{path}{key}"}
+        links = {"self": f"{base_url}metadata/{path}{key}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Catalog and not values.
             links.update(
                 {
-                    link: template.format(base_url=base_url, path=(path + key))
+                    link: template.format(base_url=base_url, path=f"{path}/{key}")
                     for link, template in FULL_LINKS[entry.structure_family].items()
                 }
             )
@@ -422,8 +422,8 @@ def construct_resource(base_url, path, key, entry, fields):
                     # instead of the actual payload.
                     structure["micro"] = {
                         "links": {
-                            "meta": f"{base_url}/dataframe/meta/{path}",
-                            "divisions": f"{base_url}/dataframe/divisions/{path}",
+                            "meta": f"{base_url}dataframe/meta/{path}",
+                            "divisions": f"{base_url}dataframe/divisions/{path}",
                         }
                     }
                 else:
@@ -437,11 +437,11 @@ def construct_resource(base_url, path, key, entry, fields):
                     )
                     links[
                         "block"
-                    ] = f"{base_url}/array/block/{path}?block={block_template}"
+                    ] = f"{base_url}array/block/{path}?block={block_template}"
                 elif entry.structure_family == "dataframe":
                     links[
                         "partition"
-                    ] = f"{base_url}/dataframe/partition/{path}?partition={{index}}"
+                    ] = f"{base_url}dataframe/partition/{path}?partition={{index}}"
                 elif entry.structure_family == "variable":
                     block_template = ",".join(
                         f"{{index_{index}}}"
@@ -451,7 +451,7 @@ def construct_resource(base_url, path, key, entry, fields):
                     )
                     links[
                         "block"
-                    ] = f"{base_url}/variable/block/{path}?block={block_template}"
+                    ] = f"{base_url}variable/block/{path}?block={block_template}"
                 elif entry.structure_family == "data_array":
                     block_template = ",".join(
                         f"{{index_{index}}}"
@@ -461,11 +461,11 @@ def construct_resource(base_url, path, key, entry, fields):
                     )
                     links[
                         "block"
-                    ] = f"{base_url}/data_array/block/{path}?block={block_template}"
+                    ] = f"{base_url}data_array/block/{path}?block={block_template}"
                 elif entry.structure_family == "dataset":
                     links[
                         "block"
-                    ] = f"{base_url}/dataset/block/{path}?variable={{variable}}&block={{block_indexes}}"
+                    ] = f"{base_url}dataset/block/{path}?variable={{variable}}&block={{block_indexes}}"
                     microstructure = entry.microstructure()
             attributes["structure"] = structure
         resource = models.ReaderResource(
@@ -610,13 +610,13 @@ class WrongTypeForRoute(Exception):
 
 
 FULL_LINKS = {
-    "array": {"full": "{base_url}/array/full/{path}"},
-    "dataframe": {"full": "{base_url}/datafame/full/{path}"},
-    "variable": {"full": "{base_url}/variable/full/{path}"},
-    "data_array": {"full_variable": "{base_url}/data_array/variable/full/{path}"},
+    "array": {"full": "{base_url}array/full/{path}"},
+    "dataframe": {"full": "{base_url}dataframe/full/{path}"},
+    "variable": {"full": "{base_url}variable/full/{path}"},
+    "data_array": {"full_variable": "{base_url}data_array/variable/full/{path}"},
     "dataset": {
-        "full_variable": "{base_url}/dataset/data_var/full/{path}?variable={{variable}}",
-        "full_coordinate": "{base_url}/dataset/coord/full/{path}?variable={{variable}}",
-        "full_dataset": "{base_url}/dataset/full/{path}",
+        "full_variable": "{base_url}dataset/data_var/full/{path}?variable={{variable}}",
+        "full_coordinate": "{base_url}dataset/coord/full/{path}?variable={{variable}}",
+        "full_dataset": "{base_url}dataset/full/{path}",
     },
 }

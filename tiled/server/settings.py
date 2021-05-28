@@ -49,10 +49,7 @@ class Settings(BaseSettings):
     @validator("base_path")
     def leading_slash_but_no_trailing_slash(cls, value):
         stripped = value.lstrip("/").rstrip("/")
-        if stripped == "":
-            return ""
-        else:
-            return f"/{stripped}"
+        return f"/{stripped}"
 
 
 @lru_cache()

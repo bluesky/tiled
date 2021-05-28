@@ -6,10 +6,11 @@
 
 tutorials/installation
 tutorials/navigation
-tutorials/search
 tutorials/slicing
 tutorials/caching
+tutorials/export
 tutorials/serving-files
+tutorials/search
 tutorials/plotly-integration
 ```
 

@@ -1,3 +1,4 @@
+import builtins
 import itertools
 
 import dask
@@ -6,6 +7,7 @@ import dask.array
 from ..structures.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
 from .base import BaseArrayClient
+from .utils import export_util
 
 
 class DaskArrayClient(BaseArrayClient):
@@ -124,6 +126,70 @@ class DaskArrayClient(BaseArrayClient):
     def touch(self):
         super().touch()
         self.read().compute()
+
+    def export(self, filepath, format=None, slice=None):
+        """
+        Download data in some format and write to a file.
+
+        Parameters
+        ----------
+        file: str or buffer
+            Filepath or writeable buffer.
+        format : str, optional
+            If format is None and `file` is a filepath, the format is inferred
+            from the name, like 'table.csv' implies format="text/csv". The format
+            may be given as a file extension ("csv") or a media type ("text/csv").
+        slice : List[slice]
+            List of slice objects. A convenient way to generate these is shown
+            in the examples.
+
+        Examples
+        --------
+
+        Export all.
+
+        >>> a.export("numbers.csv")
+
+        Export an N-dimensional slice.
+
+        >>> import numpy
+        >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
+        """
+        params = {}
+        if slice is not None:
+            slices = []
+            for dim in slice:
+                if isinstance(dim, builtins.slice):
+                    # slice(10, 50) -> "10:50"
+                    # slice(None, 50) -> ":50"
+                    # slice(10, None) -> "10:"
+                    # slice(None, None) -> ":"
+                    if (dim.step is not None) and dim.step != 1:
+                        raise ValueError(
+                            "Slices with a 'step' other than 1 are not supported."
+                        )
+                    slices.append(
+                        (
+                            (str(dim.start) if dim.start else "")
+                            + ":"
+                            + (str(dim.stop) if dim.stop else "")
+                        )
+                    )
+                else:
+                    slices.append(str(int(dim)))
+            params["slice"] = ",".join(slices)
+        return export_util(
+            filepath,
+            format,
+            self._get_content_with_cache,
+            self.item["links"]["full"],
+            params=params,
+        )
+
+    @property
+    def formats(self):
+        "List formats that the server can export this data as."
+        return self._get_json_with_cache("")["formats"]["array"]
 
 
 class ArrayClient(DaskArrayClient):

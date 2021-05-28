@@ -9,6 +9,7 @@ from ..structures.dataframe import (
 )
 from ..media_type_registration import deserialization_registry
 from .base import BaseStructureClient
+from .utils import export_util
 
 
 class DaskDataFrameClient(BaseStructureClient):
@@ -191,6 +192,37 @@ class DaskDataFrameClient(BaseStructureClient):
 
     # __len__ is intentionally not implemented. For DataFrames it means "number
     # of rows" which is expensive to compute.
+
+    def export(self, filepath, format=None, columns=None):
+        """
+        Download data in some format and write to a file.
+
+        Parameters
+        ----------
+        file: str or buffer
+            Filepath or writeable buffer.
+        format : str, optional
+            If format is None and `file` is a filepath, the format is inferred
+            from the name, like 'table.csv' implies format="text/csv". The format
+            may be given as a file extension ("csv") or a media type ("text/csv").
+        columns: List[str], optional
+            Select a subset of the columns.
+        """
+        params = {}
+        if columns is not None:
+            params["column"] = columns
+        return export_util(
+            filepath,
+            format,
+            self._get_content_with_cache,
+            self.item["links"]["full"],
+            params=params,
+        )
+
+    @property
+    def formats(self):
+        "List formats that the server can export this data as."
+        return self._get_json_with_cache("")["formats"]["dataframe"]
 
 
 class DataFrameClient(DaskDataFrameClient):

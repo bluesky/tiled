@@ -104,3 +104,4 @@ class About(pydantic.BaseModel):
     formats: Dict[str, List[str]]
     aliases: Dict[str, Dict[str, List[str]]]
     queries: List[str]
+    meta: dict

@@ -50,6 +50,7 @@ async def about(
     has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticator=Depends(get_authenticator),
+    base_path: str = Query(None),
 ):
     # TODO The lazy import of reader modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
@@ -78,6 +79,7 @@ async def about(
             },
             queries=list(name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?
+            meta={"base_path": settings.base_path} if (base_path is not None) else {},
         ),
     )
 
@@ -170,6 +172,7 @@ async def metadata(
     path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     entry: Any = Depends(entry),
+    base_path: str = Query(None),
     settings: BaseSettings = Depends(get_settings),
 ):
     "Fetch the metadata for one Catalog or Reader."
@@ -178,7 +181,8 @@ async def metadata(
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
     resource = construct_resource(base_url, path, key, entry, fields)
-    return json_or_msgpack(request.headers, models.Response(data=resource))
+    meta = {"base_path": settings.base_path} if (base_path is not None) else {}
+    return json_or_msgpack(request.headers, models.Response(data=resource, meta=meta))
 
 
 @router.get("/entries", response_model=models.Response, include_in_schema=False)

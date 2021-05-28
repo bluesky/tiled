@@ -137,6 +137,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.DaskArrayClient
    tiled.client.array.DaskArrayClient.read_block
    tiled.client.array.DaskArrayClient.read
+   tiled.client.array.DaskArrayClient.export
 ```
 
 ```{eval-rst}
@@ -146,6 +147,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.ArrayClient
    tiled.client.array.ArrayClient.read_block
    tiled.client.array.ArrayClient.read
+   tiled.client.array.DaskArrayClient.export
 ```
 
 ### DataFrame
@@ -157,6 +159,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.dataframe.DaskDataFrameClient
    tiled.client.dataframe.DaskDataFrameClient.read_partition
    tiled.client.dataframe.DaskDataFrameClient.read
+   tiled.client.dataframe.DaskDataFrameClient.export
 ```
 
 ```{eval-rst}
@@ -166,6 +169,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.dataframe.DataFrameClient
    tiled.client.dataframe.DataFrameClient.read_partition
    tiled.client.dataframe.DataFrameClient.read
+   tiled.client.dataframe.DaskDataFrameClient.export
 ```
 
 ### Xarray Structures

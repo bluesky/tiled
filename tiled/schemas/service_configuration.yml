@@ -197,6 +197,7 @@ properties:
         from Mozilla's web developer documentation.
 
         https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+
     base_path:
       type: string
       description: |
