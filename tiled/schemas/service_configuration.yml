@@ -198,7 +198,7 @@ properties:
 
         https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
-    base_path:
-      type: string
-      description: |
-        Shift all Tiled's endpoints to a URL sub-path.
+  base_path:
+    type: string
+    description: |
+      Shift all Tiled's endpoints to a URL sub-path.
