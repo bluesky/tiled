@@ -79,7 +79,9 @@ async def about(
             },
             queries=list(name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?
-            meta={"base_path": request.scope.get("root_path") or "/"} if (base_path is not None) else {},
+            meta={"base_path": request.scope.get("root_path") or "/"}
+            if (base_path is not None)
+            else {},
         ),
     )
 
@@ -181,7 +183,11 @@ async def metadata(
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
     resource = construct_resource(base_url, path, key, entry, fields)
-    meta = {"base_path": request.scope.get("root_path") or "/"} if (base_path is not None) else {}
+    meta = (
+        {"base_path": request.scope.get("root_path") or "/"}
+        if (base_path is not None)
+        else {}
+    )
     return json_or_msgpack(request.headers, models.Response(data=resource, meta=meta))
 
 
