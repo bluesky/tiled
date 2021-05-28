@@ -9,11 +9,15 @@ data visualization tool.
    TILED_ALLOW_ORIGINS="https://chart-studio.plotly.com" tiled serve pyobject --public tiled.examples.generated:demo
    ```
 
-2. Navigate your browser to https://chart-studio.plotly.com.
+2. Navigate your browser to
+   [https://chart-studio.plotly.com](https://chart-studio.plotly.com).
 
-3. Click the menu "Create" and the option "Chart".
+3. Log in. You can log in with your GitHub account or your Google account, among
+   others. (It's free.)
 
-4. Use the "Import" menu to import data by URL. Enter a URL such as
+4. Click the menu "Create" and the option "Chart".
+
+5. Use the "Import" menu to import data by URL. Enter a URL such as
 
    ```
    http://localhost:8000/dataframe/full/dataframes/df?format=text/csv
