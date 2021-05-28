@@ -4,7 +4,7 @@ import os
 import secrets
 from typing import Any, List, Optional
 
-from pydantic import BaseSettings, validator
+from pydantic import BaseSettings
 
 
 if os.getenv("TILED_SESSION_MAX_AGE"):
