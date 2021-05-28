@@ -8,8 +8,21 @@ orphan: true
 This is a comprehensive reference. See also {doc}`../how-to/configuration` for a
 practical guide with examples.
 
+## Configuration merging rules
+
+If there are multiple configuration files:
+
+* At most one may contain an ``authentication:`` section.
+* More than one may contain a ``catalog:`` section, but if the same ``path``
+  occurs in more than one file, or if colliding paths like ``/a`` and ``/a/b``
+  are specified, an exception will be raised.
+* If there is more than one ``allow_origins`` section their contents are merged.
+* The behavior of other top-level collisions are currently undefined and will
+  likely be made strict in the future.
+
 The content below is automatically generated from a schema that is used
 to validate configuration files when they are read.
+
 (schema_catalogs)=
 ## catalogs
 
@@ -199,3 +212,9 @@ from Mozilla's web developer documentation.
 
 https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
+
+(schema_root_path)=
+## root_path
+
+Configure the application with a root_path when it is behind a proxy
+serving it on some path prefix.

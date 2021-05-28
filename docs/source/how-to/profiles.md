@@ -72,7 +72,12 @@ Tiled always looks in three places for profiles:
    for users' personal productivity.
 
 The exact locations depend on which operating system you are using and other
-system-specific details, which is why we can't list them here.
+system-specific details, in accordance with standards, which is why we can't
+list them here.
+
+The default locations for (1) and (3) can be overridden by setting the
+environment variables `TILED_SITE_PROFILES` and `TILED_PROFILES`, respectively,
+to the desired path.
 ```
 
 ## Create and use a profile
@@ -240,3 +245,7 @@ my_profile:
         memory:
             available_bytes: 2_000_000_000 # 2 GB
 ```
+
+## Reference
+
+See {doc}`../reference/client-profiles` for a comprehensive reference.

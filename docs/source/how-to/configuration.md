@@ -81,11 +81,6 @@ catalogs:
 See {doc}`../explanations/security` and {doc}`../explanations/access-control` for examples addressing
 authentication and authorization.
 
-## Configuration merging rules
+## Reference
 
-If there are multiple configuration files:
-
-* At most one may contain an ``authentication:`` section.
-* More than one may contain a ``catalog:`` section, but if the same ``path``
-  occurs in more than one file, or if colliding paths like ``/a`` and ``/a/b``
-  are specified, an exception will be raised.
+See {doc}`../reference/service-configuration` for a comprehensive reference.
