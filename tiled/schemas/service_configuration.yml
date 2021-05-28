@@ -97,7 +97,7 @@ properties:
           authenticator: tiled.examples.DummyAuthenticator
           ```
       args:
-        type: [string, "null"]
+        type: [object, "null"]
         description: |
           Named arguments to pass to Authenticator. If there are none,
           `args` may be omitted or empty.
