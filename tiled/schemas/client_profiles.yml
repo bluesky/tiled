@@ -1,0 +1,134 @@
+# This schema (a jsonschema in YAML format) is used
+# for validating configuration.
+#
+# This schema is also used by our documentation system to build the
+# client profile reference section based on the description fields. See
+# doc/source/conf.py for that logic!
+#
+# We look to document everything we have default values for in values.yaml, but
+# we don't look to enforce the perfect validation logic within this file.
+#
+# ref: https://json-schema.org/learn/getting-started-step-by-step.html
+#
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+"oneOf": [
+  {
+    "required": [
+      "uri"
+    ]
+  },
+  {
+    "required": [
+      "direct"
+    ]
+  },
+]
+properties:
+  uri:
+    type: string
+    description: |
+      URI of a Tiled server, such as
+      
+          http://localhost:8000
+  username:
+    type: string
+    description: |
+      For authenticated Catalogs. Optional unless the Catalog requires authentication.
+  offline:
+    type: boolean
+    description: |
+      False by default. When true, rely solely on cache. Do not attempt to connect to server.
+  direct:
+    type: object
+    description:
+      In-line service configuration.
+      See Service Configuration reference.
+  structure_clients:
+    type: string
+    enum: ["numpy", "dask"]
+    description:
+      Client to read structure into.
+      Default ("numpy") uses numpy arrays, pandas DataFrames, and xarrays backed by numpy arrays.
+      The "dask" option uses the dask-based analogues of these.
+  cache:
+    type: object
+    additionalProperties: false
+    properties:
+      # These properties are mutually exclusive, but encoding this
+      # in jsonschema is complex and therefore in tension with the goal
+      # of this file stated at the top. The mutual exclusion *is* enforced,
+      # but in the Python code that parses the profiles, not here.
+      memory:
+        type: object
+        required:
+          - available_bytes
+        properties:
+          available_bytes:
+            type: number
+            description: |
+              Maximum memory (in bytes) that the cache may consume.
+
+              For readability it is recommended to use `_` for thousands separators.
+              Example:
+
+              ```
+              available_bytes: 2_000_000_000  # 2GB
+              ```
+
+          error_if_full:
+            type: boolean
+            description: |
+              By default, the cache starts evicting the least-used items when
+              it fills up. This is generally fine when working with a
+              connection to the server. But if the goal is to cache for
+              *offline* use, it is better to be notified by and error that the
+              cache is full. Then the user can respond by increasing
+              available_bytes, using a different storage volume for the cache,
+              or choosing to a different (smaller) set of entries to download.
+      disk:
+        type: object
+        required:
+          - path
+        properties:
+          path:
+            type: string
+            description: |
+              A directory will be created at this path if it does not yet exist.
+              It is safe to reuse an existing cache directory and to share a cache
+              directory between multiple processes.
+              available_bytes:
+          available_bytes:
+            type: number
+            description: |
+              Maximum storage space (in bytes) that the cache may consume.
+
+              For readability it is recommended to use `_` for thousands separators.
+              Example:
+
+              ```
+              available_bytes: 2_000_000_000  # 2GB
+              ```
+
+          error_if_full:
+            type: boolean
+            description: |
+              By default, the cache starts evicting the least-used items when
+              it fills up. This is generally fine when working with a
+              connection to the server. But if the goal is to cache for
+              *offline* use, it is better to be notified by and error that the
+              cache is full. Then the user can respond by increasing
+              available_bytes, using a different storage volume for the cache,
+              or choosing to a different (smaller) set of entries to download.
+          cull_on_startup:
+            type: boolean
+            description: |
+              If reusing an existing cache directory which is already larger than the
+              available_bytes, an error is raised. Set this to True to delete
+              items from the cache until it fits in available_bytes. False by default.
+  token_cache:
+    type: string
+    description: |
+      Filepath to directory of access tokens.
+      Default location is usually suitable.
