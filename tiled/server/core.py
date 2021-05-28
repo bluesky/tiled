@@ -203,9 +203,8 @@ def construct_entries_response(
     current_user,
     base_path,
 ):
-    path = path.rstrip("/")
-    if not path.startswith("/"):
-        path = f"/{path}"
+    segments = tuple(segment for segment in path.split("/") if segment)
+    path = "/".join(segments)
     if not isinstance(catalog, DuckCatalog):
         raise WrongTypeForRoute("This is not a Catalog.")
     queries = defaultdict(
@@ -399,76 +398,76 @@ def construct_resource(base_url, path, key, entry, fields):
             }
         )
     else:
+        links = {"self": f"{base_url}/metadata/{path}{key}"}
         structure = {}
-        links = {"self": f"{base_url}/metadata/{path}"}
-        if models.EntryFields.structure_family in fields:
-            attributes["structure_family"] = entry.structure_family
-        if models.EntryFields.macrostructure in fields:
-            macrostructure = entry.macrostructure()
-            if macrostructure is not None:
-                structure["macro"] = dataclasses.asdict(macrostructure)
-        if models.EntryFields.microstructure in fields:
-            if entry.structure_family == "dataframe":
-                # Special case: its microstructure is cannot be JSON-serialized
-                # and is therefore available from separate routes. Sends links
-                # instead of the actual payload.
-                structure["micro"] = {
-                    "links": {
-                        "meta": f"{base_url}/dataframe/meta/{path}",
-                        "divisions": f"{base_url}/dataframe/divisions/{path}",
-                    }
+        if entry is not None:
+            # entry is None when we are pulling just *keys* from the
+            # Catalog and not values.
+            links.update(
+                {
+                    link: template.format(base_url=base_url, path=(path + key))
+                    for link, template in FULL_LINKS[entry.structure_family].items()
                 }
-            else:
-                microstructure = entry.microstructure()
-                if microstructure is not None:
-                    structure["micro"] = dataclasses.asdict(microstructure)
-            if entry.structure_family == "array":
-                links["full"] = f"{base_url}/array/full/{path}"
-                block_template = ",".join(
-                    f"{{index_{index}}}"
-                    for index in range(len(structure["macro"]["shape"]))
-                )
-                links["block"] = f"{base_url}/array/block/{path}?block={block_template}"
-            elif entry.structure_family == "dataframe":
-                links["full"] = f"{base_url}/dataframe/full/{path}"
-                links[
-                    "partition"
-                ] = f"{base_url}/dataframe/partition/{path}?partition={{index}}"
-            elif entry.structure_family == "variable":
-                block_template = ",".join(
-                    f"{{index_{index}}}"
-                    for index in range(
-                        len(structure["macro"]["data"]["macro"]["shape"])
+            )
+            if models.EntryFields.structure_family in fields:
+                attributes["structure_family"] = entry.structure_family
+            if models.EntryFields.macrostructure in fields:
+                macrostructure = entry.macrostructure()
+                if macrostructure is not None:
+                    structure["macro"] = dataclasses.asdict(macrostructure)
+            if models.EntryFields.microstructure in fields:
+                if entry.structure_family == "dataframe":
+                    # Special case: its microstructure is cannot be JSON-serialized
+                    # and is therefore available from separate routes. Sends links
+                    # instead of the actual payload.
+                    structure["micro"] = {
+                        "links": {
+                            "meta": f"{base_url}/dataframe/meta/{path}",
+                            "divisions": f"{base_url}/dataframe/divisions/{path}",
+                        }
+                    }
+                else:
+                    microstructure = entry.microstructure()
+                    if microstructure is not None:
+                        structure["micro"] = dataclasses.asdict(microstructure)
+                if entry.structure_family == "array":
+                    block_template = ",".join(
+                        f"{{index_{index}}}"
+                        for index in range(len(structure["macro"]["shape"]))
                     )
-                )
-                links["full"] = f"{base_url}/variable/full/{path}"
-                links[
-                    "block"
-                ] = f"{base_url}/variable/block/{path}?block={block_template}"
-            elif entry.structure_family == "data_array":
-                block_template = ",".join(
-                    f"{{index_{index}}}"
-                    for index in range(
-                        len(structure["macro"]["variable"]["macro"]["data"])
+                    links[
+                        "block"
+                    ] = f"{base_url}/array/block/{path}?block={block_template}"
+                elif entry.structure_family == "dataframe":
+                    links[
+                        "partition"
+                    ] = f"{base_url}/dataframe/partition/{path}?partition={{index}}"
+                elif entry.structure_family == "variable":
+                    block_template = ",".join(
+                        f"{{index_{index}}}"
+                        for index in range(
+                            len(structure["macro"]["data"]["macro"]["shape"])
+                        )
                     )
-                )
-                links["full_variable"] = f"{base_url}/data_array/variable/full/{path}"
-                links[
-                    "block"
-                ] = f"{base_url}/data_array/block/{path}?block={block_template}"
-            elif entry.structure_family == "dataset":
-                links[
-                    "full_variable"
-                ] = f"{base_url}/dataset/data_var/full/{path}?variable={{variable}}"
-                links[
-                    "full_coordinate"
-                ] = f"{base_url}/dataset/coord/full/{path}?variable={{variable}}"
-                links["full_dataset"] = f"{base_url}/dataset/full/{path}"
-                links[
-                    "block"
-                ] = f"{base_url}/dataset/block/{path}?variable={{variable}}&block={{block_indexes}}"
-                microstructure = entry.microstructure()
-        attributes["structure"] = structure
+                    links[
+                        "block"
+                    ] = f"{base_url}/variable/block/{path}?block={block_template}"
+                elif entry.structure_family == "data_array":
+                    block_template = ",".join(
+                        f"{{index_{index}}}"
+                        for index in range(
+                            len(structure["macro"]["variable"]["macro"]["data"])
+                        )
+                    )
+                    links[
+                        "block"
+                    ] = f"{base_url}/data_array/block/{path}?block={block_template}"
+                elif entry.structure_family == "dataset":
+                    links[
+                        "block"
+                    ] = f"{base_url}/dataset/block/{path}?variable={{variable}}&block={{block_indexes}}"
+                    microstructure = entry.microstructure()
+            attributes["structure"] = structure
         resource = models.ReaderResource(
             **{
                 "id": key,
@@ -608,3 +607,16 @@ class NoEntry(KeyError):
 
 class WrongTypeForRoute(Exception):
     pass
+
+
+FULL_LINKS = {
+    "array": {"full": "{base_url}/array/full/{path}"},
+    "dataframe": {"full": "{base_url}/datafame/full/{path}"},
+    "variable": {"full": "{base_url}/variable/full/{path}"},
+    "data_array": {"full_variable": "{base_url}/data_array/variable/full/{path}"},
+    "dataset": {
+        "full_variable": "{base_url}/dataset/data_var/full/{path}?variable={{variable}}",
+        "full_coordinate": "{base_url}/dataset/coord/full/{path}?variable={{variable}}",
+        "full_dataset": "{base_url}/dataset/full/{path}",
+    },
+}

@@ -5,11 +5,11 @@ orphan: true
 
 # Client Profiles Reference
 
-A profiles YAML file must contain a mapping with one or more keys.
-The keys may be any string. The value of each entry is described below.
-
 This is a comprehensive reference. See also {doc}`../how-to/profiles` for a
 practical guide with examples.
+
+A profiles YAML file must contain a mapping with one or more keys.
+The keys may be any string. The value of each entry is described below.
 
 The content below is automatically generated from a schema that is used
 to validate profiles when they are read.

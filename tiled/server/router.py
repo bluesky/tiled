@@ -99,6 +99,7 @@ def declare_search_router():
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
         entry: Any = Depends(entry),
+        settings: BaseSettings = Depends(get_settings),
         current_user: str = Depends(get_current_user),
         **filters,
     ):
@@ -115,7 +116,7 @@ def declare_search_router():
                     filters,
                     sort,
                     current_user,
-                    _get_base_url(request.url, path),
+                    _get_base_url(request.url, settings.base_path),
                 ),
             )
         except NoEntry:
@@ -169,10 +170,11 @@ async def metadata(
     path: Optional[str] = "/",
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     entry: Any = Depends(entry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     "Fetch the metadata for one Catalog or Reader."
 
-    base_url = _get_base_url(request.url, path)
+    base_url = _get_base_url(request.url, settings.base_path)
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
     resource = construct_resource(base_url, path, key, entry, fields)
@@ -190,6 +192,7 @@ async def entries(
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     current_user: str = Depends(get_current_user),
     entry: Any = Depends(entry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or Readers."
 
@@ -206,7 +209,7 @@ async def entries(
                 {},
                 sort,
                 current_user,
-                _get_base_url(request.url, path),
+                _get_base_url(request.url, settings.base_path),
             ),
         )
     except NoEntry:
@@ -735,8 +738,5 @@ def dataset_full(
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
-def _get_base_url(url, path):
-    # The intent here is to work even when we are being served in a subpath,
-    # perhaps as a microservice.
-    # TODO Is there a sturdier way to extract the base path?
-    return str(url)[: -(len(path) + len("/metadata/"))]
+def _get_base_url(url, base_path):
+    return f"{url.scheme}://{url.netloc}{base_path}"

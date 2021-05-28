@@ -4,7 +4,7 @@ import os
 import secrets
 from typing import Any, List, Optional
 
-from pydantic import BaseSettings
+from pydantic import BaseSettings, validator
 
 
 if os.getenv("TILED_SESSION_MAX_AGE"):
@@ -43,6 +43,16 @@ class Settings(BaseSettings):
         )  # 7 days
     )
     session_max_age: Optional[timedelta] = DEFAULT_SESSION_MAX_AGE  # None
+
+    base_path: str = os.getenv("TILED_BASE_PATH", "")
+
+    @validator("base_path")
+    def leading_slash_but_no_trailing_slash(cls, value):
+        stripped = value.lstrip("/").rstrip("/")
+        if stripped == "":
+            return ""
+        else:
+            return f"/{stripped}"
 
 
 @lru_cache()
