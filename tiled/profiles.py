@@ -86,7 +86,8 @@ def gather_profiles(paths, strict=True):
                                 ) from validation_err
                             if len(profile_content.get("cache", {})) > 1:
                                 raise ProfileError(
-                                    "The profile's 'cache' property contains more than on entry. "
+                                    "The profile's 'cache' property contains "
+                                    f"{len(profile_content['cache'])} items: {list(profile_content['cache'])} "
                                     "At most one is allowed."
                                 )
                 except Exception as err:
