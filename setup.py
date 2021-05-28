@@ -67,6 +67,13 @@ setup(
             "tiled = tiled.commandline.main:main",
         ]
     },
+    package_data={
+    'tiled': [
+        # When adding files here, remember to update MANIFEST.in as well,
+        # or else they will not be included in the distribution on PyPI!
+        'schemas/*.yml',
+        ]
+    },
     license="BSD (3-clause)",
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
