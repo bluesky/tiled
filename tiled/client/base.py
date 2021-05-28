@@ -68,7 +68,7 @@ class BaseClient:
     @property
     def uri(self):
         "Direct link to this entry"
-        return f"{self._client.base_url}/metadata/{'/'.join(self.path)}"
+        return self.item["links"]["self"]
 
     @property
     def username(self):
