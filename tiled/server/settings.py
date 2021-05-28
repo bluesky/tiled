@@ -44,13 +44,6 @@ class Settings(BaseSettings):
     )
     session_max_age: Optional[timedelta] = DEFAULT_SESSION_MAX_AGE  # None
 
-    base_path: str = os.getenv("TILED_BASE_PATH", "")
-
-    @validator("base_path")
-    def leading_slash_but_no_trailing_slash(cls, value):
-        stripped = value.lstrip("/").rstrip("/")
-        return f"/{stripped}"
-
 
 @lru_cache()
 def get_settings():

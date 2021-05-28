@@ -192,7 +192,7 @@ def serve_catalog(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        for item in ["allow_origins", "base_path"]:
+        for item in ["allow_origins"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         return settings

@@ -180,6 +180,9 @@ def serve_config(
 
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
+    # Extract config for uvicorn.
+    root_path = parsed_config.pop("root_path")
+
     # This config was already validated when it was parsed. Do not re-validate.
     kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
     web_app = serve_catalog(**kwargs)
@@ -189,7 +192,7 @@ def serve_config(
 
     import uvicorn
 
-    uvicorn.run(web_app)
+    uvicorn.run(web_app, root_path=root_path)
 
 
 def _catalog_from_uri_or_profile(catalog):

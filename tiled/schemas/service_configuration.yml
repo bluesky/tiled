@@ -198,7 +198,8 @@ properties:
 
         https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
-  base_path:
+  root_path:
     type: string
     description: |
-      Shift all Tiled's endpoints to a URL sub-path.
+      Configure the application with a root_path when it is behind a proxy
+      serving it on some path prefix.

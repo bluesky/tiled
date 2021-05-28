@@ -79,7 +79,7 @@ async def about(
             },
             queries=list(name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?
-            meta={"base_path": settings.base_path} if (base_path is not None) else {},
+            meta={"base_path": request.scope.get("root_path") or "/"} if (base_path is not None) else {},
         ),
     )
 
@@ -118,7 +118,7 @@ def declare_search_router():
                     filters,
                     sort,
                     current_user,
-                    _get_base_url(request.url, settings.base_path),
+                    _get_base_url(request.url, request.scope.get("root_path") or "/"),
                 ),
             )
         except NoEntry:
@@ -177,11 +177,11 @@ async def metadata(
 ):
     "Fetch the metadata for one Catalog or Reader."
 
-    base_url = _get_base_url(request.url, settings.base_path)
+    base_url = _get_base_url(request.url, request.scope.get("root_path") or "/")
     path = path.rstrip("/")
     *_, key = path.rpartition("/")
     resource = construct_resource(base_url, path, key, entry, fields)
-    meta = {"base_path": settings.base_path} if (base_path is not None) else {}
+    meta = {"base_path": request.scope.get("root_path") or "/"} if (base_path is not None) else {}
     return json_or_msgpack(request.headers, models.Response(data=resource, meta=meta))
 
 
@@ -213,7 +213,7 @@ async def entries(
                 {},
                 sort,
                 current_user,
-                _get_base_url(request.url, settings.base_path),
+                _get_base_url(request.url, request.scope.get("root_path") or "/"),
             ),
         )
     except NoEntry:
