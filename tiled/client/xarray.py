@@ -2,9 +2,11 @@ from collections.abc import Iterable
 import builtins
 import itertools
 
+import pyarrow
 import xarray
 
 from ..structures.xarray import (
+    APACHE_ARROW_FILE_MIME_TYPE,
     DataArrayStructure,
     DatasetStructure,
     VariableStructure,
@@ -288,23 +290,33 @@ class DaskDatasetClient(BaseArrayClient):
 
     def _build_data_vars(self, structure, variables=None):
         data_vars = {}
+        wide_table_fetcher = _WideTableFetcher(
+            self._get_content_with_cache, self.item["links"]["full_dataset"]
+        )
         for name, data_array in structure.data_vars.items():
             if (variables is not None) and (name not in variables):
                 continue
-            data_array_source = self.DATA_ARRAY_CLIENT(
-                client=self._client,
-                item=self._item,
-                username=self._username,
-                token_cache=self._token_cache,
-                offline=self._offline,
-                cache=self._cache,
-                path=self._path,
-                metadata=self.metadata,
-                params={"variable": name, **self._params},
-                structure=data_array,
-                route=self._route,
-            )
-            data_vars[name] = data_array_source
+
+            # Optimization: Download scalar data as DataFrame.
+            if (len(data_array.macro.variable.macro.data.macro.shape) < 2) and (
+                not data_array.macro.coords
+            ):
+                data_vars[name] = wide_table_fetcher[name]
+            else:
+                data_array_source = self.DATA_ARRAY_CLIENT(
+                    client=self._client,
+                    item=self._item,
+                    username=self._username,
+                    token_cache=self._token_cache,
+                    offline=self._offline,
+                    cache=self._cache,
+                    path=self._path,
+                    metadata=self.metadata,
+                    params={"variable": name, **self._params},
+                    structure=data_array,
+                    route=self._route,
+                )
+                data_vars[name] = data_array_source
         return data_vars
 
     def _build_coords(self, structure, variables=None):
@@ -366,3 +378,39 @@ class DatasetClient(DaskDatasetClient):
         BaseArrayClient.touch(self)
         self._ipython_key_completions_()
         self.read()
+
+
+class _WideTableFetcher:
+    def __init__(self, get, link):
+        self.get = get
+        self.link = link
+        self.variables = []
+        self._dataframe = None
+
+    def __getitem__(self, key):
+        if self._dataframe is not None:
+            raise RuntimeError("Cannot add variables; already fetched.")
+        self.variables.append(key)
+        return _MockClient(self, key)
+
+    def dataframe(self):
+        if self._dataframe is None:
+            print("bang")
+            content = self.get(
+                self.link,
+                params={
+                    "format": APACHE_ARROW_FILE_MIME_TYPE,
+                    "variable": self.variables,
+                },
+            )
+            self._dataframe = pyarrow.deserialize(content)
+        return self._dataframe
+
+
+class _MockClient:
+    def __init__(self, wto, key):
+        self.wto = wto
+        self.key = key
+
+    def read(self):
+        return self.wto.dataframe()[self.key].values  # TODO Can we avoid .values here?
