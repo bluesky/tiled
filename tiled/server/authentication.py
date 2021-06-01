@@ -1,23 +1,19 @@
 from datetime import datetime, timedelta
 from tiled.server.models import AccessAndRefreshTokens, RefreshToken
 from typing import Any, Optional
-import urllib.parse
 import uuid
 import warnings
 
 from fastapi import (
-    Cookie,
     Depends,
     APIRouter,
     HTTPException,
     Security,
-    Query,
     Request,
     Response,
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.api_key import APIKeyCookie, APIKeyQuery, APIKeyHeader
-from starlette.responses import RedirectResponse
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -165,18 +161,20 @@ async def get_current_user(
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
             raise HTTPException(status_code=401, detail="Not authenticated")
-    # Note: decode_token may raise ExpiredSignatureError, which is
-    # handled in tiled.server.app and redirects to /token/refresh.
-    payload = decode_token(
-        access_token_from_either_location, settings.secret_keys, "access"
-    )
+    try:
+        payload = decode_token(
+            access_token_from_either_location, settings.secret_keys, "access"
+        )
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401, detail="Access token has expired. Refresh token."
+        )
     username: str = payload.get("sub")
     return username
 
 
 @authentication_router.post("/token", response_model=AccessAndRefreshTokens)
 async def login_for_access_token(
-    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
     settings: BaseSettings = Depends(get_settings),
@@ -208,16 +206,6 @@ async def login_for_access_token(
         data={"sub": username},
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
-    request.state.cookies_to_set.append(
-        {"key": ACCESS_TOKEN_COOKIE_NAME, "value": access_token}
-    )
-    request.state.cookies_to_set.append(
-        {
-            "key": REFRESH_TOKEN_COOKIE_NAME,
-            "value": refresh_token,
-            "path": "/token/refresh",
-        }
-    )
     return {
         "access_token": access_token,
         "expires_in": settings.access_token_max_age / UNIT_SECOND,
@@ -227,53 +215,23 @@ async def login_for_access_token(
     }
 
 
-@authentication_router.get("/token/refresh")
-async def get_token_refresh(
-    request: Request,
-    settings: BaseSettings = Depends(get_settings),
-    next: str = Query(...),
-    tiled_refresh_token: str = Cookie(None),
-):
-    "Obtain a new access token and refresh token."
-    if tiled_refresh_token is None:
-        raise HTTPException(status_code=401, detail="Could not authenticate")
-    new_tokens = slide_session(tiled_refresh_token, settings)
-    request.state.cookies_to_set.append(
-        {"key": ACCESS_TOKEN_COOKIE_NAME, "value": new_tokens["access_token"]}
-    )
-    request.state.cookies_to_set.append(
-        {
-            "key": REFRESH_TOKEN_COOKIE_NAME,
-            "value": new_tokens["refresh_token"],
-            "path": "/token/refresh",
-        }
-    )
-    return RedirectResponse(url=urllib.parse.unquote_plus(next))
-
-
 @authentication_router.post("/token/refresh", response_model=AccessAndRefreshTokens)
 async def post_token_refresh(
-    request: Request,
     refresh_token: RefreshToken,
     settings: BaseSettings = Depends(get_settings),
 ):
     "Obtain a new access token and refresh token."
     new_tokens = slide_session(refresh_token.refresh_token, settings)
-    request.state.cookies_to_set.append(
-        {"key": ACCESS_TOKEN_COOKIE_NAME, "value": new_tokens["access_token"]}
-    )
-    request.state.cookies_to_set.append(
-        {
-            "key": REFRESH_TOKEN_COOKIE_NAME,
-            "value": new_tokens["refresh_token"],
-            "path": "/token/refresh",
-        }
-    )
     return new_tokens
 
 
 def slide_session(refresh_token, settings):
-    payload = decode_token(refresh_token, settings.secret_keys, "refresh")
+    try:
+        payload = decode_token(refresh_token, settings.secret_keys, "refresh")
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401, detail="Session has expired. Please re-authenticate."
+        )
     now = datetime.utcnow().timestamp()
     # Enforce refresh token max age.
     # We do this here rather than with an "exp" claim in the token so that we can

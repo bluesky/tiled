@@ -3,11 +3,9 @@ import secrets
 import sys
 import time
 import urllib.parse
-import warnings
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import RedirectResponse
 
 from .authentication import (
     ACCESS_TOKEN_COOKIE_NAME,
@@ -21,12 +19,6 @@ from .core import get_root_catalog, PatchedStreamingResponse
 from .router import declare_search_router, router
 from .settings import get_settings
 
-# To hide third-party warning
-# .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
-#     int_from_bytes is deprecated, use int.from_bytes instead
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    from jose import ExpiredSignatureError
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -130,15 +122,6 @@ def get_app(include_routers=None):
             params.setdefault("samesite", "lax")
             response.set_cookie(**params)
         return response
-
-    @app.exception_handler(ExpiredSignatureError)
-    async def redirect_to_refresh_token(
-        request: Request,
-        exc: ExpiredSignatureError,
-        # redirects: int = Query(0),  # TO DO: Count redirects to detect loops?
-    ):
-        next = urllib.parse.quote_plus(str(request.url))
-        return RedirectResponse(url=f"/token/refresh?next={next}")
 
     app.add_middleware(
         CORSMiddleware,
