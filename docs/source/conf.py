@@ -38,6 +38,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
+    'sphinxcontrib.openapi',
     'IPython.sphinxext.ipython_directive',
     'IPython.sphinxext.ipython_console_highlighting',
     'matplotlib.sphinxext.plot_directive',
@@ -278,3 +279,13 @@ generate_schema_documentation(
     "../../tiled/schemas/client_profiles.yml",
     "reference/client-profiles.md",
 )
+
+from tiled.catalogs.in_memory import Catalog
+from tiled.authenticators import DummyAuthenticator
+from tiled.server.app import serve_catalog
+
+app = serve_catalog(Catalog({}), authentication={"authenticator": DummyAuthenticator()})
+api = app.openapi()
+
+with open("reference/api.yml", "w") as file:
+    yaml.dump(api, file)

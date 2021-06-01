@@ -1,18 +1,19 @@
-# HTTP API Overview
+# HTTP API
 
-To view and try the interactive docs, start the Tiled server with the demo
-Catalog from a Terminal
+## Standards
 
-```
-tiled serve pyobject --public tiled.examples.generated:demo
-```
+Tiled's HTTP API follows the
+[OpenAPI v3 specification](https://swagger.io/specification/).
+Additionally, it follows the conventions of the
+[JSON API standard](https://jsonapi.org/).
 
-and navigate your browser to http://localhost:8000/docs.
+When Tiled is configured to use an Authenticator, it adds routes that
+comply with the [OAuth2 protocol](https://oauth.net/2/). Specifically,
+it implements "sliding sessions" with access and refresh tokens that are
+[JWT](https://jwt.io/)s. See {doc}`../explanations/security` for an overview
+and {doc}`authentication` for details.
 
-## Big Picture
-
-The API is based on the [JSON API standard](https://jsonapi.org/), but no
-firm decision has been made yet about whether this is a good fit for Tiled.
+## Overview
 
 The routes are generally spelled like ``GET /{action}/{path}/``, like GitHub
 repository URLs, with the path following the structure of the Catalog
@@ -32,4 +33,22 @@ response. More sophisticated clients that can reassemble tiled results should
 use the other routes, which support efficient chunk-based access.
 
 The ``POST /token`` route accepts form-encoded credentials and responds with
-an access token, as described in {doc}`../explanations/security`.
+an access token and a refresh token. The ``POST /token/refresh`` route accepts a
+refresh token and responds with a new set of tokens.
+
+## Reference
+
+To view and try the *interactive* docs, start the Tiled server with the demo
+Catalog from a Terminal
+
+```
+tiled serve pyobject --public tiled.examples.generated:demo
+```
+
+and navigate your browser to http://localhost:8000/docs.
+
+A non-interactive reference with the same content follow below.
+
+```{eval-rst}
+.. openapi:: api.yml
+```
