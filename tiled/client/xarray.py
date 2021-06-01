@@ -401,7 +401,6 @@ class _WideTableFetcher:
 
     def dataframe(self):
         if self._dataframe is None:
-            print("bang")
             content = self.get(
                 self.link,
                 params={
