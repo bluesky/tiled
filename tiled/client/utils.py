@@ -98,15 +98,14 @@ def client_and_path_from_uri(uri):
         (url.scheme, url.netloc, url.path, {}, url.fragment)
     )
 
-    # First, ask the client what the base_path is. It's usually "" but Tiled
-    # may be serving on a sub-path.
+    # First, ask the server what its root_path is.
     client = httpx.Client(headers=headers, params=params)
     # This is the only place where we use client.get *directly*, circumventing
     # the usual "get with cache" logic.
-    response = client.get(handshake_url, params={"base_path": None})
+    response = client.get(handshake_url, params={"root_path": None})
     handle_error(response)
     data = response.json()
-    base_path = data["meta"]["base_path"]
+    base_path = data["meta"]["root_path"]
     base_url = urllib.parse.urlunsplit(
         (url.scheme, url.netloc, base_path, {}, url.fragment)
     )

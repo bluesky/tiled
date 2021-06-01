@@ -10,7 +10,6 @@ from ..query_registration import name_to_query_type
 from .authentication import (
     API_KEY_COOKIE_NAME,
     get_authenticator,
-    get_current_user,
     check_single_user_api_key,
 )
 from .settings import get_settings
@@ -50,7 +49,7 @@ async def about(
     has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticator=Depends(get_authenticator),
-    base_path: str = Query(None),
+    root_path: str = Query(None),
 ):
     # TODO The lazy import of reader modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
@@ -79,8 +78,8 @@ async def about(
             },
             queries=list(name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?
-            meta={"base_path": request.scope.get("root_path") or "/"}
-            if (base_path is not None)
+            meta={"root_path": request.scope.get("root_path") or "/"}
+            if (root_path is not None)
             else {},
         ),
     )
@@ -97,14 +96,12 @@ def declare_search_router():
 
     async def search(
         request: Request,
-        path: Optional[str] = "/",
+        path: str,
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
         entry: Any = Depends(entry),
-        settings: BaseSettings = Depends(get_settings),
-        current_user: str = Depends(get_current_user),
         **filters,
     ):
         try:
@@ -119,7 +116,6 @@ def declare_search_router():
                     fields,
                     filters,
                     sort,
-                    current_user,
                     _get_base_url(request.url, request.scope.get("root_path") or "/"),
                 ),
             )
@@ -167,42 +163,37 @@ def declare_search_router():
     return router
 
 
-@router.get("/metadata", response_model=models.Response, include_in_schema=False)
 @router.get("/metadata/{path:path}", response_model=models.Response)
 async def metadata(
     request: Request,
-    path: Optional[str] = "/",
+    path: str,
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     entry: Any = Depends(entry),
-    base_path: str = Query(None),
+    root_path: str = Query(None),
     settings: BaseSettings = Depends(get_settings),
 ):
     "Fetch the metadata for one Catalog or Reader."
 
     base_url = _get_base_url(request.url, request.scope.get("root_path") or "/")
-    path = path.rstrip("/")
-    *_, key = path.rpartition("/")
-    resource = construct_resource(base_url, path, key, entry, fields)
+    path_parts = [segment for segment in path.split("/") if segment]
+    resource = construct_resource(base_url, path_parts, entry, fields)
     meta = (
-        {"base_path": request.scope.get("root_path") or "/"}
-        if (base_path is not None)
+        {"root_path": request.scope.get("root_path") or "/"}
+        if (root_path is not None)
         else {}
     )
     return json_or_msgpack(request.headers, models.Response(data=resource, meta=meta))
 
 
-@router.get("/entries", response_model=models.Response, include_in_schema=False)
 @router.get("/entries/{path:path}", response_model=models.Response)
 async def entries(
     request: Request,
-    path: Optional[str] = "/",
+    path: Optional[str],
     offset: Optional[int] = Query(0, alias="page[offset]"),
     limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
     sort: Optional[str] = Query(None),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
-    current_user: str = Depends(get_current_user),
     entry: Any = Depends(entry),
-    settings: BaseSettings = Depends(get_settings),
 ):
     "List the entries in a Catalog, which may be sub-Catalogs or Readers."
 
@@ -218,7 +209,6 @@ async def entries(
                 fields,
                 {},
                 sort,
-                current_user,
                 _get_base_url(request.url, request.scope.get("root_path") or "/"),
             ),
         )
@@ -748,5 +738,5 @@ def dataset_full(
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
-def _get_base_url(url, base_path):
-    return f"{url.scheme}://{url.netloc}{base_path}"
+def _get_base_url(url, root_path):
+    return f"{url.scheme}://{url.netloc}{root_path}"

@@ -57,18 +57,18 @@ def entry(
     current_user: str = Depends(get_current_user),
     root_catalog: pydantic.BaseSettings = Depends(get_root_catalog),
 ):
-    segments = tuple(segment for segment in path.split("/") if segment)
+    path_parts = [segment for segment in path.split("/") if segment]
     entry = root_catalog.authenticated_as(current_user)
     try:
         # Traverse into sub-catalog(s).
-        for segment in segments:
+        for segment in path_parts:
             try:
                 entry = entry[segment]
             except (KeyError, TypeError):
-                raise NoEntry(path)
+                raise NoEntry(path_parts)
         return entry
     except NoEntry:
-        raise HTTPException(status_code=404, detail=f"No such entry: {path}")
+        raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
 
 
 def reader(
@@ -128,11 +128,10 @@ def len_or_approx(catalog):
         return len(catalog)
 
 
-def pagination_links(route, path, offset, limit, length_hint):
-    # TODO Include root path in links.
-    # root_path = request.scope.get("/")
+def pagination_links(route, path_parts, offset, limit, length_hint):
+    path_str = "/".join(path_parts)
     links = {
-        "self": f"{route}{path}?page[offset]={offset}&page[limit]={limit}",
+        "self": f"{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
         # These are conditionally overwritten below.
         "first": None,
         "last": None,
@@ -143,18 +142,18 @@ def pagination_links(route, path, offset, limit, length_hint):
         last_page = math.floor(length_hint / limit) * limit
         links.update(
             {
-                "first": f"{route}{path}?page[offset]={0}&page[limit]={limit}",
-                "last": f"{route}{path}?page[offset]={last_page}&page[limit]={limit}",
+                "first": f"{route}/{path_str}?page[offset]={0}&page[limit]={limit}",
+                "last": f"{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
             }
         )
     if offset + limit < length_hint:
         links[
             "next"
-        ] = f"{route}{path}?page[offset]={offset + limit}&page[limit]={limit}"
+        ] = f"{route}/{path_str}?page[offset]={offset + limit}&page[limit]={limit}"
     if offset > 0:
         links[
             "prev"
-        ] = f"{route}{path}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
+        ] = f"{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
@@ -200,11 +199,9 @@ def construct_entries_response(
     fields,
     filters,
     sort,
-    current_user,
-    base_path,
+    base_url,
 ):
-    segments = tuple(segment for segment in path.split("/") if segment)
-    path = "/".join(segments)
+    path_parts = [segment for segment in path.split("/") if segment]
     if not isinstance(catalog, DuckCatalog):
         raise WrongTypeForRoute("This is not a Catalog.")
     queries = defaultdict(
@@ -239,7 +236,7 @@ def construct_entries_response(
         except QueryValueError as err:
             raise HTTPException(status_code=400, detail=err.args[0])
     count = len_or_approx(catalog)
-    links = pagination_links(route, path, offset, limit, count)
+    links = pagination_links(route, path_parts, offset, limit, count)
     data = []
     if fields != [models.EntryFields.none]:
         # Pull a page of items into memory.
@@ -251,7 +248,7 @@ def construct_entries_response(
             for key in catalog.keys_indexer[offset : offset + limit]  # noqa: E203
         )
     for key, entry in items:
-        resource = construct_resource(base_path, path, key, entry, fields)
+        resource = construct_resource(base_url, path_parts + [key], entry, fields)
         data.append(resource)
     return models.Response(data=data, links=links, meta={"count": count})
 
@@ -378,7 +375,8 @@ def construct_dataset_response(dataset, request_headers, format=None):
         )
 
 
-def construct_resource(base_url, path, key, entry, fields):
+def construct_resource(base_url, path_parts, entry, fields):
+    path_str = "/".join(path_parts)
     attributes = {}
     if models.EntryFields.metadata in fields:
         attributes["metadata"] = entry.metadata
@@ -391,21 +389,24 @@ def construct_resource(base_url, path, key, entry, fields):
                 attributes["sorting"] = entry.sorting
         resource = models.CatalogResource(
             **{
-                "id": key,
+                "id": path_parts[-1] if path_parts else "",
                 "attributes": models.CatalogAttributes(**attributes),
                 "type": models.EntryType.catalog,
-                "links": {"self": f"{base_url}metadata/{path}"},
+                "links": {
+                    "self": f"{base_url}metadata/{path_str}",
+                    "search": f"{base_url}search/{path_str}",
+                },
             }
         )
     else:
-        links = {"self": f"{base_url}metadata/{path}{key}"}
+        links = {"self": f"{base_url}metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Catalog and not values.
             links.update(
                 {
-                    link: template.format(base_url=base_url, path=f"{path}/{key}")
+                    link: template.format(base_url=base_url, path=path_str)
                     for link, template in FULL_LINKS[entry.structure_family].items()
                 }
             )
@@ -422,8 +423,8 @@ def construct_resource(base_url, path, key, entry, fields):
                     # instead of the actual payload.
                     structure["micro"] = {
                         "links": {
-                            "meta": f"{base_url}dataframe/meta/{path}",
-                            "divisions": f"{base_url}dataframe/divisions/{path}",
+                            "meta": f"{base_url}dataframe/meta/{path_str}",
+                            "divisions": f"{base_url}dataframe/divisions/{path_str}",
                         }
                     }
                 else:
@@ -437,11 +438,11 @@ def construct_resource(base_url, path, key, entry, fields):
                     )
                     links[
                         "block"
-                    ] = f"{base_url}array/block/{path}?block={block_template}"
+                    ] = f"{base_url}array/block/{path_str}?block={block_template}"
                 elif entry.structure_family == "dataframe":
                     links[
                         "partition"
-                    ] = f"{base_url}dataframe/partition/{path}?partition={{index}}"
+                    ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
                 elif entry.structure_family == "variable":
                     block_template = ",".join(
                         f"{{index_{index}}}"
@@ -451,7 +452,7 @@ def construct_resource(base_url, path, key, entry, fields):
                     )
                     links[
                         "block"
-                    ] = f"{base_url}variable/block/{path}?block={block_template}"
+                    ] = f"{base_url}variable/block/{path_str}?block={block_template}"
                 elif entry.structure_family == "data_array":
                     block_template = ",".join(
                         f"{{index_{index}}}"
@@ -461,16 +462,16 @@ def construct_resource(base_url, path, key, entry, fields):
                     )
                     links[
                         "block"
-                    ] = f"{base_url}data_array/block/{path}?block={block_template}"
+                    ] = f"{base_url}data_array/block/{path_str}?block={block_template}"
                 elif entry.structure_family == "dataset":
                     links[
                         "block"
-                    ] = f"{base_url}dataset/block/{path}?variable={{variable}}&block={{block_indexes}}"
+                    ] = f"{base_url}dataset/block/{path_str}?variable={{variable}}&block={{block_indexes}}"
                     microstructure = entry.microstructure()
             attributes["structure"] = structure
         resource = models.ReaderResource(
             **{
-                "id": key,
+                "id": path_parts[-1],
                 "attributes": models.ReaderAttributes(**attributes),
                 "type": models.EntryType.reader,
                 "links": links,

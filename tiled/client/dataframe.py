@@ -29,7 +29,7 @@ class DaskDataFrameClient(BaseStructureClient):
         TIMEOUT = 0.2  # seconds
         try:
             content = self._get_json_with_cache(
-                f"/metadata/{'/'.join(self._path)}",
+                self.uri,
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
             )
@@ -57,7 +57,7 @@ class DaskDataFrameClient(BaseStructureClient):
         """
         try:
             content = self._get_json_with_cache(
-                f"/metadata/{'/'.join(self._path)}",
+                self.uri,
                 params={"fields": "structure.macro", **self._params},
             )
             columns = content["data"]["attributes"]["structure"]["macro"]["columns"]

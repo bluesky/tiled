@@ -232,7 +232,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         This causes it to be cached if the client is configured with a cache.
         """
-        self._get_json_with_cache("/metadata/")
+        self._get_json_with_cache(self.uri)
         repr(self)
         for key in self:
             entry = self[key]
@@ -349,7 +349,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
                 # Used the cached value and do not make any request.
                 return length
         content = self._get_json_with_cache(
-            f"/search/{'/'.join(self._path)}",
+            self.item["links"]["search"],
             params={
                 "fields": "",
                 **self._queries_as_params,
@@ -367,7 +367,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         return len(self)
 
     def __iter__(self):
-        next_page_url = f"/search/{'/'.join(self._path)}"
+        next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
             content = self._get_json_with_cache(
                 next_page_url,
@@ -389,7 +389,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
     def __getitem__(self, key):
         # Lookup this key *within the search results* of this Catalog.
         content = self._get_json_with_cache(
-            f"/search/{'/'.join(self._path )}",
+            self.item["links"]["search"],
             params={
                 "fields": ["metadata", "structure_family", "client_type_hint"],
                 **_queries_to_params(KeyLookup(key)),
@@ -419,7 +419,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
     def items(self):
         # The base implementation would use __iter__ and __getitem__, making
         # one HTTP request per item. Pull pages instead.
-        next_page_url = f"/search/{'/'.join(self._path)}"
+        next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
             content = self._get_json_with_cache(
                 next_page_url,
@@ -461,7 +461,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
             sorting_params = self._reversed_sorting_params
         assert start >= 0
         assert stop >= 0
-        next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
+        next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
             content = self._get_json_with_cache(
@@ -490,7 +490,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
             sorting_params = self._reversed_sorting_params
         assert start >= 0
         assert stop >= 0
-        next_page_url = f"/search/{'/'.join(self._path)}?page[offset]={start}"
+        next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
             content = self._get_json_with_cache(
@@ -525,9 +525,11 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             sorting_params = self._reversed_sorting_params
         assert index >= 0
-        url = f"/search/{'/'.join(self._path)}?page[offset]={index}&page[limit]=1"
+        next_page_url = (
+            f"{self.item['links']['search']}?page[offset]={index}&page[limit]=1"
+        )
         content = self._get_json_with_cache(
-            url,
+            next_page_url,
             params={
                 "fields": ["metadata", "structure_family", "client_type_hint"],
                 **self._queries_as_params,
