@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import lru_cache, partial
 import secrets
 import sys
 import time
@@ -6,6 +6,7 @@ import urllib.parse
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from .authentication import (
     ACCESS_TOKEN_COOKIE_NAME,
@@ -131,7 +132,35 @@ def get_app(include_routers=None):
         allow_headers=["*"],
     )
 
+    app.openapi = partial(custom_openapi, app)
     return app
+
+
+def custom_openapi(app):
+    """
+    The app's openapi method will be monkey-patched with this.
+
+    This is the approach the documentation recommends.
+
+    https://fastapi.tiangolo.com/advanced/extending-openapi/
+    """
+    from .. import __version__
+
+    if app.openapi_schema:
+        return app.openapi_schema
+    # Customize heading.
+    openapi_schema = get_openapi(
+        title="Tiled",
+        version=__version__,
+        description="Structured data access service",
+        routes=app.routes,
+    )
+    # Insert refreshUrl.
+    openapi_schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]["flows"][
+        "password"
+    ]["refreshUrl"] = "token/refresh"
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
 
 
 def serve_catalog(
