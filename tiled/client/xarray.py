@@ -16,6 +16,9 @@ from .array import ArrayClient, DaskArrayClient
 from .base import BaseArrayClient
 
 
+LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
+
+
 class DaskVariableClient(BaseArrayClient):
 
     STRUCTURE_TYPE = VariableStructure  # used by base class
@@ -298,8 +301,11 @@ class DaskDatasetClient(BaseArrayClient):
                 continue
 
             # Optimization: Download scalar data as DataFrame.
-            if (len(data_array.macro.variable.macro.data.macro.shape) < 2) and (
-                not data_array.macro.coords
+            data_shape = data_array.macro.variable.macro.data.macro.shape
+            if (
+                (data_shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
+                and (len(data_shape) < 2)
+                and (not data_array.macro.coords)
             ):
                 data_vars[name] = wide_table_fetcher[name]
             else:
