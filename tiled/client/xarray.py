@@ -5,6 +5,7 @@ import itertools
 import pyarrow
 import xarray
 
+from ..structures.dataframe import deserialize_arrow
 from ..structures.xarray import (
     APACHE_ARROW_FILE_MIME_TYPE,
     DataArrayStructure,
@@ -292,7 +293,7 @@ class DaskDatasetClient(BaseArrayClient):
         return self._build_coords(structure)
 
     def _build_data_vars(self, structure, variables=None):
-        data_vars = {}
+        data_vars_clients = {}
         wide_table_fetcher = _WideTableFetcher(
             self._get_content_with_cache, self.item["links"]["full_dataset"]
         )
@@ -307,7 +308,7 @@ class DaskDatasetClient(BaseArrayClient):
                 and (len(data_shape) < 2)
                 and (not data_array.macro.coords)
             ):
-                data_vars[name] = wide_table_fetcher[name]
+                data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
             else:
                 data_array_source = self.DATA_ARRAY_CLIENT(
                     client=self._client,
@@ -322,7 +323,9 @@ class DaskDatasetClient(BaseArrayClient):
                     structure=data_array,
                     route=self._route,
                 )
-                data_vars[name] = data_array_source
+                data_vars_clients[name] = data_array_source
+        # We deferred read() to the end for WideTableFetcher.
+        data_vars = {k: v.read() for k, v in data_vars_clients.items()}
         return data_vars
 
     def _build_coords(self, structure, variables=None):
@@ -343,18 +346,19 @@ class DaskDatasetClient(BaseArrayClient):
                 structure=variable,
                 route=self._route,
             )
-            coords[name] = variable_source
+            coords[name] = variable_source.read()
         return coords
 
     def read(self, variables=None):
         structure = self.structure().macro
         data_vars = self._build_data_vars(structure, variables)
         coords = self._build_coords(structure, variables)
-        return xarray.Dataset(
-            data_vars={k: v.read() for k, v in data_vars.items()},
-            coords={k: v.read() for k, v in coords.items()},
+        ds = xarray.Dataset(
+            data_vars=data_vars,
+            coords=coords,
             attrs=structure.attrs,
         )
+        return ds
 
     def __getitem__(self, variables):
         # This is type unstable, matching xarray's behavior.
@@ -393,11 +397,11 @@ class _WideTableFetcher:
         self.variables = []
         self._dataframe = None
 
-    def __getitem__(self, key):
+    def register(self, name, data_array):
         if self._dataframe is not None:
             raise RuntimeError("Cannot add variables; already fetched.")
-        self.variables.append(key)
-        return _MockClient(self, key)
+        self.variables.append(name)
+        return _MockClient(self, name, data_array)
 
     def dataframe(self):
         if self._dataframe is None:
@@ -408,14 +412,21 @@ class _WideTableFetcher:
                     "variable": self.variables,
                 },
             )
-            self._dataframe = pyarrow.deserialize(content)
+            self._dataframe = deserialize_arrow(content)
         return self._dataframe
 
 
 class _MockClient:
-    def __init__(self, wto, key):
+    def __init__(self, wto, name, data_array_structure):
         self.wto = wto
-        self.key = key
+        self.name = name
+        self.data_array_structure = data_array_structure
 
     def read(self):
-        return self.wto.dataframe()[self.key].values  # TODO Can we avoid .values here?
+        # TODO Can we avoid .values here?
+        data = self.wto.dataframe()[self.name].values
+        s = self.data_array_structure
+        variable = xarray.Variable(data=data, dims=s.macro.variable.macro.dims, attrs=s.macro.variable.macro.attrs)
+        # This DataArray always has no coords, by construction.
+        assert not s.macro.coords
+        return xarray.DataArray(variable, name=s.macro.name, coords={})
