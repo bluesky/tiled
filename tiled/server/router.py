@@ -338,9 +338,14 @@ def dataframe_divisions(
             status_code=404,
             detail=f"Cannot read {reader.structure_family} structure with /dataframe/division route.",
         )
+    import pandas
+
     divisions = reader.microstructure().divisions
+    # divisions is a tuple. Wrap it in a DataFrame so
+    # that we can easily serialize it with Arrow in the normal way.
+    divisions_wrapped_in_df = pandas.DataFrame({"divisions": list(divisions)})
     content = serialization_registry(
-        "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions
+        "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_wrapped_in_df
     )
     headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(

@@ -42,8 +42,6 @@ class DataFrameStructure:
 
 
 def serialize_arrow(df):
-    # pyarrow.serialize(...).to_buffer() returns a custom type.
-    # Wrap it in memoryview so generic server code knows what to do with it.
     table = pyarrow.Table.from_pandas(df)
     sink = pyarrow.BufferOutputStream()
     with pyarrow.ipc.new_file(sink, table.schema) as writer:

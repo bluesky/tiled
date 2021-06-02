@@ -2,7 +2,6 @@ from collections.abc import Iterable
 import builtins
 import itertools
 
-import pyarrow
 import xarray
 
 from ..structures.dataframe import deserialize_arrow

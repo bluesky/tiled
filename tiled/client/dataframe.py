@@ -83,9 +83,10 @@ class DaskDataFrameClient(BaseStructureClient):
             f"/dataframe/divisions/{'/'.join(self._path)}",
             params=self._params,
         )
-        divisions = deserialization_registry(
+        divisions_wrapped_in_df = deserialization_registry(
             "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_content
         )
+        divisions = tuple(divisions_wrapped_in_df["divisions"].values)
         return DataFrameStructure(
             micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
             # We could get the macrostructure by making another HTTP request
