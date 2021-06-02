@@ -44,7 +44,15 @@ class DataFrameStructure:
 def serialize_arrow(df):
     # pyarrow.serialize(...).to_buffer() returns a custom type.
     # Wrap it in memoryview so generic server code knows what to do with it.
-    return memoryview(pyarrow.serialize(df).to_buffer())
+    table = pyarrow.Table.from_pandas(df)
+    sink = pyarrow.BufferOutputStream()
+    with pyarrow.ipc.new_file(sink, table.schema) as writer:
+        writer.write_table(table)
+    return memoryview(sink.getvalue())
+
+
+def deserialize_arrow(buffer):
+    return pyarrow.ipc.open_file(buffer).read_pandas()
 
 
 def serialize_csv(df):
@@ -74,7 +82,7 @@ serialization_registry.register(
     "dataframe", APACHE_ARROW_FILE_MIME_TYPE, serialize_arrow
 )
 deserialization_registry.register(
-    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, pyarrow.deserialize
+    "dataframe", APACHE_ARROW_FILE_MIME_TYPE, deserialize_arrow
 )
 serialization_registry.register("dataframe", "text/csv", serialize_csv)
 serialization_registry.register("dataframe", "text/html", serialize_html)
