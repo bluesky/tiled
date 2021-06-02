@@ -425,7 +425,11 @@ class _MockClient:
         # TODO Can we avoid .values here?
         data = self.wto.dataframe()[self.name].values
         s = self.data_array_structure
-        variable = xarray.Variable(data=data, dims=s.macro.variable.macro.dims, attrs=s.macro.variable.macro.attrs)
+        variable = xarray.Variable(
+            data=data,
+            dims=s.macro.variable.macro.dims,
+            attrs=s.macro.variable.macro.attrs,
+        )
         # This DataArray always has no coords, by construction.
         assert not s.macro.coords
         return xarray.DataArray(variable, name=s.macro.name, coords={})
