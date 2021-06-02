@@ -144,11 +144,15 @@ def declare_search_router():
         for field in dataclasses.fields(query):
             # The structured "alias" here is based on
             # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
+            if getattr(field.type, "__origin__", None) is list:
+                field_type = str
+            else:
+                field_type = field.type
             injected_parameter = inspect.Parameter(
                 name=f"filter___{name}___{field.name}",
                 kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
                 default=Query(None, alias=f"filter[{name}][condition][{field.name}]"),
-                annotation=Optional[field.type],
+                annotation=Optional[List[field_type]],
             )
             parameters.append(injected_parameter)
     search.__signature__ = signature.replace(parameters=parameters)

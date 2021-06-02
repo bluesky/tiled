@@ -609,14 +609,21 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
-    params = {}
+    params = collections.defaultdict(list)
     for query in queries:
         name = query_type_to_name[type(query)]
         for field in fields(query):
             value = getattr(query, field.name)
+            if isinstance(value, (list, tuple)):
+                for item_as_str in map(str, value):
+                    if "," in item_as_str:
+                        raise ValueError(
+                            "Items in list- or tuple-type parameters may not contain commas."
+                        )
+                value = ",".join(map(str, value))
             if value is not None:
-                params[f"filter[{name}][condition][{field.name}]"] = value
-    return params
+                params[f"filter[{name}][condition][{field.name}]"].append(value)
+    return dict(params)
 
 
 class UnknownStructureFamily(KeyError):

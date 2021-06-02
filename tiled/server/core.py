@@ -2,6 +2,7 @@ import abc
 from collections import defaultdict
 import dataclasses
 from hashlib import md5
+import itertools
 import json
 import math
 from mimetypes import types_map
@@ -228,13 +229,29 @@ def construct_entries_response(
             )
         catalog = catalog.sort(sorting)
     # Apply the queries and obtain a narrowed catalog.
-    for name, parameters in queries.items():
-        query_class = name_to_query_type[name]
-        try:
-            query = query_class(**parameters)
-            catalog = catalog.search(query)
-        except QueryValueError as err:
-            raise HTTPException(status_code=400, detail=err.args[0])
+    for query_name, parameters_dict_of_lists in queries.items():
+        for i in itertools.count(0):
+            try:
+                parameters = {
+                    field_name: parameters_list[i]
+                    for field_name, parameters_list in parameters_dict_of_lists.items()
+                }
+            except IndexError:
+                break
+            query_class = name_to_query_type[query_name]
+            # Special case:
+            # List fields are serialized as comma-separated strings.
+            for field in dataclasses.fields(query_class):
+                if getattr(field.type, "__origin__", None) is list:
+                    (inner_type,) = field.type.__args__
+                    parameters[field.name] = [
+                        inner_type(item) for item in parameters[field.name].split(",")
+                    ]
+            try:
+                query = query_class(**parameters)
+                catalog = catalog.search(query)
+            except QueryValueError as err:
+                raise HTTPException(status_code=400, detail=err.args[0])
     count = len_or_approx(catalog)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []
