@@ -23,9 +23,9 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         "_metadata",
     )
     # Define classmethods for managing what queries this Catalog knows.
-    __query_registry = QueryTranslationRegistry()
-    register_query = __query_registry.register
-    register_query_lazy = __query_registry.register_lazy
+    query_registry = QueryTranslationRegistry()
+    register_query = query_registry.register
+    register_query_lazy = query_registry.register_lazy
 
     def __init__(
         self, mapping, metadata=None, access_policy=None, authenticated_identity=None
@@ -122,7 +122,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         """
         Return a Catalog with a subset of the mapping.
         """
-        return self.__query_registry(query, self)
+        return self.query_registry(query, self)
 
     # The following three methods are used by IndexersMixin
     # to define keys_indexer, items_indexer, and values_indexer.
