@@ -46,12 +46,44 @@ properties:
       In-line service configuration.
       See Service Configuration reference.
   structure_clients:
-    type: string
-    enum: ["numpy", "dask"]
-    description:
+    anyOf: [
+      {"type": "string", "enum": ["numpy", "dask"]},
+      {
+        "type": "object",
+        "properties": {
+          "array": {"type": "string"},
+          "dataframe": {"type": "string"},
+          "variable": {"type": "string"},
+          "data_array": {"type": "string"},
+          "dataset": {"type": "string"}
+        }
+      }
+    ]
+    description: |
       Client to read structure into.
-      Default ("numpy") uses numpy arrays, pandas DataFrames, and xarrays backed by numpy arrays.
-      The "dask" option uses the dask-based analogues of these.
+      Default ("numpy") uses numpy arrays, pandas DataFrames, and xarrays backed
+      by numpy arrays.
+
+      ```yaml
+      structure_clients: "numpy"
+      ```
+
+      The "dask" option uses the dask-based analogues of
+      these.
+
+      ```yaml
+      structure_clients: "dask"
+      ```
+
+      To use custom clients, map each structure family you want to support
+      to an import path:
+
+      ```yaml
+      structure_clients:
+        array: "package.module:CustomArrayClient"
+        dataframe: "package.module:CustomDataFrameClient"
+      ```
+
   cache:
     type: object
     additionalProperties: false
@@ -73,7 +105,7 @@ properties:
               For readability it is recommended to use `_` for thousands separators.
               Example:
 
-              ```
+              ```yaml
               available_bytes: 2_000_000_000  # 2GB
               ```
 
@@ -107,7 +139,7 @@ properties:
               For readability it is recommended to use `_` for thousands separators.
               Example:
 
-              ```
+              ```yaml
               available_bytes: 2_000_000_000  # 2GB
               ```
 
@@ -132,3 +164,5 @@ properties:
     description: |
       Filepath to directory of access tokens.
       Default location is usually suitable.
+      The default is system-dependent and can be inspected at
+      `tiled.client.authentication.DEFAULT_TILED_TOKEN_CACHE`.

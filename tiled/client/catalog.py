@@ -11,6 +11,7 @@ import entrypoints
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
 from ..utils import (
+    import_object,
     OneShotCachedMap,
     Sentinel,
 )
@@ -681,6 +682,8 @@ def from_catalog(
     server_settings=None,
     structure_clients="numpy",
     *,
+    cache=None,
+    offline=False,
     username=None,
     special_clients=None,
     token_cache=DEFAULT_TOKEN_CACHE,
@@ -711,6 +714,9 @@ def from_catalog(
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
         ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+    cache : Cache, optional
+    offline : bool, optional
+        False by default. If True, rely on cache only.
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         catalog objects. See also
@@ -729,10 +735,10 @@ def from_catalog(
         structure_clients=structure_clients,
         username=username,
         # The cache and "offline" mode do not make much sense when we have an
-        # in-process connection. It's also not clear what URL we would use for the cache
-        # even if we wanted to.... but it might be worth rethinking this someday.
-        cache=None,
-        offline=False,
+        # in-process connection, but we support it for the sake of testing and
+        # making direct access a drop in replacement for the normal service.
+        cache=cache,
+        offline=offline,
         special_clients=special_clients,
         token_cache=token_cache,
     )
@@ -810,7 +816,7 @@ def from_client(
     )
 
 
-def from_profile(name, **kwargs):
+def from_profile(name, structure_clients=None, **kwargs):
     """
     Build a Catalog based a 'profile' (a named configuration).
 
@@ -832,7 +838,7 @@ def from_profile(name, **kwargs):
 
     $ tiled profile show PROFILE_NAME
 
-    Any additional kwargs override profile content.
+    Any additional parameters override profile content. See from_uri for details.
     """
     from ..profiles import load_profiles, paths, ProfileNotFound
 
@@ -845,27 +851,40 @@ def from_profile(name, **kwargs):
             f"from directories {paths}."
         ) from err
     merged = {**profile_content, **kwargs}
+    if structure_clients is not None:
+        merged["structure_clients"] = structure_clients
     cache_config = merged.pop("cache", None)
     if cache_config is not None:
         from tiled.client.cache import Cache
 
-        MSG = f"Failed to apply cache configuration {cache_config!r}"
-        # cache_config should be one of:
-        6
-        6
-        # {"memory": {...}}
-        # {"disk": {...}}
-        try:
+        if isinstance(cache_config, collections.abc.Mapping):
+            # All necessary validation has already been performed
+            # in load_profiles().
             ((key, value),) = cache_config.items()
-        except Exception:
-            raise ValueError(MSG)
-        if key == "memory":
-            cache = Cache.in_memory(**value)
-        elif key == "disk":
-            cache = Cache.on_disk(**value)
+            if key == "memory":
+                cache = Cache.in_memory(**value)
+            elif key == "disk":
+                cache = Cache.on_disk(**value)
         else:
-            raise ValueError(MSG)
+            # Interpret this as a Cache object passed in directly.
+            cache = cache_config
         merged["cache"] = cache
+    structure_clients_ = merged.pop("structure_clients", None)
+    if structure_clients_ is not None:
+        if isinstance(structure_clients_, str):
+            # Nothing to do.
+            merged["structure_clients"] = structure_clients_
+        else:
+            # This is a dict mapping structure families like "array" and "dataframe"
+            # to values. The values may be client objects or importable strings.
+            result = {}
+            for key, value in structure_clients_.items():
+                if isinstance(value, str):
+                    class_ = import_object(value)
+                else:
+                    class_ = value
+                result[key] = class_
+            merged["structure_clients"] = result
     if "direct" in merged:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.

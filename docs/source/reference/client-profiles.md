@@ -41,7 +41,30 @@ In-line service configuration. See Service Configuration reference.
 (schema_structure_clients)=
 ## structure_clients
 
-Client to read structure into. Default ("numpy") uses numpy arrays, pandas DataFrames, and xarrays backed by numpy arrays. The "dask" option uses the dask-based analogues of these.
+Client to read structure into.
+Default ("numpy") uses numpy arrays, pandas DataFrames, and xarrays backed
+by numpy arrays.
+
+```yaml
+structure_clients: "numpy"
+```
+
+The "dask" option uses the dask-based analogues of
+these.
+
+```yaml
+structure_clients: "dask"
+```
+
+To use custom clients, map each structure family you want to support
+to an import path:
+
+```yaml
+structure_clients:
+  array: "package.module:CustomArrayClient"
+  dataframe: "package.module:CustomDataFrameClient"
+```
+
 
 (schema_cache)=
 ## cache
