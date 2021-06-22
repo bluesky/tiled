@@ -1,4 +1,5 @@
 from functools import lru_cache, partial
+import os
 import secrets
 import sys
 import time
@@ -221,6 +222,29 @@ def serve_catalog(
     app.dependency_overrides[get_root_catalog] = override_get_root_catalog
     app.dependency_overrides[get_settings] = override_get_settings
     return app
+
+
+def app_factory():
+    """
+    Return an ASGI app instance.
+
+    Use a configuration file at the path specified by the environment variable
+    TILED_CONFIG or, if unset, at the default path "./config.yml".
+
+    This is intended to be used for horizontal deployment (using gunicorn, for
+    example) where only a module and instance or factory can be specified.
+    """
+    config_path = os.getenv("TILED_CONFIG", "config.yml")
+
+    from ..config import construct_serve_catalog_kwargs, parse_configs
+
+    parsed_config = parse_configs(config_path)
+
+    # This config was already validated when it was parsed. Do not re-validate.
+    kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
+    web_app = serve_catalog(**kwargs)
+    print_admin_api_key_if_generated(web_app)
+    return web_app
 
 
 def print_admin_api_key_if_generated(web_app):
