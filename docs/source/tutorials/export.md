@@ -31,8 +31,7 @@ catalog["dataframes"]["df"].export("table.csv", columns=["A", "B"])
 
 # Export an N-dimensional slice...
 catalog["arrays"]["medium"].export("numbers.csv", slice=[0])  # like arr[0]
-catalog["arrays"]["medium"].export("numbers.csv", slice=numpy.s_[:10, 100:200]  # like arr[:10, 100:200]
-catalog["arrays"]["medium"].export("numbers.csv", slice=numpy.s_[:10, 100:200]  # like arr[:10, 100:200]
+catalog["arrays"]["medium"].export("numbers.csv", slice=numpy.s_[:10, 100:200])  # like arr[:10, 100:200]
 ```
 
 In the examples above, the desired format is automatically detected from the
