@@ -144,7 +144,7 @@ def serve_directory(
 
     catalog = Catalog.from_directory(directory)
     web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
-    print_admin_api_key_if_generated(web_app)
+    print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
 
@@ -175,7 +175,7 @@ def serve_pyobject(
 
     catalog = import_object(object_path)
     web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
-    print_admin_api_key_if_generated(web_app)
+    print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
 
@@ -228,7 +228,9 @@ def serve_config(
     # This config was already validated when it was parsed. Do not re-validate.
     kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
     web_app = serve_catalog(**kwargs)
-    print_admin_api_key_if_generated(web_app)
+    print_admin_api_key_if_generated(
+        web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
+    )
 
     # Likewise, delay this import.
 

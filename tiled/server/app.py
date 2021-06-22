@@ -243,7 +243,10 @@ def app_factory():
     # This config was already validated when it was parsed. Do not re-validate.
     kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
     web_app = serve_catalog(**kwargs)
-    print_admin_api_key_if_generated(web_app)
+    uvicorn_config = parsed_config.get("uvicorn", {})
+    print_admin_api_key_if_generated(
+        web_app, host=uvicorn_config["host"], port=uvicorn_config["port"]
+    )
     return web_app
 
 
@@ -256,7 +259,9 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
-def print_admin_api_key_if_generated(web_app):
+def print_admin_api_key_if_generated(web_app, host, port):
+    host = host or "127.0.0.1"
+    port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
     authenticator = web_app.dependency_overrides.get(
         get_authenticator, get_authenticator
@@ -275,7 +280,7 @@ def print_admin_api_key_if_generated(web_app):
             f"""
     Use the following URL to connect to Tiled:
 
-    "http://127.0.0.1:8000?api_key={settings.single_user_api_key}"
+    "http://{host}:{port}?api_key={settings.single_user_api_key}"
 """,
             file=sys.stderr,
         )
