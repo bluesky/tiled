@@ -126,6 +126,17 @@ def profile_show(profile_name: str):
 def serve_directory(
     directory: str,
     public: bool = typer.Option(False, "--public"),
+    host: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`. Default: `'127.0.0.1'`."
+        ),
+    ),
+    port: Optional[int] = typer.Option(
+        None, help="Bind to a socket with this port. Default: `8000`."
+    ),
 ):
     "Serve a Catalog instance from a directory of files."
     from ..catalogs.files import Catalog
@@ -137,7 +148,7 @@ def serve_directory(
 
     import uvicorn
 
-    uvicorn.run(web_app)
+    uvicorn.run(web_app, host=host, port=port)
 
 
 @serve_app.command("pyobject")
@@ -146,6 +157,17 @@ def serve_pyobject(
         ..., help="Object path, as in 'package.subpackage.module:object_name'"
     ),
     public: bool = typer.Option(False, "--public"),
+    host: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`. Default: `'127.0.0.1'`."
+        ),
+    ),
+    port: Optional[int] = typer.Option(
+        None, help="Bind to a socket with this port. Default: `8000`."
+    ),
 ):
     "Serve a Catalog instance from a Python module."
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
@@ -157,7 +179,7 @@ def serve_pyobject(
 
     import uvicorn
 
-    uvicorn.run(web_app)
+    uvicorn.run(web_app, host=host, port=port)
 
 
 @serve_app.command("config")
@@ -169,6 +191,17 @@ def serve_config(
             "If None, check environment variable TILED_CONFIG. "
             "If that is unset, try default location ./config.yml."
         ),
+    ),
+    host: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`. Default: `'127.0.0.1'`."
+        ),
+    ),
+    port: Optional[int] = typer.Option(
+        None, help="Bind to a socket with this port. Default: `8000`."
     ),
 ):
     "Serve a Catalog as specified in configuration file(s)."
@@ -187,7 +220,10 @@ def serve_config(
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
     # Extract config for uvicorn.
-    root_path = parsed_config.pop("root_path", "")
+    uvicorn_kwargs = parsed_config.pop("uvicorn", {})
+    # If --host is given, it overrides host in config. Same for --port.
+    uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host")
+    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port")
 
     # This config was already validated when it was parsed. Do not re-validate.
     kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
@@ -198,7 +234,7 @@ def serve_config(
 
     import uvicorn
 
-    uvicorn.run(web_app, root_path=root_path)
+    uvicorn.run(web_app, **uvicorn_kwargs)
 
 
 def _catalog_from_uri_or_profile(catalog):
