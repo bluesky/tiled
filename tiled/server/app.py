@@ -247,6 +247,15 @@ def app_factory():
     return web_app
 
 
+def __getattr__(name):
+    """
+    This supports tiled.server.app.app by creating app on demand.
+    """
+    if name == "app":
+        return app_factory()
+    raise AttributeError(name)
+
+
 def print_admin_api_key_if_generated(web_app):
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
     authenticator = web_app.dependency_overrides.get(

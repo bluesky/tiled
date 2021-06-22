@@ -163,20 +163,26 @@ def serve_pyobject(
 @serve_app.command("config")
 def serve_config(
     config_path: Path = typer.Argument(
-        ..., help="Path to a config file or directory of config files"
+        None,
+        help=(
+            "Path to a config file or directory of config files. "
+            "If None, check environment variable TILED_CONFIG. "
+            "If that is unset, try default location ./config.yml."
+        ),
     ),
 ):
     "Serve a Catalog as specified in configuration file(s)."
+    import os
     from ..config import construct_serve_catalog_kwargs, parse_configs
 
+    config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
     try:
         parsed_config = parse_configs(config_path)
     except Exception as err:
         typer.echo(str(err))
         raise typer.Abort()
 
-    # Delay this import, which is fairly expensive, so that
-    # we can fail faster if config-parsing fails above.
+    # Delay this import so that we can fail faster if config-parsing fails above.
 
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
