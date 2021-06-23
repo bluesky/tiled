@@ -198,22 +198,24 @@ properties:
 
         https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
   uvicorn:
-    host:
-      type: string
-      description: |
-        Bind socket to this host. Use `--host 0.0.0.0` to make the application
-        available on your local network. IPv6 addresses are supported, for
-        example: --host `'::'`. Default: `'127.0.0.1'`.
-    port:
-      type: integer
-      description: Bind to a socket with this port. Default: `8000`.
-    workers:
-      type: integer
-      description: |
-        Use multiple worker processes. Defaults to the `$WEB_CONCURRENCY`
-        environment variable if available, or `1`.
-    root_path:
-      type: string
-      description: |
-        Configure the application with a root_path when it is behind a proxy
-        serving it on some path prefix.
+    type: object
+    properties:
+      host:
+        type: string
+        description: |
+          Bind socket to this host. Use `--host 0.0.0.0` to make the application
+          available on your local network. IPv6 addresses are supported, for
+          for example --host `'::'`. Default `'127.0.0.1'`.
+      port:
+        type: integer
+        description: Bind to a socket with this port. Default `8000`.
+      workers:
+        type: integer
+        description: |
+          Use multiple worker processes. Defaults to the `$WEB_CONCURRENCY`
+          environment variable if available, or `1`.
+      root_path:
+        type: string
+        description: |
+          Configure the application with a root_path when it is behind a proxy
+          serving it on some path prefix.

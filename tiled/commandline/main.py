@@ -126,17 +126,15 @@ def profile_show(profile_name: str):
 def serve_directory(
     directory: str,
     public: bool = typer.Option(False, "--public"),
-    host: Optional[str] = typer.Option(
-        None,
+    host: str = typer.Option(
+        "127.0.0.1",
         help=(
             "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
             "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`. Default: `'127.0.0.1'`."
+            "example: --host `'::'`."
         ),
     ),
-    port: Optional[int] = typer.Option(
-        None, help="Bind to a socket with this port. Default: `8000`."
-    ),
+    port: int = typer.Option(8000, help="Bind to a socket with this port."),
 ):
     "Serve a Catalog instance from a directory of files."
     from ..catalogs.files import Catalog
@@ -157,17 +155,15 @@ def serve_pyobject(
         ..., help="Object path, as in 'package.subpackage.module:object_name'"
     ),
     public: bool = typer.Option(False, "--public"),
-    host: Optional[str] = typer.Option(
-        None,
+    host: str = typer.Option(
+        "127.0.0.1",
         help=(
             "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
             "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`. Default: `'127.0.0.1'`."
+            "example: --host `'::'`."
         ),
     ),
-    port: Optional[int] = typer.Option(
-        None, help="Bind to a socket with this port. Default: `8000`."
-    ),
+    port: int = typer.Option(8000, help="Bind to a socket with this port."),
 ):
     "Serve a Catalog instance from a Python module."
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
@@ -192,16 +188,16 @@ def serve_config(
             "If that is unset, try default location ./config.yml."
         ),
     ),
-    host: Optional[str] = typer.Option(
+    host: str = typer.Option(
         None,
         help=(
             "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
             "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`. Default: `'127.0.0.1'`."
+            "example: --host `'::'`. Uses value in config by default."
         ),
     ),
-    port: Optional[int] = typer.Option(
-        None, help="Bind to a socket with this port. Default: `8000`."
+    port: int = typer.Option(
+        None, help="Bind to a socket with this port. Uses value in config by default."
     ),
 ):
     "Serve a Catalog as specified in configuration file(s)."
@@ -222,8 +218,8 @@ def serve_config(
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
     # If --host is given, it overrides host in config. Same for --port.
-    uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host")
-    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port")
+    uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
+    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
 
     # This config was already validated when it was parsed. Do not re-validate.
     kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
