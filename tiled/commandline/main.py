@@ -126,6 +126,17 @@ def profile_show(profile_name: str):
 def serve_directory(
     directory: str,
     public: bool = typer.Option(False, "--public"),
+    host: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`. Default: `'127.0.0.1'`."
+        ),
+    ),
+    port: Optional[int] = typer.Option(
+        None, help="Bind to a socket with this port. Default: `8000`."
+    ),
 ):
     "Serve a Catalog instance from a directory of files."
     from ..catalogs.files import Catalog
@@ -133,11 +144,11 @@ def serve_directory(
 
     catalog = Catalog.from_directory(directory)
     web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
-    print_admin_api_key_if_generated(web_app)
+    print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
 
-    uvicorn.run(web_app)
+    uvicorn.run(web_app, host=host, port=port)
 
 
 @serve_app.command("pyobject")
@@ -146,6 +157,17 @@ def serve_pyobject(
         ..., help="Object path, as in 'package.subpackage.module:object_name'"
     ),
     public: bool = typer.Option(False, "--public"),
+    host: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`. Default: `'127.0.0.1'`."
+        ),
+    ),
+    port: Optional[int] = typer.Option(
+        None, help="Bind to a socket with this port. Default: `8000`."
+    ),
 ):
     "Serve a Catalog instance from a Python module."
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
@@ -153,46 +175,68 @@ def serve_pyobject(
 
     catalog = import_object(object_path)
     web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
-    print_admin_api_key_if_generated(web_app)
+    print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
 
-    uvicorn.run(web_app)
+    uvicorn.run(web_app, host=host, port=port)
 
 
 @serve_app.command("config")
 def serve_config(
     config_path: Path = typer.Argument(
-        ..., help="Path to a config file or directory of config files"
+        None,
+        help=(
+            "Path to a config file or directory of config files. "
+            "If None, check environment variable TILED_CONFIG. "
+            "If that is unset, try default location ./config.yml."
+        ),
+    ),
+    host: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`. Default: `'127.0.0.1'`."
+        ),
+    ),
+    port: Optional[int] = typer.Option(
+        None, help="Bind to a socket with this port. Default: `8000`."
     ),
 ):
     "Serve a Catalog as specified in configuration file(s)."
+    import os
     from ..config import construct_serve_catalog_kwargs, parse_configs
 
+    config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
     try:
         parsed_config = parse_configs(config_path)
     except Exception as err:
         typer.echo(str(err))
         raise typer.Abort()
 
-    # Delay this import, which is fairly expensive, so that
-    # we can fail faster if config-parsing fails above.
+    # Delay this import so that we can fail faster if config-parsing fails above.
 
     from ..server.app import serve_catalog, print_admin_api_key_if_generated
 
     # Extract config for uvicorn.
-    root_path = parsed_config.pop("root_path", "")
+    uvicorn_kwargs = parsed_config.pop("uvicorn", {})
+    # If --host is given, it overrides host in config. Same for --port.
+    uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host")
+    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port")
 
     # This config was already validated when it was parsed. Do not re-validate.
     kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
     web_app = serve_catalog(**kwargs)
-    print_admin_api_key_if_generated(web_app)
+    print_admin_api_key_if_generated(
+        web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
+    )
 
     # Likewise, delay this import.
 
     import uvicorn
 
-    uvicorn.run(web_app, root_path=root_path)
+    uvicorn.run(web_app, **uvicorn_kwargs)
 
 
 def _catalog_from_uri_or_profile(catalog):

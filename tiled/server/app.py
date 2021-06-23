@@ -1,4 +1,5 @@
 from functools import lru_cache, partial
+import os
 import secrets
 import sys
 import time
@@ -223,7 +224,44 @@ def serve_catalog(
     return app
 
 
-def print_admin_api_key_if_generated(web_app):
+def app_factory():
+    """
+    Return an ASGI app instance.
+
+    Use a configuration file at the path specified by the environment variable
+    TILED_CONFIG or, if unset, at the default path "./config.yml".
+
+    This is intended to be used for horizontal deployment (using gunicorn, for
+    example) where only a module and instance or factory can be specified.
+    """
+    config_path = os.getenv("TILED_CONFIG", "config.yml")
+
+    from ..config import construct_serve_catalog_kwargs, parse_configs
+
+    parsed_config = parse_configs(config_path)
+
+    # This config was already validated when it was parsed. Do not re-validate.
+    kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
+    web_app = serve_catalog(**kwargs)
+    uvicorn_config = parsed_config.get("uvicorn", {})
+    print_admin_api_key_if_generated(
+        web_app, host=uvicorn_config["host"], port=uvicorn_config["port"]
+    )
+    return web_app
+
+
+def __getattr__(name):
+    """
+    This supports tiled.server.app.app by creating app on demand.
+    """
+    if name == "app":
+        return app_factory()
+    raise AttributeError(name)
+
+
+def print_admin_api_key_if_generated(web_app, host, port):
+    host = host or "127.0.0.1"
+    port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
     authenticator = web_app.dependency_overrides.get(
         get_authenticator, get_authenticator
@@ -242,7 +280,7 @@ def print_admin_api_key_if_generated(web_app):
             f"""
     Use the following URL to connect to Tiled:
 
-    "http://127.0.0.1:8000?api_key={settings.single_user_api_key}"
+    "http://{host}:{port}?api_key={settings.single_user_api_key}"
 """,
             file=sys.stderr,
         )

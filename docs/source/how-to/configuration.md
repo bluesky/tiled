@@ -6,7 +6,7 @@ out all the options.
 ## Where?
 
 The path to the configuration file (or directory of multiple configuration files)
-is always specified when the server is started, as in:
+should be specified when the server is started, as in:
 
 ```
 tiled serve config my_config_file.yml
@@ -18,8 +18,33 @@ or
 tiled serve config my_config_directory/
 ```
 
-There is no automatic search path or standard location for server-side
-configuration.
+Alternatively, if not specified in the commandline, the configuration path may
+be passed in via the environment.
+
+```
+TILED_CONFIG=my_config_file.yml tiled serve config
+TILED_CONFIG=my_config_directory/ tiled serve config
+```
+
+Finally, if the environment variable is not yet, a defeault location
+`config.yml` is set. But the explicitly specifying the configuration location is
+recommended for any important use.
+
+```
+tiled serve config  # uses config.yml if environment variable TILED_CONFIG is unset
+```
+
+For use with containers, this:
+
+```
+TILED_CONFIG=my_config_file.yml uvicorn tiled.server.app:app
+```
+
+is equivalent to this:
+
+```
+tiled serve config my_config_file.yml
+```
 
 ## Simple examples
 The simple deployment
