@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 import dataclasses
+from datetime import datetime
 from hashlib import md5
 import itertools
 import json
@@ -555,6 +556,13 @@ class _NumpySafeJSONEncoder(json.JSONEncoder):
                 if numpy.isscalar(obj):
                     return obj.item()
                 return obj.tolist()
+        if isinstance(obj, datetime):
+            # JSON has no datetime type, so we fall back to a string
+            # representation. If the client wants clarity about what
+            # is a datetime and what is a string-that-looks-like-a-datetime
+            # the client should request msgpack, which has higher data
+            # type fidelity in general.
+            return obj.isoformat()
         return super().default(obj)
 
 
@@ -584,11 +592,14 @@ def _numpy_safe_msgpack_encoder(obj):
     return obj
 
 
+_packer = msgpack.Packer(default=_numpy_safe_msgpack_encoder, datetime=True)
+
+
 class MsgpackResponse(Response):
     media_type = "application/x-msgpack"
 
     def render(self, content: Any) -> bytes:
-        return msgpack.packb(content, default=_numpy_safe_msgpack_encoder)
+        return _packer.pack(content)
 
 
 def json_or_msgpack(request_headers, content):

@@ -158,7 +158,10 @@ class BaseClient:
 
     def _get_json_with_cache(self, path, **kwargs):
         return msgpack.unpackb(
-            self._get_content_with_cache(path, accept="application/x-msgpack", **kwargs)
+            self._get_content_with_cache(
+                path, accept="application/x-msgpack", **kwargs
+            ),
+            datetime=True,
         )
 
     def _send(self, request, timeout, attempts=0):
