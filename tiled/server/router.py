@@ -748,4 +748,4 @@ def dataset_full(
 
 
 def _get_base_url(url, root_path):
-    return f"{url.scheme}://{url.netloc}{root_path}"
+    return f"{url.scheme}://{url.netloc.decode()}{root_path}"

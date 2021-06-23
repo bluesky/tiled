@@ -95,7 +95,7 @@ def client_and_path_from_uri(uri):
 
     # Construct the URL *without* the params, which we will pass in separately.
     handshake_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc, url.path, {}, url.fragment)
+        (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
     )
 
     # First, ask the server what its root_path is.
@@ -107,7 +107,7 @@ def client_and_path_from_uri(uri):
     data = response.json()
     base_path = data["meta"]["root_path"]
     base_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc, base_path, {}, url.fragment)
+        (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
     )
     client.base_url = base_url
     path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)

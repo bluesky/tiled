@@ -20,7 +20,9 @@ DEFAULT_TOKEN_CACHE = os.getenv(
 def _token_directory(token_cache, netloc, username):
     return Path(
         token_cache,
-        urllib.parse.quote_plus(netloc),  # Make a valid filename out of hostname:port.
+        urllib.parse.quote_plus(
+            netloc.decode()
+        ),  # Make a valid filename out of hostname:port.
         username,
     )
 
