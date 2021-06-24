@@ -129,7 +129,8 @@ def _client_and_uri_from_uri_or_profile(uri_or_profile):
             filepath, profile_content = profiles[profile_name]
             if "uri" in profile_content:
                 uri = profile_content["uri"]
-                client, _ = client_and_path_from_uri(uri)
+                verify = profile_content.get("verify", True)
+                client, _ = client_and_path_from_uri(uri, verify=verify)
                 return client, uri
             elif "direct" in profile_content:
                 # The profiles specifies that there is no server. We should create

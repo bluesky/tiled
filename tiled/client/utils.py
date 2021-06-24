@@ -77,9 +77,8 @@ def client_from_catalog(catalog, authentication, server_settings):
     atexit.register(client.close)
     return client
 
-
-def client_and_path_from_uri(uri):
-    headers = {}
+def client_and_path_from_uri(uri, **kwargs):
+    headers = kwargs.get("headers", {})
     # The uri is expected to reach the root or /metadata route.
     url = httpx.URL(uri)
 
@@ -91,7 +90,8 @@ def client_and_path_from_uri(uri):
             raise ValueError("Cannot handle two api_key query parameters")
         (api_key,) = api_key_list
         headers["X-TILED-API-KEY"] = api_key
-    params = urllib.parse.urlencode(parsed_query, doseq=True)
+    params = kwargs.get("params", {})
+    params.update(urllib.parse.urlencode(parsed_query, doseq=True))
 
     # Construct the URL *without* the params, which we will pass in separately.
     handshake_url = urllib.parse.urlunsplit(
@@ -99,7 +99,7 @@ def client_and_path_from_uri(uri):
     )
 
     # First, ask the server what its root_path is.
-    client = httpx.Client(headers=headers, params=params)
+    client = httpx.Client(headers=headers, params=params, **kwargs)
     # This is the only place where we use client.get *directly*, circumventing
     # the usual "get with cache" logic.
     response = client.get(handshake_url, params={"root_path": None})

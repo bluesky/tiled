@@ -642,6 +642,7 @@ def from_uri(
     username=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     special_clients=None,
+    verify=True,
 ):
     """
     Connect to a Catalog on a local or remote server.
@@ -669,8 +670,11 @@ def from_uri(
         catalog objects. See also
         ``Catalog.discover_special_clients()`` and
         ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+    verify: bool, optional
+        Verify SSL certifications. True by default. False is insecure,
+        intended for development and testing only.
     """
-    client, path = client_and_path_from_uri(uri)
+    client, path = client_and_path_from_uri(uri, verify=verify)
     return from_client(
         client,
         structure_clients=structure_clients,
