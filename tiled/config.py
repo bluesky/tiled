@@ -133,6 +133,15 @@ def merge(configs):
                 )
             authentication_config_source = filepath
             merged["authentication"] = config["authentication"]
+        if "uvicorn" in config:
+            if "uvicorn" in merged:
+                raise ConfigError(
+                    "uvicorn can only be specified in one file. "
+                    f"It was found in both {uvicorn_config_source} and "
+                    f"{filepath}"
+                )
+            uvicorn_config_source = filepath
+            merged["uvicorn"] = config["uvicorn"]
         for item in config.get("catalogs", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
