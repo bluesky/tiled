@@ -227,7 +227,7 @@ properties:
         description: SSL certificate file
       ssl_keyfile_password:
         type: string
-         description: SSL keyfile password
+        description: SSL keyfile password
       ssl_version:
         type: integer
         description: SSL version to use (see stdlib ssl module's). Default 2.
