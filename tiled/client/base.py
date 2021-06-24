@@ -161,7 +161,6 @@ class BaseClient:
             self._get_content_with_cache(
                 path, accept="application/x-msgpack", **kwargs
             ),
-            datetime=True,
         )
 
     def _send(self, request, timeout, attempts=0):
