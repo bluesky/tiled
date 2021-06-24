@@ -219,3 +219,24 @@ properties:
         description: |
           Configure the application with a root_path when it is behind a proxy
           serving it on some path prefix.
+      ssl_keyfile:
+        type: string
+        description: SSL key file
+      ssl_certfile:
+        type: string
+        description: SSL certificate file
+      ssl_keyfile_password:
+        type: string
+         description: SSL keyfile password
+      ssl_version:
+        type: integer
+        description: SSL version to use (see stdlib ssl module's). Default 2.
+      ssl_cert_reqs:
+        type: integer
+        description: Whether client certificate is required (see stdlib ssl module's). Default 0.
+      ssl_ca_certs:
+        type: string
+        description: CA certificates file
+      ssl_ciphers:
+        type: string
+        description: Ciphers to use (see stdlib ssl module's). Default TLSv1.
