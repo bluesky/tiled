@@ -77,6 +77,7 @@ def client_from_catalog(catalog, authentication, server_settings):
     atexit.register(client.close)
     return client
 
+
 def client_and_path_from_uri(uri, **kwargs):
     headers = kwargs.get("headers", {})
     # The uri is expected to reach the root or /metadata route.

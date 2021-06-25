@@ -116,9 +116,10 @@ def construct_serve_catalog_kwargs(config, source_filepath=None, validate=True):
 def merge(configs):
     merged = {"catalogs": []}
 
-    # These two variables are used to produce error messages that point
+    # These variables are used to produce error messages that point
     # to the relevant config file(s).
     authentication_config_source = None
+    uvicorn_config_source = None
     allow_origins = []
     paths = {}  # map each item's path to config file that specified it
 
