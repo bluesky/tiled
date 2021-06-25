@@ -1,4 +1,5 @@
 dask
+dateutil
 fastapi
 jsonschema
 msgpack

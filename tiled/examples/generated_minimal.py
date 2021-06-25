@@ -1,3 +1,4 @@
+from datetime import datetime
 import numpy
 import pandas
 from tiled.catalogs.in_memory import Catalog
@@ -19,5 +20,6 @@ catalog = Catalog(
             ),
             npartitions=3,
         ),
-    }
+    },
+    metadata={"d": datetime.now()},
 )
