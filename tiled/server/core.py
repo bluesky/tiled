@@ -1,7 +1,9 @@
 import abc
 from collections import defaultdict
+import collections.abc
 import dataclasses
 from datetime import datetime
+import dateutil
 from hashlib import md5
 import itertools
 import json
@@ -45,6 +47,7 @@ if modules_available("xarray"):
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
+_LOCAL_TZINFO = dateutil.tz.gettz()
 
 
 def get_root_catalog():
@@ -562,7 +565,13 @@ class _NumpySafeJSONEncoder(json.JSONEncoder):
             # is a datetime and what is a string-that-looks-like-a-datetime
             # the client should request msgpack, which has higher data
             # type fidelity in general.
-            return obj.isoformat()
+
+            # If this is naive, assign local timezone to be self-consistent
+            # with msgpack. (Msgpack requires us to set a timezone.)
+            if obj.tzinfo is None:
+                return obj.astimezone(_LOCAL_TZINFO).isoformat()
+            else:
+                return obj.isoformat()
         return super().default(obj)
 
 
@@ -592,14 +601,46 @@ def _numpy_safe_msgpack_encoder(obj):
     return obj
 
 
-_packer = msgpack.Packer(default=_numpy_safe_msgpack_encoder, datetime=True)
+def _patch_naive_datetimes(obj):
+    """
+    If a naive datetime is found, attach local time.
+
+    Msgpack can only serialize datetimes with tzinfo.
+    """
+    if hasattr(obj, "items"):
+        patched_obj = {}
+        for k, v in obj.items():
+            patched_obj[k] = _patch_naive_datetimes(v)
+    elif (not isinstance(obj, str)) and isinstance(obj, collections.abc.Iterable):
+        patched_obj = []
+        for item in obj:
+            patched_obj.append(_patch_naive_datetimes(item))
+    elif isinstance(obj, datetime) and obj.tzinfo is None:
+        patched_obj = obj.astimezone(_LOCAL_TZINFO)
+    else:
+        patched_obj = obj
+    return patched_obj
 
 
 class MsgpackResponse(Response):
     media_type = "application/x-msgpack"
 
-    def render(self, content: Any) -> bytes:
-        return _packer.pack(content)
+    def render(self, content: Any, _reentered=False) -> bytes:
+        try:
+            return msgpack.packb(
+                content, default=_numpy_safe_msgpack_encoder, datetime=True
+            )
+        except TypeError as err:
+            # msgpack tries to handle all datetimes, but if it
+            # received a naive one (tzinfo=None) then it fails.
+            # We cannot use the default hook to handle this because
+            # it is not called.
+            if err.args == ("can not serialize 'datetime.datetime' object",) and (
+                not _reentered
+            ):
+                patched_content = _patch_naive_datetimes(content)
+                return self.render(patched_content, _reentered=True)
+            raise
 
 
 def json_or_msgpack(request_headers, content):
