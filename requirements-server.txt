@@ -1,5 +1,5 @@
 dask
-dateutil
+python-dateutil
 fastapi
 jsonschema
 msgpack
