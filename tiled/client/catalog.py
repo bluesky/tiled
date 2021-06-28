@@ -392,7 +392,6 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         content = self._get_json_with_cache(
             self.item["links"]["search"],
             params={
-                "fields": ["metadata", "structure_family", "client_type_hint"],
                 **_queries_to_params(KeyLookup(key)),
                 **self._queries_as_params,
                 **self._sorting_params,
@@ -425,7 +424,6 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
             content = self._get_json_with_cache(
                 next_page_url,
                 params={
-                    "fields": ["metadata", "structure_family", "client_type_hint"],
                     **self._queries_as_params,
                     **self._sorting_params,
                     **self._params,
@@ -497,7 +495,6 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
             content = self._get_json_with_cache(
                 next_page_url,
                 params={
-                    "fields": ["metadata", "structure_family", "client_type_hint"],
                     **self._queries_as_params,
                     **sorting_params,
                     **self._params,
@@ -532,7 +529,6 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         content = self._get_json_with_cache(
             next_page_url,
             params={
-                "fields": ["metadata", "structure_family", "client_type_hint"],
                 **self._queries_as_params,
                 **sorting_params,
                 **self._params,
