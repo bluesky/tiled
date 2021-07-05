@@ -42,6 +42,8 @@ class NotAvailableOffline(Exception):
 def client_from_catalog(catalog, authentication, server_settings):
     from ..server.app import serve_catalog
 
+    authentication = authentication or {}
+    server_settings = server_settings or {}
     params = {}
     if (authentication.get("authenticator") is None) and (
         authentication.get("single_user_api_key") is None
