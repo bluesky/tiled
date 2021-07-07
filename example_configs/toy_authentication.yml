@@ -5,6 +5,6 @@ authentication:
             alice: ${ALICE_PASSWORD}
             bob: ${BOB_PASSWORD}
             cara: ${CARA_PASSWORD}
-catalogs:
+trees:
     - path: /
-      catalog: tiled.examples.toy_authentication:catalog
+      tree: tiled.examples.toy_authentication:tree

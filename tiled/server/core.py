@@ -50,22 +50,22 @@ _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\
 _LOCAL_TZINFO = dateutil.tz.gettz()
 
 
-def get_root_catalog():
+def get_root_tree():
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.serve_catalog()."
+        "See tiled.server.app.serve_tree()."
     )
 
 
 def entry(
     path: str,
     current_user: str = Depends(get_current_user),
-    root_catalog: pydantic.BaseSettings = Depends(get_root_catalog),
+    root_tree: pydantic.BaseSettings = Depends(get_root_tree),
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    entry = root_catalog.authenticated_as(current_user)
+    entry = root_tree.authenticated_as(current_user)
     try:
-        # Traverse into sub-catalog(s).
+        # Traverse into sub-tree(s).
         for segment in path_parts:
             try:
                 entry = entry[segment]
@@ -123,14 +123,14 @@ def slice_(
     )
 
 
-def len_or_approx(catalog):
+def len_or_approx(tree):
     """
     Prefer approximate length if implemented. (It's cheaper.)
     """
     try:
-        return operator.length_hint(catalog)
+        return operator.length_hint(tree)
     except TypeError:
-        return len(catalog)
+        return len(tree)
 
 
 def pagination_links(route, path_parts, offset, limit, length_hint):
@@ -179,15 +179,15 @@ class DuckReader(metaclass=abc.ABCMeta):
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
 
-class DuckCatalog(metaclass=abc.ABCMeta):
+class DuckTree(metaclass=abc.ABCMeta):
     """
-    Used for isinstance(obj, DuckCatalog):
+    Used for isinstance(obj, DuckTree):
     """
 
     @classmethod
     def __subclasshook__(cls, candidate):
         # If the following condition is True, candidate is recognized
-        # to "quack" like a Catalog.
+        # to "quack" like a Tree.
         EXPECTED_ATTRS = (
             "__getitem__",
             "__iter__",
@@ -196,7 +196,7 @@ class DuckCatalog(metaclass=abc.ABCMeta):
 
 
 def construct_entries_response(
-    catalog,
+    tree,
     route,
     path,
     offset,
@@ -207,8 +207,8 @@ def construct_entries_response(
     base_url,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    if not isinstance(catalog, DuckCatalog):
-        raise WrongTypeForRoute("This is not a Catalog.")
+    if not isinstance(tree, DuckTree):
+        raise WrongTypeForRoute("This is not a Tree.")
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
@@ -227,12 +227,12 @@ def construct_entries_response(
                 else:
                     sorting.append((item, 1))
     if sorting:
-        if not hasattr(catalog, "sort"):
+        if not hasattr(tree, "sort"):
             raise HTTPException(
-                status_code=400, detail="This Catalog does not support sorting."
+                status_code=400, detail="This Tree does not support sorting."
             )
-        catalog = catalog.sort(sorting)
-    # Apply the queries and obtain a narrowed catalog.
+        tree = tree.sort(sorting)
+    # Apply the queries and obtain a narrowed tree.
     for query_name, parameters_dict_of_lists in queries.items():
         for i in itertools.count(0):
             try:
@@ -253,20 +253,20 @@ def construct_entries_response(
                     ]
             try:
                 query = query_class(**parameters)
-                catalog = catalog.search(query)
+                tree = tree.search(query)
             except QueryValueError as err:
                 raise HTTPException(status_code=400, detail=err.args[0])
-    count = len_or_approx(catalog)
+    count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []
     if fields != [models.EntryFields.none]:
         # Pull a page of items into memory.
-        items = catalog.items_indexer[offset : offset + limit]  # noqa: E203
+        items = tree.items_indexer[offset : offset + limit]  # noqa: E203
     else:
         # Pull a page of just the keys, which is cheaper.
         items = (
             (key, None)
-            for key in catalog.keys_indexer[offset : offset + limit]  # noqa: E203
+            for key in tree.keys_indexer[offset : offset + limit]  # noqa: E203
         )
     for key, entry in items:
         resource = construct_resource(base_url, path_parts + [key], entry, fields)
@@ -403,16 +403,16 @@ def construct_resource(base_url, path_parts, entry, fields):
         attributes["metadata"] = entry.metadata
     if models.EntryFields.client_type_hint in fields:
         attributes["client_type_hint"] = getattr(entry, "client_type_hint", None)
-    if isinstance(entry, DuckCatalog):
+    if isinstance(entry, DuckTree):
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
             if hasattr(entry, "sorting"):
                 attributes["sorting"] = entry.sorting
-        resource = models.CatalogResource(
+        resource = models.TreeResource(
             **{
                 "id": path_parts[-1] if path_parts else "",
-                "attributes": models.CatalogAttributes(**attributes),
-                "type": models.EntryType.catalog,
+                "attributes": models.TreeAttributes(**attributes),
+                "type": models.EntryType.tree,
                 "links": {
                     "self": f"{base_url}metadata/{path_str}",
                     "search": f"{base_url}search/{path_str}",
@@ -424,7 +424,7 @@ def construct_resource(base_url, path_parts, entry, fields):
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
-            # Catalog and not values.
+            # Tree and not values.
             links.update(
                 {
                     link: template.format(base_url=base_url, path=path_str)

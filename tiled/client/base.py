@@ -8,7 +8,7 @@ from .utils import (
     NotAvailableOffline,
     UNSET,
 )
-from ..catalogs.utils import UNCHANGED
+from ..trees.utils import UNCHANGED
 
 
 class BaseClient:
@@ -62,7 +62,7 @@ class BaseClient:
 
     @property
     def path(self):
-        "Sequence of entry names from the root Catalog to this entry"
+        "Sequence of entry names from the root Tree to this entry"
         return ListView(self._path)
 
     @property

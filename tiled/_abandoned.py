@@ -6,7 +6,7 @@ Currently it contains code more making slicing recursively lazy.
 """
 import collections.abc
 
-from .in_memory_catalog import slice_to_interval
+from .in_memory_tree import slice_to_interval
 
 
 def _compose_intervals(a, b):
@@ -35,7 +35,7 @@ def _compose_intervals(a, b):
     return start, stop
 
 
-class CatalogBaseSequence(collections.abc.Sequence):
+class TreeBaseSequence(collections.abc.Sequence):
     "Base class for Keys, Values, Items Sequences."
 
     def __init__(self, ancestor, start=0, stop=None):
@@ -84,7 +84,7 @@ class CatalogBaseSequence(collections.abc.Sequence):
         return self._ancestor._keys_slice(agg_start, agg_stop)
 
 
-class CatalogKeysSequence(CatalogBaseSequence):
+class TreeKeysSequence(TreeBaseSequence):
     def __iter__(self):
         return self._ancestor._keys_slice(self._start, self._stop)
 
@@ -95,7 +95,7 @@ class CatalogKeysSequence(CatalogBaseSequence):
         return super().__getitem__(index)
 
 
-class CatalogItemsSequence(CatalogBaseSequence):
+class TreeItemsSequence(TreeBaseSequence):
     def __iter__(self):
         return self._ancestor._items_slice(self._start, self._stop)
 
@@ -105,7 +105,7 @@ class CatalogItemsSequence(CatalogBaseSequence):
         return super().__getitem__(index)
 
 
-class CatalogValuesSequence(CatalogBaseSequence):
+class TreeValuesSequence(TreeBaseSequence):
     def __iter__(self):
         # Extract just the value for the iterable of (key, value) items.
         return (

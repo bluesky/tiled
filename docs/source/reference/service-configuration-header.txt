@@ -14,7 +14,7 @@ practical guide with examples.
 If there are multiple configuration files:
 
 * At most one may contain an ``authentication:`` section.
-* More than one may contain a ``catalog:`` section, but if the same ``path``
+* More than one may contain a ``tree:`` section, but if the same ``path``
   occurs in more than one file, or if colliding paths like ``/a`` and ``/a/b``
   are specified, an exception will be raised.
 * If there is more than one ``allow_origins`` section their contents are merged.

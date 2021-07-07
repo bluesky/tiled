@@ -111,15 +111,15 @@ def slice_to_interval(slice_):
     if step == 1:
         if start < 0:
             raise ValueError(
-                "Catalog sequence slices with start < 0 must have step=-1. "
+                "Tree sequence slices with start < 0 must have step=-1. "
                 f"Use for example [{slice_.start}:{slice_.stop}:-1]"
-                "(This is a limitation of slicing on Catalog sequences "
+                "(This is a limitation of slicing on Tree sequences "
                 "that does not apply to Python sequences in general.)"
             )
         if (slice_.stop is not None) and (slice_.stop < start):
             raise ValueError(
-                "Catalog sequence slices with step=1 must have stop >= start. "
-                "(This is a limitation of slicing on Catalog sequences "
+                "Tree sequence slices with step=1 must have stop >= start. "
+                "(This is a limitation of slicing on Tree sequences "
                 "that does not apply to Python sequences in general.)"
             )
         start_ = start
@@ -128,14 +128,14 @@ def slice_to_interval(slice_):
     elif step == -1:
         if start >= 0:
             raise ValueError(
-                "Catalog sequence slices with start >= 0 must have step=1. "
-                "(This is a limitation of slicing on Catalog sequences "
+                "Tree sequence slices with start >= 0 must have step=1. "
+                "(This is a limitation of slicing on Tree sequences "
                 "that does not apply to Python sequences in general.)"
             )
         if slice_.stop is not None:
             if slice_.stop > start:
                 raise ValueError(
-                    "Catalog sequence slices with step=-1 must have stop <= start."
+                    "Tree sequence slices with step=-1 must have stop <= start."
                 )
             stop_ = 1 - slice_.stop
         else:
@@ -144,7 +144,7 @@ def slice_to_interval(slice_):
         direction = -1
     else:
         raise ValueError(
-            "Only step of 1 or -1 is supported in a Catalog sequence slice. "
+            "Only step of 1 or -1 is supported in a Tree sequence slice. "
             f"Step {slice_.step} is disallowed."
         )
     assert start_ >= 0
@@ -155,9 +155,9 @@ def slice_to_interval(slice_):
 UNCHANGED = Sentinel("UNCHANGED")
 
 
-def catalog_repr(catalog, sample):
+def tree_repr(tree, sample):
     sample_reprs = list(map(repr, sample))
-    out = f"<{type(catalog).__name__} {{"
+    out = f"<{type(tree).__name__} {{"
     # Always show at least one.
     if sample_reprs:
         out += sample_reprs[0]
@@ -168,8 +168,8 @@ def catalog_repr(catalog, sample):
             break
         out += ", " + sample_repr
         counter += 1
-    approx_len = operator.length_hint(catalog)  # cheaper to compute than len(catalog)
-    # Are there more in the catalog that what we displayed above?
+    approx_len = operator.length_hint(tree)  # cheaper to compute than len(tree)
+    # Are there more in the tree that what we displayed above?
     if approx_len > counter:
         out += f", ...}} ~{approx_len} entries>"
     else:

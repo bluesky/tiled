@@ -204,13 +204,13 @@ def _line(nodes, last):
         return indent + tee + horizontal + nodes[-1]
 
 
-def walk(catalog, nodes=None):
-    "Walk the entries in a (nested) Catalog depth first."
+def walk(tree, nodes=None):
+    "Walk the entries in a (nested) Tree depth first."
     if nodes is None:
-        for node in catalog:
-            yield from walk(catalog, [node])
+        for node in tree:
+            yield from walk(tree, [node])
     else:
-        value = catalog[nodes[-1]]
+        value = tree[nodes[-1]]
         if hasattr(value, "items"):
             yield nodes
             for k, v in value.items():
@@ -219,10 +219,10 @@ def walk(catalog, nodes=None):
             yield nodes
 
 
-def gen_tree(catalog, nodes=None, last=None):
+def gen_tree(tree, nodes=None, last=None):
     "A generator of lines for the tree utility"
 
-    # Normally, traversing a Catalog will cause the structure clients to be
+    # Normally, traversing a Tree will cause the structure clients to be
     # instanitated which in turn triggers import of the associated libraries like
     # numpy, pandas, and xarray. We want to avoid paying for that, especially
     # when this function is used in a CLI where import overhead can accumulate to
@@ -232,16 +232,16 @@ def gen_tree(catalog, nodes=None, last=None):
     def dummy_client(*args, **kwargs):
         return None
 
-    fast_catalog = catalog.new_variation(
+    fast_tree = tree.new_variation(
         structure_clients=collections.defaultdict(lambda: dummy_client)
     )
 
     if nodes is None:
-        last_index = len(fast_catalog) - 1
-        for index, node in enumerate(fast_catalog):
-            yield from gen_tree(fast_catalog, [node], [index == last_index])
+        last_index = len(fast_tree) - 1
+        for index, node in enumerate(fast_tree):
+            yield from gen_tree(fast_tree, [node], [index == last_index])
     else:
-        value = fast_catalog[nodes[-1]]
+        value = fast_tree[nodes[-1]]
         if hasattr(value, "items"):
             yield _line(nodes, last)
             last_index = len(value) - 1
@@ -251,13 +251,13 @@ def gen_tree(catalog, nodes=None, last=None):
             yield _line(nodes, last)
 
 
-def tree(catalog, max_lines=20):
+def tree(tree, max_lines=20):
     """
-    Print a visual sketch of Catalog structure akin to UNIX `tree`.
+    Print a visual sketch of Tree structure akin to UNIX `tree`.
 
     Parameters
     ----------
-    catalog : Catalog
+    tree : Tree
     max_lines: int or None, optional
         By default, output is trucated at 20 lines. ``None`` means "Do not
         truncate."
@@ -265,7 +265,7 @@ def tree(catalog, max_lines=20):
     Examples
     --------
 
-    >>> tree(catalog)
+    >>> tree(tree)
     ├── A
     │   ├── dog
     │   ├── cat
@@ -276,7 +276,7 @@ def tree(catalog, max_lines=20):
         └── wolf
 
     """
-    for counter, line in enumerate(gen_tree(catalog), start=1):
+    for counter, line in enumerate(gen_tree(tree), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
                 f"<Output truncated at {max_lines} lines. "

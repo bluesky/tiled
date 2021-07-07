@@ -22,7 +22,7 @@ For those familiar with Jupyter, this is very similar to how
 At startup, a secret token is generated and logged in the terminal.
 
 ```
-$ tiled serve pyobject tiled.examples.generated_minimal:catalog
+$ tiled serve pyobject tiled.examples.generated_minimal:tree
 
     Use the following URL to connect to Tiled:
 
@@ -80,7 +80,7 @@ When the server is started in this way, it will log a notice like
 the following:
 
 ```
-$ tiled serve pyobject --public tiled.examples.generated_minimal:catalog
+$ tiled serve pyobject --public tiled.examples.generated_minimal:tree
 
     Tiled server is running in "public" mode, permitting open, anonymous access.
     Any data that is not specifically controlled with an access policy
@@ -107,9 +107,9 @@ This is a complete working example:
 # config.yml
 authentication:
     allow_anonymous_access: true
-catalogs:
+trees:
     - path: /
-      catalog: tiled.examples.generated_minimal:catalog
+      tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -181,9 +181,9 @@ Here is a complete working example:
 # pam_config.yml
 authentication:
     authenticator: tiled.authenticators:PAMAuthenticator
-catalogs:
+trees:
     - path: /
-      catalog: tiled.examples.generated_minimal:catalog
+      tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -208,9 +208,9 @@ authentication:
             alice: ${ALICE_PASSWORD}
             bob: ${BOB_PASSWORD}
             cara: ${CARA_PASSWORD}
-catalogs:
+trees:
     - path: /
-      catalog: tiled.examples.generated_minimal:catalog
+      tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -223,16 +223,16 @@ The ``DummyAuthenticator`` accepts *any* username and password combination.
 # dummy_config.yml
 authentication:
     authenticator: tiled.authenticators:DummyAuthenticator
-catalogs:
+trees:
     - path: /
-      catalog: tiled.examples.generated_minimal:catalog
+      tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
 tiled serve config dummy_config.yml
 ```
 
-To control which users can see which entries in the Catalogs, see
+To control which users can see which entries in the Trees, see
 {doc}`access-control`.
 
 ## Multi-user data service with some public and some private content

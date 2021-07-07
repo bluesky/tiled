@@ -41,10 +41,10 @@ projects.
   DataFrames respectively. It also provides streaming access to data and is
   tightly coupled to the Bluesky "Document Model" for streaming data.
 * [**Intake**](https://intake.readthedocs.org/) (2017, Anaconda Inc.) is similar
-  to Databroker in its goals and feature set---searchable Catalogs that
+  to Databroker in its goals and feature set---searchable catalogs of data that
   ultimately provide standard SciPy data structures---but its intended scope
   is broader than Databroker's, not being tied to the Bluesky "Document
-  Model" in particular. It also supports *nested* Catalogs and chainable
+  Model" in particular. It also supports *nested* catalogs and chainable
   search queries. In 2018--2020, Databroker was refactored to become a set of
   Intake drivers.
 
@@ -61,11 +61,11 @@ Collaboration). Tiled is designed with HTTP-based access as the driving use
 case, targeting Python clients, browser-based clients, and clients in other
 languages. Tiled is compatible with PIMS for reading image series. Tiled has
 search capability and some other features drawn from Databroker. Tiled has a
-*Catalog* abstraction similar to Intake's, with small but important differences
-to suit the server--client interaction. (It is hoped that Tiled Catalogs and
-Intake Catalogs can be made interoperable in the near future.) Finally, Tiled
-has a *Reader* abstraction that is something like an amalgam of PIMS Readers and
-Intake's Datasources.
+*Tree* abstraction similar to Intake's *Catalog*, with small but important
+differences to suit the server--client interaction. (It is hoped that Tiled
+Trees and Intake Catalogs can be made interoperable in the near future.)
+Finally, Tiled has a *Reader* abstraction that is something like an amalgam of
+PIMS Readers and Intake's Datasources.
 
 In summary:
 

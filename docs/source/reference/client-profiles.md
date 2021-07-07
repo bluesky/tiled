@@ -24,7 +24,7 @@ URI of a Tiled server, such as
 (schema_username)=
 ## username
 
-For authenticated Catalogs. Optional unless the Catalog requires authentication.
+For authenticated Trees. Optional unless the Tree requires authentication.
 
 
 (schema_offline)=

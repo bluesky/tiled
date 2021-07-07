@@ -9,7 +9,7 @@ parameters in a file and gives them an alias, so that something like this:
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-catalog = from_uri("http://some_server_address", cache=Cache.on_disk("path/to/cache"))
+tree = from_uri("http://some_server_address", cache=Cache.on_disk("path/to/cache"))
 ```
 
 can be replaced with the more memorable and succinct
@@ -17,14 +17,14 @@ can be replaced with the more memorable and succinct
 ```py
 from tiled.client import from_profile
 
-catalog = from_profile("my_catalog")
+tree = from_profile("my_tree")
 ```
 
-where `my_catalog` can be any name you wish and the parameters are written down
+where `my_tree` can be any name you wish and the parameters are written down
 once like so:
 
 ```yaml
-my_catalog:
+my_tree:
     uri: "http://some_server_address"
     cache:
         disk:
@@ -107,7 +107,7 @@ Now we have two profiles that aim at a local server, one with default (numpy)
 clients and one with dask clients. While running a local tiled server such as
 
 ```
-tiled serve pyobject --public tiled.examples.generated_minimal:catalog
+tiled serve pyobject --public tiled.examples.generated_minimal:tree
 ```
 
 we can succinctly create clients like
@@ -115,8 +115,8 @@ we can succinctly create clients like
 ```py
 from tiled.client import from_profile
 
-catalog = from_profile("local")
-lazy_catalog = from_profile("local_dask")
+tree = from_profile("local")
+lazy_tree = from_profile("local_dask")
 ```
 
 ## List profiles
@@ -220,9 +220,9 @@ Here is a complete example.
 # profiles.yml
 my_profile:
     direct:
-        catalogs:
+        trees:
             - path: /
-            catalog: tiled.catalogs.files:Catalog.from_directory
+            tree: tiled.trees.files:Tree.from_directory
             args:
                 directory: "path/to/files"
 ```
@@ -236,9 +236,9 @@ usual client-side configuration, such as
 # profiles.yml
 my_profile:
     direct:
-        catalogs:
+        trees:
             - path: /
-            catalog: tiled.catalogs.files:Catalog.from_directory
+            tree: tiled.trees.files:Tree.from_directory
             args:
                 directory: "path/to/files"
     cache:

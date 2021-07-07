@@ -30,15 +30,15 @@ or its dask counterpart. They can be used to build other Readers.
    tiled.readers.hdf5.HDF5Reader
 ```
 
-## Catalogs
+## Trees
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.catalogs.files.Catalog
-   tiled.catalogs.in_memory.Catalog
-   tiled.catalogs.utils
+   tiled.trees.files.Tree
+   tiled.trees.in_memory.Tree
+   tiled.trees.utils
 ```
 
 ## Search Queries
@@ -46,7 +46,7 @@ or its dask counterpart. They can be used to build other Readers.
 ### Built-in Search Query Types
 
 These are simple, JSON-serializable dataclasses that define the *data*
-in a query. They do not defined *how* to execute a query on a given Catalog.
+in a query. They do not defined *how* to execute a query on a given Tree.
 
 ```{note}
 The list of built-in queries is short. Most of the power of queries comes from
@@ -170,7 +170,7 @@ structures.
    tiled.config.parse_configs
    tiled.config.direct_access
    tiled.config.direct_access_from_profile
-   tiled.config.construct_serve_catalog_kwargs
+   tiled.config.construct_serve_tree_kwargs
 ```
 ## HTTP Server Application
 
@@ -178,6 +178,6 @@ structures.
 .. autosummary::
    :toctree: generated
 
-   tiled.server.app.serve_catalog
+   tiled.server.app.serve_tree
    tiled.server.app.get_app
 ```

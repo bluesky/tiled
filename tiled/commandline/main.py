@@ -15,16 +15,14 @@ cli_app.add_typer(
 
 @cli_app.command("login")
 def login(
-    catalog: str = typer.Argument(
-        ..., help="Catalog URI (http://...) or a profile name."
-    ),
+    tree: str = typer.Argument(..., help="Tree URI (http://...) or a profile name."),
 ):
-    from tiled.client.authentication import CatalogValueError, login
+    from tiled.client.authentication import TreeValueError, login
     from tiled.client.utils import ClientError
 
     try:
-        login(catalog)
-    except (CatalogValueError, ClientError) as err:
+        login(tree)
+    except (TreeValueError, ClientError) as err:
         (msg,) = err.args
         typer.echo(msg)
         raise typer.Abort()
@@ -32,20 +30,18 @@ def login(
 
 @cli_app.command("tree")
 def tree(
-    catalog: str = typer.Argument(
-        ..., help="Catalog URI (http://...) or a profile name."
-    ),
+    tree: str = typer.Argument(..., help="Tree URI (http://...) or a profile name."),
     max_lines: int = typer.Argument(20, help="Max lines to show."),
 ):
     """
-    Show the names of entries in a Catalog.
+    Show the names of entries in a Tree.
 
     This is similar to the UNIX utility `tree` for listing nested directories.
     """
     from ..utils import gen_tree
 
-    catalog_obj = _catalog_from_uri_or_profile(catalog)
-    for counter, line in enumerate(gen_tree(catalog_obj), start=1):
+    tree_obj = _tree_from_uri_or_profile(tree)
+    for counter, line in enumerate(gen_tree(tree_obj), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
                 f"Output truncated at {max_lines} lines. "
@@ -57,19 +53,17 @@ def tree(
 
 @cli_app.command("download")
 def download(
-    catalog: str = typer.Argument(
-        ..., help="Catalog URI (http://...) or a profile name."
-    ),
+    tree: str = typer.Argument(..., help="Tree URI (http://...) or a profile name."),
     cache_path: str = typer.Argument(..., help="Local directory for cache storage"),
     available_bytes: Optional[int] = None,
 ):
     """
-    Download content from a Catalog to an on-disk cache.
+    Download content from a Tree to an on-disk cache.
     """
     from ..client.cache import download
 
-    catalog_obj = _catalog_from_uri_or_profile(catalog)
-    download(catalog_obj, path=cache_path, available_bytes=available_bytes)
+    tree_obj = _tree_from_uri_or_profile(tree)
+    download(tree_obj, path=cache_path, available_bytes=available_bytes)
 
 
 @profile_app.command("paths")
@@ -136,12 +130,12 @@ def serve_directory(
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
 ):
-    "Serve a Catalog instance from a directory of files."
-    from ..catalogs.files import Catalog
-    from ..server.app import serve_catalog, print_admin_api_key_if_generated
+    "Serve a Tree instance from a directory of files."
+    from ..trees.files import Tree
+    from ..server.app import serve_tree, print_admin_api_key_if_generated
 
-    catalog = Catalog.from_directory(directory)
-    web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
+    tree = Tree.from_directory(directory)
+    web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -165,12 +159,12 @@ def serve_pyobject(
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
 ):
-    "Serve a Catalog instance from a Python module."
-    from ..server.app import serve_catalog, print_admin_api_key_if_generated
+    "Serve a Tree instance from a Python module."
+    from ..server.app import serve_tree, print_admin_api_key_if_generated
     from ..utils import import_object
 
-    catalog = import_object(object_path)
-    web_app = serve_catalog(catalog, {"allow_anonymous_access": public}, {})
+    tree = import_object(object_path)
+    web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -200,9 +194,9 @@ def serve_config(
         None, help="Bind to a socket with this port. Uses value in config by default."
     ),
 ):
-    "Serve a Catalog as specified in configuration file(s)."
+    "Serve a Tree as specified in configuration file(s)."
     import os
-    from ..config import construct_serve_catalog_kwargs, parse_configs
+    from ..config import construct_serve_tree_kwargs, parse_configs
 
     config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
     try:
@@ -213,7 +207,7 @@ def serve_config(
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
-    from ..server.app import serve_catalog, print_admin_api_key_if_generated
+    from ..server.app import serve_tree, print_admin_api_key_if_generated
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
@@ -222,8 +216,8 @@ def serve_config(
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
-    web_app = serve_catalog(**kwargs)
+    kwargs = construct_serve_tree_kwargs(parsed_config, validate=False)
+    web_app = serve_tree(**kwargs)
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
     )
@@ -235,22 +229,22 @@ def serve_config(
     uvicorn.run(web_app, **uvicorn_kwargs)
 
 
-def _catalog_from_uri_or_profile(catalog):
+def _tree_from_uri_or_profile(tree):
     from ..client import from_uri, from_profile
 
-    if catalog.startswith("http://") or catalog.startswith("https://"):
+    if tree.startswith("http://") or tree.startswith("https://"):
         # This looks like a URI.
-        uri = catalog
+        uri = tree
         return from_uri(uri)
     else:
         from ..profiles import list_profiles
 
         # Is this a profile name?
-        if catalog in list_profiles():
-            profile_name = catalog
+        if tree in list_profiles():
+            profile_name = tree
             return from_profile(profile_name)
         typer.echo(
-            f"Not sure what to do with catalog {catalog!r}. "
+            f"Not sure what to do with tree {tree!r}. "
             "It does not look like a URI (it does not start with http[s]://) "
             "and it does not match any profiles. Use `tiled profiles list` to "
             "see profiles."

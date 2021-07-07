@@ -19,17 +19,17 @@ from .authentication import DEFAULT_TOKEN_CACHE, reauthenticate_client
 from .base import BaseClient
 from .utils import (
     client_and_path_from_uri,
-    client_from_catalog,
+    client_from_tree,
     NEEDS_INITIALIZATION,
 )
-from ..catalogs.utils import (
-    catalog_repr,
+from ..trees.utils import (
+    tree_repr,
     IndexersMixin,
     UNCHANGED,
 )
 
 
-class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
+class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
@@ -38,38 +38,38 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         "numpy": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
-                    "..array", Catalog.__module__
+                    "..array", Tree.__module__
                 ).ArrayClient,
                 "dataframe": lambda: importlib.import_module(
-                    "..dataframe", Catalog.__module__
+                    "..dataframe", Tree.__module__
                 ).DataFrameClient,
                 "variable": lambda: importlib.import_module(
-                    "..xarray", Catalog.__module__
+                    "..xarray", Tree.__module__
                 ).VariableClient,
                 "data_array": lambda: importlib.import_module(
-                    "..xarray", Catalog.__module__
+                    "..xarray", Tree.__module__
                 ).DataArrayClient,
                 "dataset": lambda: importlib.import_module(
-                    "..xarray", Catalog.__module__
+                    "..xarray", Tree.__module__
                 ).DatasetClient,
             }
         ),
         "dask": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
-                    "..array", Catalog.__module__
+                    "..array", Tree.__module__
                 ).DaskArrayClient,
                 "dataframe": lambda: importlib.import_module(
-                    "..dataframe", Catalog.__module__
+                    "..dataframe", Tree.__module__
                 ).DaskDataFrameClient,
                 "variable": lambda: importlib.import_module(
-                    "..xarray", Catalog.__module__
+                    "..xarray", Tree.__module__
                 ).DaskVariableClient,
                 "data_array": lambda: importlib.import_module(
-                    "..xarray", Catalog.__module__
+                    "..xarray", Tree.__module__
                 ).DaskDataArrayClient,
                 "dataset": lambda: importlib.import_module(
-                    "..xarray", Catalog.__module__
+                    "..xarray", Tree.__module__
                 ).DaskDatasetClient,
             }
         ),
@@ -95,7 +95,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         Search the software environment for libraries that register special clients.
 
-        This is called once automatically the first time Catalog.from_uri
+        This is called once automatically the first time Tree.from_uri
         is called. You may call it again manually to refresh, and it will
         reflect any changes to the environment since it was first populated.
         """
@@ -111,25 +111,25 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_client(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_client is deperecated and will be removed. "
+            "The classmethod Tree.from_client is deperecated and will be removed. "
             "Use the function tiled.client.from_client instead."
         )
         return from_client(*args, **kwargs)
 
     @classmethod
-    def from_catalog(cls, *args, **kwargs):
+    def from_tree(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_catalog is being considered "
+            "The classmethod Tree.from_tree is being considered "
             "for deperecation and may be removed. "
-            "The function tiled.client.from_catalog may be used instead.",
+            "The function tiled.client.from_tree may be used instead.",
             PendingDeprecationWarning,
         )
-        return from_catalog(*args, **kwargs)
+        return from_tree(*args, **kwargs)
 
     @classmethod
     def from_uri(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_uri is being considered "
+            "The classmethod Tree.from_uri is being considered "
             "for deperecation and may be removed. "
             "The function tiled.client.from_uri may be used instead.",
             PendingDeprecationWarning,
@@ -139,7 +139,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_profile(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_profile is being considered "
+            "The classmethod Tree.from_profile is being considered "
             "for deperecation and may be removed. "
             "The function tiled.client.from_profile may be used instead.",
             PendingDeprecationWarning,
@@ -149,7 +149,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_config(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Catalog.from_config is being considered "
+            "The classmethod Tree.from_config is being considered "
             "for deperecation and may be removed. "
             "The function tiled.client.from_config may be used instead.",
             PendingDeprecationWarning,
@@ -174,7 +174,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         queries=None,
         sorting=None,
     ):
-        "This is not user-facing. Use Catalog.from_uri."
+        "This is not user-facing. Use Tree.from_uri."
 
         self.structure_clients = structure_clients
         self.special_clients = special_clients
@@ -215,12 +215,12 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
-        return catalog_repr(self, self._keys_slice(0, N, direction=1))
+        return tree_repr(self, self._keys_slice(0, N, direction=1))
 
     @property
     def sorting(self):
         """
-        The current sorting of this Catalog
+        The current sorting of this Tree
 
         Given as a list of tuples where the first entry is the sorting key
         and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
@@ -229,7 +229,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def touch(self):
         """
-        Access all the data in this Catalog.
+        Access all the data in this Tree.
 
         This causes it to be cached if the client is configured with a cache.
         """
@@ -241,14 +241,14 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _get_class(self, item):
         # The basic structure of the response is either one of the structure_clients
-        # we know about or a sub-Catalog.
+        # we know about or a sub-Tree.
         if item["type"] == "reader":
             structure_family = item["attributes"]["structure_family"]
             try:
                 return self.structure_clients[structure_family]
             except KeyError:
                 raise UnknownStructureFamily(structure_family) from None
-        # If a catalog, server can hint that we should use a special variant
+        # If a tree, server can hint that we should use a special variant
         # that might have a special __repr__, or extra methods for usability,
         # etc.
         client_type_hint = item["attributes"].get("client_type_hint")
@@ -265,8 +265,8 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
                 )
             else:
                 return class_
-        # This is generally just Catalog, but if the original
-        # user-created catalog was a subclass of Catalog, this will
+        # This is generally just Tree, but if the original
+        # user-created tree was a subclass of Tree, this will
         # repsect that.
         return self._root_client_type
 
@@ -277,7 +277,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         This is intended primarily for internal use and use by subclasses.
         """
         class_ = self._get_class(item)
-        if item["type"] == "catalog":
+        if item["type"] == "tree":
             return class_(
                 client=self._client,
                 username=self._username,
@@ -317,12 +317,12 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         **kwargs,
     ):
         """
-        Create a copy of this Catalog, optionally varying some parameters.
+        Create a copy of this Tree, optionally varying some parameters.
 
         This is intended primarily for intenal use and use by subclasses.
         """
         if isinstance(structure_clients, str):
-            structure_clients = Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
+            structure_clients = Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
                 structure_clients
             ]
         if structure_clients is UNCHANGED:
@@ -388,7 +388,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def __getitem__(self, key):
-        # Lookup this key *within the search results* of this Catalog.
+        # Lookup this key *within the search results* of this Tree.
         content = self._get_json_with_cache(
             self.item["links"]["search"],
             params={
@@ -550,13 +550,13 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def search(self, query):
         """
-        Make a Catalog with a subset of this Catalog's entries, filtered by query.
+        Make a Tree with a subset of this Tree's entries, filtered by query.
 
         Examples
         --------
 
         >>> from tiled.queries import FullText
-        >>> catalog.search(FullText("hello"))
+        >>> tree.search(FullText("hello"))
         """
         return self.new_variation(
             queries=self._queries + [query],
@@ -564,7 +564,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def sort(self, sorting):
         """
-        Make a Catalog with the same entries but sorted according to `sorting`.
+        Make a Tree with the same entries but sorted according to `sorting`.
 
         Examples
         --------
@@ -572,7 +572,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         Sort by "color" in ascending order, and then by "height" in descending order.
 
         >>> from tiled.client import ASCENDING, DESCENDING
-        >>> catalog.sort([("color", ASCENDING), ("height", DESCENDING)])
+        >>> tree.sort([("color", ASCENDING), ("height", DESCENDING)])
 
         Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
         may be used as a synonym for ``DESCENDING``.
@@ -591,7 +591,7 @@ class Catalog(BaseClient, collections.abc.Mapping, IndexersMixin):
         try:
             if len(self) > MAX_ENTRIES_SUPPORTED:
                 MSG = (
-                    "Tab-completition is not supported on this particular Catalog "
+                    "Tab-completition is not supported on this particular Tree "
                     "because it has a large number of entries."
                 )
                 warnings.warn(MSG)
@@ -641,7 +641,7 @@ def from_uri(
     verify=True,
 ):
     """
-    Connect to a Catalog on a local or remote server.
+    Connect to a Tree on a local or remote server.
 
     Parameters
     ----------
@@ -653,7 +653,7 @@ def from_uri(
         DataFrames). For advanced use, provide dict mapping
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
-        ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        ``Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
@@ -663,9 +663,9 @@ def from_uri(
         Path to directory for storing refresh tokens.
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
-        catalog objects. See also
-        ``Catalog.discover_special_clients()`` and
-        ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        tree objects. See also
+        ``Tree.discover_special_clients()`` and
+        ``Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     verify: bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
@@ -683,8 +683,8 @@ def from_uri(
     )
 
 
-def from_catalog(
-    catalog,
+def from_tree(
+    tree,
     authentication=None,
     server_settings=None,
     structure_clients="numpy",
@@ -696,7 +696,7 @@ def from_catalog(
     token_cache=DEFAULT_TOKEN_CACHE,
 ):
     """
-    Connect to a Catalog directly, running the app in this same process.
+    Connect to a Tree directly, running the app in this same process.
 
     NOTE: This is experimental. It may need to be re-designed or even removed.
 
@@ -709,7 +709,7 @@ def from_catalog(
 
     Parameters
     ----------
-    catalog : Catalog
+    tree : Tree
     authentication : dict, optional
         Dict of authentication configuration.
     username : str, optional
@@ -720,20 +720,20 @@ def from_catalog(
         DataFrames). For advanced use, provide dict mapping
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
-        ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        ``Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
-        catalog objects. See also
-        ``Catalog.discover_special_clients()`` and
-        ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        tree objects. See also
+        ``Tree.discover_special_clients()`` and
+        ``Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     """
-    client = client_from_catalog(
-        catalog=catalog,
+    client = client_from_tree(
+        tree=tree,
         authentication=authentication,
         server_settings=server_settings,
     )
@@ -763,7 +763,7 @@ def from_client(
     token_cache=DEFAULT_TOKEN_CACHE,
 ):
     """
-    Advanced: Connect to a Catalog using a custom instance of httpx.Client or httpx.AsyncClient.
+    Advanced: Connect to a Tree using a custom instance of httpx.Client or httpx.AsyncClient.
 
     Parameters
     ----------
@@ -775,7 +775,7 @@ def from_client(
         DataFrames). For advanced use, provide dict mapping
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
-        ``Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        ``Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
     username : str, optional
         Username for authenticated access.
     cache : Cache, optional
@@ -783,26 +783,26 @@ def from_client(
         False by default. If True, rely on cache only.
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
-        catalog objects. See also
-        ``Catalog.discover_special_clients()`` and
-        ``Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        tree objects. See also
+        ``Tree.discover_special_clients()`` and
+        ``Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     """
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
-        structure_clients = Catalog.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
+        structure_clients = Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     path = path or []
     # Do entrypoint discovery if it hasn't yet been done.
-    if Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
-        Catalog.discover_special_clients()
+    if Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
+        Tree.discover_special_clients()
     special_clients = collections.ChainMap(
         special_clients or {},
-        Catalog.DEFAULT_SPECIAL_CLIENT_DISPATCH,
+        Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
     if username is not None:
         reauthenticate_client(client, username, token_cache=token_cache)
-    instance = Catalog(
+    instance = Tree(
         client,
         item=NEEDS_INITIALIZATION,
         username=username,
@@ -812,7 +812,7 @@ def from_client(
         structure_clients=structure_clients,
         cache=cache,
         special_clients=special_clients,
-        root_client_type=Catalog,
+        root_client_type=Tree,
         token_cache=token_cache,
     )
 
@@ -825,7 +825,7 @@ def from_client(
 
 def from_profile(name, structure_clients=None, **kwargs):
     """
-    Build a Catalog based a 'profile' (a named configuration).
+    Build a Tree based a 'profile' (a named configuration).
 
     List available profiles and the source filepaths from Python like:
 
@@ -895,19 +895,19 @@ def from_profile(name, structure_clients=None, **kwargs):
     if "direct" in merged:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.
-        from ..config import construct_serve_catalog_kwargs
+        from ..config import construct_serve_tree_kwargs
 
-        serve_catalog_kwargs = construct_serve_catalog_kwargs(
+        serve_tree_kwargs = construct_serve_tree_kwargs(
             merged.pop("direct", None), source_filepath=filepath
         )
-        return from_catalog(**serve_catalog_kwargs, **merged)
+        return from_tree(**serve_tree_kwargs, **merged)
     else:
         return from_uri(**merged)
 
 
 def from_config(config):
     """
-    Build Catalogs directly, running the app in this same process.
+    Build Trees directly, running the app in this same process.
 
     NOTE: This is experimental. It may need to be re-designed or even removed.
 
@@ -935,10 +935,10 @@ def from_config(config):
 
     >>> from_config(
             {
-                "catalogs":
+                "trees":
                     [
                         "path": "/",
-                        "catalog": "tiled.files.Catalog.from_files",
+                        "tree": "tiled.files.Tree.from_files",
                         "args": {"diretory": "path/to/files"}
                     ]
             }
@@ -947,8 +947,8 @@ def from_config(config):
 
     from ..config import direct_access
 
-    catalog = direct_access(config)
-    return from_catalog(catalog)
+    tree = direct_access(config)
+    return from_tree(tree)
 
 
 class Ascending(Sentinel):

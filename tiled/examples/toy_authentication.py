@@ -6,7 +6,7 @@ import numpy
 
 from tiled.utils import SpecialUsers
 from tiled.readers.array import ArrayAdapter
-from tiled.catalogs.in_memory import Catalog, SimpleAccessPolicy
+from tiled.trees.in_memory import Tree, SimpleAccessPolicy
 
 
 # Specify which entries each user is allowed to use.
@@ -19,8 +19,8 @@ access_policy = SimpleAccessPolicy(
         "cara": SimpleAccessPolicy.ALL,
     }
 )
-# Make a Catalog with a couple arrays in it.
-catalog = Catalog(
+# Make a Tree with a couple arrays in it.
+tree = Tree(
     {
         "A": ArrayAdapter.from_array(10 * numpy.ones((10, 10))),
         "B": ArrayAdapter.from_array(20 * numpy.ones((10, 10))),

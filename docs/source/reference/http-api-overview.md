@@ -16,10 +16,10 @@ and {doc}`authentication` for details.
 ## Overview
 
 The routes are generally spelled like ``GET /{action}/{path}/``, like GitHub
-repository URLs, with the path following the structure of the Catalog
+repository URLs, with the path following the structure of the Tree
 entries.
 
-The ``GET /entries`` route lists Catalogs and provides configurable subset of
+The ``GET /entries`` route lists Trees and provides configurable subset of
 the metadata about each entry. The ``GET /search`` route provides a subset of
 the entries matching a query.
 
@@ -39,7 +39,7 @@ refresh token and responds with a new set of tokens.
 ## Reference
 
 To view and try the *interactive* docs, start the Tiled server with the demo
-Catalog from a Terminal
+Tree from a Terminal
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo

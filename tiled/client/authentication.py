@@ -7,7 +7,7 @@ import appdirs
 
 from .utils import (
     client_and_path_from_uri,
-    client_from_catalog,
+    client_from_tree,
     handle_error,
 )
 
@@ -27,8 +27,8 @@ def _token_directory(token_cache, netloc, username):
     )
 
 
-def login(catalog, username=None, *, token_cache=DEFAULT_TOKEN_CACHE):
-    client, uri = _client_and_uri_from_uri_or_profile(catalog)
+def login(tree, username=None, *, token_cache=DEFAULT_TOKEN_CACHE):
+    client, uri = _client_and_uri_from_uri_or_profile(tree)
     authenticate_client(client, username, token_cache=token_cache)
 
 
@@ -135,25 +135,25 @@ def _client_and_uri_from_uri_or_profile(uri_or_profile):
             elif "direct" in profile_content:
                 # The profiles specifies that there is no server. We should create
                 # an app ourselves and use it directly via ASGI.
-                from ..config import construct_serve_catalog_kwargs
+                from ..config import construct_serve_tree_kwargs
 
-                serve_catalog_kwargs = construct_serve_catalog_kwargs(
+                serve_tree_kwargs = construct_serve_tree_kwargs(
                     profile_content.pop("direct", None), source_filepath=filepath
                 )
-                client = client_from_catalog(**serve_catalog_kwargs)
+                client = client_from_tree(**serve_tree_kwargs)
                 PLACEHOLDER = "__process_local_app__"
                 return client, PLACEHOLDER
             else:
                 raise ValueError("Invalid profile content")
 
-    raise CatalogValueError(
-        f"Not sure what to do with catalog {uri_or_profile!r}. "
+    raise TreeValueError(
+        f"Not sure what to do with tree {uri_or_profile!r}. "
         "It does not look like a URI (it does not start with http[s]://) "
         "and it does not match any profiles."
     )
 
 
-class CatalogValueError(ValueError):
+class TreeValueError(ValueError):
     pass
 
 
