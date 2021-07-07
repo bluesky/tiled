@@ -213,8 +213,67 @@ from Mozilla's web developer documentation.
 https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
 
-(schema_root_path)=
-## root_path
+(schema_uvicorn)=
+## uvicorn
+
+(schema_uvicorn.host)=
+### uvicorn.host
+
+Bind socket to this host. Use `--host 0.0.0.0` to make the application
+available on your local network. IPv6 addresses are supported, for
+for example --host `'::'`. Default `'127.0.0.1'`.
+
+
+(schema_uvicorn.port)=
+### uvicorn.port
+
+Bind to a socket with this port. Default `8000`.
+
+(schema_uvicorn.workers)=
+### uvicorn.workers
+
+Use multiple worker processes. Defaults to the `$WEB_CONCURRENCY`
+environment variable if available, or `1`.
+
+
+(schema_uvicorn.root_path)=
+### uvicorn.root_path
 
 Configure the application with a root_path when it is behind a proxy
 serving it on some path prefix.
+
+
+(schema_uvicorn.ssl_keyfile)=
+### uvicorn.ssl_keyfile
+
+SSL key file
+
+(schema_uvicorn.ssl_certfile)=
+### uvicorn.ssl_certfile
+
+SSL certificate file
+
+(schema_uvicorn.ssl_keyfile_password)=
+### uvicorn.ssl_keyfile_password
+
+SSL keyfile password
+
+(schema_uvicorn.ssl_version)=
+### uvicorn.ssl_version
+
+SSL version to use (see stdlib ssl module's). Default 2.
+
+(schema_uvicorn.ssl_cert_reqs)=
+### uvicorn.ssl_cert_reqs
+
+Whether client certificate is required (see stdlib ssl module's). Default 0.
+
+(schema_uvicorn.ssl_ca_certs)=
+### uvicorn.ssl_ca_certs
+
+CA certificates file
+
+(schema_uvicorn.ssl_ciphers)=
+### uvicorn.ssl_ciphers
+
+Ciphers to use (see stdlib ssl module's). Default TLSv1.

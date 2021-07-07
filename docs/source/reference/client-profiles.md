@@ -80,7 +80,7 @@ Maximum memory (in bytes) that the cache may consume.
 For readability it is recommended to use `_` for thousands separators.
 Example:
 
-```
+```yaml
 available_bytes: 2_000_000_000  # 2GB
 ```
 
@@ -117,7 +117,7 @@ Maximum storage space (in bytes) that the cache may consume.
 For readability it is recommended to use `_` for thousands separators.
 Example:
 
-```
+```yaml
 available_bytes: 2_000_000_000  # 2GB
 ```
 
@@ -147,3 +147,5 @@ items from the cache until it fits in available_bytes. False by default.
 
 Filepath to directory of access tokens.
 Default location is usually suitable.
+The default is system-dependent and can be inspected at
+`tiled.client.authentication.DEFAULT_TILED_TOKEN_CACHE`.
