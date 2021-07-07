@@ -39,8 +39,8 @@ class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."
 
 
-def client_from_catalog(catalog, authentication, server_settings):
-    from ..server.app import serve_catalog
+def client_from_tree(tree, authentication, server_settings):
+    from ..server.app import serve_tree
 
     authentication = authentication or {}
     server_settings = server_settings or {}
@@ -48,14 +48,14 @@ def client_from_catalog(catalog, authentication, server_settings):
     if (authentication.get("authenticator") is None) and (
         authentication.get("single_user_api_key") is None
     ):
-        # Generate the key here instead of letting serve_catalog do it for us,
+        # Generate the key here instead of letting serve_tree do it for us,
         # so that we can give it to the client below.
         single_user_api_key = os.getenv(
             "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
         )
         authentication["single_user_api_key"] = single_user_api_key
         params["api_key"] = single_user_api_key
-    app = serve_catalog(catalog, authentication, server_settings)
+    app = serve_tree(tree, authentication, server_settings)
 
     # Only an AsyncClient can be used over ASGI.
     # We wrap all the async methods in a call to asyncio.run(...).

@@ -14,56 +14,56 @@ $schema": http://json-schema.org/draft-07/schema#
 type: object
 additionalProperties: false
 required:
-  - catalogs
+  - trees
 properties:
-  catalogs:
+  trees:
     description: |
       This section contains a *list* of one or more items,
-      each describing a Catalog to be served.
+      each describing a Tree to be served.
     type: array
     items:
       type: object
       required:
-        - catalog
+        - tree
         - path
       additionalProperties: false
       properties:
-        catalog:
+        tree:
           type: string
           description: |
-            Type of catalog to serve. This may be:
+            Type of tree to serve. This may be:
 
             - The string `files`, a shorthand for serving a directory of files.
-            - An import path to a Catalog *instance*.
+            - An import path to a Tree *instance*.
             - An import path to a callable (function or type) that returns a
-              Catalog. For these, the `args:` parameter below must be used as well.
+              Tree. For these, the `args:` parameter below must be used as well.
 
             In an import path, packages/modules are separated by dots,
             and the object itself it separated by a colon.
 
             Examples:
 
-                # Catalog instances
-                tiled.examples.generated_minimal:catalog
+                # Tree instances
+                tiled.examples.generated_minimal:tree
                 tiled examples.generated:demo
-                my_python_module:my_catalog_instance
+                my_python_module:my_tree_instance
 
-                # Callables that return Catalog instances
-                tiled.catalogs.files:Catalog.from_directory
-                my_python_module:CustomCatalog
+                # Callables that return Tree instances
+                tiled.trees.files:Tree.from_directory
+                my_python_module:CustomTree
 
         path:
           type: string
           description: |
-            URL subpath for to serve this Catalog on.
+            URL subpath for to serve this Tree on.
             A good default choice is `"/"` if you are serving
-            one Catalog.
+            one Tree.
         args:
           type: [object, "null"]
           additionalProperties: true
           description: |
-            If `catalog:` is set to `files` or some callable that returns a
-            Catalog, this parameter must be included. It may contain named
+            If `tree:` is set to `files` or some callable that returns a
+            Tree, this parameter must be included. It may contain named
             arguments to pass to the callable. It may be empty or `null` if the
             callable requires no arguments.
 
@@ -71,7 +71,7 @@ properties:
 
             ```yaml
             - path: "/"
-              catalog: tiled.catalogs.files:Catalog.from_directory
+              tree: tiled.trees.files:Tree.from_directory
               args:
                 directory: "path/to/files"
             ```

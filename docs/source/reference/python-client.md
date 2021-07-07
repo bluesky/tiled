@@ -22,14 +22,14 @@ These are typically used for development and debugging only.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.from_catalog
+   tiled.client.from_tree
    tiled.client.from_config
    tiled.client.from_client
 ```
 
-## Client Catalog
+## Client Tree
 
-The Catalog interface extends the ``collections.abc.Mapping`` (i.e. read-only
+The Tree interface extends the ``collections.abc.Mapping`` (i.e. read-only
 dict) interface, so it supports these standard "magic methods":
 
 * `__getitem__` (lookup with `[]`)
@@ -42,10 +42,10 @@ as well as:
 .. autosummary::
    :toctree: generated
 
-   tiled.client.catalog.Catalog.get
-   tiled.client.catalog.Catalog.keys
-   tiled.client.catalog.Catalog.items
-   tiled.client.catalog.Catalog.values
+   tiled.client.tree.Tree.get
+   tiled.client.tree.Tree.keys
+   tiled.client.tree.Tree.items
+   tiled.client.tree.Tree.values
 ```
 
 It adds the following attributes
@@ -54,32 +54,32 @@ It adds the following attributes
 .. autosummary::
    :toctree: generated
 
-   tiled.client.catalog.Catalog.metadata
-   tiled.client.catalog.Catalog.sorting
-   tiled.client.catalog.Catalog.path
-   tiled.client.catalog.Catalog.uri
+   tiled.client.tree.Tree.metadata
+   tiled.client.tree.Tree.sorting
+   tiled.client.tree.Tree.path
+   tiled.client.tree.Tree.uri
 ```
 
-And it adds these methods, which return a new Catalog instance.
+And it adds these methods, which return a new Tree instance.
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.client.catalog.Catalog.search
-   tiled.client.catalog.Catalog.sort
+   tiled.client.tree.Tree.search
+   tiled.client.tree.Tree.sort
 ```
 
 Finally, it adds attributes that provide efficient positional-based lookup,
-as in ``catalog.values_indexer[500:600]``.
+as in ``tree.values_indexer[500:600]``.
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.client.catalog.Catalog.keys_indexer
-   tiled.client.catalog.Catalog.items_indexer
-   tiled.client.catalog.Catalog.values_indexer
+   tiled.client.tree.Tree.keys_indexer
+   tiled.client.tree.Tree.items_indexer
+   tiled.client.tree.Tree.values_indexer
 ```
 
 Finally, it exposes these methods, which are used internally and may be useful
@@ -89,9 +89,9 @@ in advanced applications.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.catalog.Catalog.client_for_item
-   tiled.client.catalog.Catalog.new_variation
-   tiled.client.catalog.Catalog.touch
+   tiled.client.tree.Tree.client_for_item
+   tiled.client.tree.Tree.new_variation
+   tiled.client.tree.Tree.touch
 ```
 
 ## Structure Clients

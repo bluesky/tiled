@@ -13,7 +13,7 @@ practical guide with examples.
 If there are multiple configuration files:
 
 * At most one may contain an ``authentication:`` section.
-* More than one may contain a ``catalog:`` section, but if the same ``path``
+* More than one may contain a ``tree:`` section, but if the same ``path``
   occurs in more than one file, or if colliding paths like ``/a`` and ``/a/b``
   are specified, an exception will be raised.
 * If there is more than one ``allow_origins`` section their contents are merged.
@@ -23,51 +23,51 @@ If there are multiple configuration files:
 The content below is automatically generated from a schema that is used
 to validate configuration files when they are read.
 
-(schema_catalogs)=
-## catalogs
+(schema_trees)=
+## trees
 
 This section contains a *list* of one or more items,
-each describing a Catalog to be served.
+each describing a Tree to be served.
 
 
-(schema_catalogs.catalog)=
-### catalogs[item].catalog
+(schema_trees.tree)=
+### trees[item].tree
 
-Type of catalog to serve. This may be:
+Type of tree to serve. This may be:
 
 - The string `files`, a shorthand for serving a directory of files.
-- An import path to a Catalog *instance*.
+- An import path to a Tree *instance*.
 - An import path to a callable (function or type) that returns a
-  Catalog. For these, the `args:` parameter below must be used as well.
+  Tree. For these, the `args:` parameter below must be used as well.
 
 In an import path, packages/modules are separated by dots,
 and the object itself it separated by a colon.
 
 Examples:
 
-    # Catalog instances
-    tiled.examples.generated_minimal:catalog
+    # Tree instances
+    tiled.examples.generated_minimal:tree
     tiled examples.generated:demo
-    my_python_module:my_catalog_instance
+    my_python_module:my_tree_instance
 
-    # Callables that return Catalog instances
-    tiled.catalogs.files:Catalog.from_directory
-    my_python_module:CustomCatalog
+    # Callables that return Tree instances
+    tiled.trees.files:Tree.from_directory
+    my_python_module:CustomTree
 
 
-(schema_catalogs.path)=
-### catalogs[item].path
+(schema_trees.path)=
+### trees[item].path
 
-URL subpath for to serve this Catalog on.
+URL subpath for to serve this Tree on.
 A good default choice is `"/"` if you are serving
-one Catalog.
+one Tree.
 
 
-(schema_catalogs.args)=
-### catalogs[item].args
+(schema_trees.args)=
+### trees[item].args
 
-If `catalog:` is set to `files` or some callable that returns a
-Catalog, this parameter must be included. It may contain named
+If `tree:` is set to `files` or some callable that returns a
+Tree, this parameter must be included. It may contain named
 arguments to pass to the callable. It may be empty or `null` if the
 callable requires no arguments.
 
@@ -75,7 +75,7 @@ Example:
 
 ```yaml
 - path: "/"
-  catalog: tiled.catalogs.files:Catalog.from_directory
+  tree: tiled.trees.files:Tree.from_directory
   args:
     directory: "path/to/files"
 ```

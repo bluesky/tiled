@@ -17,7 +17,7 @@ from .authentication import (
     authentication_router,
     get_authenticator,
 )
-from .core import get_root_catalog, PatchedStreamingResponse
+from .core import get_root_tree, PatchedStreamingResponse
 from .router import declare_search_router, router
 from .settings import get_settings
 
@@ -164,17 +164,17 @@ def custom_openapi(app):
     return app.openapi_schema
 
 
-def serve_catalog(
-    catalog,
+def serve_tree(
+    tree,
     authentication=None,
     server_settings=None,
 ):
     """
-    Serve a Catalog
+    Serve a Tree
 
     Parameters
     ----------
-    catalog : Catalog
+    tree : Tree
     authentication: dict, optional
         Dict of authentication configuration.
     server_settings: dict, optional
@@ -189,8 +189,8 @@ def serve_catalog(
         return authenticator
 
     @lru_cache(1)
-    def override_get_root_catalog():
-        return catalog
+    def override_get_root_tree():
+        return tree
 
     @lru_cache(1)
     def override_get_settings():
@@ -210,16 +210,16 @@ def serve_catalog(
                 setattr(settings, item, server_settings[item])
         return settings
 
-    # The Catalog and Authenticator have the opportunity to add custom routes to
-    # the server here. (Just for example, a Catalog of BlueskyRuns uses this
+    # The Tree and Authenticator have the opportunity to add custom routes to
+    # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
     include_routers = []
-    include_routers.extend(getattr(catalog, "include_routers", []))
+    include_routers.extend(getattr(tree, "include_routers", []))
     include_routers.extend(getattr(authenticator, "include_routers", []))
     app = get_app(include_routers=include_routers)
     app.dependency_overrides[get_authenticator] = override_get_authenticator
-    app.dependency_overrides[get_root_catalog] = override_get_root_catalog
+    app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
     return app
 
@@ -236,13 +236,13 @@ def app_factory():
     """
     config_path = os.getenv("TILED_CONFIG", "config.yml")
 
-    from ..config import construct_serve_catalog_kwargs, parse_configs
+    from ..config import construct_serve_tree_kwargs, parse_configs
 
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_catalog_kwargs(parsed_config, validate=False)
-    web_app = serve_catalog(**kwargs)
+    kwargs = construct_serve_tree_kwargs(parsed_config, validate=False)
+    web_app = serve_tree(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_config["host"], port=uvicorn_config["port"]

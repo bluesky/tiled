@@ -1,4 +1,4 @@
-# Serve Catalogs using Configuration Files
+# Serve Trees using Configuration Files
 
 For all but the simplest deployments, a configuration file is needed to spell
 out all the options.
@@ -56,9 +56,9 @@ tiled serve directory path/to/files
 is equivalent to
 
 ```yaml
-catalogs:
+trees:
     - path: /
-      catalog: tiled.catalogs.files:Catalog.from_directory
+      tree: tiled.trees.files:Tree.from_directory
       args:
           directory: "path/to/files"
 ```
@@ -66,15 +66,15 @@ catalogs:
 And the simple deployment
 
 ```
-tiled serve pyobject tiled.examples.generated_minimal:catalog
+tiled serve pyobject tiled.examples.generated_minimal:tree
 ```
 
 is equivalent to
 
 ```yaml
-catalogs:
+trees:
     - path: /
-      catalog: tiled.examples.generated_minimal:catalog
+      tree: tiled.examples.generated_minimal:tree
 ```
 
 ## Less simple examples
@@ -82,25 +82,25 @@ catalogs:
 ### Serve two different directories at different sub-paths
 
 ```yaml
-catalogs:
+trees:
     - path: /a
-      catalog: tiled.catalogs.files:Catalog.from_directory
+      tree: tiled.trees.files:Tree.from_directory
       args:
           directory: "path/to/files"
     - path: /b
-      catalog: tiled.catalogs.files:Catalog.from_directory
+      tree: tiled.trees.files:Tree.from_directory
       args:
           directory: "path/to/other/files"
 ```
 
-### Serve two different catalog objects are different sub-paths
+### Serve two different tree objects are different sub-paths
 
 ```yaml
-catalogs:
+trees:
     - path: /a
-      catalog: tiled.examples.generated_minimal:catalog
+      tree: tiled.examples.generated_minimal:tree
     - path: /b
-      catalog: tiled.examples.generated:demo
+      tree: tiled.examples.generated:demo
 ```
 
 See {doc}`../explanations/security` and {doc}`../explanations/access-control` for examples addressing

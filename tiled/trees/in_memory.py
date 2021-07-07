@@ -10,9 +10,9 @@ from ..utils import (
 from .utils import IndexersMixin, UNCHANGED
 
 
-class Catalog(collections.abc.Mapping, IndexersMixin):
+class Tree(collections.abc.Mapping, IndexersMixin):
     """
-    A Catalog backed by a mapping.
+    A Tree backed by a mapping.
     """
 
     __slots__ = (
@@ -22,7 +22,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         "_mapping",
         "_metadata",
     )
-    # Define classmethods for managing what queries this Catalog knows.
+    # Define classmethods for managing what queries this Tree knows.
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
@@ -31,7 +31,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
         self, mapping, metadata=None, access_policy=None, authenticated_identity=None
     ):
         """
-        Create a simple Catalog from any mapping (e.g. dict, OneShotCachedMap).
+        Create a simple Tree from any mapping (e.g. dict, OneShotCachedMap).
 
         Parameters
         ----------
@@ -46,7 +46,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
             not access_policy.check_compatibility(self)
         ):
             raise ValueError(
-                f"Access policy {access_policy} is not compatible with this Catalog."
+                f"Access policy {access_policy} is not compatible with this Tree."
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
@@ -63,7 +63,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     @property
     def metadata(self):
-        "Metadata about this Catalog."
+        "Metadata about this Tree."
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
         # persistent.
@@ -87,13 +87,13 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
                 f"Already authenticated as {self.authenticated_identity}"
             )
         if self._access_policy is not None:
-            catalog = self._access_policy.filter_results(
+            tree = self._access_policy.filter_results(
                 self,
                 identity,
             )
         else:
-            catalog = self.new_variation(authenticated_identity=identity)
-        return catalog
+            tree = self.new_variation(authenticated_identity=identity)
+        return tree
 
     def new_variation(
         self,
@@ -120,7 +120,7 @@ class Catalog(collections.abc.Mapping, IndexersMixin):
 
     def search(self, query):
         """
-        Return a Catalog with a subset of the mapping.
+        Return a Tree with a subset of the mapping.
         """
         return self.query_registry(query, self)
 
@@ -191,7 +191,7 @@ def walk_string_values(tree, node=None):
                     yield item
 
 
-def full_text_search(query, catalog):
+def full_text_search(query, tree):
     matches = {}
     text = query.text
     if query.case_sensitive:
@@ -203,7 +203,7 @@ def full_text_search(query, catalog):
     else:
         maybe_lower = str.lower
     query_words = set(text.split())
-    for key, value in catalog.items():
+    for key, value in tree.items():
         words = set(
             word
             for s in walk_string_values(value.metadata)
@@ -214,36 +214,36 @@ def full_text_search(query, catalog):
         # and then bails, whereas `intersection` proceeds to find all matches.
         if not words.isdisjoint(query_words):
             matches[key] = value
-    return catalog.new_variation(mapping=matches)
+    return tree.new_variation(mapping=matches)
 
 
-def key_lookup(query, catalog):
+def key_lookup(query, tree):
     try:
-        matches = {query.key: catalog[query.key]}
+        matches = {query.key: tree[query.key]}
     except KeyError:
         matches = {}
-    return catalog.new_variation(mapping=matches)
+    return tree.new_variation(mapping=matches)
 
 
-Catalog.register_query(FullText, full_text_search)
-Catalog.register_query(KeyLookup, key_lookup)
+Tree.register_query(FullText, full_text_search)
+Tree.register_query(KeyLookup, key_lookup)
 
 
 class DummyAccessPolicy:
     "Impose no access restrictions."
 
-    def check_compatibility(self, catalog):
-        # This only works on in-memory Catalog or subclases.
-        return isinstance(catalog, Catalog)
+    def check_compatibility(self, tree):
+        # This only works on in-memory Tree or subclases.
+        return isinstance(tree, Tree)
 
     def modify_queries(self, queries, authenticated_identity):
         return queries
 
-    def filter_results(self, catalog, authenticated_identity):
-        return type(catalog)(
+    def filter_results(self, tree, authenticated_identity):
+        return type(tree)(
             mapping=self._mapping,
-            metadata=catalog.metadata,
-            access_policy=catalog.access_policy,
+            metadata=tree.metadata,
+            access_policy=tree.access_policy,
             authenticated_identity=authenticated_identity,
         )
 
@@ -260,22 +260,22 @@ class SimpleAccessPolicy:
     def __init__(self, access_lists):
         self.access_lists = access_lists
 
-    def check_compatibility(self, catalog):
-        # This only works on in-memory Catalog or subclases.
-        return isinstance(catalog, Catalog)
+    def check_compatibility(self, tree):
+        # This only works on in-memory Tree or subclases.
+        return isinstance(tree, Tree)
 
     def modify_queries(self, queries, authenticated_identity):
         return queries
 
-    def filter_results(self, catalog, authenticated_identity):
+    def filter_results(self, tree, authenticated_identity):
         allowed = self.access_lists.get(authenticated_identity, [])
         if (authenticated_identity is SpecialUsers.admin) or (allowed is self.ALL):
-            mapping = catalog._mapping
+            mapping = tree._mapping
         else:
-            mapping = {k: v for k, v in catalog._mapping.items() if k in allowed}
-        return type(catalog)(
+            mapping = {k: v for k, v in tree._mapping.items() if k in allowed}
+        return type(tree)(
             mapping=mapping,
-            metadata=catalog.metadata,
-            access_policy=catalog.access_policy,
+            metadata=tree.metadata,
+            access_policy=tree.access_policy,
             authenticated_identity=authenticated_identity,
         )

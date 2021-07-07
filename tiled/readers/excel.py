@@ -1,16 +1,16 @@
-from ..catalogs.in_memory import Catalog
+from ..trees.in_memory import Tree
 from .dataframe import DataFrameAdapter
 
 import dask.dataframe
 import pandas
 
 
-class ExcelReader(Catalog):
+class ExcelReader(Tree):
     """
     Read the sheets in an Excel file.
 
     This maps the Excel file, which may contain one of more spreadsheets,
-    onto a "Catalog" of tabular structures.
+    onto a "Tree" of tabular structures.
 
     Examples
     --------

@@ -4,15 +4,15 @@ Tiled offers extensible access control over which users can access
 which entries.
 
 This is implemented using an "Access Policy" object, which implements
-a given policy for certain types of Catalog. It can do this in one of two ways:
+a given policy for certain types of Tree. It can do this in one of two ways:
 
 1. Brute-force checking the entries one at a time
 2. Using a query to narrow down search results to those that
    the authenticated user is allowed to access.
 
-(1) is easier to implement and suitable for small- to medium-sized Catalogs
+(1) is easier to implement and suitable for small- to medium-sized Trees
 in memory or backed by a modestly-sized directory. (2) is necessary for large
-Catalogs backed by databases or other external services.
+Trees backed by databases or other external services.
 
 This is an example of (1):
 
@@ -25,9 +25,9 @@ The special key ``SpecialUsers.public`` designates entries that an
 unauthenticated (anonymous) user may access *if* the server is configured to
 allow anonymous access. (See {doc}`security`.) The special
 ``SimpleAccessPolicy.ALL`` designates that the user may access any entry
-in the Catalog.
+in the Tree.
 
-Here is an example configuration serving that catalog with a
+Here is an example configuration serving that tree with a
 "toy" authenticator that defines some users.
 
 ```{eval-rst}
@@ -41,4 +41,4 @@ ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve co
 ```
 
 There are no examples of (2) yet. The interface for doing so has been specified
-and will soon be implemented for a MongoDB-backed Catalog.
+and will soon be implemented for a MongoDB-backed Tree.

@@ -4,13 +4,13 @@ There are four user-facing objects in the system:
 
 * **Reader** -- extracts the metadata, structure, and (tiled) data from some
   source of store or generated data
-* **Catalog** -- nestable collection of other Catalogs or Readers
+* **Tree** -- nestable collection of other Trees or Readers
 * **Query** -- high-level description of a search query over entries in a
-  Catalog
+  Tree
 * **AccessPolicy** -- class with methods for enforcing access control on which
-  entries in a Catalog a given identity (user) can see
+  entries in a Tree a given identity (user) can see
 
-This specification proposes the Python API required to duck-type as a Catalog or
+This specification proposes the Python API required to duck-type as a Tree or
 Reader as well as a sample HTTP API based on
 [JSON API](https://jsonapi.org/).
 
@@ -62,63 +62,63 @@ Reader as well as a sample HTTP API based on
 * Readers MAY implement other methods beyond these for application-specific
   needs or usability.
 
-### Catalogs
+### Trees
 
-* Catalogs MUST implement the ``collections.abc.Mapping`` interface. That is:
+* Trees MUST implement the ``collections.abc.Mapping`` interface. That is:
 
   ```python
-  catalog.__getitem__
-  catalog.__iter__
+  tree.__getitem__
+  tree.__iter__
   ```
 
-  Catalogs may omit ``__len___`` as long as they provide
+  Trees may omit ``__len___`` as long as they provide
   [``__length_hint__``](https://www.python.org/dev/peps/pep-0424/), an estimated
-  length that may be less expensive for Catalogs backed by databases. That is,
+  length that may be less expensive for Trees backed by databases. That is,
   implement one or both of these:
 
   ```python
-  catalog.__len__
-  catalog.__length_hint__
+  tree.__len__
+  tree.__length_hint__
   ```
 
-* Catalogs MUST implement an attributes which support efficient positional
+* Trees MUST implement an attributes which support efficient positional
   lookup and slicing.
 
   ```python
-  catalog.keys_indexer[i]             # -> str
-  catalog.values_indexer[i]           # -> Union[Catalog, Reader]
-  catalog.items_indexer[i]            # -> Tuple[str, Union[Catalog, Reader]]
-  catalog.keys_indexer[start:stop]    # -> List[str]
-  catalog.items_indexer[start:stop]   # -> List[Union[Catalog, Reader]]
-  catalog.values_indexer[start:stop]  # -> List[Tuple[str, Union[Catalog, Reader]]]
+  tree.keys_indexer[i]             # -> str
+  tree.values_indexer[i]           # -> Union[Tree, Reader]
+  tree.items_indexer[i]            # -> Tuple[str, Union[Tree, Reader]]
+  tree.keys_indexer[start:stop]    # -> List[str]
+  tree.items_indexer[start:stop]   # -> List[Union[Tree, Reader]]
+  tree.values_indexer[start:stop]  # -> List[Tuple[str, Union[Tree, Reader]]]
   ```
 
 * It is NOT necessary to implemented strided slicing, as in ``[start:stop:5]``.
   It is sufficient to assume the stride is always 1.
 
-* The values in a Catalog MUST be other Catalogs or Readers.
+* The values in a Tree MUST be other Trees or Readers.
 
-* The keys in a Catalog MUST be non-empty strings adhering to the JSON API spec
+* The keys in a Tree MUST be non-empty strings adhering to the JSON API spec
   for allowed characters in resource ids.
 
-* Catalogs MUST implement a ``search`` method which accepts a ``Query`` as its
-  argument and returns another Catalog with a subset of the items.  specified.
+* Trees MUST implement a ``search`` method which accepts a ``Query`` as its
+  argument and returns another Tree with a subset of the items.  specified.
 
-* Catalogs MUST implement a ``metadata`` attribute or property which
+* Trees MUST implement a ``metadata`` attribute or property which
   returns a dict-like. This ``metadata`` is treated as user space, and no part
   of the server or client will rely on its contents.
 
-* Catalogs MAY implement other methods beyond these for application-specific
+* Trees MAY implement other methods beyond these for application-specific
   needs or usability.
 
 * The method for initializing this object is intentionally unspecified. There
   will be variety.
 
 * [This may need revisiting. Should it be qualified? Eliminated?] The items in a
-  Catalog MUST have an explicit and stable order.
+  Tree MUST have an explicit and stable order.
 
 * [This may need revisiting. Should it be qualified? Eliminated?] The data
-  underlying the Catalog may be updated to add items, even though the Catalog
+  underlying the Tree may be updated to add items, even though the Tree
   itself is a read-only view on that data. Any items added MUST be added to the
   end. Items may not be removed.
 
@@ -140,10 +140,10 @@ An ``AcessPolicy`` is tightly coupled to:
    is allowed to see?"
 
 We envision a custom ``AccessPolicy`` will be needed for every combination of
-(1) and (2). It is injected into a given ``Catalog`` at ``__init__`` time.
+(1) and (2). It is injected into a given ``Tree`` at ``__init__`` time.
 
 An ``AccessPolicy`` gets two opportunities to restrict the entries that a caller
-can see. First, a Catalog gives it the opportunity to modify a query before it
+can see. First, a Tree gives it the opportunity to modify a query before it
 is processed in order to restrict the set of results marshalled from storage.
 Second, it may filter the query results before they are returned to the user.
 Depending on the storage and the complexity of the data access rules, one or
@@ -154,8 +154,8 @@ both of these modes may be used by a given AccessPolicy.
   filter the result at the database level so that less data is marshalled from
   storage.
 * An AccessPolicy MUST implement a method
-  ``filter_results(catalog, authenticated_identity: str) -> Catalog``
+  ``filter_results(tree, authenticated_identity: str) -> Tree``
 * An AccessPolicy MUST implement a method
-  ``check_compatibility(catalog) -> bool`` which can be used by the Catalog to
+  ``check_compatibility(tree) -> bool`` which can be used by the Tree to
   verify at its ``__init___`` time that the ``AccessPolicy`` it has been given
   understands how to modify its queries.

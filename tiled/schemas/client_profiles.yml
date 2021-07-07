@@ -35,7 +35,7 @@ properties:
   username:
     type: string
     description: |
-      For authenticated Catalogs. Optional unless the Catalog requires authentication.
+      For authenticated Trees. Optional unless the Tree requires authentication.
   offline:
     type: boolean
     description: |

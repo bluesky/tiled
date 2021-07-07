@@ -7,8 +7,8 @@ import numpy
 
 from .array import ArrayAdapter
 from ..utils import DictView
-from ..catalogs.utils import catalog_repr, IndexersMixin
-from ..catalogs.in_memory import Catalog as CatalogInMemory
+from ..trees.utils import tree_repr, IndexersMixin
+from ..trees.in_memory import Tree as TreeInMemory
 from ..queries import KeyLookup
 
 
@@ -22,7 +22,7 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
     """
     Read an HDF5 file or a group within one.
 
-    This map the structure of an HDF5 file onto a "Catalog" of array structures.
+    This map the structure of an HDF5 file onto a "Tree" of array structures.
 
     Examples
     --------
@@ -52,7 +52,7 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
             not access_policy.check_compatibility(self)
         ):
             raise ValueError(
-                f"Access policy {access_policy} is not compatible with this Catalog."
+                f"Access policy {access_policy} is not compatible with this Tree."
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
@@ -65,7 +65,7 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
         return cls(file)
 
     def __repr__(self):
-        return catalog_repr(self, list(self))
+        return tree_repr(self, list(self))
 
     @property
     def access_policy(self):
@@ -83,12 +83,12 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
         if self._access_policy is not None:
             raise NotImplementedError
         else:
-            catalog = type(self)(
+            tree = type(self)(
                 self._node,
                 access_policy=self._access_policy,
                 authenticated_identity=identity,
             )
-        return catalog
+        return tree
 
     @property
     def metadata(self):
@@ -124,10 +124,10 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
 
     def search(self, query):
         """
-        Return a Catalog with a subset of the mapping.
+        Return a Tree with a subset of the mapping.
         """
         if isinstance(query, KeyLookup):
-            return CatalogInMemory({query.key: self[query.key]})
+            return TreeInMemory({query.key: self[query.key]})
         else:
             raise NotImplementedError
 

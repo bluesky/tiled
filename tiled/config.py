@@ -24,9 +24,9 @@ def schema():
         return yaml.safe_load(file)
 
 
-def construct_serve_catalog_kwargs(config, source_filepath=None, validate=True):
+def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
     """
-    Given parsed configuration, construct arguments for serve_catalog(...).
+    Given parsed configuration, construct arguments for serve_tree(...).
     """
     if validate:
         try:
@@ -49,12 +49,12 @@ def construct_serve_catalog_kwargs(config, source_filepath=None, validate=True):
         authenticator = authenticator_class(**auth_spec.get("args", {}))
         auth_spec["authenticator"] = authenticator
     # TODO Enable entrypoint to extend aliases?
-    catalog_aliases = {"files": "tiled.catalogs.files:Catalog.from_directory"}
-    catalogs = {}
-    for item in config.get("catalogs", []):
+    tree_aliases = {"files": "tiled.trees.files:Tree.from_directory"}
+    trees = {}
+    for item in config.get("trees", []):
         segments = tuple(segment for segment in item["path"].split("/") if segment)
-        catalog_spec = item["catalog"]
-        import_path = catalog_aliases.get(catalog_spec, catalog_spec)
+        tree_spec = item["tree"]
+        import_path = tree_aliases.get(tree_spec, tree_spec)
         obj = import_object(import_path)
         if "args" in item:
             if not callable(obj):
@@ -62,7 +62,7 @@ def construct_serve_catalog_kwargs(config, source_filepath=None, validate=True):
                     f"Object imported from {import_path} cannot take args. "
                     "It is not callable."
                 )
-            # Interpret obj as catalog *factory*.
+            # Interpret obj as tree *factory*.
             sys_path_additions = []
             if source_filepath:
                 if os.path.isdir(source_filepath):
@@ -71,50 +71,50 @@ def construct_serve_catalog_kwargs(config, source_filepath=None, validate=True):
                     directory = os.path.dirname(source_filepath)
                 sys_path_additions.append(directory)
             with _prepend_to_sys_path(sys_path_additions):
-                catalog = obj(**item["args"])
+                tree = obj(**item["args"])
         else:
-            # Interpret obj as catalog instance.
-            catalog = obj
-        if segments in catalogs:
+            # Interpret obj as tree instance.
+            tree = obj
+        if segments in trees:
             raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
-        catalogs[segments] = catalog
-    if not len(catalogs):
-        raise ValueError("Configuration contains no catalogs")
-    if (len(catalogs) == 1) and () in catalogs:
-        # There is one catalog to be deployed at '/'.
-        root_catalog = catalog
+        trees[segments] = tree
+    if not len(trees):
+        raise ValueError("Configuration contains no trees")
+    if (len(trees) == 1) and () in trees:
+        # There is one tree to be deployed at '/'.
+        root_tree = tree
     else:
-        # There are one or more catalog(s) to be served at
-        # sub-paths. Merged them into one root in-memory Catalog.
-        from .catalogs.in_memory import Catalog
+        # There are one or more tree(s) to be served at
+        # sub-paths. Merged them into one root in-memory Tree.
+        from .trees.in_memory import Tree
 
         mapping = {}
         include_routers = []
-        for segments, catalog in catalogs.items():
+        for segments, tree in trees.items():
             inner_mapping = mapping
             for segment in segments[:-1]:
                 if segment in inner_mapping:
                     inner_mapping = inner_mapping[segment]
                 else:
                     inner_mapping = inner_mapping[segment] = {}
-            inner_mapping[segments[-1]] = catalog
-            routers = getattr(catalog, "include_routers", [])
+            inner_mapping[segments[-1]] = tree
+            routers = getattr(tree, "include_routers", [])
             for router in routers:
                 if router not in include_routers:
                     include_routers.append(router)
-        root_catalog = Catalog(mapping)
-        root_catalog.include_routers.extend(include_routers)
+        root_tree = Tree(mapping)
+        root_tree.include_routers.extend(include_routers)
     server_settings = {}
     server_settings["allow_origins"] = config.get("allow_origins")
     return {
-        "catalog": root_catalog,
+        "tree": root_tree,
         "authentication": auth_spec,
         "server_settings": server_settings,
     }
 
 
 def merge(configs):
-    merged = {"catalogs": []}
+    merged = {"trees": []}
 
     # These variables are used to produce error messages that point
     # to the relevant config file(s).
@@ -143,7 +143,7 @@ def merge(configs):
                 )
             uvicorn_config_source = filepath
             merged["uvicorn"] = config["uvicorn"]
-        for item in config.get("catalogs", []):
+        for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
                 "The path {item['path']} was found twice in "
@@ -153,7 +153,7 @@ def merge(configs):
                     msg += f"{filepath} and {paths[item['path']]}."
                 raise ConfigError(msg)
             paths[item["path"]] = filepath
-            merged["catalogs"].append(item)
+            merged["trees"].append(item)
     merged["allow_origins"] = allow_origins
     return merged
 
@@ -208,7 +208,7 @@ def parse_configs(config_path):
 
 def direct_access(config, source_filepath=None):
     """
-    Return the server-side Catalog object defined by a configuration.
+    Return the server-side Tree object defined by a configuration.
 
     Parameters
     ----------
@@ -234,10 +234,10 @@ def direct_access(config, source_filepath=None):
 
     >>> from_config(
             {
-                "catalogs":
+                "trees":
                     [
                         "path": "/",
-                        "catalog": "tiled.files.Catalog.from_files",
+                        "tree": "tiled.files.Tree.from_files",
                         "args": {"diretory": "path/to/files"}
                     ]
             }
@@ -251,14 +251,14 @@ def direct_access(config, source_filepath=None):
         parsed_config = config
         # We do not know where this config came from. It may not yet have been validated.
         validate = True
-    return construct_serve_catalog_kwargs(
+    return construct_serve_tree_kwargs(
         parsed_config, source_filepath, validate=validate
-    )["catalog"]
+    )["tree"]
 
 
 def direct_access_from_profile(name):
     """
-    Return the server-side Catalog object from a profile.
+    Return the server-side Tree object from a profile.
 
     Some profiles are purely client side, providing an address like
 
@@ -268,10 +268,10 @@ def direct_access_from_profile(name):
 
     direct:
       - path: /
-        catalog: ...
+        tree: ...
 
     This function only works on the latter kind. It returns the
-    service-side Catalog instance directly, not wrapped in a client.
+    service-side Tree instance directly, not wrapped in a client.
     """
 
     from .profiles import load_profiles, paths, ProfileNotFound

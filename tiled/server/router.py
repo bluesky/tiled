@@ -176,7 +176,7 @@ async def metadata(
     root_path: str = Query(None),
     settings: BaseSettings = Depends(get_settings),
 ):
-    "Fetch the metadata for one Catalog or Reader."
+    "Fetch the metadata for one Tree or Reader."
 
     base_url = _get_base_url(request.url, request.scope.get("root_path") or "/")
     path_parts = [segment for segment in path.split("/") if segment]
@@ -199,7 +199,7 @@ async def entries(
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     entry: Any = Depends(entry),
 ):
-    "List the entries in a Catalog, which may be sub-Catalogs or Readers."
+    "List the entries in a Tree, which may be sub-Trees or Readers."
 
     try:
         return json_or_msgpack(

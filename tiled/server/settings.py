@@ -17,7 +17,7 @@ else:
 
 class Settings(BaseSettings):
 
-    catalog: Any = None
+    tree: Any = None
     allow_anonymous_access: bool = bool(
         int(os.getenv("TILED_ALLOW_ANONYMOUS_ACCESS", False))
     )

@@ -29,7 +29,7 @@ class Response(pydantic.generics.GenericModel, Generic[DataT]):
 
 
 class EntryType(str, enum.Enum):
-    catalog = "catalog"
+    tree = "tree"
     reader = "reader"
 
 
@@ -43,7 +43,7 @@ class EntryFields(str, enum.Enum):
     none = ""
 
 
-class CatalogAttributes(pydantic.BaseModel):
+class TreeAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     count: Optional[int]
     sorting: Optional[List[Tuple[str, int]]]
@@ -72,9 +72,9 @@ class Resource(pydantic.BaseModel):
     links: Optional[dict]
 
 
-class CatalogResource(Resource):
-    "Representation of a Catalog as a JSON API Resource"
-    attributes: CatalogAttributes
+class TreeResource(Resource):
+    "Representation of a Tree as a JSON API Resource"
+    attributes: TreeAttributes
 
 
 class ReaderResource(Resource):

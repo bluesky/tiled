@@ -40,7 +40,7 @@ Python client, making efficient use of bandwidth and enabling an offline
 
 ## Example
 
-Serve a "Catalog", a Python object backed by some generated data, directory
+Serve a "Tree", a Python object backed by some generated data, directory
 of files, network resource, or database
 
 ```
@@ -53,18 +53,18 @@ any HTTP client.
 ```python
 >>> from tiled.client import from_uri
 
->>> catalog = from_uri("http://localhost:8000")
+>>> client = from_uri("http://localhost:8000")
 
->>> catalog
-<Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
+>>> client
+<Tree {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
 
->>> catalog['arrays']
-<Catalog {'large', 'medium', 'small', 'tiny'}>
+>>> client['arrays']
+<Tree {'large', 'medium', 'small', 'tiny'}>
 
->>> catalog['arrays']['medium']
+>>> client['arrays']['medium']
 <ArrayClient>
 
->>> catalog['arrays']['medium'][:]
+>>> client['arrays']['medium'][:]
 array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
         0.27761903],
        [0.95434218, 0.31376234, 0.05776443, ..., 0.53886856, 0.92855426,
@@ -79,13 +79,13 @@ array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
        [0.4721781 , 0.01424852, 0.57294198, ..., 0.70392867, 0.69371454,
         0.228491  ]])
 
->>> catalog['dataframes']
-<Catalog {'df'}>
+>>> tree['dataframes']
+<Tree {'df'}>
 
->>> catalog['dataframes']['df']
+>>> tree['dataframes']['df']
 <DataFrameClient ['A', 'B', 'C']>
 
->>> catalog['dataframes']['df'][['A', 'B']]
+>>> tree['dataframes']['df'][['A', 'B']]
               A         B
 index                    
 0      0.748885  0.769644

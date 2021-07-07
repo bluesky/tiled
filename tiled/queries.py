@@ -24,7 +24,7 @@ class KeyLookup:
 
     This is necessary to support item lookup within search results, as in:
 
-    >>> catalog.search(...)["..."]
+    >>> tree.search(...)["..."]
     """
 
     key: str

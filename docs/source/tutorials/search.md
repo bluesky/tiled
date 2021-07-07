@@ -1,9 +1,9 @@
 # Search
 
-In this tutorial we will find a dataset in a Catalog by performing a search
+In this tutorial we will find a dataset in a Tree by performing a search
 over the entries' metadata.
 
-To follow along, start the Tiled server with the demo Catalog from a Terminal.
+To follow along, start the Tiled server with the demo Tree from a Terminal.
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo
@@ -16,27 +16,27 @@ Now, in a Python interpreter, connect with the Python client.
 ```python
 from tiled.client import from_uri
 
-catalog = from_uri("http://localhost:8000")
+tree = from_uri("http://localhost:8000")
 ```
 
 Tiled has an extensible collection of queries. The client just has to
 construct the query, and server sorts out how to execute it as
 efficiently as possible given however the metadata and data are stored.
 
-This subcatalog has four entries.
+This subtree has four entries.
 
 ```python
->>> catalog['nested']
-<Catalog {'tiny', 'small', 'medium', 'large'}>
+>>> tree['nested']
+<Tree {'tiny', 'small', 'medium', 'large'}>
 ```
 
 Each has different metadata.
 
 ```python
->>> catalog['nested']['tiny'].metadata
+>>> tree['nested']['tiny'].metadata
 DictView({'fruit': 'apple', 'animal': 'bird'})
 
->>> catalog['nested']['small'].metadata
+>>> tree['nested']['small'].metadata
 DictView({'fruit': 'banana', 'animal': 'cat'})
 
 # etc.
@@ -48,17 +48,17 @@ anywhere in the metadata.
 ```python
 >>> from tiled.queries import FullText
 
->>> catalog["nested"].search(FullText("dog"))
-<Catalog {'medium'}>
+>>> tree["nested"].search(FullText("dog"))
+<Tree {'medium'}>
 ```
 
-The result is another catalog, with a subset of the entries or the original.
+The result is another tree, with a subset of the entries or the original.
 We might next stash it in a variable and drill further down.
 
 ```python
->>> results = catalog['nested'].search(FullText("dog"))
+>>> results = tree['nested'].search(FullText("dog"))
 >>> results['medium']
-<Catalog {'ones', 'tens', 'hundreds'}>
+<Tree {'ones', 'tens', 'hundreds'}>
 >>> results['medium']['ones']
 <ArrayClient>
 >>> results['medium']['ones'][:]
@@ -80,14 +80,14 @@ array([[0.90346422, 0.88209766, 0.50729484, ..., 0.85845848, 0.40995339,
 Searches may be chained:
 
 ```python
->>> catalog['nested'].search(FullText("dog")).search(FullText("orange"))
+>>> tree['nested'].search(FullText("dog")).search(FullText("orange"))
 ```
 
-If there no matches, the result is an empty catalog:
+If there no matches, the result is an empty tree:
 
 ```python
->>> catalog['nested'].search(FullText("something that will not be found"))
-<Catalog {}>
+>>> tree['nested'].search(FullText("something that will not be found"))
+<Tree {}>
 ```
 
 ## Roadmap

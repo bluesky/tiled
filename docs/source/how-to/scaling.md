@@ -2,7 +2,7 @@
 
 *There are no solutions, only trade-offs.*
 
-We will build Catalogs with a variety of trade-offs in speed and resource
+We will build Trees with a variety of trade-offs in speed and resource
 usage. Any of these may be a good solution depending the specifics of your
 situation. They are presented in order of increasing complexity.
 
@@ -11,12 +11,12 @@ situation. They are presented in order of increasing complexity.
 ```python
 import numpy
 from tiled.readers.array ArrayAdapter
-from tiled.catalogs.in_memory import Catalog
+from tiled.trees.in_memory import Tree
 
 # Generate data and store it in memory.
 a = numpy.random.random((100, 100))
 b = numpy.random.random((100, 100))
-catalog = Catalog(
+tree = Tree(
     {
         "a": ArrayAdapter.from_array(a),
         "b": ArrayAdapter.from_array(b),
@@ -25,8 +25,8 @@ catalog = Catalog(
 ```
 * Server startup is **slow** because all data is generated or read up front.
 * Data access is **fast** because all the data is ready in memory.
-* The machine running the server must have sufficient RAM for all the entries in the Catalog.
-  This **is not** a scalable solution for large Catalogs with large data.
+* The machine running the server must have sufficient RAM for all the entries in the Tree.
+  This **is not** a scalable solution for large Trees with large data.
 
 ## Load on first read
 
@@ -50,18 +50,18 @@ Notice that one the object is created, it acts just like a normal Python
 mapping. Downstream code does not have to do anything special to work with
 it.
 
-It can be integrated with ``Catalog`` directly, just replacing the dictionary
+It can be integrated with ``Tree`` directly, just replacing the dictionary
 in the first example with a ``OneShotCachedMap``.
 
 ```python
 import numpy
 from tiled.utils import OneShotCachedMap
 from tiled.readers.array ArrayAdapter
-from tiled.catalogs.in_memory import Catalog
+from tiled.trees.in_memory import Tree
 
 # Use OneShotCachedMap which maps keys to *functions* that are
 # run when the data is fist accessed.
-catalog = Catalog(
+tree = Tree(
     OneShotCachedMap(
         {
             "a": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
@@ -75,9 +75,9 @@ catalog = Catalog(
 * The first access for each item is **slow** because the data is generated or
   read on demand. Subsequent access is **fast**.
 * The machine running the server must have sufficient RAM for all the entries
-  in the Catalog. The memory usage will grow monotonically as items are
+  in the Tree. The memory usage will grow monotonically as items are
   accessed and stashed internally by ``OneShotCachedMap``. This **is not** a
-  scalable solution for large Catalogs with large data.
+  scalable solution for large Trees with large data.
 
 ## Load on first read and stash for awhile (but not forever)
 
@@ -128,19 +128,19 @@ CachingMap({"a": lambda: 1, "b": lambda: 2}, cache=cache)
 cache.pop("a")  # Force a refresh of this item next time it is accessed from CachingMap.
 ```
 
-``CachingMap`` integrates with ``Catalog`` exactly the same as the others.
+``CachingMap`` integrates with ``Tree`` exactly the same as the others.
 
 ```python
 from cachetools import TTLCache
 import numpy
 from tiled.utils import CachingMap
 from tiled.readers.array ArrayAdapter
-from tiled.catalogs.in_memory import Catalog
+from tiled.trees.in_memory import Tree
 
 # Use CachingMap which again maps keys to *functions* that are
 # run when the data is fist accessed. The values may be cached
 # for a time.
-catalog = Catalog(
+tree = Tree(
     CachingMap(
         {
             "a": lambda: ArrayAdapter.from_array(numpy.random.random((100, 100))),
@@ -155,7 +155,7 @@ catalog = Catalog(
 * The first access for each item is **slow** because the data is generated or
   read on demand. Later access may be **fast or slow** depending on whether
   the item has been evicted from the cache.
-* With an appropriately-scaled cache, this **is** scalable for large Catalogs
+* With an appropriately-scaled cache, this **is** scalable for large Trees
   with large data.
 
 ## Proxy data from a network service and keep an on-disk cache
@@ -164,11 +164,11 @@ TO DO: Add fsspec example --- How to put an upper bound on the disk cache?
 
 ## Load keys dynamically as well as values
 
-In all the previous examples, the *keys* of the Catalog were held in memory,
-in Python, and the *values* were sometimes generated on demand. For Catalog
+In all the previous examples, the *keys* of the Tree were held in memory,
+in Python, and the *values* were sometimes generated on demand. For Tree
 at the scale of thousands of entries, backed by a database or a web service,
 we'll need to generate the keys on demand too. At that point, we escalate to
-writing a custom class satisfying the Catalog specification, which fetches
+writing a custom class satisfying the Tree specification, which fetches
 keys and values on demand by making queries specific to the underlying
 storage.
 

@@ -27,7 +27,7 @@ def download(*entries, path=None, available_bytes=None, cache=None):
 
     Parameters
     ----------
-    *entries : Catalog(s) or structure client(s)
+    *entries : Tree(s) or structure client(s)
     path : Path or str
         A directory will be created at this path if it does not yet exist.
         It is safe to reuse an existing cache directory and to share a cache
@@ -43,12 +43,12 @@ def download(*entries, path=None, available_bytes=None, cache=None):
     Examples
     --------
 
-    Connect a catalog and download it in its entirety.
+    Connect a tree and download it in its entirety.
 
-    >>> from tiled.client.catalog import Catalog
-    >>> catalog = Catalog.from_uri("http://...")
+    >>> from tiled.client.tree import Tree
+    >>> tree = Tree.from_uri("http://...")
     >>> from tiled.client.cache import download
-    >>> download(catalog, "my_cache_directory")
+    >>> download(tree, "my_cache_directory")
 
     Alternatively ,this can be done from the commandline via the tiled CLI:
 
@@ -58,17 +58,17 @@ def download(*entries, path=None, available_bytes=None, cache=None):
     to verify that the local copy is current, and only download data if there have
     been changes to the copy of the server.
 
-    >>> from tiled.client.catalog import Catalog
+    >>> from tiled.client.tree import Tree
     >>> from tiled.client.cache import Cache
-    >>> catalog = Catalog.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"))
+    >>> tree = Tree.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"))
 
     If network is unavailable or very slow, rely on the local copy entirely. Tiled
     will not connect to the server. (Note that you still need to provide a URL,
     but it is only used to contruct the names of files in the local directory.)
 
-    >>> from tiled.client.catalog import Catalog
+    >>> from tiled.client.tree import Tree
     >>> from tiled.client.cache import Cache
-    >>> catalog = Catalog.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
+    >>> tree = Tree.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
     """
     # We have "coupled kwargs" here, which is a pattern I try to avoid, but
     # in this case I think it's overall better than having too separate functions.

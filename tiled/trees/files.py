@@ -13,17 +13,17 @@ from watchgod.watcher import RegExpWatcher, Change
 
 from ..structures.dataframe import XLSX_MIME_TYPE
 from ..utils import CachingMap, import_object, OneShotCachedMap
-from .in_memory import Catalog as CatalogInMemory
+from .in_memory import Tree as TreeInMemory
 
 
-class Catalog(CatalogInMemory):
+class Tree(TreeInMemory):
     """
-    A Catalog constructed by walking a directory and watching it for changes.
+    A Tree constructed by walking a directory and watching it for changes.
 
     Examples
     --------
 
-    >>> Catalog.from_directory("path/to/directory")
+    >>> Tree.from_directory("path/to/directory")
     """
 
     __slots__ = (
@@ -37,16 +37,16 @@ class Catalog(CatalogInMemory):
     DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         {
             "image/tiff": lambda: importlib.import_module(
-                "...readers.tiff", Catalog.__module__
+                "...readers.tiff", Tree.__module__
             ).TiffReader,
             "text/csv": lambda: importlib.import_module(
-                "...readers.dataframe", Catalog.__module__
+                "...readers.dataframe", Tree.__module__
             ).DataFrameAdapter.read_csv,
             XLSX_MIME_TYPE: lambda: importlib.import_module(
-                "...readers.excel", Catalog.__module__
+                "...readers.excel", Tree.__module__
             ).ExcelReader.from_file,
             "application/x-hdf5": lambda: importlib.import_module(
-                "...readers.hdf5", Catalog.__module__
+                "...readers.hdf5", Tree.__module__
             ).HDF5Reader.from_file,
         }
     )
@@ -84,7 +84,7 @@ class Catalog(CatalogInMemory):
         mimetypes_by_file_ext = mimetypes_by_file_ext or {}
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
         # This single index represents the entire nested directory structure. (We
-        # could have done this recursively, with each sub-Catalog watching its own
+        # could have done this recursively, with each sub-Tree watching its own
         # subdirectory, but there are efficiencies to be gained by doing a single
         # walk of the nested directory structure and having a single thread watching
         # for changes within that structure.)
@@ -131,11 +131,11 @@ class Catalog(CatalogInMemory):
                     valid_subdirectories.append(d)
             subdirectories[:] = valid_subdirectories
             for subdirectory in subdirectories:
-                # Make a new mapping and a corresponding Catalog for this subdirectory.
+                # Make a new mapping and a corresponding Tree for this subdirectory.
                 mapping = {}
                 index[parts + (subdirectory,)] = mapping
                 index[parts][subdirectory] = functools.partial(
-                    CatalogInMemory, CachingMap(mapping)
+                    TreeInMemory, CachingMap(mapping)
                 )
             # Account for ignore_re_files and update which files we will traverse.
             valid_files = []
@@ -306,9 +306,9 @@ def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
             f"The file at {path} has a file extension {ext} this is not "
             "recognized. The file will be skipped, pass in a mimetype "
             "for this file extension via the parameter "
-            "Catalog.from_directory(..., mimetypes_by_file_ext={...}) and "
+            "Tree.from_directory(..., mimetypes_by_file_ext={...}) and "
             "pass in a Reader than handles this mimetype via "
-            "the parameter Catalog.from_directory(..., readers_by_mimetype={...})."
+            "the parameter Tree.from_directory(..., readers_by_mimetype={...})."
         )
         warnings.warn(msg)
         raise NoReaderAvailable
@@ -319,7 +319,7 @@ def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
             f"The file at {path} was recognized as mimetype {mimetype} "
             "but there is no reader for that mimetype. The file will be skipped. "
             "To fix this, pass in a Reader than handles this mimetype via "
-            "the parameter Catalog.from_directory(..., readers_by_mimetype={...})."
+            "the parameter Tree.from_directory(..., readers_by_mimetype={...})."
         )
         warnings.warn(msg)
         raise NoReaderAvailable

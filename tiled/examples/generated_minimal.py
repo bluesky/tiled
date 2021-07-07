@@ -1,12 +1,12 @@
 from datetime import datetime
 import numpy
 import pandas
-from tiled.catalogs.in_memory import Catalog
+from tiled.trees.in_memory import Tree
 from tiled.readers.array import ArrayAdapter
 from tiled.readers.dataframe import DataFrameAdapter
 
 
-catalog = Catalog(
+tree = Tree(
     {
         "A": ArrayAdapter.from_array(numpy.ones((100, 100))),
         "B": ArrayAdapter.from_array(numpy.ones((100, 100, 100))),

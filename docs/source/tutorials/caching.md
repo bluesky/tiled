@@ -4,7 +4,7 @@ Tiled can use a local *cache* to make efficient use of network bandwidth and the
 user's time. It avoids downloading something twice if it hasn't changed.
 This also enables an offline "airplane mode".
 
-To follow along, start the Tiled server with the demo Catalog from a Terminal.
+To follow along, start the Tiled server with the demo Tree from a Terminal.
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo
@@ -18,31 +18,31 @@ tiled serve pyobject --public tiled.examples.generated:demo
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-catalog = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
+tree = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
 ```
 
 where we have to specify the maximum RAM we are willing to dedicate to the cache,
 here set to ``2e9``, 2 GB.
 
-Most things that we do with a Catalog or dataset make an HTTP request to the
+Most things that we do with a Tree or dataset make an HTTP request to the
 server and receive a response. For example...
 
 ```python
->>> catalog = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
+>>> tree = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
 
->>> catalog
-<Catalog {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
+>>> tree
+<Tree {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
 
->>> catalog.metadata  # fetches metadata (in this case empty)
+>>> tree.metadata  # fetches metadata (in this case empty)
 DictView({})
 
->>> catalog['dataframes']['df']  # fetches column names
+>>> tree['dataframes']['df']  # fetches column names
 <DataFrameClient ['A', 'B', 'C']>
 
->>> catalog['dataframes']['df'].metadata  # fetches metadata (in this case empty)
+>>> tree['dataframes']['df'].metadata  # fetches metadata (in this case empty)
 DictView({})
 
->>> catalog['dataframes']['df'].read().compute()  # fetches data, in partitions
+>>> tree['dataframes']['df'].read().compute()  # fetches data, in partitions
               A         B         C
 index                              
 0      0.748885  0.769644  0.296070
@@ -88,7 +88,7 @@ see the next section.
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-catalog = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
+tree = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
 ```
 
 This works exactly the same as before, but now the data is stored in files on disk.
@@ -99,7 +99,7 @@ Some things to know:
 * You can place an upper limit on how much disk space this is allowed to use.
   By default it will use all the space available on the disk minus 1 GB.
 * The directory will be created if it doesn't yet exist.
-* It is safe to reuse the same directory for multiple different Catalogs.
+* It is safe to reuse the same directory for multiple different Trees.
   The files will not collide.
 * It is safe to share a directory across concurrent processes. The on-disk
   cache uses file-based locking to stay consistent.
@@ -109,16 +109,16 @@ Some things to know:
 
 ## Work offline in "airplane mode" (no network connection)
 
-*Solution: Proactively download a Catalog into Cache that can be used offline.*
+*Solution: Proactively download a Tree into Cache that can be used offline.*
 
-First, when connected to the Internet, connect a Catalog and download it.
+First, when connected to the Internet, connect a Tree and download it.
 
 ```python
 from tiled.client.cache import download
 from tiled.client import from_uri
 
-catalog = from_uri("http://localhost:8000")
-download(catalog, "my_cache_directory")
+tree = from_uri("http://localhost:8000")
+download(tree, "my_cache_directory")
 ```
 
 This will downloaded everything needed for basic usage. Note it cannot
@@ -127,10 +127,10 @@ queries is too large, but specific search results can be cached by
 just running the search while connected:
 
 ```python
-catalog.search(...)
+tree.search(...)
 ```
 
-TO DO: Demonstrate downloading only a *portion* of a Catalog.
+TO DO: Demonstrate downloading only a *portion* of a Tree.
 
 ```{note}
 
@@ -152,7 +152,7 @@ attempt to connect and to rely entirely on its local cache.
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-catalog = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
+tree = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
 ```
 
 If you attempt to access something that was not downloaded a

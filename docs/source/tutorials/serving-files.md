@@ -55,23 +55,23 @@ In a Python interpreter, connect with the Python client.
 ```python
 from tiled.client import from_uri
 
-catalog = from_uri("http://localhost:8000")
+tree = from_uri("http://localhost:8000")
 ```
 
-The ``catalog`` has the same tree structure as the directory on
+The ``tree`` has the same tree structure as the directory on
 disk, and we can slice and access the data.
 
 ```python
->>> catalog
-<Catalog {'more', 'even_more', 'b.tif', 'a.tif', 'c.tif', ...} ~7 entries>
+>>> tree
+<Tree {'more', 'even_more', 'b.tif', 'a.tif', 'c.tif', ...} ~7 entries>
 
->>> catalog['more']
-<Catalog {'d.tif'}>
+>>> tree['more']
+<Tree {'d.tif'}>
 
->>> catalog['more']['d.tif']
+>>> tree['more']['d.tif']
 <ArrayClient>
 
->>> catalog['more']['d.tif'].read()
+>>> tree['more']['d.tif'].read()
 array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
@@ -80,19 +80,19 @@ array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.]])
 
->>> catalog['tables.xlsx']
-<Catalog {'Sheet 1', 'Sheet 2'}>
+>>> tree['tables.xlsx']
+<Tree {'Sheet 1', 'Sheet 2'}>
 
->>> catalog['tables.xlsx']['Sheet 1']
+>>> tree['tables.xlsx']['Sheet 1']
 <DataFrameClient ['A', 'B']>
 
->>> catalog['tables.xlsx']['Sheet 1'].read()
+>>> tree['tables.xlsx']['Sheet 1'].read()
    A  B
 0  1  4
 1  2  5
 2  3  6
 ```
 
-Try deleting, moving, or adding files, and notice that the ``catalog`` object
+Try deleting, moving, or adding files, and notice that the ``tree`` object
 updates its structure. It continually watches the filesystem for changes in an
 efficient fashion.

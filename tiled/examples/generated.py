@@ -9,7 +9,7 @@ import xarray
 from tiled.readers.array import ArrayAdapter
 from tiled.readers.dataframe import DataFrameAdapter
 from tiled.readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
-from tiled.catalogs.in_memory import Catalog
+from tiled.trees.in_memory import Tree
 
 
 print("Generating large example data...", file=sys.stderr)
@@ -24,11 +24,9 @@ B = numpy.random.random(100)
 C = numpy.random.random(100)
 
 
-arrays = Catalog(
-    {name: ArrayAdapter.from_array(arr) for name, arr in array_data.items()}
-)
+arrays = Tree({name: ArrayAdapter.from_array(arr) for name, arr in array_data.items()})
 
-dataframes = Catalog(
+dataframes = Tree(
     {
         "df": DataFrameAdapter.from_pandas(
             pandas.DataFrame(
@@ -43,9 +41,9 @@ dataframes = Catalog(
         )
     }
 )
-xarrays = Catalog(
+xarrays = Tree(
     {
-        name: Catalog(
+        name: Tree(
             {
                 "variable": VariableAdapter(
                     xarray.Variable(
@@ -93,27 +91,27 @@ xarrays = Catalog(
 )
 
 
-# Build nested Catalog of Catalogs.
-subcatalogs = {}
+# Build nested Tree of Trees.
+subtrees = {}
 for name, fruit, animal in zip(
     ["tiny", "small", "medium", "large"],
     ["apple", "banana", "orange", "grape"],
     ["bird", "cat", "dog", "penguin"],
 ):
-    subcatalogs[name] = Catalog(
+    subtrees[name] = Tree(
         {
             inner_name: ArrayAdapter.from_array(10 ** exponent * array_data[name])
             for inner_name, exponent in zip(["ones", "tens", "hundreds"], [0, 1, 2])
         },
         metadata={"fruit": fruit, "animal": animal},
     )
-nested = Catalog(subcatalogs)
+nested = Tree(subtrees)
 
 
-# This a bit contrived, the same subcatalog used three times.
-very_nested = Catalog({"a": nested, "b": nested, "c": nested})
+# This a bit contrived, the same subtree used three times.
+very_nested = Tree({"a": nested, "b": nested, "c": nested})
 
-demo = Catalog(
+demo = Tree(
     {
         "arrays": arrays,
         "dataframes": dataframes,
