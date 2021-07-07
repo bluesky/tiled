@@ -1,9 +1,9 @@
-# Navigate a Tree
+# Navigate with the Python Client
 
 In this tutorial we will navigate a collection of datasets using Tiled's Python
 client.
 
-To follow along, start the Tiled server with the demo Tree from a Terminal.
+To follow along, start the Tiled server with example data from a Terminal.
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo
@@ -14,17 +14,17 @@ Now, in a Python interpreter, connect, with the Python client.
 ```python
 from tiled.client import from_uri
 
-tree = from_uri("http://localhost:8000")
+client = from_uri("http://localhost:8000")
 ```
 
-A Tree is a nested structure of data. Conceptually, it corresponds well to
-a directory of files or hierarchical structure like an HDF5 file.
+This holds a nested structure of data. Conceptually, it corresponds well to
+a directory of files or hierarchical structure like an HDF5 file or XML file.
 
 Tiled provides a utility for visualizing Tree's nested structure.
 
 ```python
 >>> from tiled.utils import tree
->>> tree(tree)
+>>> tree(client)
 ├── arrays
 │   ├── large
 │   ├── medium
@@ -53,7 +53,7 @@ however many fit on one line.
 
 
 ```python
->>> tree
+>>> client
 <Tree {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
 ```
 
@@ -62,31 +62,31 @@ that work on Python dictionaries work on Trees. We can lookup a specific
 value by its key
 
 ```python
->>> tree['arrays']
+>>> client['arrays']
 <Tree {'large', 'medium', 'small', 'tiny'}>
 ```
 
 list all the keys
 
 ```python
->>> list(tree)
+>>> list(client)
 ['arrays', 'dataframes', 'xarrays', 'nested', 'very_nested']
 ```
 
 and loop over keys, values, or ``(key, value)`` pairs.
 
 ```python
-for key in tree:
+for key in client:
     ...
 
 # This is equivalent:
-for key in tree.keys():
+for key in client.keys():
     ...
 
-for value in tree.values():
+for value in client.values():
     ...
 
-for key, value in tree.items():
+for key, value in client.items():
     ...
 ```
 
@@ -95,26 +95,26 @@ for efficiently grabbing batches of items, especially if you need to start
 from the middle.
 
 ```python
->>> tree.keys_indexer[1:3]  # Access just the keys for entries 1:3.
+>>> client.keys_indexer[1:3]  # Access just the keys for entries 1:3.
 ['dataframes', 'xarrays']
 
->>> tree.values_indexer[1:3]  # Access the values (which may be more expensive).
+>>> client.values_indexer[1:3]  # Access the values (which may be more expensive).
 [<Tree {'df'}>, <Tree {'large', 'medium', 'small', 'tiny'}>]
 
->>> tree.items_indexer[1:3]  # Access (key, value) pairs.
+>>> client.items_indexer[1:3]  # Access (key, value) pairs.
 [('dataframes', <Tree {'df'}>),
  ('xarrays', <Tree {'large', 'medium', 'small', 'tiny'}>)]
 ```
 
-Each tree in the tree has ``metadata``, which is a simple dict.
+Each item has ``metadata``, which is a simple dict.
 The content of this dict has no special meaning to Tiled; it's the user's
 space to use or not.
 
 ```python
->>> tree.metadata  # happens to be empty
+>>> client.metadata  # happens to be empty
 DictView({})
 
->>> tree['xarrays'].metadata  # happens to have some stuff
+>>> client['xarrays'].metadata  # happens to have some stuff
 DictView({'description': 'the three main xarray data structures'})
 ```
 

@@ -4,7 +4,7 @@ Tiled can use a local *cache* to make efficient use of network bandwidth and the
 user's time. It avoids downloading something twice if it hasn't changed.
 This also enables an offline "airplane mode".
 
-To follow along, start the Tiled server with the demo Tree from a Terminal.
+To follow along, start the Tiled server with example data from a Terminal.
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo
@@ -18,7 +18,7 @@ tiled serve pyobject --public tiled.examples.generated:demo
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-tree = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
+client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
 ```
 
 where we have to specify the maximum RAM we are willing to dedicate to the cache,
@@ -28,21 +28,21 @@ Most things that we do with a Tree or dataset make an HTTP request to the
 server and receive a response. For example...
 
 ```python
->>> tree = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
+>>> client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
 
->>> tree
+>>> client
 <Tree {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
 
->>> tree.metadata  # fetches metadata (in this case empty)
+>>> client.metadata  # fetches metadata (in this case empty)
 DictView({})
 
->>> tree['dataframes']['df']  # fetches column names
+>>> client['dataframes']['df']  # fetches column names
 <DataFrameClient ['A', 'B', 'C']>
 
->>> tree['dataframes']['df'].metadata  # fetches metadata (in this case empty)
+>>> client['dataframes']['df'].metadata  # fetches metadata (in this case empty)
 DictView({})
 
->>> tree['dataframes']['df'].read().compute()  # fetches data, in partitions
+>>> client['dataframes']['df'].read().compute()  # fetches data, in partitions
               A         B         C
 index                              
 0      0.748885  0.769644  0.296070
@@ -88,7 +88,7 @@ see the next section.
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-tree = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
+client = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
 ```
 
 This works exactly the same as before, but now the data is stored in files on disk.
@@ -117,8 +117,8 @@ First, when connected to the Internet, connect a Tree and download it.
 from tiled.client.cache import download
 from tiled.client import from_uri
 
-tree = from_uri("http://localhost:8000")
-download(tree, "my_cache_directory")
+client = from_uri("http://localhost:8000")
+download(client, "my_cache_directory")
 ```
 
 This will downloaded everything needed for basic usage. Note it cannot
@@ -127,7 +127,7 @@ queries is too large, but specific search results can be cached by
 just running the search while connected:
 
 ```python
-tree.search(...)
+client.search(...)
 ```
 
 TO DO: Demonstrate downloading only a *portion* of a Tree.
@@ -152,7 +152,7 @@ attempt to connect and to rely entirely on its local cache.
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-tree = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
+client = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
 ```
 
 If you attempt to access something that was not downloaded a

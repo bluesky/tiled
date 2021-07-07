@@ -62,16 +62,16 @@ The ``tree`` has the same tree structure as the directory on
 disk, and we can slice and access the data.
 
 ```python
->>> tree
+>>> client
 <Tree {'more', 'even_more', 'b.tif', 'a.tif', 'c.tif', ...} ~7 entries>
 
->>> tree['more']
+>>> client['more']
 <Tree {'d.tif'}>
 
->>> tree['more']['d.tif']
+>>> client['more']['d.tif']
 <ArrayClient>
 
->>> tree['more']['d.tif'].read()
+>>> client['more']['d.tif'].read()
 array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
@@ -80,19 +80,19 @@ array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.]])
 
->>> tree['tables.xlsx']
+>>> client['tables.xlsx']
 <Tree {'Sheet 1', 'Sheet 2'}>
 
->>> tree['tables.xlsx']['Sheet 1']
+>>> client['tables.xlsx']['Sheet 1']
 <DataFrameClient ['A', 'B']>
 
->>> tree['tables.xlsx']['Sheet 1'].read()
+>>> client['tables.xlsx']['Sheet 1'].read()
    A  B
 0  1  4
 1  2  5
 2  3  6
 ```
 
-Try deleting, moving, or adding files, and notice that the ``tree`` object
+Try deleting, moving, or adding files, and notice that the ``client`` object
 updates its structure. It continually watches the filesystem for changes in an
 efficient fashion.

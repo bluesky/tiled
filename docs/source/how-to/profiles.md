@@ -9,7 +9,7 @@ parameters in a file and gives them an alias, so that something like this:
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-tree = from_uri("http://some_server_address", cache=Cache.on_disk("path/to/cache"))
+client = from_uri("http://some_server_address", cache=Cache.on_disk("path/to/cache"))
 ```
 
 can be replaced with the more memorable and succinct
@@ -17,14 +17,14 @@ can be replaced with the more memorable and succinct
 ```py
 from tiled.client import from_profile
 
-tree = from_profile("my_tree")
+client = from_profile("my_data")
 ```
 
-where `my_tree` can be any name you wish and the parameters are written down
+where `my_data` can be any name you wish and the parameters are written down
 once like so:
 
 ```yaml
-my_tree:
+my_data:
     uri: "http://some_server_address"
     cache:
         disk:
@@ -115,8 +115,8 @@ we can succinctly create clients like
 ```py
 from tiled.client import from_profile
 
-tree = from_profile("local")
-lazy_tree = from_profile("local_dask")
+client = from_profile("local")
+lazy_client = from_profile("local_dask")
 ```
 
 ## List profiles

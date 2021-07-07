@@ -3,7 +3,7 @@
 In this tutorial we will find a dataset in a Tree by performing a search
 over the entries' metadata.
 
-To follow along, start the Tiled server with the demo Tree from a Terminal.
+To follow along, start the Tiled server with example data from a Terminal.
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo
@@ -16,7 +16,7 @@ Now, in a Python interpreter, connect with the Python client.
 ```python
 from tiled.client import from_uri
 
-tree = from_uri("http://localhost:8000")
+client = from_uri("http://localhost:8000")
 ```
 
 Tiled has an extensible collection of queries. The client just has to
@@ -26,17 +26,17 @@ efficiently as possible given however the metadata and data are stored.
 This subtree has four entries.
 
 ```python
->>> tree['nested']
+>>> client['nested']
 <Tree {'tiny', 'small', 'medium', 'large'}>
 ```
 
 Each has different metadata.
 
 ```python
->>> tree['nested']['tiny'].metadata
+>>> client['nested']['tiny'].metadata
 DictView({'fruit': 'apple', 'animal': 'bird'})
 
->>> tree['nested']['small'].metadata
+>>> client['nested']['small'].metadata
 DictView({'fruit': 'banana', 'animal': 'cat'})
 
 # etc.
@@ -48,15 +48,15 @@ anywhere in the metadata.
 ```python
 >>> from tiled.queries import FullText
 
->>> tree["nested"].search(FullText("dog"))
+>>> client["nested"].search(FullText("dog"))
 <Tree {'medium'}>
 ```
 
-The result is another tree, with a subset of the entries or the original.
+The result is another client, with a subset of the entries or the original.
 We might next stash it in a variable and drill further down.
 
 ```python
->>> results = tree['nested'].search(FullText("dog"))
+>>> results = client['nested'].search(FullText("dog"))
 >>> results['medium']
 <Tree {'ones', 'tens', 'hundreds'}>
 >>> results['medium']['ones']
@@ -80,13 +80,13 @@ array([[0.90346422, 0.88209766, 0.50729484, ..., 0.85845848, 0.40995339,
 Searches may be chained:
 
 ```python
->>> tree['nested'].search(FullText("dog")).search(FullText("orange"))
+>>> client['nested'].search(FullText("dog")).search(FullText("orange"))
 ```
 
-If there no matches, the result is an empty tree:
+If there no matches, the result is an empty Tree:
 
 ```python
->>> tree['nested'].search(FullText("something that will not be found"))
+>>> client['nested'].search(FullText("something that will not be found"))
 <Tree {}>
 ```
 
