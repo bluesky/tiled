@@ -29,7 +29,7 @@ from ..trees.utils import (
 )
 
 
-class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
+class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
@@ -38,38 +38,38 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
         "numpy": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
-                    "..array", Tree.__module__
+                    "..array", Node.__module__
                 ).ArrayClient,
                 "dataframe": lambda: importlib.import_module(
-                    "..dataframe", Tree.__module__
+                    "..dataframe", Node.__module__
                 ).DataFrameClient,
                 "variable": lambda: importlib.import_module(
-                    "..xarray", Tree.__module__
+                    "..xarray", Node.__module__
                 ).VariableClient,
                 "data_array": lambda: importlib.import_module(
-                    "..xarray", Tree.__module__
+                    "..xarray", Node.__module__
                 ).DataArrayClient,
                 "dataset": lambda: importlib.import_module(
-                    "..xarray", Tree.__module__
+                    "..xarray", Node.__module__
                 ).DatasetClient,
             }
         ),
         "dask": OneShotCachedMap(
             {
                 "array": lambda: importlib.import_module(
-                    "..array", Tree.__module__
+                    "..array", Node.__module__
                 ).DaskArrayClient,
                 "dataframe": lambda: importlib.import_module(
-                    "..dataframe", Tree.__module__
+                    "..dataframe", Node.__module__
                 ).DaskDataFrameClient,
                 "variable": lambda: importlib.import_module(
-                    "..xarray", Tree.__module__
+                    "..xarray", Node.__module__
                 ).DaskVariableClient,
                 "data_array": lambda: importlib.import_module(
-                    "..xarray", Tree.__module__
+                    "..xarray", Node.__module__
                 ).DaskDataArrayClient,
                 "dataset": lambda: importlib.import_module(
-                    "..xarray", Tree.__module__
+                    "..xarray", Node.__module__
                 ).DaskDatasetClient,
             }
         ),
@@ -95,7 +95,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         Search the software environment for libraries that register special clients.
 
-        This is called once automatically the first time Tree.from_uri
+        This is called once automatically the first time Node.from_uri
         is called. You may call it again manually to refresh, and it will
         reflect any changes to the environment since it was first populated.
         """
@@ -111,7 +111,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_client(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Tree.from_client is deperecated and will be removed. "
+            "The classmethod Node.from_client is deperecated and will be removed. "
             "Use the function tiled.client.from_client instead."
         )
         return from_client(*args, **kwargs)
@@ -119,7 +119,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_tree(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Tree.from_tree is being considered "
+            "The classmethod Node.from_tree is being considered "
             "for deperecation and may be removed. "
             "The function tiled.client.from_tree may be used instead.",
             PendingDeprecationWarning,
@@ -129,7 +129,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_uri(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Tree.from_uri is being considered "
+            "The classmethod Node.from_uri is being considered "
             "for deperecation and may be removed. "
             "The function tiled.client.from_uri may be used instead.",
             PendingDeprecationWarning,
@@ -139,7 +139,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_profile(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Tree.from_profile is being considered "
+            "The classmethod Node.from_profile is being considered "
             "for deperecation and may be removed. "
             "The function tiled.client.from_profile may be used instead.",
             PendingDeprecationWarning,
@@ -149,7 +149,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_config(cls, *args, **kwargs):
         warnings.warn(
-            "The classmethod Tree.from_config is being considered "
+            "The classmethod Node.from_config is being considered "
             "for deperecation and may be removed. "
             "The function tiled.client.from_config may be used instead.",
             PendingDeprecationWarning,
@@ -174,7 +174,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
         queries=None,
         sorting=None,
     ):
-        "This is not user-facing. Use Tree.from_uri."
+        "This is not user-facing. Use Node.from_uri."
 
         self.structure_clients = structure_clients
         self.special_clients = special_clients
@@ -220,7 +220,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
     @property
     def sorting(self):
         """
-        The current sorting of this Tree
+        The current sorting of this Node
 
         Given as a list of tuples where the first entry is the sorting key
         and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
@@ -229,7 +229,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def touch(self):
         """
-        Access all the data in this Tree.
+        Access all the data in this Node.
 
         This causes it to be cached if the client is configured with a cache.
         """
@@ -241,7 +241,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _get_class(self, item):
         # The basic structure of the response is either one of the structure_clients
-        # we know about or a sub-Tree.
+        # we know about or a sub-Node.
         if item["type"] == "reader":
             structure_family = item["attributes"]["structure_family"]
             try:
@@ -265,8 +265,8 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
                 )
             else:
                 return class_
-        # This is generally just Tree, but if the original
-        # user-created tree was a subclass of Tree, this will
+        # This is generally just Node, but if the original
+        # user-created tree was a subclass of Node, this will
         # repsect that.
         return self._root_client_type
 
@@ -317,12 +317,12 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
         **kwargs,
     ):
         """
-        Create a copy of this Tree, optionally varying some parameters.
+        Create a copy of this Node, optionally varying some parameters.
 
         This is intended primarily for intenal use and use by subclasses.
         """
         if isinstance(structure_clients, str):
-            structure_clients = Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
+            structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
                 structure_clients
             ]
         if structure_clients is UNCHANGED:
@@ -388,7 +388,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def __getitem__(self, key):
-        # Lookup this key *within the search results* of this Tree.
+        # Lookup this key *within the search results* of this Node.
         content = self._get_json_with_cache(
             self.item["links"]["search"],
             params={
@@ -550,7 +550,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def search(self, query):
         """
-        Make a Tree with a subset of this Tree's entries, filtered by query.
+        Make a Node with a subset of this Node's entries, filtered by query.
 
         Examples
         --------
@@ -564,7 +564,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def sort(self, sorting):
         """
-        Make a Tree with the same entries but sorted according to `sorting`.
+        Make a Node with the same entries but sorted according to `sorting`.
 
         Examples
         --------
@@ -591,7 +591,7 @@ class Tree(BaseClient, collections.abc.Mapping, IndexersMixin):
         try:
             if len(self) > MAX_ENTRIES_SUPPORTED:
                 MSG = (
-                    "Tab-completition is not supported on this particular Tree "
+                    "Tab-completition is not supported on this particular Node "
                     "because it has a large number of entries."
                 )
                 warnings.warn(MSG)
@@ -641,7 +641,7 @@ def from_uri(
     verify=True,
 ):
     """
-    Connect to a Tree on a local or remote server.
+    Connect to a Node on a local or remote server.
 
     Parameters
     ----------
@@ -653,7 +653,7 @@ def from_uri(
         DataFrames). For advanced use, provide dict mapping
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
-        ``Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        ``Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
@@ -664,8 +664,8 @@ def from_uri(
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         tree objects. See also
-        ``Tree.discover_special_clients()`` and
-        ``Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        ``Node.discover_special_clients()`` and
+        ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     verify: bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
@@ -696,7 +696,7 @@ def from_tree(
     token_cache=DEFAULT_TOKEN_CACHE,
 ):
     """
-    Connect to a Tree directly, running the app in this same process.
+    Connect to a Node directly, running the app in this same process.
 
     NOTE: This is experimental. It may need to be re-designed or even removed.
 
@@ -709,7 +709,7 @@ def from_tree(
 
     Parameters
     ----------
-    tree : Tree
+    tree : Node
     authentication : dict, optional
         Dict of authentication configuration.
     username : str, optional
@@ -720,15 +720,15 @@ def from_tree(
         DataFrames). For advanced use, provide dict mapping
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
-        ``Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        ``Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         tree objects. See also
-        ``Tree.discover_special_clients()`` and
-        ``Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        ``Node.discover_special_clients()`` and
+        ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     """
@@ -763,7 +763,7 @@ def from_client(
     token_cache=DEFAULT_TOKEN_CACHE,
 ):
     """
-    Advanced: Connect to a Tree using a custom instance of httpx.Client or httpx.AsyncClient.
+    Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
 
     Parameters
     ----------
@@ -775,7 +775,7 @@ def from_client(
         DataFrames). For advanced use, provide dict mapping
         structure_family names ("array", "dataframe", "variable",
         "data_array", "dataset") to client objects. See
-        ``Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        ``Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
     username : str, optional
         Username for authenticated access.
     cache : Cache, optional
@@ -784,25 +784,25 @@ def from_client(
     special_clients : dict, optional
         Advanced: Map client_type_hint from the server to special client
         tree objects. See also
-        ``Tree.discover_special_clients()`` and
-        ``Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
+        ``Node.discover_special_clients()`` and
+        ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     """
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
-        structure_clients = Tree.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
+        structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     path = path or []
     # Do entrypoint discovery if it hasn't yet been done.
-    if Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
-        Tree.discover_special_clients()
+    if Node.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
+        Node.discover_special_clients()
     special_clients = collections.ChainMap(
         special_clients or {},
-        Tree.DEFAULT_SPECIAL_CLIENT_DISPATCH,
+        Node.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
     if username is not None:
         reauthenticate_client(client, username, token_cache=token_cache)
-    instance = Tree(
+    instance = Node(
         client,
         item=NEEDS_INITIALIZATION,
         username=username,
@@ -812,7 +812,7 @@ def from_client(
         structure_clients=structure_clients,
         cache=cache,
         special_clients=special_clients,
-        root_client_type=Tree,
+        root_client_type=Node,
         token_cache=token_cache,
     )
 
@@ -825,7 +825,7 @@ def from_client(
 
 def from_profile(name, structure_clients=None, **kwargs):
     """
-    Build a Tree based a 'profile' (a named configuration).
+    Build a Node based a 'profile' (a named configuration).
 
     List available profiles and the source filepaths from Python like:
 
@@ -907,7 +907,7 @@ def from_profile(name, structure_clients=None, **kwargs):
 
 def from_config(config):
     """
-    Build Trees directly, running the app in this same process.
+    Build Nodes directly, running the app in this same process.
 
     NOTE: This is experimental. It may need to be re-designed or even removed.
 
@@ -938,7 +938,7 @@ def from_config(config):
                 "trees":
                     [
                         "path": "/",
-                        "tree": "tiled.files.Tree.from_files",
+                        "tree": "tiled.files.Node.from_files",
                         "args": {"diretory": "path/to/files"}
                     ]
             }

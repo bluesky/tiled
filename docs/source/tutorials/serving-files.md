@@ -63,10 +63,10 @@ disk, and we can slice and access the data.
 
 ```python
 >>> client
-<Tree {'more', 'even_more', 'b.tif', 'a.tif', 'c.tif', ...} ~7 entries>
+<Node {'more', 'even_more', 'b.tif', 'a.tif', 'c.tif', ...} ~7 entries>
 
 >>> client['more']
-<Tree {'d.tif'}>
+<Node {'d.tif'}>
 
 >>> client['more']['d.tif']
 <ArrayClient>
@@ -81,7 +81,7 @@ array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.]])
 
 >>> client['tables.xlsx']
-<Tree {'Sheet 1', 'Sheet 2'}>
+<Node {'Sheet 1', 'Sheet 2'}>
 
 >>> client['tables.xlsx']['Sheet 1']
 <DataFrameClient ['A', 'B']>

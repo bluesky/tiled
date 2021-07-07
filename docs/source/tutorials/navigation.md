@@ -20,7 +20,7 @@ client = from_uri("http://localhost:8000")
 This holds a nested structure of data. Conceptually, it corresponds well to
 a directory of files or hierarchical structure like an HDF5 file or XML file.
 
-Tiled provides a utility for visualizing Tree's nested structure.
+Tiled provides a utility for visualizing a nested structure.
 
 ```python
 >>> from tiled.utils import tree
@@ -54,16 +54,16 @@ however many fit on one line.
 
 ```python
 >>> client
-<Tree {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
+<Node {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
 ```
 
-Trees act like (nested) mappings in Python. All the (read-only) methods
-that work on Python dictionaries work on Trees. We can lookup a specific
+Nodes act like (nested) mappings in Python. All the (read-only) methods
+that work on Python dictionaries work on Nodes. We can lookup a specific
 value by its key
 
 ```python
 >>> client['arrays']
-<Tree {'large', 'medium', 'small', 'tiny'}>
+<Node {'large', 'medium', 'small', 'tiny'}>
 ```
 
 list all the keys
@@ -90,7 +90,7 @@ for key, value in client.items():
     ...
 ```
 
-Trees also support list-like access, via special attributes. This is useful
+Nodes also support list-like access, via special attributes. This is useful
 for efficiently grabbing batches of items, especially if you need to start
 from the middle.
 
@@ -99,11 +99,11 @@ from the middle.
 ['dataframes', 'xarrays']
 
 >>> client.values_indexer[1:3]  # Access the values (which may be more expensive).
-[<Tree {'df'}>, <Tree {'large', 'medium', 'small', 'tiny'}>]
+[<Node {'df'}>, <Node {'large', 'medium', 'small', 'tiny'}>]
 
 >>> client.items_indexer[1:3]  # Access (key, value) pairs.
-[('dataframes', <Tree {'df'}>),
- ('xarrays', <Tree {'large', 'medium', 'small', 'tiny'}>)]
+[('dataframes', <Node {'df'}>),
+ ('xarrays', <Node {'large', 'medium', 'small', 'tiny'}>)]
 ```
 
 Each item has ``metadata``, which is a simple dict.
@@ -118,4 +118,4 @@ DictView({})
 DictView({'description': 'the three main xarray data structures'})
 ```
 
-See a later tutorial for how to search Trees with queries.
+See a later tutorial for how to search Nodes with queries.

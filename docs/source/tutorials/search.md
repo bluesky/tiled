@@ -1,6 +1,6 @@
 # Search
 
-In this tutorial we will find a dataset in a Tree by performing a search
+In this tutorial we will find a dataset in a Node by performing a search
 over the entries' metadata.
 
 To follow along, start the Tiled server with example data from a Terminal.
@@ -27,7 +27,7 @@ This subtree has four entries.
 
 ```python
 >>> client['nested']
-<Tree {'tiny', 'small', 'medium', 'large'}>
+<Node {'tiny', 'small', 'medium', 'large'}>
 ```
 
 Each has different metadata.
@@ -49,7 +49,7 @@ anywhere in the metadata.
 >>> from tiled.queries import FullText
 
 >>> client["nested"].search(FullText("dog"))
-<Tree {'medium'}>
+<Node {'medium'}>
 ```
 
 The result is another client, with a subset of the entries or the original.
@@ -58,7 +58,7 @@ We might next stash it in a variable and drill further down.
 ```python
 >>> results = client['nested'].search(FullText("dog"))
 >>> results['medium']
-<Tree {'ones', 'tens', 'hundreds'}>
+<Node {'ones', 'tens', 'hundreds'}>
 >>> results['medium']['ones']
 <ArrayClient>
 >>> results['medium']['ones'][:]
@@ -83,11 +83,11 @@ Searches may be chained:
 >>> client['nested'].search(FullText("dog")).search(FullText("orange"))
 ```
 
-If there no matches, the result is an empty Tree:
+If there no matches, the result is an empty Node:
 
 ```python
 >>> client['nested'].search(FullText("something that will not be found"))
-<Tree {}>
+<Node {}>
 ```
 
 ## Roadmap

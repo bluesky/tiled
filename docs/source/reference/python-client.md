@@ -27,9 +27,9 @@ These are typically used for development and debugging only.
    tiled.client.from_client
 ```
 
-## Client Tree
+## Client Node
 
-The Tree interface extends the ``collections.abc.Mapping`` (i.e. read-only
+The Node interface extends the ``collections.abc.Mapping`` (i.e. read-only
 dict) interface, so it supports these standard "magic methods":
 
 * `__getitem__` (lookup with `[]`)
@@ -42,10 +42,10 @@ as well as:
 .. autosummary::
    :toctree: generated
 
-   tiled.client.tree.Tree.get
-   tiled.client.tree.Tree.keys
-   tiled.client.tree.Tree.items
-   tiled.client.tree.Tree.values
+   tiled.client.node.Node.get
+   tiled.client.node.Node.keys
+   tiled.client.node.Node.items
+   tiled.client.node.Node.values
 ```
 
 It adds the following attributes
@@ -54,20 +54,20 @@ It adds the following attributes
 .. autosummary::
    :toctree: generated
 
-   tiled.client.tree.Tree.metadata
-   tiled.client.tree.Tree.sorting
-   tiled.client.tree.Tree.path
-   tiled.client.tree.Tree.uri
+   tiled.client.node.Node.metadata
+   tiled.client.node.Node.sorting
+   tiled.client.node.Node.path
+   tiled.client.node.Node.uri
 ```
 
-And it adds these methods, which return a new Tree instance.
+And it adds these methods, which return a new Node instance.
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.client.tree.Tree.search
-   tiled.client.tree.Tree.sort
+   tiled.client.node.Node.search
+   tiled.client.node.Node.sort
 ```
 
 Finally, it adds attributes that provide efficient positional-based lookup,
@@ -77,9 +77,9 @@ as in ``tree.values_indexer[500:600]``.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.tree.Tree.keys_indexer
-   tiled.client.tree.Tree.items_indexer
-   tiled.client.tree.Tree.values_indexer
+   tiled.client.node.Node.keys_indexer
+   tiled.client.node.Node.items_indexer
+   tiled.client.node.Node.values_indexer
 ```
 
 Finally, it exposes these methods, which are used internally and may be useful
@@ -89,9 +89,9 @@ in advanced applications.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.tree.Tree.client_for_item
-   tiled.client.tree.Tree.new_variation
-   tiled.client.tree.Tree.touch
+   tiled.client.node.Node.client_for_item
+   tiled.client.node.Node.new_variation
+   tiled.client.node.Node.touch
 ```
 
 ## Structure Clients

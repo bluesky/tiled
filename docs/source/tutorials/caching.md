@@ -24,14 +24,14 @@ client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
 where we have to specify the maximum RAM we are willing to dedicate to the cache,
 here set to ``2e9``, 2 GB.
 
-Most things that we do with a Tree or dataset make an HTTP request to the
-server and receive a response. For example...
+Most things that we do with our `client` make an HTTP request to the server and
+receive a response. For example...
 
 ```python
 >>> client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
 
 >>> client
-<Tree {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
+<Node {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
 
 >>> client.metadata  # fetches metadata (in this case empty)
 DictView({})
@@ -99,8 +99,8 @@ Some things to know:
 * You can place an upper limit on how much disk space this is allowed to use.
   By default it will use all the space available on the disk minus 1 GB.
 * The directory will be created if it doesn't yet exist.
-* It is safe to reuse the same directory for multiple different Trees.
-  The files will not collide.
+* It is safe to reuse the same directory for multiple connects connected to
+  different URIs. The files will not collide.
 * It is safe to share a directory across concurrent processes. The on-disk
   cache uses file-based locking to stay consistent.
 * The naming and format of the files is internal to Tiled. It is not intended to be
@@ -109,9 +109,9 @@ Some things to know:
 
 ## Work offline in "airplane mode" (no network connection)
 
-*Solution: Proactively download a Tree into Cache that can be used offline.*
+*Solution: Proactively download data into Cache that can be used offline.*
 
-First, when connected to the Internet, connect a Tree and download it.
+First, when connected to the Internet, connect and download.
 
 ```python
 from tiled.client.cache import download

@@ -40,9 +40,9 @@ Python client, making efficient use of bandwidth and enabling an offline
 
 ## Example
 
-We'll of a collection of data that is generated on the fly.
-Alternatively, it could be read on demand from a directory of files,
-network resource, database, or some combination.
+In this example, we'll serve of a collection of data that is generated in
+memory.  Alternatively, it could be read on demand from a directory of files,
+network resource, database, or some combination of these.
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo
@@ -57,10 +57,10 @@ any HTTP client.
 >>> client = from_uri("http://localhost:8000")
 
 >>> client
-<Tree {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
+<Node {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
 
 >>> client['arrays']
-<Tree {'large', 'medium', 'small', 'tiny'}>
+<Node {'large', 'medium', 'small', 'tiny'}>
 
 >>> client['arrays']['medium']
 <ArrayClient>
@@ -81,7 +81,7 @@ array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
         0.228491  ]])
 
 >>> client['dataframes']
-<Tree {'df'}>
+<Node {'df'}>
 
 >>> client['dataframes']['df']
 <DataFrameClient ['A', 'B', 'C']>

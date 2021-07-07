@@ -1,5 +1,5 @@
 from .authentication import login  # noqa: F401
-from .tree import (  # noqa: F401
+from .node import (  # noqa: F401
     ASCENDING,
     DESCENDING,
     from_tree,

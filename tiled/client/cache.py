@@ -27,7 +27,7 @@ def download(*entries, path=None, available_bytes=None, cache=None):
 
     Parameters
     ----------
-    *entries : Tree(s) or structure client(s)
+    *entries : Node(s) or structure client(s)
     path : Path or str
         A directory will be created at this path if it does not yet exist.
         It is safe to reuse an existing cache directory and to share a cache
@@ -45,10 +45,10 @@ def download(*entries, path=None, available_bytes=None, cache=None):
 
     Connect a tree and download it in its entirety.
 
-    >>> from tiled.client.tree import Tree
-    >>> tree = Tree.from_uri("http://...")
+    >>> from tiled.client import from_uri
+    >>> client = from_uri("http://...")
     >>> from tiled.client.cache import download
-    >>> download(tree, "my_cache_directory")
+    >>> download(client, "my_cache_directory")
 
     Alternatively ,this can be done from the commandline via the tiled CLI:
 
@@ -58,17 +58,18 @@ def download(*entries, path=None, available_bytes=None, cache=None):
     to verify that the local copy is current, and only download data if there have
     been changes to the copy of the server.
 
-    >>> from tiled.client.tree import Tree
+    >>> from tiled.client import from_uri
     >>> from tiled.client.cache import Cache
-    >>> tree = Tree.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"))
+    >>> client = from_uri("http://...")
+    >>> client = from_uri("http://...", cache=Cache.on_disk("my_cache_directory"))
 
     If network is unavailable or very slow, rely on the local copy entirely. Tiled
     will not connect to the server. (Note that you still need to provide a URL,
     but it is only used to contruct the names of files in the local directory.)
 
-    >>> from tiled.client.tree import Tree
+    >>> from tiled.client import from_uri
     >>> from tiled.client.cache import Cache
-    >>> tree = Tree.from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
+    >>> client = from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
     """
     # We have "coupled kwargs" here, which is a pattern I try to avoid, but
     # in this case I think it's overall better than having too separate functions.

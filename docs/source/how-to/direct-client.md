@@ -18,7 +18,7 @@ In these situations, you may run the service and the client in the same process.
 from tiled.examples.generated_minimal import tree as service_side_tree
 from tiled.client import from_tree
 
-tree = from_tree(service_side_tree)
+client = from_tree(service_side_tree)
 ```
 
 This ``service_side_tree`` is *not* generally meant to be used directly,
@@ -46,19 +46,19 @@ config = {
              "tree": "tiled.examples.generated_minimal:tree",
         }
 }
-tree = from_config(config)
+client = from_config(config)
 ```
 
 From a configuration file:
 
 ```py
-tree = from_config("path/to/config.yml")
+client = from_config("path/to/config.yml")
 ```
 
 From a directory of configuration files:
 
 ```py
-tree = from_config("path/to/directory/")
+client = from_config("path/to/directory/")
 ```
 
 ## Direct access to the service-side object
