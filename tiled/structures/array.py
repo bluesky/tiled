@@ -49,7 +49,7 @@ class Kind(str, enum.Enum):
     bit_field = "t"
     boolean = "b"
     integer = "i"
-    unsigned_integer = "ui"
+    unsigned_integer = "u"
     floating_point = "f"
     complex_floating_point = "c"
     timedelta = "m"
