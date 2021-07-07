@@ -40,8 +40,9 @@ Python client, making efficient use of bandwidth and enabling an offline
 
 ## Example
 
-Serve a "Tree", a Python object backed by some generated data, directory
-of files, network resource, or database
+We'll of a collection of data that is generated on the fly.
+Alternatively, it could be read on demand from a directory of files,
+network resource, database, or some combination.
 
 ```
 tiled serve pyobject --public tiled.examples.generated:demo
@@ -79,13 +80,13 @@ array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
        [0.4721781 , 0.01424852, 0.57294198, ..., 0.70392867, 0.69371454,
         0.228491  ]])
 
->>> tree['dataframes']
+>>> client['dataframes']
 <Tree {'df'}>
 
->>> tree['dataframes']['df']
+>>> client['dataframes']['df']
 <DataFrameClient ['A', 'B', 'C']>
 
->>> tree['dataframes']['df'][['A', 'B']]
+>>> client['dataframes']['df'][['A', 'B']]
               A         B
 index                    
 0      0.748885  0.769644
