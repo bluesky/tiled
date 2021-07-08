@@ -41,8 +41,8 @@ without worrying about keeping dependencies low:
 
    On Linux, you may include them or omit them; it works the same either way.
 
-   (This difference between Mac and Linux is not due to the operating system per
-   se. It just happens that modern MacOS systems ship with zsh as the default
+   (This difference between Mac and Linux is not due to the operating system *per
+   se*. It just happens that modern MacOS systems ship with zsh as the default
    shell, whereas Linux typically ships with bash.)
 
 To install dependencies more selectively, decide whether you are
