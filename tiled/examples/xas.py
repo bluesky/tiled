@@ -90,7 +90,7 @@ df = pandas.DataFrame.from_records(
             11: -1.3312944,
         },
     }
-)
+).set_index("energy", drop=True)
 
 tree = Tree(
     {"example": DataFrameAdapter.from_pandas(df, metadata=metadata, npartitions=1)}
