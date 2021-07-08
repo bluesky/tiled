@@ -3,6 +3,7 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
+from collections import defaultdict
 import contextlib
 from functools import lru_cache
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 import jsonschema
 
 from .utils import import_object, parse
+from .media_type_registration import serialization_registry
 
 
 @lru_cache(maxsize=1)
@@ -106,6 +108,13 @@ def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
         root_tree.include_routers.extend(include_routers)
     server_settings = {}
     server_settings["allow_origins"] = config.get("allow_origins")
+    # TODO The registry should not be process-global.
+    for structure_family, values in config.get("media_types").items():
+        for media_type, import_path in values.items():
+            serializer = import_object(import_path)
+            serialization_registry.register(structure_family, media_type, serializer)
+    for ext, media_type in config.get("file_extensions").items():
+        serialization_registry.register_alias(ext, media_type)
     return {
         "tree": root_tree,
         "authentication": auth_spec,
@@ -121,9 +130,14 @@ def merge(configs):
     authentication_config_source = None
     uvicorn_config_source = None
     allow_origins = []
+    media_types = defaultdict(dict)
+    file_extensions = {}
     paths = {}  # map each item's path to config file that specified it
 
     for filepath, config in configs.items():
+        for structure_family, values in config.get("media_types", {}).items():
+            media_types[structure_family].update(values)
+        file_extensions.update(config.get("file_extensions", {}))
         allow_origins.extend(config.get("allow_origins", []))
         if "authentication" in config:
             if "authentication" in merged:
@@ -154,6 +168,8 @@ def merge(configs):
                 raise ConfigError(msg)
             paths[item["path"]] = filepath
             merged["trees"].append(item)
+    merged["media_types"] = dict(media_types)  # convert from defaultdict
+    merged["file_extensions"] = file_extensions
     merged["allow_origins"] = allow_origins
     return merged
 
