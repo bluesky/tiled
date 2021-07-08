@@ -164,8 +164,10 @@ Now if we restart the server again with this updated `config.yml`
 tiled serve config --public config.yml
 ```
 
-we can request the content as XDI:
+we can request the content as XDI in any of these ways:
 
 ```
 $ curl -H 'Accept: application/x-xdi' http://localhost:8000/dataframe/full/example
+$ curl http://localhost:8000/dataframe/full/example?format=application/x-xdi
+$ curl http://localhost:8000/dataframe/full/example?format=xdi
 ```
