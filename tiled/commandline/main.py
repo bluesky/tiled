@@ -182,6 +182,7 @@ def serve_config(
             "If that is unset, try default location ./config.yml."
         ),
     ),
+    public: bool = typer.Option(False, "--public"),
     host: str = typer.Option(
         None,
         help=(
@@ -204,6 +205,12 @@ def serve_config(
     except Exception as err:
         typer.echo(str(err))
         raise typer.Abort()
+
+    # Let --public flag override config.
+    if public:
+        if "authentication" not in parsed_config:
+            parsed_config["authentication"] = {}
+        parsed_config["authentication"]["allow_anonymous_access"] = True
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 

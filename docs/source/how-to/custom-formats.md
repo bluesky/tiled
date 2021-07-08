@@ -29,7 +29,7 @@ trees:
 and serve it:
 
 ```
-tiled serve config config.yml
+tiled serve config --public config.yml
 ```
 
 As is, we can access the data as CSV, for example.
@@ -161,7 +161,7 @@ development this is much more expedient.
 Now if we restart the server again with this updated `config.yml`
 
 ```
-tiled serve config config.yml
+tiled serve config --public config.yml
 ```
 
 we can request the content as XDI:
