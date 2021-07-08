@@ -128,7 +128,7 @@ def export_util(file, format, get, link, params):
 
     Parameters
     ----------
-    file: str or buffer
+    file: str, Path, or buffer
         Filepath or writeable buffer.
     format : str, optional
         If format is None and `file` is a filepath, the format is inferred
@@ -149,15 +149,15 @@ def export_util(file, format, get, link, params):
         raise ValueError("params may not include 'format'. Use the format parameter.")
     if isinstance(format, str) and format.startswith("."):
         format = format[1:]  # e.g. ".csv" -> "csv"
-    if isinstance(file, str):
+    if isinstance(file, (str, Path)):
         # Infer that `file` is a filepath.
         if format is None:
             format = ".".join(
                 suffix[1:] for suffix in Path(file).suffixes
             )  # e.g. "csv"
         content = get(link, params={"format": format, **params})
-        with open(file, "wb") as file:
-            file.write(content)
+        with open(file, "wb") as buffer:
+            buffer.write(content)
     else:
         # Infer that `file` is a writeable buffer.
         if format is None:
