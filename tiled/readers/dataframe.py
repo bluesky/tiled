@@ -31,7 +31,7 @@ class DataFrameAdapter:
         self._data = data
 
     @classmethod
-    def read_csv(cls, *args, **kwargs):
+    def read_csv(cls, *args, metadata=None, **kwargs):
         """
         Read a CSV.
 
@@ -45,11 +45,11 @@ class DataFrameAdapter:
         >>> DataFrameAdapter.read_csv("myfiles.*.csv")
         >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
         """
-        return cls(dask.dataframe.read_csv(*args, **kwargs))
+        return cls(dask.dataframe.read_csv(*args, **kwargs), metadata=metadata)
 
     @classmethod
-    def from_pandas(cls, *args, **kwargs):
-        return cls(dask.dataframe.from_pandas(*args, **kwargs))
+    def from_pandas(cls, *args, metadata=None, **kwargs):
+        return cls(dask.dataframe.from_pandas(*args, **kwargs), metadata=metadata)
 
     read_csv.__doc__ = (
         """
