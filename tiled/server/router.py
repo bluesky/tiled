@@ -241,15 +241,24 @@ def array_block(
             status_code=404,
             detail=f"Cannot read {reader.structure_family} structure with /array/block route.",
         )
-    try:
-        array = reader.read_block(block, slice=slice)
-    except IndexError:
-        raise HTTPException(status_code=400, detail="Block index out of range")
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
+    if block == ():
+        # Handle special case of numpy scalar.
+        if reader.macrostructure().shape != ():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
+            )
+        array = reader.read()
+    else:
+        try:
+            array = reader.read_block(block, slice=slice)
+        except IndexError:
+            raise HTTPException(status_code=400, detail="Block index out of range")
+        if (expected_shape is not None) and (expected_shape != array.shape):
+            raise HTTPException(
+                status_code=400,
+                detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+            )
     try:
         return construct_array_response(array, request.headers, format)
     except UnsupportedMediaTypes as err:
