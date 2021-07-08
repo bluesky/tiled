@@ -78,7 +78,7 @@ class Registry:
         self._lookup[structure_family][media_type] = func
 
     def register_alias(self, ext, media_type):
-        self._custom_aliases_by_type[media_type].append(f"ext")
+        self._custom_aliases_by_type[media_type].append(ext)
         self._custom_aliases[ext] = media_type
 
     def resolve_alias(self, alias):
