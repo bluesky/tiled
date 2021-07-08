@@ -146,9 +146,9 @@ $ curl http://...?format=xdi
 ```
 
 by mapping `"xdi"` to the media type. This is optional. You can provide
-no file extensions for a media type. (You can also provide *multiple*
+no file extensions for a media type. You can also provide *multiple*
 file extensions that map to the same media type. For example, both
-`tif` and `tiff` map to `image/tiff`.)
+`tif` and `tiff` map to `image/tiff`.
 
 The value, `exporter:serialize_xdi`, is the module or package that our
 exporter is defined in, followed by `:` and then the function name.
