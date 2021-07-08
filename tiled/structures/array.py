@@ -156,6 +156,7 @@ def serialize_csv(array):
 
 
 serialization_registry.register("array", "text/csv", serialize_csv)
+serialization_registry.register("array", "text/plain", serialize_csv)
 deserialization_registry.register(
     "array",
     "application/octet-stream",

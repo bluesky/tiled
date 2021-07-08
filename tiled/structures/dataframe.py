@@ -83,6 +83,7 @@ deserialization_registry.register(
     "dataframe", APACHE_ARROW_FILE_MIME_TYPE, deserialize_arrow
 )
 serialization_registry.register("dataframe", "text/csv", serialize_csv)
+serialization_registry.register("dataframe", "text/plain", serialize_csv)
 serialization_registry.register("dataframe", "text/html", serialize_html)
 XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 if modules_available("openpyxl"):

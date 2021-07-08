@@ -132,10 +132,13 @@ serialization_registry.register(
     "dataset", "text/csv", lambda ds: serialize_csv(ds.to_dataframe())
 )
 serialization_registry.register(
-    "dataset", XLSX_MIME_TYPE, lambda ds: serialize_excel(ds.to_dataframe())
+    "dataset", "text/plain", lambda ds: serialize_csv(ds.to_dataframe())
 )
 serialization_registry.register(
     "dataset", "text/html", lambda ds: serialize_html(ds.to_dataframe())
+)
+serialization_registry.register(
+    "dataset", XLSX_MIME_TYPE, lambda ds: serialize_excel(ds.to_dataframe())
 )
 
 deserialization_registry.register("dataset", "application/x-zarr", xarray.open_zarr)
