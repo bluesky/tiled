@@ -87,20 +87,24 @@ def reader(
 
 def block(
     # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., min_length=1, regex="^[0-9]+(,[0-9]+)*$"),
+    block: str = Query(..., regex="^[0-9]?(,[0-9]+)*$"),
 ):
     "Specify and parse a block index parameter."
+    if not block:
+        return ()
     return tuple(map(int, block.split(",")))
 
 
 def expected_shape(
     expected_shape: Optional[str] = Query(
-        None, min_length=1, regex="^[0-9]+(,[0-9]+)*$"
+        None, min_length=1, regex="^[0-9]+(,[0-9]+)*$|^scalar$"
     ),
 ):
     "Specify and parse an expected_shape parameter."
     if expected_shape is None:
         return
+    if expected_shape == "scalar":
+        return ()
     return tuple(map(int, expected_shape.split(",")))
 
 

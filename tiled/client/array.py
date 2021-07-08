@@ -36,12 +36,16 @@ class DaskArrayClient(BaseArrayClient):
             raise NotImplementedError(
                 "Slicing less than one block is not yet supported."
             )
+        if shape:
+            expected_shape = ",".join(map(str, shape))
+        else:
+            expected_shape = "scalar"
         content = self._get_content_with_cache(
             self._route + "/" + "/".join(self._path),
             headers={"Accept": media_type},
             params={
                 "block": ",".join(map(str, block)),
-                "expected_shape": ",".join(map(str, shape)),
+                "expected_shape": expected_shape,
                 **self._params,
             },
         )
