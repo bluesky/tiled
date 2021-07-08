@@ -260,7 +260,7 @@ def array_block(
                 detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
             )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -300,7 +300,7 @@ def array_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -398,7 +398,9 @@ def dataframe_partition(
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
-        return construct_dataframe_response(df, request.headers, format)
+        return construct_dataframe_response(
+            df, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -430,7 +432,9 @@ def dataframe_full(
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
-        return construct_dataframe_response(df, request.headers, format)
+        return construct_dataframe_response(
+            df, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -469,7 +473,7 @@ def variable_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -500,7 +504,7 @@ def variable_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -541,7 +545,7 @@ def data_array_variable_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -586,7 +590,7 @@ def data_array_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -634,7 +638,7 @@ def dataset_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -681,7 +685,7 @@ def dataset_data_var_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -719,7 +723,7 @@ def dataset_coord_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, request.headers, format)
+        return construct_array_response(array, reader.metadata, request.headers, format)
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -751,7 +755,9 @@ def dataset_full(
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such variable {key}.")
     try:
-        return construct_dataset_response(dataset, request.headers, format)
+        return construct_dataset_response(
+            dataset, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 

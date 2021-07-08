@@ -278,7 +278,7 @@ def construct_entries_response(
     return models.Response(data=data, links=links, meta={"count": count})
 
 
-def construct_array_response(array, request_headers, format=None):
+def construct_array_response(array, metadata, request_headers, format=None):
     import numpy
 
     DEFAULT_MEDIA_TYPE = "application/octet-stream"
@@ -308,7 +308,7 @@ def construct_array_response(array, request_headers, format=None):
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPE
         if media_type in serialization_registry.media_types("array"):
-            content = serialization_registry("array", media_type, array)
+            content = serialization_registry("array", media_type, array, metadata)
             return PatchedResponse(
                 content=content, media_type=media_type, headers={"ETag": etag}
             )
@@ -323,7 +323,7 @@ def construct_array_response(array, request_headers, format=None):
 APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
 
 
-def construct_dataframe_response(df, request_headers, format=None):
+def construct_dataframe_response(df, metadata, request_headers, format=None):
     etag = dask.base.tokenize(df)
     if request_headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
@@ -350,7 +350,7 @@ def construct_dataframe_response(df, request_headers, format=None):
         if media_type == "*/*":
             media_type = APACHE_ARROW_FILE_MIME_TYPE
         if media_type in serialization_registry.media_types("dataframe"):
-            content = serialization_registry("dataframe", media_type, df)
+            content = serialization_registry("dataframe", media_type, df, metadata)
             return PatchedResponse(
                 content=content, media_type=media_type, headers={"ETag": etag}
             )
@@ -362,7 +362,7 @@ def construct_dataframe_response(df, request_headers, format=None):
         )
 
 
-def construct_dataset_response(dataset, request_headers, format=None):
+def construct_dataset_response(dataset, metadata, request_headers, format=None):
     DEFAULT_MEDIA_TYPE = "application/netcdf"
     etag = dask.base.tokenize(dataset)
     if request_headers.get("If-None-Match", "") == etag:
@@ -388,7 +388,7 @@ def construct_dataset_response(dataset, request_headers, format=None):
         if media_type == "*/*":
             media_type = APACHE_ARROW_FILE_MIME_TYPE
         if media_type in serialization_registry.media_types("dataset"):
-            content = serialization_registry("dataset", media_type, dataset)
+            content = serialization_registry("dataset", media_type, dataset, metadata)
             return PatchedResponse(
                 content=content, media_type=media_type, headers={"ETag": etag}
             )

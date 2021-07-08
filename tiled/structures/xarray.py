@@ -113,7 +113,7 @@ class _BytesIOThatIgnoresClose(io.BytesIO):
         pass
 
 
-def serialize_netcdf(dataset):
+def serialize_netcdf(dataset, metadata):
     file = _BytesIOThatIgnoresClose()
     dataset.to_netcdf(file)  # TODO How would we expose options in the server?
     return file.getbuffer()
@@ -126,19 +126,19 @@ serialization_registry.register("dataset", "application/netcdf", serialize_netcd
 serialization_registry.register(
     "dataset",
     APACHE_ARROW_FILE_MIME_TYPE,
-    lambda ds: serialize_arrow(ds.to_dataframe()),
+    lambda ds, metadata: serialize_arrow(ds.to_dataframe()),
 )
 serialization_registry.register(
-    "dataset", "text/csv", lambda ds: serialize_csv(ds.to_dataframe())
+    "dataset", "text/csv", lambda ds, metadata: serialize_csv(ds.to_dataframe())
 )
 serialization_registry.register(
-    "dataset", "text/plain", lambda ds: serialize_csv(ds.to_dataframe())
+    "dataset", "text/plain", lambda ds, metadata: serialize_csv(ds.to_dataframe())
 )
 serialization_registry.register(
-    "dataset", "text/html", lambda ds: serialize_html(ds.to_dataframe())
+    "dataset", "text/html", lambda ds, metadata: serialize_html(ds.to_dataframe())
 )
 serialization_registry.register(
-    "dataset", XLSX_MIME_TYPE, lambda ds: serialize_excel(ds.to_dataframe())
+    "dataset", XLSX_MIME_TYPE, lambda ds, metadata: serialize_excel(ds.to_dataframe())
 )
 
 deserialization_registry.register("dataset", "application/x-zarr", xarray.open_zarr)

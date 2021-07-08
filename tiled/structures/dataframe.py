@@ -41,7 +41,7 @@ class DataFrameStructure:
     macro: DataFrameMacroStructure
 
 
-def serialize_arrow(df):
+def serialize_arrow(df, metadata):
     table = pyarrow.Table.from_pandas(df)
     sink = pyarrow.BufferOutputStream()
     with pyarrow.ipc.new_file(sink, table.schema) as writer:
@@ -53,19 +53,19 @@ def deserialize_arrow(buffer):
     return pyarrow.ipc.open_file(buffer).read_pandas()
 
 
-def serialize_csv(df):
+def serialize_csv(df, metadata):
     file = io.BytesIO()
     df.to_csv(file)  # TODO How would we expose options in the server?
     return file.getbuffer()
 
 
-def serialize_excel(df):
+def serialize_excel(df, metadata):
     file = io.BytesIO()
     df.to_excel(file)  # TODO How would we expose options in the server?
     return file.getbuffer()
 
 
-def serialize_html(df):
+def serialize_html(df, metadata):
     file = io.StringIO()
     df.to_html(file)  # TODO How would we expose options in the server?
     return file.getvalue().encode()

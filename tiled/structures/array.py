@@ -143,13 +143,17 @@ class ArrayStructure:
         )
 
 
-serialization_registry.register("array", "application/octet-stream", memoryview)
 serialization_registry.register(
-    "array", "application/json", lambda array: json.dumps(array.tolist()).encode()
+    "array", "application/octet-stream", lambda array, metadata: memoryview(array)
+)
+serialization_registry.register(
+    "array",
+    "application/json",
+    lambda array, metadata: json.dumps(array.tolist()).encode(),
 )
 
 
-def serialize_csv(array):
+def serialize_csv(array, metadata):
     file = io.StringIO()
     numpy.savetxt(file, array, fmt="%s", delimiter=",")
     return file.getvalue().encode()
@@ -190,7 +194,7 @@ if modules_available("PIL"):
     serialization_registry.register(
         "array",
         "image/png",
-        lambda array: save_to_buffer_PIL(array, "png"),
+        lambda array, metadata: save_to_buffer_PIL(array, "png"),
     )
     deserialization_registry.register(
         "array",
@@ -204,7 +208,7 @@ if modules_available("tifffile"):
 
         return imread(buffer).astype(dtype).reshape(shape)
 
-    def save_to_buffer_tifffile(array):
+    def save_to_buffer_tifffile(array, metadata):
         from tifffile import imsave
 
         # Handle too *few* dimensions here, and let tifffile raise if there are too
@@ -226,12 +230,12 @@ if modules_available("tifffile"):
     )
 
 
-def serialize_html(array):
+def serialize_html(array, metadata):
     "Try to display as image. Fall back to CSV."
     try:
-        png_data = serialization_registry("array", "image/png", array)
+        png_data = serialization_registry("array", "image/png", array, metadata)
     except Exception:
-        csv_data = serialization_registry("array", "text/csv", array)
+        csv_data = serialization_registry("array", "text/csv", array, metadata)
         return "<html>" "<body>" f"{csv_data.decode()!s}" "</body>" "</html>"
     else:
         return (
