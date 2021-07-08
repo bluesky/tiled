@@ -16,4 +16,7 @@ sphinx-click
 sphinx-copybutton
 sphinxcontrib.openapi
 sphinx_rtd_theme
+# These are used by the optional serializers.
+openpyxl
+pillow
 tifffile
