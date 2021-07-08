@@ -4,6 +4,7 @@ codecov
 coverage
 flake8
 pytest
+pytest-asyncio
 sphinx
 # These are dependencies of various sphinx extensions for documentation.
 h5py
