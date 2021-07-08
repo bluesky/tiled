@@ -6,9 +6,10 @@ See {doc}`../tutorials/export` for a list of the formats supported out of the
 box.
 
 To teach Tiled to serve another format, first decide which structure family or
-families are appropriate for this format? For example, it make sense to export
-an array as an image, but it does not make sense to export a table as an
-image---or at least, if you do, you are making some assumptions about the table.
+families are appropriate for this format. For example, it makes sense to export
+a table an Excel spreadsheet, but it does not generally make sense to export an
+N-dimensional array as an Excel spreadsheet. (If you do, you making specific
+assumptions about the array.)
 
 For this guide, we'll take the example of
 [XDI](https://github.com/XraySpectroscopy/XAS-Data-Interchange/blob/master/specification/spec.md#example-xdi-file),
@@ -67,7 +68,7 @@ There are three equivalent ways to request a format, more formally called a "med
     ```
 
     3. Provide just a file extension. This is user friendly for people who do not know or care what
-    a "media type" is. The serve looks up `csv` in a registry mapping file extensions to media types.
+    a "media type" is. The server looks up `csv` in a registry mapping file extensions to media types.
 
     ```
     $ curl http://localhost:8000/dataframe/full/example?format=csv
@@ -116,7 +117,7 @@ file_extensions:
   xdi: application/x-xdi
 ```
 
-First consider
+First consider the section
 
 ```yaml
 media_types:
@@ -124,12 +125,12 @@ media_types:
     application/x-xdi: exporter:serialize_xdi
 ```
 
-The key, `application/x-xdi` must be a valid media type. If there is no
-registered [IANA Media Types](https://www.iana.org/assignments/media-types/media-types.xhtml)
-for the format of interest (as is the case here), the standard tells us
-to invent one of the form `application/x-YOUR-NAME-HERE`. There is, of course,
-some risk of name collisions when we invent names outside of the official list,
-so be specific.
+The key, `application/x-xdi` is a valid media type. In our case, there is no
+registered [IANA Media Type](https://www.iana.org/assignments/media-types/media-types.xhtml)
+for the format of interest. Thererfore, the standard tells us
+to invent one of the form `application/x-*`, as in `application/x-xdi`. There
+is, of course, some risk of name collisions when we invent names outside of the
+official list, so be specific.
 
 The final section
 
@@ -144,8 +145,10 @@ enables the usage
 $ curl http://...?format=xdi
 ```
 
-by mapping `"xdi"` to the media type.
-
+by mapping `"xdi"` to the media type. This is optional. You can provide
+no file extensions for a media type. (You can also provide *multiple*
+file extensions that map to the same media type. For example, both
+`tif` and `tiff` map to `image/tiff`.)
 
 The value, `exporter:serialize_xdi`, is the module or package that our
 exporter is defined in, followed by `:` and then the function name.
