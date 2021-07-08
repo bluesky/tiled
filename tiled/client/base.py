@@ -19,6 +19,7 @@ class BaseClient:
         item,
         username,
         token_cache,
+        authentication_uri,
         cache,
         offline,
         path,
@@ -27,6 +28,7 @@ class BaseClient:
     ):
         self._client = client
         self._token_cache = token_cache
+        self._authentication_uri = authentication_uri
         self._username = username
         self._offline = offline
         if isinstance(path, str):
@@ -106,6 +108,7 @@ class BaseClient:
             path=path,
             params=params,
             token_cache=self._token_cache,
+            authentication_uri=self._authentication_uri,
             **kwargs,
         )
 
@@ -182,6 +185,7 @@ class BaseClient:
                 reauthenticate_client(
                     self._client,
                     self._username,
+                    self._authentication_uri,
                     token_cache=self._token_cache,
                 )
                 request.headers["authorization"] = self._client.headers["authorization"]

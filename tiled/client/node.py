@@ -170,6 +170,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         cache,
         special_clients,
         token_cache,
+        authentication_uri=None,
         params=None,
         queries=None,
         sorting=None,
@@ -197,6 +198,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             item=item,
             username=username,
             token_cache=token_cache,
+            authentication_uri=authentication_uri,
             cache=cache,
             offline=offline,
             path=path,
@@ -639,6 +641,7 @@ def from_uri(
     token_cache=DEFAULT_TOKEN_CACHE,
     special_clients=None,
     verify=True,
+    authentication_uri=None,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -666,11 +669,13 @@ def from_uri(
         tree objects. See also
         ``Node.discover_special_clients()`` and
         ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
-    verify: bool, optional
+    verify : bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
+    authentication_uri : str, optional
+        URL of authentication server
     """
-    client, path = client_and_path_from_uri(uri, verify=verify)
+    client, path = client_and_path_from_uri(uri, authentication_uri, verify=verify)
     return from_client(
         client,
         structure_clients=structure_clients,
@@ -680,6 +685,7 @@ def from_uri(
         offline=offline,
         special_clients=special_clients,
         token_cache=token_cache,
+        authentication_uri=authentication_uri,
     )
 
 
@@ -761,6 +767,7 @@ def from_client(
     path=None,
     special_clients=None,
     token_cache=DEFAULT_TOKEN_CACHE,
+    authentication_uri=None,
 ):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -788,6 +795,8 @@ def from_client(
         ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
+    authentication_uri : str, optional
+        URL of authentication server
     """
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
@@ -801,7 +810,9 @@ def from_client(
         Node.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
     if username is not None:
-        reauthenticate_client(client, username, token_cache=token_cache)
+        reauthenticate_client(
+            client, username, authentication_uri, token_cache=token_cache
+        )
     instance = Node(
         client,
         item=NEEDS_INITIALIZATION,
@@ -814,6 +825,7 @@ def from_client(
         special_clients=special_clients,
         root_client_type=Node,
         token_cache=token_cache,
+        authentication_uri=authentication_uri,
     )
 
     item = instance.item

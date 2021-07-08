@@ -27,22 +27,34 @@ def _token_directory(token_cache, netloc, username):
     )
 
 
-def login(tree, username=None, *, token_cache=DEFAULT_TOKEN_CACHE):
-    client, uri = _client_and_uri_from_uri_or_profile(tree)
-    authenticate_client(client, username, token_cache=token_cache)
+def login(
+    tree, username=None, authentication_uri=None, *, token_cache=DEFAULT_TOKEN_CACHE
+):
+    client, _uri = _client_and_uri_from_uri_or_profile(tree)
+    authenticate_client(client, username, authentication_uri, token_cache=token_cache)
 
 
-def authenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE):
-    if "tiled_csrf" not in client.cookies:
-        # Make an initial "safe" request to let the server set the CSRF cookie.
-        # We could also use this to check the API version.
-        handshake_request = client.build_request("GET", "/")
-        handshake_response = client.send(handshake_request)
-        handle_error(handshake_response)
+def authenticate_client(
+    client, username, authentication_uri=None, *, token_cache=DEFAULT_TOKEN_CACHE
+):
+    authentication_uri = authentication_uri or "/"
+    if not authentication_uri.endswith("/"):
+        authentication_uri += "/"
+    # Make an initial "safe" request to let the server set the CSRF cookie.
+    # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
+    # TODO: The server should support HEAD requests so we can do this more cheaply.
+    handshake_request = client.build_request("GET", authentication_uri)
+    # If an Authorization header is set, that's for the Resource server.
+    # Do not include it in the request to the Authentication server.
+    handshake_request.headers.pop("Authorization", None)
+    handshake_response = client.send(handshake_request)
+    handle_error(handshake_response)
     username = username or input("Username: ")
     password = getpass.getpass()
     form_data = {"grant_type": "password", "username": username, "password": password}
-    token_request = client.build_request("POST", "/token", data=form_data)
+    token_request = client.build_request(
+        "POST", f"{authentication_uri}token", data=form_data, headers={}
+    )
     token_response = client.send(token_request)
     handle_error(token_response)
     data = token_response.json()
@@ -59,25 +71,42 @@ def authenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE):
 
 
 def reauthenticate_client(
-    client, username, *, token_cache=DEFAULT_TOKEN_CACHE, prompt_on_failure=True
+    client,
+    username,
+    authentication_uri=None,
+    *,
+    token_cache=DEFAULT_TOKEN_CACHE,
+    prompt_on_failure=True,
 ):
     try:
-        _reauthenticate_client(client, username, token_cache=token_cache)
+        _reauthenticate_client(
+            client, username, authentication_uri, token_cache=token_cache
+        )
     except CannotRefreshAuthentication:
         if prompt_on_failure:
-            return authenticate_client(client, username, token_cache=token_cache)
+            return authenticate_client(
+                client, username, authentication_uri, token_cache=token_cache
+            )
         else:
             raise
 
 
-def _reauthenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE):
+def _reauthenticate_client(
+    client, username, authentication_uri, *, token_cache=DEFAULT_TOKEN_CACHE
+):
     # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-    if "tiled_csrf" not in client.cookies:
-        # Make an initial "safe" request to let the server set the CSRF cookie.
-        # We could also use this to check the API version.
-        handshake_request = client.build_request("GET", "/")
-        handshake_response = client.send(handshake_request)
-        handle_error(handshake_response)
+    authentication_uri = authentication_uri or "/"
+    if not authentication_uri.endswith("/"):
+        authentication_uri += "/"
+    # Make an initial "safe" request to let the server set the CSRF cookie.
+    # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
+    # TODO: The server should support HEAD requests so we can do this more cheaply.
+    handshake_request = client.build_request("GET", authentication_uri)
+    # If an Authorization header is set, that's for the Resource server.
+    # Do not include it in the request to the Authentication server.
+    handshake_request.headers.pop("Authorization", None)
+    handshake_response = client.send(handshake_request)
+    handle_error(handshake_response)
     if token_cache:
         # We are using a token_cache.
         directory = _token_directory(token_cache, client.base_url.netloc, username)
@@ -88,7 +117,7 @@ def _reauthenticate_client(client, username, *, token_cache=DEFAULT_TOKEN_CACHE)
                 refresh_token = file.read()
             token_request = client.build_request(
                 "POST",
-                "/token/refresh",
+                f"{authentication_uri}token/refresh",
                 json={"refresh_token": refresh_token},
                 headers={"x-csrf": client.cookies["tiled_csrf"]},
             )

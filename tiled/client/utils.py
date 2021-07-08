@@ -22,7 +22,7 @@ def handle_error(response):
             # Include more detail that httpx does by default.
             message = (
                 f"{exc.response.status_code}: "
-                f"{exc.response.json()['detail']} "
+                f"{exc.response.json()['detail'] if response.content else ''} "
                 f"{exc.request.url}"
             )
             raise ClientError(message, exc.request, exc.response) from exc
@@ -80,7 +80,7 @@ def client_from_tree(tree, authentication, server_settings):
     return client
 
 
-def client_and_path_from_uri(uri, **kwargs):
+def client_and_path_from_uri(uri, authentication_uri=None, **kwargs):
     headers = kwargs.get("headers", {})
     # The uri is expected to reach the root or /metadata route.
     url = httpx.URL(uri)
