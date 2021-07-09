@@ -51,6 +51,17 @@ class Tree(TreeInMemory):
         }
     )
 
+    # We can mostly rely on mimetypes.types_map for the common ones
+    # ('.csv' -> 'text/csv', etc.) but we supplement here for some
+    # of the more exotic ones that not all platforms know about.
+    DEFAULT_MIMETYPES_BY_FILE_EXT = {
+        # This is the "official" file extension.
+        ".h5": "application/x-hdf5",
+        # These are unofficial but common file extensions.
+        ".hdf": "application/x-hdf5",
+        ".hdf5": "application/x-hdf5",
+    }
+
     @classmethod
     def from_directory(
         cls,
@@ -82,6 +93,9 @@ class Tree(TreeInMemory):
             readers_by_mimetype, cls.DEFAULT_READERS_BY_MIMETYPE
         )
         mimetypes_by_file_ext = mimetypes_by_file_ext or {}
+        merged_mimetypes_by_file_ext = collections.ChainMap(
+            mimetypes_by_file_ext, cls.DEFAULT_MIMETYPES_BY_FILE_EXT
+        )
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
         # This single index represents the entire nested directory structure. (We
         # could have done this recursively, with each sub-Tree watching its own
@@ -104,7 +118,7 @@ class Tree(TreeInMemory):
                 ignore_re_dirs,
                 index,
                 merged_readers_by_mimetype,
-                mimetypes_by_file_ext,
+                merged_mimetypes_by_file_ext,
                 initial_scan_complete,
                 watcher_thread_kill_switch,
             ),
@@ -154,7 +168,7 @@ class Tree(TreeInMemory):
                 try:
                     index[parts][filename] = _reader_factory_for_file(
                         merged_readers_by_mimetype,
-                        mimetypes_by_file_ext,
+                        merged_mimetypes_by_file_ext,
                         Path(root, filename),
                     )
                 except NoReaderAvailable:
