@@ -57,6 +57,11 @@ class Tree(TreeInMemory):
     DEFAULT_MIMETYPES_BY_FILE_EXT = {
         # This is the "official" file extension.
         ".h5": "application/x-hdf5",
+        # This is NeXus. We may want to invent a special media type
+        # like 'application/x-nexus' for this, but I'll punt that for now.
+        # Needs thought about how to encode the various types of NeXus
+        # (media type arguments, for example).
+        ".nxs": "application/x-hdf5",
         # These are unofficial but common file extensions.
         ".hdf": "application/x-hdf5",
         ".hdf5": "application/x-hdf5",
