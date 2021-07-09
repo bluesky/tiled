@@ -283,7 +283,7 @@ def _process_changes(
                 # for this filename.
                 ignore.add(path)
         elif kind == Change.deleted:
-            index[parent_parts].pop(path.name)
+            index[parent_parts].pop(path.name, None)
         elif kind == Change.modified:
             # Why do we need a try/except here? A reasonable question!
             # Normally, we would learn about the file first via a Change.added
