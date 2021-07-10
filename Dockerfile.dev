@@ -1,0 +1,18 @@
+# FROM tiangolo/uvicorn-gunicorn-fastapi:python3.7
+
+# COPY ./ /app
+# WORKDIR /app
+# RUN pip install -U pip
+# RUN pip install .[server,xarray,cache,dataframe,xarray]
+
+# commented above is an attempt to use gunicorn to provide horizontal scaling
+# that solution will depend on some new features...until then, see below of single process
+# tiled
+
+FROM python:3.9
+
+COPY ./ /app
+WORKDIR /app
+RUN pip install -U pip && RUN pip install .[server,xarray,dataframe,xarray]
+
+CMD  tiled serve directory /data
