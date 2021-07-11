@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 import builtins
 import itertools
+from tiled.server import authentication
 
 import xarray
 
@@ -34,6 +35,7 @@ class DaskVariableClient(BaseArrayClient):
             item=self._item,
             username=self._username,
             token_cache=self._token_cache,
+            authentication_uri=self._authentication_uri,
             offline=self._offline,
             cache=self._cache,
             path=self._path,
@@ -111,6 +113,7 @@ class DaskDataArrayClient(BaseArrayClient):
             item=self._item,
             username=self._username,
             token_cache=self._token_cache,
+            authentication_uri=self._authentication_uri,
             offline=self._offline,
             cache=self._cache,
             path=self._path,
@@ -136,6 +139,7 @@ class DaskDataArrayClient(BaseArrayClient):
                 item=self._item,
                 username=self._username,
                 token_cache=self._token_cache,
+                authentication_uri=self._authentication_uri,
                 offline=self._offline,
                 cache=self._cache,
                 path=self._path,
@@ -161,6 +165,7 @@ class DaskDataArrayClient(BaseArrayClient):
             item=self._item,
             username=self._username,
             token_cache=self._token_cache,
+            authentication_uri=self._authentication_uri,
             offline=self._offline,
             cache=self._cache,
             path=self._path,
@@ -179,6 +184,7 @@ class DaskDataArrayClient(BaseArrayClient):
                 item=self._item,
                 username=self._username,
                 token_cache=self._token_cache,
+                authentication_uri=self._authentication_uri,
                 offline=self._offline,
                 cache=self._cache,
                 path=self._path,
