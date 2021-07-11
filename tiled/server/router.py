@@ -763,4 +763,14 @@ def dataset_full(
 
 
 def _get_base_url(url, root_path):
-    return f"{url.scheme}://{url.netloc.decode()}{root_path}"
+    # Confusing thing:
+    # An httpx.URL treats netloc as bytes (in 0.18.2)
+    # but starlette.datastructures.URL treats netloc as str.
+    # It seems possible starlette could change their minds in
+    # the future to align with httpx, so we will accept either
+    # str or bytes here.
+    if isinstance(url.netloc, bytes):
+        netloc_str = url.netloc.decode()
+    else:
+        netloc_str = url.netloc
+    return f"{url.scheme}://{netloc_str}{root_path}"
