@@ -126,20 +126,30 @@ serialization_registry.register("dataset", "application/netcdf", serialize_netcd
 serialization_registry.register(
     "dataset",
     APACHE_ARROW_FILE_MIME_TYPE,
-    lambda ds, metadata: serialize_arrow(ds.to_dataframe()),
+    lambda ds, metadata: serialize_arrow(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset", "text/csv", lambda ds, metadata: serialize_csv(ds.to_dataframe())
+    "dataset",
+    "text/csv",
+    lambda ds, metadata: serialize_csv(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset", "text/plain", lambda ds, metadata: serialize_csv(ds.to_dataframe())
+    "dataset",
+    "text/plain",
+    lambda ds, metadata: serialize_csv(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset", "text/html", lambda ds, metadata: serialize_html(ds.to_dataframe())
+    "dataset",
+    "text/html",
+    lambda ds, metadata: serialize_html(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset", XLSX_MIME_TYPE, lambda ds, metadata: serialize_excel(ds.to_dataframe())
+    "dataset",
+    XLSX_MIME_TYPE,
+    lambda ds, metadata: serialize_excel(ds.to_dataframe(), metadata),
 )
 
-deserialization_registry.register("dataset", "application/x-zarr", xarray.open_zarr)
+deserialization_registry.register(
+    "dataset", "application/x-zarr", lambda ds, metadata: xarray.open_zarr(ds)
+)
 # TODO How should we add support for access via Zarr?
