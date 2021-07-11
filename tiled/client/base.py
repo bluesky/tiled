@@ -1,7 +1,7 @@
 import msgpack
 
 from ..utils import DictView, ListView
-from .authentication import reauthenticate_client
+from .authentication import reauthenticate
 from .utils import (
     handle_error,
     NEEDS_INITIALIZATION,
@@ -182,13 +182,17 @@ class BaseClient:
             # TODO Use a more targeted signal to know that refreshing the token will help.
             # Parse the error message? Add a special header from the server?
             if self._username is not None:
-                reauthenticate_client(
+                tokens = reauthenticate(
                     self._client,
                     self._username,
                     self._authentication_uri,
                     token_cache=self._token_cache,
                 )
-                request.headers["authorization"] = self._client.headers["authorization"]
+                access_token = tokens["access_token"]
+                # Patch in the Authorization header for this request...
+                request.headers["authorization"] = access_token
+                # And update the default headers for future requests.
+                self._client.headers["Authorization"] = f"Bearer {access_token}"
                 return self._send(request, timeout, attempts=1)
         return response
 

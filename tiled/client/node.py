@@ -15,7 +15,7 @@ from ..utils import (
     OneShotCachedMap,
     Sentinel,
 )
-from .authentication import DEFAULT_TOKEN_CACHE, reauthenticate_client
+from .authentication import DEFAULT_TOKEN_CACHE, reauthenticate
 from .base import BaseClient
 from .utils import (
     client_and_path_from_uri,
@@ -810,9 +810,11 @@ def from_client(
         Node.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
     if username is not None:
-        reauthenticate_client(
+        tokens = reauthenticate(
             client, username, authentication_uri, token_cache=token_cache
         )
+        access_token = tokens["access_token"]
+        client.headers["Authorization"] = f"Bearer {access_token}"
     instance = Node(
         client,
         item=NEEDS_INITIALIZATION,

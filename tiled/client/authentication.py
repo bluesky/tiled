@@ -31,10 +31,11 @@ def login(
     tree, username=None, authentication_uri=None, *, token_cache=DEFAULT_TOKEN_CACHE
 ):
     client, _uri = _client_and_uri_from_uri_or_profile(tree)
-    authenticate_client(client, username, authentication_uri, token_cache=token_cache)
+    # This has a side effect of storing the refresh token in the token_cache, if set.
+    return authenticate(client, username, authentication_uri, token_cache=token_cache)
 
 
-def authenticate_client(
+def authenticate(
     client, username, authentication_uri=None, *, token_cache=DEFAULT_TOKEN_CACHE
 ):
     authentication_uri = authentication_uri or "/"
@@ -55,6 +56,7 @@ def authenticate_client(
     token_request = client.build_request(
         "POST", f"{authentication_uri}token", data=form_data, headers={}
     )
+    token_request.headers.pop("Authorization", None)
     token_response = client.send(token_request)
     handle_error(token_response)
     data = token_response.json()
@@ -66,11 +68,12 @@ def authenticate_client(
         filepath.touch(mode=0o600)  # Set permissions.
         with open(filepath, "w") as file:
             file.write(data["refresh_token"])
+    return data
     access_token = token_response.json()["access_token"]
     client.headers["Authorization"] = f"Bearer {access_token}"
 
 
-def reauthenticate_client(
+def reauthenticate(
     client,
     username,
     authentication_uri=None,
@@ -79,21 +82,17 @@ def reauthenticate_client(
     prompt_on_failure=True,
 ):
     try:
-        _reauthenticate_client(
-            client, username, authentication_uri, token_cache=token_cache
-        )
+        _refresh(client, username, authentication_uri, token_cache=token_cache)
     except CannotRefreshAuthentication:
         if prompt_on_failure:
-            return authenticate_client(
+            return authenticate(
                 client, username, authentication_uri, token_cache=token_cache
             )
         else:
             raise
 
 
-def _reauthenticate_client(
-    client, username, authentication_uri, *, token_cache=DEFAULT_TOKEN_CACHE
-):
+def _refresh(client, username, authentication_uri, *, token_cache=DEFAULT_TOKEN_CACHE):
     # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
     authentication_uri = authentication_uri or "/"
     if not authentication_uri.endswith("/"):
@@ -107,39 +106,41 @@ def _reauthenticate_client(
     handshake_request.headers.pop("Authorization", None)
     handshake_response = client.send(handshake_request)
     handle_error(handshake_response)
-    if token_cache:
-        # We are using a token_cache.
-        directory = _token_directory(token_cache, client.base_url.netloc, username)
-        filepath = directory / "refresh_token"
-        if filepath.is_file():
-            # There is a token file.
-            with open(filepath, "r") as file:
-                refresh_token = file.read()
-            token_request = client.build_request(
-                "POST",
-                f"{authentication_uri}token/refresh",
-                json={"refresh_token": refresh_token},
-                headers={"x-csrf": client.cookies["tiled_csrf"]},
-            )
-            token_response = client.send(token_request)
-            if token_response.status_code == 401:
-                # Refreshing the token failed.
-                # Discard the expired (or otherwise invalid) refresh_token file.
-                filepath.unlink(missing_ok=True)
-                raise CannotRefreshAuthentication(
-                    "Server rejected attempt to refresh token"
-                )
-        else:
-            raise CannotRefreshAuthentication(
-                "No refresh token was found in token cache"
-            )
-
-    else:
+    if not token_cache:
         # We are not using a token cache.
         raise CannotRefreshAuthentication("No token cache was given")
+    # We are using a token_cache.
+    directory = _token_directory(token_cache, client.base_url.netloc, username)
+    filepath = directory / "refresh_token"
+    if filepath.is_file():
+        # There is a token file.
+        with open(filepath, "r") as file:
+            refresh_token = file.read()
+        token_request = client.build_request(
+            "POST",
+            f"{authentication_uri}token/refresh",
+            json={"refresh_token": refresh_token},
+            headers={"x-csrf": client.cookies["tiled_csrf"]},
+        )
+        token_request.headers.pop("Authorization", None)
+        token_response = client.send(token_request)
+        if token_response.status_code == 401:
+            # Refreshing the token failed.
+            # Discard the expired (or otherwise invalid) refresh_token file.
+            filepath.unlink(missing_ok=True)
+            raise CannotRefreshAuthentication(
+                "Server rejected attempt to refresh token"
+            )
+    else:
+        raise CannotRefreshAuthentication("No refresh token was found in token cache")
     handle_error(token_response)
-    access_token = token_response.json()["access_token"]
-    client.headers["Authorization"] = f"Bearer {access_token}"
+    tokens = token_response.json()
+    # If we get this far, reauthentication worked.
+    # Store the new refresh token.
+    filepath.touch(mode=0o600)  # Set permissions.
+    with open(filepath, "w") as file:
+        file.write(tokens["refresh_token"])
+    return tokens
 
 
 def _client_and_uri_from_uri_or_profile(uri_or_profile):
