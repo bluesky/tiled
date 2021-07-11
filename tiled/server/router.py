@@ -763,7 +763,4 @@ def dataset_full(
 
 
 def _get_base_url(url, root_path):
-    netloc = url.netloc
-    if isinstance(netloc, bytes):
-        netloc = netloc.decode()
-    return f"{url.scheme}://{netloc}{root_path}"
+    return f"{url.scheme}://{url.netloc.decode()}{root_path}"
