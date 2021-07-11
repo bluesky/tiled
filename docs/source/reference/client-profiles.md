@@ -160,3 +160,9 @@ Filepath to directory of access tokens.
 Default location is usually suitable.
 The default is system-dependent and can be inspected at
 `tiled.client.authentication.DEFAULT_TILED_TOKEN_CACHE`.
+
+
+(schema_verify)=
+## verify
+
+Set to False to disable SSL verification.

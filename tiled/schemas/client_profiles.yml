@@ -175,3 +175,7 @@ properties:
       Default location is usually suitable.
       The default is system-dependent and can be inspected at
       `tiled.client.authentication.DEFAULT_TILED_TOKEN_CACHE`.
+  verify:
+    type: boolean
+    description: |
+      Set to False to disable SSL verification.
