@@ -59,7 +59,7 @@ def authenticate(
     token_request.headers.pop("Authorization", None)
     token_response = client.send(token_request)
     handle_error(token_response)
-    data = token_response.json()
+    tokens = token_response.json()
     if token_cache:
         # We are using a token cache. Store the new refresh token.
         directory = _token_directory(token_cache, client.base_url.netloc, username)
@@ -67,10 +67,8 @@ def authenticate(
         filepath = directory / "refresh_token"
         filepath.touch(mode=0o600)  # Set permissions.
         with open(filepath, "w") as file:
-            file.write(data["refresh_token"])
-    return data
-    access_token = token_response.json()["access_token"]
-    client.headers["Authorization"] = f"Bearer {access_token}"
+            file.write(tokens["refresh_token"])
+    return tokens
 
 
 def reauthenticate(
@@ -82,7 +80,7 @@ def reauthenticate(
     prompt_on_failure=True,
 ):
     try:
-        _refresh(client, username, authentication_uri, token_cache=token_cache)
+        return _refresh(client, username, authentication_uri, token_cache=token_cache)
     except CannotRefreshAuthentication:
         if prompt_on_failure:
             return authenticate(

@@ -307,6 +307,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 params=self._params,
                 username=self._username,
                 token_cache=self._token_cache,
+                authentication_uri=self._authentication_uri,
             )
 
     def new_variation(

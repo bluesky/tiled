@@ -189,10 +189,11 @@ class BaseClient:
                     token_cache=self._token_cache,
                 )
                 access_token = tokens["access_token"]
+                auth_header = f"Bearer {access_token}"
                 # Patch in the Authorization header for this request...
-                request.headers["authorization"] = access_token
+                request.headers["authorization"] = auth_header
                 # And update the default headers for future requests.
-                self._client.headers["Authorization"] = f"Bearer {access_token}"
+                self._client.headers["Authorization"] = auth_header
                 return self._send(request, timeout, attempts=1)
         return response
 
