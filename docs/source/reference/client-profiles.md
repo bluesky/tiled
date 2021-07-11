@@ -21,6 +21,17 @@ URI of a Tiled server, such as
     http://localhost:8000
 
 
+(schema_authentication_uri)=
+## authentication_uri
+
+URI of a Tiled OAuth2 authentication server. If this is unset, `uri` will
+be used for authentication as well, which is typically correct for simple
+deployments of Tiled.
+
+By default, `tiled serve ...` acts is both a Resource server and an
+Authentication server.
+
+
 (schema_username)=
 ## username
 
