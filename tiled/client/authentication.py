@@ -1,12 +1,12 @@
 import getpass
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import urllib.parse
 
 import appdirs
+import httpx
 
 from .utils import (
-    client_and_path_from_uri,
     client_from_tree,
     handle_error,
 )
@@ -139,6 +139,54 @@ def _refresh(client, username, authentication_uri, *, token_cache=DEFAULT_TOKEN_
     with open(filepath, "w") as file:
         file.write(tokens["refresh_token"])
     return tokens
+
+
+def client_and_path_from_uri(
+    uri, username=None, authentication_uri=None, token_cache=None, **kwargs
+):
+    headers = kwargs.get("headers", {})
+    # The uri is expected to reach the root or /metadata route.
+    url = httpx.URL(uri)
+
+    # If ?api_key=... is present, move it from the query into a header.
+    parsed_query = urllib.parse.parse_qs(url.query.decode())
+    api_key_list = parsed_query.pop("api_key", None)
+    if api_key_list is not None:
+        if len(api_key_list) != 1:
+            raise ValueError("Cannot handle two api_key query parameters")
+        (api_key,) = api_key_list
+        headers["X-TILED-API-KEY"] = api_key
+    params = kwargs.get("params", {})
+    params.update(urllib.parse.urlencode(parsed_query, doseq=True))
+
+    # Construct the URL *without* the params, which we will pass in separately.
+    handshake_url = urllib.parse.urlunsplit(
+        (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
+    )
+
+    client = httpx.Client(headers=headers, params=params, **kwargs)
+    if (username is not None) and (authentication_uri is not None):
+        tokens = reauthenticate(
+            client, username, authentication_uri, token_cache=token_cache
+        )
+        access_token = tokens["access_token"]
+        client.headers["Authorization"] = f"Bearer {access_token}"
+    # First, ask the server what its root_path is.
+    # This is the only place where we use client.get *directly*, circumventing
+    # the usual "get with cache" logic.
+    response = client.get(handshake_url, params={"root_path": None})
+    handle_error(response)
+    data = response.json()
+    base_path = data["meta"]["root_path"]
+    base_url = urllib.parse.urlunsplit(
+        (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
+    )
+    client.base_url = base_url
+    path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
+    if path_parts:
+        # Strip "/metadata"
+        path_parts.pop(0)
+    return client, path_parts
 
 
 def _client_and_uri_from_uri_or_profile(uri_or_profile):

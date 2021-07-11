@@ -15,10 +15,13 @@ from ..utils import (
     OneShotCachedMap,
     Sentinel,
 )
-from .authentication import DEFAULT_TOKEN_CACHE, reauthenticate
+from .authentication import (
+    DEFAULT_TOKEN_CACHE,
+    reauthenticate,
+    client_and_path_from_uri,
+)
 from .base import BaseClient
 from .utils import (
-    client_and_path_from_uri,
     client_from_tree,
     NEEDS_INITIALIZATION,
 )
@@ -296,7 +299,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 sorting=sorting,
                 root_client_type=self._root_client_type,
             )
-        else:  # item["type"] == "reader"
+        elif item["type"] == "reader":
             return class_(
                 client=self._client,
                 item=item,
@@ -308,6 +311,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 username=self._username,
                 token_cache=self._token_cache,
                 authentication_uri=self._authentication_uri,
+            )
+        else:
+            raise NotImplementedError(
+                "Server sent item of unrecognized type {item['type']}"
             )
 
     def new_variation(
@@ -676,7 +683,9 @@ def from_uri(
     authentication_uri : str, optional
         URL of authentication server
     """
-    client, path = client_and_path_from_uri(uri, authentication_uri, verify=verify)
+    client, path = client_and_path_from_uri(
+        uri, username=username, authentication_uri=authentication_uri, verify=verify
+    )
     return from_client(
         client,
         structure_clients=structure_clients,

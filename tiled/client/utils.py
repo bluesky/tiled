@@ -1,7 +1,6 @@
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import secrets
-import urllib.parse
 
 import httpx
 
@@ -78,46 +77,6 @@ def client_from_tree(tree, authentication, server_settings):
 
     atexit.register(client.close)
     return client
-
-
-def client_and_path_from_uri(uri, authentication_uri=None, **kwargs):
-    headers = kwargs.get("headers", {})
-    # The uri is expected to reach the root or /metadata route.
-    url = httpx.URL(uri)
-
-    # If ?api_key=... is present, move it from the query into a header.
-    parsed_query = urllib.parse.parse_qs(url.query.decode())
-    api_key_list = parsed_query.pop("api_key", None)
-    if api_key_list is not None:
-        if len(api_key_list) != 1:
-            raise ValueError("Cannot handle two api_key query parameters")
-        (api_key,) = api_key_list
-        headers["X-TILED-API-KEY"] = api_key
-    params = kwargs.get("params", {})
-    params.update(urllib.parse.urlencode(parsed_query, doseq=True))
-
-    # Construct the URL *without* the params, which we will pass in separately.
-    handshake_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
-    )
-
-    # First, ask the server what its root_path is.
-    client = httpx.Client(headers=headers, params=params, **kwargs)
-    # This is the only place where we use client.get *directly*, circumventing
-    # the usual "get with cache" logic.
-    response = client.get(handshake_url, params={"root_path": None})
-    handle_error(response)
-    data = response.json()
-    base_path = data["meta"]["root_path"]
-    base_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
-    )
-    client.base_url = base_url
-    path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-    if path_parts:
-        # Strip "/metadata"
-        path_parts.pop(0)
-    return client, path_parts
 
 
 def export_util(file, format, get, link, params):
