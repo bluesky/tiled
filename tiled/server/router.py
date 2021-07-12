@@ -324,7 +324,7 @@ def dataframe_meta(
             detail=f"Cannot read {reader.structure_family} structure with /dataframe/meta route.",
         )
     meta = reader.microstructure().meta
-    content = serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta)
+    content = serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta, {})
     headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
         content,
@@ -358,7 +358,7 @@ def dataframe_divisions(
     # that we can easily serialize it with Arrow in the normal way.
     divisions_wrapped_in_df = pandas.DataFrame({"divisions": list(divisions)})
     content = serialization_registry(
-        "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_wrapped_in_df
+        "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_wrapped_in_df, {}
     )
     headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
