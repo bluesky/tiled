@@ -3,6 +3,7 @@ import itertools
 
 import dask
 import dask.array
+import numpy
 
 from ..structures.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
@@ -37,6 +38,13 @@ class DaskArrayClient(BaseArrayClient):
                 "Slicing less than one block is not yet supported."
             )
         if shape:
+            # Check for special case of shape with 0 in it.
+            if 0 in shape:
+                # This is valid, and it has come up in the wild.  An array with
+                # 0 as one of the dimensions never contains data, so we can
+                # short-circuit here without any further information from the
+                # service.
+                return numpy.array([], dtype=dtype).reshape(shape)
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"

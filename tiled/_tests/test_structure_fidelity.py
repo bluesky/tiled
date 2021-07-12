@@ -48,3 +48,11 @@ def test_scalar_dtypes(kind):
     expected = scalar_cases[kind]
     actual = client[kind].read()
     assert numpy.array_equal(actual, expected)
+
+
+def test_shape_with_zero():
+    expected = numpy.array([]).reshape((0, 100, 1, 10))
+    tree = Tree({"test": ArrayAdapter.from_array(expected)})
+    client = from_tree(tree)
+    actual = client["test"].read()
+    assert numpy.array_equal(actual, expected)
