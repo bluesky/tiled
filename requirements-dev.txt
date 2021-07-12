@@ -5,7 +5,7 @@ coverage
 flake8
 pytest
 pytest-asyncio
-sphinx
+sphinx !=4.1.0
 # These are dependencies of various sphinx extensions for documentation.
 h5py
 ipython

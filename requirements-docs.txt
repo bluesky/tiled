@@ -1,7 +1,0 @@
-ipython
-matplotlib
-myst_parser
-numpydoc
-sphinx
-sphinx-copybutton
-sphinx_rtd_theme
