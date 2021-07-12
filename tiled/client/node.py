@@ -245,31 +245,24 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             entry.touch()
 
     def _get_class(self, item):
-        # The basic structure of the response is either one of the structure_clients
-        # we know about or a sub-Node.
+        # The server can use specs to tell us that this is not just *any*
+        # tree/array/dataframe/etc. but that is matches a certain specification
+        # for which there may be a special client available.
+        # Check each spec in order for a matching special client. Use the first
+        # one we find. If we find no special client for any spec, fall back on
+        # the defaults.
+        specs = item["attributes"].get("specs", []) or []
+        for spec in specs:
+            class_ = self.special_clients.get(spec)
+            if class_ is None:
+                continue
+            return class_
         if item["type"] == "reader":
             structure_family = item["attributes"]["structure_family"]
             try:
                 return self.structure_clients[structure_family]
             except KeyError:
                 raise UnknownStructureFamily(structure_family) from None
-        # If a tree, server can hint that we should use a special variant
-        # that might have a special __repr__, or extra methods for usability,
-        # etc.
-        spec = item["attributes"].get("spec")
-        if spec is not None:
-            class_ = self.special_clients.get(spec)
-            if class_ is None:
-                warnings.warn(
-                    "The server suggested to use a special client with the "
-                    f"hint {spec!r} but nothing matching the "
-                    "description could be discovered in the current software "
-                    "environment. We will fall back back to a default that "
-                    "should be functional but may lack some usability "
-                    "features."
-                )
-            else:
-                return class_
         # This is generally just Node, but if the original
         # user-created tree was a subclass of Node, this will
         # repsect that.

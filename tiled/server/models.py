@@ -39,7 +39,7 @@ class EntryFields(str, enum.Enum):
     microstructure = "structure.micro"
     macrostructure = "structure.macro"
     count = "count"
-    spec = "spec"
+    specs = "specs"
     none = ""
 
 
@@ -47,7 +47,7 @@ class TreeAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     count: Optional[int]
     sorting: Optional[List[Tuple[str, int]]]
-    spec: Optional[str]
+    specs: Optional[List[str]]
 
 
 class StructureFamilies(str, enum.Enum):
