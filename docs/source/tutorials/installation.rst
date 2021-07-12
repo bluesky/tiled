@@ -37,7 +37,7 @@ without worrying about keeping dependencies low:
 
    .. code:: bash
 
-      python3 -m pip install 'tiled[complete]'
+      python3 -m pip install tiled[complete]
 
    On Linux, you may include them or omit them; it works the same either way.
 
