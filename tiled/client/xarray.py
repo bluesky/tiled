@@ -1,7 +1,6 @@
 from collections.abc import Iterable
 import builtins
 import itertools
-from tiled.server import authentication
 
 import xarray
 
