@@ -24,6 +24,27 @@ without worrying about keeping dependencies low:
 
    python3 -m pip install 'tiled[complete]'
 
+.. warning::
+
+   We use single quotes in the installation commands, as in:
+
+   .. code:: bash
+
+      python3 -m pip install 'tiled[complete]'
+
+   On MacOS, you MUST include the single quotes.
+   On Windows, you MUST NOT include them; you should instead do:
+
+   .. code:: bash
+
+      python3 -m pip install tiled[complete]
+
+   On Linux, you may include them or omit them; it works the same either way.
+
+   (This difference between Mac and Linux is not due to the operating system *per
+   se*. It just happens that modern MacOS systems ship with zsh as the default
+   shell, whereas Linux typically ships with bash.)
+
 To install dependencies more selectively, decide whether you are
 publishing data as a ``server``, reading data as a ``client`` or both.
 
