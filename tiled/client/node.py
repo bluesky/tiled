@@ -684,7 +684,11 @@ def from_uri(
         URL of authentication server
     """
     client, path = client_and_path_from_uri(
-        uri, username=username, authentication_uri=authentication_uri, verify=verify
+        uri,
+        username=username,
+        authentication_uri=authentication_uri,
+        token_cache=token_cache,
+        verify=verify,
     )
     return from_client(
         client,
