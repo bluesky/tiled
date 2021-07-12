@@ -256,13 +256,13 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If a tree, server can hint that we should use a special variant
         # that might have a special __repr__, or extra methods for usability,
         # etc.
-        client_type_hint = item["attributes"].get("client_type_hint")
-        if client_type_hint is not None:
-            class_ = self.special_clients.get(client_type_hint)
+        spec = item["attributes"].get("spec")
+        if spec is not None:
+            class_ = self.special_clients.get(spec)
             if class_ is None:
                 warnings.warn(
                     "The server suggested to use a special client with the "
-                    f"hint {client_type_hint!r} but nothing matching the "
+                    f"hint {spec!r} but nothing matching the "
                     "description could be discovered in the current software "
                     "environment. We will fall back back to a default that "
                     "should be functional but may lack some usability "
@@ -673,7 +673,7 @@ def from_uri(
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     special_clients : dict, optional
-        Advanced: Map client_type_hint from the server to special client
+        Advanced: Map spec from the server to special client
         tree objects. See also
         ``Node.discover_special_clients()`` and
         ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
@@ -745,7 +745,7 @@ def from_tree(
     offline : bool, optional
         False by default. If True, rely on cache only.
     special_clients : dict, optional
-        Advanced: Map client_type_hint from the server to special client
+        Advanced: Map spec from the server to special client
         tree objects. See also
         ``Node.discover_special_clients()`` and
         ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
@@ -803,7 +803,7 @@ def from_client(
     offline : bool, optional
         False by default. If True, rely on cache only.
     special_clients : dict, optional
-        Advanced: Map client_type_hint from the server to special client
+        Advanced: Map spec from the server to special client
         tree objects. See also
         ``Node.discover_special_clients()`` and
         ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.

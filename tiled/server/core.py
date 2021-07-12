@@ -405,8 +405,8 @@ def construct_resource(base_url, path_parts, entry, fields):
     attributes = {}
     if models.EntryFields.metadata in fields:
         attributes["metadata"] = entry.metadata
-    if models.EntryFields.client_type_hint in fields:
-        attributes["client_type_hint"] = getattr(entry, "client_type_hint", None)
+    if models.EntryFields.spec in fields:
+        attributes["spec"] = getattr(entry, "spec", None)
     if isinstance(entry, DuckTree):
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
