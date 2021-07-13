@@ -241,7 +241,9 @@ def app_factory():
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_tree_kwargs(parsed_config, validate=False)
+    kwargs = construct_serve_tree_kwargs(
+        parsed_config, source_filepath=config_path, validate=False
+    )
     web_app = serve_tree(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_admin_api_key_if_generated(

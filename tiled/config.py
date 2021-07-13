@@ -6,6 +6,7 @@ See profiles.py for client configuration.
 from collections import defaultdict
 import contextlib
 from functools import lru_cache
+import os
 from pathlib import Path
 
 import jsonschema
@@ -39,81 +40,83 @@ def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
             else:
                 msg = f"ValidationError while parsing configuration file {source_filepath}: {original_msg}"
             raise ConfigError(msg) from err
-    auth_spec = config.get("authentication", {}) or {}
-    auth_aliases = {}
-    # TODO Enable entrypoint as alias for authenticator_class?
-    if auth_spec.get("authenticator") is not None:
-        import_path = auth_aliases.get(
-            auth_spec["authenticator"], auth_spec["authenticator"]
-        )
-        authenticator_class = import_object(import_path)
-        authenticator = authenticator_class(**auth_spec.get("args", {}))
-        auth_spec["authenticator"] = authenticator
-    # TODO Enable entrypoint to extend aliases?
-    tree_aliases = {"files": "tiled.trees.files:Tree.from_directory"}
-    trees = {}
-    for item in config.get("trees", []):
-        segments = tuple(segment for segment in item["path"].split("/") if segment)
-        tree_spec = item["tree"]
-        import_path = tree_aliases.get(tree_spec, tree_spec)
-        obj = import_object(import_path)
-        if "args" in item:
-            if not callable(obj):
-                raise ValueError(
-                    f"Object imported from {import_path} cannot take args. "
-                    "It is not callable."
-                )
-            # Interpret obj as tree *factory*.
-            sys_path_additions = []
-            if source_filepath:
-                if os.path.isdir(source_filepath):
-                    directory = source_filepath
-                else:
-                    directory = os.path.dirname(source_filepath)
-                sys_path_additions.append(directory)
-            with _prepend_to_sys_path(sys_path_additions):
-                tree = obj(**item["args"])
+    sys_path_additions = []
+    if source_filepath:
+        if os.path.isdir(source_filepath):
+            directory = source_filepath
         else:
-            # Interpret obj as tree instance.
-            tree = obj
-        if segments in trees:
-            raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
-        trees[segments] = tree
-    if not len(trees):
-        raise ValueError("Configuration contains no trees")
-    if (len(trees) == 1) and () in trees:
-        # There is one tree to be deployed at '/'.
-        root_tree = tree
-    else:
-        # There are one or more tree(s) to be served at
-        # sub-paths. Merged them into one root in-memory Tree.
-        from .trees.in_memory import Tree
+            directory = os.path.dirname(source_filepath)
+        sys_path_additions.append(directory)
+    with _prepend_to_sys_path(sys_path_additions):
+        auth_spec = config.get("authentication", {}) or {}
+        auth_aliases = {}
+        # TODO Enable entrypoint as alias for authenticator_class?
+        if auth_spec.get("authenticator") is not None:
+            import_path = auth_aliases.get(
+                auth_spec["authenticator"], auth_spec["authenticator"]
+            )
+            authenticator_class = import_object(import_path)
+            authenticator = authenticator_class(**auth_spec.get("args", {}))
+            auth_spec["authenticator"] = authenticator
+        # TODO Enable entrypoint to extend aliases?
+        tree_aliases = {"files": "tiled.trees.files:Tree.from_directory"}
+        trees = {}
+        for item in config.get("trees", []):
+            segments = tuple(segment for segment in item["path"].split("/") if segment)
+            tree_spec = item["tree"]
+            import_path = tree_aliases.get(tree_spec, tree_spec)
+            obj = import_object(import_path)
+            if "args" in item:
+                if not callable(obj):
+                    raise ValueError(
+                        f"Object imported from {import_path} cannot take args. "
+                        "It is not callable."
+                    )
+                # Interpret obj as tree *factory*.
+                tree = obj(**item["args"])
+            else:
+                # Interpret obj as tree instance.
+                tree = obj
+            if segments in trees:
+                raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
+            trees[segments] = tree
+        if not len(trees):
+            raise ValueError("Configuration contains no trees")
+        if (len(trees) == 1) and () in trees:
+            # There is one tree to be deployed at '/'.
+            root_tree = tree
+        else:
+            # There are one or more tree(s) to be served at
+            # sub-paths. Merged them into one root in-memory Tree.
+            from .trees.in_memory import Tree
 
-        mapping = {}
-        include_routers = []
-        for segments, tree in trees.items():
-            inner_mapping = mapping
-            for segment in segments[:-1]:
-                if segment in inner_mapping:
-                    inner_mapping = inner_mapping[segment]
-                else:
-                    inner_mapping = inner_mapping[segment] = {}
-            inner_mapping[segments[-1]] = tree
-            routers = getattr(tree, "include_routers", [])
-            for router in routers:
-                if router not in include_routers:
-                    include_routers.append(router)
-        root_tree = Tree(mapping)
-        root_tree.include_routers.extend(include_routers)
-    server_settings = {}
-    server_settings["allow_origins"] = config.get("allow_origins")
-    # TODO The registry should not be process-global.
-    for structure_family, values in config.get("media_types").items():
-        for media_type, import_path in values.items():
-            serializer = import_object(import_path)
-            serialization_registry.register(structure_family, media_type, serializer)
-    for ext, media_type in config.get("file_extensions").items():
-        serialization_registry.register_alias(ext, media_type)
+            mapping = {}
+            include_routers = []
+            for segments, tree in trees.items():
+                inner_mapping = mapping
+                for segment in segments[:-1]:
+                    if segment in inner_mapping:
+                        inner_mapping = inner_mapping[segment]
+                    else:
+                        inner_mapping = inner_mapping[segment] = {}
+                inner_mapping[segments[-1]] = tree
+                routers = getattr(tree, "include_routers", [])
+                for router in routers:
+                    if router not in include_routers:
+                        include_routers.append(router)
+            root_tree = Tree(mapping)
+            root_tree.include_routers.extend(include_routers)
+        server_settings = {}
+        server_settings["allow_origins"] = config.get("allow_origins")
+        # TODO The registry should not be process-global.
+        for structure_family, values in config.get("media_types").items():
+            for media_type, import_path in values.items():
+                serializer = import_object(import_path)
+                serialization_registry.register(
+                    structure_family, media_type, serializer
+                )
+        for ext, media_type in config.get("file_extensions").items():
+            serialization_registry.register_alias(ext, media_type)
     return {
         "tree": root_tree,
         "authentication": auth_spec,
