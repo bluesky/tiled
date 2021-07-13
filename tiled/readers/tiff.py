@@ -52,7 +52,7 @@ class TiffReader:
         if self._file.is_shaped:
             shape = tuple(self._file.shaped_metadata[0]["shape"])
         else:
-            shape=[len(self._file.asarray()), len(self._file.asarray()[0])]
+            shape = self._file.asarray().shape
         return ArrayMacroStructure(
             shape=shape,
             chunks=tuple((dim,) for dim in shape),
