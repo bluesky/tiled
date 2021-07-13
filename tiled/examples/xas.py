@@ -91,6 +91,7 @@ df = pandas.DataFrame.from_records(
         },
     }
 ).set_index("energy", drop=True)
+# TODO is the index required to be set?
 
 tree = Tree(
     {"example": DataFrameAdapter.from_pandas(df, metadata=metadata, npartitions=1)}
