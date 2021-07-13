@@ -49,7 +49,10 @@ class TiffReader:
         return MachineDataType.from_numpy_dtype(self._file.series[0].dtype)
 
     def macrostructure(self):
-        shape = tuple(self._file.shaped_metadata[0]["shape"])
+        if self._file.is_shaped:
+            shape = tuple(self._file.shaped_metadata[0]["shape"])
+        else:
+            shape = self._file.asarray().shape
         return ArrayMacroStructure(
             shape=shape,
             chunks=tuple((dim,) for dim in shape),
