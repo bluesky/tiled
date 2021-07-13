@@ -197,7 +197,7 @@ def serve_config(
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
-    from ..config import construct_serve_tree_kwargs, parse_configs
+    from ..config import construct_serve_tree_kwargs, parse_configs, _prepend_to_sys_path
 
     config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
     try:
@@ -222,8 +222,12 @@ def serve_config(
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
 
-    # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_tree_kwargs(parsed_config, validate=False)
+    # construct kwargs with config dir added to sys.path
+    sys_path_additions = [config_path if os.path.isdir(config_path) else os.path.dirname(config_path)]
+    with _prepend_to_sys_path(sys_path_additions):
+        # This config was already validated when it was parsed. Do not re-validate.
+        kwargs = construct_serve_tree_kwargs(parsed_config, validate=False)
+
     web_app = serve_tree(**kwargs)
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
