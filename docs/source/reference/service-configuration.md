@@ -81,6 +81,62 @@ Example:
 ```
 
 
+(schema_media_types)=
+## media_types
+
+(schema_media_types.array)=
+### media_types.array
+
+Additional exporters (a.k.a. serializers) for array structures.
+
+Given as a media type (a.k.a MIME type) mapped to an importable function,
+as in
+
+```yaml
+application/x-my-custom-format: package.module:exporter_function
+```
+
+
+(schema_media_types.dataframe)=
+### media_types.dataframe
+
+Additional exporters (a.k.a. serializers) for dataframe structures.
+
+Given as a media type (a.k.a MIME type) mapped to an importable function,
+as in
+
+```yaml
+application/x-my-custom-format: package.module:exporter_function
+```
+
+
+(schema_media_types.dataset)=
+### media_types.dataset
+
+Additional exporters (a.k.a. serializers) for xarray dataset structures.
+
+
+Given as a media type (a.k.a MIME type) mapped to an importable function,
+as in
+
+```yaml
+application/x-my-custom-format: package.module:exporter_function
+```
+
+
+(schema_file_extensions)=
+## file_extensions
+
+This supports the convenience alias `?format=ext` to request a format
+corresponding to some file extension `ext`.
+
+Contents should map file extension to a media type (a.k.a MIME type) as in
+
+```
+ext: application/x-my-custom-format
+```
+
+
 (schema_authentication)=
 ## authentication
 

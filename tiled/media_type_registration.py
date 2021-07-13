@@ -25,6 +25,8 @@ class Registry:
     def __init__(self):
         self._lookup = defaultdict(dict)
         # TODO Think about whether lazy registration makes any sense here.
+        self._custom_aliases_by_type = defaultdict(list)
+        self._custom_aliases = {}
 
     def media_types(self, structure_family):
         """
@@ -55,6 +57,7 @@ class Registry:
                     aliases.append(k[1:])  # e.g. aliases == {"text/csv": ["csv"]}
             if aliases:
                 result[media_type] = aliases
+        result.update(self._custom_aliases_by_type)
         return result
 
     def register(self, structure_family, media_type, func):
@@ -73,6 +76,16 @@ class Registry:
             and return bytes or memoryview
         """
         self._lookup[structure_family][media_type] = func
+
+    def register_alias(self, ext, media_type):
+        self._custom_aliases_by_type[media_type].append(ext)
+        self._custom_aliases[ext] = media_type
+
+    def resolve_alias(self, alias):
+        try:
+            return mimetypes.types_map[f".{alias}"]
+        except KeyError:
+            return self._custom_aliases.get(alias, alias)
 
     def dispatch(self, structure_family, media_type):
         """

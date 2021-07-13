@@ -75,7 +75,59 @@ properties:
               args:
                 directory: "path/to/files"
             ```
+  media_types:
+    type: object
+    additionalProperties: false
+    properties:
+      array:
+        type: object
+        additionalProperties: true
+        description: |
+          Additional exporters (a.k.a. serializers) for array structures.
+          
+          Given as a media type (a.k.a MIME type) mapped to an importable function,
+          as in
 
+          ```yaml
+          application/x-my-custom-format: package.module:exporter_function
+          ```
+      dataframe:
+        type: object
+        additionalProperties: true
+        description: |
+          Additional exporters (a.k.a. serializers) for dataframe structures.
+          
+          Given as a media type (a.k.a MIME type) mapped to an importable function,
+          as in
+
+          ```yaml
+          application/x-my-custom-format: package.module:exporter_function
+          ```
+      dataset:
+        type: object
+        additionalProperties: true
+        description: |
+          Additional exporters (a.k.a. serializers) for xarray dataset structures.
+          
+          
+          Given as a media type (a.k.a MIME type) mapped to an importable function,
+          as in
+
+          ```yaml
+          application/x-my-custom-format: package.module:exporter_function
+          ```
+  file_extensions:
+    type: object
+    additionalProperties: true
+    description: |
+      This supports the convenience alias `?format=ext` to request a format
+      corresponding to some file extension `ext`.
+
+      Contents should map file extension to a media type (a.k.a MIME type) as in
+
+      ```
+      ext: application/x-my-custom-format
+      ```
   authentication:
     type: [object, "null"]
     additionalProperties: false

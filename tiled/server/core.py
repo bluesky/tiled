@@ -8,7 +8,6 @@ from hashlib import md5
 import itertools
 import json
 import math
-from mimetypes import types_map
 import operator
 import re
 import sys
@@ -292,7 +291,9 @@ def construct_array_response(array, metadata, request_headers, format=None):
     if format is not None:
         media_types_or_aliases = format.split(",")
         # Resolve aliases, like "csv" -> "text/csv".
-        media_types = [types_map.get("." + t, t) for t in media_types_or_aliases]
+        media_types = [
+            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
+        ]
     else:
         # The HTTP spec says these should be separated by ", " but some
         # browsers separate with just "," (no space).
@@ -332,7 +333,9 @@ def construct_dataframe_response(df, metadata, request_headers, format=None):
     if format is not None:
         media_types_or_aliases = format.split(",")
         # Resolve aliases, like "csv" -> "text/csv".
-        media_types = [types_map.get("." + t, t) for t in media_types_or_aliases]
+        media_types = [
+            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
+        ]
     else:
         # The HTTP spec says these should be separated by ", " but some
         # browsers separate with just "," (no space).
@@ -372,7 +375,9 @@ def construct_dataset_response(dataset, metadata, request_headers, format=None):
     if format is not None:
         media_types_or_aliases = format.split(",")
         # Resolve aliases, like "csv" -> "text/csv".
-        media_types = [types_map.get("." + t, t) for t in media_types_or_aliases]
+        media_types = [
+            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
+        ]
     else:
         # The HTTP spec says these should be separated by ", " but some
         # browsers separate with just "," (no space).

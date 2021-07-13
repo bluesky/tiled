@@ -182,6 +182,7 @@ def serve_config(
             "If that is unset, try default location ./config.yml."
         ),
     ),
+    public: bool = typer.Option(False, "--public"),
     host: str = typer.Option(
         None,
         help=(
@@ -205,6 +206,12 @@ def serve_config(
         typer.echo(str(err))
         raise typer.Abort()
 
+    # Let --public flag override config.
+    if public:
+        if "authentication" not in parsed_config:
+            parsed_config["authentication"] = {}
+        parsed_config["authentication"]["allow_anonymous_access"] = True
+
     # Delay this import so that we can fail faster if config-parsing fails above.
 
     from ..server.app import serve_tree, print_admin_api_key_if_generated
@@ -216,7 +223,9 @@ def serve_config(
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_tree_kwargs(parsed_config, validate=False)
+    kwargs = construct_serve_tree_kwargs(
+        parsed_config, source_filepath=config_path, validate=False
+    )
     web_app = serve_tree(**kwargs)
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
