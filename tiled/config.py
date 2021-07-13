@@ -25,7 +25,7 @@ def schema():
         return yaml.safe_load(file)
 
 
-def construct_serve_tree_kwargs(config, validate=True):
+def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
     """
     Given parsed configuration, construct arguments for serve_tree(...).
     """
@@ -34,9 +34,11 @@ def construct_serve_tree_kwargs(config, validate=True):
             jsonschema.validate(instance=config, schema=schema())
         except jsonschema.ValidationError as err:
             original_msg = err.args[0]
-            msg = f"ValidationError while parsing configuration: {original_msg}"
+            if source_filepath is None:
+                msg = f"ValidationError while parsing configuration: {original_msg}"
+            else:
+                msg = f"ValidationError while parsing configuration file {source_filepath}: {original_msg}"
             raise ConfigError(msg) from err
-
     auth_spec = config.get("authentication", {}) or {}
     auth_aliases = {}
     # TODO Enable entrypoint as alias for authenticator_class?
@@ -62,7 +64,15 @@ def construct_serve_tree_kwargs(config, validate=True):
                     "It is not callable."
                 )
             # Interpret obj as tree *factory*.
-            tree = obj(**item["args"])
+            sys_path_additions = []
+            if source_filepath:
+                if os.path.isdir(source_filepath):
+                    directory = source_filepath
+                else:
+                    directory = os.path.dirname(source_filepath)
+                sys_path_additions.append(directory)
+            with _prepend_to_sys_path(sys_path_additions):
+                tree = obj(**item["args"])
         else:
             # Interpret obj as tree instance.
             tree = obj
