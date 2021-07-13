@@ -97,7 +97,6 @@ The exporter must return either `str` or `bytes`.
 import io
 
 def serialize_xdi(dataframe, metadata):
-    print(type(dataframe))
     output = io.StringIO()
     output.write("# XDI/1.0 tiled/0.1.0a20\n")
     # TODO required headers
