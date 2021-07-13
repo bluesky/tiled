@@ -6,7 +6,6 @@ See profiles.py for client configuration.
 from collections import defaultdict
 import contextlib
 from functools import lru_cache
-import os
 from pathlib import Path
 
 import jsonschema
@@ -63,8 +62,7 @@ def construct_serve_tree_kwargs(config, validate=True):
                     "It is not callable."
                 )
             # Interpret obj as tree *factory*.
-            with _prepend_to_sys_path(sys_path_additions):
-                tree = obj(**item["args"])
+            tree = obj(**item["args"])
         else:
             # Interpret obj as tree instance.
             tree = obj
