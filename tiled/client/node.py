@@ -307,7 +307,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         else:
             raise NotImplementedError(
-                "Server sent item of unrecognized type {item['type']}"
+                f"Server sent item of unrecognized type {item['type']}"
             )
 
     def new_variation(
