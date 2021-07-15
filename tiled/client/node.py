@@ -7,6 +7,7 @@ import time
 import warnings
 
 import entrypoints
+import httpx
 
 from ..query_registration import query_type_to_name
 from ..queries import KeyLookup
@@ -15,12 +16,8 @@ from ..utils import (
     OneShotCachedMap,
     Sentinel,
 )
-from .authentication import (
-    DEFAULT_TOKEN_CACHE,
-    reauthenticate,
-    client_and_path_from_uri,
-)
 from .base import BaseClient
+from .core import CoreClient, DEFAULT_TOKEN_CACHE
 from .utils import (
     client_from_tree,
     NEEDS_INITIALIZATION,
@@ -163,17 +160,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         self,
         client,
         *,
-        username,
-        offline,
         path,
         item,
         metadata,
         root_client_type,
         structure_clients,
-        cache,
         special_clients,
-        token_cache,
-        authentication_uri=None,
         params=None,
         queries=None,
         sorting=None,
@@ -199,11 +191,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         super().__init__(
             client=client,
             item=item,
-            username=username,
-            token_cache=token_cache,
-            authentication_uri=authentication_uri,
-            cache=cache,
-            offline=offline,
             path=path,
             metadata=metadata,
             params=params,
@@ -211,7 +198,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if metadata is NEEDS_INITIALIZATION:
             # TO DO: This is a big wart, a side-effect refactor to support
             # refresh tokens. Needs rethinking.
-            content = self._get_json_with_cache(f"/metadata/{'/'.join(path)}")
+            content = self._client.get_json(f"/metadata/{'/'.join(path)}")
             item = content["data"]
             self._metadata.update(item["attributes"]["metadata"])
             self._item = item
@@ -238,7 +225,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         This causes it to be cached if the client is configured with a cache.
         """
-        self._get_json_with_cache(self.uri)
+        self._client.get_json(self.uri)
         repr(self)
         for key in self:
             entry = self[key]
@@ -278,15 +265,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if item["type"] == "tree":
             return class_(
                 client=self._client,
-                username=self._username,
                 item=item,
-                offline=self._offline,
-                cache=self._cache,
                 path=path,
                 metadata=metadata,
                 structure_clients=self.structure_clients,
                 special_clients=self.special_clients,
-                token_cache=self._token_cache,
                 params=self._params,
                 queries=None,
                 sorting=sorting,
@@ -296,14 +279,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             return class_(
                 client=self._client,
                 item=item,
-                offline=self._offline,
-                cache=self._cache,
                 path=path,
                 metadata=metadata,
                 params=self._params,
-                username=self._username,
-                token_cache=self._token_cache,
-                authentication_uri=self._authentication_uri,
             )
         else:
             raise NotImplementedError(
@@ -352,7 +330,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             if now < deadline:
                 # Used the cached value and do not make any request.
                 return length
-        content = self._get_json_with_cache(
+        content = self._client.get_json(
             self.item["links"]["search"],
             params={
                 "fields": "",
@@ -373,7 +351,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     def __iter__(self):
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
-            content = self._get_json_with_cache(
+            content = self._client.get_json(
                 next_page_url,
                 params={
                     "fields": "",
@@ -392,7 +370,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def __getitem__(self, key):
         # Lookup this key *within the search results* of this Node.
-        content = self._get_json_with_cache(
+        content = self._client.get_json(
             self.item["links"]["search"],
             params={
                 **_queries_to_params(KeyLookup(key)),
@@ -424,7 +402,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # one HTTP request per item. Pull pages instead.
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
-            content = self._get_json_with_cache(
+            content = self._client.get_json(
                 next_page_url,
                 params={
                     **self._queries_as_params,
@@ -466,7 +444,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = self._get_json_with_cache(
+            content = self._client.get_json(
                 next_page_url,
                 params={
                     "fields": "",
@@ -495,7 +473,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = self._get_json_with_cache(
+            content = self._client.get_json(
                 next_page_url,
                 params={
                     **self._queries_as_params,
@@ -529,7 +507,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = (
             f"{self.item['links']['search']}?page[offset]={index}&page[limit]=1"
         )
-        content = self._get_json_with_cache(
+        content = self._client.get_json(
             next_page_url,
             params={
                 **self._queries_as_params,
@@ -676,23 +654,17 @@ def from_uri(
     authentication_uri : str, optional
         URL of authentication server
     """
-    client, path = client_and_path_from_uri(
-        uri,
+    httpx_client = httpx.Client(base_url=uri, verify=verify)
+    client = CoreClient(
+        httpx_client,
         username=username,
         authentication_uri=authentication_uri,
         token_cache=token_cache,
-        verify=verify,
     )
     return from_client(
         client,
         structure_clients=structure_clients,
-        username=username,
-        path=path,
-        cache=cache,
-        offline=offline,
         special_clients=special_clients,
-        token_cache=token_cache,
-        authentication_uri=authentication_uri,
     )
 
 
@@ -768,13 +740,8 @@ def from_client(
     client,
     structure_clients="numpy",
     *,
-    username=None,
-    cache=None,
-    offline=False,
     path=None,
     special_clients=None,
-    token_cache=DEFAULT_TOKEN_CACHE,
-    authentication_uri=None,
 ):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -816,25 +783,14 @@ def from_client(
         special_clients or {},
         Node.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
-    if username is not None:
-        tokens = reauthenticate(
-            client, username, authentication_uri, token_cache=token_cache
-        )
-        access_token = tokens["access_token"]
-        client.headers["Authorization"] = f"Bearer {access_token}"
     instance = Node(
         client,
         item=NEEDS_INITIALIZATION,
-        username=username,
-        offline=offline,
         path=path,
         metadata=NEEDS_INITIALIZATION,
         structure_clients=structure_clients,
-        cache=cache,
         special_clients=special_clients,
         root_client_type=Node,
-        token_cache=token_cache,
-        authentication_uri=authentication_uri,
     )
 
     item = instance.item

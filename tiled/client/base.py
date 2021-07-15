@@ -1,13 +1,5 @@
-import msgpack
-
 from ..utils import DictView, ListView
-from .authentication import reauthenticate
-from .utils import (
-    handle_error,
-    NEEDS_INITIALIZATION,
-    NotAvailableOffline,
-    UNSET,
-)
+from .utils import NEEDS_INITIALIZATION
 from ..trees.utils import UNCHANGED
 
 
@@ -17,20 +9,11 @@ class BaseClient:
         client,
         *,
         item,
-        username,
-        token_cache,
-        authentication_uri,
-        cache,
-        offline,
         path,
         metadata,
         params,
     ):
         self._client = client
-        self._token_cache = token_cache
-        self._authentication_uri = authentication_uri
-        self._username = username
-        self._offline = offline
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
         # Stash *immutable* copies just to be safe.
@@ -43,7 +26,6 @@ class BaseClient:
             self._metadata = metadata
         self._cached_len = None  # a cache just for __len__
         self._params = params or {}
-        self._cache = cache
         super().__init__()
 
     def __repr__(self):
@@ -74,12 +56,10 @@ class BaseClient:
 
     @property
     def username(self):
-        return self._username
+        return self._client.username
 
     def new_variation(
         self,
-        offline=UNCHANGED,
-        cache=UNCHANGED,
         metadata=UNCHANGED,
         path=UNCHANGED,
         params=UNCHANGED,
@@ -88,10 +68,6 @@ class BaseClient:
         """
         This is intended primarily for internal use and use by subclasses.
         """
-        if offline is UNCHANGED:
-            offline = self._offline
-        if cache is UNCHANGED:
-            cache = self._cache
         if metadata is UNCHANGED:
             metadata = self._metadata
         if path is UNCHANGED:
@@ -101,101 +77,11 @@ class BaseClient:
         return type(self)(
             client=self._client,
             item=self._item,
-            username=self._username,
-            offline=offline,
-            cache=cache,
             metadata=metadata,
             path=path,
             params=params,
-            token_cache=self._token_cache,
-            authentication_uri=self._authentication_uri,
             **kwargs,
         )
-
-    def _get_content_with_cache(self, path, accept=None, timeout=UNSET, **kwargs):
-        request = self._client.build_request("GET", path, **kwargs)
-        if accept:
-            request.headers["Accept"] = accept
-        url = request.url.raw  # URL as tuple
-        if self._offline:
-            # We must rely on the cache alone.
-            reservation = self._cache.get_reservation(url)
-            if reservation is None:
-                raise NotAvailableOffline(url)
-            content = reservation.load_content()
-            if content is None:
-                # TODO Do we ever get here?
-                raise NotAvailableOffline(url)
-            return content
-        if self._cache is None:
-            # No cache, so we can use the client straightforwardly.
-            response = self._send(request, timeout=timeout)
-            handle_error(response)
-            return response.content
-        # If we get this far, we have an online client and a cache.
-        reservation = self._cache.get_reservation(url)
-        try:
-            if reservation is not None:
-                request.headers["If-None-Match"] = reservation.etag
-            response = self._send(request, timeout=timeout)
-            handle_error(response)
-            if response.status_code == 304:  # HTTP 304 Not Modified
-                # Read from the cache
-                content = reservation.load_content()
-            elif response.status_code == 200:
-                etag = response.headers.get("ETag")
-                content = response.content
-                # TODO Respect Cache-control headers (e.g. "no-store")
-                if etag is not None:
-                    # Write to cache.
-                    self._cache.put_etag_for_url(url, etag)
-                    self._cache.put_content(etag, content)
-            else:
-                raise NotImplementedError(
-                    f"Unexpected status_code {response.status_code}"
-                )
-        finally:
-            if reservation is not None:
-                reservation.ensure_released()
-        return content
-
-    def _get_json_with_cache(self, path, **kwargs):
-        return msgpack.unpackb(
-            self._get_content_with_cache(
-                path, accept="application/x-msgpack", **kwargs
-            ),
-            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-        )
-
-    def _send(self, request, timeout, attempts=0):
-        """
-        Handle httpx's timeout API, which uses a special internal sentinel to mean
-        "no timeout" and therefore must not be passed any value (including None)
-        if we want no timeout.
-        """
-        if timeout is UNSET:
-            response = self._client.send(request)
-        else:
-            response = self._client.send(request, timeout=timeout)
-        if (response.status_code == 401) and (attempts == 0):
-            # Try refreshing the token.
-            # TODO Use a more targeted signal to know that refreshing the token will help.
-            # Parse the error message? Add a special header from the server?
-            if self._username is not None:
-                tokens = reauthenticate(
-                    self._client,
-                    self._username,
-                    self._authentication_uri,
-                    token_cache=self._token_cache,
-                )
-                access_token = tokens["access_token"]
-                auth_header = f"Bearer {access_token}"
-                # Patch in the Authorization header for this request...
-                request.headers["authorization"] = auth_header
-                # And update the default headers for future requests.
-                self._client.headers["Authorization"] = auth_header
-                return self._send(request, timeout, attempts=1)
-        return response
 
 
 class BaseStructureClient(BaseClient):
@@ -246,7 +132,7 @@ class BaseArrayClient(BaseStructureClient):
         # our structure (as part of the some larger structure) and passed it
         # in.
         if self._structure is None:
-            content = self._get_json_with_cache(
+            content = self._client.get_json(
                 f"/metadata/{'/'.join(self._path)}",
                 params={
                     "fields": ["structure.micro", "structure.macro"],

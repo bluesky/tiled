@@ -32,11 +32,6 @@ class DaskVariableClient(BaseArrayClient):
         return self.ARRAY_CLIENT(
             client=self._client,
             item=self._item,
-            username=self._username,
-            token_cache=self._token_cache,
-            authentication_uri=self._authentication_uri,
-            offline=self._offline,
-            cache=self._cache,
             path=self._path,
             metadata=self.metadata,
             params=self._params,
@@ -110,11 +105,6 @@ class DaskDataArrayClient(BaseArrayClient):
         variable_source = self.VARIABLE_CLIENT(
             client=self._client,
             item=self._item,
-            username=self._username,
-            token_cache=self._token_cache,
-            authentication_uri=self._authentication_uri,
-            offline=self._offline,
-            cache=self._cache,
             path=self._path,
             metadata=self.metadata,
             params=self._params,
@@ -136,11 +126,6 @@ class DaskDataArrayClient(BaseArrayClient):
             variable_source = self.VARIABLE_CLIENT(
                 client=self._client,
                 item=self._item,
-                username=self._username,
-                token_cache=self._token_cache,
-                authentication_uri=self._authentication_uri,
-                offline=self._offline,
-                cache=self._cache,
                 path=self._path,
                 metadata=self.metadata,
                 params={"coord": name, **self._params},
@@ -162,11 +147,6 @@ class DaskDataArrayClient(BaseArrayClient):
         variable_source = self.VARIABLE_CLIENT(
             client=self._client,
             item=self._item,
-            username=self._username,
-            token_cache=self._token_cache,
-            authentication_uri=self._authentication_uri,
-            offline=self._offline,
-            cache=self._cache,
             path=self._path,
             metadata=self.metadata,
             params=self._params,
@@ -181,11 +161,6 @@ class DaskDataArrayClient(BaseArrayClient):
             variable_source = self.VARIABLE_CLIENT(
                 client=self._client,
                 item=self._item,
-                username=self._username,
-                token_cache=self._token_cache,
-                authentication_uri=self._authentication_uri,
-                offline=self._offline,
-                cache=self._cache,
                 path=self._path,
                 metadata=self.metadata,
                 params={"coord": name, **self._params},
@@ -241,7 +216,7 @@ class DaskDatasetClient(BaseArrayClient):
         # for long.
         TIMEOUT = 0.2  # seconds
         try:
-            content = self._get_json_with_cache(
+            content = self._client.get_json(
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
@@ -270,7 +245,7 @@ class DaskDatasetClient(BaseArrayClient):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         try:
-            content = self._get_json_with_cache(
+            content = self._client.get_json(
                 f"/metadata/{'/'.join(self._path)}",
                 params={"fields": "structure.macro", **self._params},
             )
@@ -299,7 +274,7 @@ class DaskDatasetClient(BaseArrayClient):
     def _build_data_vars(self, structure, variables=None):
         data_vars_clients = {}
         wide_table_fetcher = _WideTableFetcher(
-            self._get_content_with_cache, self.item["links"]["full_dataset"]
+            self._client.get_content, self.item["links"]["full_dataset"]
         )
         for name, data_array in structure.data_vars.items():
             if (variables is not None) and (name not in variables):
@@ -317,11 +292,6 @@ class DaskDatasetClient(BaseArrayClient):
                 data_array_source = self.DATA_ARRAY_CLIENT(
                     client=self._client,
                     item=self._item,
-                    username=self._username,
-                    token_cache=self._token_cache,
-                    authentication_uri=self._authentication_uri,
-                    offline=self._offline,
-                    cache=self._cache,
                     path=self._path,
                     metadata=self.metadata,
                     params={"variable": name, **self._params},
@@ -341,11 +311,6 @@ class DaskDatasetClient(BaseArrayClient):
             variable_source = self.VARIABLE_CLIENT(
                 client=self._client,
                 item=self._item,
-                username=self._username,
-                token_cache=self._token_cache,
-                authentication_uri=self._authentication_uri,
-                offline=self._offline,
-                cache=self._cache,
                 path=self._path,
                 metadata=self.metadata,
                 params={"variable": name, **self._params},

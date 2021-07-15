@@ -48,7 +48,7 @@ class DaskArrayClient(BaseArrayClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
-        content = self._get_content_with_cache(
+        content = self._client.get_content(
             self._route + "/" + "/".join(self._path),
             headers={"Accept": media_type},
             params={
@@ -95,7 +95,7 @@ class DaskArrayClient(BaseArrayClient):
         # dask array.
         name = (
             "remote-dask-array-"
-            f"{self._client.base_url!s}/{'/'.join(self._path)}"
+            f"{self.uri}"
             f"{'-'.join(map(repr, sorted(self._params.items())))}"
         )
         chunks = structure.macro.chunks
@@ -193,7 +193,7 @@ class DaskArrayClient(BaseArrayClient):
         return export_util(
             filepath,
             format,
-            self._get_content_with_cache,
+            self._client.get_content,
             self.item["links"]["full"],
             params=params,
         )
@@ -201,7 +201,7 @@ class DaskArrayClient(BaseArrayClient):
     @property
     def formats(self):
         "List formats that the server can export this data as."
-        return self._get_json_with_cache("")["formats"]["array"]
+        return self._client.get_json("")["formats"]["array"]
 
 
 class ArrayClient(DaskArrayClient):
