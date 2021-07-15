@@ -116,7 +116,7 @@ def declare_search_router():
                     fields,
                     filters,
                     sort,
-                    _get_base_url(request.url, request.scope.get("root_path") or "/"),
+                    _get_base_url(request),
                 ),
             )
         except NoEntry:
@@ -178,7 +178,7 @@ async def metadata(
 ):
     "Fetch the metadata for one Tree or Reader."
 
-    base_url = _get_base_url(request.url, request.scope.get("root_path") or "/")
+    base_url = _get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
     resource = construct_resource(base_url, path_parts, entry, fields)
     meta = (
@@ -213,7 +213,7 @@ async def entries(
                 fields,
                 {},
                 sort,
-                _get_base_url(request.url, request.scope.get("root_path") or "/"),
+                _get_base_url(request),
             ),
         )
     except NoEntry:
@@ -762,13 +762,18 @@ def dataset_full(
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
-def _get_base_url(url, root_path):
+def _get_base_url(request):
     # Confusing thing:
     # An httpx.URL treats netloc as bytes (in 0.18.2)
     # but starlette.datastructures.URL treats netloc as str.
     # It seems possible starlette could change their minds in
     # the future to align with httpx, so we will accept either
     # str or bytes here.
+    client_specified_base_url = request.headers.get("x-base-url")
+    if client_specified_base_url is not None:
+        return client_specified_base_url
+    url = request.url
+    root_path = request.scope.get("root_path") or "/"
     if isinstance(url.netloc, bytes):
         netloc_str = url.netloc.decode()
     else:
