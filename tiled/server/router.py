@@ -37,7 +37,7 @@ from . import models
 from .. import __version__
 
 
-DEFAULT_PAGE_SIZE = 20
+DEFAULT_PAGE_SIZE = 100
 
 
 router = APIRouter()
