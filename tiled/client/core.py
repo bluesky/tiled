@@ -168,6 +168,10 @@ class CoreClient:
     def path_parts(self):
         return self._path_parts
 
+    @property
+    def base_url(self):
+        return self._client.base_url
+
     def get_content(self, path, accept=None, timeout=UNSET, **kwargs):
         request = self._client.build_request("GET", path, **kwargs)
         if accept:
