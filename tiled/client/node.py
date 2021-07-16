@@ -659,9 +659,11 @@ def from_uri(
         httpx_client,
         username=username,
         authentication_uri=authentication_uri,
+        cache=cache,
+        offline=offline,
         token_cache=token_cache,
     )
-    return from_client(
+    from_client(
         client,
         structure_clients=structure_clients,
         special_clients=special_clients,

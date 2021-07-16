@@ -26,72 +26,37 @@ def _token_directory(token_cache, netloc, username):
         urllib.parse.quote_plus(
             netloc.decode()
         ),  # Make a valid filename out of hostname:port.
-        username,
-    )
+        username,)
 
 
 def login(
-    uri_or_profile, username=None, authentication_uri=None, *, token_cache=DEFAULT_TOKEN_CACHE
+    uri_or_profile,
+    username=None,
+    authentication_uri=None,
+    verify=True,
+    *,
+    token_cache=DEFAULT_TOKEN_CACHE,
 ):
-    client, _uri = _client_and_uri_from_uri_or_profile(tree)
+    (client,) = _client_from_uri_or_profile(
+        uri_or_profile, username, authentication_uri, token_cache, verify
+    )
     # This has a side effect of storing the refresh token in the token_cache, if set.
-    return authenticate(client, username, authentication_uri, token_cache=token_cache)
+    client.authenticate()
 
 
-def client_and_path_from_uri(
-    uri, username=None, authentication_uri=None, token_cache=None, **kwargs
+def _client_from_uri_or_profile(
+    uri_or_profile, username, authentication_uri, token_cache, verify
 ):
-    headers = kwargs.get("headers", {})
-    # The uri is expected to reach the root or /metadata route.
-    url = httpx.URL(uri)
-
-    # If ?api_key=... is present, move it from the query into a header.
-    parsed_query = urllib.parse.parse_qs(url.query.decode())
-    api_key_list = parsed_query.pop("api_key", None)
-    if api_key_list is not None:
-        if len(api_key_list) != 1:
-            raise ValueError("Cannot handle two api_key query parameters")
-        (api_key,) = api_key_list
-        headers["X-TILED-API-KEY"] = api_key
-    params = kwargs.get("params", {})
-    params.update(urllib.parse.urlencode(parsed_query, doseq=True))
-
-    # Construct the URL *without* the params, which we will pass in separately.
-    handshake_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
-    )
-
-    client = httpx.Client(headers=headers, params=params, **kwargs)
-    if (username is not None) and (authentication_uri is not None):
-        tokens = reauthenticate(
-            client, username, authentication_uri, token_cache=token_cache
-        )
-        access_token = tokens["access_token"]
-        client.headers["Authorization"] = f"Bearer {access_token}"
-    # First, ask the server what its root_path is.
-    # This is the only place where we use client.get *directly*, circumventing
-    # the usual "get with cache" logic.
-    response = client.get(handshake_url, params={"root_path": None})
-    handle_error(response)
-    data = response.json()
-    base_path = data["meta"]["root_path"]
-    base_url = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
-    )
-    client.base_url = base_url
-    client.headers["x-base-url"] = base_url
-    path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-    if path_parts:
-        # Strip "/metadata"
-        path_parts.pop(0)
-    return client, path_parts
-
-
-def _client_and_path_from_uri_or_profile(uri_or_profile):
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
-        return client_and_path_from_uri(uri)
+        httpx_client = httpx.Client(base_url=uri, verify=verify)
+        client = CoreClient(
+            httpx_client,
+            username=username,
+            authentication_uri=authentication_uri,
+            token_cache=token_cache,
+        )
     else:
         from ..profiles import load_profiles
 
@@ -103,8 +68,15 @@ def _client_and_path_from_uri_or_profile(uri_or_profile):
             if "uri" in profile_content:
                 uri = profile_content["uri"]
                 verify = profile_content.get("verify", True)
-                client, _ = client_and_path_from_uri(uri, verify=verify)
-                return client, uri
+                httpx_client = httpx.Client(base_url=uri, verify=verify)
+                client = CoreClient(
+                    httpx_client,
+                    username=profile_content.get("username"),
+                    authentication_uri=profile_content.get("authentication_uri"),
+                    cache=profile_content.get("cache"),
+                    offline=profile_content.get("offline", False),
+                    token_cache=profile_content.get("token_cache", DEFAULT_TOKEN_CACHE),
+                )
             elif "direct" in profile_content:
                 # The profiles specifies that there is no server. We should create
                 # an app ourselves and use it directly via ASGI.
@@ -114,15 +86,14 @@ def _client_and_path_from_uri_or_profile(uri_or_profile):
                     profile_content.pop("direct", None), source_filepath=filepath
                 )
                 client = client_from_tree(**serve_tree_kwargs)
-                return client, "/"
             else:
                 raise ValueError("Invalid profile content")
-
-    raise TreeValueError(
-        f"Not sure what to do with tree {uri_or_profile!r}. "
-        "It does not look like a URI (it does not start with http[s]://) "
-        "and it does not match any profiles."
-    )
+        raise TreeValueError(
+            f"Not sure what to do with tree {uri_or_profile!r}. "
+            "It does not look like a URI (it does not start with http[s]://) "
+            "and it does not match any profiles."
+        )
+    return client
 
 
 class TreeValueError(ValueError):
@@ -156,12 +127,34 @@ class CoreClient:
         self._username = username
         self._offline = offline
         self._token_cache = token_cache
+
+        # Authenticate. If a valid refresh_token is available in the token_cache,
+        # it will be used. Otherwise, this will prompt for a password.
         if username is not None:
-            tokens = reauthenticate(
-                self, username, authentication_uri, token_cache=token_cache
-            )
+            tokens = self.reauthenticate()
             access_token = tokens["access_token"]
             client.headers["Authorization"] = f"Bearer {access_token}"
+
+        # Ask the server what its root_path is.
+        response = self._client.get("/", params={"root_path": None})
+        handle_error(response)
+        data = response.json()
+        base_path = data["meta"]["root_path"]
+        url = httpx.URL(self._client.base_url)
+        base_url = urllib.parse.urlunsplit(
+            (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
+        )
+        client.base_url = base_url
+        client.headers["x-base-url"] = base_url
+        path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
+        if path_parts:
+            # Strip "/metadata"
+            path_parts.pop(0)
+        self._path_parts = path_parts
+
+    @property
+    def path_parts(self):
+        return self._path_parts
 
     def get_content(self, path, accept=None, timeout=UNSET, **kwargs):
         request = self._client.build_request("GET", path, **kwargs)
@@ -231,12 +224,7 @@ class CoreClient:
             # TODO Use a more targeted signal to know that refreshing the token will help.
             # Parse the error message? Add a special header from the server?
             if self._username is not None:
-                tokens = reauthenticate(
-                    self._client,
-                    self._username,
-                    self._authentication_uri,
-                    token_cache=self._token_cache,
-                )
+                tokens = self.reauthenticate()
                 access_token = tokens["access_token"]
                 auth_header = f"Bearer {access_token}"
                 # Patch in the Authorization header for this request...
