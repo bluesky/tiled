@@ -17,9 +17,8 @@ from ..utils import (
     Sentinel,
 )
 from .base import BaseClient
-from .core import CoreClient, DEFAULT_TOKEN_CACHE
+from .core import client_from_tree, CoreClient, DEFAULT_TOKEN_CACHE
 from .utils import (
-    client_from_tree,
     NEEDS_INITIALIZATION,
 )
 from ..trees.utils import (
@@ -315,6 +314,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if sorting is UNCHANGED:
             sorting = self._sorting
         return super().new_variation(
+            client=self._client,
             structure_clients=structure_clients,
             special_clients=special_clients,
             queries=queries,
@@ -663,7 +663,7 @@ def from_uri(
         offline=offline,
         token_cache=token_cache,
     )
-    from_client(
+    return from_client(
         client,
         structure_clients=structure_clients,
         special_clients=special_clients,
@@ -723,18 +723,18 @@ def from_tree(
         tree=tree,
         authentication=authentication,
         server_settings=server_settings,
-    )
-    return from_client(
-        client,
-        structure_clients=structure_clients,
-        username=username,
         # The cache and "offline" mode do not make much sense when we have an
         # in-process connection, but we support it for the sake of testing and
         # making direct access a drop in replacement for the normal service.
         cache=cache,
         offline=offline,
-        special_clients=special_clients,
         token_cache=token_cache,
+        username=username,
+    )
+    return from_client(
+        client,
+        structure_clients=structure_clients,
+        special_clients=special_clients,
     )
 
 

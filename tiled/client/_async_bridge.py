@@ -52,6 +52,18 @@ class AsyncClientBridge:
         # this kinds of overly-long tolerances are needed.)
         self._instance_state_setup_complete.wait(timeout=2)
 
+    @property
+    def base_url(self):
+        return self._client.base_url
+
+    @base_url.setter
+    def base_url(self, value):
+        self._client.base_url = value
+
+    @property
+    def headers(self):
+        return self._client.headers
+
     def _worker(self, client_kwargs):
 
         self._client = httpx.AsyncClient(**client_kwargs)
@@ -115,7 +127,3 @@ class AsyncClientBridge:
     def close(self):
         self._run(self._client.aclose)
         self.shutdown()
-
-    @property
-    def base_url(self):
-        return self._client.base_url

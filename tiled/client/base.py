@@ -58,6 +58,14 @@ class BaseClient:
     def username(self):
         return self._client.username
 
+    @property
+    def offline(self):
+        return self._client.offline
+
+    @offline.setter
+    def offline(self, value):
+        self._client.offline = bool(value)
+
     def new_variation(
         self,
         metadata=UNCHANGED,
@@ -75,7 +83,6 @@ class BaseClient:
         if params is UNCHANGED:
             params = self._params
         return type(self)(
-            client=self._client,
             item=self._item,
             metadata=metadata,
             path=path,

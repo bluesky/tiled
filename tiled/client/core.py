@@ -1,6 +1,7 @@
 import getpass
 import os
 from pathlib import Path, PurePosixPath
+import secrets
 import urllib.parse
 
 import appdirs
@@ -8,7 +9,6 @@ import httpx
 import msgpack
 
 from .utils import (
-    client_from_tree,
     handle_error,
     NotAvailableOffline,
     UNSET,
@@ -26,7 +26,8 @@ def _token_directory(token_cache, netloc, username):
         urllib.parse.quote_plus(
             netloc.decode()
         ),  # Make a valid filename out of hostname:port.
-        username,)
+        username,
+    )
 
 
 def login(
@@ -41,7 +42,7 @@ def login(
         uri_or_profile, username, authentication_uri, token_cache, verify
     )
     # This has a side effect of storing the refresh token in the token_cache, if set.
-    client.authenticate()
+    return client.authenticate()
 
 
 def _client_from_uri_or_profile(
@@ -136,9 +137,12 @@ class CoreClient:
             client.headers["Authorization"] = f"Bearer {access_token}"
 
         # Ask the server what its root_path is.
-        response = self._client.get("/", params={"root_path": None})
-        handle_error(response)
-        data = response.json()
+        handshake_request = self._client.build_request(
+            "GET", "/", params={"root_path": None}
+        )
+        handshake_response = self._client.send(handshake_request)
+        handle_error(handshake_response)
+        data = handshake_response.json()
         base_path = data["meta"]["root_path"]
         url = httpx.URL(self._client.base_url)
         base_url = urllib.parse.urlunsplit(
@@ -151,6 +155,14 @@ class CoreClient:
             # Strip "/metadata"
             path_parts.pop(0)
         self._path_parts = path_parts
+
+    @property
+    def offline(self):
+        return self._offline
+
+    @offline.setter
+    def offline(self, value):
+        self._offline = bool(value)
 
     @property
     def path_parts(self):
@@ -332,3 +344,55 @@ class CoreClient:
         with open(filepath, "w") as file:
             file.write(tokens["refresh_token"])
         return tokens
+
+
+def client_from_tree(
+    tree,
+    authentication,
+    server_settings,
+    *,
+    cache=None,
+    offline=False,
+    token_cache=DEFAULT_TOKEN_CACHE,
+    username=None,
+):
+    from ..server.app import serve_tree
+
+    authentication = authentication or {}
+    server_settings = server_settings or {}
+    params = {}
+    if (authentication.get("authenticator") is None) and (
+        authentication.get("single_user_api_key") is None
+    ):
+        # Generate the key here instead of letting serve_tree do it for us,
+        # so that we can give it to the client below.
+        single_user_api_key = os.getenv(
+            "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
+        )
+        authentication["single_user_api_key"] = single_user_api_key
+        params["api_key"] = single_user_api_key
+    app = serve_tree(tree, authentication, server_settings)
+
+    # Only an AsyncClient can be used over ASGI.
+    # We wrap all the async methods in a call to asyncio.run(...).
+    # Someday we should explore asynchronous Tiled Client objects.
+    from ._async_bridge import AsyncClientBridge
+
+    async def startup():
+        # Note: This is important. The Tiled server routes are defined lazily on
+        # startup.
+        await app.router.startup()
+
+    client = AsyncClientBridge(
+        base_url="http://local-tiled-app",
+        params=params,
+        app=app,
+        _startup_hook=startup,
+    )
+    # TODO How to close the httpx.AsyncClient more cleanly?
+    import atexit
+
+    atexit.register(client.close)
+    return CoreClient(
+        client, cache=cache, offline=offline, token_cache=token_cache, username=username
+    )

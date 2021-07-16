@@ -21,24 +21,13 @@ import urllib.parse
 from heapdict import heapdict
 
 
-def download(*entries, path=None, available_bytes=None, cache=None):
+def download(*entries):
     """
     Download a local cache for Tiled so access is fast and can work offline.
 
     Parameters
     ----------
     *entries : Node(s) or structure client(s)
-    path : Path or str
-        A directory will be created at this path if it does not yet exist.
-        It is safe to reuse an existing cache directory and to share a cache
-        directory between multiple processes.
-    available_bytes : integer, optional
-        e.g. 2e9 to use up to 2 GB of disk space. If None, this will consume
-        up to (X - 1 GB) where X is the free space remaining on the volume
-        containing `path`.
-    cache : Cache, optional
-        For advanced usage with a custom cache. If set, `path` and `available_bytes`
-        must *not* be set.
 
     Examples
     --------
@@ -46,9 +35,9 @@ def download(*entries, path=None, available_bytes=None, cache=None):
     Connect a tree and download it in its entirety.
 
     >>> from tiled.client import from_uri
-    >>> client = from_uri("http://...")
-    >>> from tiled.client.cache import download
-    >>> download(client, "my_cache_directory")
+    >>> from tiled.client.cache import download, Cache
+    >>> client = from_uri("http://...", cache=Cache.on_disk("path/to/directory"))
+    >>> download(client)
 
     Alternatively ,this can be done from the commandline via the tiled CLI:
 
@@ -71,24 +60,9 @@ def download(*entries, path=None, available_bytes=None, cache=None):
     >>> from tiled.client.cache import Cache
     >>> client = from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
     """
-    # We have "coupled kwargs" here, which is a pattern I try to avoid, but
-    # in this case I think it's overall better than having too separate functions.
-    if cache is None:
-        if path is None:
-            raise TypeError(
-                "You must set either `path` or `cache`, as in "
-                "path='path/to/directory' (common) or a cache=... (advanced)."
-            )
-        cache = Cache.on_disk(path, available_bytes=available_bytes)
-    else:
-        if (path is not None) or (available_bytes is not None):
-            raise TypeError(
-                "Since the advanced `cache` parameter is used, `path` and "
-                "`available_bytes` must not be used."
-            )
     # TODO Use multiple processes to ensure we are saturating our network connection.
     for entry in entries:
-        entry.new_variation(cache=cache).touch()
+        entry.touch()
 
 
 class Reservation:

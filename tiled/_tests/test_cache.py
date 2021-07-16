@@ -30,12 +30,12 @@ def test_integration(cache, structure_clients):
         expected_arr = expected_arr.compute()
     expected_arr_md = client["arr"].metadata
     client["arr"]  # should be a cache hit
-    offline_client = client.new_variation(offline=True)
-    actual_tree_md = offline_client.metadata
-    actual_arr = offline_client["arr"][:]
+    client.offline = True
+    actual_tree_md = client.metadata
+    actual_arr = client["arr"][:]
     if structure_clients == "dask":
         actual_arr = actual_arr.compute()
-    actual_arr_md = offline_client["arr"].metadata
+    actual_arr_md = client["arr"].metadata
     assert numpy.array_equal(actual_arr, expected_arr)
     assert expected_arr_md == actual_arr_md
     assert expected_tree_md == actual_tree_md
@@ -44,11 +44,11 @@ def test_integration(cache, structure_clients):
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 def test_download(cache, structure_clients):
     client = from_tree(tree, cache=cache, structure_clients=structure_clients)
-    download(client, cache=cache)
-    offline_client = client.new_variation(offline=True)
+    download(client)
+    client.offline = True
     # smoke test
-    offline_client.metadata
-    arr = offline_client["arr"][:]
+    client.metadata
+    arr = client["arr"][:]
     if structure_clients == "dask":
         arr.compute()
-    offline_client["arr"].metadata
+    client["arr"].metadata

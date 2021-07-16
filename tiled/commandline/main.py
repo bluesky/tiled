@@ -30,7 +30,9 @@ def login(
 
 @cli_app.command("tree")
 def tree(
-    tree: str = typer.Argument(..., help="Tree URI (http://...) or a profile name."),
+    uri_or_profile: str = typer.Argument(
+        ..., help="URI (http://...) or a profile name."
+    ),
     max_lines: int = typer.Argument(20, help="Max lines to show."),
 ):
     """
@@ -40,7 +42,7 @@ def tree(
     """
     from ..utils import gen_tree
 
-    tree_obj = _tree_from_uri_or_profile(tree)
+    tree_obj = _client_from_uri_or_profile(uri_or_profile)
     for counter, line in enumerate(gen_tree(tree_obj), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
@@ -53,17 +55,20 @@ def tree(
 
 @cli_app.command("download")
 def download(
-    tree: str = typer.Argument(..., help="Tree URI (http://...) or a profile name."),
+    uri_or_profile: str = typer.Argument(
+        ..., help="URI (http://...) or a profile name."
+    ),
     cache_path: str = typer.Argument(..., help="Local directory for cache storage"),
     available_bytes: Optional[int] = None,
 ):
     """
     Download content from a Tree to an on-disk cache.
     """
-    from ..client.cache import download
+    from ..client.cache import download, Cache
 
-    tree_obj = _tree_from_uri_or_profile(tree)
-    download(tree_obj, path=cache_path, available_bytes=available_bytes)
+    cache = Cache.on_disk(cache_path, available_bytes=available_bytes)
+    client = _client_from_uri_or_profile(uri_or_profile, cache=cache)
+    download(client)
 
 
 @profile_app.command("paths")
@@ -238,22 +243,22 @@ def serve_config(
     uvicorn.run(web_app, **uvicorn_kwargs)
 
 
-def _tree_from_uri_or_profile(tree):
+def _client_from_uri_or_profile(uri_or_profile, cache=None):
     from ..client import from_uri, from_profile
 
-    if tree.startswith("http://") or tree.startswith("https://"):
+    if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
-        uri = tree
-        return from_uri(uri)
+        uri = uri_or_profile
+        return from_uri(uri, cache=cache)
     else:
         from ..profiles import list_profiles
 
         # Is this a profile name?
-        if tree in list_profiles():
-            profile_name = tree
-            return from_profile(profile_name)
+        if uri_or_profile in list_profiles():
+            profile_name = uri_or_profile
+            return from_profile(profile_name, cache=cache)
         typer.echo(
-            f"Not sure what to do with tree {tree!r}. "
+            f"Not sure what to do with tree {uri_or_profile!r}. "
             "It does not look like a URI (it does not start with http[s]://) "
             "and it does not match any profiles. Use `tiled profiles list` to "
             "see profiles."
