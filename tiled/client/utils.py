@@ -6,7 +6,6 @@ from ..utils import Sentinel
 
 
 UNSET = Sentinel("UNSET")
-NEEDS_INITIALIZATION = Sentinel("NEEDS_INITIALIZATION")
 
 
 def handle_error(response):

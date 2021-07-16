@@ -18,9 +18,6 @@ from ..utils import (
 )
 from .base import BaseClient
 from .core import client_from_tree, CoreClient, DEFAULT_TOKEN_CACHE
-from .utils import (
-    NEEDS_INITIALIZATION,
-)
 from ..trees.utils import (
     tree_repr,
     IndexersMixin,
@@ -194,13 +191,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             metadata=metadata,
             params=params,
         )
-        if metadata is NEEDS_INITIALIZATION:
-            # TO DO: This is a big wart, a side-effect refactor to support
-            # refresh tokens. Needs rethinking.
-            content = self._client.get_json(f"/metadata/{'/'.join(path)}")
-            item = content["data"]
-            self._metadata.update(item["attributes"]["metadata"])
-            self._item = item
 
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
@@ -785,18 +775,18 @@ def from_client(
         special_clients or {},
         Node.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
+    content = client.get_json(f"/metadata/{'/'.join(client.path_parts)}")
+    item = content["data"]
+    metadata = item["attributes"]["metadata"]
     instance = Node(
         client,
-        item=NEEDS_INITIALIZATION,
+        item=item,
         path=path,
-        metadata=NEEDS_INITIALIZATION,
+        metadata=metadata,
         structure_clients=structure_clients,
         special_clients=special_clients,
         root_client_type=Node,
     )
-
-    item = instance.item
-    metadata = item["attributes"]["metadata"]
     return instance.client_for_item(
         item, path=path, metadata=metadata, sorting=item["attributes"].get("sorting")
     )

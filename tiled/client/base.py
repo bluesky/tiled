@@ -1,5 +1,4 @@
 from ..utils import DictView, ListView
-from .utils import NEEDS_INITIALIZATION
 from ..trees.utils import UNCHANGED
 
 
@@ -18,12 +17,8 @@ class BaseClient:
             raise ValueError("path is expected to be a list of segments")
         # Stash *immutable* copies just to be safe.
         self._path = tuple(path or [])
-        if item is NEEDS_INITIALIZATION:
-            self._item = None
-            self._metadata = {}
-        else:
-            self._item = item
-            self._metadata = metadata
+        self._item = item
+        self._metadata = metadata
         self._cached_len = None  # a cache just for __len__
         self._params = params or {}
         super().__init__()
