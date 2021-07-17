@@ -28,7 +28,7 @@ class DaskDataFrameClient(BaseStructureClient):
         # for long.
         TIMEOUT = 0.2  # seconds
         try:
-            content = self._client.get_json(
+            content = self.context.get_json(
                 self.uri,
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
@@ -56,7 +56,7 @@ class DaskDataFrameClient(BaseStructureClient):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         try:
-            content = self._client.get_json(
+            content = self.context.get_json(
                 self.uri,
                 params={"fields": "structure.macro", **self._params},
             )
@@ -72,14 +72,14 @@ class DaskDataFrameClient(BaseStructureClient):
         self.read().compute()
 
     def structure(self):
-        meta_content = self._client.get_content(
+        meta_content = self.context.get_content(
             f"/dataframe/meta/{'/'.join(self._path)}",
             params=self._params,
         )
         meta = deserialization_registry(
             "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_content
         )
-        divisions_content = self._client.get_content(
+        divisions_content = self.context.get_content(
             f"/dataframe/divisions/{'/'.join(self._path)}",
             params=self._params,
         )
@@ -108,7 +108,7 @@ class DaskDataFrameClient(BaseStructureClient):
             # Note: The singular/plural inconsistency here is due to the fact that
             # ["A", "B"] will be encoded in the URL as column=A&column=B
             params["column"] = columns
-        content = self._client.get_content(
+        content = self.context.get_content(
             "/dataframe/partition/" + "/".join(self._path),
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params={**params, **self._params},
@@ -147,7 +147,7 @@ class DaskDataFrameClient(BaseStructureClient):
         # server-side dask array.
         name = (
             "remote-dask-dataframe-"
-            f"{self._client.base_url!s}/{'/'.join(self._path)}"
+            f"{self.context.base_url!s}/{'/'.join(self._path)}"
             f"{'-'.join(map(repr, sorted(self._params.items())))}"
         )
         dask_tasks = {
@@ -215,7 +215,7 @@ class DaskDataFrameClient(BaseStructureClient):
         return export_util(
             filepath,
             format,
-            self._client.get_content,
+            self.context.get_content,
             self.item["links"]["full"],
             params=params,
         )
@@ -223,7 +223,7 @@ class DaskDataFrameClient(BaseStructureClient):
     @property
     def formats(self):
         "List formats that the server can export this data as."
-        return self._client.get_json("")["formats"]["dataframe"]
+        return self.context.get_json("")["formats"]["dataframe"]
 
 
 class DataFrameClient(DaskDataFrameClient):

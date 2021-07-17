@@ -48,7 +48,7 @@ class DaskArrayClient(BaseArrayClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
-        content = self._client.get_content(
+        content = self.context.get_content(
             self._route + "/" + "/".join(self._path),
             headers={"Accept": media_type},
             params={
@@ -193,7 +193,7 @@ class DaskArrayClient(BaseArrayClient):
         return export_util(
             filepath,
             format,
-            self._client.get_content,
+            self.context.get_content,
             self.item["links"]["full"],
             params=params,
         )
@@ -201,7 +201,7 @@ class DaskArrayClient(BaseArrayClient):
     @property
     def formats(self):
         "List formats that the server can export this data as."
-        return self._client.get_json("")["formats"]["array"]
+        return self.context.get_json("")["formats"]["array"]
 
 
 class ArrayClient(DaskArrayClient):

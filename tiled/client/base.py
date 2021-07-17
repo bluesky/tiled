@@ -5,14 +5,14 @@ from ..trees.utils import UNCHANGED
 class BaseClient:
     def __init__(
         self,
-        client,
+        context,
         *,
         item,
         path,
         metadata,
         params,
     ):
-        self._client = client
+        self._context = context
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
         # Stash *immutable* copies just to be safe.
@@ -25,6 +25,10 @@ class BaseClient:
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
+
+    @property
+    def context(self):
+        return self._context
 
     @property
     def item(self):
@@ -51,15 +55,15 @@ class BaseClient:
 
     @property
     def username(self):
-        return self._client.username
+        return self.context.username
 
     @property
     def offline(self):
-        return self._client.offline
+        return self.context.offline
 
     @offline.setter
     def offline(self, value):
-        self._client.offline = bool(value)
+        self.context.offline = bool(value)
 
     def new_variation(
         self,
@@ -89,12 +93,12 @@ class BaseClient:
 class BaseStructureClient(BaseClient):
     def __init__(
         self,
-        client,
+        context,
         *,
         structure=None,
         **kwargs,
     ):
-        super().__init__(client, **kwargs)
+        super().__init__(context, **kwargs)
         self._structure = structure
 
     def new_variation(self, structure=UNCHANGED, **kwargs):
@@ -106,7 +110,7 @@ class BaseStructureClient(BaseClient):
         """
         Access all the data.
 
-        This causes it to be cached if the client is configured with a cache.
+        This causes it to be cached if the context is configured with a cache.
         """
         repr(self)
         self.read()
@@ -134,7 +138,7 @@ class BaseArrayClient(BaseStructureClient):
         # our structure (as part of the some larger structure) and passed it
         # in.
         if self._structure is None:
-            content = self._client.get_json(
+            content = self.context.get_json(
                 f"/metadata/{'/'.join(self._path)}",
                 params={
                     "fields": ["structure.micro", "structure.macro"],

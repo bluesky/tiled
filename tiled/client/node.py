@@ -17,7 +17,7 @@ from ..utils import (
     Sentinel,
 )
 from .base import BaseClient
-from .core import client_from_tree, CoreClient, DEFAULT_TOKEN_CACHE
+from .context import context_from_tree, Context, DEFAULT_TOKEN_CACHE
 from ..trees.utils import (
     tree_repr,
     IndexersMixin,
@@ -104,57 +104,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # well, and in fact we did do this in an early draft. It was removed
         # for simplicity, at least for now.
 
-    @classmethod
-    def from_client(cls, *args, **kwargs):
-        warnings.warn(
-            "The classmethod Node.from_client is deperecated and will be removed. "
-            "Use the function tiled.client.from_client instead."
-        )
-        return from_client(*args, **kwargs)
-
-    @classmethod
-    def from_tree(cls, *args, **kwargs):
-        warnings.warn(
-            "The classmethod Node.from_tree is being considered "
-            "for deperecation and may be removed. "
-            "The function tiled.client.from_tree may be used instead.",
-            PendingDeprecationWarning,
-        )
-        return from_tree(*args, **kwargs)
-
-    @classmethod
-    def from_uri(cls, *args, **kwargs):
-        warnings.warn(
-            "The classmethod Node.from_uri is being considered "
-            "for deperecation and may be removed. "
-            "The function tiled.client.from_uri may be used instead.",
-            PendingDeprecationWarning,
-        )
-        return from_uri(*args, **kwargs)
-
-    @classmethod
-    def from_profile(cls, *args, **kwargs):
-        warnings.warn(
-            "The classmethod Node.from_profile is being considered "
-            "for deperecation and may be removed. "
-            "The function tiled.client.from_profile may be used instead.",
-            PendingDeprecationWarning,
-        )
-        return from_profile(*args, **kwargs)
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        warnings.warn(
-            "The classmethod Node.from_config is being considered "
-            "for deperecation and may be removed. "
-            "The function tiled.client.from_config may be used instead.",
-            PendingDeprecationWarning,
-        )
-        return from_profile(*args, **kwargs)
-
     def __init__(
         self,
-        client,
+        context,
         *,
         path,
         item,
@@ -185,7 +137,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         }
         super().__init__(
-            client=client,
+            context=context,
             item=item,
             path=path,
             metadata=metadata,
@@ -212,9 +164,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         Access all the data in this Node.
 
-        This causes it to be cached if the client is configured with a cache.
+        This causes it to be cached if the context is configured with a cache.
         """
-        self._client.get_json(self.uri)
+        self.context.get_json(self.uri)
         repr(self)
         for key in self:
             entry = self[key]
@@ -253,7 +205,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         class_ = self._get_class(item)
         if item["type"] == "tree":
             return class_(
-                client=self._client,
+                context=self.context,
                 item=item,
                 path=path,
                 metadata=metadata,
@@ -266,7 +218,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         elif item["type"] == "reader":
             return class_(
-                client=self._client,
+                context=self.context,
                 item=item,
                 path=path,
                 metadata=metadata,
@@ -304,7 +256,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if sorting is UNCHANGED:
             sorting = self._sorting
         return super().new_variation(
-            client=self._client,
+            context=self.context,
             structure_clients=structure_clients,
             special_clients=special_clients,
             queries=queries,
@@ -320,7 +272,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             if now < deadline:
                 # Used the cached value and do not make any request.
                 return length
-        content = self._client.get_json(
+        content = self.context.get_json(
             self.item["links"]["search"],
             params={
                 "fields": "",
@@ -341,7 +293,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     def __iter__(self):
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
-            content = self._client.get_json(
+            content = self.context.get_json(
                 next_page_url,
                 params={
                     "fields": "",
@@ -360,7 +312,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def __getitem__(self, key):
         # Lookup this key *within the search results* of this Node.
-        content = self._client.get_json(
+        content = self.context.get_json(
             self.item["links"]["search"],
             params={
                 **_queries_to_params(KeyLookup(key)),
@@ -392,7 +344,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # one HTTP request per item. Pull pages instead.
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
-            content = self._client.get_json(
+            content = self.context.get_json(
                 next_page_url,
                 params={
                     **self._queries_as_params,
@@ -434,7 +386,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = self._client.get_json(
+            content = self.context.get_json(
                 next_page_url,
                 params={
                     "fields": "",
@@ -463,7 +415,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = self._client.get_json(
+            content = self.context.get_json(
                 next_page_url,
                 params={
                     **self._queries_as_params,
@@ -497,7 +449,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = (
             f"{self.item['links']['search']}?page[offset]={index}&page[limit]=1"
         )
-        content = self._client.get_json(
+        content = self.context.get_json(
             next_page_url,
             params={
                 **self._queries_as_params,
@@ -644,17 +596,17 @@ def from_uri(
     authentication_uri : str, optional
         URL of authentication server
     """
-    httpx_client = httpx.Client(base_url=uri, verify=verify)
-    client = CoreClient(
-        httpx_client,
+    client = httpx.Client(base_url=uri, verify=verify)
+    context = Context(
+        client,
         username=username,
         authentication_uri=authentication_uri,
         cache=cache,
         offline=offline,
         token_cache=token_cache,
     )
-    return from_client(
-        client,
+    return from_context(
+        context,
         structure_clients=structure_clients,
         special_clients=special_clients,
     )
@@ -709,7 +661,7 @@ def from_tree(
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     """
-    client = client_from_tree(
+    context = context_from_tree(
         tree=tree,
         authentication=authentication,
         server_settings=server_settings,
@@ -721,15 +673,15 @@ def from_tree(
         token_cache=token_cache,
         username=username,
     )
-    return from_client(
-        client,
+    return from_context(
+        context,
         structure_clients=structure_clients,
         special_clients=special_clients,
     )
 
 
-def from_client(
-    client,
+def from_context(
+    context,
     structure_clients="numpy",
     *,
     path=None,
@@ -740,8 +692,7 @@ def from_client(
 
     Parameters
     ----------
-    client : httpx.Client
-        Should be pre-configured with a base_url and any auth-related headers.
+    context : tiled.client.context.Context
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
@@ -775,11 +726,11 @@ def from_client(
         special_clients or {},
         Node.DEFAULT_SPECIAL_CLIENT_DISPATCH,
     )
-    content = client.get_json(f"/metadata/{'/'.join(client.path_parts)}")
+    content = context.get_json(f"/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
     metadata = item["attributes"]["metadata"]
     instance = Node(
-        client,
+        context,
         item=item,
         path=path,
         metadata=metadata,

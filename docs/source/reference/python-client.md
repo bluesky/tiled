@@ -24,7 +24,7 @@ These are typically used for development and debugging only.
 
    tiled.client.from_tree
    tiled.client.from_config
-   tiled.client.from_client
+   tiled.client.from_context
 ```
 
 ## Client Node
@@ -116,10 +116,7 @@ Tiled currently includes two clients for each structure family:
    :toctree: generated
 
    tiled.client.base.BaseClient
-   tiled.client.base.BaseClient.metadata
-   tiled.client.base.BaseClient.path
-   tiled.client.base.BaseClient.uri
-   tiled.client.base.BaseClient.username
+   tiled.client.base.BaseClient.metadata tiled.client.base.BaseClient.path tiled.client.base.BaseClient.uri tiled.client.base.BaseClient.username
    tiled.client.base.BaseClient.item
    tiled.client.base.BaseClient.new_variation
    tiled.client.base.BaseStructureClient.touch
@@ -262,4 +259,20 @@ the same source directory as the `tiled.client.cache` module.
    tiled.client.cache.Cache.on_disk
    tiled.client.cache.download
    tiled.client.cache.Scorer
+```
+
+## Context
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.context.Context
+   tiled.client.context.Context.get_json
+   tiled.client.context.Context.get_content
+   tiled.client.context.Context.authenticate
+   tiled.client.context.Context.reauthenticate
+   tiled.client.context.Context.offline
+   tiled.client.context.Context.base_url
+   tiled.client.context.Context.path_parts
 ```

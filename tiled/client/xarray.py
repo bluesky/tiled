@@ -30,9 +30,9 @@ class DaskVariableClient(BaseArrayClient):
 
     def _build_array_reader(self, structure):
         return self.ARRAY_CLIENT(
-            client=self._client,
-            item=self._item,
-            path=self._path,
+            context=self.context,
+            item=self.item,
+            path=self.path,
             metadata=self.metadata,
             params=self._params,
             structure=structure.data,
@@ -103,9 +103,9 @@ class DaskDataArrayClient(BaseArrayClient):
         structure = self.structure().macro
         variable = structure.variable
         variable_source = self.VARIABLE_CLIENT(
-            client=self._client,
-            item=self._item,
-            path=self._path,
+            context=self.context,
+            item=self.item,
+            path=self.path,
             metadata=self.metadata,
             params=self._params,
             structure=variable,
@@ -124,9 +124,9 @@ class DaskDataArrayClient(BaseArrayClient):
         result = {}
         for name, variable in structure.coords.items():
             variable_source = self.VARIABLE_CLIENT(
-                client=self._client,
-                item=self._item,
-                path=self._path,
+                context=self.context,
+                item=self.item,
+                path=self.path,
                 metadata=self.metadata,
                 params={"coord": name, **self._params},
                 structure=variable,
@@ -145,9 +145,9 @@ class DaskDataArrayClient(BaseArrayClient):
         structure = self.structure().macro
         variable = structure.variable
         variable_source = self.VARIABLE_CLIENT(
-            client=self._client,
-            item=self._item,
-            path=self._path,
+            context=self.context,
+            item=self.item,
+            path=self.path,
             metadata=self.metadata,
             params=self._params,
             structure=variable,
@@ -159,9 +159,9 @@ class DaskDataArrayClient(BaseArrayClient):
             slice, structure.coords.items(), fillvalue=builtins.slice(None, None)
         ):
             variable_source = self.VARIABLE_CLIENT(
-                client=self._client,
-                item=self._item,
-                path=self._path,
+                context=self.context,
+                item=self.item,
+                path=self.path,
                 metadata=self.metadata,
                 params={"coord": name, **self._params},
                 structure=variable,
@@ -216,8 +216,8 @@ class DaskDatasetClient(BaseArrayClient):
         # for long.
         TIMEOUT = 0.2  # seconds
         try:
-            content = self._client.get_json(
-                f"/metadata/{'/'.join(self._path)}",
+            content = self.context.get_json(
+                f"/metadata/{'/'.join(self.path)}",
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
             )
@@ -245,8 +245,8 @@ class DaskDatasetClient(BaseArrayClient):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         try:
-            content = self._client.get_json(
-                f"/metadata/{'/'.join(self._path)}",
+            content = self.context.get_json(
+                f"/metadata/{'/'.join(self.path)}",
                 params={"fields": "structure.macro", **self._params},
             )
             macro = content["data"]["attributes"]["structure"]["macro"]
@@ -274,7 +274,7 @@ class DaskDatasetClient(BaseArrayClient):
     def _build_data_vars(self, structure, variables=None):
         data_vars_clients = {}
         wide_table_fetcher = _WideTableFetcher(
-            self._client.get_content, self.item["links"]["full_dataset"]
+            self.context.get_content, self.item["links"]["full_dataset"]
         )
         for name, data_array in structure.data_vars.items():
             if (variables is not None) and (name not in variables):
@@ -290,9 +290,9 @@ class DaskDatasetClient(BaseArrayClient):
                 data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
             else:
                 data_array_source = self.DATA_ARRAY_CLIENT(
-                    client=self._client,
-                    item=self._item,
-                    path=self._path,
+                    context=self.context,
+                    item=self.item,
+                    path=self.path,
                     metadata=self.metadata,
                     params={"variable": name, **self._params},
                     structure=data_array,
@@ -309,9 +309,9 @@ class DaskDatasetClient(BaseArrayClient):
             if (variables is not None) and (name not in variables):
                 continue
             variable_source = self.VARIABLE_CLIENT(
-                client=self._client,
-                item=self._item,
-                path=self._path,
+                context=self.context,
+                item=self.item,
+                path=self.path,
                 metadata=self.metadata,
                 params={"variable": name, **self._params},
                 structure=variable,

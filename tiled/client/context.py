@@ -38,22 +38,22 @@ def login(
     *,
     token_cache=DEFAULT_TOKEN_CACHE,
 ):
-    (client,) = _client_from_uri_or_profile(
+    (context,) = _context_from_uri_or_profile(
         uri_or_profile, username, authentication_uri, token_cache, verify
     )
     # This has a side effect of storing the refresh token in the token_cache, if set.
-    return client.authenticate()
+    return context.authenticate()
 
 
-def _client_from_uri_or_profile(
+def _context_from_uri_or_profile(
     uri_or_profile, username, authentication_uri, token_cache, verify
 ):
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
-        httpx_client = httpx.Client(base_url=uri, verify=verify)
-        client = CoreClient(
-            httpx_client,
+        client = httpx.Client(base_url=uri, verify=verify)
+        context = Context(
+            client,
             username=username,
             authentication_uri=authentication_uri,
             token_cache=token_cache,
@@ -69,9 +69,9 @@ def _client_from_uri_or_profile(
             if "uri" in profile_content:
                 uri = profile_content["uri"]
                 verify = profile_content.get("verify", True)
-                httpx_client = httpx.Client(base_url=uri, verify=verify)
-                client = CoreClient(
-                    httpx_client,
+                client = httpx.Client(base_url=uri, verify=verify)
+                context = Context(
+                    client,
                     username=profile_content.get("username"),
                     authentication_uri=profile_content.get("authentication_uri"),
                     cache=profile_content.get("cache"),
@@ -86,7 +86,7 @@ def _client_from_uri_or_profile(
                 serve_tree_kwargs = construct_serve_tree_kwargs(
                     profile_content.pop("direct", None), source_filepath=filepath
                 )
-                client = client_from_tree(**serve_tree_kwargs)
+                context = context_from_tree(**serve_tree_kwargs)
             else:
                 raise ValueError("Invalid profile content")
         raise TreeValueError(
@@ -94,7 +94,7 @@ def _client_from_uri_or_profile(
             "It does not look like a URI (it does not start with http[s]://) "
             "and it does not match any profiles."
         )
-    return client
+    return context
 
 
 class TreeValueError(ValueError):
@@ -105,7 +105,7 @@ class CannotRefreshAuthentication(Exception):
     pass
 
 
-class CoreClient:
+class Context:
     """
     Wrap an httpx.Client with an optional cache and authentication functionality.
     """
@@ -172,7 +172,7 @@ class CoreClient:
     def base_url(self):
         return self._client.base_url
 
-    def get_content(self, path, accept=None, timeout=UNSET, **kwargs):
+    def get_content(self, path, accept=None, timeout=UNSET, stream=False, **kwargs):
         request = self._client.build_request("GET", path, **kwargs)
         if accept:
             request.headers["Accept"] = accept
@@ -189,7 +189,7 @@ class CoreClient:
             return content
         if self._cache is None:
             # No cache, so we can use the client straightforwardly.
-            response = self._send(request, timeout=timeout)
+            response = self._send(request, stream=stream, timeout=timeout)
             handle_error(response)
             return response.content
         # If we get this far, we have an online client and a cache.
@@ -197,7 +197,7 @@ class CoreClient:
         try:
             if reservation is not None:
                 request.headers["If-None-Match"] = reservation.etag
-            response = self._send(request, timeout=timeout)
+            response = self._send(request, stream=stream, timeout=timeout)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
                 # Read from the cache
@@ -219,22 +219,24 @@ class CoreClient:
                 reservation.ensure_released()
         return content
 
-    def get_json(self, path, **kwargs):
+    def get_json(self, path, stream=False, **kwargs):
         return msgpack.unpackb(
-            self.get_content(path, accept="application/x-msgpack", **kwargs),
+            self.get_content(
+                path, accept="application/x-msgpack", stream=stream, **kwargs
+            ),
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def _send(self, request, timeout, attempts=0):
+    def _send(self, request, timeout, stream=False, attempts=0):
         """
         Handle httpx's timeout API, which uses a special internal sentinel to mean
         "no timeout" and therefore must not be passed any value (including None)
         if we want no timeout.
         """
         if timeout is UNSET:
-            response = self._client.send(request)
+            response = self._client.send(request, stream=stream)
         else:
-            response = self._client.send(request, timeout=timeout)
+            response = self._client.send(request, stream=stream, timeout=timeout)
         if (response.status_code == 401) and (attempts == 0):
             # Try refreshing the token.
             # TODO Use a more targeted signal to know that refreshing the token will help.
@@ -247,7 +249,7 @@ class CoreClient:
                 request.headers["authorization"] = auth_header
                 # And update the default headers for future requests.
                 self._client.headers["Authorization"] = auth_header
-                return self._send(request, timeout, attempts=1)
+                return self._send(request, timeout, stream=stream, attempts=1)
         return response
 
     def authenticate(self):
@@ -350,7 +352,7 @@ class CoreClient:
         return tokens
 
 
-def client_from_tree(
+def context_from_tree(
     tree,
     authentication,
     server_settings,
@@ -397,6 +399,6 @@ def client_from_tree(
     import atexit
 
     atexit.register(client.close)
-    return CoreClient(
+    return Context(
         client, cache=cache, offline=offline, token_cache=token_cache, username=username
     )
