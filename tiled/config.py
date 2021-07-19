@@ -109,13 +109,13 @@ def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         # TODO The registry should not be process-global.
-        for structure_family, values in config.get("media_types").items():
+        for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path)
                 serialization_registry.register(
                     structure_family, media_type, serializer
                 )
-        for ext, media_type in config.get("file_extensions").items():
+        for ext, media_type in config.get("file_extensions", {}).items():
             serialization_registry.register_alias(ext, media_type)
     return {
         "tree": root_tree,
