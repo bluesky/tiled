@@ -227,7 +227,7 @@ class Context:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def _send(self, request, timeout, stream=False, attempts=0):
+    def _send(self, request, timeout=UNSET, stream=False, attempts=0):
         """
         Handle httpx's timeout API, which uses a special internal sentinel to mean
         "no timeout" and therefore must not be passed any value (including None)
