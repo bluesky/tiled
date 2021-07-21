@@ -73,14 +73,14 @@ class DaskDataFrameClient(BaseStructureClient):
 
     def structure(self):
         meta_content = self.context.get_content(
-            f"/dataframe/meta/{'/'.join(self._path)}",
+            f"/dataframe/meta/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
             params=self._params,
         )
         meta = deserialization_registry(
             "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_content
         )
         divisions_content = self.context.get_content(
-            f"/dataframe/divisions/{'/'.join(self._path)}",
+            f"/dataframe/divisions/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
             params=self._params,
         )
         divisions_wrapped_in_df = deserialization_registry(
@@ -109,7 +109,7 @@ class DaskDataFrameClient(BaseStructureClient):
             # ["A", "B"] will be encoded in the URL as column=A&column=B
             params["column"] = columns
         content = self.context.get_content(
-            "/dataframe/partition/" + "/".join(self._path),
+            f"/dataframe/partition/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params={**params, **self._params},
         )

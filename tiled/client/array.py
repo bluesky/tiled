@@ -49,7 +49,11 @@ class DaskArrayClient(BaseArrayClient):
         else:
             expected_shape = "scalar"
         content = self.context.get_content(
-            self._route + "/" + "/".join(self._path),
+            self._route
+            + "/"
+            + "/".join(self.context.path_parts)
+            + "/"
+            + "/".join(self._path),
             headers={"Accept": media_type},
             params={
                 "block": ",".join(map(str, block)),
