@@ -217,7 +217,7 @@ class DaskDatasetClient(BaseArrayClient):
         TIMEOUT = 0.2  # seconds
         try:
             content = self.context.get_json(
-                f"/metadata/{'/'.join(self.path)}",
+                self.uri,
                 params={"fields": "structure.macro", **self._params},
                 timeout=TIMEOUT,
             )
@@ -246,7 +246,7 @@ class DaskDatasetClient(BaseArrayClient):
         """
         try:
             content = self.context.get_json(
-                f"/metadata/{'/'.join(self.path)}",
+                self.uri,
                 params={"fields": "structure.macro", **self._params},
             )
             macro = content["data"]["attributes"]["structure"]["macro"]

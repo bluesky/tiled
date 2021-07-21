@@ -139,7 +139,7 @@ class BaseArrayClient(BaseStructureClient):
         # in.
         if self._structure is None:
             content = self.context.get_json(
-                f"/metadata/{'/'.join(self._path)}",
+                self.uri,
                 params={
                     "fields": ["structure.micro", "structure.macro"],
                     **self._params,
