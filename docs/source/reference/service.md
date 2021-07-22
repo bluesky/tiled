@@ -68,9 +68,8 @@ assumption about your metadata / data and its meaning.
 .. autosummary::
    :toctree: generated
 
+   tiled.query_registration.QueryRegistry
    tiled.query_registration.register
-   tiled.query_registration.name_to_query_type
-   tiled.query_registration.query_type_to_name
 ```
 
 ## Media Type (Format) Registry
@@ -85,10 +84,10 @@ When registering new types, make reference to the
    :toctree: generated
 
    tiled.media_type_registration.serialization_registry
-   tiled.media_type_registration.Registry
-   tiled.media_type_registration.Registry.register
-   tiled.media_type_registration.Registry.media_types
-   tiled.media_type_registration.Registry.aliases
+   tiled.media_type_registration.SerializationRegistry
+   tiled.media_type_registration.SerializationRegistry.register
+   tiled.media_type_registration.SerializationRegistry.media_types
+   tiled.media_type_registration.SerializationRegistry.aliases
 ```
 
 ## Structures
