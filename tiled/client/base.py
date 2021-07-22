@@ -9,7 +9,6 @@ class BaseClient:
         *,
         item,
         path,
-        metadata,
         params,
     ):
         self._context = context
@@ -18,7 +17,6 @@ class BaseClient:
         # Stash *immutable* copies just to be safe.
         self._path = tuple(path or [])
         self._item = item
-        self._metadata = metadata
         self._cached_len = None  # a cache just for __len__
         self._params = params or {}
         super().__init__()
@@ -41,7 +39,7 @@ class BaseClient:
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
         # persistent.
-        return DictView(self._metadata)
+        return DictView(self._item["attributes"]["metadata"])
 
     @property
     def path(self):
@@ -67,7 +65,6 @@ class BaseClient:
 
     def new_variation(
         self,
-        metadata=UNCHANGED,
         path=UNCHANGED,
         params=UNCHANGED,
         **kwargs,
@@ -75,15 +72,12 @@ class BaseClient:
         """
         This is intended primarily for internal use and use by subclasses.
         """
-        if metadata is UNCHANGED:
-            metadata = self._metadata
         if path is UNCHANGED:
             path = self._path
         if params is UNCHANGED:
             params = self._params
         return type(self)(
             item=self._item,
-            metadata=metadata,
             path=path,
             params=params,
             **kwargs,

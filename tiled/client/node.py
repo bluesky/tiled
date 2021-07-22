@@ -112,7 +112,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         path,
         item,
-        metadata,
         structure_clients,
         special_clients,
         params=None,
@@ -125,6 +124,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         self.special_clients = special_clients
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
+        sorting = item["attributes"].get("sorting")
         self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
         self._sorting_params = {
             "sort": ",".join(
@@ -140,7 +140,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             context=context,
             item=item,
             path=path,
-            metadata=metadata,
             params=params,
         )
 
@@ -193,7 +192,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 raise UnknownStructureFamily(structure_family) from None
         return self.structure_clients["node"]
 
-    def client_for_item(self, item, path, metadata, sorting):
+    def client_for_item(self, item, path):
         """
         Create an instance of the appropriate client class for an item.
 
@@ -205,19 +204,16 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 context=self.context,
                 item=item,
                 path=path,
-                metadata=metadata,
                 structure_clients=self.structure_clients,
                 special_clients=self.special_clients,
                 params=self._params,
-                queries=None,
-                sorting=sorting,
+                queries=None,  # This is the only difference.
             )
         elif item["type"] == "reader":
             return class_(
                 context=self.context,
                 item=item,
                 path=path,
-                metadata=metadata,
                 params=self._params,
             )
         else:
@@ -237,7 +233,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         Create a copy of this Node, optionally varying some parameters.
 
-        This is intended primarily for intenal use and use by subclasses.
+        This is intended primarily for internal use and use by subclasses.
         """
         if isinstance(structure_clients, str):
             structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
@@ -327,12 +323,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             len(data) == 1
         ), "The key lookup query must never result more than one result."
         (item,) = data
-        return self.client_for_item(
-            item,
-            path=self._path + (item["id"],),
-            metadata=item["attributes"]["metadata"],
-            sorting=item["attributes"].get("sorting"),
-        )
+        return self.client_for_item(item, path=self._path + (item["id"],))
 
     def items(self):
         # The base implementation would use __iter__ and __getitem__, making
@@ -353,12 +344,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
             for item in content["data"]:
                 key = item["id"]
-                value = self.client_for_item(
-                    item,
-                    path=self._path + (item["id"],),
-                    metadata=item["attributes"]["metadata"],
-                    sorting=item["attributes"].get("sorting"),
-                )
+                value = self.client_for_item(item, path=self._path + (item["id"],))
                 yield key, value
             next_page_url = content["links"]["next"]
 
@@ -427,12 +413,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 if stop is not None and next(item_counter) == stop:
                     return
                 key = item["id"]
-                yield key, self.client_for_item(
-                    item,
-                    path=self._path + (item["id"],),
-                    metadata=item["attributes"]["metadata"],
-                    sorting=item["attributes"].get("sorting"),
-                )
+                yield key, self.client_for_item(item, path=self._path + (item["id"],))
             next_page_url = content["links"]["next"]
 
     def _item_by_index(self, index, direction):
@@ -458,12 +439,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         (item,) = content["data"]
         key = item["id"]
-        value = self.client_for_item(
-            item,
-            path=self._path + (item["id"],),
-            metadata=item["attributes"]["metadata"],
-            sorting=item["attributes"].get("sorting"),
-        )
+        value = self.client_for_item(item, path=self._path + (item["id"],))
         return (key, value)
 
     def search(self, query):
@@ -723,18 +699,14 @@ def from_context(
     )
     content = context.get_json(f"/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
-    metadata = item["attributes"]["metadata"]
     instance = Node(
         context,
         item=item,
         path=path,
-        metadata=metadata,
         structure_clients=structure_clients,
         special_clients=special_clients,
     )
-    return instance.client_for_item(
-        item, path=path, metadata=metadata, sorting=item["attributes"].get("sorting")
-    )
+    return instance.client_for_item(item, path=path)
 
 
 def from_profile(name, structure_clients=None, **kwargs):
