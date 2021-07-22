@@ -33,6 +33,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
         "numpy": OneShotCachedMap(
             {
+                "node": lambda: Node,
                 "array": lambda: importlib.import_module(
                     "..array", Node.__module__
                 ).ArrayClient,
@@ -52,6 +53,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         ),
         "dask": OneShotCachedMap(
             {
+                "node": lambda: Node,
                 "array": lambda: importlib.import_module(
                     "..array", Node.__module__
                 ).DaskArrayClient,
@@ -111,7 +113,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         path,
         item,
         metadata,
-        root_client_type,
         structure_clients,
         special_clients,
         params=None,
@@ -122,7 +123,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         self.structure_clients = structure_clients
         self.special_clients = special_clients
-        self._root_client_type = root_client_type
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
         self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
@@ -174,7 +174,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _get_class(self, item):
         # The server can use specs to tell us that this is not just *any*
-        # tree/array/dataframe/etc. but that is matches a certain specification
+        # node/array/dataframe/etc. but that is matches a certain specification
         # for which there may be a special client available.
         # Check each spec in order for a matching special client. Use the first
         # one we find. If we find no special client for any spec, fall back on
@@ -191,10 +191,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 return self.structure_clients[structure_family]
             except KeyError:
                 raise UnknownStructureFamily(structure_family) from None
-        # This is generally just Node, but if the original
-        # user-created tree was a subclass of Node, this will
-        # repsect that.
-        return self._root_client_type
+        return self.structure_clients["node"]
 
     def client_for_item(self, item, path, metadata, sorting):
         """
@@ -214,7 +211,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 params=self._params,
                 queries=None,
                 sorting=sorting,
-                root_client_type=self._root_client_type,
             )
         elif item["type"] == "reader":
             return class_(
@@ -261,7 +257,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             special_clients=special_clients,
             queries=queries,
             sorting=sorting,
-            root_client_type=self._root_client_type,
             **kwargs,
         )
 
@@ -736,7 +731,6 @@ def from_context(
         metadata=metadata,
         structure_clients=structure_clients,
         special_clients=special_clients,
-        root_client_type=Node,
     )
     return instance.client_for_item(
         item, path=path, metadata=metadata, sorting=item["attributes"].get("sorting")
