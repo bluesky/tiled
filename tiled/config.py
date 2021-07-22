@@ -146,7 +146,7 @@ def construct_serve_tree_kwargs(
         "server_settings": server_settings,
         "query_registry": query_registry,
         "serialization_registry": serialization_registry,
-        "compressions_registry": compression_registry,
+        "compression_registry": compression_registry,
     }
 
 
