@@ -1,3 +1,4 @@
+import gzip
 import mimetypes
 
 from collections import defaultdict
@@ -157,3 +158,15 @@ compression_registry = CompressionRegistry()
 # for each structure family. Deserializing other formats is other
 # clients' problem, and we can't help with that from here.
 deserialization_registry = SerializationRegistry()
+
+
+compression_registry.register(
+    "application/json",
+    "gzip",
+    lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
+)
+compression_registry.register(
+    "application/x-msgpack",
+    "gzip",
+    lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
+)

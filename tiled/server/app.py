@@ -17,7 +17,7 @@ from .authentication import (
     authentication_router,
     get_authenticator,
 )
-from .compression import GZipMiddleware
+from .compression import CompressionMiddleware
 from .core import (
     get_root_tree,
     get_query_registry,
@@ -67,23 +67,11 @@ def get_app(query_registry, compression_registry, include_routers=None):
             app.dependency_overrides[get_settings]().allow_origins
         )
 
-    app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-    # @app.middleware("http")
-    # async def compress(request: Request, call_next):
-    #     response = await call_next(request)
-    #     response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-    #     accepted = {
-    #         item.strip() for item in request.headers.get("accept-encoding").split(",")
-    #     }
-    #     media_type = response.headers.get("content-type")
-    #     for encoding in compression_registry.encodings(media_type):
-    #         if encoding in accepted:
-    #             response.headers["content-encoding"] = encoding
-    #             response.content = compression_registry(
-    #                 media_type, encoding, response.content
-    #             )
-    #     return response
+    app.add_middleware(
+        CompressionMiddleware,
+        compression_registry=compression_registry,
+        minimum_size=1000,
+    )
 
     @app.middleware("http")
     async def add_server_timing_header(request: Request, call_next):
