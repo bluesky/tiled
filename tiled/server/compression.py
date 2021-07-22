@@ -70,7 +70,7 @@ class CompressionResponder:
                         )
                         break
                 else:
-                    # Could not negotiate a support compression for this media type
+                    # Could not negotiate a supported compression/encoding for this media type
                     # Send uncompressed.
                     await self.send(self.initial_message)
                     await self.send(message)
