@@ -5,7 +5,7 @@ from collections import defaultdict
 from .utils import DictView
 
 
-class Registry:
+class SerializationRegistry:
     """
     Registry of media types for each structure family
 
@@ -106,10 +106,54 @@ class Registry:
         return self.dispatch(structure_family, media_type)(*args, **kwargs)
 
 
-serialization_registry = Registry()
+class CompressionRegistry:
+    def __init__(self):
+        self._lookup = defaultdict(dict)
+
+    def encodings(self, media_type):
+        return list(self._lookup.get(media_type, []))
+
+    def register(self, media_type, encoding, func):
+        """
+        Register a new media_type for a structure family.
+
+        Parameters
+        ----------
+        structure_family : str
+            The structure we are encoding, as in "array", "dataframe", "variable", ...
+        media_type : str
+            MIME type, as in "application/json" or "text/csv".
+            If there is not standard name, use "application/x-INVENT-NAME-HERE".
+        func : callable
+            Should accept the relevant structure as input (e.g. a numpy array)
+            and return bytes or memoryview
+        """
+        self._lookup[media_type][encoding] = func
+
+    def dispatch(self, media_type, encoding):
+        try:
+            return self._lookup[media_type][encoding]
+        except KeyError:
+            pass
+        raise ValueError(
+            f"No dispatch for encoding {encoding} for media type {media_type}"
+        )
+
+    def __call__(self, media_type, encoder, *args, **kwargs):
+        """
+        Invoke an encoder.
+        """
+        return self.dispatch(media_type, encoder)(*args, **kwargs)
+
+
+serialization_registry = SerializationRegistry()
 "Global serialization registry. See Registry for usage examples."
+
+compression_registry = CompressionRegistry()
+"Global compression registry. See Registry for usage examples."
+
 # TODO Do we *need* a deserialization registry?
 # The Python client always deals with a certain preferred format
 # for each structure family. Deserializing other formats is other
 # clients' problem, and we can't help with that from here.
-deserialization_registry = Registry()
+deserialization_registry = SerializationRegistry()

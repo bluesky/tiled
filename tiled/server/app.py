@@ -25,6 +25,7 @@ from .core import (
 )
 from .router import declare_search_router, router
 from .settings import get_settings
+from ..media_type_registration import compression_registry as default_compression_registry
 
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -37,7 +38,7 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 
-def get_app(query_registry, include_routers=None):
+def get_app(query_registry, compression_registry, include_routers=None):
     """
     Construct an instance of the FastAPI application.
 
@@ -62,6 +63,15 @@ def get_app(query_registry, include_routers=None):
         app.state.allow_origins.extend(
             app.dependency_overrides[get_settings]().allow_origins
         )
+
+    @app.middleware("http")
+    async def compress(request: Request, call_next):
+        compression_registry
+        accepted = [item.strip() for item in request.headers.get("accept-encoding").split(",")]
+        response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        # response.headers["Content-Encoding"] = f"app;dur={1000 * process_time:.1f}"
+        return response
 
     @app.middleware("http")
     async def add_server_timing_header(request: Request, call_next):
@@ -175,6 +185,7 @@ def serve_tree(
     server_settings=None,
     query_registry=None,
     serialization_registry=None,
+    compression_registry=None,
 ):
     """
     Serve a Tree
@@ -225,7 +236,9 @@ def serve_tree(
     include_routers.extend(getattr(tree, "include_routers", []))
     include_routers.extend(getattr(authenticator, "include_routers", []))
     app = get_app(
-        query_registry or get_query_registry(), include_routers=include_routers
+        query_registry or get_query_registry(),
+        compression_registry or default_compression_registry,
+        include_routers=include_routers
     )
     app.dependency_overrides[get_authenticator] = override_get_authenticator
     app.dependency_overrides[get_root_tree] = override_get_root_tree

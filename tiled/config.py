@@ -14,6 +14,7 @@ import jsonschema
 from .utils import import_object, parse
 from .media_type_registration import (
     serialization_registry as default_serialization_registry,
+    compression_registry as default_compression_registry,
 )
 from .query_registration import query_registry as default_query_registry
 
@@ -31,17 +32,20 @@ def schema():
 
 def construct_serve_tree_kwargs(
     config,
+    *,
     source_filepath=None,
     validate=True,
     query_registry=None,
+    compression_registry=None,
     serialization_registry=None,
 ):
     """
     Given parsed configuration, construct arguments for serve_tree(...).
 
-    The parameters query_registry and serialization_registry are used by the
-    tests to inject separate registry instances. By default, the singleton
-    global instances of these registries and used (and modified).
+    The parameters query_registry, compression_registry, and
+    serialization_registry are used by the tests to inject separate registry
+    instances. By default, the singleton global instances of these registries
+    and used (and modified).
     """
     if validate:
         try:
@@ -57,6 +61,8 @@ def construct_serve_tree_kwargs(
         query_registry = default_query_registry
     if serialization_registry is None:
         serialization_registry = default_serialization_registry
+    if compression_registry is None:
+        compression_registry = default_compression_registry
     sys_path_additions = []
     if source_filepath:
         if os.path.isdir(source_filepath):
@@ -133,12 +139,14 @@ def construct_serve_tree_kwargs(
                 )
         for ext, media_type in config.get("file_extensions", {}).items():
             serialization_registry.register_alias(ext, media_type)
+    # TODO Make compression_registry extensible via configuration.
     return {
         "tree": root_tree,
         "authentication": auth_spec,
         "server_settings": server_settings,
         "query_registry": query_registry,
         "serialization_registry": serialization_registry,
+        "compressions_registry": compression_registry,
     }
 
 
@@ -288,7 +296,7 @@ def direct_access(config, source_filepath=None):
         # We do not know where this config came from. It may not yet have been validated.
         validate = True
     return construct_serve_tree_kwargs(
-        parsed_config, source_filepath, validate=validate
+        parsed_config, source_filepath=source_filepath, validate=validate
     )["tree"]
 
 
