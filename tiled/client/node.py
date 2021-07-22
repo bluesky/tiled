@@ -8,7 +8,7 @@ import warnings
 
 import entrypoints
 
-from ..query_registration import query_type_to_name
+from ..query_registration import query_registry
 from ..queries import KeyLookup
 from ..utils import (
     OneShotCachedMap,
@@ -498,7 +498,7 @@ def _queries_to_params(*queries):
     "Compute GET params from the queries."
     params = collections.defaultdict(list)
     for query in queries:
-        name = query_type_to_name[type(query)]
+        name = query_registry.query_type_to_name[type(query)]
         for field in fields(query):
             value = getattr(query, field.name)
             if isinstance(value, (list, tuple)):

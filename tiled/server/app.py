@@ -17,7 +17,12 @@ from .authentication import (
     authentication_router,
     get_authenticator,
 )
-from .core import get_root_tree, PatchedStreamingResponse
+from .core import (
+    get_root_tree,
+    get_query_registry,
+    get_serialization_registry,
+    PatchedStreamingResponse,
+)
 from .router import declare_search_router, router
 from .settings import get_settings
 
@@ -32,7 +37,7 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 
-def get_app(include_routers=None):
+def get_app(query_registry, include_routers=None):
     """
     Construct an instance of the FastAPI application.
 
@@ -53,7 +58,7 @@ def get_app(include_routers=None):
     async def startup_event():
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
-        app.include_router(declare_search_router())
+        app.include_router(declare_search_router(query_registry))
         app.state.allow_origins.extend(
             app.dependency_overrides[get_settings]().allow_origins
         )
@@ -168,6 +173,8 @@ def serve_tree(
     tree,
     authentication=None,
     server_settings=None,
+    query_registry=None,
+    serialization_registry=None,
 ):
     """
     Serve a Tree
@@ -217,10 +224,28 @@ def serve_tree(
     include_routers = []
     include_routers.extend(getattr(tree, "include_routers", []))
     include_routers.extend(getattr(authenticator, "include_routers", []))
-    app = get_app(include_routers=include_routers)
+    app = get_app(
+        query_registry or get_query_registry(), include_routers=include_routers
+    )
     app.dependency_overrides[get_authenticator] = override_get_authenticator
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
+    if query_registry is not None:
+
+        @lru_cache(1)
+        def override_get_query_registry():
+            return query_registry
+
+        app.dependency_overrides[get_query_registry] = override_get_query_registry
+    if serialization_registry is not None:
+
+        @lru_cache(1)
+        def override_get_serialization_registry():
+            return serialization_registry
+
+        app.dependency_overrides[
+            get_serialization_registry
+        ] = override_get_serialization_registry
     return app
 
 

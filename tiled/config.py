@@ -12,7 +12,10 @@ from pathlib import Path
 import jsonschema
 
 from .utils import import_object, parse
-from .media_type_registration import serialization_registry
+from .media_type_registration import (
+    serialization_registry as default_serialization_registry,
+)
+from .query_registration import query_registry as default_query_registry
 
 
 @lru_cache(maxsize=1)
@@ -26,9 +29,19 @@ def schema():
         return yaml.safe_load(file)
 
 
-def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
+def construct_serve_tree_kwargs(
+    config,
+    source_filepath=None,
+    validate=True,
+    query_registry=None,
+    serialization_registry=None,
+):
     """
     Given parsed configuration, construct arguments for serve_tree(...).
+
+    The parameters query_registry and serialization_registry are used by the
+    tests to inject separate registry instances. By default, the singleton
+    global instances of these registries and used (and modified).
     """
     if validate:
         try:
@@ -40,6 +53,10 @@ def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
             else:
                 msg = f"ValidationError while parsing configuration file {source_filepath}: {original_msg}"
             raise ConfigError(msg) from err
+    if query_registry is None:
+        query_registry = default_query_registry
+    if serialization_registry is None:
+        serialization_registry = default_serialization_registry
     sys_path_additions = []
     if source_filepath:
         if os.path.isdir(source_filepath):
@@ -108,7 +125,6 @@ def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
-        # TODO The registry should not be process-global.
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path)
@@ -121,6 +137,8 @@ def construct_serve_tree_kwargs(config, source_filepath=None, validate=True):
         "tree": root_tree,
         "authentication": auth_spec,
         "server_settings": server_settings,
+        "query_registry": query_registry,
+        "serialization_registry": serialization_registry,
     }
 
 

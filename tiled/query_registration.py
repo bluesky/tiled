@@ -78,13 +78,9 @@ class QueryRegistry:
 
 
 # Make a global registry.
-_query_registry = QueryRegistry()
-register = _query_registry.register
+query_registry = QueryRegistry()
+register = query_registry.register
 """Register a new type of query."""
-name_to_query_type = _query_registry.name_to_query_type
-"""Maps query name like "fulltext" to query type like tiled.queries.FullText."""
-query_type_to_name = _query_registry.query_type_to_name
-"""Maps query type like tiled.queries.FullText to query name like "fulltext"."""
 
 
 class QueryTranslationRegistry:

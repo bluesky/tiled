@@ -6,7 +6,6 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseSettings
 
-from ..query_registration import name_to_query_type
 from .authentication import (
     API_KEY_COOKIE_NAME,
     get_authenticator,
@@ -22,13 +21,14 @@ from .core import (
     construct_dataset_response,
     construct_entries_response,
     construct_resource,
+    get_query_registry,
+    get_serialization_registry,
     reader,
     entry,
     expected_shape,
     json_or_msgpack,
     NoEntry,
     PatchedResponse,
-    serialization_registry,
     slice_,
     WrongTypeForRoute,
     UnsupportedMediaTypes,
@@ -49,6 +49,8 @@ async def about(
     has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticator=Depends(get_authenticator),
+    serialization_registry=Depends(get_serialization_registry),
+    query_registry=Depends(get_query_registry),
     root_path: str = Query(None),
 ):
     # TODO The lazy import of reader modules and serializers means that the
@@ -76,7 +78,7 @@ async def about(
                 structure_family: serialization_registry.aliases(structure_family)
                 for structure_family in serialization_registry.structure_families
             },
-            queries=list(name_to_query_type),
+            queries=list(query_registry.name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?
             meta={"root_path": request.scope.get("root_path") or "/"}
             if (root_path is not None)
@@ -85,7 +87,7 @@ async def about(
     )
 
 
-def declare_search_router():
+def declare_search_router(query_registry):
     """
     This is done dynamically at router startup.
 
@@ -102,12 +104,14 @@ def declare_search_router():
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
         entry: Any = Depends(entry),
+        query_registry=Depends(get_query_registry),
         **filters,
     ):
         try:
             return json_or_msgpack(
                 request.headers,
                 construct_entries_response(
+                    query_registry,
                     entry,
                     "/search",
                     path,
@@ -140,7 +144,7 @@ def declare_search_router():
     # Drop the **filters parameter from the signature.
     del parameters[-1]
     # Add a parameter for each field in each type of query.
-    for name, query in name_to_query_type.items():
+    for name, query in query_registry.name_to_query_type.items():
         for field in dataclasses.fields(query):
             # The structured "alias" here is based on
             # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
@@ -198,6 +202,7 @@ async def entries(
     sort: Optional[str] = Query(None),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     entry: Any = Depends(entry),
+    query_registry=Depends(get_query_registry),
 ):
     "List the entries in a Tree, which may be sub-Trees or Readers."
 
@@ -205,6 +210,7 @@ async def entries(
         return json_or_msgpack(
             request.headers,
             construct_entries_response(
+                query_registry,
                 entry,
                 "/entries",
                 path,
@@ -232,6 +238,7 @@ def array_block(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a chunk of array-like data.
@@ -260,7 +267,9 @@ def array_block(
                 detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
             )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -274,6 +283,7 @@ def array_full(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a slice of array-like data.
@@ -300,7 +310,9 @@ def array_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -314,6 +326,7 @@ def dataframe_meta(
     request: Request,
     reader=Depends(reader),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
@@ -342,6 +355,7 @@ def dataframe_divisions(
     request: Request,
     reader=Depends(reader),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch the Apache Arrow serialization of the index values at the partition edges.
@@ -379,6 +393,7 @@ def dataframe_partition(
     reader=Depends(reader),
     column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
@@ -399,7 +414,7 @@ def dataframe_partition(
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
         return construct_dataframe_response(
-            df, reader.metadata, request.headers, format
+            serialization_registry, df, reader.metadata, request.headers, format
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -415,6 +430,7 @@ def dataframe_full(
     reader=Depends(reader),
     column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch all the rows of DataFrame.
@@ -433,7 +449,7 @@ def dataframe_full(
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
         return construct_dataframe_response(
-            df, reader.metadata, request.headers, format
+            serialization_registry, df, reader.metadata, request.headers, format
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -451,6 +467,7 @@ def variable_block(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a chunk of array-like data from an xarray.Variable.
@@ -473,7 +490,9 @@ def variable_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -488,6 +507,7 @@ def variable_full(
     reader=Depends(reader),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a full xarray.Variable.
@@ -504,7 +524,9 @@ def variable_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -520,6 +542,7 @@ def data_array_variable_full(
     coord: Optional[str] = Query(None, min_length=1),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a chunk from an xarray.DataArray.
@@ -545,7 +568,9 @@ def data_array_variable_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -563,6 +588,7 @@ def data_array_block(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a chunk from an xarray.DataArray.
@@ -590,7 +616,9 @@ def data_array_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -609,6 +637,7 @@ def dataset_block(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a chunk from an xarray.Dataset.
@@ -638,7 +667,9 @@ def dataset_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -655,6 +686,7 @@ def dataset_data_var_full(
     coord: Optional[str] = Query(None, min_length=1),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a full xarray.Variable from within an xarray.Dataset.
@@ -685,7 +717,9 @@ def dataset_data_var_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -701,6 +735,7 @@ def dataset_coord_full(
     coord: str = Query(..., min_length=1),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a full coordinate from within an xarray.Dataset.
@@ -723,7 +758,9 @@ def dataset_coord_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(array, reader.metadata, request.headers, format)
+        return construct_array_response(
+            serialization_registry, array, reader.metadata, request.headers, format
+        )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -738,6 +775,7 @@ def dataset_full(
     reader=Depends(reader),
     variable: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a full coordinate from within an xarray.Dataset.
@@ -756,7 +794,7 @@ def dataset_full(
         raise HTTPException(status_code=400, detail=f"No such variable {key}.")
     try:
         return construct_dataset_response(
-            dataset, reader.metadata, request.headers, format
+            serialization_registry, dataset, reader.metadata, request.headers, format
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))

@@ -4,6 +4,7 @@ import collections.abc
 import dataclasses
 from datetime import datetime
 import dateutil
+from functools import lru_cache
 from hashlib import md5
 import itertools
 import json
@@ -22,9 +23,11 @@ from starlette.responses import JSONResponse, StreamingResponse, Send
 from . import models
 from .authentication import get_current_user
 from ..utils import modules_available
-from ..query_registration import name_to_query_type
+from ..query_registration import query_registry as default_query_registry
 from ..queries import QueryValueError
-from ..media_type_registration import serialization_registry
+from ..media_type_registration import (
+    serialization_registry as default_serialization_registry,
+)
 
 
 # These modules are not directly used, but they register things on import.
@@ -47,6 +50,18 @@ if modules_available("xarray"):
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 _LOCAL_TZINFO = dateutil.tz.gettz()
+
+
+@lru_cache(1)
+def get_query_registry():
+    "This may be overridden via dependency_overrides."
+    return default_query_registry
+
+
+@lru_cache(1)
+def get_serialization_registry():
+    "This may be overridden via dependency_overrides."
+    return default_serialization_registry
 
 
 def get_root_tree():
@@ -199,6 +214,7 @@ class DuckTree(metaclass=abc.ABCMeta):
 
 
 def construct_entries_response(
+    query_registry,
     tree,
     route,
     path,
@@ -245,7 +261,7 @@ def construct_entries_response(
                 }
             except IndexError:
                 break
-            query_class = name_to_query_type[query_name]
+            query_class = query_registry.name_to_query_type[query_name]
             # Special case:
             # List fields are serialized as comma-separated strings.
             for field in dataclasses.fields(query_class):
@@ -277,7 +293,9 @@ def construct_entries_response(
     return models.Response(data=data, links=links, meta={"count": count})
 
 
-def construct_array_response(array, metadata, request_headers, format=None):
+def construct_array_response(
+    serialization_registry, array, metadata, request_headers, format=None
+):
     import numpy
 
     DEFAULT_MEDIA_TYPE = "application/octet-stream"
@@ -324,7 +342,9 @@ def construct_array_response(array, metadata, request_headers, format=None):
 APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
 
 
-def construct_dataframe_response(df, metadata, request_headers, format=None):
+def construct_dataframe_response(
+    serialization_registry, df, metadata, request_headers, format=None
+):
     etag = dask.base.tokenize(df)
     if request_headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
@@ -365,7 +385,9 @@ def construct_dataframe_response(df, metadata, request_headers, format=None):
         )
 
 
-def construct_dataset_response(dataset, metadata, request_headers, format=None):
+def construct_dataset_response(
+    serialization_registry, dataset, metadata, request_headers, format=None
+):
     DEFAULT_MEDIA_TYPE = "application/netcdf"
     etag = dask.base.tokenize(dataset)
     if request_headers.get("If-None-Match", "") == etag:
