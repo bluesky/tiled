@@ -1,4 +1,3 @@
-from gzip import compress
 import io
 
 from starlette.datastructures import Headers, MutableHeaders
