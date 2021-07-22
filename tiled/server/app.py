@@ -25,7 +25,9 @@ from .core import (
 )
 from .router import declare_search_router, router
 from .settings import get_settings
-from ..media_type_registration import compression_registry as default_compression_registry
+from ..media_type_registration import (
+    compression_registry as default_compression_registry,
+)
 
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -66,11 +68,18 @@ def get_app(query_registry, compression_registry, include_routers=None):
 
     @app.middleware("http")
     async def compress(request: Request, call_next):
-        compression_registry
-        accepted = [item.strip() for item in request.headers.get("accept-encoding").split(",")]
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        # response.headers["Content-Encoding"] = f"app;dur={1000 * process_time:.1f}"
+        accepted = {
+            item.strip() for item in request.headers.get("accept-encoding").split(",")
+        }
+        media_type = response.headers.get("content-type")
+        for encoding in compression_registry.encodings(media_type):
+            if encoding in accepted:
+                response.headers["content-encoding"] = encoding
+                response.content = compression_registry(
+                    media_type, encoding, response.content
+                )
         return response
 
     @app.middleware("http")
@@ -238,7 +247,7 @@ def serve_tree(
     app = get_app(
         query_registry or get_query_registry(),
         compression_registry or default_compression_registry,
-        include_routers=include_routers
+        include_routers=include_routers,
     )
     app.dependency_overrides[get_authenticator] = override_get_authenticator
     app.dependency_overrides[get_root_tree] = override_get_root_tree
