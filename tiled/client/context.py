@@ -14,11 +14,17 @@ from .utils import (
     NotAvailableOffline,
     UNSET,
 )
+from ..utils import modules_available
 
 
 DEFAULT_TOKEN_CACHE = os.getenv(
     "TILED_TOKEN_CACHE", os.path.join(appdirs.user_config_dir("tiled"), "tokens")
 )
+ACCEPTED_ENCODINGS = ["gzip"]
+if modules_available("blosc"):
+    import blosc
+
+    ACCEPTED_ENCODINGS.append("blosc")
 
 
 def _token_directory(token_cache, netloc, username):
@@ -126,6 +132,7 @@ class Context:
         if not authentication_uri.endswith("/"):
             authentication_uri += "/"
         self._client = client
+        self._client.headers["accept-encoding"] = ",".join(ACCEPTED_ENCODINGS)
         self._authentication_uri = authentication_uri
         self._cache = cache
         self._username = username
@@ -194,6 +201,8 @@ class Context:
             # No cache, so we can use the client straightforwardly.
             response = self._send(request, stream=stream, timeout=timeout)
             handle_error(response)
+            if response.headers.get("content-encoding") == "blosc":
+                return blosc.decompress(response.content)
             return response.content
         # If we get this far, we have an online client and a cache.
         reservation = self._cache.get_reservation(url)
@@ -208,6 +217,8 @@ class Context:
             elif response.status_code == 200:
                 etag = response.headers.get("ETag")
                 content = response.content
+                if response.headers.get("content-encoding") == "blosc":
+                    content = blosc.decompress(content)
                 # TODO Respect Cache-control headers (e.g. "no-store")
                 if etag is not None:
                     # Write to cache.
