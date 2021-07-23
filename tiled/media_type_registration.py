@@ -200,7 +200,8 @@ if modules_available("blosc"):
             if hasattr(b, "itemsize"):
                 # This could be memoryview or numpy.ndarray, for example.
                 # Blosc uses item-aware shuffling for improved results.
-                compressed = blosc.compress(b, typesize=b.itemsize)
+                # The choice of settings here is cribbed from distributed.protocol.compression.
+                compressed = blosc.compress(b, typesize=b.itemsize, cname="lz4", clevel=5)
             else:
                 compressed = blosc.compress(b)
             self._file.write(compressed)
