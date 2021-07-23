@@ -81,7 +81,8 @@ class CompressionResponder:
                     t0 = time.perf_counter()
                     self.compressed_file.write(body)
                     self.compressed_file.close()
-                    headers["X-Compression-Time"] = time.perf_counter() - t0
+                    compression_time = time.perf_counter() - t0
+                    headers["X-Compression-Time"] = f"{1000 * compression_time:.2f}"
                     compressed_body = self.compressed_buffer.getvalue()
                     # Check to see if the compression ratio is significant.
                     # If it isn't just send the original; the savings isn't worth the decompression time.
