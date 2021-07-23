@@ -5,6 +5,7 @@ import httpx
 
 from .context import context_from_tree, Context, DEFAULT_TOKEN_CACHE
 from .node import Node
+from .utils import EVENT_HOOKS
 from ..utils import import_object
 
 
@@ -52,7 +53,7 @@ def from_uri(
     authentication_uri : str, optional
         URL of authentication server
     """
-    client = httpx.Client(base_url=uri, verify=verify)
+    client = httpx.Client(base_url=uri, verify=verify, event_hooks=EVENT_HOOKS)
     context = Context(
         client,
         username=username,

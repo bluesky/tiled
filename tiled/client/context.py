@@ -9,6 +9,7 @@ import httpx
 import msgpack
 
 from .utils import (
+    EVENT_HOOKS,
     handle_error,
     NotAvailableOffline,
     UNSET,
@@ -51,7 +52,7 @@ def _context_from_uri_or_profile(
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
-        client = httpx.Client(base_url=uri, verify=verify)
+        client = httpx.Client(base_url=uri, verify=verify, event_hooks=EVENT_HOOKS)
         context = Context(
             client,
             username=username,
@@ -69,7 +70,9 @@ def _context_from_uri_or_profile(
             if "uri" in profile_content:
                 uri = profile_content["uri"]
                 verify = profile_content.get("verify", True)
-                client = httpx.Client(base_url=uri, verify=verify)
+                client = httpx.Client(
+                    base_url=uri, verify=verify, event_hooks=EVENT_HOOKS
+                )
                 context = Context(
                     client,
                     username=profile_content.get("username"),
@@ -404,6 +407,7 @@ def context_from_tree(
         params=params,
         app=app,
         _startup_hook=startup,
+        event_hooks=EVENT_HOOKS,
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
     import atexit

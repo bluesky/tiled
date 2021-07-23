@@ -80,3 +80,59 @@ def export_util(file, format, get, link, params):
             raise ValueError("format must be specified when file is writeable buffer")
         content = get(link, params={"format": format, **params})
         file.write(content)
+
+
+if __debug__:
+
+    import logging
+
+    class LogFormatter(logging.Formatter):
+        def __init__(
+            self,
+            fmt,
+            datefmt,
+        ):
+            super().__init__(datefmt=datefmt)
+            self._fmt = fmt
+
+        def format(self, record):
+            if isinstance(record.msg, httpx.Request):
+                request = record.msg
+                record.message = f"-> {request.method} {request.url} " + " ".join(
+                    f"{k}:{v}" for k, v in request.headers.items()
+                )
+            elif isinstance(record.msg, httpx.Response):
+                response = record.msg
+                request = response.request
+                record.message = f"<- {response.status_code} " + " ".join(
+                    f"{k}:{v}" for k, v in response.headers.items()
+                )
+            record.asctime = self.formatTime(record, self.datefmt)
+
+            formatted = self._fmt % record.__dict__
+
+            if record.exc_info and not record.exc_text:
+                record.exc_text = self.formatException(record.exc_info)
+            if record.exc_text:
+                formatted = "{}\n{}".format(formatted.rstrip(), record.exc_text)
+            return formatted.replace("\n", "\n    ")
+
+    logger = logging.getLogger("tiled.client")
+    handler = logging.StreamHandler()
+    log_format = "%(asctime)s.%(msecs)03d %(message)s"
+
+    handler.setFormatter(LogFormatter(log_format, datefmt="%H:%M:%S"))
+    logger.addHandler(handler)
+    log = logger.debug
+
+    def log_request(request):
+        log(f"-> {request.method} {request.url}")
+
+    def log_response(response):
+        request = response.request
+        log(f"<- {response.status_code} {request.method} {request.url}")
+
+    EVENT_HOOKS = {"request": [log], "response": [log]}
+else:
+    # We take this path when Python is started with -O optimizations.
+    EVENT_HOOKS = {}
