@@ -204,8 +204,8 @@ if modules_available("blosc"):
                 # Blosc uses item-aware shuffling for improved results.
                 compressed = blosc.compress(b, typesize=b.itemsize, **settings)
             else:
-                compressed = blosc.compress(b)
-            self._file.write(compressed, **settings)
+                compressed = blosc.compress(b, **settings)
+            self._file.write(compressed)
 
         def close(self):
             pass
