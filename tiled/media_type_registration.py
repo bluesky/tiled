@@ -1,9 +1,10 @@
+import collections
 import gzip
 import mimetypes
 
 from collections import defaultdict
 
-from .utils import DictView
+from .utils import DictView, modules_available
 
 
 class SerializationRegistry:
@@ -173,3 +174,44 @@ compression_registry.register(
     "gzip",
     lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
 )
+compression_registry.register(
+    "application/octet-stream",
+    "gzip",
+    # Use a lower compression level. High compression is extremely slow
+    # (~60 seconds) on large array data.
+    lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=1),
+)
+if modules_available("blosc"):
+
+    import blosc
+
+    class BloscBuffer:
+        """
+        Imitate the API provided by gzip.GzipFile and used by tiled.server.compression.
+
+        It's not clear to me yet what this buys us, but I think we should follow
+        the pattern set by starlette until we have a clear reason not to.
+        """
+
+        def __init__(self, file):
+            self._file = file
+
+        def write(self, b):
+            if hasattr(b, "itemsize"):
+                # This could be memoryview or numpy.ndarray, for example.
+                # Blosc uses item-aware shuffling for improved results.
+                compressed = blosc.compress(b, typesize=b.itemsize)
+            else:
+                compressed = blosc.compress(b)
+            self._file.write(compressed)
+
+        def close(self):
+            pass
+
+    compression_registry.register(
+        "application/octet-stream",
+        "blosc",
+        # Use a lower compression level. High compression is extremely slow
+        # (~60 seconds) on large array data.
+        lambda buffer: BloscBuffer(buffer),
+    )
