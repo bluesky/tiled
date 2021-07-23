@@ -51,7 +51,22 @@ class CompressionResponder:
             # Don't send the initial message until we've determined how to
             # modify the outgoing headers correctly.
             self.initial_message = message
+            headers = MutableHeaders(raw=self.initial_message["headers"])
+            media_type = headers["Content-Type"]
+            for encoding in self.compression_registry.encodings(media_type):
+                if encoding in self.accepted:
+                    file_factory = self.compression_registry.dispatch(
+                        media_type=media_type,
+                        encoding=encoding,
+                    )
+                    self.compressed_buffer = io.BytesIO()
+                    self.compressed_file = file_factory(self.compressed_buffer)
+                    self.encoding = encoding
+                    break
+            else:
+                self.encoding = None
         elif message_type == "http.response.body" and not self.started:
+            headers = MutableHeaders(raw=self.initial_message["headers"])
             self.started = True
             body = message.get("body", b"")
             more_body = message.get("more_body", False)
@@ -60,65 +75,51 @@ class CompressionResponder:
                 await self.send(self.initial_message)
                 await self.send(message)
             elif not more_body:
-                headers = MutableHeaders(raw=self.initial_message["headers"])
-                media_type = headers["Content-Type"]
-                for encoding in self.compression_registry.encodings(media_type):
-                    if encoding in self.accepted:
-                        file_factory = self.compression_registry.dispatch(
-                            media_type=media_type,
-                            encoding=encoding,
-                        )
-                        break
-                else:
-                    # Could not negotiate a supported compression/encoding for this media type
-                    # Send uncompressed.
-                    await self.send(self.initial_message)
-                    await self.send(message)
-                    return
-                # Standard compressed response.
-                self.compressed_buffer = io.BytesIO()
-                self.compressed_file = file_factory(self.compressed_buffer)
-                self.compressed_file.write(body)
-                self.compressed_file.close()
-                compressed_body = self.compressed_buffer.getvalue()
-                # Check to see if the compression ratio is significant.
-                # If it isn't just send the original; the savings isn't worth the decompression time.
-                THRESHOLD = 0.9
-                if len(compressed_body) < THRESHOLD * len(body):
-                    headers["Content-Encoding"] = encoding
-                    headers["Content-Length"] = str(len(compressed_body))
-                    headers.add_vary_header("Accept-Encoding")
-                    message["body"] = compressed_body
+                if self.encoding is not None:
+                    # Standard (non-streaming) response.
+                    self.compressed_file.write(body)
+                    self.compressed_file.close()
+                    compressed_body = self.compressed_buffer.getvalue()
+                    # Check to see if the compression ratio is significant.
+                    # If it isn't just send the original; the savings isn't worth the decompression time.
+                    THRESHOLD = 0.9
+                    if len(compressed_body) < THRESHOLD * len(body):
+                        headers["Content-Encoding"] = self.encoding
+                        headers["Content-Length"] = str(len(compressed_body))
+                        headers.add_vary_header("Accept-Encoding")
+                        message["body"] = compressed_body
 
                 await self.send(self.initial_message)
                 await self.send(message)
             else:
-                # Initial body in streaming compressed response.
-                headers = MutableHeaders(raw=self.initial_message["headers"])
-                headers["Content-Encoding"] = encoding
-                headers.add_vary_header("Accept-Encoding")
-                del headers["Content-Length"]
+                # Initial body in streaming response.
+                if self.encoding is not None:
+                    headers = MutableHeaders(raw=self.initial_message["headers"])
+                    headers["Content-Encoding"] = self.encoding
+                    headers.add_vary_header("Accept-Encoding")
+                    del headers["Content-Length"]
 
-                self.compressed_file.write(body)
-                message["body"] = self.compressed_buffer.getvalue()
-                self.compressed_buffer.seek(0)
-                self.compressed_buffer.truncate()
+                    self.compressed_file.write(body)
+                    message["body"] = self.compressed_buffer.getvalue()
+                    self.compressed_buffer.seek(0)
+                    self.compressed_buffer.truncate()
 
                 await self.send(self.initial_message)
                 await self.send(message)
 
         elif message_type == "http.response.body":
-            # Remaining body in streaming compressed response.
-            body = message.get("body", b"")
-            more_body = message.get("more_body", False)
+            # Remaining body in streaming response.
+            if self.encoding is not None:
+                body = message.get("body", b"")
+                more_body = message.get("more_body", False)
 
-            self.compressed_file.write(body)
-            if not more_body:
-                self.compressed_file.close()
+                self.compressed_file.write(body)
+                if not more_body:
+                    self.compressed_file.close()
 
-            message["body"] = self.compressed_buffer.getvalue()
-            self.compressed_buffer.seek(0)
-            self.compressed_buffer.truncate()
+                message["body"] = self.compressed_buffer.getvalue()
+                self.compressed_buffer.seek(0)
+                self.compressed_buffer.truncate()
 
             await self.send(message)
 
