@@ -125,14 +125,11 @@ if __debug__:
     logger.addHandler(handler)
     log = logger.debug
 
-    def log_request(request):
-        log(f"-> {request.method} {request.url}")
-
-    def log_response(response):
-        request = response.request
-        log(f"<- {response.status_code} {request.method} {request.url}")
+    async def async_log(*args, **kwargs):
+        return log(*args, **kwargs)
 
     EVENT_HOOKS = {"request": [log], "response": [log]}
+    ASYNC_EVENT_HOOKS = {"request": [async_log], "response": [async_log]}
 else:
     # We take this path when Python is started with -O optimizations.
-    EVENT_HOOKS = {}
+    ASYNC_EVENT_HOOKS = EVENT_HOOKS = {"request": [], "response": []}

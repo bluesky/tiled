@@ -9,6 +9,7 @@ import httpx
 import msgpack
 
 from .utils import (
+    ASYNC_EVENT_HOOKS,
     EVENT_HOOKS,
     handle_error,
     NotAvailableOffline,
@@ -418,7 +419,7 @@ def context_from_tree(
         params=params,
         app=app,
         _startup_hook=startup,
-        event_hooks=EVENT_HOOKS,
+        event_hooks=ASYNC_EVENT_HOOKS,
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
     import atexit
