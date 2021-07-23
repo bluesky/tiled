@@ -1,4 +1,5 @@
 import io
+import time
 
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -77,8 +78,10 @@ class CompressionResponder:
             elif not more_body:
                 if self.encoding is not None:
                     # Standard (non-streaming) response.
+                    t0 = time.perf_counter()
                     self.compressed_file.write(body)
                     self.compressed_file.close()
+                    headers["X-Compression-Time"] = time.perf_counter() - t0
                     compressed_body = self.compressed_buffer.getvalue()
                     # Check to see if the compression ratio is significant.
                     # If it isn't just send the original; the savings isn't worth the decompression time.
