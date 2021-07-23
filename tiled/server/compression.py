@@ -80,12 +80,15 @@ class CompressionResponder:
                 self.compressed_file = file_factory(self.compressed_buffer)
                 self.compressed_file.write(body)
                 self.compressed_file.close()
-                body = self.compressed_buffer.getvalue()
-
-                headers["Content-Encoding"] = encoding
-                headers["Content-Length"] = str(len(body))
-                headers.add_vary_header("Accept-Encoding")
-                message["body"] = body
+                compressed_body = self.compressed_buffer.getvalue()
+                # Check to see if the compression ratio is significant.
+                # If it isn't just send the original; the savings isn't worth the decompression time.
+                THRESHOLD = 0.9
+                if len(compressed_body) < THRESHOLD * len(body):
+                    headers["Content-Encoding"] = encoding
+                    headers["Content-Length"] = str(len(compressed_body))
+                    headers.add_vary_header("Accept-Encoding")
+                    message["body"] = compressed_body
 
                 await self.send(self.initial_message)
                 await self.send(message)
