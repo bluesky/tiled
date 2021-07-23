@@ -72,6 +72,9 @@ def from_tree(
     tree,
     authentication=None,
     server_settings=None,
+    query_registry=None,
+    serialization_registry=None,
+    compression_registry=None,
     structure_clients="numpy",
     *,
     cache=None,
@@ -121,6 +124,9 @@ def from_tree(
         tree=tree,
         authentication=authentication,
         server_settings=server_settings,
+        query_registry=query_registry,
+        serialization_registry=serialization_registry,
+        compression_registry=compression_registry,
         # The cache and "offline" mode do not make much sense when we have an
         # in-process connection, but we support it for the sake of testing and
         # making direct access a drop in replacement for the normal service.

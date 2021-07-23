@@ -357,6 +357,9 @@ def context_from_tree(
     authentication,
     server_settings,
     *,
+    query_registry=None,
+    serialization_registry=None,
+    compression_registry=None,
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
@@ -377,7 +380,14 @@ def context_from_tree(
         )
         authentication["single_user_api_key"] = single_user_api_key
         params["api_key"] = single_user_api_key
-    app = serve_tree(tree, authentication, server_settings)
+    app = serve_tree(
+        tree,
+        authentication,
+        server_settings,
+        query_registry=query_registry,
+        serialization_registry=serialization_registry,
+        compression_registry=compression_registry,
+    )
 
     # Only an AsyncClient can be used over ASGI.
     # We wrap all the async methods in a call to asyncio.run(...).
