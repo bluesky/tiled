@@ -98,8 +98,8 @@ if __debug__:
         def format(self, record):
             if isinstance(record.msg, httpx.Request):
                 request = record.msg
-                record.message = f"-> {request.method} {request.url} " + " ".join(
-                    f"{k}:{v}" for k, v in request.headers.items()
+                record.message = f"-> {request.method} '{request.url}' " + " ".join(
+                    f"'{k}:{v}'" for k, v in request.headers.items()
                 )
             elif isinstance(record.msg, httpx.Response):
                 response = record.msg
