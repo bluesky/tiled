@@ -197,14 +197,15 @@ if modules_available("blosc"):
             self._file = file
 
         def write(self, b):
+            # The choice of settings here is cribbed from distributed.protocol.compression.
+            settings = {"cname": "lz4", "clevel": 5}
             if hasattr(b, "itemsize"):
                 # This could be memoryview or numpy.ndarray, for example.
                 # Blosc uses item-aware shuffling for improved results.
-                # The choice of settings here is cribbed from distributed.protocol.compression.
-                compressed = blosc.compress(b, typesize=b.itemsize, cname="lz4", clevel=5)
+                compressed = blosc.compress(b, typesize=b.itemsize, **settings)
             else:
                 compressed = blosc.compress(b)
-            self._file.write(compressed)
+            self._file.write(compressed, **settings)
 
         def close(self):
             pass
