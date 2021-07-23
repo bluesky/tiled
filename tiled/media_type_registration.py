@@ -109,10 +109,13 @@ class SerializationRegistry:
 
 class CompressionRegistry:
     def __init__(self):
-        self._lookup = defaultdict(dict)
+        self._lookup = defaultdict(collections.OrderedDict)
 
     def encodings(self, media_type):
-        return list(self._lookup.get(media_type, []))
+        # The last encoding registered is the first preferred by server
+        # during content negotiation. Thus, any user-registered
+        # ones will get tried first (if the client accepts them).
+        return reversed(self._lookup.get(media_type, []))
 
     def register(self, media_type, encoding, func):
         """
