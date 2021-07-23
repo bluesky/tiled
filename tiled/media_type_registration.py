@@ -185,6 +185,12 @@ if modules_available("blosc"):
 
     import blosc
 
+    # The choice of settings here is cribbed from distributed.protocol.compression.
+    n = blosc.set_nthreads(2)
+    if hasattr("blosc", "releasegil"):
+        blosc.set_releasegil(True)
+    blosc_settings = {"cname": "lz4", "clevel": 5}
+
     class BloscBuffer:
         """
         Imitate the API provided by gzip.GzipFile and used by tiled.server.compression.
@@ -197,14 +203,12 @@ if modules_available("blosc"):
             self._file = file
 
         def write(self, b):
-            # The choice of settings here is cribbed from distributed.protocol.compression.
-            settings = {"cname": "lz4", "clevel": 5}
             if hasattr(b, "itemsize"):
                 # This could be memoryview or numpy.ndarray, for example.
                 # Blosc uses item-aware shuffling for improved results.
-                compressed = blosc.compress(b, typesize=b.itemsize, **settings)
+                compressed = blosc.compress(b, typesize=b.itemsize, **blosc_settings)
             else:
-                compressed = blosc.compress(b, **settings)
+                compressed = blosc.compress(b, **blosc_settings)
             self._file.write(compressed)
 
         def close(self):
