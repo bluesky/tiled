@@ -57,7 +57,7 @@ def from_uri(
         base_url=uri,
         verify=verify,
         event_hooks=EVENT_HOOKS,
-        timeout=httpx.Timeout(5.0, read=10.0),
+        timeout=httpx.Timeout(5.0, read=20.0),
     )
     context = Context(
         client,

@@ -63,7 +63,7 @@ def _context_from_uri_or_profile(
             base_url=uri,
             verify=verify,
             event_hooks=EVENT_HOOKS,
-            timeout=httpx.Timeout(5.0, read=10.0),
+            timeout=httpx.Timeout(5.0, read=20.0),
         )
         context = Context(
             client,
@@ -86,7 +86,7 @@ def _context_from_uri_or_profile(
                     base_url=uri,
                     verify=verify,
                     event_hooks=EVENT_HOOKS,
-                    timeout=httpx.Timeout(5.0, read=10.0),
+                    timeout=httpx.Timeout(5.0, read=20.0),
                 )
                 context = Context(
                     client,
@@ -428,7 +428,7 @@ def context_from_tree(
         app=app,
         _startup_hook=startup,
         event_hooks=ASYNC_EVENT_HOOKS,
-        timeout=httpx.Timeout(5.0, read=10.0),
+        timeout=httpx.Timeout(5.0, read=20.0),
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
     import atexit
