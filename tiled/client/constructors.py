@@ -53,7 +53,12 @@ def from_uri(
     authentication_uri : str, optional
         URL of authentication server
     """
-    client = httpx.Client(base_url=uri, verify=verify, event_hooks=EVENT_HOOKS)
+    client = httpx.Client(
+        base_url=uri,
+        verify=verify,
+        event_hooks=EVENT_HOOKS,
+        timeout=httpx.Timeout(5.0, read=10.0),
+    )
     context = Context(
         client,
         username=username,

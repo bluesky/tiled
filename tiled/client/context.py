@@ -54,12 +54,17 @@ def login(
 
 
 def _context_from_uri_or_profile(
-    uri_or_profile, username, authentication_uri, token_cache, verify
+    uri_or_profile, username, authentication_uri, token_cache, verify, timeout
 ):
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
-        client = httpx.Client(base_url=uri, verify=verify, event_hooks=EVENT_HOOKS)
+        client = httpx.Client(
+            base_url=uri,
+            verify=verify,
+            event_hooks=EVENT_HOOKS,
+            timeout=httpx.Timeout(5.0, read=10.0),
+        )
         context = Context(
             client,
             username=username,
@@ -78,7 +83,10 @@ def _context_from_uri_or_profile(
                 uri = profile_content["uri"]
                 verify = profile_content.get("verify", True)
                 client = httpx.Client(
-                    base_url=uri, verify=verify, event_hooks=EVENT_HOOKS
+                    base_url=uri,
+                    verify=verify,
+                    event_hooks=EVENT_HOOKS,
+                    timeout=httpx.Timeout(5.0, read=10.0),
                 )
                 context = Context(
                     client,
@@ -420,6 +428,7 @@ def context_from_tree(
         app=app,
         _startup_hook=startup,
         event_hooks=ASYNC_EVENT_HOOKS,
+        timeout=httpx.Timeout(5.0, read=10.0),
     )
     # TODO How to close the httpx.AsyncClient more cleanly?
     import atexit
