@@ -104,17 +104,21 @@ if __debug__:
             if isinstance(record.msg, httpx.Request):
                 request = record.msg
                 record.message = f"-> {request.method} '{request.url}' " + " ".join(
-                    f"'{k}:{v}'" for k, v in request.headers.items() if k != "authorization"
+                    f"'{k}:{v}'"
+                    for k, v in request.headers.items()
+                    if k != "authorization"
                 )
                 # Handle the authorization header specially.
                 # For debugging, it can be useful to show it so that the log message
                 # can be copy/pasted and passed to httpie in a shell.
                 # But for screen-sharing demos, it should be redacted.
                 if TILED_LOG_AUTH_TOKEN:
-                    if 'authorization' in request.headers:
-                        record.message += f" 'authorization:{request.headers['authorization']}'"
+                    if "authorization" in request.headers:
+                        record.message += (
+                            f" 'authorization:{request.headers['authorization']}'"
+                        )
                 else:
-                    if 'authorization' in request.headers:
+                    if "authorization" in request.headers:
                         record.message += " 'authorization:[redacted]'"
             elif isinstance(record.msg, httpx.Response):
                 response = record.msg
