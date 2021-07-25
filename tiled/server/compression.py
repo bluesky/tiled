@@ -82,12 +82,17 @@ class CompressionResponder:
                     self.compressed_file.write(body)
                     self.compressed_file.close()
                     compression_time = time.perf_counter() - t0
-                    headers["X-Compression-Time"] = f"{1000 * compression_time:.2f}"
                     compressed_body = self.compressed_buffer.getvalue()
                     # Check to see if the compression ratio is significant.
                     # If it isn't just send the original; the savings isn't worth the decompression time.
-                    THRESHOLD = 0.9
-                    if len(compressed_body) < THRESHOLD * len(body):
+                    compression_ratio = len(body) / len(
+                        compressed_body
+                    )  # higher is better
+                    THRESHOLD = 1 / 0.9
+                    if compression_ratio > THRESHOLD:
+                        headers[
+                            "X-Compression-Stats"
+                        ] = f"time={1000 * compression_time:.2f},ratio={compression_ratio:.2f}"
                         headers["Content-Encoding"] = self.encoding
                         headers["Content-Length"] = str(len(compressed_body))
                         headers.add_vary_header("Accept-Encoding")
