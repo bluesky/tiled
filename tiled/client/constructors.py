@@ -1,5 +1,6 @@
 import collections
 import collections.abc
+import urllib.parse
 
 import httpx
 
@@ -53,11 +54,34 @@ def from_uri(
     authentication_uri : str, optional
         URL of authentication server
     """
+    # The uri is expected to reach the root or /metadata/[...] route.
+    url = httpx.URL(uri)
+    headers = {}
+    params = {}
+    # If ?api_key=... is present, move it from the query into a header.
+    # The server would accept it in the query parameter, but using
+    # a header is a little more secure (e.g. not logged) and makes
+    # it is simpler to manage the client.base_url.
+    parsed_query = urllib.parse.parse_qs(url.query.decode())
+    api_key_list = parsed_query.pop("api_key", None)
+    if api_key_list is not None:
+        if len(api_key_list) != 1:
+            raise ValueError("Cannot handle two api_key query parameters")
+        (api_key,) = api_key_list
+        headers["X-TILED-API-KEY"] = api_key
+    params.update(urllib.parse.urlencode(parsed_query, doseq=True))
+    # Construct the URL *without* the params, which we will pass in separately.
+    base_uri = urllib.parse.urlunsplit(
+        (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
+    )
+
     client = httpx.Client(
-        base_url=uri,
+        base_url=base_uri,
         verify=verify,
         event_hooks=EVENT_HOOKS,
         timeout=httpx.Timeout(5.0, read=20.0),
+        headers=headers,
+        params=params,
     )
     context = Context(
         client,
