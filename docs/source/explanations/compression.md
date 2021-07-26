@@ -161,3 +161,12 @@ server: uvicorn
 server-timing: app;dur=4.0
 set-cookie: tiled_csrf=DqqsY-w2dWsVt7EYA53VkEk8cATz_6jINCYhvu2eEls; HttpOnly; Path=/; SameSite=lax
 ```
+
+## Design Acknowledgement
+
+Tiled's compression implementation heavily influenced by the dask module
+`distributed.protocol.compression`. The important difference is that
+`distributed` is in control of both the server and the client, and they communicate
+over its internal custom TCP protocol. We are operating over HTTP with a mixture
+of clients we control (e.g. Tiled's Python client) and clients we don't (e.g.
+curl).
