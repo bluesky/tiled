@@ -28,8 +28,8 @@ how-to/scaling
 :caption: Explanations
 
 explanations/structures
-explanations/compression
 explanations/security
+explanations/compression
 explanations/access-control
 explanations/faq
 explanations/lineage
