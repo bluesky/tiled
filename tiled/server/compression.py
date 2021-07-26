@@ -20,7 +20,9 @@ class CompressionMiddleware:
         if scope["type"] == "http":
             headers = Headers(scope=scope)
             accepted = {
-                item.strip() for item in headers.get("accept-encoding", "").split(",") if item
+                item.strip()
+                for item in headers.get("accept-encoding", "").split(",")
+                if item
             }
             responder = CompressionResponder(
                 self.app, self.minimum_size, accepted, self.compression_registry
