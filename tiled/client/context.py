@@ -10,22 +10,17 @@ import msgpack
 
 from .utils import (
     ASYNC_EVENT_HOOKS,
+    DEFAULT_ACCEPTED_ENCODINGS,
     EVENT_HOOKS,
     handle_error,
     NotAvailableOffline,
     UNSET,
 )
-from ..utils import modules_available
 
 
 DEFAULT_TOKEN_CACHE = os.getenv(
     "TILED_TOKEN_CACHE", os.path.join(appdirs.user_config_dir("tiled"), "tokens")
 )
-ACCEPTED_ENCODINGS = ["gzip"]
-if modules_available("blosc"):
-    import blosc
-
-    ACCEPTED_ENCODINGS.append("blosc")
 
 
 def _token_directory(token_cache, netloc, username):
@@ -54,8 +49,16 @@ def login(
 
 
 def _context_from_uri_or_profile(
-    uri_or_profile, username, authentication_uri, token_cache, verify, timeout
+    uri_or_profile,
+    username,
+    authentication_uri,
+    token_cache,
+    verify,
+    timeout,
+    headers=None,
 ):
+    headers = headers or {}
+    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
@@ -63,6 +66,7 @@ def _context_from_uri_or_profile(
             base_url=uri,
             verify=verify,
             event_hooks=EVENT_HOOKS,
+            headers=headers,
             timeout=httpx.Timeout(5.0, read=20.0),
         )
         context = Context(
@@ -86,6 +90,7 @@ def _context_from_uri_or_profile(
                     base_url=uri,
                     verify=verify,
                     event_hooks=EVENT_HOOKS,
+                    headers=headers,
                     timeout=httpx.Timeout(5.0, read=20.0),
                 )
                 context = Context(
@@ -104,7 +109,7 @@ def _context_from_uri_or_profile(
                 serve_tree_kwargs = construct_serve_tree_kwargs(
                     profile_content.pop("direct", None), source_filepath=filepath
                 )
-                context = context_from_tree(**serve_tree_kwargs)
+                context = context_from_tree(**serve_tree_kwargs, **profile_content)
             else:
                 raise ValueError("Invalid profile content")
         raise TreeValueError(
@@ -141,7 +146,6 @@ class Context:
         if not authentication_uri.endswith("/"):
             authentication_uri += "/"
         self._client = client
-        self._client.headers["accept-encoding"] = ",".join(ACCEPTED_ENCODINGS)
         self._authentication_uri = authentication_uri
         self._cache = cache
         self._username = username
@@ -211,6 +215,8 @@ class Context:
             response = self._send(request, stream=stream, timeout=timeout)
             handle_error(response)
             if response.headers.get("content-encoding") == "blosc":
+                import blosc
+
                 return blosc.decompress(response.content)
             return response.content
         # If we get this far, we have an online client and a cache.
@@ -227,6 +233,8 @@ class Context:
                 etag = response.headers.get("ETag")
                 content = response.content
                 if response.headers.get("content-encoding") == "blosc":
+                    import blosc
+
                     content = blosc.decompress(content)
                 # TODO Respect Cache-control headers (e.g. "no-store")
                 if etag is not None:
@@ -387,12 +395,15 @@ def context_from_tree(
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
     username=None,
+    headers=None,
 ):
     from ..server.app import serve_tree
 
     authentication = authentication or {}
     server_settings = server_settings or {}
     params = {}
+    headers = headers or {}
+    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
     if (authentication.get("authenticator") is None) and (
         authentication.get("single_user_api_key") is None
     ):
@@ -428,6 +439,7 @@ def context_from_tree(
         app=app,
         _startup_hook=startup,
         event_hooks=ASYNC_EVENT_HOOKS,
+        headers=headers,
         timeout=httpx.Timeout(5.0, read=20.0),
     )
     # TODO How to close the httpx.AsyncClient more cleanly?

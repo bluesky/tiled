@@ -21,6 +21,7 @@ def from_uri(
     special_clients=None,
     verify=True,
     authentication_uri=None,
+    headers=None,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -53,10 +54,12 @@ def from_uri(
         intended for development and testing only.
     authentication_uri : str, optional
         URL of authentication server
+    headers : dict, optional
+        Extra HTTP headers.
     """
     # The uri is expected to reach the root or /metadata/[...] route.
     url = httpx.URL(uri)
-    headers = {}
+    headers = headers or {}
     params = {}
     # If ?api_key=... is present, move it from the query into a header.
     # The server would accept it in the query parameter, but using
@@ -112,6 +115,7 @@ def from_tree(
     username=None,
     special_clients=None,
     token_cache=DEFAULT_TOKEN_CACHE,
+    headers=None,
 ):
     """
     Connect to a Node directly, running the app in this same process.
@@ -164,6 +168,7 @@ def from_tree(
         offline=offline,
         token_cache=token_cache,
         username=username,
+        headers=headers,
     )
     return from_context(
         context,
