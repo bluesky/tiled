@@ -130,8 +130,8 @@ def slice_(
 
     # IMPORTANT We are eval-ing a user-provider string here so we need to be
     # very careful about locking down what can be in it. The regex above
-    # excludes any letters or operators, should it is not possible to execute
-    # functions or expensive artithmetic.
+    # excludes any letters or operators, so it is not possible to execute
+    # functions or expensive arithmetic.
     return tuple(
         [
             eval(f"numpy.s_[{dim!s}]", {"numpy": numpy})
