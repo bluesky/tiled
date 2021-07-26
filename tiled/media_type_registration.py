@@ -4,7 +4,12 @@ import mimetypes
 
 from collections import defaultdict
 
-from .utils import DictView, modules_available
+from .utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    XLSX_MIME_TYPE,
+    DictView,
+    modules_available,
+)
 
 
 class SerializationRegistry:
@@ -174,13 +179,130 @@ compression_registry.register(
     "gzip",
     lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
 )
-compression_registry.register(
+for media_type in [
     "application/octet-stream",
-    "gzip",
-    # Use a lower compression level. High compression is extremely slow
-    # (~60 seconds) on large array data.
-    lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=1),
-)
+    APACHE_ARROW_FILE_MIME_TYPE,
+    XLSX_MIME_TYPE,
+    "text/csv",
+    "text/plain",
+    "text/html",
+]:
+    compression_registry.register(
+        "application/octet-stream",
+        "gzip",
+        # Use a lower compression level. High compression is extremely slow
+        # (~60 seconds) on large array data.
+        lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=1),
+    )
+
+if modules_available("zstandard"):
+
+    import zstandard
+
+    # These defaults are cribbed from
+    # https://docs.dask.org/en/latest/configuration-reference.html
+    # TODO Make compression settings configurable.
+    # This complex in our case because, as with gzip, we may
+    # want configure differently for different media types.
+    zstd_compressor = zstandard.ZstdCompressor(
+        level=3,
+        threads=0,
+    )
+
+    class ZstdBuffer:
+        """
+        Imitate the API provided by gzip.GzipFile and used by tiled.server.compression.
+
+        It's not clear to me yet what this buys us, but I think we should follow
+        the pattern set by starlette until we have a clear reason not to.
+        """
+
+        def __init__(self, file):
+            self._file = file
+
+        def write(self, b):
+            self._file.write(zstd_compressor.compress(b))
+
+        def close(self):
+            pass
+
+    for media_type in [
+        "application/json",
+        "application/x-msgpack",
+        "application/octet-stream",
+        APACHE_ARROW_FILE_MIME_TYPE,
+        XLSX_MIME_TYPE,
+        "text/csv",
+        "text/html",
+        "text/plain",
+    ]:
+        compression_registry.register(
+            media_type,
+            "zstd",
+            ZstdBuffer,
+        )
+
+if modules_available("lz4"):
+
+    import lz4
+
+    # These fallback and workaround paths are cribbed from
+    # distributed.protocol.compression.
+
+    try:
+        # try using the new lz4 API
+        import lz4.block
+
+        lz4_compress = lz4.block.compress
+    except ImportError:
+        # fall back to old one
+        lz4_compress = lz4.LZ4_compress
+
+    # helper to bypass missing memoryview support in current lz4
+    # (fixed in later versions)
+
+    def _fixed_lz4_compress(data):
+        try:
+            return lz4_compress(data)
+        except TypeError:
+            if isinstance(data, (memoryview, bytearray)):
+                return lz4_compress(bytes(data))
+            else:
+                raise
+
+    class LZ4Buffer:
+        """
+        Imitate the API provided by gzip.GzipFile and used by tiled.server.compression.
+
+        It's not clear to me yet what this buys us, but I think we should follow
+        the pattern set by starlette until we have a clear reason not to.
+        """
+
+        def __init__(self, file):
+            self._file = file
+
+        def write(self, b):
+            self._file.write(_fixed_lz4_compress(b))
+
+        def close(self):
+            pass
+
+    for media_type in [
+        "application/json",
+        "application/x-msgpack",
+        "application/octet-stream",
+        APACHE_ARROW_FILE_MIME_TYPE,
+        XLSX_MIME_TYPE,
+        "text/csv",
+        "text/html",
+        "text/plain",
+    ]:
+        compression_registry.register(
+            media_type,
+            "lz4",
+            LZ4Buffer,
+        )
+
 if modules_available("blosc"):
 
     import blosc
@@ -214,10 +336,9 @@ if modules_available("blosc"):
         def close(self):
             pass
 
-    compression_registry.register(
-        "application/octet-stream",
-        "blosc",
-        # Use a lower compression level. High compression is extremely slow
-        # (~60 seconds) on large array data.
-        lambda buffer: BloscBuffer(buffer),
-    )
+    for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:
+        compression_registry.register(
+            media_type,
+            "blosc",
+            BloscBuffer,
+        )
