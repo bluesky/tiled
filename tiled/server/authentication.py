@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from tiled.server.models import AccessAndRefreshTokens, RefreshToken
+import secrets
 from typing import Any, Optional
 import uuid
 import warnings
@@ -23,6 +23,7 @@ with warnings.catch_warnings():
     from jose import ExpiredSignatureError, JWTError, jwt
 from pydantic import BaseModel, BaseSettings
 
+from .models import AccessAndRefreshTokens, RefreshToken
 from .settings import get_settings
 from ..utils import SpecialUsers
 
@@ -127,7 +128,7 @@ async def check_single_user_api_key(
 ):
     for api_key in [api_key_query, api_key_header, api_key_cookie]:
         if api_key is not None:
-            if api_key == settings.single_user_api_key:
+            if secrets.compare_digest(api_key, settings.single_user_api_key):
                 return True
             raise HTTPException(status_code=401, detail="Invalid API key")
     return False
