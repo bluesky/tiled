@@ -40,7 +40,7 @@ For broad compatibility, it supports `gzip` compression, which is
 used in HTTP clients---supported by web browsers, command-line tools like
 [curl](https://curl.se/) or [https://httpie.io/](https://httpie.io/), and
 frameworks like [requests](https://docs.python-requests.org/),
-[httpx](http://python-httpx.org/), and likely any other framework currently
+[httpx](https://www.python-httpx.org/), and likely any other framework currently
 maintained.
 
 However, `gzip` is slow compared to newer alternatives. Therefore, the Tiled
@@ -55,7 +55,8 @@ entries in this table above later ones.
 | [Zstandard](https://facebook.github.io/zstd/)                    | `zstd`          | `zstandard`             |
 | [gzip](https://en.wikipedia.org/wiki/Gzip)                       | `gzip`          | none (built in)         |
 
-The Tiled Python *client* currently supports gzip and blosc (if the Python package `blosc` is installed).
+The Tiled Python *client* currently supports gzip and blosc (if the Python
+package `blosc` is installed).
 
 ## Example Requests and Responses
 
