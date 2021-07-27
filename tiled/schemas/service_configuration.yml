@@ -77,7 +77,7 @@ properties:
             ```
   media_types:
     type: object
-    additionalProperties: false
+    additionalProperties: true
     properties:
       array:
         type: object
