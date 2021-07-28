@@ -11,8 +11,8 @@ import re
 import dask
 import pandas as pd
 
-import tiled
 from tiled.readers.dataframe import DataFrameAdapter
+
 
 def read_xdi(path):
     with open(path, "r") as f:
@@ -20,15 +20,15 @@ def read_xdi(path):
         fields = collections.defaultdict(dict)
 
         line = f.readline()
-        m = re.match("# XDI/(\S*)\s*(\S*)?", line)
+        m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
         if not m:
             raise AssertionError(f"not an XDI file, no XDI versioning information in first line\n{line}")
 
         metadata["xdi_version"] = m[1]
         metadata["extra_version"] = m[2]
 
-        field_end_re = re.compile("#\s*/{3,}")
-        header_end_re = re.compile("#\s*-{3,}")
+        field_end_re = re.compile(r"#\s*/{3,}")
+        header_end_re = re.compile(r"#\s*-{3,}")
 
         has_comments = False
 
@@ -46,8 +46,8 @@ def read_xdi(path):
                 key, val = line[1:].strip().split(":", 1)
                 val = val.strip()
                 namespace, tag = key.split(".")
-                #TODO coerce to lower case?
-            except:
+                # TODO coerce to lower case?
+            except ValueError:
                 print(f"error processing line\n{line}")
                 raise
 
@@ -75,6 +75,7 @@ def read_xdi(path):
 
         return df, metadata
 
+
 class XDIDataFrameAdapter(DataFrameAdapter):
     specs = ["xdi"]
 
@@ -82,6 +83,7 @@ class XDIDataFrameAdapter(DataFrameAdapter):
     def from_path(cls, path):
         df, metadata = read_xdi(path)
         return cls(dask.dataframe.from_pandas(df, npartitions=1), metadata=metadata)
+
 
 def write_xdi(df, metadata):
     output = io.StringIO()
@@ -154,11 +156,13 @@ data = """# XDI/1.0 GSE/1.0
   8879.0  117383.7  442810.120466  -1.327693
   8889.0  117185.7  443658.11566  -1.3312944"""
 
+
 def main():
     import pathlib
     pathlib.Path("data").mkdir()
     with open("data/example.xdi", "w") as f:
         f.write(data)
+
 
 if __name__ == "__main__":
     main()

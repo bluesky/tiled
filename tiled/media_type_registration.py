@@ -41,7 +41,7 @@ class SerializationRegistry:
         """
         return DictView(self._lookup[structure_family])
 
-    #TODO rename since keys may be specs as well as structure families
+    # TODO rename since keys may be specs as well as structure families
     @property
     def structure_families(self):
         """

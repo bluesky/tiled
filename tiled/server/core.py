@@ -294,7 +294,7 @@ def construct_entries_response(
 
 
 def construct_array_response(
-    serialization_registry, array, metadata, request_headers, format=None
+    serialization_registry, array, metadata, request_headers, format=None, specs=[]
 ):
     import numpy
 
@@ -321,16 +321,21 @@ def construct_array_response(
             s.lstrip(" ")
             for s in request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
         ]
+
+    # fall back to generic dataframe serializer if no specs present
+    specs.append("dataframe")
+
     # The client may give us a choice of media types. Find the first one
     # that we support.
     for media_type in media_types:
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPE
-        if media_type in serialization_registry.media_types("array"):
-            content = serialization_registry("array", media_type, array, metadata)
-            return PatchedResponse(
-                content=content, media_type=media_type, headers={"ETag": etag}
-            )
+        for spec in specs:
+            if media_type in serialization_registry.media_types(spec):
+                content = serialization_registry("array", media_type, array, metadata)
+                return PatchedResponse(
+                    content=content, media_type=media_type, headers={"ETag": etag}
+                )
     else:
         raise UnsupportedMediaTypes(
             "None of the media types requested by the client are supported.",
