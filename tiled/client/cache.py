@@ -13,10 +13,10 @@ the same source directory as this module.
 from collections import defaultdict
 import collections.abc
 import functools
+import hashlib
 from math import log
 from pathlib import Path
 import threading
-import urllib.parse
 
 from heapdict import heapdict
 
@@ -465,15 +465,18 @@ class Scorer:
 def tokenize_url(url):
     """
     >>> tokenize_url((b"https", b"localhost", 8000, b"/metadata/"))
-    ("https", "localhost", "8000", "%2Fmetadata%2F")
+    "some unique hash"
     """
-    return (
-        (url[0].decode(), url[1].decode())
-        + (str(url[2]),)  # convert port from int to string
-        # Split remainder of URL on "/" and make each segment safe to use as a
-        # filename.
-        + tuple(urllib.parse.quote_plus(item) for item in url[3:] if item)
-    )
+    return hashlib.md5(
+        b"".join(
+            [
+                url[0],
+                url[1],
+                f":{url[2]}".encode(),  # e.g. 8000 -> b'8000'
+                *url[3:],
+            ]
+        )
+    ).hexdigest()
 
 
 class FileBasedCache(collections.abc.MutableMapping):
