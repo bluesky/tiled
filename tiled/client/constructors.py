@@ -6,7 +6,7 @@ import httpx
 
 from .context import context_from_tree, Context, DEFAULT_TOKEN_CACHE
 from .node import Node
-from .utils import EVENT_HOOKS
+from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS
 from ..utils import import_object
 
 
@@ -60,6 +60,7 @@ def from_uri(
     # The uri is expected to reach the root or /metadata/[...] route.
     url = httpx.URL(uri)
     headers = headers or {}
+    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
     params = {}
     # If ?api_key=... is present, move it from the query into a header.
     # The server would accept it in the query parameter, but using
