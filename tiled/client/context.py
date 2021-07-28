@@ -155,7 +155,7 @@ class Context:
 
         # Authenticate. If a valid refresh_token is available in the token_cache,
         # it will be used. Otherwise, this will prompt for a password.
-        if username is not None:
+        if (username is not None) and not offline:
             tokens = self.reauthenticate()
             access_token = tokens["access_token"]
             client.headers["Authorization"] = f"Bearer {access_token}"
@@ -285,8 +285,6 @@ class Context:
         return response
 
     def authenticate(self):
-        if self._offline:
-            return
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
         # TODO: The server should support HEAD requests so we can do this more cheaply.
@@ -323,8 +321,6 @@ class Context:
         return tokens
 
     def reauthenticate(self, prompt_on_failure=True):
-        if self._offline:
-            return
         try:
             return self._refresh()
         except CannotRefreshAuthentication:
