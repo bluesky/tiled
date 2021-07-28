@@ -54,7 +54,6 @@ def _context_from_uri_or_profile(
     authentication_uri,
     token_cache,
     verify,
-    timeout,
     headers=None,
 ):
     headers = headers or {}
