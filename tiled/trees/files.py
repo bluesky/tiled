@@ -71,10 +71,12 @@ class Tree(TreeInMemory):
     def from_directory(
         cls,
         directory,
+        *,
         ignore_re_dirs=None,
         ignore_re_files=None,
         readers_by_mimetype=None,
         mimetypes_by_file_ext=None,
+        key_from_filename=None,
         metadata=None,
         access_policy=None,
         authenticated_identity=None,
@@ -101,6 +103,12 @@ class Tree(TreeInMemory):
         merged_mimetypes_by_file_ext = collections.ChainMap(
             mimetypes_by_file_ext, cls.DEFAULT_MIMETYPES_BY_FILE_EXT
         )
+        if key_from_filename is None:
+
+            def key_from_filename(filename):
+                # identity
+                return filename
+
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
         # This single index represents the entire nested directory structure. (We
         # could have done this recursively, with each sub-Tree watching its own
@@ -124,6 +132,7 @@ class Tree(TreeInMemory):
                 index,
                 merged_readers_by_mimetype,
                 merged_mimetypes_by_file_ext,
+                key_from_filename,
                 initial_scan_complete,
                 watcher_thread_kill_switch,
             ),
@@ -171,7 +180,8 @@ class Tree(TreeInMemory):
                     continue
                 # Add items to the mapping for this root directory.
                 try:
-                    index[parts][filename] = _reader_factory_for_file(
+                    key = key_from_filename(filename)
+                    index[parts][key] = _reader_factory_for_file(
                         merged_readers_by_mimetype,
                         merged_mimetypes_by_file_ext,
                         Path(root, filename),
@@ -230,6 +240,7 @@ def _watch(
     index,
     readers_by_mimetype,
     mimetypes_by_file_ext,
+    key_from_filename,
     initial_scan_complete,
     watcher_thread_kill_switch,
     poll_interval=0.2,
@@ -250,11 +261,17 @@ def _watch(
                     directory,
                     readers_by_mimetype,
                     mimetypes_by_file_ext,
+                    key_from_filename,
                     index,
                 )
             # Process changes just collected.
             _process_changes(
-                changes, directory, readers_by_mimetype, mimetypes_by_file_ext, index
+                changes,
+                directory,
+                readers_by_mimetype,
+                mimetypes_by_file_ext,
+                key_from_filename,
+                index,
             )
         else:
             # The initial scan is still going. Stash the changes for later.
@@ -263,7 +280,12 @@ def _watch(
 
 
 def _process_changes(
-    changes, directory, readers_by_mimetype, mimetypes_by_file_ext, index
+    changes,
+    directory,
+    readers_by_mimetype,
+    mimetypes_by_file_ext,
+    key_from_filename,
+    index,
 ):
     ignore = set()
     for kind, entry in changes:
@@ -277,7 +299,8 @@ def _process_changes(
         parent_parts = path.relative_to(directory).parent.parts
         if kind == Change.added:
             try:
-                index[parent_parts][path.name] = _reader_factory_for_file(
+                key = key_from_filename(path.name)
+                index[parent_parts][key] = _reader_factory_for_file(
                     readers_by_mimetype,
                     mimetypes_by_file_ext,
                     path,
@@ -288,7 +311,8 @@ def _process_changes(
                 # for this filename.
                 ignore.add(path)
         elif kind == Change.deleted:
-            index[parent_parts].pop(path.name, None)
+            key = key_from_filename(path.name)
+            index[parent_parts].pop(key, None)
         elif kind == Change.modified:
             # Why do we need a try/except here? A reasonable question!
             # Normally, we would learn about the file first via a Change.added
@@ -299,7 +323,8 @@ def _process_changes(
             # to our index. Therefore, we guard this with a try/except, knowing
             # that this could be the first time we see this path.
             try:
-                index[parent_parts][path.name] = _reader_factory_for_file(
+                key = key_from_filename(path.name)
+                index[parent_parts][key] = _reader_factory_for_file(
                     readers_by_mimetype,
                     mimetypes_by_file_ext,
                     path,
