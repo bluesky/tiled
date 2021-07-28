@@ -81,6 +81,7 @@ class Tree(TreeInMemory):
         access_policy=None,
         authenticated_identity=None,
         error_if_missing=True,
+        **kwargs,
     ):
         if error_if_missing:
             if not os.path.isdir(directory):
@@ -199,6 +200,10 @@ class Tree(TreeInMemory):
             metadata=metadata,
             authenticated_identity=authenticated_identity,
             access_policy=access_policy,
+            # The __init__ of this class does not accept any other
+            # kwargs, but subclasses can use this to set up additional
+            # instance state.
+            **kwargs,
         )
 
     def __init__(
