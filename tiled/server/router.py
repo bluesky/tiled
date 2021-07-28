@@ -440,6 +440,9 @@ def dataframe_full(
             status_code=404,
             detail=f"Cannot read {reader.structure_family} structure with /dataframe/full route.",
         )
+
+    specs = getattr(reader, "specs", [])
+
     try:
         # The singular/plural mismatch here of "columns" and "column" is
         # due to the ?column=A&column=B&column=C... encodes in a URL.
@@ -449,7 +452,7 @@ def dataframe_full(
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
         return construct_dataframe_response(
-            serialization_registry, df, reader.metadata, request.headers, format
+            serialization_registry, df, reader.metadata, request.headers, format, specs
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))

@@ -343,7 +343,7 @@ APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
 
 
 def construct_dataframe_response(
-    serialization_registry, df, metadata, request_headers, format=None
+    serialization_registry, df, metadata, request_headers, format=None, specs=[]
 ):
     etag = dask.base.tokenize(df)
     if request_headers.get("If-None-Match", "") == etag:
@@ -367,16 +367,21 @@ def construct_dataframe_response(
                 ","
             )
         ]
+
+    # fall back to generic dataframe serializer if no specs present
+    specs.append("dataframe")
+
     # The client may give us a choice of media types. Find the first one
     # that we support.
     for media_type in media_types:
         if media_type == "*/*":
             media_type = APACHE_ARROW_FILE_MIME_TYPE
-        if media_type in serialization_registry.media_types("dataframe"):
-            content = serialization_registry("dataframe", media_type, df, metadata)
-            return PatchedResponse(
-                content=content, media_type=media_type, headers={"ETag": etag}
-            )
+        for spec in specs:
+            if media_type in serialization_registry.media_types(spec):
+                content = serialization_registry(spec, media_type, df, metadata)
+                return PatchedResponse(
+                    content=content, media_type=media_type, headers={"ETag": etag}
+                )
     else:
         raise UnsupportedMediaTypes(
             "None of the media types requested by the client are supported.",
