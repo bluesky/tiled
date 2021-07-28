@@ -41,7 +41,7 @@ def login(
     *,
     token_cache=DEFAULT_TOKEN_CACHE,
 ):
-    (context,) = _context_from_uri_or_profile(
+    context = _context_from_uri_or_profile(
         uri_or_profile, username, authentication_uri, token_cache, verify
     )
     # This has a side effect of storing the refresh token in the token_cache, if set.
@@ -112,11 +112,12 @@ def _context_from_uri_or_profile(
                 context = context_from_tree(**serve_tree_kwargs, **profile_content)
             else:
                 raise ValueError("Invalid profile content")
-        raise TreeValueError(
-            f"Not sure what to do with tree {uri_or_profile!r}. "
-            "It does not look like a URI (it does not start with http[s]://) "
-            "and it does not match any profiles."
-        )
+        else:
+            raise TreeValueError(
+                f"Not sure what to do with tree {uri_or_profile!r}. "
+                "It does not look like a URI (it does not start with http[s]://) "
+                "and it does not match any profiles."
+            )
     return context
 
 

@@ -16,12 +16,17 @@ cli_app.add_typer(
 @cli_app.command("login")
 def login(
     tree: str = typer.Argument(..., help="Tree URI (http://...) or a profile name."),
+    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
 ):
-    from tiled.client.authentication import TreeValueError, login
+    from tiled.client.context import TreeValueError, login
     from tiled.client.utils import ClientError
 
     try:
-        login(tree)
+        if no_verify:
+            login(tree, verify=False)
+        else:
+            # Defer to the profile, which may or may not verify.
+            login(tree)
     except (TreeValueError, ClientError) as err:
         (msg,) = err.args
         typer.echo(msg)
@@ -34,6 +39,7 @@ def tree(
         ..., help="URI (http://...) or a profile name."
     ),
     max_lines: int = typer.Argument(20, help="Max lines to show."),
+    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
 ):
     """
     Show the names of entries in a Tree.
@@ -42,7 +48,11 @@ def tree(
     """
     from ..utils import gen_tree
 
-    tree_obj = _client_from_uri_or_profile(uri_or_profile)
+    if no_verify:
+        tree_obj = _client_from_uri_or_profile(uri_or_profile, verify=False)
+    else:
+        # Defer to the profile, which may or may not verify.
+        tree_obj = _client_from_uri_or_profile(uri_or_profile)
     for counter, line in enumerate(gen_tree(tree_obj), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
@@ -60,6 +70,7 @@ def download(
     ),
     cache_path: str = typer.Argument(..., help="Local directory for cache storage"),
     available_bytes: Optional[int] = None,
+    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
 ):
     """
     Download content from a Tree to an on-disk cache.
@@ -67,7 +78,11 @@ def download(
     from ..client.cache import download, Cache
 
     cache = Cache.on_disk(cache_path, available_bytes=available_bytes)
-    client = _client_from_uri_or_profile(uri_or_profile, cache=cache)
+    if no_verify:
+        client = _client_from_uri_or_profile(uri_or_profile, cache=cache, verify=False)
+    else:
+        # Defer to the profile, which may or may not verify.
+        client = _client_from_uri_or_profile(uri_or_profile, cache=cache)
     download(client)
 
 
@@ -243,20 +258,26 @@ def serve_config(
     uvicorn.run(web_app, **uvicorn_kwargs)
 
 
-def _client_from_uri_or_profile(uri_or_profile, cache=None):
+def _client_from_uri_or_profile(uri_or_profile, verify=None, cache=None):
     from ..client import from_uri, from_profile
 
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
-        return from_uri(uri, cache=cache)
+        if verify is False:
+            return from_uri(uri, cache=cache, verify=False)
+        else:
+            return from_uri(uri, cache=cache)
     else:
         from ..profiles import list_profiles
 
         # Is this a profile name?
         if uri_or_profile in list_profiles():
             profile_name = uri_or_profile
-            return from_profile(profile_name, cache=cache)
+            if verify is False:
+                return from_profile(profile_name, cache=cache, verify=False)
+            else:
+                return from_profile(profile_name, cache=cache)
         typer.echo(
             f"Not sure what to do with tree {uri_or_profile!r}. "
             "It does not look like a URI (it does not start with http[s]://) "
