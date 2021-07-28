@@ -85,6 +85,7 @@ def _context_from_uri_or_profile(
             if "uri" in profile_content:
                 uri = profile_content["uri"]
                 verify = profile_content.get("verify", True)
+                headers.update(profile_content.get("headers", {}))
                 client = httpx.Client(
                     base_url=uri,
                     verify=verify,
