@@ -6,21 +6,21 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 FROM base as builder
 
-WORKDIR /install
+WORKDIR /build
 
 COPY . .
 
 RUN pip install --upgrade pip
-RUN pip install -r requirements-server.txt
-RUN pip install -r requirements-array.txt
-RUN pip install -r requirements-dataframe.txt
-RUN pip install -r requirements-xarray.txt
+RUN pip install gunicorn
 RUN pip install --use-feature=in-tree-build '.[server, array, dataframe, xarray]'
 
 FROM base as app
 
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 
-WORKDIR /app
+WORKDIR /deploy
 
-ENTRYPOINT ["tiled"]
+COPY gunicorn_config.py .
+EXPOSE 8000
+
+ENTRYPOINT ["gunicorn", "--config", "gunicorn_config.py"]
