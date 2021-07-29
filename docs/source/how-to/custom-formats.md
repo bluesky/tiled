@@ -82,22 +82,22 @@ def read_xdi(path):
         fields = collections.defaultdict(dict)
 
         line = f.readline()
-        m = re.match("# XDI/(\S*)\s*(\S*)?", line)
+        m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
         if not m:
-            raise AssertionError(f"not an XDI file, no XDI versioning information in first line\n{line}")
+            raise ValueError(f"not an XDI file, no XDI versioning information in first line\n{line}")
 
         metadata["xdi_version"] = m[1]
         metadata["extra_version"] = m[2]
 
-        field_end_re = re.compile("#\s*/{3,}")
-        header_end_re = re.compile("#\s*-{3,}")
+        field_end_re = re.compile(r"#\s*/{3,}")
+        header_end_re = re.compile(r"#\s*-{3,}")
 
         has_comments = False
 
         # read header
         for line in f:
             if line[0] != "#":
-                raise AssertionError(f"reached invalid line in header\n{line}")
+                raise ValueError(f"reached invalid line in header\n{line}")
             if re.match(field_end_re, line):
                 has_comments = True
                 break
@@ -108,8 +108,8 @@ def read_xdi(path):
                 key, val = line[1:].strip().split(":", 1)
                 val = val.strip()
                 namespace, tag = key.split(".")
-                #TODO coerce to lower case?
-            except:
+                # TODO coerce to lower case?
+            except ValueError:
                 print(f"error processing line\n{line}")
                 raise
 
@@ -128,7 +128,7 @@ def read_xdi(path):
 
         line = f.readline()
         if line[0] != "#":
-            raise AssertionError(f"expected column labels. got\n{line}")
+            raise ValueError(f"expected column labels. got\n{line}")
         col_labels = line[1:].split()
 
         # TODO validate
