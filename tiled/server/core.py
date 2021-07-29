@@ -3,7 +3,7 @@ from collections import defaultdict
 import collections.abc
 import dataclasses
 from datetime import datetime
-import dateutil
+import dateutil.tz
 from functools import lru_cache
 from hashlib import md5
 import itertools
