@@ -22,7 +22,7 @@ def read_xdi(path):
         line = f.readline()
         m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
         if not m:
-            raise AssertionError(f"not an XDI file, no XDI versioning information in first line\n{line}")
+            raise ValueError(f"not an XDI file, no XDI versioning information in first line\n{line}")
 
         metadata["xdi_version"] = m[1]
         metadata["extra_version"] = m[2]
@@ -35,7 +35,7 @@ def read_xdi(path):
         # read header
         for line in f:
             if line[0] != "#":
-                raise AssertionError(f"reached invalid line in header\n{line}")
+                raise ValueError(f"reached invalid line in header\n{line}")
             if re.match(field_end_re, line):
                 has_comments = True
                 break
@@ -66,7 +66,7 @@ def read_xdi(path):
 
         line = f.readline()
         if line[0] != "#":
-            raise AssertionError(f"expected column labels. got\n{line}")
+            raise ValueError(f"expected column labels. got\n{line}")
         col_labels = line[1:].split()
 
         # TODO validate
