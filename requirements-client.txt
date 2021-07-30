@@ -1,5 +1,6 @@
 appdirs
 entrypoints
+heapdict
 httpx>=0.18.2
 jsonschema
 msgpack
