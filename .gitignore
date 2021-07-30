@@ -84,3 +84,7 @@ target/
 example_files/
 *.yml
 *.json
+
+# generated docs
+docs/source/reference/client-profiles.md
+docs/source/reference/service-configuration.md
