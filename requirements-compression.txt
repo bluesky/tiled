@@ -1,2 +1,4 @@
+# These are used by the client/server to more efficiently compress.
+# They fall back to gzip (which is slower) if these are not installed.
 blosc
 lz4

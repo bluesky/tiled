@@ -44,7 +44,7 @@ def read_requirements(filename):
 
 categorized_requirements = {
     key: read_requirements(f"requirements-{key}.txt")
-    for key in ["client", "compression", "server", "array", "dataframe", "xarray"]
+    for key in ["client", "compression", "formats", "server", "array", "dataframe", "xarray"]
 }
 extras_require = {}
 extras_require["client"] = sorted(
@@ -71,6 +71,7 @@ extras_require["server"] = sorted(
 )
 extras_require["minimal-client"] = categorized_requirements["client"]
 extras_require["minimal-server"] = categorized_requirements["server"]
+extras_require["formats"] = categorized_requirements["formats"]
 extras_require["all"] = extras_require["complete"] = sorted(
     set(sum(categorized_requirements.values(), []))
 )
