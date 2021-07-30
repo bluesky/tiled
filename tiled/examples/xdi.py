@@ -22,7 +22,9 @@ def read_xdi(path):
         line = f.readline()
         m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
         if not m:
-            raise ValueError(f"not an XDI file, no XDI versioning information in first line\n{line}")
+            raise ValueError(
+                f"not an XDI file, no XDI versioning information in first line\n{line}"
+            )
 
         metadata["xdi_version"] = m[1]
         metadata["extra_version"] = m[2]
@@ -159,6 +161,7 @@ data = """# XDI/1.0 GSE/1.0
 
 def main():
     import pathlib
+
     pathlib.Path("data").mkdir()
     with open("data/example.xdi", "w") as f:
         f.write(data)

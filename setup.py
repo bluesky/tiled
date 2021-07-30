@@ -44,7 +44,15 @@ def read_requirements(filename):
 
 categorized_requirements = {
     key: read_requirements(f"requirements-{key}.txt")
-    for key in ["client", "compression", "formats", "server", "array", "dataframe", "xarray"]
+    for key in [
+        "client",
+        "compression",
+        "formats",
+        "server",
+        "array",
+        "dataframe",
+        "xarray",
+    ]
 }
 extras_require = {}
 extras_require["client"] = sorted(
