@@ -62,6 +62,7 @@ class ReaderAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     structure_family: Optional[StructureFamilies]
     structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
+    specs: Optional[List[str]]
 
 
 class Resource(pydantic.BaseModel):

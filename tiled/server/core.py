@@ -294,9 +294,12 @@ def construct_entries_response(
 
 
 def construct_array_response(
-    serialization_registry, array, metadata, request_headers, format=None
+    serialization_registry, array, metadata, request_headers, format=None, specs=None
 ):
     import numpy
+
+    if specs is None:
+        specs = []
 
     DEFAULT_MEDIA_TYPE = "application/octet-stream"
     # Ensure contiguous C-ordered array.
@@ -321,16 +324,19 @@ def construct_array_response(
             s.lstrip(" ")
             for s in request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
         ]
+
     # The client may give us a choice of media types. Find the first one
     # that we support.
     for media_type in media_types:
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPE
-        if media_type in serialization_registry.media_types("array"):
-            content = serialization_registry("array", media_type, array, metadata)
-            return PatchedResponse(
-                content=content, media_type=media_type, headers={"ETag": etag}
-            )
+        # fall back to generic dataframe serializer if no specs present
+        for spec in specs + ["dataframe"]:
+            if media_type in serialization_registry.media_types(spec):
+                content = serialization_registry("array", media_type, array, metadata)
+                return PatchedResponse(
+                    content=content, media_type=media_type, headers={"ETag": etag}
+                )
     else:
         raise UnsupportedMediaTypes(
             "None of the media types requested by the client are supported.",
@@ -343,8 +349,11 @@ APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
 
 
 def construct_dataframe_response(
-    serialization_registry, df, metadata, request_headers, format=None
+    serialization_registry, df, metadata, request_headers, format=None, specs=None
 ):
+    if specs is None:
+        specs = []
+
     etag = dask.base.tokenize(df)
     if request_headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
@@ -367,16 +376,19 @@ def construct_dataframe_response(
                 ","
             )
         ]
+
     # The client may give us a choice of media types. Find the first one
     # that we support.
     for media_type in media_types:
         if media_type == "*/*":
             media_type = APACHE_ARROW_FILE_MIME_TYPE
-        if media_type in serialization_registry.media_types("dataframe"):
-            content = serialization_registry("dataframe", media_type, df, metadata)
-            return PatchedResponse(
-                content=content, media_type=media_type, headers={"ETag": etag}
-            )
+        # fall back to generic dataframe serializer if no specs present
+        for spec in specs + ["dataframe"]:
+            if media_type in serialization_registry.media_types(spec):
+                content = serialization_registry(spec, media_type, df, metadata)
+                return PatchedResponse(
+                    content=content, media_type=media_type, headers={"ETag": etag}
+                )
     else:
         raise UnsupportedMediaTypes(
             "None of the media types requested by the client are supported.",
