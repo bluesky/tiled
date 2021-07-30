@@ -51,17 +51,19 @@ publishing data as a ``server``, reading data as a ``client`` or both.
 .. code:: bash
 
    python3 -m pip install 'tiled[client]'         # client only
-   python3 -m pip install 'tiled[client,cache]'   # add support for keeping local copies
    python3 -m pip install 'tiled[server]'         # server only
    python3 -m pip install 'tiled[client,server]'  # both
 
-If you may be publishing or reading ``xarray``, pandas ``dataframe``, and numpy
-``array`` data, install them all, or a subset. With none of the above you can
-still publish and/or read *metadata* but cannot pull any actual data.
+To be even more selective about dependencies, you can install `minimal-client`
+and/or `minimal-server`. These do not install numpy, pandas, xarray,
+and other dependencies related to transporting them between server and client.
+This can be useful for a maximally-lean deployment that perhaps does not
+need all of these.
 
 .. code:: bash
 
-   python3 -m pip install 'tiled[array,dataframe,xarray]'
+   python3 -m pip install 'tiled[minimal-client]'
+   python3 -m pip install 'tiled[minimal-server]'
 
 Source
 ------
