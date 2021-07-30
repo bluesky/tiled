@@ -5,3 +5,4 @@ worker_connections = 1000
 timeout = 60
 keepalive = 2
 wsgi_app = 'tiled.server.app:app_factory()'
+worker_tmp_dir = '/dev/shm'
