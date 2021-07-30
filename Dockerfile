@@ -12,15 +12,16 @@ COPY . .
 
 RUN pip install --upgrade pip
 RUN pip install gunicorn
-RUN pip install --use-feature=in-tree-build '.[server, array, dataframe, xarray]'
+RUN pip install --use-feature=in-tree-build '.[server, formats]'
 
 FROM base as app
 
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 
+COPY gunicorn_config.py /config/gunicorn_config.py
+
 WORKDIR /deploy
 
-COPY gunicorn_config.py .
 EXPOSE 8000
 
-ENTRYPOINT ["gunicorn", "--config", "gunicorn_config.py"]
+ENTRYPOINT ["gunicorn", "--config", "/config/gunicorn_config.py"]
