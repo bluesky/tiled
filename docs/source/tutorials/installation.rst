@@ -70,8 +70,8 @@ Minimal Installation (fewer dependencies)
 To be even more selective about dependencies, you can install `minimal-client`
 and/or `minimal-server`. These do not install numpy, pandas, xarray,
 and other dependencies related to transporting them between server and client.
-This can be useful for a maximally-lean deployment that perhaps does not
-need all of these structures.
+This can be useful for a maximally-lean workflow that is only interested in
+exploring metadata.
 
 .. code:: bash
 
