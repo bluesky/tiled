@@ -7,22 +7,41 @@ This tutorial covers
 * Installation using pip
 * Installation from source
 
-Pip
----
+Standard Installation with pip
+------------------------------
 
-We strongly recommend creating a fresh environment.
+First, we strongly recommend creating a fresh software environment using venv,
+conda, or similar.
 
 .. code:: bash
 
+   # with venv...
    python3 -m venv try-tiled
    source try-tiled/bin/activate
 
-Install Tiled from PyPI. If you want to just grab everything you might need
-without worrying about keeping dependencies low:
+   # with conda...
+   conda create -n try-tiled python pip
+   conda activate try-tiled
+
+Install Tiled from PyPI using pip.
 
 .. code:: bash
 
-   python3 -m pip install 'tiled[complete]'
+   python3 -m pip install 'tiled[all]'
+
+If you are connecting to an existing to a tiled server as a client, there
+is not need to install all the server-related dependencies.
+
+.. code:: bash
+
+   python3 -m pip install 'tiled[client]'  # client only
+
+Likewise, if you are deploying a tiled server but not using the client, you can
+skip a couple client-related dependencies.
+
+.. code:: bash
+
+   python3 -m pip install 'tiled[server]'  # server only
 
 .. warning::
 
@@ -30,14 +49,14 @@ without worrying about keeping dependencies low:
 
    .. code:: bash
 
-      python3 -m pip install 'tiled[complete]'
+      python3 -m pip install 'tiled[all]'
 
    On MacOS, you MUST include the single quotes.
    On Windows, you MUST NOT include them; you should instead do:
 
    .. code:: bash
 
-      python3 -m pip install tiled[complete]
+      python3 -m pip install tiled[all]
 
    On Linux, you may include them or omit them; it works the same either way.
 
@@ -45,23 +64,21 @@ without worrying about keeping dependencies low:
    se*. It just happens that modern MacOS systems ship with zsh as the default
    shell, whereas Linux typically ships with bash.)
 
-To install dependencies more selectively, decide whether you are
-publishing data as a ``server``, reading data as a ``client`` or both.
+Minimal Installation (fewer dependencies)
+-----------------------------------------
+
+To be even more selective about dependencies, you can install `minimal-client`
+and/or `minimal-server`. These do not install numpy, pandas, xarray,
+and other dependencies related to transporting them between server and client.
+This can be useful for a maximally-lean workflow that is only interested in
+exploring metadata.
 
 .. code:: bash
 
-   python3 -m pip install 'tiled[client]'         # client only
-   python3 -m pip install 'tiled[client,cache]'   # add support for keeping local copies
-   python3 -m pip install 'tiled[server]'         # server only
-   python3 -m pip install 'tiled[client,server]'  # both
+   python3 -m pip install 'tiled[minimal-client]'
+   python3 -m pip install 'tiled[minimal-server]'
 
-If you may be publishing or reading ``xarray``, pandas ``dataframe``, and numpy
-``array`` data, install them all, or a subset. With none of the above you can
-still publish and/or read *metadata* but cannot pull any actual data.
-
-.. code:: bash
-
-   python3 -m pip install 'tiled[array,dataframe,xarray]'
+See the files named `requirements-*.txt` in the repository root for details.
 
 Source
 ------
@@ -72,4 +89,4 @@ To install an editable installation for local development:
 
    git clone https://github.com/bluesky/tiled
    cd tiled
-   pip install -e '.[complete]'
+   pip install -e '.[all]'

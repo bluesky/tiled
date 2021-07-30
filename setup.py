@@ -42,11 +42,39 @@ def read_requirements(filename):
     return requirements
 
 
-extras_require = {
+categorized_requirements = {
     key: read_requirements(f"requirements-{key}.txt")
-    for key in ["client", "cache", "server", "array", "dataframe", "xarray"]
+    for key in ["client", "compression", "formats", "server", "array", "dataframe", "xarray"]
 }
-extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))
+extras_require = {}
+extras_require["client"] = sorted(
+    set(
+        sum(
+            (
+                categorized_requirements[k]
+                for k in ["client", "array", "dataframe", "xarray", "compression"]
+            ),
+            [],
+        )
+    )
+)
+extras_require["server"] = sorted(
+    set(
+        sum(
+            (
+                categorized_requirements[k]
+                for k in ["server", "array", "dataframe", "xarray", "compression"]
+            ),
+            [],
+        )
+    )
+)
+extras_require["minimal-client"] = categorized_requirements["client"]
+extras_require["minimal-server"] = categorized_requirements["server"]
+extras_require["formats"] = categorized_requirements["formats"]
+extras_require["all"] = extras_require["complete"] = sorted(
+    set(sum(categorized_requirements.values(), []))
+)
 
 setup(
     name="tiled",

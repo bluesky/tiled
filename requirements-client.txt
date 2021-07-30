@@ -1,5 +1,7 @@
+# These are the requirements needed for basic client functionality.
 appdirs
 entrypoints
+heapdict
 httpx>=0.18.2
 jsonschema
 msgpack

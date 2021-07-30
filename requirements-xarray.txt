@@ -1,3 +1,4 @@
+# These are needed by the client and server to transmit/receive xarrays.
 dask[array]
 pyarrow
 xarray

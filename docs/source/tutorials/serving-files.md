@@ -4,13 +4,6 @@ In this tutorial, we will use Tiled to browse a directory of
 spreadsheets and image files from Python and read the data as pandas
 DataFrames and numpy arrays.
 
-For this tutorial, install tiffffile and openpyxl.
-
-```
-pip install tiled[complete]
-pip install tifffile openpyxl
-```
-
 Generate a directory of example files using a utility provided by Tiled.
 (Or use your own, if you have one to hand.)
 
