@@ -70,83 +70,30 @@ The code is reproduced for reference but running the examples only requires modi
 
 ## Define an Adapter
 
-The first step in exposing this data via tiled is to write a function which can read xdi formatted files.
-Note this function is provided as an example and does not do the validation that would be expected from a full parser.
+The first step in exposing this data via tiled is to write a function which can
+read xdi formatted files. It MUST accept a filepath (string) and it SHOULD
+also accept a file buffer, which makes it easier to use in tests.
 
 ```py
-# tiled/examples/xdi.py
-
-def read_xdi(path):
-    with open(path, "r") as f:
-        metadata = {}
-        fields = collections.defaultdict(dict)
-
-        line = f.readline()
-        m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
-        if not m:
-            raise ValueError(f"not an XDI file, no XDI versioning information in first line\n{line}")
-
-        metadata["xdi_version"] = m[1]
-        metadata["extra_version"] = m[2]
-
-        field_end_re = re.compile(r"#\s*/{3,}")
-        header_end_re = re.compile(r"#\s*-{3,}")
-
-        has_comments = False
-
-        # read header
-        for line in f:
-            if line[0] != "#":
-                raise ValueError(f"reached invalid line in header\n{line}")
-            if re.match(field_end_re, line):
-                has_comments = True
-                break
-            elif re.match(header_end_re, line):
-                break
-
-            try:
-                key, val = line[1:].strip().split(":", 1)
-                val = val.strip()
-                namespace, tag = key.split(".")
-                # TODO coerce to lower case?
-            except ValueError:
-                print(f"error processing line\n{line}")
-                raise
-
-            fields[namespace][tag] = val
-
-        if has_comments:
-            comments = ""
-            for line in f:
-                if re.match(header_end_re, line):
-                    break
-                comments += line
-
-            metadata["comments"] = comments
-
-        metadata["fields"] = fields
-
-        line = f.readline()
-        if line[0] != "#":
-            raise ValueError(f"expected column labels. got\n{line}")
-        col_labels = line[1:].split()
-
-        # TODO validate
-
-        df = pd.read_table(f, delim_whitespace=True, names=col_labels)
-
-        return df, metadata
+def read_xdi(file):
+    ...
+    return df, metadata
 ```
 
-In order to indicate that this data has some additional metadata structure because it comes from an xdi file we subclass `DataFrameAdapter` and define the `specs` attribute.
-We also define a classmethod `from_path` which uses our `read_xdi` function to construct an instance from a path.
+See the source code of `tiled.examples.xdi` for a fully-worked example.
+
+In order to indicate that this data has some additional metadata structure
+because it comes from an xdi file we subclass `DataFrameAdapter` and define the
+`specs` attribute.  We also define a classmethod `from_file` which uses our
+`read_xdi` function to construct an instance from a file.
+
 ```py
 class XDIDataFrameAdapter(DataFrameAdapter):
     specs = ["xdi"]
 
     @classmethod
-    def from_path(cls, path):
-        df, metadata = read_xdi(path)
+    def from_file(cls, file):
+        df, metadata = read_xdi(file)
         return cls(dask.dataframe.from_pandas(df, npartitions=1), metadata=metadata)
 ```
 
@@ -162,7 +109,7 @@ trees:
       mimetypes_by_file_ext:
         .xdi: application/x-xdi
       readers_by_mimetype:
-        application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_path
+        application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
 ```
 
 and serve it:
@@ -272,7 +219,7 @@ trees:
       mimetypes_by_file_ext:
         .xdi: application/x-xdi
       readers_by_mimetype:
-        application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_path
+        application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
 
 media_types:
   xdi:
