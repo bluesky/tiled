@@ -68,7 +68,7 @@ All code below is in `tiled/examples/xdi.py`.
 The code is reproduced for reference but running the examples only requires modifying `config.yaml`.
 ```
 
-# Define an Importer
+## Define an Adapter
 
 The first step in exposing this data via tiled is to write a function which can read xdi formatted files.
 Note this function is provided as an example and does not do the validation that would be expected from a full parser.
