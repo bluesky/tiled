@@ -14,76 +14,87 @@ import pandas as pd
 from tiled.readers.dataframe import DataFrameAdapter
 
 
-def read_xdi(path):
-    with open(path, "r") as f:
-        metadata = {}
-        fields = collections.defaultdict(dict)
+def read_xdi(file):
+    "Read XDI-formatted file given a filepath or a readable buffer."
+    if isinstance(file, str):
+        # Treat file as filepath.
+        with open(file, "r") as file_:
+            return _read_xdi(file_)
+    else:
+        # Treat file as readable buffer.
+        return _read_xdi(file)
 
-        line = f.readline()
-        m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
-        if not m:
-            raise ValueError(
-                f"not an XDI file, no XDI versioning information in first line\n{line}"
-            )
 
-        metadata["xdi_version"] = m[1]
-        metadata["extra_version"] = m[2]
+def _read_xdi(f):
+    "Parse XDI from a readable buffer. See read_xdi for public function."
+    metadata = {}
+    fields = collections.defaultdict(dict)
 
-        field_end_re = re.compile(r"#\s*/{3,}")
-        header_end_re = re.compile(r"#\s*-{3,}")
+    line = f.readline()
+    m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
+    if not m:
+        raise ValueError(
+            f"not an XDI file, no XDI versioning information in first line\n{line}"
+        )
 
-        has_comments = False
+    metadata["xdi_version"] = m[1]
+    metadata["extra_version"] = m[2]
 
-        # read header
-        for line in f:
-            if line[0] != "#":
-                raise ValueError(f"reached invalid line in header\n{line}")
-            if re.match(field_end_re, line):
-                has_comments = True
-                break
-            elif re.match(header_end_re, line):
-                break
+    field_end_re = re.compile(r"#\s*/{3,}")
+    header_end_re = re.compile(r"#\s*-{3,}")
 
-            try:
-                key, val = line[1:].strip().split(":", 1)
-                val = val.strip()
-                namespace, tag = key.split(".")
-                # TODO coerce to lower case?
-            except ValueError:
-                print(f"error processing line\n{line}")
-                raise
+    has_comments = False
 
-            fields[namespace][tag] = val
-
-        if has_comments:
-            comments = ""
-            for line in f:
-                if re.match(header_end_re, line):
-                    break
-                comments += line
-
-            metadata["comments"] = comments
-
-        metadata["fields"] = fields
-
-        line = f.readline()
+    # read header
+    for line in f:
         if line[0] != "#":
-            raise ValueError(f"expected column labels. got\n{line}")
-        col_labels = line[1:].split()
+            raise ValueError(f"reached invalid line in header\n{line}")
+        if re.match(field_end_re, line):
+            has_comments = True
+            break
+        elif re.match(header_end_re, line):
+            break
 
-        # TODO validate
+        try:
+            key, val = line[1:].strip().split(":", 1)
+            val = val.strip()
+            namespace, tag = key.split(".")
+            # TODO coerce to lower case?
+        except ValueError:
+            print(f"error processing line\n{line}")
+            raise
 
-        df = pd.read_table(f, delim_whitespace=True, names=col_labels)
+        fields[namespace][tag] = val
 
-        return df, metadata
+    if has_comments:
+        comments = ""
+        for line in f:
+            if re.match(header_end_re, line):
+                break
+            comments += line
+
+        metadata["comments"] = comments
+
+    metadata["fields"] = fields
+
+    line = f.readline()
+    if line[0] != "#":
+        raise ValueError(f"expected column labels. got\n{line}")
+    col_labels = line[1:].split()
+
+    # TODO validate
+
+    df = pd.read_table(f, delim_whitespace=True, names=col_labels)
+
+    return df, metadata
 
 
 class XDIDataFrameAdapter(DataFrameAdapter):
     specs = ["xdi"]
 
     @classmethod
-    def from_path(cls, path):
-        df, metadata = read_xdi(path)
+    def from_file(cls, file):
+        df, metadata = read_xdi(file)
         return cls(dask.dataframe.from_pandas(df, npartitions=1), metadata=metadata)
 
 
