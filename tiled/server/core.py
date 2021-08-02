@@ -331,7 +331,7 @@ def construct_array_response(
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPE
         # fall back to generic dataframe serializer if no specs present
-        for spec in specs + ["dataframe"]:
+        for spec in specs + ["array"]:
             if media_type in serialization_registry.media_types(spec):
                 content = serialization_registry("array", media_type, array, metadata)
                 return PatchedResponse(
