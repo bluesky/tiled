@@ -6,14 +6,15 @@ from ..structures.array import (
     MachineDataType,
 )
 
+
 class TiffSequenceReader:
-    
+
     structure_family = "array"
-    
+
     def __init__(self, seq):
         self._seq = seq
         self._metadata = {}
-        
+
     @property
     def metadata(self):
         return self._metadata
@@ -26,10 +27,10 @@ class TiffSequenceReader:
         read() can receive one value or one slice to select all the data from one file or a sequence of files;
         or it can receive a tuple of up to three values (int or slice) to select a more specific sequence of pixels
         of a group of images
-        """    
-        
-        print("Inside Reader:", slice)
-        if slice is None:            
+        """
+
+        #print("Inside Reader:", slice)
+        if slice is None:
             return self._seq.asarray()
         if isinstance(slice, int):
             # e.g. read(slice=0)
@@ -78,26 +79,27 @@ class TiffSequenceReader:
             return arr
 
     def read_block(self, block, slice=None):
-        print("Block:", block)
+        #print("Block:", block)
         if block[1:] != (0, 0):
             raise IndexError(block)
-        arr = self.read(builtins.slice(block[0],block[0]+1))
+        arr = self.read(builtins.slice(block[0], block[0] + 1))
         if slice is not None:
             arr = arr[slice]
         return arr
-        
+
     def microstructure(self):
         # Assume all files have the same data type
         return MachineDataType.from_numpy_dtype(self.read(slice=0).dtype)
-        
+
     def macrostructure(self):
         shape = (len(self._seq), *self.read(slice=0).shape)
-        #print("array shape", shape)
+        # print("array shape", shape)
         return ArrayMacroStructure(
             shape=shape,
             # one chunks per underlying TIFF file
-            chunks = (
+            chunks=(
                 (1,) * shape[0],
                 (shape[1],),
                 (shape[2],),
-        ))
+            ),
+        )
