@@ -29,7 +29,7 @@ class TiffSequenceReader:
         of a group of images
         """
 
-        #print("Inside Reader:", slice)
+        # Print("Inside Reader:", slice)
         if slice is None:
             return self._seq.asarray()
         if isinstance(slice, int):
@@ -79,7 +79,7 @@ class TiffSequenceReader:
             return arr
 
     def read_block(self, block, slice=None):
-        #print("Block:", block)
+        # Print("Block:", block)
         if block[1:] != (0, 0):
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
