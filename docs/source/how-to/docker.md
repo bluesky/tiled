@@ -42,3 +42,26 @@ docker run --rm -p 8000:8000 \
 Note that we make the data and the configuration file available to the
 container via bind mounds and point tiled to the configuration file using the
 `TILED_CONFIG` environment variable.
+
+This invocation can be simplified by writing a `docker-compose.yml` file.
+
+```yaml
+# docker-compose.yml
+
+services:
+  tiled-server:
+    image: ghcr.io/bluesky/tiled:main
+    volumes:
+      - type: bind
+        source: ./example_files
+        target: /deploy/example_files
+      - type: bind
+        source: ./config.yml
+        target: /deploy/config.yml
+    environment:
+      - TILED_CONFIG=/deploy/config.yml
+    ports:
+      - 8000:8000
+```
+
+With this `docker-compose.yml` the tiled server can be brought up by simply running `docker-compose up`.
