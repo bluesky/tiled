@@ -64,4 +64,4 @@ services:
       - 8000:8000
 ```
 
-With this `docker-compose.yml` the tiled server can be brought up by simply running `docker-compose up`.
+With this file the tiled server can be brought up by simply running `docker-compose up`.
