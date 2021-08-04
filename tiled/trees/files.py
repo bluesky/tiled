@@ -16,9 +16,37 @@ from ..utils import CachingMap, import_object, OneShotCachedMap
 from .in_memory import Tree as TreeInMemory
 
 
+def strip_suffixes(filename):
+    path = Path(filename)
+    # You would thing there would be a method for this, but there is not.
+    filename_without_suffixes = str(path)[: -sum([len(s) for s in path.suffixes])]
+    return filename_without_suffixes
+
+
 class Tree(TreeInMemory):
     """
     A Tree constructed by walking a directory and watching it for changes.
+
+    Parameters
+    ----------
+    ignore_re_dirs : str, optional
+        Regular expression. Matched directories will be ignored.
+    ignore_re_files : str, optional
+        Regular expression. Matched files will be ignored.
+    readers_by_mimetype : dict, optional
+        Map a mimetype to a Reader suitable for that mimetype
+    mimetypes_by_file_ext : dict, optional
+        Map a file extension (e.g. '.tif') to a mimetype (e.g. 'image/tiff')
+    key_from_filename : callable[str] -> str,
+        Given a filename, return the key for the item that will represent it.
+        By default, this strips off the suffixes, so "a.tif" -> "a".
+    metadata : dict, optional,
+        Metadata for the top-level node of this tree.
+    access_policy : AccessPolicy, optional
+    authenticated_identity : str, optional
+    error_if_missing : boolean, optional
+        If True (default) raise an error if the directory does not exist.
+        If False, wait and poll for the directory to be created later.
 
     Examples
     --------
@@ -78,7 +106,7 @@ class Tree(TreeInMemory):
         ignore_re_files=None,
         readers_by_mimetype=None,
         mimetypes_by_file_ext=None,
-        key_from_filename=None,
+        key_from_filename=strip_suffixes,
         metadata=None,
         access_policy=None,
         authenticated_identity=None,
@@ -107,12 +135,6 @@ class Tree(TreeInMemory):
         merged_mimetypes_by_file_ext = collections.ChainMap(
             mimetypes_by_file_ext, cls.DEFAULT_MIMETYPES_BY_FILE_EXT
         )
-        if key_from_filename is None:
-
-            def key_from_filename(filename):
-                # identity
-                return filename
-
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
         # This single index represents the entire nested directory structure. (We
         # could have done this recursively, with each sub-Tree watching its own
@@ -156,6 +178,7 @@ class Tree(TreeInMemory):
             else ignore_re_files
         )
         for root, subdirectories, files in os.walk(directory, topdown=True):
+            keys = {}
             parts = Path(root).relative_to(directory).parts
             # Account for ignore_re_dirs and update which subdirectories we will traverse.
             valid_subdirectories = []
@@ -191,6 +214,16 @@ class Tree(TreeInMemory):
                 # Add items to the mapping for this root directory.
                 try:
                     key = key_from_filename(filename)
+                    if key in keys:
+                        warnings.warn(
+                            f"The file {filename!r} will have the key {key!r}. "
+                            f"This key was also being used by the file {keys[key]!r}. "
+                            "To resolve this, rename or remove all but one of the "
+                            "colliding names, or else change the key_from_filename "
+                            "setting to some transform that will generate unique keys "
+                            "for these files."
+                        )
+                    keys[key] = filename
                     reader_factory = _reader_factory_for_file(
                         merged_readers_by_mimetype,
                         merged_mimetypes_by_file_ext,

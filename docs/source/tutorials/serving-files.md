@@ -15,22 +15,22 @@ This created a directory named ``example_files`` with some files and subdirector
 
 ```
 $ ls example_files
-a.tif  b.tif  c.tif  even_more  more
+another_table.csv  a.tif  b.tif  c.tif  even_more	more  tables.xlsx
 ```
 
 The full structure looks like
 
 ```
-├── another_table.csv
-├── a.tif
-├── b.tif
-├── c.tif
+├── another_table
+├── a
+├── b
+├── c
 ├── even_more
-│   ├── e.tif
-│   └── f.tif
+│   ├── e
+│   └── f
 ├── more
-│   └── d.tif
-└── tables.xlsx
+│   └── d
+└── tables
 ```
 
 We can serve this directory using Tiled.
@@ -56,15 +56,15 @@ disk, and we can slice and access the data.
 
 ```python
 >>> client
-<Node {'more', 'even_more', 'b.tif', 'a.tif', 'c.tif', ...} ~7 entries>
+<Node {'more', 'even_more', 'b', 'a', 'c', ...} ~7 entries>
 
 >>> client['more']
-<Node {'d.tif'}>
+<Node {'d'}>
 
->>> client['more']['d.tif']
+>>> client['more']['d']
 <ArrayClient>
 
->>> client['more']['d.tif'].read()
+>>> client['more']['d'].read()
 array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
@@ -73,13 +73,13 @@ array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.]])
 
->>> client['tables.xlsx']
+>>> client['tables']
 <Node {'Sheet 1', 'Sheet 2'}>
 
->>> client['tables.xlsx']['Sheet 1']
+>>> client['tables']['Sheet 1']
 <DataFrameClient ['A', 'B']>
 
->>> client['tables.xlsx']['Sheet 1'].read()
+>>> client['tables']['Sheet 1'].read()
    A  B
 0  1  4
 1  2  5
