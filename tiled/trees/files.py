@@ -127,6 +127,8 @@ class Tree(TreeInMemory):
         for key, value in list(readers_by_mimetype.items()):
             if isinstance(value, str):
                 readers_by_mimetype[key] = import_object(value)
+        if isinstance(key_from_filename, str):
+            key_from_filename = import_object(key_from_filename)
         # User-provided readers take precedence over defaults.
         merged_readers_by_mimetype = collections.ChainMap(
             readers_by_mimetype, cls.DEFAULT_READERS_BY_MIMETYPE
