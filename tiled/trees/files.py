@@ -17,10 +17,30 @@ from .in_memory import Tree as TreeInMemory
 
 
 def strip_suffixes(filename):
+    """
+    For use with key_from_filename parameter.
+
+    This gives the 'base' as the key.
+
+    >>> strip_suffixes("a.tif")
+    "a"
+
+    >>> strip_suffixes("thing.tar.gz")
+    "thing"
+    """
     path = Path(filename)
-    # You would thing there would be a method for this, but there is not.
+    # You would think there would be a method for this, but there is not.
     filename_without_suffixes = str(path)[: -sum([len(s) for s in path.suffixes])]
     return filename_without_suffixes
+
+
+def identity(filename):
+    """
+    For use with key_from_filename parameter.
+
+    This give the full filename (with suffixes) as the key.
+    """
+    return filename
 
 
 class Tree(TreeInMemory):
