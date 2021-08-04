@@ -21,16 +21,16 @@ another_table.csv  a.tif  b.tif  c.tif  even_more	more  tables.xlsx
 The full structure looks like
 
 ```
-├── another_table
-├── a
-├── b
-├── c
+├── another_table.csv
+├── a.tif
+├── b.tif
+├── c.tif
 ├── even_more
-│   ├── e
-│   └── f
+│   ├── e.tif
+│   └── f.tif
 ├── more
-│   └── d
-└── tables
+│   └── d.tif
+└── tables.xlsx
 ```
 
 We can serve this directory using Tiled.
