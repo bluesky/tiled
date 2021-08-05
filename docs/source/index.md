@@ -22,6 +22,7 @@ how-to/custom-formats
 how-to/profiles
 how-to/direct-client
 how-to/scaling
+how-to/docker
 ```
 
 ```{toctree}
