@@ -29,6 +29,7 @@ class Tree(TreeInMemory):
     __slots__ = (
         "_watcher_thread_kill_switch",
         "_index",
+        "_directory",
     )
 
     # This maps MIME types (i.e. file formats) for appropriate Readers.
@@ -195,6 +196,7 @@ class Tree(TreeInMemory):
         mapping = CachingMap(index[()])
         return cls(
             mapping,
+            directory=directory,
             index=index,
             watcher_thread_kill_switch=watcher_thread_kill_switch,
             metadata=metadata,
@@ -209,6 +211,7 @@ class Tree(TreeInMemory):
     def __init__(
         self,
         mapping,
+        directory,
         index,
         watcher_thread_kill_switch,
         metadata,
@@ -221,13 +224,19 @@ class Tree(TreeInMemory):
             access_policy=access_policy,
             authenticated_identity=authenticated_identity,
         )
-        self._watcher_thread_kill_switch = watcher_thread_kill_switch
+        self._directory = directory
         self._index = index
+        self._watcher_thread_kill_switch = watcher_thread_kill_switch
+
+    @property
+    def directory(self):
+        return self._directory
 
     def new_variation(self, *args, **kwargs):
         return super().new_variation(
             *args,
             watcher_thread_kill_switch=self._watcher_thread_kill_switch,
+            directory=self._directory,
             index=self._index,
             **kwargs,
         )
