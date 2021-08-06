@@ -142,6 +142,7 @@ class Context:
         cache=None,
         offline=False,
         token_cache=DEFAULT_TOKEN_CACHE,
+        app=None,
     ):
         authentication_uri = authentication_uri or "/"
         if not authentication_uri.endswith("/"):
@@ -152,6 +153,7 @@ class Context:
         self._username = username
         self._offline = offline
         self._token_cache = token_cache
+        self._app = app
 
         # Authenticate. If a valid refresh_token is available in the token_cache,
         # it will be used. Otherwise, this will prompt for a password.
@@ -183,6 +185,10 @@ class Context:
     @property
     def offline(self):
         return self._offline
+
+    @property
+    def app(self):
+        return self._app
 
     @offline.setter
     def offline(self, value):
@@ -444,5 +450,5 @@ def context_from_tree(
 
     atexit.register(client.close)
     return Context(
-        client, cache=cache, offline=offline, token_cache=token_cache, username=username
+        client, cache=cache, offline=offline, token_cache=token_cache, username=username, app=app,
     )
