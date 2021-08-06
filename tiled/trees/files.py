@@ -4,9 +4,9 @@ import importlib
 import mimetypes
 import os
 from pathlib import Path
+import queue
 import re
 import threading
-import time
 import warnings
 
 from watchgod.watcher import RegExpWatcher, Change
@@ -125,6 +125,7 @@ class Tree(TreeInMemory):
         #    avoid a possibile a race condition.
         initial_scan_complete = []
         watcher_thread_kill_switch = []
+        manual_trigger = queue.Queue()
         watcher_thread = threading.Thread(
             target=_watch,
             args=(
@@ -137,6 +138,7 @@ class Tree(TreeInMemory):
                 key_from_filename,
                 initial_scan_complete,
                 watcher_thread_kill_switch,
+                manual_trigger,
             ),
             daemon=True,
             name="tiled-watch-filesystem-changes",
@@ -199,6 +201,7 @@ class Tree(TreeInMemory):
             directory=directory,
             index=index,
             watcher_thread_kill_switch=watcher_thread_kill_switch,
+            manual_trigger=manual_trigger,
             metadata=metadata,
             authenticated_identity=authenticated_identity,
             access_policy=access_policy,
@@ -214,6 +217,7 @@ class Tree(TreeInMemory):
         directory,
         index,
         watcher_thread_kill_switch,
+        manual_trigger,
         metadata,
         access_policy,
         authenticated_identity,
@@ -227,6 +231,15 @@ class Tree(TreeInMemory):
         self._directory = directory
         self._index = index
         self._watcher_thread_kill_switch = watcher_thread_kill_switch
+        self._manual_trigger = manual_trigger
+
+    def update_now(self):
+        "Force an update and block until it completes."
+        event = threading.Event()
+        self._manual_trigger.put(event)
+        # The worker thread will set this Event when processing completes.
+        # Wait on that, and the return.
+        event.wait()
 
     @property
     def directory(self):
@@ -236,6 +249,7 @@ class Tree(TreeInMemory):
         return super().new_variation(
             *args,
             watcher_thread_kill_switch=self._watcher_thread_kill_switch,
+            manual_trigger=self.manual_trigger,
             directory=self._directory,
             index=self._index,
             **kwargs,
@@ -257,6 +271,7 @@ def _watch(
     key_from_filename,
     initial_scan_complete,
     watcher_thread_kill_switch,
+    manual_trigger,
     poll_interval=0.2,
 ):
     watcher = RegExpWatcher(
@@ -265,6 +280,7 @@ def _watch(
         re_dirs=ignore_re_dirs,
     )
     queued_changes = []
+    event = None
     while not watcher_thread_kill_switch:
         changes = watcher.check()
         if initial_scan_complete:
@@ -290,7 +306,14 @@ def _watch(
         else:
             # The initial scan is still going. Stash the changes for later.
             queued_changes.extend(changes)
-        time.sleep(poll_interval)
+        if event is not None:
+            # The processing above was the result of a manual trigger.
+            # Confirm to the sender that it has now completed.
+            event.set()
+        try:
+            event = manual_trigger.get(timeout=poll_interval)
+        except queue.Empty:
+            event = None
 
 
 def _process_changes(
