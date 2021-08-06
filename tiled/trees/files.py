@@ -249,7 +249,7 @@ class Tree(TreeInMemory):
         return super().new_variation(
             *args,
             watcher_thread_kill_switch=self._watcher_thread_kill_switch,
-            manual_trigger=self.manual_trigger,
+            manual_trigger=self._manual_trigger,
             directory=self._directory,
             index=self._index,
             **kwargs,
