@@ -1,8 +1,6 @@
 from pathlib import Path
 from ..client import from_config
 
-from ..trees.in_memory import Tree
-
 
 def test_from_directory():
     """Tests that from_config with a Tree from a directory produces a node
@@ -16,7 +14,6 @@ def test_from_directory():
                 "args": {
                     "directory": str(example_data_dir)
                 }
-              
             },
         ],
     }
