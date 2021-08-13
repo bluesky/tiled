@@ -30,6 +30,7 @@ class Tree(TreeInMemory):
         "_watcher_thread_kill_switch",
         "_index",
         "_directory",
+        "_manual_trigger"
     )
 
     # This maps MIME types (i.e. file formats) for appropriate Readers.
