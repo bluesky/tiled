@@ -2,6 +2,7 @@ from collections.abc import Iterable
 import builtins
 import itertools
 
+import pandas
 import xarray
 
 from ..structures.dataframe import deserialize_arrow
@@ -369,15 +370,41 @@ class _WideTableFetcher:
 
     def dataframe(self):
         if self._dataframe is None:
-            content = self.get(
-                self.link,
-                params={
-                    "format": APACHE_ARROW_FILE_MIME_TYPE,
-                    "variable": self.variables,
-                },
-            )
-            self._dataframe = deserialize_arrow(content)
+            # If self.variables contains many and/or lengthy names,
+            # we can bump into the URI size limit commonly imposed by
+            # HTTP stacks (e.g. nginx). The HTTP spec does not define a limit,
+            # but a common setting is 4K or 8K (for all the headers together).
+            # As another reference point, Internet Explorer imposes a
+            # 2048-character limit on URLs.
+            variables = []
+            dataframes = []
+            budget = INIT_BUDGET = 2000  # number of characters
+            budget -= len(self.link)
+            CONSTANT = len("&variable=")
+            # Fetch the variables in batches.
+            for variable in self.variables:
+                budget -= CONSTANT + len(variable)
+                if budget < 0:
+                    # Fetch a batch and then add `variable` to the next batch.
+                    dataframes.append(self._fetch_variables(variables))
+                    variables.clear()
+                    budget = INIT_BUDGET - (CONSTANT + len(variable))
+                variables.append(variable)
+            if variables:
+                # Fetch the final batch.
+                dataframes.append(self._fetch_variables(variables))
+            self._dataframe = pandas.concat(dataframes, axis=1)
         return self._dataframe
+
+    def _fetch_variables(self, variables):
+        content = self.get(
+            self.link,
+            params={
+                "format": APACHE_ARROW_FILE_MIME_TYPE,
+                "variable": variables,
+            },
+        )
+        return deserialize_arrow(content)
 
 
 class _MockClient:
