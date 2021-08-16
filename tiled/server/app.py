@@ -60,6 +60,29 @@ def get_app(query_registry, compression_registry, include_routers=None):
 
     @app.on_event("startup")
     async def startup_event():
+        # Validate the single-user API key.
+        single_user_api_key = app.dependency_overrides[
+            get_settings
+        ]().single_user_api_key
+        if single_user_api_key is not None:
+            if not single_user_api_key.isalnum():
+                raise ValueError(
+                    """
+    The API key must only contain alphanumeric characters. We enforce this because
+    pasting other characters into a URL, as in ?api_key=..., can result in
+    confusing behavior due to ambiguous encodings.
+
+    The API key can be as long as you like. Here are two ways to generate a valid
+    one:
+
+    # With openssl:
+    openssl rand -hex 32
+
+    # With Python:
+    python -c "import secrets; print(secrets.token_hex(32))"
+    """
+                )
+
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
         app.include_router(declare_search_router(query_registry))
