@@ -450,5 +450,10 @@ def context_from_tree(
 
     atexit.register(client.close)
     return Context(
-        client, cache=cache, offline=offline, token_cache=token_cache, username=username, app=app,
+        client,
+        cache=cache,
+        offline=offline,
+        token_cache=token_cache,
+        username=username,
+        app=app,
     )
