@@ -102,6 +102,9 @@ $ http POST :8000/token/refresh refresh_token=`jq -r .refresh_token tokens.json`
 
 And resume making requests with the new access token.
 
+To experiment with token expiry and renewal, it can be useful to tune the various
+"max age" parameters very low---10 seconds or so. The next section describes how
+to configure these parameters.
 
 # Configure session lifetime parameters
 
