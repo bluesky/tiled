@@ -42,6 +42,15 @@ def test_dataframe_basic():
     pandas.testing.assert_frame_equal(actual, expected)
 
 
+def test_dataframe_column_access():
+    client = from_tree(tree)
+    expected_df = tree["basic"].read()
+    for col in expected_df.columns:
+        expected = expected_df[col]
+        actual = client["basic"][col]
+        pandas.testing.assert_series_equal(actual, expected)
+
+
 def test_dataframe_single_partition():
     client = from_tree(tree)
     expected = tree["single_partition"].read()
