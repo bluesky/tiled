@@ -9,10 +9,12 @@ FROM base as builder
 
 WORKDIR /build
 
+COPY docker/requirements.txt .
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
+
 COPY . .
 
-RUN pip install --upgrade pip
-RUN pip install gunicorn
 RUN pip install --use-feature=in-tree-build '.[server, formats]'
 
 FROM base as app
@@ -23,6 +25,8 @@ COPY gunicorn_config.py /config/gunicorn_config.py
 
 WORKDIR /deploy
 
+COPY docker/check_config.py docker/entrypoint.sh ./
+
 EXPOSE 8000
 
-ENTRYPOINT ["gunicorn", "--config", "/config/gunicorn_config.py"]
+ENTRYPOINT ["./entrypoint.sh"]
