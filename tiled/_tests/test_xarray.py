@@ -55,13 +55,12 @@ tree = Tree(
             xarray.Dataset(
                 {
                     f"column_{i:03}": xarray.DataArray(i * numpy.ones(10))
-                    for i in range(100)
+                    for i in range(500)
                 }
             )
         ),
     }
 )
-# a dataframe with 1000 columns and 10 rows
 
 
 @pytest.mark.parametrize("key", list(tree))
