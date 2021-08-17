@@ -355,6 +355,10 @@ class DatasetClient(DaskDatasetClient):
         self.read()
 
 
+URL_CHARACTER_LIMIT = 2000  # number of characters
+_EXTRA_CHARS_PER_ITEM = len("&variable=")
+
+
 class _WideTableFetcher:
     def __init__(self, get, link):
         self.get = get
@@ -378,17 +382,18 @@ class _WideTableFetcher:
             # 2048-character limit on URLs.
             variables = []
             dataframes = []
-            budget = INIT_BUDGET = 2000  # number of characters
+            budget = URL_CHARACTER_LIMIT
             budget -= len(self.link)
-            CONSTANT = len("&variable=")
             # Fetch the variables in batches.
             for variable in self.variables:
-                budget -= CONSTANT + len(variable)
+                budget -= _EXTRA_CHARS_PER_ITEM + len(variable)
                 if budget < 0:
                     # Fetch a batch and then add `variable` to the next batch.
                     dataframes.append(self._fetch_variables(variables))
                     variables.clear()
-                    budget = INIT_BUDGET - (CONSTANT + len(variable))
+                    budget = URL_CHARACTER_LIMIT - (
+                        _EXTRA_CHARS_PER_ITEM + len(variable)
+                    )
                 variables.append(variable)
             if variables:
                 # Fetch the final batch.
