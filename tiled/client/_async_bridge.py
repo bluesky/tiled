@@ -64,6 +64,10 @@ class AsyncClientBridge:
     def headers(self):
         return self._client.headers
 
+    @property
+    def event_hooks(self):
+        return self._client.event_hooks
+
     def _worker(self, client_kwargs):
 
         self._client = httpx.AsyncClient(**client_kwargs)

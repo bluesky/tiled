@@ -202,6 +202,11 @@ class Context:
     def base_url(self):
         return self._client.base_url
 
+    @property
+    def event_hooks(self):
+        "httpx.Client event hooks. This is exposed for testing."
+        return self._client.event_hooks
+
     def get_content(self, path, accept=None, timeout=UNSET, stream=False, **kwargs):
         request = self._client.build_request("GET", path, **kwargs)
         if accept:
