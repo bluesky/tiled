@@ -10,7 +10,8 @@ def main():
         tiled_config_path = os.environ["TILED_CONFIG"]
     except KeyError:
         print(
-            "tiled configuration file must be specified via TILED_CONFIG environment variable. Exiting..."
+            "tiled configuration file must be specified via TILED_CONFIG environment variable. Exiting...",
+            file=sys.stderr
         )
         sys.exit(1)
 
@@ -36,7 +37,8 @@ authentication:
     - SECRET
   ...
 
-or via the environment variable TILED_SERVER_SECRET_KEYS.  Exiting..."""
+or via the environment variable TILED_SERVER_SECRET_KEYS.  Exiting...""",
+                file=sys.stderr
             )
             sys.exit(1)
     else:
@@ -63,7 +65,8 @@ authentication:
   single_user_api_key: SECRET
   ...
 
-or via the environment variable TILED_SINGLE_USER_API_KEY. Exiting..."""
+or via the environment variable TILED_SINGLE_USER_API_KEY. Exiting...""",
+                file=sys.stderr
             )
             sys.exit(1)
     # If we reach here, the no configuration problems were found.
