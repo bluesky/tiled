@@ -21,7 +21,7 @@ FROM base as app
 
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 
-COPY gunicorn_config.py /config/gunicorn_config.py
+COPY docker/gunicorn_config.py /config/gunicorn_config.py
 
 WORKDIR /deploy
 
