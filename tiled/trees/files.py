@@ -83,6 +83,7 @@ class Tree(TreeInMemory):
         access_policy=None,
         authenticated_identity=None,
         error_if_missing=True,
+        greedy=False,
         **kwargs,
     ):
         if error_if_missing:
@@ -140,6 +141,7 @@ class Tree(TreeInMemory):
                 initial_scan_complete,
                 watcher_thread_kill_switch,
                 manual_trigger,
+                greedy,
             ),
             daemon=True,
             name="tiled-watch-filesystem-changes",
@@ -167,9 +169,12 @@ class Tree(TreeInMemory):
                 # Make a new mapping and a corresponding Tree for this subdirectory.
                 mapping = {}
                 index[parts + (subdirectory,)] = mapping
-                index[parts][subdirectory] = functools.partial(
-                    TreeInMemory, CachingMap(mapping)
-                )
+                if greedy:
+                    index[parts][subdirectory] = TreeInMemory(mapping)
+                else:
+                    index[parts][subdirectory] = functools.partial(
+                        TreeInMemory, CachingMap(mapping)
+                    )
             # Account for ignore_re_files and update which files we will traverse.
             valid_files = []
             for f in files:
@@ -186,11 +191,16 @@ class Tree(TreeInMemory):
                 # Add items to the mapping for this root directory.
                 try:
                     key = key_from_filename(filename)
-                    index[parts][key] = _reader_factory_for_file(
+                    reader_factory = _reader_factory_for_file(
                         merged_readers_by_mimetype,
                         merged_mimetypes_by_file_ext,
                         Path(root, filename),
                     )
+                    if greedy:
+                        index[parts][key] = reader_factory()
+                        breakpoint()
+                    else:
+                        index[parts][key] = reader_factory
                 except NoReaderAvailable:
                     pass
         # Appending any object will cause bool(initial_scan_complete) to
@@ -273,6 +283,7 @@ def _watch(
     initial_scan_complete,
     watcher_thread_kill_switch,
     manual_trigger,
+    greedy,
     poll_interval=0.2,
 ):
     watcher = RegExpWatcher(
@@ -294,6 +305,7 @@ def _watch(
                     mimetypes_by_file_ext,
                     key_from_filename,
                     index,
+                    greedy,
                 )
             # Process changes just collected.
             _process_changes(
@@ -303,6 +315,7 @@ def _watch(
                 mimetypes_by_file_ext,
                 key_from_filename,
                 index,
+                greedy,
             )
         else:
             # The initial scan is still going. Stash the changes for later.
@@ -324,6 +337,7 @@ def _process_changes(
     mimetypes_by_file_ext,
     key_from_filename,
     index,
+    greedy,
 ):
     ignore = set()
     for kind, entry in changes:
@@ -338,11 +352,15 @@ def _process_changes(
         if kind == Change.added:
             try:
                 key = key_from_filename(path.name)
-                index[parent_parts][key] = _reader_factory_for_file(
+                reader_factory = _reader_factory_for_file(
                     readers_by_mimetype,
                     mimetypes_by_file_ext,
                     path,
                 )
+                if greedy:
+                    index[parent_parts][key] = reader_factory()
+                else:
+                    index[parent_parts][key] = reader_factory
             except NoReaderAvailable:
                 # Ignore this file in the future.
                 # We already know that we do not know how to find a Reader
@@ -362,11 +380,15 @@ def _process_changes(
             # that this could be the first time we see this path.
             try:
                 key = key_from_filename(path.name)
-                index[parent_parts][key] = _reader_factory_for_file(
+                reader_factory = _reader_factory_for_file(
                     readers_by_mimetype,
                     mimetypes_by_file_ext,
                     path,
                 )
+                if greedy:
+                    index[parent_parts][key] = reader_factory()
+                else:
+                    index[parent_parts][key] = reader_factory
             except NoReaderAvailable:
                 # Ignore this file in the future.
                 # We already know that we do not know how to find a Reader
