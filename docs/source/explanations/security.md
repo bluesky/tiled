@@ -73,7 +73,7 @@ Tiled can serve a public data repository with no authentication required. To
 launch it in this mode, use the ``--public`` flag as in
 
 ```
-tiled serve {pyobject, directory} --public ...
+tiled serve {pyobject, directory, config} --public ...
 ```
 
 When the server is started in this way, it will log a notice like
