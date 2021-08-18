@@ -1,0 +1,11 @@
+# config.yml
+trees:
+  - path: /
+    tree: tiled.trees.files:Tree.from_directory
+    args:
+      directory: "example_files"
+uvicorn:
+  host: 0.0.0.0
+  port: 8000
+authentication:
+  allow_anonymous_access: false

@@ -40,3 +40,7 @@ jobs:
         set -vxeuo pipefail
         coverage run -m pytest -v
         coverage report
+
+    - name: Test docker entrypoint configuration checker
+      shell: bash -l {0}
+      run: source docker/test_check_config.sh
