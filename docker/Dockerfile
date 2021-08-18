@@ -9,23 +9,23 @@ FROM base as builder
 
 WORKDIR /build
 
-COPY ./docker/requirements.txt .
+COPY docker/requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 COPY . .
 
-RUN pip install --use-feature=in-tree-build './[server,formats]'
+RUN pip install --use-feature=in-tree-build '.[server, formats]'
 
 FROM base as app
 
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 
-COPY ./docker/gunicorn_config.py /config/gunicorn_config.py
+COPY docker/gunicorn_config.py /config/gunicorn_config.py
 
 WORKDIR /deploy
 
-COPY ./docker/check_config.py ./docker/entrypoint.sh ./
+COPY docker/check_config.py docker/entrypoint.sh ./
 
 EXPOSE 8000
 
