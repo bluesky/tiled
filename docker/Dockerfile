@@ -17,6 +17,10 @@ COPY . .
 
 RUN pip install --use-feature=in-tree-build '.[server, formats]'
 
+FROM builder as test
+RUN pip install -r docker/requirements-test.txt
+RUN pytest -v
+
 FROM base as app
 
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
