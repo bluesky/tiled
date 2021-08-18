@@ -48,6 +48,7 @@ This invocation can be simplified by writing a `docker-compose.yml` file.
 ```yaml
 # docker-compose.yml
 
+version: "3.2" # higher config versions may also work; lower will not
 services:
   tiled-server:
     image: ghcr.io/bluesky/tiled:main
