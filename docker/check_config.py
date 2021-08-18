@@ -19,7 +19,7 @@ def main():
     authentication = config.get("authentication", {})
     allow_anonymous_access = authentication.get("allow_anonymous_access", False)
 
-    if authentcation.get("authenticator") is not None:
+    if authentication.get("authenticator") is not None:
         # Even if the deployment allows public, anonymous access, secret
         # keys are needed to generate JWTs for any users that do log in.
         if not (
