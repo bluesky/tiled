@@ -43,4 +43,6 @@ jobs:
 
     - name: Test docker entrypoint configuration checker
       shell: bash -l {0}
-      run: source docker/test_check_config.sh
+      run: |
+        set -vxeuo pipefail
+        ./docker/test_check_config.sh
