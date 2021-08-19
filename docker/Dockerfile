@@ -7,15 +7,15 @@ ENV PYTHONUNBUFFERED=1
 
 FROM base as builder
 
-WORKDIR /build
+WORKDIR /app
 
-COPY docker/requirements.txt .
+COPY docker/requirements.txt /tmp/
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install -r /tmp/requirements.txt
 
 COPY . .
 
-RUN pip install --use-feature=in-tree-build '.[server, formats]'
+RUN pip install -e '.[server, formats]'
 
 FROM builder as test
 RUN pip install -r docker/requirements-test.txt
@@ -24,13 +24,10 @@ RUN pytest -v
 FROM base as app
 
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
-
-COPY docker/gunicorn_config.py /config/gunicorn_config.py
+COPY --from=builder /app /app
 
 WORKDIR /deploy
 
-COPY docker/check_config.py docker/entrypoint.sh ./
-
 EXPOSE 8000
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/app/docker/entrypoint.sh"]

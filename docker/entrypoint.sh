@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-./check_config.py && exec gunicorn --config /config/gunicorn_config.py
+/app/docker/check_config.py && exec gunicorn --config /app/docker/gunicorn_config.py
