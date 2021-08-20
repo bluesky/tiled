@@ -3,10 +3,110 @@
 See {doc}`../explanations/security` for an overview.
 This page addresses technical details relevant to:
 
+- Client authentcation flow
 * Customizing the various lifetimes (timeouts) in the system
 * Horizontally scaling deployments
 
-## Configure session lifetime parameters
+## Client authentcation flow
+
+In this section we'll use the command-line HTTP client
+[httpie](https://httie.io/) and [jq](https://stedolan.github.io/jq/) to parse
+the JSON responses.
+
+We'll start a tiled server with a demo "toy" authentcation system to work
+against. Save the following `config.yaml` and start a server like so.
+
+```{eval-rst}
+.. literalinclude:: ../../../example_configs/toy_authentication.yml
+```
+
+```
+ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config config.yml
+```
+
+Exchange username/password credentials for "access" and "refresh" tokens.
+
+```
+$ http --form POST :8000/token username=alice password=secret1 > tokens.json
+```
+
+The content of `tokens.json` looks like
+
+```json
+{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTYyODEwNTQyMiwidHlwZSI6ImFjY2VzcyJ9.bd8T3yYo9LDxBaCB3luSbSBh4dcVJDfXTFtW9s6aa3Q",
+ "expires_in":900,
+ "refresh_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsInR5cGUiOiJyZWZyZXNoIiwiaWF0IjoxNjI4MTE4OTIyLjU3NTM4NSwic2lkIjoxMzgwNjIwMjE2MTg3ODQyMTM2NzgwNzQ2NjEwNzE3NTAxMzEyNTMsInNjdCI6MTYyODExODkyMi41NzUzODV9.ms0y8x4csMVvyDozCCa2RE48nRDEd16RFK9RbrsBS5E",
+ "refresh_token_expires_in":604800,
+ "token_type":"bearer"
+}
+```
+
+Make an authenticated request using that access token.
+
+```
+$ http GET :8000/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+HTTP/1.1 200 OK
+content-length: 239
+content-type: application/json
+date: Wed, 04 Aug 2021 19:17:56 GMT
+etag: c1f7b0169f6baabad75f80a0bf6a2656
+server: uvicorn
+server-timing: app;dur=3.9
+set-cookie: tiled_csrf=1-Cpa1WcwggakZ91FtNsscjM8VO1N1znmuILlL5hGY8; HttpOnly; Path=/; SameSite=lax
+
+{
+    "data": {
+        "attributes": {
+            "count": 2,
+            "metadata": {},
+            "sorting": null,
+            "specs": null
+        },
+        "id": "",
+        "links": {
+            "search": "http://localhost:8000/search/",
+            "self": "http://localhost:8000/metadata/"
+        },
+        "meta": null,
+        "type": "tree"
+    },
+    "error": null,
+    "links": null,
+    "meta": {}
+}
+```
+
+When the access token expires (after 15 minutes, by default) requests will be
+rejected like this.
+
+```
+$ http GET :8000/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+HTTP/1.1 401 Unauthorized
+content-length: 53
+content-type: application/json
+date: Wed, 04 Aug 2021 19:22:07 GMT
+server: uvicorn
+server-timing: app;dur=2.7
+set-cookie: tiled_csrf=6sPHOrjBRzZOiSuXOXNtaDNyNNeqQj86nPIXf7X3C1M; HttpOnly; Path=/; SameSite=lax
+
+{
+    "detail": "Access token has expired. Refresh token."
+}
+```
+
+Exchange the refresh token for a fresh pair of access and refresh tokens.
+
+```
+$ http POST :8000/token/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
+```
+
+And resume making requests with the new access token.
+
+To experiment with token expiry and renewal, it can be useful to tune the various
+"max age" parameters very low---10 seconds or so. The next section describes how
+to configure these parameters.
+
+# Configure session lifetime parameters
 
 The server implements "sliding sessions". The following are tunable:
 
