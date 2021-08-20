@@ -5,6 +5,7 @@ from ..query_registration import QueryTranslationRegistry
 from ..queries import FullText, KeyLookup
 from ..utils import (
     DictView,
+    import_object,
     SpecialUsers,
 )
 from .utils import IndexersMixin, UNCHANGED
@@ -258,7 +259,11 @@ class SimpleAccessPolicy:
     ALL = object()  # sentinel
 
     def __init__(self, access_lists):
-        self.access_lists = access_lists
+        self.access_lists = {}
+        for key, value in access_lists.items():
+            if isinstance(value, str):
+                value = import_object(value)
+            self.access_lists[key] = value
 
     def check_compatibility(self, tree):
         # This only works on in-memory Tree or subclases.

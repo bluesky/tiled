@@ -230,6 +230,30 @@ properties:
           this is unset and active session are never shut down.
     description:
       This section describes whether and how to authenticate users.
+  access_control:
+    type: object
+    properties:
+      access_policy:
+        type: [string, "null"]
+        description: |
+          AccessPolicy object encoding rules for which users can see which entries.
+          If this is set (not null) then an authenticator must also be set.
+
+          Example:
+
+          ```yaml
+          access_control:
+            access_policy: "tiled.trees.in_memory:SimpleAccessPolicy"
+            args:
+              alice: ["A", "B"]
+              bob: ["C"]
+              cara: "tiled.trees.in_memory:SimpleAccessPolicy.ALL"
+          ```
+      args:
+        type: object
+        additionalProperties: true
+    description: |
+      This section describes which users can see which entries.
   allow_origins:
     type: array
     items:
