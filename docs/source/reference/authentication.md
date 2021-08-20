@@ -14,7 +14,7 @@ In this section we'll use the command-line HTTP client
 the JSON responses.
 
 We'll start a tiled server with a demo "toy" authentcation system to work
-against. Save the following `config.yaml` and start a server like so.
+against. Save the following `config.yml` and start a server like so.
 
 ```{eval-rst}
 .. literalinclude:: ../../../example_configs/toy_authentication.yml
