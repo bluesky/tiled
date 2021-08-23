@@ -152,6 +152,11 @@ class Context:
         self._cache = cache
         self._username = username
         self._offline = offline
+        if (username is not None) and isinstance(token_cache, (str, Path)):
+            directory = _token_directory(
+                token_cache, self._client.base_url.netloc, username
+            )
+            token_cache = TokenCache(directory)
         self._token_cache = token_cache
         self._app = app
 
@@ -321,14 +326,7 @@ class Context:
         tokens = token_response.json()
         if self._token_cache:
             # We are using a token cache. Store the new refresh token.
-            directory = _token_directory(
-                self._token_cache, self._client.base_url.netloc, username
-            )
-            directory.mkdir(exist_ok=True, parents=True)
-            filepath = directory / "refresh_token"
-            filepath.touch(mode=0o600)  # Set permissions.
-            with open(filepath, "w") as file:
-                file.write(tokens["refresh_token"])
+            self._token_cache["refresh_token"] = tokens["refresh_token"]
         return tokens
 
     def reauthenticate(self, prompt_on_failure=True):
@@ -354,40 +352,33 @@ class Context:
             # We are not using a token cache.
             raise CannotRefreshAuthentication("No token cache was given")
         # We are using a token_cache.
-        directory = _token_directory(
-            self._token_cache, self._client.base_url.netloc, self._username
-        )
-        filepath = directory / "refresh_token"
-        if filepath.is_file():
-            # There is a token file.
-            with open(filepath, "r") as file:
-                refresh_token = file.read()
-            token_request = self._client.build_request(
-                "POST",
-                f"{self._authentication_uri}token/refresh",
-                json={"refresh_token": refresh_token},
-                headers={"x-csrf": self._client.cookies["tiled_csrf"]},
-            )
-            token_request.headers.pop("Authorization", None)
-            token_response = self._client.send(token_request)
-            if token_response.status_code == 401:
-                # Refreshing the token failed.
-                # Discard the expired (or otherwise invalid) refresh_token file.
-                filepath.unlink(missing_ok=True)
-                raise CannotRefreshAuthentication(
-                    "Server rejected attempt to refresh token"
-                )
-        else:
+        try:
+            refresh_token = self._token_cache["refresh_token"]
+        except KeyError:
             raise CannotRefreshAuthentication(
                 "No refresh token was found in token cache"
+            )
+        # There is a refresh token in the cache.
+        token_request = self._client.build_request(
+            "POST",
+            f"{self._authentication_uri}token/refresh",
+            json={"refresh_token": refresh_token},
+            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+        )
+        token_request.headers.pop("Authorization", None)
+        token_response = self._client.send(token_request)
+        if token_response.status_code == 401:
+            # Refreshing the token failed.
+            # Discard the expired (or otherwise invalid) refresh_token file.
+            self._token_cache.pop("refresh_token", None)
+            raise CannotRefreshAuthentication(
+                "Server rejected attempt to refresh token"
             )
         handle_error(token_response)
         tokens = token_response.json()
         # If we get this far, reauthentication worked.
         # Store the new refresh token.
-        filepath.touch(mode=0o600)  # Set permissions.
-        with open(filepath, "w") as file:
-            file.write(tokens["refresh_token"])
+        self._token_cache["refresh_token"] = tokens["refresh_token"]
         return tokens
 
 
@@ -462,3 +453,26 @@ def context_from_tree(
         username=username,
         app=app,
     )
+
+
+class TokenCache:
+    "A (partial) dict interface backed by files with restrictive permissions"
+
+    def __init__(self, directory):
+        self._directory = Path(directory)
+        self._directory.mkdir(exist_ok=True, parents=True)
+
+    def __getitem__(self, key):
+        with open(key, "r") as file:
+            return file.read()
+
+    def __setitem__(self, key, value):
+        if not isinstance(value, str):
+            raise ValueError("Expected string value, got {value!r}")
+        filepath = self._directory / key
+        filepath.touch(mode=0o600)  # Set permissions.
+        with open(filepath, "w") as file:
+            file.write(value)
+
+    def __delitem__(self, key):
+        key.unlink(missing_ok=True)
