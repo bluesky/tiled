@@ -318,7 +318,15 @@ def from_profile(name, structure_clients=None, **kwargs):
         return from_uri(**merged)
 
 
-def from_config(config):
+def from_config(
+    config,
+    authentication_uri=None,
+    username=None,
+    cache=None,
+    offline=False,
+    token_cache=DEFAULT_TOKEN_CACHE,
+    **kwargs,
+):
     """
     Build Nodes directly, running the app in this same process.
 
@@ -358,7 +366,15 @@ def from_config(config):
         )
     """
 
-    from ..config import direct_access
+    from ..config import construct_serve_tree_kwargs
 
-    tree = direct_access(config)
-    return from_tree(tree)
+    serve_tree_kwargs = construct_serve_tree_kwargs(config)
+    context = context_from_tree(
+        # authentication_uri=authentication_uri,
+        username=username,
+        cache=cache,
+        offline=offline,
+        token_cache=token_cache,
+        **serve_tree_kwargs,
+    )
+    return from_context(context, **kwargs)
