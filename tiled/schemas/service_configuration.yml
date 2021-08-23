@@ -245,9 +245,10 @@ properties:
           access_control:
             access_policy: "tiled.trees.in_memory:SimpleAccessPolicy"
             args:
-              alice: ["A", "B"]
-              bob: ["C"]
-              cara: "tiled.trees.in_memory:SimpleAccessPolicy.ALL"
+              access_lists:
+                alice: ["A", "B"]
+                bob: ["C"]
+                cara: "tiled.trees.in_memory:SimpleAccessPolicy.ALL"
           ```
       args:
         type: object
