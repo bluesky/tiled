@@ -163,6 +163,7 @@ def merge(configs):
     # These variables are used to produce error messages that point
     # to the relevant config file(s).
     authentication_config_source = None
+    access_control_config_source = None
     uvicorn_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
@@ -174,6 +175,15 @@ def merge(configs):
             media_types[structure_family].update(values)
         file_extensions.update(config.get("file_extensions", {}))
         allow_origins.extend(config.get("allow_origins", []))
+        if "access_control" in config:
+            if "access_control" in merged:
+                raise ConfigError(
+                    "access_control can only be specified in one file. "
+                    f"It was found in both {access_control_config_source} and "
+                    f"{filepath}"
+                )
+            access_control_config_source = filepath
+            merged["access_control"] = config["access_control"]
         if "authentication" in config:
             if "authentication" in merged:
                 raise ConfigError(
