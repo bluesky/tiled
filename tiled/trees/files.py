@@ -198,7 +198,6 @@ class Tree(TreeInMemory):
                     )
                     if greedy:
                         index[parts][key] = reader_factory()
-                        breakpoint()
                     else:
                         index[parts][key] = reader_factory
                 except NoReaderAvailable:
