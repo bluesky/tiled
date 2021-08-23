@@ -52,21 +52,8 @@ class AsyncClientBridge:
         # this kinds of overly-long tolerances are needed.)
         self._instance_state_setup_complete.wait(timeout=2)
 
-    @property
-    def base_url(self):
-        return self._client.base_url
-
-    @base_url.setter
-    def base_url(self, value):
-        self._client.base_url = value
-
-    @property
-    def headers(self):
-        return self._client.headers
-
-    @property
-    def event_hooks(self):
-        return self._client.event_hooks
+    def __getattr__(self, key):
+        return getattr(self._client, key)
 
     def _worker(self, client_kwargs):
 
