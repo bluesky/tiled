@@ -324,7 +324,7 @@ class Context:
         token_response = self._client.send(token_request)
         handle_error(token_response)
         tokens = token_response.json()
-        if self._token_cache:
+        if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
             self._token_cache["refresh_token"] = tokens["refresh_token"]
         return tokens
@@ -348,7 +348,7 @@ class Context:
         handshake_request.headers.pop("Authorization", None)
         handshake_response = self._client.send(handshake_request)
         handle_error(handshake_response)
-        if not self._token_cache:
+        if self._token_cache is None:
             # We are not using a token cache.
             raise CannotRefreshAuthentication("No token cache was given")
         # We are using a token_cache.
@@ -463,8 +463,12 @@ class TokenCache:
         self._directory.mkdir(exist_ok=True, parents=True)
 
     def __getitem__(self, key):
-        with open(key, "r") as file:
-            return file.read()
+        filepath = self._directory / key
+        try:
+            with open(filepath, "r") as file:
+                return file.read()
+        except FileNotFoundError:
+            raise KeyError(key)
 
     def __setitem__(self, key, value):
         if not isinstance(value, str):
