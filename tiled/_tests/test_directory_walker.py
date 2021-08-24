@@ -18,7 +18,7 @@ def example_data_dir(tmpdir_factory):
 
     The tmpdir_factory fixture ensures that this directory is cleaned up at test exit.
     """
-    tmpdir = tmpdir_factory.getbasetemp()
+    tmpdir = tmpdir_factory.mktemp("temp")
     generate_files(tmpdir)
     return tmpdir
 
