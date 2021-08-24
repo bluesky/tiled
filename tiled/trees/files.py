@@ -253,11 +253,12 @@ class Tree(TreeInMemory):
                             Path(root, filename),
                         )
                     except NoReaderAvailable:
-                        continue
-                    if greedy:
-                        index[parts][key] = reader_factory()
+                        pass
                     else:
-                        index[parts][key] = reader_factory
+                        if greedy:
+                            index[parts][key] = reader_factory()
+                        else:
+                            index[parts][key] = reader_factory
                 collision_tracker[key].add(filepath)
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
@@ -443,10 +444,11 @@ def _process_changes(
                         # We already know that we do not know how to find a Reader
                         # for this filename.
                         ignore.add(path)
-                    if greedy:
-                        index[parent_parts][key] = reader_factory()
                     else:
-                        index[parent_parts][key] = reader_factory
+                        if greedy:
+                            index[parent_parts][key] = reader_factory()
+                        else:
+                            index[parent_parts][key] = reader_factory
                     collision_tracker[key].add(rel_path)
         elif kind == Change.deleted:
             if path.is_dir():
@@ -495,10 +497,11 @@ def _process_changes(
                 # We already know that we do not know how to find a Reader
                 # for this filename.
                 ignore.add(path)
-            if greedy:
-                index[parent_parts][key] = reader_factory()
             else:
-                index[parent_parts][key] = reader_factory
+                if greedy:
+                    index[parent_parts][key] = reader_factory()
+                else:
+                    index[parent_parts][key] = reader_factory
 
 
 def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
