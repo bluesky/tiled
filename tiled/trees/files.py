@@ -33,7 +33,10 @@ def strip_suffixes(filename):
     """
     path = Path(filename)
     # You would think there would be a method for this, but there is not.
-    filename_without_suffixes = str(path)[: -sum([len(s) for s in path.suffixes])]
+    if len(path.suffixes):
+        return str(path)[: -sum([len(s) for s in path.suffixes])]
+    else:
+        return filename
     return filename_without_suffixes
 
 
