@@ -15,10 +15,12 @@ TIFF_PATHS = [
         "d.tif",
     ),
     (
+        "more",
         "even_more",
         "e.tif",
     ),
     (
+        "more",
         "even_more",
         "f.tif",
     ),
@@ -31,7 +33,7 @@ df1 = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
 df2 = pandas.DataFrame({"C": [10, 20, 30], "D": [40, 50, 60]})
 
 
-def main(root_path):
+def generate_files(root_path):
     for path in TIFF_PATHS:
         full_path = Path(root_path, *path)
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,4 +55,4 @@ pip install tifffile openpyxl
 """,
             file=sys.stderr,
         )
-    main(*sys.argv[1:])
+    generate_files(*sys.argv[1:])

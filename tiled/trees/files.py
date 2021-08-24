@@ -16,6 +16,9 @@ from ..utils import CachingMap, import_object, OneShotCachedMap
 from .in_memory import Tree as TreeInMemory
 
 
+POLL_INTERVAL = 0.2  # seconds between periodic scans of filesystem
+
+
 def strip_suffixes(filename):
     """
     For use with key_from_filename parameter.
@@ -338,7 +341,6 @@ def _watch(
     watcher_thread_kill_switch,
     manual_trigger,
     greedy,
-    poll_interval=0.2,
 ):
     watcher = RegExpWatcher(
         directory,
@@ -379,7 +381,7 @@ def _watch(
             # Confirm to the sender that it has now completed.
             event.set()
         try:
-            event = manual_trigger.get(timeout=poll_interval)
+            event = manual_trigger.get(timeout=POLL_INTERVAL)
         except queue.Empty:
             event = None
 
