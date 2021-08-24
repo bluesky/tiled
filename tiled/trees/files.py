@@ -256,7 +256,7 @@ class Tree(TreeInMemory):
                         index[parts][key] = reader_factory()
                     else:
                         index[parts][key] = reader_factory
-                    collision_tracker[key].add(filepath)
+                collision_tracker[key].add(filepath)
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
         initial_scan_complete.append(object())

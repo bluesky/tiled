@@ -4,9 +4,10 @@ import time
 
 import numpy
 import pytest
+import tifffile
 
 from ..client import from_config
-from ..examples.generate_files import generate_files, df1
+from ..examples.generate_files import generate_files, df1, data
 from ..trees.files import POLL_INTERVAL
 
 
@@ -114,3 +115,98 @@ def test_item_removed(example_data_dir):
     assert "c" not in client
     assert "even_more" not in client
     assert "d" not in client["more"]
+
+
+def test_collision_at_startup(example_data_dir):
+    """Test that files which produce key collisions are ignored until the collision is resolved."""
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {"directory": str(example_data_dir)},
+            },
+        ],
+    }
+
+    # Add a.tiff which will collide with a.tif.
+    p = Path(example_data_dir, "a.tiff")
+    tifffile.imsave(str(p), data)
+
+    with pytest.warns(UserWarning):
+        # Tree warns about collision.
+        client = from_config(config)
+
+    # And omits the colliding entries.
+    assert "a" not in client
+
+    # Resolve the collision.
+    p.unlink()
+
+    # Wait for worker thread to discover changes.
+    time.sleep(POLL_INTERVAL * 2)
+
+    assert "a" in client
+
+
+def test_collision_after_startup(example_data_dir):
+    """Test that files which produce key collisions are ignored until the collision is resolved."""
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {"directory": str(example_data_dir)},
+            },
+        ],
+    }
+
+    client = from_config(config)
+
+    assert "a" in client
+
+    # Add a.tiff which will collide with a.tif.
+    p = Path(example_data_dir, "a.tiff")
+    with pytest.warns(UserWarning):
+        tifffile.imsave(str(p), data)
+        time.sleep(POLL_INTERVAL * 2)
+
+    assert "a" not in client
+
+    # Resolve the collision.
+    p.unlink()
+
+    time.sleep(POLL_INTERVAL * 2)
+    assert "a" in client
+
+
+def test_remove_and_re_add(example_data_dir):
+    """Test that removing and re-adding a file does not constitute a collision."""
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {"directory": str(example_data_dir)},
+            },
+        ],
+    }
+
+    client = from_config(config)
+
+    assert "a" in client
+
+    # Remove a file.
+    p = Path(example_data_dir, "a.tif")
+    p.unlink()
+
+    # Confirm it is gone.
+    time.sleep(POLL_INTERVAL * 2)
+    assert "a" not in client
+
+    # Add it back.
+    tifffile.imsave(str(p), data)
+
+    # Confirm it is back (no spurious collision).
+    time.sleep(POLL_INTERVAL * 2)
+    assert "a" in client
