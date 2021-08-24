@@ -167,6 +167,8 @@ class Tree(TreeInMemory):
         # walk of the nested directory structure and having a single thread watching
         # for changes within that structure.)
         index = {(): {}}
+        # Map key to set of filepaths that map to that key.
+        collision_tracker = collections.defaultdict(set)
         # 1. Start watching directory for changes and accumulating a queue of them.
         # 2. Do an initial scan of the files in the directory.
         # 3. When the initial scan completes, start processing changes. This
@@ -189,6 +191,7 @@ class Tree(TreeInMemory):
                 watcher_thread_kill_switch,
                 manual_trigger,
                 greedy,
+                collision_tracker,
             ),
             daemon=True,
             name="tiled-watch-filesystem-changes",
@@ -203,7 +206,6 @@ class Tree(TreeInMemory):
             else ignore_re_files
         )
         for root, subdirectories, files in os.walk(directory, topdown=True):
-            keys = {}
             parts = Path(root).relative_to(directory).parts
             # Account for ignore_re_dirs and update which subdirectories we will traverse.
             valid_subdirectories = []
@@ -229,29 +231,32 @@ class Tree(TreeInMemory):
                 ):
                     continue
                 # Add items to the mapping for this root directory.
-                try:
-                    key = key_from_filename(filename)
-                    if key in keys:
-                        warnings.warn(
-                            f"The file {filename!r} will have the key {key!r}. "
-                            f"This key was also being used by the file {keys[key]!r}. "
-                            "To resolve this, rename or remove all but one of the "
-                            "colliding names, or else change the key_from_filename "
-                            "setting to some transform that will generate unique keys "
-                            "for these files."
+                key = key_from_filename(filename)
+                filepath = Path(*parts, filename)
+                if key in collision_tracker:
+                    # There is already a filepath that maps to this key!
+                    warnings.warn(
+                        COLLISION_WARNING.format(
+                            filepath=filepath,
+                            existing=collision_tracker[key],
+                            key=key,
                         )
-                    keys[key] = filename
-                    reader_factory = _reader_factory_for_file(
-                        merged_readers_by_mimetype,
-                        merged_mimetypes_by_file_ext,
-                        Path(root, filename),
                     )
+                    del index[parts][key]
+                else:
+                    try:
+                        reader_factory = _reader_factory_for_file(
+                            merged_readers_by_mimetype,
+                            merged_mimetypes_by_file_ext,
+                            Path(root, filename),
+                        )
+                    except NoReaderAvailable:
+                        continue
                     if greedy:
                         index[parts][key] = reader_factory()
                     else:
                         index[parts][key] = reader_factory
-                except NoReaderAvailable:
-                    pass
+                    collision_tracker[key].add(filepath)
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
         initial_scan_complete.append(object())
@@ -333,6 +338,7 @@ def _watch(
     watcher_thread_kill_switch,
     manual_trigger,
     greedy,
+    collision_tracker,
 ):
     watcher = RegExpWatcher(
         directory,
@@ -354,6 +360,7 @@ def _watch(
                     key_from_filename,
                     index,
                     greedy,
+                    collision_tracker,
                 )
             # Process changes just collected.
             _process_changes(
@@ -364,6 +371,7 @@ def _watch(
                 key_from_filename,
                 index,
                 greedy,
+                collision_tracker,
             )
         else:
             # The initial scan is still going. Stash the changes for later.
@@ -386,6 +394,7 @@ def _process_changes(
     key_from_filename,
     index,
     greedy,
+    collision_tracker,
 ):
     ignore = set()
     for kind, entry in changes:
@@ -394,18 +403,22 @@ def _process_changes(
             # We have seen this before and could not find a Reader for it.
             # Do not try again.
             continue
-        parent_parts = path.relative_to(directory).parent.parts
+        rel_path = path.relative_to(directory)
+        parent_parts = rel_path.parent.parts
         if kind == Change.added:
             if path.is_dir():
                 _new_subdir(index, parent_parts, path.name, greedy)
             else:
-                try:
-                    key = key_from_filename(path.name)
-                    reader_factory = _reader_factory_for_file(
-                        readers_by_mimetype,
-                        mimetypes_by_file_ext,
-                        path,
+                key = key_from_filename(path.name)
+                if key in collision_tracker:
+                    # There is already a filepath that maps to this key!
+                    warnings.warn(
+                        COLLISION_WARNING.format(
+                            filepath=rel_path, existing=collision_tracker[key], key=key
+                        )
                     )
+                    del index[parent_parts][key]
+                else:
                     # We may observe the creation of a file before we observe the creation of its
                     # directory.
                     if parent_parts not in index:
@@ -414,25 +427,50 @@ def _process_changes(
                                 _new_subdir(
                                     index, parent_parts[:i], parent_parts[i], greedy
                                 )
+                    try:
+                        reader_factory = _reader_factory_for_file(
+                            readers_by_mimetype,
+                            mimetypes_by_file_ext,
+                            path,
+                        )
+                    except NoReaderAvailable:
+                        # Ignore this file in the future.
+                        # We already know that we do not know how to find a Reader
+                        # for this filename.
+                        ignore.add(path)
                     if greedy:
                         index[parent_parts][key] = reader_factory()
                     else:
                         index[parent_parts][key] = reader_factory
-                except NoReaderAvailable:
-                    # Ignore this file in the future.
-                    # We already know that we do not know how to find a Reader
-                    # for this filename.
-                    ignore.add(path)
+                    collision_tracker[key].add(rel_path)
         elif kind == Change.deleted:
             if path.is_dir():
                 index.pop(parent_parts, None)
             else:
                 key = key_from_filename(path.name)
                 index[parent_parts].pop(key, None)
+                collision_tracker[key].discard(rel_path)
+                if len(collision_tracker[key]) == 1:
+                    print(rel_path, collision_tracker[key])
+                    # A key collision was resolved by the removal (or renaming)
+                    # of a conflicting file.
+                    # Process the remaining file which now has a key that is unique.
+                    (path_with_newly_unique_key,) = collision_tracker[key]
+                    _process_changes(
+                        [(Change.added, path_with_newly_unique_key)],
+                        directory,
+                        readers_by_mimetype,
+                        mimetypes_by_file_ext,
+                        key_from_filename,
+                        index,
+                        greedy,
+                        collision_tracker,
+                    )
         elif kind == Change.modified:
             if path.is_dir():
                 # Nothing to do
                 continue
+            key = key_from_filename(path.name)
             # Why do we need a try/except here? A reasonable question!
             # Normally, we would learn about the file first via a Change.added
             # or via the initial scan. Then, later, when we learn about modification
@@ -442,21 +480,20 @@ def _process_changes(
             # to our index. Therefore, we guard this with a try/except, knowing
             # that this could be the first time we see this path.
             try:
-                key = key_from_filename(path.name)
                 reader_factory = _reader_factory_for_file(
                     readers_by_mimetype,
                     mimetypes_by_file_ext,
                     path,
                 )
-                if greedy:
-                    index[parent_parts][key] = reader_factory()
-                else:
-                    index[parent_parts][key] = reader_factory
             except NoReaderAvailable:
                 # Ignore this file in the future.
                 # We already know that we do not know how to find a Reader
                 # for this filename.
                 ignore.add(path)
+            if greedy:
+                index[parent_parts][key] = reader_factory()
+            else:
+                index[parent_parts][key] = reader_factory
 
 
 def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
@@ -507,3 +544,18 @@ def _new_subdir(index, parent_parts, subdirectory, greedy):
         index[parent_parts][subdirectory] = functools.partial(
             TreeInMemory, CachingMap(mapping)
         )
+
+
+COLLISION_WARNING = (
+    "The file {filepath!r} maps to the key {key!r}. "
+    "which collides with the file(s) {existing!r}."
+    "All files that map to this key will be ignored until the collision is resolved. "
+    "To resolve this do one of the following: "
+    "(1) Use the full, unique filename as the key, "
+    "via the commandline flag --keep-ext "
+    "or the configurable argument "
+    "key_from_filename: 'tiled.trees.files:identity'  # Use full filename as key "
+    "(2) Remove or rename one of the files. "
+    "(3) Use a custom key_from_filename that "
+    "generates unique keys for this case."
+)
