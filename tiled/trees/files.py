@@ -37,7 +37,6 @@ def strip_suffixes(filename):
         return str(path)[: -sum([len(s) for s in path.suffixes])]
     else:
         return filename
-    return filename_without_suffixes
 
 
 def identity(filename):

@@ -8,7 +8,7 @@ import tifffile
 
 from ..client import from_config
 from ..examples.generate_files import generate_files, df1, data
-from ..trees.files import POLL_INTERVAL
+from ..trees.files import POLL_INTERVAL, strip_suffixes
 
 
 @pytest.fixture
@@ -210,3 +210,12 @@ def test_remove_and_re_add(example_data_dir):
     # Confirm it is back (no spurious collision).
     time.sleep(POLL_INTERVAL * 2)
     assert "a" in client
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [("a.txt", "a"), ("a.tar.gz", "a"), ("a", "a")],
+)
+def test_strip_suffixes(filename, expected):
+    actual = strip_suffixes(filename)
+    assert actual == expected
