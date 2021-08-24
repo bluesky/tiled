@@ -214,15 +214,7 @@ class Tree(TreeInMemory):
                     valid_subdirectories.append(d)
             subdirectories[:] = valid_subdirectories
             for subdirectory in subdirectories:
-                # Make a new mapping and a corresponding Tree for this subdirectory.
-                mapping = {}
-                index[parts + (subdirectory,)] = mapping
-                if greedy:
-                    index[parts][subdirectory] = TreeInMemory(mapping)
-                else:
-                    index[parts][subdirectory] = functools.partial(
-                        TreeInMemory, CachingMap(mapping)
-                    )
+                _new_subdir(index, parts, subdirectory, greedy)
             # Account for ignore_re_files and update which files we will traverse.
             valid_files = []
             for f in files:
@@ -402,30 +394,45 @@ def _process_changes(
             # We have seen this before and could not find a Reader for it.
             # Do not try again.
             continue
-        if path.is_dir():
-            raise NotImplementedError
         parent_parts = path.relative_to(directory).parent.parts
         if kind == Change.added:
-            try:
-                key = key_from_filename(path.name)
-                reader_factory = _reader_factory_for_file(
-                    readers_by_mimetype,
-                    mimetypes_by_file_ext,
-                    path,
-                )
-                if greedy:
-                    index[parent_parts][key] = reader_factory()
-                else:
-                    index[parent_parts][key] = reader_factory
-            except NoReaderAvailable:
-                # Ignore this file in the future.
-                # We already know that we do not know how to find a Reader
-                # for this filename.
-                ignore.add(path)
+            if path.is_dir():
+                _new_subdir(index, parent_parts, path.name, greedy)
+            else:
+                try:
+                    key = key_from_filename(path.name)
+                    reader_factory = _reader_factory_for_file(
+                        readers_by_mimetype,
+                        mimetypes_by_file_ext,
+                        path,
+                    )
+                    # We may observe the creation of a file before we observe the creation of its
+                    # directory.
+                    if parent_parts not in index:
+                        for i in range(len(parent_parts)):
+                            if parent_parts[: 1 + i] not in index:
+                                _new_subdir(
+                                    index, parent_parts[:i], parent_parts[i], greedy
+                                )
+                    if greedy:
+                        index[parent_parts][key] = reader_factory()
+                    else:
+                        index[parent_parts][key] = reader_factory
+                except NoReaderAvailable:
+                    # Ignore this file in the future.
+                    # We already know that we do not know how to find a Reader
+                    # for this filename.
+                    ignore.add(path)
         elif kind == Change.deleted:
-            key = key_from_filename(path.name)
-            index[parent_parts].pop(key, None)
+            if path.is_dir():
+                index.pop(parent_parts, None)
+            else:
+                key = key_from_filename(path.name)
+                index[parent_parts].pop(key, None)
         elif kind == Change.modified:
+            if path.is_dir():
+                # Nothing to do
+                continue
             # Why do we need a try/except here? A reasonable question!
             # Normally, we would learn about the file first via a Change.added
             # or via the initial scan. Then, later, when we learn about modification
@@ -488,3 +495,15 @@ def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
 
 class NoReaderAvailable(Exception):
     pass
+
+
+def _new_subdir(index, parent_parts, subdirectory, greedy):
+    "make a new mapping and a corresponding tree for this subdirectory."
+    mapping = {}
+    index[parent_parts + (subdirectory,)] = mapping
+    if greedy:
+        index[parent_parts][subdirectory] = TreeInMemory(mapping)
+    else:
+        index[parent_parts][subdirectory] = functools.partial(
+            TreeInMemory, CachingMap(mapping)
+        )
