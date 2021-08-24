@@ -140,6 +140,17 @@ def profile_show(profile_name: str):
 def serve_directory(
     directory: str,
     public: bool = typer.Option(False, "--public"),
+    keep_ext: bool = typer.Option(
+        False,
+        "--keep-ext",
+        help=(
+            "Serve a file like 'measurements.csv' as its full filepath with extension, "
+            "instead of the default which would serve it as 'measurements'. "
+            "This is discouraged because it leaks details about the storage "
+            "format to the client, such that changing the storage in the future "
+            "may break user (client-side) code."
+        ),
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -154,7 +165,12 @@ def serve_directory(
     from ..trees.files import Tree
     from ..server.app import serve_tree, print_admin_api_key_if_generated
 
-    tree = Tree.from_directory(directory)
+    tree_kwargs = {}
+    if keep_ext:
+        from tiled.trees.files import identity
+
+        tree_kwargs.update({"key_from_filename": identity})
+    tree = Tree.from_directory(directory, **tree_kwargs)
     web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
