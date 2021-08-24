@@ -238,7 +238,7 @@ class Tree(TreeInMemory):
                     warnings.warn(
                         COLLISION_WARNING.format(
                             filepath=filepath,
-                            existing=collision_tracker[key],
+                            existing=[str(p) for p in collision_tracker[key]],
                             key=key,
                         )
                     )
@@ -410,11 +410,14 @@ def _process_changes(
                 _new_subdir(index, parent_parts, path.name, greedy)
             else:
                 key = key_from_filename(path.name)
-                if key in collision_tracker:
+                if collision_tracker.get(key, False):
+                    # The collision tracker contains a nonempty set.
                     # There is already a filepath that maps to this key!
                     warnings.warn(
                         COLLISION_WARNING.format(
-                            filepath=rel_path, existing=collision_tracker[key], key=key
+                            filepath=rel_path,
+                            existing=[str(p) for p in collision_tracker[key]],
+                            key=key,
                         )
                     )
                     del index[parent_parts][key]
@@ -451,13 +454,13 @@ def _process_changes(
                 index[parent_parts].pop(key, None)
                 collision_tracker[key].discard(rel_path)
                 if len(collision_tracker[key]) == 1:
-                    print(rel_path, collision_tracker[key])
                     # A key collision was resolved by the removal (or renaming)
                     # of a conflicting file.
+                    (rel_path_with_newly_unique_key,) = collision_tracker[key]
+                    collision_tracker[key].clear()
                     # Process the remaining file which now has a key that is unique.
-                    (path_with_newly_unique_key,) = collision_tracker[key]
                     _process_changes(
-                        [(Change.added, path_with_newly_unique_key)],
+                        [(Change.added, directory / rel_path_with_newly_unique_key)],
                         directory,
                         readers_by_mimetype,
                         mimetypes_by_file_ext,
@@ -547,8 +550,8 @@ def _new_subdir(index, parent_parts, subdirectory, greedy):
 
 
 COLLISION_WARNING = (
-    "The file {filepath!r} maps to the key {key!r}. "
-    "which collides with the file(s) {existing!r}."
+    "The file {filepath!s} maps to the key {key!r}. "
+    "which collides with the file(s) {existing!r}. "
     "All files that map to this key will be ignored until the collision is resolved. "
     "To resolve this do one of the following: "
     "(1) Use the full, unique filename as the key, "
