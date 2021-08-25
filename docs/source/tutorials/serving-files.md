@@ -25,11 +25,11 @@ The full structure looks like
 ├── a.tif
 ├── b.tif
 ├── c.tif
-├── even_more
-│   ├── e.tif
-│   └── f.tif
 ├── more
 │   └── d.tif
+│   └── even_more
+│       ├── e.tif
+│       └── f.tif
 └── tables.xlsx
 ```
 
@@ -56,7 +56,7 @@ disk, and we can slice and access the data.
 
 ```python
 >>> client
-<Node {'more', 'even_more', 'b', 'a', 'c', ...} ~7 entries>
+<Node {'more', 'b', 'a', 'c', ...} ~7 entries>
 
 >>> client['more']
 <Node {'d'}>
