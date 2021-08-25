@@ -50,3 +50,4 @@ def test_key_into_results():
     results = client.search(FullText("dog"))
     assert "apple" in results["a"].metadata
     assert "banana" in results["b"].metadata
+    assert "c" not in results  # This *is* in the tree but not among the results.
