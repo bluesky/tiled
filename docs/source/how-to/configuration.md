@@ -63,7 +63,19 @@ trees:
           directory: "path/to/files"
 ```
 
-And the simple deployment
+```{note}
+
+The alias
+
+    tree: files
+
+may be used in place of the full import path
+
+    tree: tiled.trees.files:Tree.from_directory
+
+```
+
+Likewise, the simple deployment
 
 ```
 tiled serve pyobject tiled.examples.generated_minimal:tree
