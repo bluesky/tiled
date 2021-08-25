@@ -52,27 +52,6 @@ class Tree(TreeInMemory):
     """
     A Tree constructed by walking a directory and watching it for changes.
 
-    Parameters
-    ----------
-    ignore_re_dirs : str, optional
-        Regular expression. Matched directories will be ignored.
-    ignore_re_files : str, optional
-        Regular expression. Matched files will be ignored.
-    readers_by_mimetype : dict, optional
-        Map a mimetype to a Reader suitable for that mimetype
-    mimetypes_by_file_ext : dict, optional
-        Map a file extension (e.g. '.tif') to a mimetype (e.g. 'image/tiff')
-    key_from_filename : callable[str] -> str,
-        Given a filename, return the key for the item that will represent it.
-        By default, this strips off the suffixes, so "a.tif" -> "a".
-    metadata : dict, optional,
-        Metadata for the top-level node of this tree.
-    access_policy : AccessPolicy, optional
-    authenticated_identity : str, optional
-    error_if_missing : boolean, optional
-        If True (default) raise an error if the directory does not exist.
-        If False, wait and poll for the directory to be created later.
-
     Examples
     --------
 
@@ -139,6 +118,35 @@ class Tree(TreeInMemory):
         greedy=False,
         **kwargs,
     ):
+        """
+        Construct a Tree from a directory of files.
+
+        Parameters
+        ----------
+        ignore_re_dirs : str, optional
+            Regular expression. Matched directories will be ignored.
+        ignore_re_files : str, optional
+            Regular expression. Matched files will be ignored.
+        readers_by_mimetype : dict, optional
+            Map a mimetype to a Reader suitable for that mimetype
+        mimetypes_by_file_ext : dict, optional
+            Map a file extension (e.g. '.tif') to a mimetype (e.g. 'image/tiff')
+        key_from_filename : callable[str] -> str,
+            Given a filename, return the key for the item that will represent it.
+            By default, this strips off the suffixes, so "a.tif" -> "a".
+        metadata : dict, optional,
+            Metadata for the top-level node of this tree.
+        access_policy : AccessPolicy, optional
+        authenticated_identity : str, optional
+        error_if_missing : boolean, optional
+            If True (default) raise an error if the directory does not exist.
+            If False, wait and poll for the directory to be created later.
+        greedy : boolean, optional
+            If False (default) instantiate nodes in the tree lazily, when first
+            accessed. If True, instantiate them greedily when the underlying
+            files are first found.
+        """
+
         if error_if_missing:
             if not os.path.isdir(directory):
                 raise ValueError(
