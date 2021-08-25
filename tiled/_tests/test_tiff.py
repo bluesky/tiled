@@ -4,8 +4,8 @@ import numpy
 import pytest
 import tifffile as tf
 
-from ..readers.tiff_sequence import TiffSequenceReader
-from ..client import from_tree
+from ..readers.tiff_sequence import subdirectory_handler, TiffSequenceReader
+from ..client import from_config, from_tree
 from ..trees.in_memory import Tree
 
 
@@ -40,3 +40,24 @@ def test_tiff_sequence_block(directory, block_input, correct_shape):
     client = from_tree(tree)
     arr = client["A"].read_block(block_input)
     assert arr.shape == correct_shape
+
+
+def test_tiff_sequence_with_directory_walker(tmpdir):
+    data = numpy.random.random((100, 101))
+    Path(tmpdir, "sequence").mkdir()
+    for i in range(10):
+        tf.imwrite(Path(tmpdir, "sequence", f"image{i:05}.tif"), data)
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {
+                    "directory": tmpdir,
+                    "subdirectory_handler": subdirectory_handler,
+                },
+            },
+        ],
+    }
+    client = from_config(config)
+    assert client["sequence"].read().shape == (10, 100, 101)

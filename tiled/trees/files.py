@@ -237,6 +237,9 @@ class Tree(TreeInMemory):
                     if part not in d:
                         this_root_is_separately_managed = False
                         break
+                    if not isinstance(d[part], dict):
+                        this_root_is_separately_managed = True
+                        break
                     d = d[part]
                 else:
                     this_root_is_separately_managed = True
@@ -256,6 +259,7 @@ class Tree(TreeInMemory):
                     index,
                     subdirectory_trie,
                     subdirectory_handler,
+                    root,
                     parts,
                     subdirectory,
                     greedy,
@@ -457,6 +461,9 @@ def _process_changes(
     collision_tracker,
 ):
     ignore = set()
+    # Map adapter for a subdirectory to list of (Change, Path) pairs
+    # that it should be notified about.
+    to_notify = collections.defaultdict(list)
     for kind, entry in changes:
         path = Path(entry)
         if path in ignore:
@@ -465,12 +472,35 @@ def _process_changes(
             continue
         rel_path = path.relative_to(directory)
         parent_parts = rel_path.parent.parts
+        d = subdirectory_trie
+        subdir_parts = []
+        for part in rel_path.parts:
+            if part not in d:
+                within_separately_managed_subdir = False
+                break
+            if not isinstance(d[part], dict):
+                subdir_parts.append(part)
+                adapater = d[part]
+                within_separately_managed_subdir = True
+                break
+            d = d[part]
+            subdir_parts.append(part)
+        else:
+            adapater = d
+            assert not isinstance(d, dict)
+            within_separately_managed_subdir = True
+        if within_separately_managed_subdir:
+            to_notify[adapater].append(
+                (kind, Path(*rel_path.parts[len(subdir_parts) :]))  # noqa: E203
+            )
+            continue
         if kind == Change.added:
             if path.is_dir():
                 _new_subdir(
                     index,
                     subdirectory_trie,
                     subdirectory_handler,
+                    directory,
                     parent_parts,
                     path.name,
                     greedy,
@@ -500,6 +530,7 @@ def _process_changes(
                                     index,
                                     subdirectory_trie,
                                     subdirectory_handler,
+                                    directory,
                                     parent_parts[:i],
                                     parent_parts[i],
                                     greedy,
@@ -550,33 +581,40 @@ def _process_changes(
                     )
         elif kind == Change.modified:
             if path.is_dir():
-                # Nothing to do
-                continue
-            key = key_from_filename(path.name)
-            # Why do we need a try/except here? A reasonable question!
-            # Normally, we would learn about the file first via a Change.added
-            # or via the initial scan. Then, later, when we learn about modification
-            # we can be sure that we already know how to find a Reader for this
-            # filename. But, during that initial scan, there is a race condition
-            # where we might learn about Change.modified before we first add that file
-            # to our index. Therefore, we guard this with a try/except, knowing
-            # that this could be the first time we see this path.
-            try:
-                reader_factory = _reader_factory_for_file(
-                    readers_by_mimetype,
-                    mimetypes_by_file_ext,
-                    path,
-                )
-            except NoReaderAvailable:
-                # Ignore this file in the future.
-                # We already know that we do not know how to find a Reader
-                # for this filename.
-                ignore.add(path)
+                # Nothing to do with a "modified" directory
+                pass
             else:
-                if greedy:
-                    index[parent_parts][key] = reader_factory()
+                key = key_from_filename(path.name)
+                # Why do we need a try/except here? A reasonable question!
+                # Normally, we would learn about the file first via a Change.added
+                # or via the initial scan. Then, later, when we learn about modification
+                # we can be sure that we already know how to find a Reader for this
+                # filename. But, during that initial scan, there is a race condition
+                # where we might learn about Change.modified before we first add that file
+                # to our index. Therefore, we guard this with a try/except, knowing
+                # that this could be the first time we see this path.
+                try:
+                    reader_factory = _reader_factory_for_file(
+                        readers_by_mimetype,
+                        mimetypes_by_file_ext,
+                        path,
+                    )
+                except NoReaderAvailable:
+                    # Ignore this file in the future.
+                    # We already know that we do not know how to find a Reader
+                    # for this filename.
+                    ignore.add(path)
                 else:
-                    index[parent_parts][key] = reader_factory
+                    if greedy:
+                        index[parent_parts][key] = reader_factory()
+                    else:
+                        index[parent_parts][key] = reader_factory
+    for adapter, changes in to_notify.items():
+        print(changes)
+        if hasattr(adapter, "get_changes_callback"):
+            changes_callback = adapter.get_changes_callback()
+            if changes_callback is not None:
+                changes_callback(changes)
 
 
 def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
@@ -618,13 +656,19 @@ class NoReaderAvailable(Exception):
 
 
 def _new_subdir(
-    index, subdirectory_trie, subdirectory_handler, parent_parts, subdirectory, greedy
+    index,
+    subdirectory_trie,
+    subdirectory_handler,
+    root,
+    parent_parts,
+    subdirectory,
+    greedy,
 ):
     "make a new mapping and a corresponding tree for this subdirectory."
     # Check whether this subdirectory should be separately managed as a whole,
     # or treated as individual files.
     if subdirectory_handler is not None:
-        adapter = subdirectory_handler(Path(*parent_parts, subdirectory))
+        adapter = subdirectory_handler(Path(root, *parent_parts, subdirectory))
     else:
         adapter = None
     if adapter is None:
@@ -645,6 +689,10 @@ def _new_subdir(
                 d[part] = {}
             d = d[part]
         d[subdirectory] = adapter
+        if greedy:
+            index[parent_parts][subdirectory] = adapter
+        else:
+            index[parent_parts][subdirectory] = lambda: adapter
 
 
 COLLISION_WARNING = (

@@ -79,12 +79,12 @@ def construct_serve_tree_kwargs(
             import_path = auth_aliases.get(
                 auth_spec["authenticator"], auth_spec["authenticator"]
             )
-            authenticator_class = import_object(import_path)
+            authenticator_class = import_object(import_path, accept_live_object=True)
             authenticator = authenticator_class(**auth_spec.get("args", {}))
             auth_spec["authenticator"] = authenticator
         if access_control.get("access_policy") is not None:
             policy_import_path = access_control["access_policy"]
-            policy_class = import_object(policy_import_path)
+            policy_class = import_object(policy_import_path, accept_live_object=True)
             access_policy = policy_class(**access_control.get("args", {}))
         else:
             access_policy = None
@@ -95,7 +95,7 @@ def construct_serve_tree_kwargs(
             segments = tuple(segment for segment in item["path"].split("/") if segment)
             tree_spec = item["tree"]
             import_path = tree_aliases.get(tree_spec, tree_spec)
-            obj = import_object(import_path)
+            obj = import_object(import_path, accept_live_object=True)
             if "args" in item:
                 if not callable(obj):
                     raise ValueError(
@@ -140,7 +140,7 @@ def construct_serve_tree_kwargs(
         server_settings["allow_origins"] = config.get("allow_origins")
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
-                serializer = import_object(import_path)
+                serializer = import_object(import_path, accept_live_object=True)
                 serialization_registry.register(
                     structure_family, media_type, serializer
                 )

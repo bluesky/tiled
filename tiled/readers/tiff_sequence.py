@@ -7,6 +7,40 @@ from ..structures.array import (
 )
 
 
+def subdirectory_handler(path):
+    """
+    Sniff a subdirectory for TIFF sequences.
+    """
+    # Max fraction of files that do not look like TIFF sequence files
+    RELATIVE_THRESHOLD = 0.2
+    # Max number of files that do not look like TIFF sequence files
+    ABSOLUTE_THRESHOLD = 10
+    filepaths = []
+    outliers = 0
+    for filepath in path.iterdir():
+        if not filepath.is_file():
+            # Skip directories.
+            continue
+        if filepath.name.startswith("."):
+            # Skip hidden files.
+            continue
+        if (filepath.suffix in (".tif", ".tiff")) and filepath.stem[-3:].isdigit():
+            # This looks like something123.tif.
+            filepaths.append(filepath)
+            continue
+        outliers += 1
+
+    fraction = outliers / (outliers + len(filepaths))
+    if (outliers <= ABSOLUTE_THRESHOLD) and (fraction <= RELATIVE_THRESHOLD):
+        # This looks like a TIFF sequence directory.
+        import tifffile
+
+        seq = tifffile.TiffSequence(filepaths)
+        return TiffSequenceReader(seq)
+
+    return None
+
+
 class TiffSequenceReader:
 
     structure_family = "array"

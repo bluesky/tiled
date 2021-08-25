@@ -8,7 +8,8 @@ import tifffile
 
 from ..client import from_config
 from ..examples.generate_files import generate_files, df1, data
-from ..trees.files import POLL_INTERVAL, strip_suffixes
+from ..readers.array import ArrayAdapter
+from ..trees.files import Change, POLL_INTERVAL, strip_suffixes
 
 
 @pytest.fixture
@@ -232,7 +233,7 @@ def test_same_filename_separate_directory(tmpdir):
             {
                 "tree": "files",
                 "path": "/",
-                "args": {"directory": str(tmpdir)},
+                "args": {"directory": tmpdir},
             },
         ],
     }
@@ -241,15 +242,22 @@ def test_same_filename_separate_directory(tmpdir):
     assert "a" in client["two"]
 
 
-def example_subdirectory_handler(path):
-    def dummy_adapter(path):
-        pass
-
-    if "separately_managed" == path.name:
-        return dummy_adapter
-
-
 def test_subdirectory_handler(tmpdir):
+
+    changes = []  # accumulate (kind, path) changes
+
+    def get_changes_callback():
+        return changes.append
+
+    def example_subdirectory_handler(path):
+
+        if "separately_managed" == path.name:
+            # In this dummy example, ignore the files in this directory
+            # and just return a constant array.
+            dummy = ArrayAdapter.from_array(data)
+            dummy.get_changes_callback = get_changes_callback
+            return dummy
+
     Path(tmpdir, "separately_managed").mkdir()
     Path(tmpdir, "individual_files").mkdir()
     df1.to_csv(Path(tmpdir, "individual_files", "a.csv"))
@@ -262,8 +270,8 @@ def test_subdirectory_handler(tmpdir):
                 "tree": "files",
                 "path": "/",
                 "args": {
-                    "directory": str(tmpdir),
-                    "subdirectory_handler": f"{__name__}:example_subdirectory_handler",
+                    "directory": tmpdir,
+                    "subdirectory_handler": example_subdirectory_handler,
                 },
             },
         ],
@@ -272,4 +280,33 @@ def test_subdirectory_handler(tmpdir):
     client["individual_files"]
     client["individual_files"]["a"]
     client["individual_files"]["b"]
-    assert "a" not in client["separately_managed"]
+    arr = client["separately_managed"].read()
+    assert isinstance(arr, numpy.ndarray)
+
+    df1.to_csv(Path(tmpdir, "individual_files", "c.csv"))
+    time.sleep(POLL_INTERVAL * 2)
+    assert "c" in client["individual_files"]
+
+    # Adding, changing, or, removing files should notify the handler.
+    df1.to_csv(Path(tmpdir, "separately_managed", "c.csv"))  # added
+    df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))  # modified
+    time.sleep(POLL_INTERVAL * 2)
+
+    Path(tmpdir, "separately_managed", "c.csv").unlink()  # removed
+    # Add a new file in a new subdirectory.
+    Path(tmpdir, "separately_managed", "new_subdir").mkdir()
+    df1.to_csv(Path(tmpdir, "separately_managed", "new_subdir", "d.csv"))
+    time.sleep(POLL_INTERVAL * 2)
+
+    expected_first_batch = [
+        (Change.added, Path("c.csv")),
+        (Change.modified, Path("a.csv")),
+    ]
+    expected_second_batch = [
+        (Change.deleted, Path("c.csv")),
+        (Change.added, Path("new_subdir", "d.csv")),
+    ]
+    # First batch of changes reported
+    assert set(changes[0]) == set(expected_first_batch)
+    # Second batch of changes reported
+    assert set(changes[1]) == set(expected_second_batch)
