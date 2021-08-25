@@ -280,10 +280,7 @@ def construct_entries_response(
                 if isinstance(query, KeyLookup):
                     key_lookups.append(query.key)
                     continue
-                try:
-                    tree = tree.search(query)
-                except Exception:
-                    breakpoint()
+                tree = tree.search(query)
             except QueryValueError as err:
                 raise HTTPException(status_code=400, detail=err.args[0])
     if key_lookups:
