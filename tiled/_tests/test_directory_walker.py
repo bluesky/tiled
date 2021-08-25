@@ -79,7 +79,7 @@ def test_item_added(example_data_dir):
     df1.to_csv(p)
 
     # Wait for worker thread to discover changes.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     assert "added_file_top_level" in client
     assert "added_file_in_subdir" in client["more"]
@@ -111,7 +111,7 @@ def test_item_removed(example_data_dir):
     Path(example_data_dir, "more", "d.tif").unlink()
 
     # Wait for worker thread to discover changes.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     assert "c" not in client
     assert "even_more" not in client
@@ -145,7 +145,7 @@ def test_collision_at_startup(example_data_dir):
     p.unlink()
 
     # Wait for worker thread to discover changes.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     assert "a" in client
 
@@ -170,14 +170,14 @@ def test_collision_after_startup(example_data_dir):
     p = Path(example_data_dir, "a.tiff")
     with pytest.warns(UserWarning):
         tifffile.imsave(str(p), data)
-        time.sleep(POLL_INTERVAL * 2)
+        time.sleep(POLL_INTERVAL * 4)
 
     assert "a" not in client
 
     # Resolve the collision.
     p.unlink()
 
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
     assert "a" in client
 
 
@@ -202,14 +202,14 @@ def test_remove_and_re_add(example_data_dir):
     p.unlink()
 
     # Confirm it is gone.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
     assert "a" not in client
 
     # Add it back.
     tifffile.imsave(str(p), data)
 
     # Confirm it is back (no spurious collision).
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
     assert "a" in client
 
 
@@ -284,19 +284,19 @@ def test_subdirectory_handler(tmpdir):
     assert isinstance(arr, numpy.ndarray)
 
     df1.to_csv(Path(tmpdir, "individual_files", "c.csv"))
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
     assert "c" in client["individual_files"]
 
     # Adding, changing, or, removing files should notify the handler.
     df1.to_csv(Path(tmpdir, "separately_managed", "c.csv"))  # added
     df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))  # modified
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     Path(tmpdir, "separately_managed", "c.csv").unlink()  # removed
     # Add a new file in a new subdirectory.
     Path(tmpdir, "separately_managed", "new_subdir").mkdir()
     df1.to_csv(Path(tmpdir, "separately_managed", "new_subdir", "d.csv"))
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     expected_first_batch = [
         (Change.added, Path("c.csv")),
