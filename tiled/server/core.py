@@ -24,10 +24,11 @@ from . import models
 from .authentication import get_current_user
 from ..utils import modules_available
 from ..query_registration import query_registry as default_query_registry
-from ..queries import QueryValueError
+from ..queries import KeyLookup, QueryValueError
 from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
+from ..trees.in_memory import Tree as TreeInMemory
 
 
 # These modules are not directly used, but they register things on import.
@@ -252,6 +253,7 @@ def construct_entries_response(
             )
         tree = tree.sort(sorting)
     # Apply the queries and obtain a narrowed tree.
+    key_lookups = []
     for query_name, parameters_dict_of_lists in queries.items():
         for i in itertools.count(0):
             try:
@@ -272,9 +274,28 @@ def construct_entries_response(
                     ]
             try:
                 query = query_class(**parameters)
-                tree = tree.search(query)
+                # Special case: Do key-lookups at the end after all other filtering.
+                # We do not require trees to implement this query; we implement it
+                # directly here by just calling __getitem__.
+                if isinstance(query, KeyLookup):
+                    key_lookups.append(query.key)
+                    continue
+                try:
+                    tree = tree.search(query)
+                except Exception:
+                    breakpoint()
             except QueryValueError as err:
                 raise HTTPException(status_code=400, detail=err.args[0])
+    if key_lookups:
+        # Duplicates are technically legal because *any* query can be given
+        # with multiple parameters.
+        unique_key_lookups = set(key_lookups)
+        (key_lookup), *others = unique_key_lookups
+        if others:
+            # Two non-equal KeyLookup queries must return no results.
+            tree = TreeInMemory({})
+        else:
+            tree = TreeInMemory({key_lookup: tree[key_lookup]})
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []

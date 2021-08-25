@@ -25,6 +25,10 @@ class KeyLookup:
     This is necessary to support item lookup within search results, as in:
 
     >>> tree.search(...)["..."]
+
+    The server handles this directly and generically, simply calling __getitem__
+    on the tree after apply all other queries.  Implementations of search(...)
+    do not need to handle it.
     """
 
     key: str
