@@ -61,6 +61,8 @@ class Tree(TreeInMemory):
     __slots__ = (
         "_watcher_thread_kill_switch",
         "_index",
+        "_subdirectory_trie",
+        "_subdirectory_handler",
         "_directory",
         "_manual_trigger",
     )
@@ -110,6 +112,7 @@ class Tree(TreeInMemory):
         ignore_re_files=None,
         readers_by_mimetype=None,
         mimetypes_by_file_ext=None,
+        subdirectory_handler=None,
         key_from_filename=strip_suffixes,
         metadata=None,
         access_policy=None,
@@ -131,6 +134,8 @@ class Tree(TreeInMemory):
             Map a mimetype to a Reader suitable for that mimetype
         mimetypes_by_file_ext : dict, optional
             Map a file extension (e.g. '.tif') to a mimetype (e.g. 'image/tiff')
+        subdirectory_handler : callable, optional
+            Given a (relative) filepath to a direj
         key_from_filename : callable[str] -> str,
             Given a filename, return the key for the item that will represent it.
             By default, this strips off the suffixes, so "a.tif" -> "a".
@@ -162,6 +167,8 @@ class Tree(TreeInMemory):
                 readers_by_mimetype[key] = import_object(value)
         if isinstance(key_from_filename, str):
             key_from_filename = import_object(key_from_filename)
+        if isinstance(subdirectory_handler, str):
+            subdirectory_handler = import_object(subdirectory_handler)
         # User-provided readers take precedence over defaults.
         merged_readers_by_mimetype = collections.ChainMap(
             readers_by_mimetype, cls.DEFAULT_READERS_BY_MIMETYPE
@@ -179,6 +186,9 @@ class Tree(TreeInMemory):
         index = {(): {}}
         # Map key to set of filepaths that map to that key.
         collision_tracker = collections.defaultdict(set)
+        # This is a trie for efficiently checking of a given subdirectory is
+        # claimed by a subdirectory_handler.
+        subdirectory_trie = {}
         # 1. Start watching directory for changes and accumulating a queue of them.
         # 2. Do an initial scan of the files in the directory.
         # 3. When the initial scan completes, start processing changes. This
@@ -194,6 +204,8 @@ class Tree(TreeInMemory):
                 ignore_re_files,
                 ignore_re_dirs,
                 index,
+                subdirectory_trie,
+                subdirectory_handler,
                 merged_readers_by_mimetype,
                 merged_mimetypes_by_file_ext,
                 key_from_filename,
@@ -217,6 +229,20 @@ class Tree(TreeInMemory):
         )
         for root, subdirectories, files in os.walk(directory, topdown=True):
             parts = Path(root).relative_to(directory).parts
+            # Skip this root if it corresponds to a directory managed by a handler.
+            # TODO Let the top-level directory be managed by a handler?
+            if parts:
+                d = subdirectory_trie
+                for part in parts:
+                    if part not in d:
+                        this_root_is_separately_managed = False
+                        break
+                    d = d[part]
+                else:
+                    this_root_is_separately_managed = True
+                if this_root_is_separately_managed:
+                    continue
+
             # Account for ignore_re_dirs and update which subdirectories we will traverse.
             valid_subdirectories = []
             for d in subdirectories:
@@ -226,7 +252,14 @@ class Tree(TreeInMemory):
                     valid_subdirectories.append(d)
             subdirectories[:] = valid_subdirectories
             for subdirectory in subdirectories:
-                _new_subdir(index, parts, subdirectory, greedy)
+                _new_subdir(
+                    index,
+                    subdirectory_trie,
+                    subdirectory_handler,
+                    parts,
+                    subdirectory,
+                    greedy,
+                )
             # Account for ignore_re_files and update which files we will traverse.
             valid_files = []
             for f in files:
@@ -276,6 +309,8 @@ class Tree(TreeInMemory):
             mapping,
             directory=directory,
             index=index,
+            subdirectory_trie=subdirectory_trie,
+            subdirectory_handler=subdirectory_handler,
             watcher_thread_kill_switch=watcher_thread_kill_switch,
             manual_trigger=manual_trigger,
             metadata=metadata,
@@ -292,6 +327,8 @@ class Tree(TreeInMemory):
         mapping,
         directory,
         index,
+        subdirectory_trie,
+        subdirectory_handler,
         watcher_thread_kill_switch,
         manual_trigger,
         metadata,
@@ -308,6 +345,8 @@ class Tree(TreeInMemory):
         self._index = index
         self._watcher_thread_kill_switch = watcher_thread_kill_switch
         self._manual_trigger = manual_trigger
+        self._subdirectory_trie = subdirectory_trie
+        self._subdirectory_handler = subdirectory_handler
 
     def update_now(self):
         "Force an update and block until it completes."
@@ -328,6 +367,8 @@ class Tree(TreeInMemory):
             manual_trigger=self._manual_trigger,
             directory=self._directory,
             index=self._index,
+            subdirectory_trie=self._subdirectory_trie,
+            subdirectory_handler=self._subdirectory_handler,
             **kwargs,
         )
 
@@ -342,6 +383,8 @@ def _watch(
     ignore_re_files,
     ignore_re_dirs,
     index,
+    subdirectory_trie,
+    subdirectory_handler,
     readers_by_mimetype,
     mimetypes_by_file_ext,
     key_from_filename,
@@ -370,6 +413,8 @@ def _watch(
                     mimetypes_by_file_ext,
                     key_from_filename,
                     index,
+                    subdirectory_trie,
+                    subdirectory_handler,
                     greedy,
                     collision_tracker,
                 )
@@ -381,6 +426,8 @@ def _watch(
                 mimetypes_by_file_ext,
                 key_from_filename,
                 index,
+                subdirectory_trie,
+                subdirectory_handler,
                 greedy,
                 collision_tracker,
             )
@@ -404,6 +451,8 @@ def _process_changes(
     mimetypes_by_file_ext,
     key_from_filename,
     index,
+    subdirectory_trie,
+    subdirectory_handler,
     greedy,
     collision_tracker,
 ):
@@ -418,7 +467,14 @@ def _process_changes(
         parent_parts = rel_path.parent.parts
         if kind == Change.added:
             if path.is_dir():
-                _new_subdir(index, parent_parts, path.name, greedy)
+                _new_subdir(
+                    index,
+                    subdirectory_trie,
+                    subdirectory_handler,
+                    parent_parts,
+                    path.name,
+                    greedy,
+                )
             else:
                 key = key_from_filename(path.name)
                 if collision_tracker.get((*parent_parts, key), False):
@@ -441,7 +497,12 @@ def _process_changes(
                         for i in range(len(parent_parts)):
                             if parent_parts[: 1 + i] not in index:
                                 _new_subdir(
-                                    index, parent_parts[:i], parent_parts[i], greedy
+                                    index,
+                                    subdirectory_trie,
+                                    subdirectory_handler,
+                                    parent_parts[:i],
+                                    parent_parts[i],
+                                    greedy,
                                 )
                     try:
                         reader_factory = _reader_factory_for_file(
@@ -482,6 +543,8 @@ def _process_changes(
                         mimetypes_by_file_ext,
                         key_from_filename,
                         index,
+                        subdirectory_trie,
+                        subdirectory_handler,
                         greedy,
                         collision_tracker,
                     )
@@ -554,16 +617,34 @@ class NoReaderAvailable(Exception):
     pass
 
 
-def _new_subdir(index, parent_parts, subdirectory, greedy):
+def _new_subdir(
+    index, subdirectory_trie, subdirectory_handler, parent_parts, subdirectory, greedy
+):
     "make a new mapping and a corresponding tree for this subdirectory."
-    mapping = {}
-    index[parent_parts + (subdirectory,)] = mapping
-    if greedy:
-        index[parent_parts][subdirectory] = TreeInMemory(mapping)
+    # Check whether this subdirectory should be separately managed as a whole,
+    # or treated as individual files.
+    if subdirectory_handler is not None:
+        adapter = subdirectory_handler(Path(*parent_parts, subdirectory))
     else:
-        index[parent_parts][subdirectory] = functools.partial(
-            TreeInMemory, CachingMap(mapping)
-        )
+        adapter = None
+    if adapter is None:
+        # Process the files in this directory individually.
+        mapping = {}
+        index[parent_parts + (subdirectory,)] = mapping
+        if greedy:
+            index[parent_parts][subdirectory] = TreeInMemory(mapping)
+        else:
+            index[parent_parts][subdirectory] = functools.partial(
+                TreeInMemory, CachingMap(mapping)
+            )
+    else:
+        # Hand off management of this directory to the handler.
+        d = subdirectory_trie
+        for part in parent_parts:
+            if part not in d:
+                d[part] = {}
+            d = d[part]
+        d[subdirectory] = adapter
 
 
 COLLISION_WARNING = (

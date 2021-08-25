@@ -219,3 +219,57 @@ def test_remove_and_re_add(example_data_dir):
 def test_strip_suffixes(filename, expected):
     actual = strip_suffixes(filename)
     assert actual == expected
+
+
+def test_same_filename_separate_directory(tmpdir):
+    "Two files with the same name in separate directories should not collide."
+    Path(tmpdir, "one").mkdir()
+    Path(tmpdir, "two").mkdir()
+    df1.to_csv(Path(tmpdir, "one", "a.csv"))
+    df1.to_csv(Path(tmpdir, "two", "a.csv"))
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {"directory": str(tmpdir)},
+            },
+        ],
+    }
+    client = from_config(config)
+    assert "a" in client["one"]
+    assert "a" in client["two"]
+
+
+def example_subdirectory_handler(path):
+    def dummy_adapter(path):
+        pass
+
+    if "separately_managed" == path.name:
+        return dummy_adapter
+
+
+def test_subdirectory_handler(tmpdir):
+    Path(tmpdir, "separately_managed").mkdir()
+    Path(tmpdir, "individual_files").mkdir()
+    df1.to_csv(Path(tmpdir, "individual_files", "a.csv"))
+    df1.to_csv(Path(tmpdir, "individual_files", "b.csv"))
+    df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))
+    df1.to_csv(Path(tmpdir, "separately_managed", "b.csv"))
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {
+                    "directory": str(tmpdir),
+                    "subdirectory_handler": f"{__name__}:example_subdirectory_handler",
+                },
+            },
+        ],
+    }
+    client = from_config(config)
+    client["individual_files"]
+    client["individual_files"]["a"]
+    client["individual_files"]["b"]
+    assert "a" not in client["separately_managed"]
