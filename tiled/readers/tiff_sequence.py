@@ -35,7 +35,7 @@ def subdirectory_handler(path):
         # This looks like a TIFF sequence directory.
         import tifffile
 
-        seq = tifffile.TiffSequence(filepaths)
+        seq = tifffile.TiffSequence(sorted(filepaths))
         return TiffSequenceReader(seq)
 
     return None
