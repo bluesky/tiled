@@ -8,7 +8,8 @@ import tifffile
 
 from ..client import from_config
 from ..examples.generate_files import generate_files, df1, data
-from ..trees.files import POLL_INTERVAL, strip_suffixes
+from ..readers.array import ArrayAdapter
+from ..trees.files import Change, POLL_INTERVAL, strip_suffixes
 
 
 @pytest.fixture
@@ -78,7 +79,7 @@ def test_item_added(example_data_dir):
     df1.to_csv(p)
 
     # Wait for worker thread to discover changes.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     assert "added_file_top_level" in client
     assert "added_file_in_subdir" in client["more"]
@@ -110,7 +111,7 @@ def test_item_removed(example_data_dir):
     Path(example_data_dir, "more", "d.tif").unlink()
 
     # Wait for worker thread to discover changes.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     assert "c" not in client
     assert "even_more" not in client
@@ -144,7 +145,7 @@ def test_collision_at_startup(example_data_dir):
     p.unlink()
 
     # Wait for worker thread to discover changes.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
 
     assert "a" in client
 
@@ -169,14 +170,14 @@ def test_collision_after_startup(example_data_dir):
     p = Path(example_data_dir, "a.tiff")
     with pytest.warns(UserWarning):
         tifffile.imsave(str(p), data)
-        time.sleep(POLL_INTERVAL * 2)
+        time.sleep(POLL_INTERVAL * 4)
 
     assert "a" not in client
 
     # Resolve the collision.
     p.unlink()
 
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
     assert "a" in client
 
 
@@ -201,14 +202,14 @@ def test_remove_and_re_add(example_data_dir):
     p.unlink()
 
     # Confirm it is gone.
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
     assert "a" not in client
 
     # Add it back.
     tifffile.imsave(str(p), data)
 
     # Confirm it is back (no spurious collision).
-    time.sleep(POLL_INTERVAL * 2)
+    time.sleep(POLL_INTERVAL * 4)
     assert "a" in client
 
 
@@ -219,3 +220,93 @@ def test_remove_and_re_add(example_data_dir):
 def test_strip_suffixes(filename, expected):
     actual = strip_suffixes(filename)
     assert actual == expected
+
+
+def test_same_filename_separate_directory(tmpdir):
+    "Two files with the same name in separate directories should not collide."
+    Path(tmpdir, "one").mkdir()
+    Path(tmpdir, "two").mkdir()
+    df1.to_csv(Path(tmpdir, "one", "a.csv"))
+    df1.to_csv(Path(tmpdir, "two", "a.csv"))
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {"directory": tmpdir},
+            },
+        ],
+    }
+    client = from_config(config)
+    assert "a" in client["one"]
+    assert "a" in client["two"]
+
+
+def test_subdirectory_handler(tmpdir):
+
+    changes = []  # accumulate (kind, path) changes
+
+    def get_changes_callback():
+        return changes.append
+
+    def example_subdirectory_handler(path):
+
+        if "separately_managed" == path.name:
+            # In this dummy example, ignore the files in this directory
+            # and just return a constant array.
+            dummy = ArrayAdapter.from_array(data)
+            dummy.get_changes_callback = get_changes_callback
+            return dummy
+
+    Path(tmpdir, "separately_managed").mkdir()
+    Path(tmpdir, "individual_files").mkdir()
+    df1.to_csv(Path(tmpdir, "individual_files", "a.csv"))
+    df1.to_csv(Path(tmpdir, "individual_files", "b.csv"))
+    df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))
+    df1.to_csv(Path(tmpdir, "separately_managed", "b.csv"))
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {
+                    "directory": tmpdir,
+                    "subdirectory_handler": example_subdirectory_handler,
+                },
+            },
+        ],
+    }
+    client = from_config(config)
+    client["individual_files"]
+    client["individual_files"]["a"]
+    client["individual_files"]["b"]
+    arr = client["separately_managed"].read()
+    assert isinstance(arr, numpy.ndarray)
+
+    df1.to_csv(Path(tmpdir, "individual_files", "c.csv"))
+    time.sleep(POLL_INTERVAL * 4)
+    assert "c" in client["individual_files"]
+
+    # Adding, changing, or, removing files should notify the handler.
+    df1.to_csv(Path(tmpdir, "separately_managed", "c.csv"))  # added
+    df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))  # modified
+    time.sleep(POLL_INTERVAL * 4)
+
+    Path(tmpdir, "separately_managed", "c.csv").unlink()  # removed
+    # Add a new file in a new subdirectory.
+    Path(tmpdir, "separately_managed", "new_subdir").mkdir()
+    df1.to_csv(Path(tmpdir, "separately_managed", "new_subdir", "d.csv"))
+    time.sleep(POLL_INTERVAL * 4)
+
+    expected_first_batch = [
+        (Change.added, Path("c.csv")),
+        (Change.modified, Path("a.csv")),
+    ]
+    expected_second_batch = [
+        (Change.deleted, Path("c.csv")),
+        (Change.added, Path("new_subdir", "d.csv")),
+    ]
+    # First batch of changes reported
+    assert set(changes[0]) == set(expected_first_batch)
+    # Second batch of changes reported
+    assert set(changes[1]) == set(expected_second_batch)

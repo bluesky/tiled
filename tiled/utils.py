@@ -294,7 +294,11 @@ class Sentinel:
         return f"<{self.name}>"
 
 
-def import_object(colon_separated_string):
+def import_object(colon_separated_string, accept_live_object=False):
+    if not isinstance(colon_separated_string, str):
+        # We have been handed the live object itself.
+        # Nothing to import. Pass it through.
+        return colon_separated_string
     MESSAGE = (
         "Expected string formatted like:\n\n"
         "    package_name.module_name:object_name\n\n"
