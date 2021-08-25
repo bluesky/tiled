@@ -32,6 +32,7 @@ explanations/structures
 explanations/security
 explanations/compression
 explanations/access-control
+explanations/scaling-down
 explanations/faq
 explanations/lineage
 ```
