@@ -243,12 +243,12 @@ class Tree(TreeInMemory):
                 # Add items to the mapping for this root directory.
                 key = key_from_filename(filename)
                 filepath = Path(*parts, filename)
-                if key in collision_tracker:
+                if (*parts, key) in collision_tracker:
                     # There is already a filepath that maps to this key!
                     warnings.warn(
                         COLLISION_WARNING.format(
                             filepath=filepath,
-                            existing=[str(p) for p in collision_tracker[key]],
+                            existing=[str(p) for p in collision_tracker[(*parts, key)]],
                             key=key,
                         )
                     )
@@ -267,7 +267,7 @@ class Tree(TreeInMemory):
                             index[parts][key] = reader_factory()
                         else:
                             index[parts][key] = reader_factory
-                collision_tracker[key].add(filepath)
+                collision_tracker[(*parts, key)].add(filepath)
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
         initial_scan_complete.append(object())
@@ -421,13 +421,15 @@ def _process_changes(
                 _new_subdir(index, parent_parts, path.name, greedy)
             else:
                 key = key_from_filename(path.name)
-                if collision_tracker.get(key, False):
+                if collision_tracker.get((*parent_parts, key), False):
                     # The collision tracker contains a nonempty set.
                     # There is already a filepath that maps to this key!
                     warnings.warn(
                         COLLISION_WARNING.format(
                             filepath=rel_path,
-                            existing=[str(p) for p in collision_tracker[key]],
+                            existing=[
+                                str(p) for p in collision_tracker[(*parent_parts, key)]
+                            ],
                             key=key,
                         )
                     )
@@ -457,19 +459,21 @@ def _process_changes(
                             index[parent_parts][key] = reader_factory()
                         else:
                             index[parent_parts][key] = reader_factory
-                    collision_tracker[key].add(rel_path)
+                    collision_tracker[(*parent_parts, key)].add(rel_path)
         elif kind == Change.deleted:
             if path.is_dir():
                 index.pop(parent_parts, None)
             else:
                 key = key_from_filename(path.name)
                 index[parent_parts].pop(key, None)
-                collision_tracker[key].discard(rel_path)
-                if len(collision_tracker[key]) == 1:
+                collision_tracker[(*parent_parts, key)].discard(rel_path)
+                if len(collision_tracker[(*parent_parts, key)]) == 1:
                     # A key collision was resolved by the removal (or renaming)
                     # of a conflicting file.
-                    (rel_path_with_newly_unique_key,) = collision_tracker[key]
-                    collision_tracker[key].clear()
+                    (rel_path_with_newly_unique_key,) = collision_tracker[
+                        (*parent_parts, key)
+                    ]
+                    collision_tracker[(*parent_parts, key)].clear()
                     # Process the remaining file which now has a key that is unique.
                     _process_changes(
                         [(Change.added, directory / rel_path_with_newly_unique_key)],
