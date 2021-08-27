@@ -2,7 +2,7 @@ import collections.abc
 import itertools
 
 from ..query_registration import QueryTranslationRegistry
-from ..queries import FullText, KeyLookup
+from ..queries import FullText
 from ..utils import (
     DictView,
     import_object,
@@ -218,16 +218,7 @@ def full_text_search(query, tree):
     return tree.new_variation(mapping=matches)
 
 
-def key_lookup(query, tree):
-    try:
-        matches = {query.key: tree[query.key]}
-    except KeyError:
-        matches = {}
-    return tree.new_variation(mapping=matches)
-
-
 Tree.register_query(FullText, full_text_search)
-Tree.register_query(KeyLookup, key_lookup)
 
 
 class DummyAccessPolicy:

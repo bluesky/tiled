@@ -8,8 +8,6 @@ import numpy
 from .array import ArrayAdapter
 from ..utils import DictView
 from ..trees.utils import tree_repr, IndexersMixin
-from ..trees.in_memory import Tree as TreeInMemory
-from ..queries import KeyLookup
 
 
 class HDF5DatasetAdapter(ArrayAdapter):
@@ -126,10 +124,7 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
         """
         Return a Tree with a subset of the mapping.
         """
-        if isinstance(query, KeyLookup):
-            return TreeInMemory({query.key: self[query.key]})
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     # The following three methods are used by IndexersMixin
     # to define keys_indexer, items_indexer, and values_indexer.

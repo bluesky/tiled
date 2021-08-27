@@ -1,4 +1,5 @@
 import string
+import warnings
 
 import numpy
 import pytest
@@ -52,7 +53,10 @@ def test_scalar_dtypes(kind):
 
 def test_shape_with_zero():
     expected = numpy.array([]).reshape((0, 100, 1, 10))
-    tree = Tree({"test": ArrayAdapter.from_array(expected)})
+    # Suppress RuntimeWarning: divide by zero encountered in true_divide
+    # from dask.array.core.
+    with warnings.catch_warnings():
+        tree = Tree({"test": ArrayAdapter.from_array(expected)})
     client = from_tree(tree)
     actual = client["test"].read()
     assert numpy.array_equal(actual, expected)
