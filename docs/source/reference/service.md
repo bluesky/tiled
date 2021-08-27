@@ -180,3 +180,26 @@ structures.
    tiled.server.app.serve_tree
    tiled.server.app.get_app
 ```
+
+## Internal Cache
+
+The "internal" cache is available to all Adapters to cache their internal
+resources, such as parsed file contents. It is a process-global singleton.
+It implements a simple `__getitem__` / `__setitem__` interface. It imposes
+a global limit.
+
+Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
+
+Adapters that use the cache _should_ use a cache key that begins with
+`{class.__module__}:{class.__qualname__}` to avoid collisions with other
+Adapters. See `tiled.readers.dataframe.DataFrameAdapter.read_csv` for an
+example.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.server.internal_cache.get_internal_cache
+   tiled.server.internal_cache.set_internal_cache
+   tiled.server.internal_cache.CacheInProcessMemory
+```

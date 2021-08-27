@@ -253,6 +253,21 @@ properties:
         additionalProperties: true
     description: |
       This section describes which users can see which entries.
+  internal_cache:
+    properties:
+      available_bytes:
+        type: integer
+        description: |
+          Maximum bytes allowed for this cache. Default is 1_000_000 (1 GB).
+          Set to 0 to disable this cache.
+      log_level:
+        type: "string"
+        enum: ["critical", "error", "warning", "info", "debug"]
+        description: |
+          Set to "info" or "debug" level to log cache hits, misses, and stores.
+    description: |
+      An the internal cache in process memory, shared by individual Adapters to
+      cache the their internal resources such as the contents of parsed files.
   allow_origins:
     type: array
     items:

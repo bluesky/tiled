@@ -55,6 +55,10 @@ class AsyncClientBridge:
     def __getattr__(self, key):
         return getattr(self._client, key)
 
+    @property
+    def readiness_event(self):
+        return self._instance_state_setup_complete
+
     def _worker(self, client_kwargs):
 
         self._client = httpx.AsyncClient(**client_kwargs)

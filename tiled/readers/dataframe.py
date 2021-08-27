@@ -1,7 +1,9 @@
+import dask.base
 import dask.dataframe
 
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
+from ..server.internal_cache import get_internal_cache
 
 
 class DataFrameAdapter:
@@ -31,6 +33,23 @@ class DataFrameAdapter:
         self._data = data
 
     @classmethod
+    def read_csv_no_cache(cls, *args, metadata=None, **kwargs):
+        """
+        Read a CSV and out opt of the internal (in-process) cache.
+
+        Internally, this uses dask.dataframe.read_csv.
+        It forward all parameters to that function. See
+        https://docs.dask.org/en/latest/dataframe-api.html#dask.dataframe.read_csv
+
+        Examples
+        --------
+
+        >>> DataFrameAdapter.read_csv("myfiles.*.csv")
+        >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
+        """
+        return cls(dask.dataframe.read_csv(*args, **kwargs), metadata=metadata)
+
+    @classmethod
     def read_csv(cls, *args, metadata=None, **kwargs):
         """
         Read a CSV.
@@ -45,7 +64,30 @@ class DataFrameAdapter:
         >>> DataFrameAdapter.read_csv("myfiles.*.csv")
         >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
         """
-        return cls(dask.dataframe.read_csv(*args, **kwargs), metadata=metadata)
+        cache = get_internal_cache()
+        if cache is None:
+            return cls(dask.dataframe.read_csv(*args, **kwargs), metadata=metadata)
+        else:
+            cache_key = f"{cls.__module__}:{cls.__qualname__} {dask.base.tokenize((args, kwargs))}"
+            try:
+                df = cache[cache_key]
+            except KeyError:
+                ddf = dask.dataframe.read_csv(*args, **kwargs)
+                # A dask.dataframe does not know its byte size, so we use npartitions == 1
+                # as a proxy for "small enough to cache".
+                if ddf.npartitions == 1:
+                    # Read the data now and cache it.
+                    df = ddf.compute()
+                    cache[cache_key] = df
+                    # Wrap the in-memory dataframe in dask for type stability.
+                    return cls.from_pandas(df, npartitions=1, metadata=metadata)
+                else:
+                    # This is too large to cache. Defer reading the data.
+                    return cls(ddf, metadata=metadata)
+            else:
+                # Return the cached result.
+                # Wrap the in-memory dataframe in dask for type stability.
+                return cls.from_pandas(df, npartitions=1, metadata=metadata)
 
     @classmethod
     def from_pandas(cls, *args, metadata=None, **kwargs):

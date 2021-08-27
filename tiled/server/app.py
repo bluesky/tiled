@@ -24,6 +24,11 @@ from .core import (
     get_serialization_registry,
     PatchedStreamingResponse,
 )
+from .internal_cache import (
+    CacheInProcessMemory,
+    logger as internal_cache_logger,
+    set_internal_cache,
+)
 from .router import declare_search_router, router
 from .settings import get_settings
 from ..media_type_registration import (
@@ -61,9 +66,8 @@ def get_app(query_registry, compression_registry, include_routers=None):
     @app.on_event("startup")
     async def startup_event():
         # Validate the single-user API key.
-        single_user_api_key = app.dependency_overrides[
-            get_settings
-        ]().single_user_api_key
+        settings = app.dependency_overrides[get_settings]()
+        single_user_api_key = settings.single_user_api_key
         if single_user_api_key is not None:
             if not single_user_api_key.isalnum():
                 raise ValueError(
@@ -86,9 +90,16 @@ def get_app(query_registry, compression_registry, include_routers=None):
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
         app.include_router(declare_search_router(query_registry))
-        app.state.allow_origins.extend(
-            app.dependency_overrides[get_settings]().allow_origins
-        )
+
+        app.state.allow_origins.extend(settings.allow_origins)
+
+        if settings.internal_cache_available_bytes == 0:
+            set_internal_cache(None)
+        else:
+            set_internal_cache(
+                CacheInProcessMemory(settings.internal_cache_available_bytes)
+            )
+        internal_cache_logger.setLevel(settings.internal_cache_log_level.upper())
 
     app.add_middleware(
         CompressionMiddleware,
@@ -249,6 +260,15 @@ def serve_tree(
         for item in ["allow_origins"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
+        internal_cache_available_bytes = server_settings.get("internal_cache", {}).get(
+            "available_bytes"
+        )
+        if internal_cache_available_bytes is not None:
+            setattr(
+                settings,
+                "internal_cache_available_bytes",
+                internal_cache_available_bytes,
+            )
         return settings
 
     # The Tree and Authenticator have the opportunity to add custom routes to

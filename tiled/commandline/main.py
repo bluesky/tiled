@@ -160,6 +160,15 @@ def serve_directory(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    internal_cache_available_bytes: int = typer.Option(
+        1_000_000,  # 1 GB
+        "--internal-cache",
+        help=(
+            "Byte limit for the internal cache in process memory, shared by "
+            "individual Adapters to cache the their internal resources such as "
+            "the contents of parsed files. Set to 0 to disable this cache."
+        ),
+    ),
 ):
     "Serve a Tree instance from a directory of files."
     from ..trees.files import Tree
@@ -167,9 +176,14 @@ def serve_directory(
 
     tree_kwargs = {}
     if keep_ext:
-        from tiled.trees.files import identity
+        from ..trees.files import identity
 
         tree_kwargs.update({"key_from_filename": identity})
+    if internal_cache_available_bytes:
+        from ..server.internal_cache import CacheInProcessMemory, set_internal_cache
+
+        cache = CacheInProcessMemory(internal_cache_available_bytes)
+        set_internal_cache(cache)
     tree = Tree.from_directory(directory, **tree_kwargs)
     web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
     print_admin_api_key_if_generated(web_app, host=host, port=port)
