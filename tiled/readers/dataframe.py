@@ -1,3 +1,5 @@
+import time
+
 import dask.base
 import dask.dataframe
 
@@ -69,16 +71,16 @@ class DataFrameAdapter:
             return cls(dask.dataframe.read_csv(*args, **kwargs), metadata=metadata)
         else:
             cache_key = f"{cls.__module__}:{cls.__qualname__} {dask.base.tokenize((args, kwargs))}"
-            try:
-                df = cache[cache_key]
-            except KeyError:
+            df = cache.get(cache_key)
+            if df is None:
                 ddf = dask.dataframe.read_csv(*args, **kwargs)
                 # A dask.dataframe does not know its byte size, so we use npartitions == 1
                 # as a proxy for "small enough to cache".
                 if ddf.npartitions == 1:
                     # Read the data now and cache it.
+                    start_time = time.perf_counter()
                     df = ddf.compute()
-                    cache[cache_key] = df
+                    cache.put(cache_key, df, cost=time.perf_counter() - start_time)
                     # Wrap the in-memory dataframe in dask for type stability.
                     return cls.from_pandas(df, npartitions=1, metadata=metadata)
                 else:

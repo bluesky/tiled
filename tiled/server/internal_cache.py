@@ -2,6 +2,8 @@
 The 'internal' cache is available to all Adapters to cache their internal
 resources, such as parsed file contents. It is a process-global singleton.
 """
+import cachey
+
 
 if __debug__:
     import logging
@@ -32,8 +34,6 @@ def get_internal_cache():
 
 class CacheInProcessMemory:
     def __init__(self, available_bytes):
-        import cachey
-
         self.misses = 0
         self.hits = 0
 
@@ -45,18 +45,16 @@ class CacheInProcessMemory:
 
         self._cache = cachey.Cache(available_bytes, 0, miss=miss, hit=hit)
 
-    def __getitem__(self, key):
+    def get(self, key):
         value = self._cache.get(key)
-        if value is None:
-            if __debug__:
-                logger.info("Internal cache miss %r", key)
-            raise KeyError(key)
-        else:
-            if __debug__:
-                logger.info("Internal cache hit %r", key)
-            return value
-
-    def __setitem__(self, key, value):
         if __debug__:
-            logger.info("Internal cache store %r", key)
-        self._cache.put(key, value, cost=1)
+            if value is None:
+                logger.info("Internal cache miss %r", key)
+            else:
+                logger.info("Internal cache hit %r", key)
+        return value
+
+    def put(self, key, value, cost):
+        if __debug__:
+            logger.info("Internal cache store %r cost=%f.3", key, cost)
+        self._cache.put(key, value, cost)
