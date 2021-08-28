@@ -29,6 +29,7 @@ from .core import (
     json_or_msgpack,
     NoEntry,
     PatchedResponse,
+    record_timing,
     slice_,
     WrongTypeForRoute,
     UnsupportedMediaTypes,
@@ -255,10 +256,12 @@ def array_block(
                 status_code=400,
                 detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
             )
-        array = reader.read()
+        with record_timing(request.state.timings, "read"):
+            array = reader.read()
     else:
         try:
-            array = reader.read_block(block, slice=slice)
+            with record_timing(request.state.timings, "read"):
+                array = reader.read_block(block, slice=slice)
         except IndexError:
             raise HTTPException(status_code=400, detail="Block index out of range")
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -267,9 +270,10 @@ def array_block(
                 detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
             )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -298,7 +302,8 @@ def array_full(
     import numpy
 
     try:
-        array = reader.read()
+        with record_timing(request.state.timings, "read"):
+            array = reader.read()
         if slice:
             array = array[slice]
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
@@ -310,9 +315,10 @@ def array_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -337,7 +343,10 @@ def dataframe_meta(
             detail=f"Cannot read {reader.structure_family} structure with /dataframe/meta route.",
         )
     meta = reader.microstructure().meta
-    content = serialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta, {})
+    with record_timing(request.state.timings, "pack"):
+        content = serialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta, {}
+        )
     headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
         content,
@@ -371,9 +380,10 @@ def dataframe_divisions(
     # divisions is a tuple. Wrap it in a DataFrame so
     # that we can easily serialize it with Arrow in the normal way.
     divisions_wrapped_in_df = pandas.DataFrame({"divisions": list(divisions)})
-    content = serialization_registry(
-        "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_wrapped_in_df, {}
-    )
+    with record_timing(request.state.timings, "pack"):
+        content = serialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_wrapped_in_df, {}
+        )
     headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
         content,
@@ -406,16 +416,18 @@ def dataframe_partition(
     try:
         # The singular/plural mismatch here of "columns" and "column" is
         # due to the ?column=A&column=B&column=C... encodes in a URL.
-        df = reader.read_partition(partition, columns=column)
+        with record_timing(request.state.timings, "read"):
+            df = reader.read_partition(partition, columns=column)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
-        return construct_dataframe_response(
-            serialization_registry, df, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_dataframe_response(
+                serialization_registry, df, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -446,14 +458,21 @@ def dataframe_full(
     try:
         # The singular/plural mismatch here of "columns" and "column" is
         # due to the ?column=A&column=B&column=C... encodes in a URL.
-        df = reader.read(columns=column)
+        with record_timing(request.state.timings, "read"):
+            df = reader.read(columns=column)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
-        return construct_dataframe_response(
-            serialization_registry, df, reader.metadata, request.headers, format, specs
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_dataframe_response(
+                serialization_registry,
+                df,
+                reader.metadata,
+                request.headers,
+                format,
+                specs,
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -482,7 +501,8 @@ def variable_block(
         )
     try:
         # Lookup block on the `data` attribute of the Variable.
-        array = reader.read_block(block, slice=slice)
+        with record_timing(request.state.timings, "read"):
+            array = reader.read_block(block, slice=slice)
         if slice:
             array = array[slice]
     except IndexError:
@@ -493,9 +513,10 @@ def variable_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -520,16 +541,18 @@ def variable_full(
             status_code=404,
             detail=f"Cannot read {reader.structure_family} structure with /variable/full route.",
         )
-    array = reader.read()
+    with record_timing(request.state.timings, "read"):
+        array = reader.read()
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(
             status_code=400,
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -556,7 +579,8 @@ def data_array_variable_full(
             detail=f"Cannot read {reader.structure_family} structure with /data_array/variable/full route.",
         )
     # TODO Should read() accept a `coord` argument?
-    array = reader.read()
+    with record_timing(request.state.timings, "read"):
+        array = reader.read()
     if coord is not None:
         try:
             array = array.coords[coord]
@@ -571,9 +595,10 @@ def data_array_variable_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -602,7 +627,8 @@ def data_array_block(
             detail=f"Cannot read {reader.structure_family} structure with /data_array/block route.",
         )
     try:
-        array = reader.read_block(block, coord, slice=slice)
+        with record_timing(request.state.timings, "read"):
+            array = reader.read_block(block, coord, slice=slice)
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
@@ -619,9 +645,10 @@ def data_array_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -651,7 +678,8 @@ def dataset_block(
             detail=f"Cannot read {reader.structure_family} structure with /dataset/block route.",
         )
     try:
-        array = reader.read_block(variable, block, coord, slice=slice)
+        with record_timing(request.state.timings, "read"):
+            array = reader.read_block(variable, block, coord, slice=slice)
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
@@ -670,9 +698,10 @@ def dataset_block(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -700,7 +729,8 @@ def dataset_data_var_full(
             detail=f"Cannot read {reader.structure_family} structure with /dataset/data_var/full route.",
         )
     try:
-        array = reader.read_variable(variable)
+        with record_timing(request.state.timings, "read"):
+            array = reader.read_variable(variable)
     except KeyError:
         raise HTTPException(
             status_code=400,
@@ -720,9 +750,10 @@ def dataset_data_var_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -749,7 +780,8 @@ def dataset_coord_full(
             detail=f"Cannot read {reader.structure_family} structure with /dataset/coord/full route.",
         )
     try:
-        array = reader.read_variable(coord)
+        with record_timing(request.state.timings, "read"):
+            array = reader.read_variable(coord)
     except KeyError:
         raise HTTPException(
             status_code=400,
@@ -761,9 +793,10 @@ def dataset_coord_full(
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     try:
-        return construct_array_response(
-            serialization_registry, array, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_array_response(
+                serialization_registry, array, reader.metadata, request.headers, format
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
@@ -791,14 +824,20 @@ def dataset_full(
     try:
         # The singular/plural mismatch here of "variables" and "variable" is
         # due to the ?variable=A&variable=B&variable=C... encodes in a URL.
-        dataset = reader.read(variables=variable)
+        with record_timing(request.state.timings, "read"):
+            dataset = reader.read(variables=variable)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such variable {key}.")
     try:
-        return construct_dataset_response(
-            serialization_registry, dataset, reader.metadata, request.headers, format
-        )
+        with record_timing(request.state.timings, "pack"):
+            return construct_dataset_response(
+                serialization_registry,
+                dataset,
+                reader.metadata,
+                request.headers,
+                format,
+            )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 

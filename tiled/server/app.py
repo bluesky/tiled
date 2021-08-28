@@ -2,7 +2,6 @@ from functools import lru_cache, partial
 import os
 import secrets
 import sys
-import time
 import urllib.parse
 
 from fastapi import FastAPI, Request, Response
@@ -23,6 +22,7 @@ from .core import (
     get_query_registry,
     get_serialization_registry,
     PatchedStreamingResponse,
+    record_timing,
 )
 from .internal_cache import (
     CacheInProcessMemory,
@@ -115,12 +115,16 @@ def get_app(query_registry, compression_registry, include_routers=None):
         # estimate it based on request/response time, but if we add more detailed
         # information here we should keep in mind security concerns and perhaps
         # only include this for certain users.
-        # Units are ms.
-        start_time = time.perf_counter()
-        response = await call_next(request)
+        # Initialize a dict that routes and dependencies can stash timings in.
+        timings = {}
+        request.state.timings = timings
+        # Record the overall application time.
+        with record_timing(timings, "app"):
+            response = await call_next(request)
+        response.headers["Server-Timing"] = ", ".join(
+            f"{key};dur={duration:.1f}" for key, duration in timings.items()
+        )
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        process_time = time.perf_counter() - start_time
-        response.headers["Server-Timing"] = f"app;dur={1000 * process_time:.1f}"
         return response
 
     @app.middleware("http")
