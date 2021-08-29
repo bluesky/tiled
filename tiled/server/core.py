@@ -756,10 +756,10 @@ FULL_LINKS = {
 
 
 @contextlib.contextmanager
-def record_timing(timings, key):
+def record_timing(metrics, key):
     """
     Set timings[key] equal to the run time (in milliseconds) of the context body.
     """
     t0 = time.perf_counter()
     yield
-    timings[key] = 1000 * (time.perf_counter() - t0)  # Units: ms
+    metrics[key]["dur"] = 1000 * (time.perf_counter() - t0)  # Units: ms

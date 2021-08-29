@@ -1,3 +1,4 @@
+import collections
 from functools import lru_cache, partial
 import os
 import secrets
@@ -115,14 +116,16 @@ def get_app(query_registry, compression_registry, include_routers=None):
         # estimate it based on request/response time, but if we add more detailed
         # information here we should keep in mind security concerns and perhaps
         # only include this for certain users.
-        # Initialize a dict that routes and dependencies can stash timings in.
-        timings = {}
-        request.state.timings = timings
+        # Initialize a dict that routes and dependencies can stash metrics in.
+        metrics = collections.defaultdict(dict)
+        request.state.metrics = metrics
         # Record the overall application time.
-        with record_timing(timings, "app"):
+        with record_timing(metrics, "app"):
             response = await call_next(request)
         response.headers["Server-Timing"] = ", ".join(
-            f"{key};dur={duration:.1f}" for key, duration in timings.items()
+            f"{key};"
+            + ";".join(f"{metric}={value:.1f}" for metric, value in metrics_.items())
+            for key, metrics_ in metrics.items()
         )
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
