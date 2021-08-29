@@ -184,9 +184,7 @@ structures.
 ## Internal Cache
 
 The "internal" cache is available to all Adapters to cache their internal
-resources, such as parsed file contents. It is a process-global singleton.
-It implements a simple `__getitem__` / `__setitem__` interface. It imposes
-a global limit.
+resources, such as a file handled or parsed file contents. It is a process-global singleton.
 
 Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 
@@ -202,4 +200,6 @@ example.
    tiled.server.internal_cache.get_internal_cache
    tiled.server.internal_cache.set_internal_cache
    tiled.server.internal_cache.CacheInProcessMemory
+   tiled.server.internal_cache.CacheInProcessMemory.get
+   tiled.server.internal_cache.CacheInProcessMemory.put
 ```
