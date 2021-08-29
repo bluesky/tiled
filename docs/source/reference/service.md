@@ -189,7 +189,7 @@ resources, such as a file handled or parsed file contents. It is a process-globa
 Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 
 Adapters that use the cache _should_ use a cache key that begins with
-`{class.__module__}:{class.__qualname__}` to avoid collisions with other
+`{class.__module__}:{class.__qualname__}-` to avoid collisions with other
 Adapters. See `tiled.readers.dataframe.DataFrameAdapter.read_csv` for an
 example.
 

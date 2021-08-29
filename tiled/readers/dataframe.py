@@ -70,7 +70,7 @@ class DataFrameAdapter:
         if cache is None:
             return cls(dask.dataframe.read_csv(*args, **kwargs), metadata=metadata)
         else:
-            cache_key = f"{cls.__module__}:{cls.__qualname__} {dask.base.tokenize((args, kwargs))}"
+            cache_key = f"{cls.__module__}:{cls.__qualname__}-{dask.base.tokenize((args, kwargs))}"
             df = cache.get(cache_key)
             if df is None:
                 ddf = dask.dataframe.read_csv(*args, **kwargs)
