@@ -55,9 +55,8 @@ class AsyncClientBridge:
     def __getattr__(self, key):
         return getattr(self._client, key)
 
-    @property
-    def readiness_event(self):
-        return self._instance_state_setup_complete
+    def wait_until_ready(self, timeout=None):
+        return self._instance_state_setup_complete.wait(timeout=timeout)
 
     def _worker(self, client_kwargs):
 

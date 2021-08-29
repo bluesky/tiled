@@ -443,7 +443,7 @@ def context_from_tree(
     )
     # Block for application startup.
     try:
-        client.readiness_event.wait(10)
+        client.wait_until_ready(10)
     except TimeoutError:
         raise TimeoutError("Application startup has timed out.")
     # TODO How to close the httpx.AsyncClient more cleanly?
