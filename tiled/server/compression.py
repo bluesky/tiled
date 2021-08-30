@@ -41,11 +41,13 @@ class CompressionResponder:
         self.accepted = accepted
         self.compression_registry = compression_registry
         self.send: Send = unattached_send
+        self.scope: Scope = None
         self.initial_message: Message = {}
         self.started = False
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         self.send = send
+        self.scope = scope
         await self.app(scope, receive, self.send_compressed)
 
     async def send_compressed(self, message: Message) -> None:
@@ -92,13 +94,17 @@ class CompressionResponder:
                     )  # higher is better
                     THRESHOLD = 1 / 0.9
                     if compression_ratio > THRESHOLD:
-                        headers[
-                            "X-Compression-Stats"
-                        ] = f"time={1000 * compression_time:.2f},ratio={compression_ratio:.2f}"
                         headers["Content-Encoding"] = self.encoding
                         headers["Content-Length"] = str(len(compressed_body))
                         headers.add_vary_header("Accept-Encoding")
                         message["body"] = compressed_body
+                        # The Server-Timing middleware, which runs after this
+                        # CompressionMiddleware, formats these metrics alongside
+                        # others in the Server-Timing header.
+                        self.scope["state"]["metrics"]["compress"] = {
+                            "dur": 1000 * compression_time,  # Units: ms
+                            "ratio": compression_ratio,
+                        }
 
                 await self.send(self.initial_message)
                 await self.send(message)
