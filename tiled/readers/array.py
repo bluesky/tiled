@@ -61,13 +61,3 @@ class ArrayAdapter:
         if slice is not None:
             dask_array = dask_array[slice]
         return dask_array.compute()
-
-    def close(self):
-        # Allow the garbage collector to reclaim this memory.
-        self._data = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self):
-        self.close()
