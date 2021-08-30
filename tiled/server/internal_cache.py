@@ -62,5 +62,8 @@ class CacheInProcessMemory:
     def retire(self, key):
         return self._cache.retire(key)
 
+    def clear(self):
+        return self._cache.clear()
+
     def __contains__(self, key):
         return key in self._cache
