@@ -66,7 +66,6 @@ class DataFrameAdapter:
         >>> DataFrameAdapter.read_csv("myfiles.*.csv")
         >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
         """
-        print('read_csv')
         cache = get_internal_cache()
         if cache is None:
             return cls(dask.dataframe.read_csv(*args, **kwargs), metadata=metadata)
