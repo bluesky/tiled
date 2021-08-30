@@ -1,5 +1,6 @@
 # These are the requirements needed for basic server functionality.
 cachey
+cachetools
 dask
 fastapi
 jsonschema

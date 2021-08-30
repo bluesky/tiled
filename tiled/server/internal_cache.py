@@ -58,3 +58,9 @@ class CacheInProcessMemory:
         if __debug__:
             logger.info("Internal cache store %r cost=%f.3", key, cost)
         self._cache.put(key, value, cost)
+
+    def retire(self, key):
+        return self._cache.retire(key)
+
+    def __contains__(self, key):
+        return key in self._cache

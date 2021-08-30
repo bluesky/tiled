@@ -9,6 +9,7 @@ import re
 import threading
 import warnings
 
+import cachetools
 from watchgod.watcher import RegExpWatcher, Change
 
 from ..structures.dataframe import XLSX_MIME_TYPE
@@ -17,6 +18,10 @@ from .in_memory import Tree as TreeInMemory
 
 
 POLL_INTERVAL = 0.2  # seconds between periodic scans of filesystem
+# The Adapter objects are light because any large data they stash should be
+# placed in the global internal cache, not in the Adapter state itself.
+# Therefore, we can afford to accumulate many of these.
+MAX_ADAPTER_CACHE_SIZE = 10_000
 
 
 def strip_suffixes(filename):
@@ -308,7 +313,9 @@ class Tree(TreeInMemory):
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
         initial_scan_complete.append(object())
-        mapping = CachingMap(index[()])
+        mapping = CachingMap(
+            index[()], cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
+        )
         return cls(
             mapping,
             directory=directory,
@@ -679,7 +686,10 @@ def _new_subdir(
             index[parent_parts][subdirectory] = TreeInMemory(mapping)
         else:
             index[parent_parts][subdirectory] = functools.partial(
-                TreeInMemory, CachingMap(mapping)
+                TreeInMemory,
+                CachingMap(
+                    mapping, cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
+                ),
             )
     else:
         # Hand off management of this directory to the handler.
