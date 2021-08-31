@@ -105,8 +105,11 @@ class MachineDataType:
         )
 
     def to_numpy_dtype(self):
+        return numpy.dtype(self.to_numpy_str)
+
+    def to_numpy_str(self):
         endianness = self.__endianness_reverse_map[self.endianness]
-        return numpy.dtype(f"{endianness}{self.kind.value}{self.itemsize}")
+        return f"{endianness}{self.kind.value}{self.itemsize}"
 
     @classmethod
     def from_json(cls, structure):
