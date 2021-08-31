@@ -95,7 +95,7 @@ class StructDtype:
 
 
 @dataclass
-class StructuredArrayStructure:
+class StructuredArrayGenericStructure:
     macro: ArrayMacroStructure
     micro: StructDtype
 
@@ -108,7 +108,7 @@ class StructuredArrayStructure:
 
 
 @dataclass
-class StructuredArrayStructure1D:
+class StructuredArrayTabularStructure:
     macro: DataFrameMacroStructure
     micro: StructDtype
 
