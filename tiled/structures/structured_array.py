@@ -1,13 +1,12 @@
 from dataclasses import dataclass
+import json
 from typing import Tuple, List, Union, Optional
 
 import numpy
 
-from tiled.structures.array import (
-    MachineDataType as BuiltinType,
-    ArrayMacroStructure,
-)
-from tiled.structures.dataframe import DataFrameMacroStructure
+from .array import MachineDataType as BuiltinType, ArrayMacroStructure
+from .dataframe import DataFrameMacroStructure
+from ..media_type_registration import serialization_registry, deserialization_registry
 
 
 @dataclass
@@ -118,3 +117,25 @@ class StructuredArrayTabularStructure:
             macro=ArrayMacroStructure.from_json(structure["macro"]),
             micro=StructDtype.from_json(structure["micro"]),
         )
+
+
+serialization_registry.register(
+    "structured_array_generic",
+    "application/octet-stream",
+    lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
+)
+serialization_registry.register(
+    "structured_array_generic",
+    "application/json",
+    lambda array, metadata: json.dumps(array.tolist()).encode(),
+)
+serialization_registry.register(
+    "structured_array_tabular",
+    "application/octet-stream",
+    lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
+)
+serialization_registry.register(
+    "structured_array_tabular",
+    "application/json",
+    lambda array, metadata: json.dumps(array.tolist()).encode(),
+)
