@@ -135,6 +135,9 @@ class CachingMap(collections.abc.Mapping):
         self.__cache = cache
 
     def __getitem__(self, key):
+        if key not in self.__mapping:
+            self.__cache.pop(key, None)
+            raise KeyError(key)
         if self.__cache is None:
             return self.__mapping[key]()
         else:

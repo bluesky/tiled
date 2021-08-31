@@ -25,10 +25,11 @@ from .core import (
     PatchedStreamingResponse,
     record_timing,
 )
-from .internal_cache import (
+from .data_cache import (
     CacheInProcessMemory,
-    logger as internal_cache_logger,
-    set_internal_cache,
+    logger as data_cache_logger,
+    NO_CACHE,
+    set_data_cache,
 )
 from .router import declare_search_router, router
 from .settings import get_settings
@@ -94,13 +95,11 @@ def get_app(query_registry, compression_registry, include_routers=None):
 
         app.state.allow_origins.extend(settings.allow_origins)
 
-        if settings.internal_cache_available_bytes == 0:
-            set_internal_cache(None)
+        if settings.data_cache_available_bytes == 0:
+            set_data_cache(NO_CACHE)
         else:
-            set_internal_cache(
-                CacheInProcessMemory(settings.internal_cache_available_bytes)
-            )
-        internal_cache_logger.setLevel(settings.internal_cache_log_level.upper())
+            set_data_cache(CacheInProcessMemory(settings.data_cache_available_bytes))
+        data_cache_logger.setLevel(settings.data_cache_log_level.upper())
 
     app.add_middleware(
         CompressionMiddleware,
@@ -267,14 +266,14 @@ def serve_tree(
         for item in ["allow_origins"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
-        internal_cache_available_bytes = server_settings.get("internal_cache", {}).get(
+        data_cache_available_bytes = server_settings.get("data_cache", {}).get(
             "available_bytes"
         )
-        if internal_cache_available_bytes is not None:
+        if data_cache_available_bytes is not None:
             setattr(
                 settings,
-                "internal_cache_available_bytes",
-                internal_cache_available_bytes,
+                "data_cache_available_bytes",
+                data_cache_available_bytes,
             )
         return settings
 

@@ -1,6 +1,7 @@
 from datetime import timedelta
 from functools import lru_cache
 import os
+import psutil
 import secrets
 from typing import Any, List, Optional
 
@@ -14,6 +15,9 @@ if os.getenv("TILED_SESSION_MAX_AGE"):
 else:
     DEFAULT_SESSION_MAX_AGE = None
 
+# This is used to set default cache sizes.
+TOTAL_PHYSICAL_MEMORY = psutil.virtual_memory().total  # (does not include swap)
+
 
 class Settings(BaseSettings):
 
@@ -24,10 +28,10 @@ class Settings(BaseSettings):
     allow_origins: List[str] = [
         item for item in os.getenv("TILED_ALLOW_ORIGINS", "").split() if item
     ]
-    internal_cache_available_bytes = os.getenv(
-        "TILED_INTERNAL_CACHE_AVAILABLE_BYTES", 1_000_000
+    data_cache_available_bytes = int(
+        os.getenv("TILED_DATA_CACHE_AVAILABLE_BYTES", TOTAL_PHYSICAL_MEMORY * 0.15)
     )
-    internal_cache_log_level = os.getenv("TILED_INTERNAL_CACHE_LOG_LEVEL", "WARNING")
+    data_cache_log_level = os.getenv("TILED_DATA_CACHE_LOG_LEVEL", "WARNING")
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key = os.getenv("TILED_SINGLE_USER_API_KEY", secrets.token_hex(32))

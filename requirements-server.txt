@@ -5,6 +5,7 @@ dask
 fastapi
 jsonschema
 msgpack
+psutil
 pydantic
 python-dateutil
 python-jose[cryptography]

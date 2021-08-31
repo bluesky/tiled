@@ -183,7 +183,7 @@ structures.
 
 ## Internal Cache
 
-The "internal" cache is available to all Adapters to cache their internal
+The "data" cache is available to all Adapters to cache their data
 resources, such as a file handled or parsed file contents. It is a process-global singleton.
 
 Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
@@ -197,9 +197,9 @@ example.
 .. autosummary::
    :toctree: generated
 
-   tiled.server.internal_cache.get_internal_cache
-   tiled.server.internal_cache.set_internal_cache
-   tiled.server.internal_cache.CacheInProcessMemory
-   tiled.server.internal_cache.CacheInProcessMemory.get
-   tiled.server.internal_cache.CacheInProcessMemory.put
+   tiled.server.data_cache.get_data_cache
+   tiled.server.data_cache.set_data_cache
+   tiled.server.data_cache.CacheInProcessMemory
+   tiled.server.data_cache.CacheInProcessMemory.get
+   tiled.server.data_cache.CacheInProcessMemory.put
 ```

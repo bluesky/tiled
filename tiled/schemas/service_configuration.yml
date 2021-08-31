@@ -253,7 +253,7 @@ properties:
         additionalProperties: true
     description: |
       This section describes which users can see which entries.
-  internal_cache:
+  data_cache:
     properties:
       available_bytes:
         type: integer
