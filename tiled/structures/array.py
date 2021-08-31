@@ -105,7 +105,7 @@ class MachineDataType:
         )
 
     def to_numpy_dtype(self):
-        return numpy.dtype(self.to_numpy_str)
+        return numpy.dtype(self.to_numpy_str())
 
     def to_numpy_str(self):
         endianness = self.__endianness_reverse_map[self.endianness]
