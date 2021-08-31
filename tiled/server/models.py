@@ -53,6 +53,8 @@ class TreeAttributes(pydantic.BaseModel):
 class StructureFamilies(str, enum.Enum):
     array = "array"
     dataframe = "dataframe"
+    structured_array_tabular = "structured_array_tabular"
+    structured_array_generic = "structured_array_generic"
     variable = "variable"
     data_array = "data_array"
     dataset = "dataset"
