@@ -24,7 +24,7 @@ from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
 from .authentication import get_current_user
-from ..utils import modules_available
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
 from ..query_registration import query_registry as default_query_registry
 from ..queries import KeyLookup, QueryValueError
 from ..media_type_registration import (
@@ -316,18 +316,28 @@ def construct_entries_response(
     return models.Response(data=data, links=links, meta={"count": count})
 
 
-def construct_array_response(
-    serialization_registry, array, metadata, request_headers, format=None, specs=None
-):
-    import numpy
+DEFAULT_MEDIA_TYPES = {
+    "array": "application/octet-stream",
+    "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
+    "variable": "application/octet-stream",
+    "data_array": "application/octet-stream",
+    "dataset": "application/netcdf",
+}
 
+
+def construct_data_response(
+    structure_family,
+    serialization_registry,
+    payload,
+    metadata,
+    request_headers,
+    format=None,
+    specs=None,
+):
     if specs is None:
         specs = []
-
-    DEFAULT_MEDIA_TYPE = "application/octet-stream"
-    # Ensure contiguous C-ordered array.
-    array = numpy.ascontiguousarray(array)
-    etag = dask.base.tokenize(array)
+    default_media_type = DEFAULT_MEDIA_TYPES[structure_family]
+    etag = dask.base.tokenize(payload)
     if request_headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
     # Give priority to the `format` query parameter. Otherwise, consult Accept
@@ -345,18 +355,20 @@ def construct_array_response(
         # That variation is what we are handling below with lstrip.
         media_types = [
             s.lstrip(" ")
-            for s in request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
+            for s in request_headers.get("Accept", default_media_type).split(",")
         ]
 
     # The client may give us a choice of media types. Find the first one
     # that we support.
     for media_type in media_types:
         if media_type == "*/*":
-            media_type = DEFAULT_MEDIA_TYPE
+            media_type = default_media_type
         # fall back to generic dataframe serializer if no specs present
-        for spec in specs + ["array"]:
+        for spec in specs + [structure_family]:
             if media_type in serialization_registry.media_types(spec):
-                content = serialization_registry("array", media_type, array, metadata)
+                content = serialization_registry(
+                    structure_family, media_type, payload, metadata
+                )
                 return PatchedResponse(
                     content=content, media_type=media_type, headers={"ETag": etag}
                 )
@@ -364,101 +376,7 @@ def construct_array_response(
         raise UnsupportedMediaTypes(
             "None of the media types requested by the client are supported.",
             unsupported=media_types,
-            supported=serialization_registry.media_types("array"),
-        )
-
-
-APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
-
-
-def construct_dataframe_response(
-    serialization_registry, df, metadata, request_headers, format=None, specs=None
-):
-    if specs is None:
-        specs = []
-
-    etag = dask.base.tokenize(df)
-    if request_headers.get("If-None-Match", "") == etag:
-        return Response(status_code=304)
-    # Give priority to the `format` query parameter. Otherwise, consult Accept
-    # header.
-    if format is not None:
-        media_types_or_aliases = format.split(",")
-        # Resolve aliases, like "csv" -> "text/csv".
-        media_types = [
-            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
-        ]
-    else:
-        # The HTTP spec says these should be separated by ", " but some
-        # browsers separate with just "," (no space).
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
-        # That variation is what we are handling below with lstrip.
-        media_types = [
-            s.lstrip(" ")
-            for s in request_headers.get("Accept", APACHE_ARROW_FILE_MIME_TYPE).split(
-                ","
-            )
-        ]
-
-    # The client may give us a choice of media types. Find the first one
-    # that we support.
-    for media_type in media_types:
-        if media_type == "*/*":
-            media_type = APACHE_ARROW_FILE_MIME_TYPE
-        # fall back to generic dataframe serializer if no specs present
-        for spec in specs + ["dataframe"]:
-            if media_type in serialization_registry.media_types(spec):
-                content = serialization_registry(spec, media_type, df, metadata)
-                return PatchedResponse(
-                    content=content, media_type=media_type, headers={"ETag": etag}
-                )
-    else:
-        raise UnsupportedMediaTypes(
-            "None of the media types requested by the client are supported.",
-            unsupported=media_types,
-            supported=serialization_registry.media_types("dataframe"),
-        )
-
-
-def construct_dataset_response(
-    serialization_registry, dataset, metadata, request_headers, format=None
-):
-    DEFAULT_MEDIA_TYPE = "application/netcdf"
-    etag = dask.base.tokenize(dataset)
-    if request_headers.get("If-None-Match", "") == etag:
-        return Response(status_code=304)
-    # Give priority to the `format` query parameter. Otherwise, consult Accept
-    # header.
-    if format is not None:
-        media_types_or_aliases = format.split(",")
-        # Resolve aliases, like "csv" -> "text/csv".
-        media_types = [
-            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
-        ]
-    else:
-        # The HTTP spec says these should be separated by ", " but some
-        # browsers separate with just "," (no space).
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
-        # That variation is what we are handling below with lstrip.
-        media_types = [
-            s.lstrip(" ")
-            for s in request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(",")
-        ]
-    # The client may give us a choice of media types. Find the first one
-    # that we support.
-    for media_type in media_types:
-        if media_type == "*/*":
-            media_type = APACHE_ARROW_FILE_MIME_TYPE
-        if media_type in serialization_registry.media_types("dataset"):
-            content = serialization_registry("dataset", media_type, dataset, metadata)
-            return PatchedResponse(
-                content=content, media_type=media_type, headers={"ETag": etag}
-            )
-    else:
-        raise UnsupportedMediaTypes(
-            "None of the media types requested by the client are supported.",
-            unsupported=media_types,
-            supported=serialization_registry.media_types("dataset"),
+            supported=serialization_registry.media_types(structure_family),
         )
 
 

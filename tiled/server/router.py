@@ -16,9 +16,7 @@ from .settings import get_settings
 from .core import (
     APACHE_ARROW_FILE_MIME_TYPE,
     block,
-    construct_array_response,
-    construct_dataframe_response,
-    construct_dataset_response,
+    construct_data_response,
     construct_entries_response,
     construct_resource,
     get_query_registry,
@@ -271,8 +269,13 @@ def array_block(
             )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -316,8 +319,13 @@ def array_full(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -425,8 +433,13 @@ def dataframe_partition(
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_dataframe_response(
-                serialization_registry, df, reader.metadata, request.headers, format
+            return construct_data_response(
+                "dataframe",
+                serialization_registry,
+                df,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -465,7 +478,8 @@ def dataframe_full(
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_dataframe_response(
+            return construct_data_response(
+                "dataframe",
                 serialization_registry,
                 df,
                 reader.metadata,
@@ -514,8 +528,13 @@ def variable_block(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -550,8 +569,13 @@ def variable_full(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -596,8 +620,13 @@ def data_array_variable_full(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -646,8 +675,13 @@ def data_array_block(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -704,8 +738,13 @@ def dataset_block(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -756,8 +795,13 @@ def dataset_data_var_full(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -799,8 +843,13 @@ def dataset_coord_full(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_array_response(
-                serialization_registry, array, reader.metadata, request.headers, format
+            return construct_data_response(
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request.headers,
+                format,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -836,7 +885,8 @@ def dataset_full(
         raise HTTPException(status_code=400, detail=f"No such variable {key}.")
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_dataset_response(
+            return construct_data_response(
+                "dataset",
                 serialization_registry,
                 dataset,
                 reader.metadata,
