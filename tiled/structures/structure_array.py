@@ -19,6 +19,10 @@ class Field:
     @classmethod
     def from_numpy_descr(cls, field):
         name, *rest = field
+        if name == "":
+            raise ValueError(
+                f"You seem to have gotten descr of a base or subdtype: {field}"
+            )
         if len(rest) == 1:
             (f_type,) = rest
             shape = None
@@ -29,7 +33,6 @@ class Field:
             FType = BuiltinType.from_numpy_dtype(numpy.dtype(f_type))
         else:
             FType = StructDtype.from_numpy_dtype(numpy.dtype(f_type))
-
         return cls(name=name, dtype=FType, shape=shape)
 
     def to_numpy_descr(self):
