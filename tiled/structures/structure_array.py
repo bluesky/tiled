@@ -1,85 +1,117 @@
 from dataclasses import dataclass
-import sys
 from typing import Tuple, List, Union, Optional
 
 import numpy
 
-from .array import Endianness, Kind, MachineDataType as BuiltinType, ArrayMacroStructure
-from .dataframe import DataFrameMacroStructure
-
-
-from ..media_type_registration import serialization_registry, deserialization_registry
+from tiled.structures.array import (
+    MachineDataType as BuiltinType,
+    ArrayMacroStructure,
+)
+from tiled.structures.dataframe import DataFrameMacroStructure
 
 
 @dataclass
 class Field:
     name: str
-    dtype: Union[BuiltinType, "MachineDataType"]
-    subshape: Optional[Tuple[int, ...]]
+    dtype: Union[BuiltinType, "StructDtype"]
+    shape: Optional[Tuple[int, ...]]
+
+    @classmethod
+    def from_numpy_descr(cls, field):
+        name, *rest = field
+        if len(rest) == 1:
+            (f_type,) = rest
+            shape = None
+        else:
+            f_type, shape = rest
+
+        if isinstance(f_type, str):
+            FType = BuiltinType.from_numpy_dtype(numpy.dtype(f_type))
+        else:
+            FType = StructDtype.from_numpy_dtype(numpy.dtype(f_type))
+
+        return cls(name=name, dtype=FType, shape=shape)
+
+    def to_numpy_descr(self):
+        if isinstance(self.dtype, BuiltinType):
+            base = [self.name, self.dtype.to_numpy_str()]
+        else:
+            base = [self.name, self.dtype.to_numpy_descr()]
+        if self.shape is None:
+            return tuple(base)
+        else:
+            return tuple(base + [self.shape])
+
+    @classmethod
+    def from_json(cls, structure):
+        name = structure["name"]
+        if "fields" in structure["dtype"]:
+            ftype = StructDtype.from_json(structure["dtype"])
+        else:
+            ftype = BuiltinType.from_json(structure["dtype"])
+        return cls(name=name, dtype=ftype, shape=structure["shape"])
 
 
 @dataclass
-class MachineDataType:
-    endianness: Endianness
-    kind: Kind
+class StructDtype:
     itemsize: int
-    descr: List[Field]
-
-    __endianness_map = {
-        ">": "big",
-        "<": "little",
-        "=": sys.byteorder,
-        "|": "not_applicable",
-    }
-
-    __endianness_reverse_map = {
-        "big": ">",
-        "little": "<",
-        "not_applicable": "|",
-    }
+    fields: List[Field]
 
     @classmethod
     def from_numpy_dtype(cls, dtype):
+        # subdtypes push extra dimensions into arrays, we should handle these
+        # a layer up and report an array with bigger dimensions.
+        if dtype.subdtype is not None:
+            raise ValueError(f"We do not know how to encode subdtypes: {dtype}")
+        # If this is a builtin type, require the use of BuiltinType (nee .array.MachineDataType)
+        if dtype.fields is None:
+            raise ValueError(f"You have a base type: {dtype}")
         return cls(
-            endianness=cls.__endianness_map[dtype.byteorder],
-            kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
+            fields=[Field.from_numpy_descr(f) for f in dtype.descr],
         )
 
     def to_numpy_dtype(self):
-        endianness = self.__endianness_reverse_map[self.endianness]
-        return numpy.dtype(f"{endianness}{self.kind.value}{self.itemsize}")
+        return numpy.dtype(self.to_numpy_descr())
+
+    def to_numpy_descr(self):
+        return [f.to_numpy_descr() for f in self.fields]
+
+    def max_depth(self):
+        return max(
+            1 if isinstance(f.dtype, BuiltinType) else 1 + f.dtype.max_depth()
+            for f in self.fields
+        )
 
     @classmethod
     def from_json(cls, structure):
         return cls(
-            kind=Kind(structure["kind"]),
             itemsize=structure["itemsize"],
-            endianness=Endianness(structure["endianness"]),
+            fields=[Field.from_json(f) for f in structure["fields"]],
         )
 
 
 @dataclass
 class StructureArrayStructure:
     macro: ArrayMacroStructure
-    micro: MachineDataType
+    micro: StructDtype
 
     @classmethod
     def from_json(cls, structure):
         return cls(
             macro=ArrayMacroStructure.from_json(structure["macro"]),
-            micro=MachineDataType.from_json(structure["micro"]),
+            micro=StructDtype.from_json(structure["micro"]),
         )
 
 
 @dataclass
 class StructureArrayStructure1D:
     macro: DataFrameMacroStructure
-    micro: MachineDataType
+    micro: StructDtype
 
     @classmethod
     def from_json(cls, structure):
         return cls(
             macro=ArrayMacroStructure.from_json(structure["macro"]),
-            micro=MachineDataType.from_json(structure["micro"]),
+            micro=StructDtype.from_json(structure["micro"]),
         )
