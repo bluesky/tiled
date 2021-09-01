@@ -4,7 +4,6 @@ Example using numpy structured dtypes
 https://numpy.org/doc/stable/user/basics.rec.html
 
 """
-from datetime import datetime
 import numpy
 from tiled.trees.in_memory import Tree
 from tiled.readers.array import StructuredArrayTabularAdapter
