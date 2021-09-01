@@ -332,9 +332,115 @@ def array_full(
 
 
 @router.get(
+    "/structured_array_generic/block/{path:path}",
+    response_model=models.Response,
+    name="structured array (generic) block",
+)
+def structured_array_generic_block(
+    request: Request,
+    reader=Depends(reader),
+    block=Depends(block),
+    slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
+    format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+):
+    """
+    Fetch a chunk of array-like data.
+    """
+    if reader.structure_family != "structured_array_generic":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /structured_array_generic/block route.",
+        )
+    if block == ():
+        # Handle special case of numpy scalar.
+        if reader.macrostructure().shape != ():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
+            )
+        array = reader.read()
+    else:
+        try:
+            array = reader.read_block(block, slice=slice)
+        except IndexError:
+            raise HTTPException(status_code=400, detail="Block index out of range")
+        if (expected_shape is not None) and (expected_shape != array.shape):
+            raise HTTPException(
+                status_code=400,
+                detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+            )
+    try:
+        return construct_data_response(
+            "structured_array_generic",
+            serialization_registry,
+            array,
+            reader.metadata,
+            request.headers,
+            format,
+        )
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
+    "/structured_array_tabular/block/{path:path}",
+    response_model=models.Response,
+    name="structured array (tabular) block",
+)
+def structured_array_tabular_block(
+    request: Request,
+    reader=Depends(reader),
+    block=Depends(block),
+    slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
+    format: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+):
+    """
+    Fetch a chunk of array-like data.
+    """
+    if reader.structure_family != "structured_array_tabular":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {reader.structure_family} structure with /structured_array_tabular/block route.",
+        )
+    if block == ():
+        # Handle special case of numpy scalar.
+        if reader.macrostructure().shape != ():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
+            )
+        array = reader.read()
+    else:
+        try:
+            array = reader.read_block(block, slice=slice)
+        except IndexError:
+            raise HTTPException(status_code=400, detail="Block index out of range")
+        if (expected_shape is not None) and (expected_shape != array.shape):
+            raise HTTPException(
+                status_code=400,
+                detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+            )
+    try:
+        return construct_data_response(
+            "structured_array_tabular",
+            serialization_registry,
+            array,
+            reader.metadata,
+            request.headers,
+            format,
+        )
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+
+
+@router.get(
     "/structured_array_tabular/full/{path:path}",
     response_model=models.Response,
-    name="full array",
+    name="structure array (tabular) full array",
 )
 def structured_array_tabular_full(
     request: Request,
@@ -384,7 +490,7 @@ def structured_array_tabular_full(
 @router.get(
     "/structured_array_generic/full/{path:path}",
     response_model=models.Response,
-    name="full array",
+    name="structured array (generic) full array",
 )
 def structured_array_generic_full(
     request: Request,

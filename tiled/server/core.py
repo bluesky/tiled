@@ -676,6 +676,12 @@ class WrongTypeForRoute(Exception):
 
 FULL_LINKS = {
     "array": {"full": "{base_url}array/full/{path}"},
+    "structured_array_generic": {
+        "full": "{base_url}structured_array_generic/full/{path}"
+    },
+    "structured_array_tabular": {
+        "full": "{base_url}structured_array_tabular/full/{path}"
+    },
     "dataframe": {"full": "{base_url}dataframe/full/{path}"},
     "variable": {"full": "{base_url}variable/full/{path}"},
     "data_array": {"full_variable": "{base_url}data_array/variable/full/{path}"},
