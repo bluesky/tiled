@@ -24,8 +24,7 @@ class DaskVariableClient(BaseArrayClient):
     ARRAY_CLIENT = DaskArrayClient  # overridden by subclass
 
     def __init__(self, *args, route="/variable/block", **kwargs):
-        super().__init__(*args, **kwargs)
-        self._route = route
+        super().__init__(*args, route=route, **kwargs)
 
     def _build_array_reader(self, structure):
         return self.ARRAY_CLIENT(
@@ -89,8 +88,7 @@ class DaskDataArrayClient(BaseArrayClient):
     VARIABLE_CLIENT = DaskVariableClient  # overriden in subclass
 
     def __init__(self, *args, route="/data_array/block", coords=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._route = route
+        super().__init__(*args, route=route, **kwargs)
         self._coords = coords
 
     def read_block(self, block, slice=None):
@@ -207,8 +205,7 @@ class DaskDatasetClient(BaseArrayClient):
     VARIABLE_CLIENT = DaskVariableClient  # overridden by subclass
 
     def __init__(self, *args, route="/dataset/block", **kwargs):
-        super().__init__(*args, **kwargs)
-        self._route = route
+        super().__init__(*args, route=route, **kwargs)
 
     def _repr_pretty_(self, p, cycle):
         """
