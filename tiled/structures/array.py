@@ -109,7 +109,17 @@ class MachineDataType:
 
     def to_numpy_str(self):
         endianness = self.__endianness_reverse_map[self.endianness]
-        return f"{endianness}{self.kind.value}{self.itemsize}"
+        # dtype.itemsize always reports bytes.  The format string from the
+        # numeric types the string format is: {type_code}{byte_count} so we can
+        # directly use the item size.
+        #
+        # for unicode the pattern is 'U{char_count}', however
+        # which numpy always represents as 4 byte UCS4 encoding
+        # (because variable width encodings do not fit with fixed-stride arrays)
+        # so the reported itemsize is 4x the char count.  To get back to the string
+        # we need to divide by 4.
+        size = self.itemsize if self.kind != Kind.unicode else self.itemsize // 4
+        return f"{endianness}{self.kind.value}{size}"
 
     @classmethod
     def from_json(cls, structure):
