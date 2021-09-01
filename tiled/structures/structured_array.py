@@ -5,7 +5,6 @@ from typing import Tuple, List, Union, Optional
 import numpy
 
 from .array import MachineDataType as BuiltinType, ArrayMacroStructure
-from .dataframe import DataFrameMacroStructure
 from ..media_type_registration import serialization_registry, deserialization_registry
 
 
@@ -107,8 +106,27 @@ class StructuredArrayGenericStructure:
 
 
 @dataclass
+class ArrayTabularMacroStructure:
+    """
+    Similar to ArrayMacroStructure, but must be 1D
+
+    This is distinct from DataFrameMacoStructure because it knows its length and
+    chunk sizes. Dataframes only know number of partitions.
+    """
+    chunks: Tuple[Tuple[int]]
+    shape: Tuple[int]
+
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            chunks=tuple(map(tuple, structure["chunks"])),
+            shape=tuple(structure["shape"]),
+        )
+
+
+@dataclass
 class StructuredArrayTabularStructure:
-    macro: DataFrameMacroStructure
+    macro: ArrayMacroStructure
     micro: StructDtype
 
     @classmethod

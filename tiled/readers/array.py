@@ -1,7 +1,7 @@
 import dask.array
 
 from ..structures.array import ArrayMacroStructure, MachineDataType
-from ..structures.structured_array import StructDtype, DataFrameMacroStructure
+from ..structures.structured_array import ArrayTabularMacroStructure, StructDtype
 from ..utils import DictView
 from ..server.object_cache import get_object_cache
 
@@ -99,7 +99,7 @@ class StructuredArrayTabularAdapter(ArrayAdapter):
 
     def macrostructure(self):
         "Structures of the layout of blocks of this array"
-        return DataFrameMacroStructure(
+        return ArrayTabularMacroStructure(
             shape=self._data.shape,
             chunks=self._data.chunks,
         )
