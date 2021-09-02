@@ -52,25 +52,22 @@ class CacheInProcessMemory:
 
         def miss(key):
             self.misses += 1
+            if __debug__:
+                logger.info("Internal cache miss %r", key)
 
         def hit(key, value):
             self.hits += 1
+            if __debug__:
+                logger.info("Internal cache hit %r", key)
 
         self._cache = cachey.Cache(available_bytes, 0, miss=miss, hit=hit)
         self.dask_context = DaskCache(self._cache)
 
     def get(self, key):
         value = self._cache.get(key)
-        if __debug__:
-            if value is None:
-                logger.info("Internal cache miss %r", key)
-            else:
-                logger.info("Internal cache hit %r", key)
         return value
 
     def put(self, key, value, cost):
-        if __debug__:
-            logger.info("Internal cache store %r cost=%f.3", key, cost)
         self._cache.put(key, value, cost)
 
     def retire(self, key):
@@ -117,7 +114,7 @@ class DaskCache(Callback):
             duration += max(self.durations.get(k, 0) for k in deps)
         self.durations[key] = duration
         nb = self._nbytes(value)
-        self.cache.put(f"dask-{key}", value, cost=duration, nbytes=nb)
+        self.cache.put(f"dask-{'-'.join(key)}", value, cost=duration, nbytes=nb)
 
     def _finish(self, dsk, state, errored):
         self.starttimes.clear()
