@@ -188,7 +188,10 @@ class Tree(TreeInMemory):
         # subdirectory, but there are efficiencies to be gained by doing a single
         # walk of the nested directory structure and having a single thread watching
         # for changes within that structure.)
-        index = {(): {}}
+        mapping = CachingMap(
+            {}, cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
+        )
+        index = {(): mapping}
         # Map key to set of filepaths that map to that key.
         collision_tracker = collections.defaultdict(set)
         # This is a trie for efficiently checking of a given subdirectory is
@@ -294,7 +297,7 @@ class Tree(TreeInMemory):
                             key=key,
                         )
                     )
-                    del index[parts][key]
+                    index[parts].remove(key)
                 else:
                     try:
                         reader_factory = _reader_factory_for_file(
@@ -305,19 +308,15 @@ class Tree(TreeInMemory):
                     except NoReaderAvailable:
                         pass
                     else:
+                        index[parts].set(key, reader_factory)
                         if greedy:
-                            index[parts][key] = reader_factory()
-                        else:
-                            index[parts][key] = reader_factory
+                            index[parts][key]
                 collision_tracker[(*parts, key)].add(filepath)
         # Appending any object will cause bool(initial_scan_complete) to
         # evaluate to True.
         initial_scan_complete.append(object())
-        mapping = CachingMap(
-            index[()], cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
-        )
         return cls(
-            mapping,
+            index[()],
             directory=directory,
             index=index,
             subdirectory_trie=subdirectory_trie,
@@ -526,7 +525,7 @@ def _process_changes(
                             key=key,
                         )
                     )
-                    del index[parent_parts][key]
+                    index[parent_parts].remove(key)
                 else:
                     # We may observe the creation of a file before we observe the creation of its
                     # directory.
@@ -554,17 +553,16 @@ def _process_changes(
                         # for this filename.
                         ignore.add(path)
                     else:
+                        index[parent_parts].set(key, reader_factory)
                         if greedy:
-                            index[parent_parts][key] = reader_factory()
-                        else:
-                            index[parent_parts][key] = reader_factory
+                            index[parent_parts][key]
                     collision_tracker[(*parent_parts, key)].add(rel_path)
         elif kind == Change.deleted:
             if path.is_dir():
                 index.pop(parent_parts, None)
             else:
                 key = key_from_filename(path.name)
-                index[parent_parts].pop(key, None)
+                index[parent_parts].discard(key)
                 collision_tracker[(*parent_parts, key)].discard(rel_path)
                 if len(collision_tracker[(*parent_parts, key)]) == 1:
                     # A key collision was resolved by the removal (or renaming)
@@ -612,10 +610,9 @@ def _process_changes(
                     # for this filename.
                     ignore.add(path)
                 else:
+                    index[parent_parts].set(reader_factory)
                     if greedy:
-                        index[parent_parts][key] = reader_factory()
-                    else:
-                        index[parent_parts][key] = reader_factory
+                        index[parent_parts][key]
     for adapter, changes in to_notify.items():
         print(changes)
         if hasattr(adapter, "get_changes_callback"):
@@ -680,17 +677,13 @@ def _new_subdir(
         adapter = None
     if adapter is None:
         # Process the files in this directory individually.
-        mapping = {}
+        mapping = CachingMap(
+            {}, cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
+        )
         index[parent_parts + (subdirectory,)] = mapping
+        index[parent_parts].set(subdirectory, functools.partial(TreeInMemory, mapping))
         if greedy:
-            index[parent_parts][subdirectory] = TreeInMemory(mapping)
-        else:
-            index[parent_parts][subdirectory] = functools.partial(
-                TreeInMemory,
-                CachingMap(
-                    mapping, cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
-                ),
-            )
+            index[parent_parts][subdirectory]
     else:
         # Hand off management of this directory to the handler.
         d = subdirectory_trie
@@ -699,10 +692,9 @@ def _new_subdir(
                 d[part] = {}
             d = d[part]
         d[subdirectory] = adapter
+        index[parent_parts].set(subdirectory, lambda: adapter)
         if greedy:
-            index[parent_parts][subdirectory] = adapter
-        else:
-            index[parent_parts][subdirectory] = lambda: adapter
+            index[parent_parts][subdirectory]
 
 
 COLLISION_WARNING = (
