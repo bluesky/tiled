@@ -174,17 +174,16 @@ def serve_directory(
     from ..server.app import serve_tree, print_admin_api_key_if_generated
 
     tree_kwargs = {}
+    server_settings = {}
     if keep_ext:
         from ..trees.files import identity
 
         tree_kwargs.update({"key_from_filename": identity})
-    if data_cache_available_bytes:
-        from ..server.data_cache import CacheInProcessMemory, set_data_cache
-
-        cache = CacheInProcessMemory(data_cache_available_bytes)
-        set_data_cache(cache)
+    if data_cache_available_bytes is not None:
+        server_settings["data_cache"] = {}
+        server_settings["data_cache"]["available_bytes"] = data_cache_available_bytes
     tree = Tree.from_directory(directory, **tree_kwargs)
-    web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
+    web_app = serve_tree(tree, {"allow_anonymous_access": public}, server_settings)
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
