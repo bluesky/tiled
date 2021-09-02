@@ -100,7 +100,9 @@ class DaskCache(Callback):
         for key in dsk:
             # Use 'get', not cache.data[key] as upstream does,
             # in order to trip 'hit' and 'miss' callbacks.
-            cached_result = self.cache.get(f"dask-{key}")
+            cached_result = self.cache.get(
+                "-".join(str(term) for term in ("dask", *key))
+            )
             if cached_result is not None:
                 dsk[key] = cached_result
 
@@ -114,7 +116,12 @@ class DaskCache(Callback):
             duration += max(self.durations.get(k, 0) for k in deps)
         self.durations[key] = duration
         nb = self._nbytes(value)
-        self.cache.put(f"dask-{'-'.join(key)}", value, cost=duration, nbytes=nb)
+        self.cache.put(
+            "-".join(str(term) for term in ("dask", *key)),
+            value,
+            cost=duration,
+            nbytes=nb,
+        )
 
     def _finish(self, dsk, state, errored):
         self.starttimes.clear()
