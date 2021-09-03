@@ -138,5 +138,6 @@ class DaskCache(Callback):
         self.cache.put(("dask", *key), value, cost=duration, nbytes=nb)
 
     def _finish(self, dsk, state, errored):
-        self.starttimes.clear()
-        self.durations.clear()
+        for key in dsk:
+            self.starttimes.pop(key, None)
+            self.durations.pop(key, None)
