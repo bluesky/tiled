@@ -1,6 +1,10 @@
 """
-The 'internal' cache is available to all Adapters to cache their internal
-resources, such as parsed file contents. It is a process-global singleton.
+The 'data' cache is available to all Adapters to cache chunks of data.
+
+This is in integrated with dask's callback mechanism for simple caching of dask
+chunks.  It is also available for usage outside of dask.
+
+The cache is a process-global singleton.
 """
 import contextlib
 from timeit import default_timer
@@ -53,22 +57,25 @@ class CacheInProcessMemory:
         def miss(key):
             self.misses += 1
             if __debug__:
-                logger.info("Internal cache miss %r", key)
+                logger.info("Data cache miss %r", key)
 
         def hit(key, value):
             self.hits += 1
             if __debug__:
-                logger.info("Internal cache hit %r", key)
+                logger.info("Data cache hit %r", key)
 
         self._cache = cachey.Cache(available_bytes, 0, miss=miss, hit=hit)
-        self.dask_context = DaskCache(self._cache)
+        self.dask_context = DaskCache(self)
 
     def get(self, key):
         value = self._cache.get(key)
         return value
 
-    def put(self, key, value, cost):
-        self._cache.put(key, value, cost)
+    def put(self, key, value, cost, nbytes=None):
+        if nbytes is None:
+            nbytes = self.get_nbytes(value)
+        logger.info("Data cache store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
+        self._cache.put(key, value, cost, nbytes=nbytes)
 
     def retire(self, key):
         return self._cache.retire(key)
