@@ -19,12 +19,11 @@ There are three types of caches in Tiled:
 2. **Service-side response cache.**
    _This is not yet implemented, but planned soon._  This is also a standard web
    cache, on the server side. It stores the content of the most frequent responses.
-   This covers use cases such as, "The user made the exact same requests again that
-   they made earlier, perhaps they restarted their Jupyter notebook or re-ran some
-   application workflow."
+   This covers use cases such as, "Several users are asking for the exact same
+   chunks of data in the exact same format."
 3. **Service-side data cache.** The _response_ caches are very finely targeted.
-   Requests that ask for overlapping but distinct slices of data, or requests that
-   ask for the data to be encoded in a different format, will not benefit from that
+   Requests that ask for overlapping but distinct slices of data, or requests
+   that ask for the same but in varied formats, will not benefit from that
    cache; they will "miss". The _data_ cache, however, stores chunks of (array,
    dataframe) data, which is it can slice and encode differently for different
    requests. It will not provide quite the same speed boost as a response cache,
