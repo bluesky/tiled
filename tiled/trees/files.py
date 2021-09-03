@@ -22,6 +22,8 @@ from .in_memory import Tree as TreeInMemory
 # Therefore, we can afford to accumulate many of these.
 MAX_ADAPTER_CACHE_SIZE = 10_000
 
+DEFAULT_POLL_INTERVAL = 0.2  # seconds
+
 
 def strip_suffixes(filename):
     """
@@ -123,7 +125,7 @@ class Tree(TreeInMemory):
         authenticated_identity=None,
         error_if_missing=True,
         greedy=False,
-        poll_interval=0.2,
+        poll_interval=DEFAULT_POLL_INTERVAL,
         **kwargs,
     ):
         """
