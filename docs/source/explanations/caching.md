@@ -65,3 +65,37 @@ In the simple case of a single-worker deployment, for "scaled down" use on a
 laptop, there is no speed benefit to keeping anything out-of-process, so Tiled
 will always support the _option_ of placing (2) and (3) in worker memory, even
 if shared memory proves to be a better choice for larger deployments.
+
+## Connection to Dask
+
+Dask provides an opt-in, experimental
+[opportunistic caching](https://docs.dask.org/en/latest/caching.html) mechanism.
+It caches at the granularity of "tasks", such as chunks of array or partitions
+of dataframes.
+
+Tiled's data cache is generic---not exclusive to dask code paths---but it plugs
+into dask in a similar way to make it easy for any Adapters that happen to use
+dask to leverage Tiled's data cache very simply, like this:
+
+```py
+from tiled.server.data_cache import get_data_cache
+
+
+with get_data_cache().dask_context:
+    # Any tasks that happen to already be cached will be looked up
+    # instead of computed here. Anything that _is_ computer here may
+    # be cached, depending on its bytesize and its cost (how long it took to
+    # compute).
+    dask_object.compute()
+```
+
+Items can be proactively clearly from the cache like so:
+
+```py
+from tiled.server.data_cache import get_data_cache, NO_CACHE
+
+
+cache = get_data_cache()
+if cache is not NO_CACHE:
+    cache.discard_dask(dask_object.__dask_keys__())
+```
