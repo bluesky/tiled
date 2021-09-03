@@ -202,4 +202,6 @@ def test_cache_size_relative(tmpdir):
     }
     from_config(config)
     cache = get_data_cache()
-    assert cache.available_bytes == psutil.virtual_memory().total * 0.1
+    actual = cache.available_bytes
+    expected = psutil.virtual_memory().total * 0.1
+    assert abs(actual - expected) / expected < 0.01  # inexact is OK
