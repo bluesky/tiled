@@ -77,8 +77,17 @@ class CacheInProcessMemory:
         logger.info("Data cache store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
 
-    def retire(self, key):
-        return self._cache.retire(key)
+    def discard(self, *keys):
+        for key in keys:
+            # Cachey has no API specifically for this, but we can do it ourselves
+            # but modifying only public state.
+            value = self._cache.data.pop(key, None)
+            if value:
+                self.total_bytes -= self._cache.nbytes.pop(key)
+
+    def discard_dask(self, *keys):
+        # DaskCache prefixes keys with 'dask' to avoid collisions.
+        self.discard(("dask", key) for key in keys)
 
     def clear(self):
         return self._cache.clear()
@@ -107,9 +116,7 @@ class DaskCache(Callback):
         for key in dsk:
             # Use 'get', not cache.data[key] as upstream does,
             # in order to trip 'hit' and 'miss' callbacks.
-            cached_result = self.cache.get(
-                "-".join(str(term) for term in ("dask", *key))
-            )
+            cached_result = self.cache.get(("dask", *key))
             if cached_result is not None:
                 dsk[key] = cached_result
 
@@ -123,12 +130,7 @@ class DaskCache(Callback):
             duration += max(self.durations.get(k, 0) for k in deps)
         self.durations[key] = duration
         nb = self._nbytes(value)
-        self.cache.put(
-            "-".join(str(term) for term in ("dask", *key)),
-            value,
-            cost=duration,
-            nbytes=nb,
-        )
+        self.cache.put(("dask", *key), value, cost=duration, nbytes=nb)
 
     def _finish(self, dsk, state, errored):
         self.starttimes.clear()

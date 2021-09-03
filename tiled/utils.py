@@ -174,6 +174,8 @@ class CachingMap(collections.abc.Mapping):
                 "This requires a callable that return a value, not the value itself."
             )
         self.__mapping[key] = value_factory
+        # This may be replacing (updating) an existing key. Clear any cached value.
+        self.evict(key)
 
     def discard(self, key):
         """
