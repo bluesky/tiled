@@ -619,7 +619,7 @@ def _process_changes(
                     # for this filename.
                     ignore.add(path)
                 else:
-                    index[parent_parts].set(reader_factory)
+                    index[parent_parts].set(key, reader_factory)
                     if greedy:
                         index[parent_parts][key]
     for adapter, changes in to_notify.items():
