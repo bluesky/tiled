@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 
 import numpy
+import pytest
 
 from ..client import from_config
 from ..server.data_cache import CacheInProcessMemory, get_data_cache, NO_CACHE
@@ -119,8 +120,9 @@ a,b,c
     client["data"]
 
 
-def test_detect_content_changed(tmpdir):
-    with open(Path(tmpdir, "data.csv"), "w") as file:
+def test_detect_content_changed_or_removed(tmpdir):
+    path = Path(tmpdir, "data.csv")
+    with open(path, "w") as file:
         file.write(
             """
 a,b,c
@@ -140,7 +142,7 @@ a,b,c
     cache = get_data_cache()
     assert cache.hits == cache.misses == 0
     assert len(client["data"].read()) == 1
-    with open(Path(tmpdir, "data.csv"), "w") as file:
+    with open(path, "w") as file:
         file.write(
             """
 a,b,c
@@ -150,7 +152,7 @@ a,b,c
         )
     time.sleep(4 * DEFAULT_POLL_INTERVAL)
     assert len(client["data"].read()) == 2
-    with open(Path(tmpdir, "data.csv"), "w") as file:
+    with open(path, "w") as file:
         file.write(
             """
 a,b,c
@@ -161,3 +163,9 @@ a,b,c
         )
     time.sleep(4 * DEFAULT_POLL_INTERVAL)
     assert len(client["data"].read()) == 3
+    # Remove file.
+    path.unlink()
+    time.sleep(4 * DEFAULT_POLL_INTERVAL)
+    assert "data" not in client
+    with pytest.raises(KeyError):
+        client["data"]
