@@ -61,7 +61,7 @@ package `blosc` is installed).
 ## Example Requests and Responses
 
 In these examples we'll use the command-line HTTP client 
-[httpie](https://httie.io/) to show just the *headers* of a HTTP
+[httpie](https://httie.io/) to show just the *headers* of HTTP
 requests and responses.
 
 By default, it requests one of the standard encodings `gzip` or `deflate`. Of
