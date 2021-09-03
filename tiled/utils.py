@@ -141,15 +141,14 @@ class OneShotCachedMap(collections.abc.Mapping):
 
 class CachingMap(collections.abc.Mapping):
     """
-    Mapping that computes values on read and optionally caches them.
+    Mapping that computes values on read and caches them in a configured cache.
 
     Parameters
     ----------
     mapping : dict-like
         Must map keys to callables that return values.
-    cache : dict-like or None
-        Will be used to cache values. If None, nothing is cached.
-        May be ordinary dict, LRUCache, etc.
+    cache : dict-like
+        Will be used to cache values. May be ordinary dict, LRUCache, etc.
     """
 
     __slots__ = ("__mapping", "__cache")
@@ -159,15 +158,12 @@ class CachingMap(collections.abc.Mapping):
         self.__cache = cache
 
     def __getitem__(self, key):
-        if self.__cache is None:
-            return self.__mapping[key]()
-        else:
-            try:
-                return self.__cache[key]
-            except KeyError:
-                value = self.__mapping[key]()
-                self.__cache[key] = value
-                return value
+        try:
+            return self.__cache[key]
+        except KeyError:
+            value = self.__mapping[key]()
+            self.__cache[key] = value
+            return value
 
     def set(self, key, value_factory):
         """
@@ -196,6 +192,9 @@ class CachingMap(collections.abc.Mapping):
     def evict(self, key):
         """
         Evict a key from the internal cache. This is idempotent.
+
+        This does *not* remove the key from the mapping.
+        If it is accessed, it will be recomputed and added back to the cache.
         """
         self.__cache.pop(key, None)
 
