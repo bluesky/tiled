@@ -479,7 +479,15 @@ class TokenCache:
             file.write(value)
 
     def __delitem__(self, key):
-        key.unlink(missing_ok=False)
+        filepath = self._directory / key
+        filepath.unlink(missing_ok=False)
 
-    def pop(self, key):
-        key.unlink(missing_ok=True)
+    def pop(self, key, fallback=None):
+        filepath = self._directory / key
+        try:
+            with open(filepath, "r") as file:
+                content = file.read()
+        except FileNotFoundError:
+            content = fallback
+        filepath.unlink(missing_ok=True)
+        return content
