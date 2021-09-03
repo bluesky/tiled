@@ -95,11 +95,12 @@ def get_app(query_registry, compression_registry, include_routers=None):
 
         app.state.allow_origins.extend(settings.allow_origins)
 
-        if settings.data_cache_available_bytes == 0:
-            set_data_cache(NO_CACHE)
-        else:
-            set_data_cache(CacheInProcessMemory(settings.data_cache_available_bytes))
         data_cache_logger.setLevel(settings.data_cache_log_level.upper())
+        if settings.data_cache_available_bytes == 0:
+            cache = NO_CACHE
+        else:
+            cache = CacheInProcessMemory(settings.data_cache_available_bytes)
+        set_data_cache(cache)
 
     app.add_middleware(
         CompressionMiddleware,
