@@ -1,6 +1,7 @@
 import string
 import warnings
 
+import dask.array
 import numpy
 import pytest
 
@@ -56,7 +57,13 @@ def test_shape_with_zero():
     # Suppress RuntimeWarning: divide by zero encountered in true_divide
     # from dask.array.core.
     with warnings.catch_warnings():
-        tree = Tree({"test": ArrayAdapter.from_array(expected)})
+        tree = Tree(
+            {
+                "test": ArrayAdapter(
+                    dask.array.from_array(expected, chunks=expected.shape)
+                )
+            }
+        )
     client = from_tree(tree)
     actual = client["test"].read()
     assert numpy.array_equal(actual, expected)
