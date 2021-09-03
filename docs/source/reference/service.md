@@ -181,10 +181,10 @@ structures.
    tiled.server.app.get_app
 ```
 
-## Internal Cache
+## Data Cache
 
-The "data" cache is available to all Adapters to cache their data
-resources, such as a file handled or parsed file contents. It is a process-global singleton.
+The "data" cache is available to all Adapters to cache their data resources. It
+is a process-global singleton.
 
 Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 
@@ -200,6 +200,11 @@ example.
    tiled.server.data_cache.get_data_cache
    tiled.server.data_cache.set_data_cache
    tiled.server.data_cache.CacheInProcessMemory
+   tiled.server.data_cache.CacheInProcessMemory.available_bytes
    tiled.server.data_cache.CacheInProcessMemory.get
    tiled.server.data_cache.CacheInProcessMemory.put
+   tiled.server.data_cache.CacheInProcessMemory.discard
+   tiled.server.data_cache.CacheInProcessMemory.clear
+   tiled.server.data_cache.CacheInProcessMemory.dask_context
+   tiled.server.data_cache.CacheInProcessMemory.discard_dask
 ```

@@ -1,8 +1,8 @@
 """
 The 'data' cache is available to all Adapters to cache chunks of data.
 
-This is in integrated with dask's callback mechanism for simple caching of dask
-chunks.  It is also available for usage outside of dask.
+This is integrated with dask's callback mechanism for simple caching of dask
+chunks. It is also available for usage outside of dask.
 
 The cache is a process-global singleton.
 """
@@ -66,23 +66,53 @@ class CacheInProcessMemory:
                 logger.debug("Hit %r", key)
 
         self._cache = cachey.Cache(available_bytes, 0, miss=miss, hit=hit)
-        self.dask_context = DaskCache(self)
+        self._dask_context = DaskCache(self)
+
+    @property
+    def dask_context(self):
+        """
+        Within this context, get and store dask tasks with the data cache.
+        """
+        return self._dask_context
 
     @property
     def available_bytes(self):
+        """
+        Maximum size in bytes
+        """
         return self._cache.available_bytes
 
     def get(self, key):
+        """
+        Get cache item.
+        """
         value = self._cache.get(key)
         return value
 
     def put(self, key, value, cost, nbytes=None):
+        """
+        Put cache item.
+
+        Parameters
+        ----------
+        key : uniquely identifies content
+        value : object
+            May be any Python object. For future-proofing, the object should be
+            pickle-able, as an _external_ data cache will be added in the future.
+        cost : float
+            Time in seconds that this value cost to obtain.
+        nbytes : bytesize, optional
+            Computed (with best effort) if not provided.
+        """
         if nbytes is None:
             nbytes = self._cache.get_nbytes(value)
         logger.debug("Store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
 
     def discard(self, *keys):
+        """
+        Discard one or more items from the cache if present.
+        """
         for key in keys:
             # Cachey has no API specifically for this, but we can do it ourselves
             # but modifying only public state.
@@ -91,10 +121,18 @@ class CacheInProcessMemory:
                 self._cache.total_bytes -= self._cache.nbytes.pop(key)
 
     def discard_dask(self, *keys):
-        # DaskCache prefixes keys with 'dask' to avoid collisions.
+        """
+        Discard one or more dask tasks from the cache, if present.
+
+        Internally, cached dask keys are prefixed to avoid collisions.
+        That is why it has a method separate from discard().
+        """
         self.discard(("dask", key) for key in keys)
 
     def clear(self):
+        """
+        Empty the cache.
+        """
         return self._cache.clear()
 
     def __contains__(self, key):

@@ -269,8 +269,7 @@ properties:
           Set to "debug" level to log cache hits, misses, and stores.
           Default is "info" level, which logs cache configuration at application startup.
     description: |
-      An the internal cache in process memory, shared by individual Adapters to
-      cache the their internal resources such as the contents of parsed files.
+      The 'data' cache is available to all Adapters to cache chunks of data in process memory.
   allow_origins:
     type: array
     items:

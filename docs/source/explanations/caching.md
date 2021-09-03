@@ -10,20 +10,20 @@ in the discussion below makes clear what exists now and what is on the road map.
 
 ## Overview
 
-There are three types of caches in Tiled:
+There are three types of cache in Tiled:
 
 1. **Client-side response cache.** The Tiled Python client implements a standard
    web cache, similar in both concept and implementation to a web browser's cache.
    It enables an offline "airplane mode". If a server is available, it enables the
-   client to check whether the version it has is the latest one.
+   client to inexpensively check whether the version it has is the latest one.
 2. **Service-side response cache.**
    _This is not yet implemented, but planned soon._  This is also a standard web
-   cache, on the server side. It stores the content of the most frequent responses.
+   cache on the server side. It stores the content of the most frequent responses.
    This covers use cases such as, "Several users are asking for the exact same
    chunks of data in the exact same format."
 3. **Service-side data cache.** The _response_ caches are very finely targeted.
    Requests that ask for overlapping but distinct slices of data, or requests
-   that ask for the same but in varied formats, will not benefit from that
+   that ask for the same data but in varied formats, will not benefit from that
    cache; they will "miss". The _data_ cache, however, stores chunks of (array,
    dataframe) data, which is it can slice and encode differently for different
    requests. It will not provide quite the same speed boost as a response cache,
@@ -32,19 +32,18 @@ There are three types of caches in Tiled:
 ## Where is the cache content stored?
 
 Caches can be _private_, stored in the memory space of the worker process,
-or _shared_ via an external service like Redis, available to multiple workers
-in a horizontally-scaled deployment.
+or _shared_ by multiple workers in a horizontally-scaled deployment via an
+external service such as Redis.
 
 The Tiled Python client currently supports a private, transient cache in memory
 and a shared, persistent cache backed by files on disk. (The disk cache uses
 file-based locking to ensure consistency.) The caching mechanism is pluggable:
 other storage mechanisms can be injected without changes to Tiled itself.
 
-Tiled plans to support placing the service-side caches---items (2) and (3)
-above---in either private or shared mode, using respectively worker memory or
-Redis. Different choices will give different benefits, as discussed below.
-_Currently, only (3) is implemented and it only supports storage in worker
-memory._
+Tiled plans to support configuring the service-side caches---items (2) and (3)
+above---in private or shared mode, using respectively worker memory or Redis.
+Different choices will give different benefits, as discussed below.  _Currently,
+only (3) is implemented and it only supports storage in worker memory._
 
 When the data cache (3) is private, it can simply store chunks of data (numpy
 arrays, dataframe partitions, etc.) as live runtime objects in Python process
