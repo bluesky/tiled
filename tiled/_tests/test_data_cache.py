@@ -1,9 +1,62 @@
 from pathlib import Path
 import time
 
-from tiled.client import from_config
-from tiled.server.data_cache import get_data_cache, NO_CACHE
-from tiled.trees.files import DEFAULT_POLL_INTERVAL
+import numpy
+
+from ..client import from_config
+from ..server.data_cache import CacheInProcessMemory, get_data_cache, NO_CACHE
+from ..trees.files import DEFAULT_POLL_INTERVAL
+
+
+def test_tallying_hits_and_misses():
+    cache = CacheInProcessMemory(1e6)
+    assert cache.get("a") is None
+    assert cache.misses == 1
+    assert cache.hits == 0
+    assert cache.get("a") is None
+    assert cache.misses == 2
+    assert cache.hits == 0
+    arr = numpy.ones((5, 5))
+    cache.put("a", arr, cost=1)
+    assert cache.get("a") is arr
+    assert cache.misses == 2
+    assert cache.hits == 1
+    assert cache.get("a") is arr
+    assert cache.misses == 2
+    assert cache.hits == 2
+    cache.discard("a")
+    assert cache.get("a") is None
+    assert cache.misses == 3
+    assert cache.hits == 2
+
+
+def test_too_large_item():
+    AVAILABLE_BYTES = 10  # very small limit
+    cache = CacheInProcessMemory(AVAILABLE_BYTES)
+    arr = numpy.ones((5, 5))
+    assert arr.nbytes > AVAILABLE_BYTES
+    cache.put("b", arr, cost=1)
+    assert cache.get("b") is None
+    # Manually specify the size.
+    cache.put("b", arr, cost=1, nbytes=arr.nbytes)
+    assert cache.get("b") is None
+
+
+def test_eviction():
+    AVAILABLE_BYTES = 300
+    cache = CacheInProcessMemory(AVAILABLE_BYTES)
+    arr1 = numpy.ones((5, 5))  # 200 bytes
+    arr2 = 2 * numpy.ones((5, 5))
+    cache.put("arr1", arr1, cost=1)
+    assert "arr1" in cache
+    # Costly one evicts the previous one.
+    cache.put("arr2", arr2, cost=5)
+    assert "arr1" not in cache
+    assert "arr2" in cache
+    # Cheap one does not evict the previous one.
+    cache.put("arr1", arr1, cost=1)
+    assert "arr1" not in cache
+    assert "arr2" in cache
 
 
 def test_data_cache_hit_and_miss(tmpdir):

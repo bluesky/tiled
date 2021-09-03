@@ -73,7 +73,7 @@ class CacheInProcessMemory:
 
     def put(self, key, value, cost, nbytes=None):
         if nbytes is None:
-            nbytes = self.get_nbytes(value)
+            nbytes = self._cache.get_nbytes(value)
         logger.info("Data cache store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
 
@@ -82,8 +82,8 @@ class CacheInProcessMemory:
             # Cachey has no API specifically for this, but we can do it ourselves
             # but modifying only public state.
             value = self._cache.data.pop(key, None)
-            if value:
-                self.total_bytes -= self._cache.nbytes.pop(key)
+            if value is not None:
+                self._cache.total_bytes -= self._cache.nbytes.pop(key)
 
     def discard_dask(self, *keys):
         # DaskCache prefixes keys with 'dask' to avoid collisions.
