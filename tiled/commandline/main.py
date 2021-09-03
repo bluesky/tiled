@@ -151,6 +151,14 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
+    poll_interval: float = typer.Option(
+        None,
+        "--poll-interval",
+        help=(
+            "Time in seconds between scans of the directory for removed or "
+            "changed files. If 0, do not poll for changes."
+        ),
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -179,6 +187,8 @@ def serve_directory(
         from ..trees.files import identity
 
         tree_kwargs.update({"key_from_filename": identity})
+    if poll_interval is not None:
+        tree_kwargs.update({"poll_interval": poll_interval})
     if data_cache_available_bytes is not None:
         server_settings["data_cache"] = {}
         server_settings["data_cache"]["available_bytes"] = data_cache_available_bytes

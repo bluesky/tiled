@@ -17,7 +17,6 @@ from ..utils import CachingMap, import_object, OneShotCachedMap
 from .in_memory import Tree as TreeInMemory
 
 
-POLL_INTERVAL = 0.2  # seconds between periodic scans of filesystem
 # The Adapter objects are light because any large data they stash should be
 # placed in the global internal cache, not in the Adapter state itself.
 # Therefore, we can afford to accumulate many of these.
@@ -124,6 +123,7 @@ class Tree(TreeInMemory):
         authenticated_identity=None,
         error_if_missing=True,
         greedy=False,
+        poll_interval=0.2,
         **kwargs,
     ):
         """
@@ -155,6 +155,10 @@ class Tree(TreeInMemory):
             If False (default) instantiate nodes in the tree lazily, when first
             accessed. If True, instantiate them greedily when the underlying
             files are first found.
+        poll_interval : float or False, optional
+            Time in seconds between scans of the directory for removed or
+            changed files. If False or 0, do not poll for changes.
+            Default value is 0.2 seconds, subject to change without notice.
         """
 
         if error_if_missing:
@@ -222,11 +226,13 @@ class Tree(TreeInMemory):
                 manual_trigger,
                 greedy,
                 collision_tracker,
+                poll_interval,
             ),
             daemon=True,
             name="tiled-watch-filesystem-changes",
         )
-        watcher_thread.start()
+        if poll_interval:
+            watcher_thread.start()
         compiled_ignore_re_dirs = (
             re.compile(ignore_re_dirs) if ignore_re_dirs is not None else ignore_re_dirs
         )
@@ -403,6 +409,7 @@ def _watch(
     manual_trigger,
     greedy,
     collision_tracker,
+    poll_interval,
 ):
     watcher = RegExpWatcher(
         directory,
@@ -449,7 +456,7 @@ def _watch(
             # Confirm to the sender that it has now completed.
             event.set()
         try:
-            event = manual_trigger.get(timeout=POLL_INTERVAL)
+            event = manual_trigger.get(timeout=poll_interval)
         except queue.Empty:
             event = None
 
