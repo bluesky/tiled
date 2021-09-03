@@ -479,4 +479,7 @@ class TokenCache:
             file.write(value)
 
     def __delitem__(self, key):
+        key.unlink(missing_ok=False)
+
+    def pop(self, key):
         key.unlink(missing_ok=True)
