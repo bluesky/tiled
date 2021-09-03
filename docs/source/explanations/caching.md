@@ -23,14 +23,15 @@ There are three types of cache in Tiled:
    chunks of data in the exact same format."
 3. **Service-side data cache.** The _response_ caches store HTTP response bytes,
    and they operate near the outer edges of the application. The _data_ cache
-   stores structured chunks of data (e.g. array chunks, dataframe partitions).
-   It is available for authors of Adapters to use for stashing any serializable
-   objects that may be useful in expediting future work. Requests that ask for
-   overlapping but distinct slices of data or requests that ask for the same
-   data but in varied formats will not benefit from the _response_ cache; they
-   will "miss". The _data_ cache, however, can slice and encode its cached
-   resources differently for different requests. The data cache will not provide
-   quite the same speed boost as a response cache, but it has a broader impact.
+   stores structured chunks of data (e.g. array chunks, dataframe partitions),
+   and it is more deeply integrated.  It is available for authors of Adapters to
+   use for stashing any serializable objects that may be useful in expediting
+   future work. Requests that ask for overlapping but distinct slices of data or
+   requests that ask for the same data but in varied formats will not benefit
+   from the _response_ cache; they will "miss". The _data_ cache, however, can
+   slice and encode its cached resources differently for different requests. The
+   data cache will not provide quite the same speed boost as a response cache,
+   but it has a broader impact.
 
 ## Where is the cache content stored?
 
