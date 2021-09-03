@@ -10,7 +10,12 @@ in the discussion below makes clear what exists now and what is on the road map.
 
 ## Overview
 
-There are three types of cache in Tiled:
+Caching can make Tiled faster. Because, in general, caches make programs more
+complex and harder to trace, Tiled was designed without any caching at first.
+Caches were added with clear separation from the rest of Tiled and an easy
+opt-out path.
+
+There are three types of centrally-managed cache in Tiled:
 
 1. **Client-side response cache.** The Tiled Python client implements a standard
    web cache, similar in both concept and implementation to a web browser's cache.
@@ -101,3 +106,20 @@ cache = get_data_cache()
 if cache is not NO_CACHE:
     cache.discard_dask(dask_object.__dask_keys__())
 ```
+
+## What other kinds of caching happen in Tiled?
+
+Above we addressed _centrally-managed_ caches. There is some additional _ad hoc_
+caching by Adapters in the service.
+
+* Adapter instances may cache file handles. Therefore, they cannot necessarily
+  be serialized and should not be lumped in with the data cache.
+* The file-based directory-walking tree uses an LRU cache, fixed at 10k items
+  per subdirectory, to stash Adapter instances on first access. It discards them
+  if the underlying file is removed or modified.
+
+The LRU cache ensures that adapters can hold on to file handles with some
+confidence that LRU cache will keep the server from holding too many open files
+at once. Adapters should use the data cache to stash any memory-intensive
+resources that they want to cache so that the memory footprint of the cached
+Adapters themselves is not high.
