@@ -173,7 +173,7 @@ def serve_directory(
         "--data-cache",
         help=(
             "Byte limit for the data cache. Set to 0 to disable this cache. "
-            "By default, it will use up to 15% of system RAM."
+            "By default, it will use up to 15% of RAM (total physical memory)."
         ),
     ),
 ):
