@@ -21,7 +21,7 @@ how-to/configuration
 how-to/custom-formats
 how-to/profiles
 how-to/direct-client
-how-to/scaling
+how-to/tune-caches
 how-to/docker
 ```
 

@@ -19,6 +19,7 @@ if __debug__:
     logger = logging.getLogger(__name__)
     handler = logging.StreamHandler()
     handler.setLevel("DEBUG")
+    handler.setFormatter(logging.Formatter("DATA CACHE: %(message)s"))
     logger.addHandler(handler)
 
 
@@ -57,15 +58,19 @@ class CacheInProcessMemory:
         def miss(key):
             self.misses += 1
             if __debug__:
-                logger.info("Data cache miss %r", key)
+                logger.debug("Miss %r", key)
 
         def hit(key, value):
             self.hits += 1
             if __debug__:
-                logger.info("Data cache hit %r", key)
+                logger.debug("Hit %r", key)
 
         self._cache = cachey.Cache(available_bytes, 0, miss=miss, hit=hit)
         self.dask_context = DaskCache(self)
+
+    @property
+    def available_bytes(self):
+        return self._cache.available_bytes
 
     def get(self, key):
         value = self._cache.get(key)
@@ -74,7 +79,7 @@ class CacheInProcessMemory:
     def put(self, key, value, cost, nbytes=None):
         if nbytes is None:
             nbytes = self._cache.get_nbytes(value)
-        logger.info("Data cache store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
+        logger.debug("Store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
 
     def discard(self, *keys):

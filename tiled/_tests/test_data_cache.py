@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 
 import numpy
+import psutil
 import pytest
 
 from ..client import from_config
@@ -169,3 +170,36 @@ a,b,c
     assert "data" not in client
     with pytest.raises(KeyError):
         client["data"]
+
+
+def test_cache_size_absolute(tmpdir):
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {"directory": tmpdir},
+            },
+        ],
+        "data_cache": {"available_bytes": 1000},
+    }
+    from_config(config)
+    cache = get_data_cache()
+    assert cache.available_bytes == 1000
+
+
+def test_cache_size_relative(tmpdir):
+    # As a fraction of system memory
+    config = {
+        "trees": [
+            {
+                "tree": "files",
+                "path": "/",
+                "args": {"directory": tmpdir},
+            },
+        ],
+        "data_cache": {"available_bytes": 0.1},
+    }
+    from_config(config)
+    cache = get_data_cache()
+    assert cache.available_bytes == psutil.virtual_memory().total * 0.1

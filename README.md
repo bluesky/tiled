@@ -33,8 +33,10 @@ user or deployed as a shared public or private resource.
 
 Tiled facilitates **client-side caching** in a standard web browser or in
 Tiled's Python client, making efficient use of bandwidth and enabling an offline
-"airplane mode." Service-side caching of "hot" datasets and resources is also
-possible.
+"airplane mode." It uses **Service-side caching** of "hot" datasets and
+resources to expedite both repeat requests (e.g. when the user is re-running a
+Jupyter notebook) and distinct requests for different parts of the same dataset
+(e.g.  when the user is requesting different slices or columns from a dataset).
 
 | Distribution   | Where to get it                                              |
 | -------------- | ------------------------------------------------------------ |

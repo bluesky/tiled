@@ -168,12 +168,14 @@ def serve_directory(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    data_cache_available_bytes: int = typer.Option(
+    data_cache_available_bytes: Optional[float] = typer.Option(
         None,
         "--data-cache",
         help=(
-            "Byte limit for the data cache. Set to 0 to disable this cache. "
-            "By default, it will use up to 15% of RAM (total physical memory)."
+            "Maximum size for the data cache, given as a number of bytes as in "
+            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
+            "0.3. Set to 0 to disable this cache. By default, it will use up to "
+            "0.15 (15%) of RAM."
         ),
     ),
 ):
@@ -216,13 +218,27 @@ def serve_pyobject(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    data_cache_available_bytes: Optional[float] = typer.Option(
+        None,
+        "--data-cache",
+        help=(
+            "Maximum size for the data cache, given as a number of bytes as in "
+            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
+            "0.3. Set to 0 to disable this cache. By default, it will use up to "
+            "0.15 (15%) of RAM."
+        ),
+    ),
 ):
     "Serve a Tree instance from a Python module."
     from ..server.app import serve_tree, print_admin_api_key_if_generated
     from ..utils import import_object
 
     tree = import_object(object_path)
-    web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
+    server_settings = {}
+    if data_cache_available_bytes is not None:
+        server_settings["data_cache"] = {}
+        server_settings["data_cache"]["available_bytes"] = data_cache_available_bytes
+    web_app = serve_tree(tree, {"allow_anonymous_access": public}, server_settings)
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn

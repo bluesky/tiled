@@ -256,15 +256,18 @@ properties:
   data_cache:
     properties:
       available_bytes:
-        type: integer
+        type: number
         description: |
-          Maximum bytes allowed for this cache. Default is 1_000_000 (1 GB).
-          Set to 0 to disable this cache.
+          Maximum size for the data cache, given as a number of bytes as in
+          1_000_000 or as a fraction of system RAM (total physical memory) as in
+          0.3. Set to 0 to disable this cache. By default, it will use up to
+          0.15 (15%) of RAM.
       log_level:
         type: "string"
         enum: ["critical", "error", "warning", "info", "debug"]
         description: |
-          Set to "info" or "debug" level to log cache hits, misses, and stores.
+          Set to "debug" level to log cache hits, misses, and stores.
+          Default is "info" level, which logs cache configuration at application startup.
     description: |
       An the internal cache in process memory, shared by individual Adapters to
       cache the their internal resources such as the contents of parsed files.

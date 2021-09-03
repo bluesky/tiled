@@ -96,10 +96,29 @@ def get_app(query_registry, compression_registry, include_routers=None):
         app.state.allow_origins.extend(settings.allow_origins)
 
         data_cache_logger.setLevel(settings.data_cache_log_level.upper())
-        if settings.data_cache_available_bytes == 0:
+        data_cache_available_bytes = settings.data_cache_available_bytes
+        import psutil
+
+        TOTAL_PHYSICAL_MEMORY = psutil.virtual_memory().total
+        if data_cache_available_bytes < 0:
+            raise ValueError("Negative data cache size is not interpretable.")
+        if data_cache_available_bytes == 0:
             cache = NO_CACHE
+            data_cache_logger.info("Data cache disabled")
         else:
-            cache = CacheInProcessMemory(settings.data_cache_available_bytes)
+            if 0 < data_cache_available_bytes < 1:
+                # Interpret this as a fraction of system memory.
+
+                data_cache_available_bytes = int(
+                    TOTAL_PHYSICAL_MEMORY * data_cache_available_bytes
+                )
+            else:
+                data_cache_available_bytes = int(data_cache_available_bytes)
+            cache = CacheInProcessMemory(data_cache_available_bytes)
+            percentage = round(data_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100)
+            data_cache_logger.info(
+                f"Will use up to {data_cache_available_bytes} bytes ({percentage:d}% of total physical RAM)"
+            )
         set_data_cache(cache)
 
     app.add_middleware(
