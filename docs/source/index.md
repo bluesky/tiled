@@ -31,6 +31,7 @@ how-to/docker
 explanations/structures
 explanations/security
 explanations/compression
+explanations/caching
 explanations/access-control
 explanations/scaling-down
 explanations/faq

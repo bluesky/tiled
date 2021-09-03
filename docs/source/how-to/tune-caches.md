@@ -61,13 +61,12 @@ DATA CACHE: Will use up to 12583450214 bytes (30% of total physical RAM)
 To log cache hits, misses, and stores, use this configuration setting
 
 ```yaml
-# Disable data cache.
 data_cache:
   bytes_available: ...
   log_level: DEBUG  # case-insensitive
 ```
 
-or environment variable
+or the environment variable
 
 ```
 TILED_DATA_CACHE_LOG_LEVEL=DEBUG  # case-insensitive
