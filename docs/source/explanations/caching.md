@@ -26,17 +26,17 @@ There are three types of centrally-managed cache in Tiled:
    cache on the server side. It stores the content of the most frequent responses.
    This covers use cases such as, "Several users are asking for the exact same
    chunks of data in the exact same format."
-3. **Service-side data cache.** The _response_ caches store HTTP response bytes,
-   and they operate near the outer edges of the application. The _data_ cache
-   stores structured chunks of data (e.g. array chunks, dataframe partitions),
-   and it is more deeply integrated.  It is available for authors of Adapters to
-   use for stashing any serializable objects that may be useful in expediting
-   future work. Requests that ask for overlapping but distinct slices of data or
-   requests that ask for the same data but in varied formats will not benefit
-   from the _response_ cache; they will "miss". The _data_ cache, however, can
-   slice and encode its cached resources differently for different requests. The
-   data cache will not provide quite the same speed boost as a response cache,
-   but it has a broader impact.
+3. **Service-side object cache.** The _response_ caches operate near the outer
+   edges of the application, stashing and retrieve HTTP response bytes. The
+   _object_ cache is more deeply integrated into the application: it is
+   available for authors of Adapters to use for stashing any objects that may be
+   useful in expediting future work. These objects may serializable, such as chunks
+   of array data, or unserializable, such as file handles. Requests that ask for
+   overlapping but distinct slices of data or requests that ask for the same
+   data but in varied formats will not benefit from the _response_ cache; they
+   will "miss". The _object_ cache, however, can slice and encode its cached
+   resources differently for different requests. The object cache will not provide
+   quite the same speed boost as a response cache, but it has a broader impact.
 
 ## Where is the cache content stored?
 
@@ -49,29 +49,53 @@ and a shared, persistent cache backed by files on disk. (The disk cache uses
 file-based locking to ensure consistency.) The caching mechanism is pluggable:
 other storage mechanisms can be injected without changes to Tiled itself.
 
-Tiled plans to support configuring the service-side caches---items (2) and (3)
-above---in private or shared mode, using respectively worker memory or Redis.
-Different choices will give different benefits, as discussed below.  _Currently,
-only (3) is implemented and it only supports storage in worker memory._
+On the service side, only the object cache is currently implemented, and it
+currently supports storage in worker memory only. Workers cannot currently
+access resources cached by other workers. In the future, Tiled will support
+(optionally) configuring the service-side response and object caches to sync
+with a shared Redis cache. Response data, being bytes, is straightforward to
+stored in a shared cache. But only a subset of the items in the object
+cache---those with known types and secure serialization schemes---will be
+eligible for the shared cache. For example, Tiled cannot place a file handle in
+Redis, and Tiled will not place unsigned pickled data in Redis (for security
+reasons).
 
-When the data cache (3) is private, it can simply store chunks of data (numpy
-arrays, dataframe partitions, etc.) as live runtime objects in Python process
-memory. Storage and retrieval are extremely cheap: they cost about one dictionary
-lookup.  When the data cache (3) is shared, the data will have to be serialized
-(e.g. with pickle) and moved into the shared external service. The benefit is
-that, in a horizontally-scaled deployment with a user's requests load-balanced
-over many workers, all workers will have fast access to the cached chunks of
-data. The access will not be as fast in the private mode, but it will be much
-faster than reading data from disk.
+## Tiered private/shared caching
 
-The entries in the response caches---items (1) and (2) above---are serialized
-bytes (HTTP responses). Therefore, the overhead of moving them into external
-storage is lower, as there is no serialization/deserialization step.
+The planned syncing with a shared service-side cache will operate as follows:
 
-In the simple case of a single-worker deployment, for "scaled down" use on a
-laptop, there is no speed benefit to keeping anything out-of-process, so Tiled
-will always support the _option_ of placing (2) and (3) in worker memory, even
-if shared memory proves to be a better choice for larger deployments.
+* Worker A needs a resource. It checks its in-process cache and the shared cache,
+  and it does not find it.
+* Worker A creates the resource (e.g. a chunk of array data). It places a reference
+  in its in-process cache. (This is very cheap.) It _also_ places a copy into the
+  shared Redis cache. This requires serialization and transport over the network.
+* Worker A needs the resource again. It finds it in its in-process cache.
+* Worker B needs the same resource. It checks its in-process cache and does not find
+  it there. It checks the shared cache and does find it. It loads the data
+  from the shared cache. This requires network transport and deserialization, but
+  it is (likely) much cheaper that reading from disk. Worker B may place a
+  reference in its in-process cache so that the next access will be faster.
+  If Worker B's in-process cache is near its maximum capacity, it will decide
+  whether it is worthwhile to evict one of its existing items to make room for
+  this latest one.
+* Sometime later, both of these workers need the resource again and finds that
+  the resource is no longer in their respective in-process caches---it has been
+  evicted to make room for more frequently-used items. They find it in the shared
+  cache. Again, they may restore it back into their in-process caches.
+* Worker A processes a user request that _changes_ the resource and invalidates the
+  cached data. It evicts the stale data from its in-process cache and from the
+  shared cache. It announces---via a publish/subscribe mechanism---that the
+  item is stale. Worker B receives this announcement and evicts the stale data
+  from its in-process cache as well.  When the data is next accessed from either
+  worker, it will be loaded fresh.
+* Suppose Worker C also held a copy of this cached stale data in its in-process
+  cache. And suppose it has momentarily lost its connection to the
+  publish/subscribe mechanism and missed this announcement. Therefore, it is
+  momentarily unaware that it is holding stale data. Will it ever get back in
+  sync? The announcements include a incrementing counter, so that whenever the
+  _next_ announcement is published or when Worker C performs a periodic
+  check of the current counter value, Worker C will observe that it has missed
+  one of more updates, and it will purge its in-process cache.
 
 ## Connection to Dask
 
@@ -80,15 +104,15 @@ Dask provides an opt-in, experimental
 It caches at the granularity of "tasks", such as chunks of array or partitions
 of dataframes.
 
-Tiled's data cache is generic---not exclusive to dask code paths---but it plugs
+Tiled's object cache is generic---not exclusive to dask code paths---but it plugs
 into dask in a similar way to make it easy for any Adapters that happen to use
-dask to leverage Tiled's data cache very simply, like this:
+dask to leverage Tiled's object cache very simply, like this:
 
 ```py
-from tiled.server.data_cache import get_data_cache
+from tiled.server.object_cache import get_object_cache
 
 
-with get_data_cache().dask_context:
+with get_object_cache().dask_context:
     # Any tasks that happen to already be cached will be looked up
     # instead of computed here. Anything that _is_ computer here may
     # be cached, depending on its bytesize and its cost (how long it took to
@@ -99,27 +123,16 @@ with get_data_cache().dask_context:
 Items can be proactively clearly from the cache like so:
 
 ```py
-from tiled.server.data_cache import get_data_cache, NO_CACHE
+from tiled.server.object_cache import get_object_cache, NO_CACHE
 
 
-cache = get_data_cache()
+cache = get_object_cache()
 if cache is not NO_CACHE:
     cache.discard_dask(dask_object.__dask_keys__())
 ```
 
 ## What other kinds of caching happen in Tiled?
 
-Above we addressed _centrally-managed_ caches. There is some additional _ad hoc_
-caching by Adapters in the service.
-
-* Adapter instances may cache file handles. Therefore, they cannot necessarily
-  be serialized and should not be lumped in with the data cache.
-* The file-based directory-walking tree uses an LRU cache, fixed at 10k items
-  per subdirectory, to stash Adapter instances on first access. It discards them
-  if the underlying file is removed or modified.
-
-The LRU cache ensures that adapters can hold on to file handles with some
-confidence that LRU cache will keep the server from holding too many open files
-at once. Adapters should use the data cache to stash any memory-intensive
-resources that they want to cache so that the memory footprint of the cached
-Adapters themselves is not high.
+The file-based directory-walking tree uses LRU caches, fixed at 10k items
+per subdirectory, to stash Adapter instances on first access. It discards them
+if the underlying file is removed or modified.

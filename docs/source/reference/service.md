@@ -181,7 +181,7 @@ structures.
    tiled.server.app.get_app
 ```
 
-## Data Cache
+## Object Cache
 
 The "data" cache is available to all Adapters to cache their data resources. It
 is a process-global singleton.
@@ -197,14 +197,14 @@ example.
 .. autosummary::
    :toctree: generated
 
-   tiled.server.data_cache.get_data_cache
-   tiled.server.data_cache.set_data_cache
-   tiled.server.data_cache.CacheInProcessMemory
-   tiled.server.data_cache.CacheInProcessMemory.available_bytes
-   tiled.server.data_cache.CacheInProcessMemory.get
-   tiled.server.data_cache.CacheInProcessMemory.put
-   tiled.server.data_cache.CacheInProcessMemory.discard
-   tiled.server.data_cache.CacheInProcessMemory.clear
-   tiled.server.data_cache.CacheInProcessMemory.dask_context
-   tiled.server.data_cache.CacheInProcessMemory.discard_dask
+   tiled.server.object_cache.get_object_cache
+   tiled.server.object_cache.set_object_cache
+   tiled.server.object_cache.CacheInProcessMemory
+   tiled.server.object_cache.CacheInProcessMemory.available_bytes
+   tiled.server.object_cache.CacheInProcessMemory.get
+   tiled.server.object_cache.CacheInProcessMemory.put
+   tiled.server.object_cache.CacheInProcessMemory.discard
+   tiled.server.object_cache.CacheInProcessMemory.clear
+   tiled.server.object_cache.CacheInProcessMemory.dask_context
+   tiled.server.object_cache.CacheInProcessMemory.discard_dask
 ```

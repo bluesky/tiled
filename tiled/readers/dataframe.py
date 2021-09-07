@@ -3,7 +3,7 @@ import dask.dataframe
 
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
-from ..server.data_cache import get_data_cache, NO_CACHE
+from ..server.object_cache import get_object_cache, NO_CACHE
 
 
 class DataFrameAdapter:
@@ -47,7 +47,7 @@ class DataFrameAdapter:
         # If an instance has previously been created using the same parameters,
         # then we are here because the caller wants a *fresh* view on this data.
         # Therefore, we should clear any cached data.
-        cache = get_data_cache()
+        cache = get_object_cache()
         if cache is not NO_CACHE:
             cache.discard_dask(ddf.__dask_keys__())
         return cls(ddf, metadata=metadata)
@@ -86,7 +86,7 @@ class DataFrameAdapter:
         if columns is not None:
             ddf = ddf[columns]
         # Note: If the cache is set to NO_CACHE, this is a null context.
-        with get_data_cache().dask_context:
+        with get_object_cache().dask_context:
             return ddf.compute()
 
     def read_partition(self, partition, columns=None):
@@ -95,5 +95,5 @@ class DataFrameAdapter:
             # Sub-select columns.
             partition = partition[columns]
         # Note: If the cache is set to NO_CACHE, this is a null context.
-        with get_data_cache().dask_context:
+        with get_object_cache().dask_context:
             return partition.compute()

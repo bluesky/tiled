@@ -6,7 +6,7 @@ import psutil
 import pytest
 
 from ..client import from_config
-from ..server.data_cache import CacheInProcessMemory, get_data_cache, NO_CACHE
+from ..server.object_cache import CacheInProcessMemory, get_object_cache, NO_CACHE
 from ..trees.files import DEFAULT_POLL_INTERVAL
 
 
@@ -61,7 +61,7 @@ def test_eviction():
     assert "arr2" in cache
 
 
-def test_data_cache_hit_and_miss(tmpdir):
+def test_object_cache_hit_and_miss(tmpdir):
     with open(Path(tmpdir, "data.csv"), "w") as file:
         file.write(
             """
@@ -79,7 +79,7 @@ a,b,c
         ],
     }
     client = from_config(config)
-    cache = get_data_cache()
+    cache = get_object_cache()
     assert cache.hits == cache.misses == 0
     client["data"].read()
     assert cache.misses == 2  # two dask objects in the cache
@@ -97,7 +97,7 @@ a,b,c
     assert cache.hits == 4
 
 
-def test_data_cache_disabled(tmpdir):
+def test_object_cache_disabled(tmpdir):
     with open(Path(tmpdir, "data.csv"), "w") as file:
         file.write(
             """
@@ -113,10 +113,10 @@ a,b,c
                 "args": {"directory": tmpdir},
             },
         ],
-        "data_cache": {"available_bytes": 0},
+        "object_cache": {"available_bytes": 0},
     }
     client = from_config(config)
-    cache = get_data_cache()
+    cache = get_object_cache()
     assert cache is NO_CACHE
     client["data"]
 
@@ -140,7 +140,7 @@ a,b,c
         ],
     }
     client = from_config(config)
-    cache = get_data_cache()
+    cache = get_object_cache()
     assert cache.hits == cache.misses == 0
     assert len(client["data"].read()) == 1
     with open(path, "w") as file:
@@ -181,10 +181,10 @@ def test_cache_size_absolute(tmpdir):
                 "args": {"directory": tmpdir},
             },
         ],
-        "data_cache": {"available_bytes": 1000},
+        "object_cache": {"available_bytes": 1000},
     }
     from_config(config)
-    cache = get_data_cache()
+    cache = get_object_cache()
     assert cache.available_bytes == 1000
 
 
@@ -198,10 +198,10 @@ def test_cache_size_relative(tmpdir):
                 "args": {"directory": tmpdir},
             },
         ],
-        "data_cache": {"available_bytes": 0.1},
+        "object_cache": {"available_bytes": 0.1},
     }
     from_config(config)
-    cache = get_data_cache()
+    cache = get_object_cache()
     actual = cache.available_bytes
     expected = psutil.virtual_memory().total * 0.1
     assert abs(actual - expected) / expected < 0.01  # inexact is OK

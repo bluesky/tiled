@@ -3,14 +3,15 @@
 This section describes a feature of the Tiled *server*. For client-side caching,
 see {doc}`../tutorials/caching`.
 
-## Data Cache
+## Object Cache
 
-The Tiled server Tiled stores chunks of recently-used data in worker memory.
-(The ability to externalize the data in a shared cache, like Redis, is planned.)
-It can use this to expedite future requests. By default, it will use up to 15%
-of RAM (total physical memory) for its data cache. This is meant to leave plenty
-of room for data analysis and other memory-hungry software that may be running
-on the same machine.
+The Tiled server Tiled stores objects such as file handles for frequently-opened
+files or chunks of frequently-used data in worker memory. (The ability to
+externalize the data in a shared cache, like Redis, is planned.) It can use this
+to expedite future requests. By default, it will use up to 15% of RAM (total
+physical memory) for its object cache. This is meant to leave plenty of room for
+data analysis and other memory-hungry software that may be running on the same
+machine.
 
 If Tiled is running on a dedicated data server, you may wish to turn this
 up as high as 70%. If Tiled is running on a resource-constrained laptop, you may
@@ -20,19 +21,19 @@ This can be done via configuration:
 
 ```yaml
 # Given in relative terms...
-data_cache:
+object_cache:
   bytes_available: 0.40  # 40% of total RAM
 ```
 
 ```yaml
 # Given in absolute terms...
-data_cache:
+object_cache:
   bytes_available: 2_000_000_000 # 2 GB of RAM
 ```
 
 ```yaml
-# Disable data cache.
-data_cache:
+# Disable object cache.
+object_cache:
   bytes_available: 0
 ```
 
@@ -40,19 +41,19 @@ For `tiled serve {pyobject, directory}` it can be configured with a flag:
 
 ```
 # Given in relative terms...
-tiled serve {pyobject, directory} --data-cache=0.40 ...  # 40% of total RAM
+tiled serve {pyobject, directory} --object-cache=0.40 ...  # 40% of total RAM
 ```
 
 ```
 # Given in absolute terms...
-tiled serve {pyobject, directory} --data-cache=2_000_000_000 ...  # 2 GB
+tiled serve {pyobject, directory} --object-cache=2_000_000_000 ...  # 2 GB
 ```
 
 ```
-tiled serve {pyobject, directory} --data-cache=0 ...  # disabled
+tiled serve {pyobject, directory} --object-cache=0 ...  # disabled
 ```
 
-The server logs the data cache configuration at startup, as in:
+The server logs the object cache configuration at startup, as in:
 
 ```
 DATA CACHE: Will use up to 12583450214 bytes (30% of total physical RAM)
@@ -61,7 +62,7 @@ DATA CACHE: Will use up to 12583450214 bytes (30% of total physical RAM)
 To log cache hits, misses, and stores, use this configuration setting
 
 ```yaml
-data_cache:
+object_cache:
   bytes_available: ...
   log_level: DEBUG  # case-insensitive
 ```
@@ -69,7 +70,7 @@ data_cache:
 or the environment variable
 
 ```
-TILED_DATA_CACHE_LOG_LEVEL=DEBUG  # case-insensitive
+TILED_OBJECT_CACHE_LOG_LEVEL=DEBUG  # case-insensitive
 ```
 
 The debug interleave with the access logs from uvicorn like this.

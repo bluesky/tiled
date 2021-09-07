@@ -138,7 +138,7 @@ def construct_serve_tree_kwargs(
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
-        server_settings["data_cache"] = config.get("data_cache", {})
+        server_settings["object_cache"] = config.get("object_cache", {})
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)

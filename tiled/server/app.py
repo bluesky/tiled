@@ -25,11 +25,11 @@ from .core import (
     PatchedStreamingResponse,
     record_timing,
 )
-from .data_cache import (
+from .object_cache import (
     CacheInProcessMemory,
-    logger as data_cache_logger,
+    logger as object_cache_logger,
     NO_CACHE,
-    set_data_cache,
+    set_object_cache,
 )
 from .router import declare_search_router, router
 from .settings import get_settings
@@ -95,31 +95,33 @@ def get_app(query_registry, compression_registry, include_routers=None):
 
         app.state.allow_origins.extend(settings.allow_origins)
 
-        data_cache_logger.setLevel(settings.data_cache_log_level.upper())
-        data_cache_available_bytes = settings.data_cache_available_bytes
+        object_cache_logger.setLevel(settings.object_cache_log_level.upper())
+        object_cache_available_bytes = settings.object_cache_available_bytes
         import psutil
 
         TOTAL_PHYSICAL_MEMORY = psutil.virtual_memory().total
-        if data_cache_available_bytes < 0:
-            raise ValueError("Negative data cache size is not interpretable.")
-        if data_cache_available_bytes == 0:
+        if object_cache_available_bytes < 0:
+            raise ValueError("Negative object cache size is not interpretable.")
+        if object_cache_available_bytes == 0:
             cache = NO_CACHE
-            data_cache_logger.info("Data cache disabled")
+            object_cache_logger.info("disabled")
         else:
-            if 0 < data_cache_available_bytes < 1:
+            if 0 < object_cache_available_bytes < 1:
                 # Interpret this as a fraction of system memory.
 
-                data_cache_available_bytes = int(
-                    TOTAL_PHYSICAL_MEMORY * data_cache_available_bytes
+                object_cache_available_bytes = int(
+                    TOTAL_PHYSICAL_MEMORY * object_cache_available_bytes
                 )
             else:
-                data_cache_available_bytes = int(data_cache_available_bytes)
-            cache = CacheInProcessMemory(data_cache_available_bytes)
-            percentage = round(data_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100)
-            data_cache_logger.info(
-                f"Will use up to {data_cache_available_bytes} bytes ({percentage:d}% of total physical RAM)"
+                object_cache_available_bytes = int(object_cache_available_bytes)
+            cache = CacheInProcessMemory(object_cache_available_bytes)
+            percentage = round(
+                object_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100
             )
-        set_data_cache(cache)
+            object_cache_logger.info(
+                f"Will use up to {object_cache_available_bytes} bytes ({percentage:d}% of total physical RAM)"
+            )
+        set_object_cache(cache)
 
     app.add_middleware(
         CompressionMiddleware,
@@ -286,14 +288,14 @@ def serve_tree(
         for item in ["allow_origins"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
-        data_cache_available_bytes = server_settings.get("data_cache", {}).get(
+        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
             "available_bytes"
         )
-        if data_cache_available_bytes is not None:
+        if object_cache_available_bytes is not None:
             setattr(
                 settings,
-                "data_cache_available_bytes",
-                data_cache_available_bytes,
+                "object_cache_available_bytes",
+                object_cache_available_bytes,
             )
         return settings
 

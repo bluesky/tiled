@@ -253,12 +253,12 @@ properties:
         additionalProperties: true
     description: |
       This section describes which users can see which entries.
-  data_cache:
+  object_cache:
     properties:
       available_bytes:
         type: number
         description: |
-          Maximum size for the data cache, given as a number of bytes as in
+          Maximum size for the object cache, given as a number of bytes as in
           1_000_000 or as a fraction of system RAM (total physical memory) as in
           0.3. Set to 0 to disable this cache. By default, it will use up to
           0.15 (15%) of RAM.
@@ -269,7 +269,8 @@ properties:
           Set to "debug" level to log cache hits, misses, and stores.
           Default is "info" level, which logs cache configuration at application startup.
     description: |
-      The 'data' cache is available to all Adapters to cache chunks of data in process memory.
+      The 'object' cache is available to all Adapters to cache arbitrary objects, including
+      file handles or chunks of data, in process memory.
   allow_origins:
     type: array
     items:

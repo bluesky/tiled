@@ -19,7 +19,7 @@ if __debug__:
     logger = logging.getLogger(__name__)
     handler = logging.StreamHandler()
     handler.setLevel("DEBUG")
-    handler.setFormatter(logging.Formatter("DATA CACHE: %(message)s"))
+    handler.setFormatter(logging.Formatter("OBJECT CACHE: %(message)s"))
     logger.addHandler(handler)
 
 
@@ -32,22 +32,22 @@ class _NO_CACHE_SENTINEL:
 
 
 NO_CACHE = _NO_CACHE_SENTINEL()
-_data_cache = NO_CACHE
+_object_cache = NO_CACHE
 
 
-def set_data_cache(cache):
+def set_object_cache(cache):
     """
     Set the process-global icache.
     """
-    global _data_cache
-    _data_cache = cache
+    global _object_cache
+    _object_cache = cache
 
 
-def get_data_cache():
+def get_object_cache():
     """
     Set the process-global icache.
     """
-    return _data_cache
+    return _object_cache
 
 
 class CacheInProcessMemory:
@@ -71,7 +71,7 @@ class CacheInProcessMemory:
     @property
     def dask_context(self):
         """
-        Within this context, get and store dask tasks with the data cache.
+        Within this context, get and store dask tasks with the object cache.
         """
         return self._dask_context
 
@@ -98,7 +98,7 @@ class CacheInProcessMemory:
         key : uniquely identifies content
         value : object
             May be any Python object. For future-proofing, the object should be
-            pickle-able, as an _external_ data cache will be added in the future.
+            pickle-able, as an _external_ object cache will be added in the future.
         cost : float
             Time in seconds that this value cost to obtain.
         nbytes : bytesize, optional
