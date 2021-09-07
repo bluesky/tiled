@@ -76,7 +76,9 @@ class TiffSequenceReader:
             return with_object_cache(self._cache_key, self._seq.asarray)
         if isinstance(slice, int):
             # e.g. read(slice=0)
-            return with_object_cache(self._cache_key, self._seq.asarray, file=slice)
+            return with_object_cache(
+                self._cache_key + (slice,), self._seq.asarray, file=slice
+            )
         # e.g. read(slice=(...))
         if isinstance(slice, tuple):
             image_axis, *the_rest = slice
@@ -84,7 +86,9 @@ class TiffSequenceReader:
             # (0, slice(...)) or (0,....) are converted to a list
             if isinstance(image_axis, int):
                 # e.g. read(slice=(0, ....))
-                arr = with_object_cache(self._seq.asarray, file=image_axis)
+                arr = with_object_cache(
+                    self._cache_key + (image_axis,), self._seq.asarray, file=image_axis
+                )
             if isinstance(image_axis, builtins.slice):
                 if image_axis.start is None:
                     slice_start = 0
@@ -96,7 +100,9 @@ class TiffSequenceReader:
                     slice_step = image_axis.step
                 arr = numpy.stack(
                     [
-                        self._seq.asarray(file=i)
+                        with_object_cache(
+                            self._cache_key + (i,), self._seq.asarray, file=i
+                        )
                         for i in range(slice_start, image_axis.stop, slice_step)
                     ]
                 )
@@ -114,7 +120,7 @@ class TiffSequenceReader:
                 slice_step = slice.step
             arr = numpy.stack(
                 [
-                    self._seq.asarray(file=i)
+                    with_object_cache(self._cache_key + (i,), self._seq.asarray, file=i)
                     for i in range(slice_start, slice.stop, slice_step)
                 ]
             )

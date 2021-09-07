@@ -60,11 +60,16 @@ def with_object_cache(cache_key, factory, *args, **kwargs):
     Use value from cache or, if not present, call factory(*args, **kwargs) and cache result.
     """
     cache = get_object_cache()
+    # If no cache configured, generate and return value.
+    if cache is NO_CACHE:
+        return factory(*args, **kwargs)
+    # Return cached value if found.
     value = cache.get(cache_key)
     if value is not None:
         return value
+    # Generate value and offer it to the cache, with an associated cost.
     start_time = time.perf_counter()
-    value = factory()
+    value = factory(*args, **kwargs)
     cost = time.perf_counter() - start_time
     cache.put(cache_key, value, cost)
     return value
