@@ -189,10 +189,11 @@ handles. It is a process-global singleton.
 
 Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 
-Adapters that use the cache _should_ use a cache key that begins with
-`{class.__module__}:{class.__qualname__}-` to avoid collisions with other
-Adapters. See `tiled.readers.dataframe.DataFrameAdapter.read_csv` for an
-example.
+Adapters that use the cache _must_ use a tuple of strings and/or numbers as a
+cache key and _should_ use a cache key of the form `(class.__module__,
+class.__qualname__, ...)` to avoid collisions with other Adapters. See
+`tiled.readers.dataframe.DataFrameAdapter.read_csv` for an example that
+uses integration with dask.
 
 ```{eval-rst}
 .. autosummary::
