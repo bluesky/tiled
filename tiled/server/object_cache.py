@@ -11,6 +11,7 @@ from timeit import default_timer
 
 import cachey
 from dask.callbacks import Callback
+import time
 
 
 if __debug__:
@@ -50,8 +51,27 @@ def get_object_cache():
     return _object_cache
 
 
-class CacheInProcessMemory:
-    def __init__(self, available_bytes):
+# TODO Use positional-only args for for with_object_cache
+# once we drop Python 3.7 support.
+
+
+def with_object_cache(cache_key, factory, *args, **kwargs):
+    """
+    Use value from cache or, if not present, call factory(*args, **kwargs) and cache result.
+    """
+    cache = get_object_cache()
+    value = cache.get(cache_key)
+    if value is not None:
+        return value
+    start_time = time.perf_counter()
+    value = factory()
+    cost = time.perf_counter() - start_time
+    cache.put(cache_key, value, cost)
+    return value
+
+
+class ObjectCache:
+    def __init__(self, available_bytes_in_process):
         self.misses = 0
         self.hits = 0
 
@@ -65,7 +85,7 @@ class CacheInProcessMemory:
             if __debug__:
                 logger.debug("Hit %r", key)
 
-        self._cache = cachey.Cache(available_bytes, 0, miss=miss, hit=hit)
+        self._cache = cachey.Cache(available_bytes_in_process, 0, miss=miss, hit=hit)
         self._dask_context = DaskCache(self)
 
     @property

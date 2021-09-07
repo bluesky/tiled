@@ -26,7 +26,7 @@ from .core import (
     record_timing,
 )
 from .object_cache import (
-    CacheInProcessMemory,
+    ObjectCache,
     logger as object_cache_logger,
     NO_CACHE,
     set_object_cache,
@@ -114,7 +114,7 @@ def get_app(query_registry, compression_registry, include_routers=None):
                 )
             else:
                 object_cache_available_bytes = int(object_cache_available_bytes)
-            cache = CacheInProcessMemory(object_cache_available_bytes)
+            cache = ObjectCache(object_cache_available_bytes)
             percentage = round(
                 object_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100
             )

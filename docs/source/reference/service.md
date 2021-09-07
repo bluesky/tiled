@@ -192,8 +192,8 @@ Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 Adapters that use the cache _must_ use a tuple of strings and/or numbers as a
 cache key and _should_ use a cache key of the form `(class.__module__,
 class.__qualname__, ...)` to avoid collisions with other Adapters. See
-`tiled.readers.dataframe.DataFrameAdapter.read_csv` for an example that
-uses integration with dask.
+`tiled.readers.tiff` for a generic example and see `tiled.readers.dataframe` for
+an example that uses integration with dask.
 
 ```{eval-rst}
 .. autosummary::
@@ -201,12 +201,12 @@ uses integration with dask.
 
    tiled.server.object_cache.get_object_cache
    tiled.server.object_cache.set_object_cache
-   tiled.server.object_cache.CacheInProcessMemory
-   tiled.server.object_cache.CacheInProcessMemory.available_bytes
-   tiled.server.object_cache.CacheInProcessMemory.get
-   tiled.server.object_cache.CacheInProcessMemory.put
-   tiled.server.object_cache.CacheInProcessMemory.discard
-   tiled.server.object_cache.CacheInProcessMemory.clear
-   tiled.server.object_cache.CacheInProcessMemory.dask_context
-   tiled.server.object_cache.CacheInProcessMemory.discard_dask
+   tiled.server.object_cache.ObjectCache
+   tiled.server.object_cache.ObjectCache.available_bytes
+   tiled.server.object_cache.ObjectCache.get
+   tiled.server.object_cache.ObjectCache.put
+   tiled.server.object_cache.ObjectCache.discard
+   tiled.server.object_cache.ObjectCache.clear
+   tiled.server.object_cache.ObjectCache.dask_context
+   tiled.server.object_cache.ObjectCache.discard_dask
 ```

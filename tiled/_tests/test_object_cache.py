@@ -6,12 +6,12 @@ import psutil
 import pytest
 
 from ..client import from_config
-from ..server.object_cache import CacheInProcessMemory, get_object_cache, NO_CACHE
+from ..server.object_cache import ObjectCache, get_object_cache, NO_CACHE
 from ..trees.files import DEFAULT_POLL_INTERVAL
 
 
 def test_tallying_hits_and_misses():
-    cache = CacheInProcessMemory(1e6)
+    cache = ObjectCache(1e6)
     assert cache.get("a") is None
     assert cache.misses == 1
     assert cache.hits == 0
@@ -34,7 +34,7 @@ def test_tallying_hits_and_misses():
 
 def test_too_large_item():
     AVAILABLE_BYTES = 10  # very small limit
-    cache = CacheInProcessMemory(AVAILABLE_BYTES)
+    cache = ObjectCache(AVAILABLE_BYTES)
     arr = numpy.ones((5, 5))
     assert arr.nbytes > AVAILABLE_BYTES
     cache.put("b", arr, cost=1)
@@ -46,7 +46,7 @@ def test_too_large_item():
 
 def test_eviction():
     AVAILABLE_BYTES = 300
-    cache = CacheInProcessMemory(AVAILABLE_BYTES)
+    cache = ObjectCache(AVAILABLE_BYTES)
     arr1 = numpy.ones((5, 5))  # 200 bytes
     arr2 = 2 * numpy.ones((5, 5))
     cache.put("arr1", arr1, cost=1)
