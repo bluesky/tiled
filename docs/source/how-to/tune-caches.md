@@ -5,8 +5,8 @@ see {doc}`../tutorials/caching`.
 
 ## Object Cache
 
-The Tiled server Tiled stores objects such as file handles for frequently-opened
-files or chunks of frequently-used data in worker memory. (The ability to
+The Tiled server stores objects such as file handles for frequently-opened
+files and chunks of frequently-used data in worker memory. (The ability to
 externalize the data in a shared cache, like Redis, is planned.) It can use this
 to expedite future requests. By default, it will use up to 15% of RAM (total
 physical memory) for its object cache. This is meant to leave plenty of room for

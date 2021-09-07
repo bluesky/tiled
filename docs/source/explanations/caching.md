@@ -114,13 +114,13 @@ from tiled.server.object_cache import get_object_cache
 
 with get_object_cache().dask_context:
     # Any tasks that happen to already be cached will be looked up
-    # instead of computed here. Anything that _is_ computer here may
+    # instead of computed here. Anything that _is_ computed here may
     # be cached, depending on its bytesize and its cost (how long it took to
     # compute).
     dask_object.compute()
 ```
 
-Items can be proactively clearly from the cache like so:
+Items can be proactively cleared from the cache like so:
 
 ```py
 from tiled.server.object_cache import get_object_cache, NO_CACHE
