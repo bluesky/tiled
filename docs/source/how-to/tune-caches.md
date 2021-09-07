@@ -56,7 +56,7 @@ tiled serve {pyobject, directory} --object-cache=0 ...  # disabled
 The server logs the object cache configuration at startup, as in:
 
 ```
-DATA CACHE: Will use up to 12583450214 bytes (30% of total physical RAM)
+OBJECT CACHE: Will use up to 12583450214 bytes (30% of total physical RAM)
 ```
 
 To log cache hits, misses, and stores, use this configuration setting
@@ -73,14 +73,14 @@ or the environment variable
 TILED_OBJECT_CACHE_LOG_LEVEL=DEBUG  # case-insensitive
 ```
 
-The debug interleave with the access logs from uvicorn like this.
+The debug logs interleave with the access logs from uvicorn like this.
 
 ```
-DATA CACHE: Miss ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
-DATA CACHE: Store ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0) (cost=0.003, nbytes=200)
+OBJECT CACHE: Miss ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
+OBJECT CACHE: Store ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0) (cost=0.003, nbytes=200)
 INFO:     127.0.0.1:47744 - "GET /dataframe/full/file0001 HTTP/1.1" 200 OK
-DATA CACHE: Hit ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
+OBJECT CACHE: Hit ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
 INFO:     127.0.0.1:47750 - "GET /dataframe/full/file0001 HTTP/1.1" 200 OK
-DATA CACHE: Hit ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
+OBJECT CACHE: Hit ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
 INFO:     127.0.0.1:47758 - "GET /dataframe/full/file0001 HTTP/1.1" 200 OK
 ```

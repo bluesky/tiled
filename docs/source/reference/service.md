@@ -183,8 +183,9 @@ structures.
 
 ## Object Cache
 
-The "data" cache is available to all Adapters to cache their data resources. It
-is a process-global singleton.
+The "object" cache is available to all Adapters to cache any objects, including
+serializable objects like array chunks and unserializable objects like file
+handles. It is a process-global singleton.
 
 Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 
