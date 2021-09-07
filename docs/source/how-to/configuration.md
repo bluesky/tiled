@@ -26,8 +26,8 @@ TILED_CONFIG=my_config_file.yml tiled serve config
 TILED_CONFIG=my_config_directory/ tiled serve config
 ```
 
-Finally, if the environment variable is not yet, a defeault location
-`config.yml` is set. But the explicitly specifying the configuration location is
+Finally, if the environment variable is not yet, a default location
+`config.yml` is set. But explicitly specifying the configuration location is
 recommended for any important use.
 
 ```
@@ -47,6 +47,7 @@ tiled serve config my_config_file.yml
 ```
 
 ## Simple examples
+
 The simple deployment
 
 ```
@@ -87,6 +88,17 @@ is equivalent to
 trees:
     - path: /
       tree: tiled.examples.generated_minimal:tree
+```
+
+Finally, any environment variables in the YAML file, given as `$VAR` or
+`${VAR}`, are expanded. Example:
+
+```yaml
+trees:
+    - path: /
+      tree: tiled.trees.files:Tree.from_directory
+      args:
+          directory: ${DIRECTORY}  # expanded value of environment variable $DIRECTORY
 ```
 
 ## Less simple examples

@@ -24,3 +24,7 @@ If there are multiple configuration files:
 The content below is automatically generated from a schema that is used
 to validate configuration files when they are read.
 
+## Environment variable expansion
+
+Any values with environment variables, given as `$VAR` or `${VAR}`, will be
+expanded (i.e. filled in) with their values.
