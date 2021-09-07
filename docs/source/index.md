@@ -21,7 +21,7 @@ how-to/configuration
 how-to/custom-formats
 how-to/profiles
 how-to/direct-client
-how-to/scaling
+how-to/tune-caches
 how-to/docker
 ```
 
@@ -31,6 +31,7 @@ how-to/docker
 explanations/structures
 explanations/security
 explanations/compression
+explanations/caching
 explanations/access-control
 explanations/scaling-down
 explanations/faq

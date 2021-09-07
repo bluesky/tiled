@@ -2,6 +2,7 @@ import dask.array
 
 from ..structures.array import ArrayMacroStructure, MachineDataType
 from ..utils import DictView
+from ..server.object_cache import get_object_cache
 
 
 class ArrayAdapter:
@@ -54,20 +55,14 @@ class ArrayAdapter:
         dask_array = self._data
         if slice is not None:
             dask_array = dask_array[slice]
-        return dask_array.compute()
+        # Note: If the cache is set to NO_CACHE, this is a null context.
+        with get_object_cache().dask_context:
+            return dask_array.compute()
 
     def read_block(self, block, slice=None):
         dask_array = self._data.blocks[block]
         if slice is not None:
             dask_array = dask_array[slice]
-        return dask_array.compute()
-
-    def close(self):
-        # Allow the garbage collector to reclaim this memory.
-        self._data = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self):
-        self.close()
+        # Note: If the cache is set to NO_CACHE, this is a null context.
+        with get_object_cache().dask_context:
+            return dask_array.compute()

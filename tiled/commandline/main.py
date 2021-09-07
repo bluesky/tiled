@@ -151,6 +151,14 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
+    poll_interval: float = typer.Option(
+        None,
+        "--poll-interval",
+        help=(
+            "Time in seconds between scans of the directory for removed or "
+            "changed files. If 0, do not poll for changes."
+        ),
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -160,18 +168,36 @@ def serve_directory(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    object_cache_available_bytes: Optional[float] = typer.Option(
+        None,
+        "--data-cache",
+        help=(
+            "Maximum size for the object cache, given as a number of bytes as in "
+            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
+            "0.3. Set to 0 to disable this cache. By default, it will use up to "
+            "0.15 (15%) of RAM."
+        ),
+    ),
 ):
     "Serve a Tree instance from a directory of files."
     from ..trees.files import Tree
     from ..server.app import serve_tree, print_admin_api_key_if_generated
 
     tree_kwargs = {}
+    server_settings = {}
     if keep_ext:
-        from tiled.trees.files import identity
+        from ..trees.files import identity
 
         tree_kwargs.update({"key_from_filename": identity})
+    if poll_interval is not None:
+        tree_kwargs.update({"poll_interval": poll_interval})
+    if object_cache_available_bytes is not None:
+        server_settings["object_cache"] = {}
+        server_settings["object_cache"][
+            "available_bytes"
+        ] = object_cache_available_bytes
     tree = Tree.from_directory(directory, **tree_kwargs)
-    web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
+    web_app = serve_tree(tree, {"allow_anonymous_access": public}, server_settings)
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -194,13 +220,29 @@ def serve_pyobject(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    object_cache_available_bytes: Optional[float] = typer.Option(
+        None,
+        "--data-cache",
+        help=(
+            "Maximum size for the object cache, given as a number of bytes as in "
+            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
+            "0.3. Set to 0 to disable this cache. By default, it will use up to "
+            "0.15 (15%) of RAM."
+        ),
+    ),
 ):
     "Serve a Tree instance from a Python module."
     from ..server.app import serve_tree, print_admin_api_key_if_generated
     from ..utils import import_object
 
     tree = import_object(object_path)
-    web_app = serve_tree(tree, {"allow_anonymous_access": public}, {})
+    server_settings = {}
+    if object_cache_available_bytes is not None:
+        server_settings["object_cache"] = {}
+        server_settings["object_cache"][
+            "available_bytes"
+        ] = object_cache_available_bytes
+    web_app = serve_tree(tree, {"allow_anonymous_access": public}, server_settings)
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn

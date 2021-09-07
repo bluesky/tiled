@@ -248,7 +248,8 @@ We opted for an independent implementation because reusing cachey would have req
 * Carrying around some complexity/features that we do not use here
 
 The original cachey license (which, like Tiled's, is 3-clause BSD) is included in
-the same source directory as the `tiled.client.cache` module.
+the same source directory as the `tiled.client.cache` module. (Cachey itself
+*is* used in the server, where the use case is a better fit.)
 
 ```{eval-rst}
 .. autosummary::

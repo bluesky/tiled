@@ -29,7 +29,11 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     register_query_lazy = query_registry.register_lazy
 
     def __init__(
-        self, mapping, metadata=None, access_policy=None, authenticated_identity=None
+        self,
+        mapping,
+        metadata=None,
+        access_policy=None,
+        authenticated_identity=None,
     ):
         """
         Create a simple Tree from any mapping (e.g. dict, OneShotCachedMap).

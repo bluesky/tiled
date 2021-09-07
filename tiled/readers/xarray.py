@@ -65,15 +65,6 @@ class VariableAdapter:
             dask_array = dask_array[slice]
         return dask_array.compute()
 
-    def close(self):
-        self._variable = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self):
-        self.close()
-
 
 class DataArrayAdapter:
     """
@@ -126,15 +117,6 @@ class DataArrayAdapter:
         else:
             variable = VariableAdapter(self._data_array.coords[coord])
         return variable.read_block(block, slice=slice)
-
-    def close(self):
-        self._data_array = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self):
-        self.close()
 
 
 class DatasetAdapter:
@@ -197,12 +179,3 @@ class DatasetAdapter:
             return DataArrayAdapter(self._dataset[variable]).read_block(
                 block, coord, slice=slice
             )
-
-    def close(self):
-        self._dataset = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self):
-        self.close()

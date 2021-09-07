@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 import collections.abc
+import contextlib
 import dataclasses
 from datetime import datetime
 import dateutil.tz
@@ -12,6 +13,7 @@ import math
 import operator
 import re
 import sys
+import time
 from typing import Any, Optional
 
 import dask.base
@@ -751,3 +753,13 @@ FULL_LINKS = {
         "full_dataset": "{base_url}dataset/full/{path}",
     },
 }
+
+
+@contextlib.contextmanager
+def record_timing(metrics, key):
+    """
+    Set timings[key] equal to the run time (in milliseconds) of the context body.
+    """
+    t0 = time.perf_counter()
+    yield
+    metrics[key]["dur"] = 1000 * (time.perf_counter() - t0)  # Units: ms

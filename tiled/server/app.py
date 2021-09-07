@@ -1,8 +1,8 @@
+import collections
 from functools import lru_cache, partial
 import os
 import secrets
 import sys
-import time
 import urllib.parse
 
 from fastapi import FastAPI, Request, Response
@@ -23,6 +23,13 @@ from .core import (
     get_query_registry,
     get_serialization_registry,
     PatchedStreamingResponse,
+    record_timing,
+)
+from .object_cache import (
+    ObjectCache,
+    logger as object_cache_logger,
+    NO_CACHE,
+    set_object_cache,
 )
 from .router import declare_search_router, router
 from .settings import get_settings
@@ -61,9 +68,8 @@ def get_app(query_registry, compression_registry, include_routers=None):
     @app.on_event("startup")
     async def startup_event():
         # Validate the single-user API key.
-        single_user_api_key = app.dependency_overrides[
-            get_settings
-        ]().single_user_api_key
+        settings = app.dependency_overrides[get_settings]()
+        single_user_api_key = settings.single_user_api_key
         if single_user_api_key is not None:
             if not single_user_api_key.isalnum():
                 raise ValueError(
@@ -86,9 +92,36 @@ def get_app(query_registry, compression_registry, include_routers=None):
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
         app.include_router(declare_search_router(query_registry))
-        app.state.allow_origins.extend(
-            app.dependency_overrides[get_settings]().allow_origins
-        )
+
+        app.state.allow_origins.extend(settings.allow_origins)
+
+        object_cache_logger.setLevel(settings.object_cache_log_level.upper())
+        object_cache_available_bytes = settings.object_cache_available_bytes
+        import psutil
+
+        TOTAL_PHYSICAL_MEMORY = psutil.virtual_memory().total
+        if object_cache_available_bytes < 0:
+            raise ValueError("Negative object cache size is not interpretable.")
+        if object_cache_available_bytes == 0:
+            cache = NO_CACHE
+            object_cache_logger.info("disabled")
+        else:
+            if 0 < object_cache_available_bytes < 1:
+                # Interpret this as a fraction of system memory.
+
+                object_cache_available_bytes = int(
+                    TOTAL_PHYSICAL_MEMORY * object_cache_available_bytes
+                )
+            else:
+                object_cache_available_bytes = int(object_cache_available_bytes)
+            cache = ObjectCache(object_cache_available_bytes)
+            percentage = round(
+                object_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100
+            )
+            object_cache_logger.info(
+                f"Will use up to {object_cache_available_bytes} bytes ({percentage:d}% of total physical RAM)"
+            )
+        set_object_cache(cache)
 
     app.add_middleware(
         CompressionMiddleware,
@@ -104,12 +137,18 @@ def get_app(query_registry, compression_registry, include_routers=None):
         # estimate it based on request/response time, but if we add more detailed
         # information here we should keep in mind security concerns and perhaps
         # only include this for certain users.
-        # Units are ms.
-        start_time = time.perf_counter()
-        response = await call_next(request)
+        # Initialize a dict that routes and dependencies can stash metrics in.
+        metrics = collections.defaultdict(dict)
+        request.state.metrics = metrics
+        # Record the overall application time.
+        with record_timing(metrics, "app"):
+            response = await call_next(request)
+        response.headers["Server-Timing"] = ", ".join(
+            f"{key};"
+            + ";".join(f"{metric}={value:.1f}" for metric, value in metrics_.items())
+            for key, metrics_ in metrics.items()
+        )
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        process_time = time.perf_counter() - start_time
-        response.headers["Server-Timing"] = f"app;dur={1000 * process_time:.1f}"
         return response
 
     @app.middleware("http")
@@ -249,6 +288,15 @@ def serve_tree(
         for item in ["allow_origins"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
+        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
+            "available_bytes"
+        )
+        if object_cache_available_bytes is not None:
+            setattr(
+                settings,
+                "object_cache_available_bytes",
+                object_cache_available_bytes,
+            )
         return settings
 
     # The Tree and Authenticator have the opportunity to add custom routes to

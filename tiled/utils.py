@@ -85,6 +85,30 @@ class OneShotCachedMap(collections.abc.Mapping):
                 v = self.__mapping[key] = v.func()
         return v
 
+    def set(self, key, value_factory):
+        """
+        Set key to a callable the returns value.
+        """
+        if not callable(value_factory):
+            raise ValueError(
+                "This requires a callable that return a value, not the value itself."
+            )
+        self.__mapping[key] = value_factory
+
+    def discard(self, key):
+        """
+        Discard a key if it is present. This is idempotent.
+        """
+        self.__mapping.pop(key, None)
+        self.evict(key)
+
+    def remove(self, key):
+        """
+        Remove a key. Raises KeyError if key not present.
+        """
+        del self.__mapping[key]
+        self.evict(key)
+
     def __len__(self):
         return len(self.__mapping)
 
@@ -117,33 +141,64 @@ class OneShotCachedMap(collections.abc.Mapping):
 
 class CachingMap(collections.abc.Mapping):
     """
-    Mapping that computes values on read and optionally caches them.
+    Mapping that computes values on read and caches them in a configured cache.
 
     Parameters
     ----------
     mapping : dict-like
         Must map keys to callables that return values.
-    cache : dict-like or None, optional
-        Will be used to cache values. If None, nothing is cached.
-        May be ordinary dict, LRUCache, etc.
+    cache : dict-like
+        Will be used to cache values. May be ordinary dict, LRUCache, etc.
     """
 
     __slots__ = ("__mapping", "__cache")
 
-    def __init__(self, mapping, cache=None):
+    def __init__(self, mapping, cache):
         self.__mapping = mapping
         self.__cache = cache
 
     def __getitem__(self, key):
-        if self.__cache is None:
-            return self.__mapping[key]()
-        else:
-            try:
-                return self.__cache[key]
-            except KeyError:
-                value = self.__mapping[key]()
-                self.__cache[key] = value
-                return value
+        try:
+            return self.__cache[key]
+        except KeyError:
+            value = self.__mapping[key]()
+            self.__cache[key] = value
+            return value
+
+    def set(self, key, value_factory):
+        """
+        Set key to a callable the returns value.
+        """
+        if not callable(value_factory):
+            raise ValueError(
+                "This requires a callable that return a value, not the value itself."
+            )
+        self.__mapping[key] = value_factory
+        # This may be replacing (updating) an existing key. Clear any cached value.
+        self.evict(key)
+
+    def discard(self, key):
+        """
+        Discard a key if it is present. This is idempotent.
+        """
+        self.__mapping.pop(key, None)
+        self.evict(key)
+
+    def remove(self, key):
+        """
+        Remove a key. Raises KeyError if key not present.
+        """
+        del self.__mapping[key]
+        self.evict(key)
+
+    def evict(self, key):
+        """
+        Evict a key from the internal cache. This is idempotent.
+
+        This does *not* remove the key from the mapping.
+        If it is accessed, it will be recomputed and added back to the cache.
+        """
+        self.__cache.pop(key, None)
 
     def __len__(self):
         return len(self.__mapping)
