@@ -83,10 +83,9 @@ content-type: application/octet-stream
 date: Mon, 26 Jul 2021 01:30:19 GMT
 etag: a6a4697f732308159745eab706de8463
 server: uvicorn
-server-timing: app;dur=6.7
+server-timing: compress;time=0.27;ratio=169.49, app;dur=6.7
 set-cookie: tiled_csrf=gGgRTzuMpENi52p-imS0YTHkdRAZcZZf1H-3RJpQHog; HttpOnly; Path=/; SameSite=lax
 vary: Accept-Encoding
-x-compression-stats: time=0.27,ratio=169.49
 ```
 
 The relevant line in the request is
@@ -107,11 +106,11 @@ where the server tells us which, if any, compression algorithm it applied.
 Also, notice the line
 
 ```
-x-compression-stats: time=0.27,ratio=169.49
+server-timing: compress;time=0.27;ratio=169.49, app;dur=6.7
 ```
 
 where the server reports the compression ratio (higher is better) and the time
-in milliseconds that it cost to compress it.
+in milliseconds that it cost to compress it, beside other metrics.
 
 In the next example, the server's Python environment has the Python package
 `zstandard` installed. It will prefer to use the superior algorithm `zstd` if
@@ -134,10 +133,9 @@ content-type: vnd.apache.arrow.file
 date: Mon, 26 Jul 2021 01:19:05 GMT
 etag: 6389586cf110bbbc5e69a329ee07e763
 server: uvicorn
-server-timing: app;dur=11.0
+server-timing: compress;time=0.10;ratio=8.06 app;dur=11.0
 set-cookie: tiled_csrf=iRPOSCkpotnglSpyCwwG7GSof-DzfZBNGNDG3suhj8w; HttpOnly; Path=/; SameSite=lax
 vary: Accept-Encoding
-x-compression-stats: time=0.10,ratio=8.06
 ```
 
 Finally, in this example. the server decides that the raw, compressed content is
