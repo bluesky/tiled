@@ -97,7 +97,18 @@ properties:
         array: "package.module:CustomArrayClient"
         dataframe: "package.module:CustomDataFrameClient"
       ```
+  special_clients:
+    type: object
+    additionalProperties:
+      type: string
+    description: |
+      Use this to dispatch handling of structures that are marked with a given "spec"
+      to a special class.
 
+      ```yaml
+      special_clients:
+        some_spec: "package.module:CustomClient"
+      ```
   cache:
     type: object
     additionalProperties: false

@@ -4,14 +4,13 @@ This module handles server configuration.
 See profiles.py for client configuration.
 """
 from collections import defaultdict
-import contextlib
 from functools import lru_cache
 import os
 from pathlib import Path
 
 import jsonschema
 
-from .utils import import_object, parse
+from .utils import import_object, parse, prepend_to_sys_path
 from .media_type_registration import (
     serialization_registry as default_serialization_registry,
     compression_registry as default_compression_registry,
@@ -70,7 +69,7 @@ def construct_serve_tree_kwargs(
         else:
             directory = os.path.dirname(source_filepath)
         sys_path_additions.append(directory)
-    with _prepend_to_sys_path(sys_path_additions):
+    with prepend_to_sys_path(*sys_path_additions):
         auth_spec = config.get("authentication", {}) or {}
         access_control = config.get("access_control", {}) or {}
         auth_aliases = {}
@@ -357,17 +356,3 @@ def direct_access_from_profile(name):
 
 class ConfigError(ValueError):
     pass
-
-
-@contextlib.contextmanager
-def _prepend_to_sys_path(path):
-    "Temporarily prepend items to sys.path."
-    import sys
-
-    for item in reversed(path):
-        sys.path.insert(0, item)
-    try:
-        yield
-    finally:
-        for item in path:
-            sys.path.pop(0)

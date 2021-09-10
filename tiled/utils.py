@@ -1,10 +1,12 @@
 import collections.abc
+import contextlib
 import builtins
 import enum
 import importlib
 import importlib.util
 import operator
 import os
+import sys
 import threading
 
 
@@ -423,6 +425,19 @@ def expand_environment_variables(config):
         return type(config)([expand_environment_variables(v) for v in config])
     else:
         return config
+
+
+@contextlib.contextmanager
+def prepend_to_sys_path(*paths):
+    "Temporarily prepend items to sys.path."
+
+    for item in reversed(paths):
+        sys.path.insert(0, item)
+    try:
+        yield
+    finally:
+        for item in paths:
+            sys.path.pop(0)
 
 
 class MissingDependency(ModuleNotFoundError):
