@@ -6,7 +6,7 @@ common formats for use by some external software (i.e. not Python).
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 Now, in a Python interpreter, connect, with the Python client.
@@ -22,24 +22,24 @@ These are just a couple of the supported formats:
 
 ```python
 # Table
-client["dataframes"]["df"].export("table.xlsx")  # Excel
-client["dataframes"]["df"].export("table.csv")  # CSV
+client["short_talbe"].export("table.xlsx")  # Excel
+client["short_table"].export("table.csv")  # CSV
 
 # Array
-client["arrays"]["medium"].export("numbers.csv")  # CSV
-client["arrays"]["medium"].export("image.png")  # PNG image
-client["arrays"]["medium"].export("image.tiff")  # TIFF image
+client["medium_image"].export("numbers.csv")  # CSV
+client["medium_image"].export("image.png")  # PNG image
+client["medium_image"].export("image.tiff")  # TIFF image
 ```
 
 It's possible to select a subset of the data to only "pay" for what you need.
 
 ```python
 # Export just some of the columns...
-client["dataframes"]["df"].export("table.csv", columns=["A", "B"])
+client["short_table"].export("table.csv", columns=["A", "B"])
 
 # Export an N-dimensional slice...
-client["arrays"]["medium"].export("numbers.csv", slice=[0])  # like arr[0]
-client["arrays"]["medium"].export("numbers.csv", slice=numpy.s_[:10, 100:200])  # like arr[:10, 100:200]
+client["medium_image"].export("numbers.csv", slice=[0])  # like arr[0]
+client["medium_image"].export("numbers.csv", slice=numpy.s_[:10, 100:200])  # like arr[:10, 100:200]
 ```
 
 In the examples above, the desired format is automatically detected from the
@@ -47,13 +47,13 @@ file extension (`table.csv` -> `csv`). It can also be specified explicitly.
 
 ```python
 # Format inferred from filename...
-client["dataframes"]["df"].export("table.csv")
+client["short_table"].export("table.csv")
 
 # Format given as a file extension...
-client["dataframes"]["df"].export("table.csv", format="csv")
+client["short_table"].export("table.csv", format="csv")
 
 # Format given as a media type (MIME)...
-client["dataframes"]["df"].export("table.csv", format="text/csv")
+client["short_table"].export("table.csv", format="text/csv")
 ```
 
 ## Supported Formats
@@ -61,7 +61,7 @@ client["dataframes"]["df"].export("table.csv", format="text/csv")
 To list the supported formats for a given structure:
 
 ```py
-client["dataframes"]["df"].formats
+client["short_table"].formats
 ```
 
 **It is easy to add formats and customize the details of how they are exported,
@@ -110,13 +110,13 @@ buffer) in which case the format must be specified.
 ```python
 # Writing directly to an open file
 with open("table.csv", "wb") as file:
-    client["dataframes"]["df"].export(file, format="csv")
+    client["short_table"].export(file, format="csv")
 
 # Writing to a buffer
 from io import BytesIO
 
 buffer = BytesIO()
-client["dataframes"]["df"].export(buffer, format="csv")
+client["short_table"].export(buffer, format="csv")
 ```
 
 ## Limitations
@@ -130,7 +130,7 @@ data you want, not on formatting it "just so". To do more refined export, use
 standard Python tools, as in:
 
 ```python
-df = client["dataframes"]["df"].read()
+df = client["short_table"].read()
 # At this point we are done with Tiled. From here, we just use pandas,
 # or whatever we want.
 df.to_csv("table.csv", sep=";", header=["custom", "column", "headings"])

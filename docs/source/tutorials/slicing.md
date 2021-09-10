@@ -6,7 +6,7 @@ need. We'll also use dask to delay download computation.
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 Now, in a Python interpreter, connect with the Python client.
@@ -22,14 +22,14 @@ client = from_uri("http://localhost:8000")
 Navigate to an array dataset in the demo tree.
 
 ```python
->>> client['arrays']['medium']
+>>> client['medium_image']
 <ArrayClient>
 ```
 
 Slice ``[:]`` to read it. (This syntax may be familiar to h5py users.)
 
 ```python
->>> client['arrays']['medium'][:]
+>>> client['medium_image'][:]
 array([[0.21074798, 0.39790325, 0.49456221, ..., 0.32959921, 0.34827844,
         0.62495697],
        [0.08099721, 0.78389654, 0.3763025 , ..., 0.76614679, 0.74330957,
@@ -45,13 +45,13 @@ array([[0.21074798, 0.39790325, 0.49456221, ..., 0.32959921, 0.34827844,
         0.03710809]])
 ```
 
-Or, equivalently, use ``client['arrays']['medium'].read()``.
+Or, equivalently, use ``client['medium_image'].read()``.
 
 Provide bounds in the slice to download and access just a portion of the
 array.
 
 ```python
->>> client['arrays']['medium'][:3, 10:15]
+>>> client['medium_image'][:3, 10:15]
 array([[0.11429495, 0.64088521, 0.52347248, 0.28147347, 0.60528646],
        [0.82722641, 0.57478402, 0.35443253, 0.34434613, 0.60065387],
        [0.58668817, 0.21471191, 0.05225715, 0.29506593, 0.31148442]])
@@ -62,7 +62,7 @@ array([[0.11429495, 0.64088521, 0.52347248, 0.28147347, 0.60528646],
 Navigate to a DataFrame dataset in the demo client.
 
 ```python
->>> client['dataframes']['df']
+>>> client['short_table']
 <DataFrameClient ['A', 'B', 'C']>
 ```
 
@@ -70,14 +70,14 @@ The columns are display in the output. You can also access them
 programmatically by listing them.
 
 ```python
-list(client['dataframes']['df'])
+list(client['short_table'])
 ['A', 'B', 'C']
 ```
 
 You may read it in its entirety like so.
 
 ```python
->>> client['dataframes']['df'].read()
+>>> client['short_table'].read()
               A         B         C
 index                              
 0      0.100145  0.833089  0.381111
@@ -98,7 +98,7 @@ index
 You may select a column or a list of columns.
 
 ```python
->>> client['dataframes']['df']['A']
+>>> client['short_table']['A']
 index
 0     0.100145
 1     0.634538
@@ -113,7 +113,7 @@ index
 99    0.456574
 Name: A, Length: 100, dtype: float64
 
->>> client['dataframes']['df'][['A', 'B']]
+>>> client['short_table'][['A', 'B']]
               A         B
 index                    
 0      0.100145  0.833089
@@ -149,12 +149,12 @@ immediately downloaded. Only the information about the structure---shape,
 datatype(s), internal chunking/partitioning---is downloaded up front.
 
 ```python
->>> client["arrays"]["large"].read()
+>>> client["big_image"].read()
 dask.array<remote-dask-array, shape=(10000, 10000), dtype=float64, chunksize=(2500, 2500), chunktype=numpy.ndarray>
 ```
 
 ```python
->>> client["dataframes"]["df"].read()
+>>> client["short_table"].read()
 Dask DataFrame Structure:
                      A        B        C
 npartitions=3                           
@@ -168,7 +168,7 @@ Dask Name: remote-dask-dataframe, 3 tasks
 Data is downloaded in chunks, in parallel, when ``compute()`` is called.
 
 ```python
->>> client["arrays"]["large"].read().compute()
+>>> client["big_image"].read().compute()
 array([[0.68161254, 0.49255507, 0.00942918, ..., 0.88842556, 0.00536692,
         0.19003055],
        [0.97713062, 0.41684217, 0.62376283, ..., 0.7256857 , 0.61949171,
@@ -189,7 +189,7 @@ downloaded.
 
 ```python
 # This will be fast because it only downloads the relevant chunk(s)
->>> client["arrays"]["large"].read()[:10, 3:5].compute()
+>>> client["big_image"].read()[:10, 3:5].compute()
 array([[0.26355793, 0.01284164],
        [0.14378819, 0.54898243],
        [0.03100601, 0.88506586],
@@ -207,7 +207,7 @@ all the actual work to the end.
 
 
 ```python
->>> total = client["arrays"]["large"].read().sum()
+>>> total = client["big_image"].read().sum()
 # No data been downloaded yet.
 
 >>> total

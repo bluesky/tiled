@@ -7,7 +7,7 @@ This also enables an offline "airplane mode".
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 ## Make repeated access fast within one working session / process
@@ -28,21 +28,18 @@ Most things that we do with our `client` make an HTTP request to the server and
 receive a response. For example...
 
 ```python
->>> client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))  # fetches some metadata
+>>> client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
 
 >>> client
-<Node {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>   # fetches the first couple entry names
+<Node {'big_image', 'small_image', 'tiny_image', 'tiny_cube', ...} ~11 entries>
 
->>> client.metadata  # fetches metadata (in this case empty)
-DictView({})
-
->>> client['dataframes']['df']  # fetches column names
+>>> client['long_table']
 <DataFrameClient ['A', 'B', 'C']>
 
->>> client['dataframes']['df'].metadata  # fetches metadata (in this case empty)
-DictView({})
+>>> client['long_table'].metadata
+DictView({'animal': 'dog', 'color': 'green'})
 
->>> client['dataframes']['df'].read().compute()  # fetches data, in partitions
+>>> client['long_table'].read().compute()
               A         B         C
 index                              
 0      0.748885  0.769644  0.296070

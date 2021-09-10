@@ -124,7 +124,7 @@ trees:
     - path: /a
       tree: tiled.examples.generated_minimal:tree
     - path: /b
-      tree: tiled.examples.generated:demo
+      tree: tiled.examples.generated:tree
 ```
 
 See {doc}`../explanations/security` and {doc}`../explanations/access-control` for examples addressing

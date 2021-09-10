@@ -53,7 +53,7 @@ memory.  Alternatively, it could be read on demand from a directory of files,
 network resource, database, or some combination of these.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 And then access the data efficiently via the Python client, a web browser, or
@@ -65,36 +65,60 @@ any HTTP client.
 >>> client = from_uri("http://localhost:8000")
 
 >>> client
-<Node {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
+<Node {'short_table', 'long_table', 'structured_data', ...} ~10 entries>
 
->>> client['arrays']
-<Node {'large', 'medium', 'small', 'tiny'}>
+>>> list(client)
+'big_image',
+ 'small_image',
+ 'tiny_image',
+ 'tiny_cube',
+ 'tiny_hypercube',
+ 'low_entropy',
+ 'high_entropy',
+ 'short_table',
+ 'long_table',
+ 'labeled_data',
+ 'structured_data']
 
->>> client['arrays']['medium']
+>>> client['medium_image']
 <ArrayClient>
 
->>> client['arrays']['medium'][:]
-array([[0.21267816, 0.59685753, 0.12483017, ..., 0.74891246, 0.43889019,
-        0.27761903],
-       [0.95434218, 0.31376234, 0.05776443, ..., 0.53886856, 0.92855426,
-        0.32506382],
-       [0.0458622 , 0.0561961 , 0.3893611 , ..., 0.23124064, 0.40311252,
-        0.22488572],
+>>> client['medium_image'][:]
+array([[0.49675483, 0.37832119, 0.59431287, ..., 0.16990737, 0.5396537 ,
+        0.61913812],
+       [0.97062498, 0.93776709, 0.81797714, ..., 0.96508877, 0.25208564,
+        0.72982507],
+       [0.87173234, 0.83127946, 0.91758202, ..., 0.50487542, 0.03052536,
+        0.9625512 ],
        ...,
-       [0.91990991, 0.98361972, 0.26394368, ..., 0.86427576, 0.00436757,
-        0.03021872],
-       [0.26595236, 0.18207517, 0.18989639, ..., 0.16221733, 0.59052007,
-        0.94255651],
-       [0.4721781 , 0.01424852, 0.57294198, ..., 0.70392867, 0.69371454,
-        0.228491  ]])
+       [0.01884645, 0.33107071, 0.60018523, ..., 0.02268164, 0.46955907,
+        0.37842628],
+       [0.03405101, 0.77886243, 0.14856727, ..., 0.02484926, 0.03850398,
+        0.39086524],
+       [0.16567224, 0.1347261 , 0.48809697, ..., 0.55021249, 0.42324589,
+        0.31440635]])
 
->>> client['dataframes']
-<Node {'df'}>
-
->>> client['dataframes']['df']
+>>> client['long_table']
 <DataFrameClient ['A', 'B', 'C']>
 
->>> client['dataframes']['df'][['A', 'B']]
+>>> client['long_table'].read()
+              A         B         C
+index                              
+0      0.246920  0.493840  0.740759
+1      0.326005  0.652009  0.978014
+2      0.715418  1.430837  2.146255
+3      0.425147  0.850294  1.275441
+4      0.781036  1.562073  2.343109
+...         ...       ...       ...
+99995  0.515248  1.030495  1.545743
+99996  0.639188  1.278376  1.917564
+99997  0.269851  0.539702  0.809553
+99998  0.566848  1.133695  1.700543
+99999  0.101446  0.202892  0.304338
+
+[100000 rows x 3 columns]
+
+>>> client['long_table'][['A', 'B']]
               A         B
 index                    
 0      0.748885  0.769644
@@ -118,19 +142,19 @@ data in whole or in efficiently-chunked parts in the format of your choice:
 
 ```
 # Download tabular data as CSV
-http://localhost:8000/dataframe/full/dataframes/df?format=csv
+http://localhost:8000/dataframe/full/long_table?format=csv
 
 # or XLSX (Excel)
-http://localhost:8000/dataframe/full/dataframes/df?format=xslx
+http://localhost:8000/dataframe/full/long_table?format=xslx
 
 # and subselect columns.
-http://localhost:8000/dataframe/full/dataframes/df?format=xslx&column=A&column=B
+http://localhost:8000/dataframe/full/long_table?format=xslx&column=A&column=B
 
 # View or download (2D) array data as PNG
-http://localhost:8000/array/full/arrays/medium?format=png
+http://localhost:8000/array/full/medium_image?format=png
 
 # and slice regions of interest.
-http://localhost:8000/array/full/arrays/medium?format=png&slice=:50,100:200
+http://localhost:8000/array/full/medium_image?format=png&slice=:50,100:200
 ```
 
 Web-based data access usually involves downloading complete files, in the

@@ -6,7 +6,7 @@ data visualization tool.
 1. Start the server in a way that accepts requests from the chart-studio frontend.
 
    ```
-   TILED_ALLOW_ORIGINS="https://chart-studio.plotly.com" tiled serve pyobject --public tiled.examples.generated:demo
+   TILED_ALLOW_ORIGINS="https://chart-studio.plotly.com" tiled serve pyobject --public tiled.examples.generated:tree
    ```
 
 2. Navigate your browser to

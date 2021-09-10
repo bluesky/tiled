@@ -6,7 +6,7 @@ over the entries' metadata.
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 ## Search Using the Python Client
@@ -23,21 +23,17 @@ Tiled has an extensible collection of queries. The client just has to
 construct the query, and server sorts out how to execute it as
 efficiently as possible given however the metadata and data are stored.
 
-This subtree has four entries.
+This example collection of data has several entries with metadata.
 
 ```python
->>> client['nested']
-<Node {'tiny', 'small', 'medium', 'large'}>
-```
+>>> client['short_table'].metadata
+DictView({'animal': 'dog', 'color': 'red'})
 
-Each has different metadata.
+>>> client['long_table'].metadata
+DictView({'animal': 'dog', 'color': 'green'})
 
-```python
->>> client['nested']['tiny'].metadata
-DictView({'fruit': 'apple', 'animal': 'bird'})
-
->>> client['nested']['small'].metadata
-DictView({'fruit': 'banana', 'animal': 'cat'})
+>>> client['structured_data'].metadata
+DictView({'animal': 'cat', 'color': 'green'})
 
 # etc.
 ```
@@ -48,45 +44,30 @@ anywhere in the metadata.
 ```python
 >>> from tiled.queries import FullText
 
->>> client["nested"].search(FullText("dog"))
-<Node {'medium'}>
+>>> client.search(FullText("dog"))
+<Node {'short_table', 'long_table'}>
 ```
 
 The result is another client, with a subset of the entries or the original.
 We might next stash it in a variable and drill further down.
 
 ```python
->>> results = client['nested'].search(FullText("dog"))
->>> results['medium']
-<Node {'ones', 'tens', 'hundreds'}>
->>> results['medium']['ones']
-<ArrayClient>
->>> results['medium']['ones'][:]
-array([[0.90346422, 0.88209766, 0.50729484, ..., 0.85845848, 0.40995339,
-        0.62513141],
-       [0.69748695, 0.30697613, 0.52659964, ..., 0.99122457, 0.45656973,
-        0.28431247],
-       [0.3397253 , 0.62399495, 0.51621599, ..., 0.17175257, 0.31096683,
-        0.72702145],
-       ...,
-       [0.05031631, 0.04460506, 0.0942693 , ..., 0.7271035 , 0.53009248,
-        0.38832301],
-       [0.9703186 , 0.59947921, 0.9180047 , ..., 0.30109343, 0.23135718,
-        0.10103669],
-       [0.05446547, 0.58519701, 0.05065231, ..., 0.60261189, 0.90321973,
-        0.89681987]])
+>>> results = client.search(FullText("dog"))
+>>> results['short_table']
+<DataFrameClient>
 ```
 
 Searches may be chained:
 
 ```python
->>> client['nested'].search(FullText("dog")).search(FullText("orange"))
+>>> client.search(FullText("dog")).search(FullText("red"))
+<Node {'short_table'}>
 ```
 
 If there no matches, the result is an empty Node:
 
 ```python
->>> client['nested'].search(FullText("something that will not be found"))
+>>> client.search(FullText("something that will not be found"))
 <Node {}>
 ```
 

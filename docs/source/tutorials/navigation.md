@@ -6,7 +6,7 @@ client.
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:demo
+tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 Now, in a Python interpreter, connect, with the Python client.
@@ -25,27 +25,20 @@ Tiled provides a utility for visualizing a nested structure.
 ```python
 >>> from tiled.utils import tree
 >>> tree(client)
-├── arrays
-│   ├── large
-│   ├── medium
-│   ├── small
-│   └── tiny
-├── dataframes
-│   └── df
-├── xarrays
-│   ├── large
-│   │   ├── variable
-│   │   ├── data_array
-│   │   └── dataset
-│   ├── medium
-│   │   ├── variable
-│   │   ├── data_array
-│   │   └── dataset
-│   ├── small
-│   │   ├── variable
-│   │   ├── data_array
-│   │   └── dataset
-<Output truncated at 20 lines. Adjust tree's max_lines parameter to see more.>
+├── big_image
+├── small_image
+├── tiny_image
+├── tiny_cube
+├── tiny_hypercube
+├── low_entropy
+├── high_entropy
+├── short_table
+├── long_table
+├── labeled_data
+│   └── image_with_dims
+└── structured_data
+    ├── image_with_coords
+    └── xarray_dataset
 ```
 
 Each (sub)tree displays the names of a couple of its entries---up to
@@ -54,7 +47,7 @@ however many fit on one line.
 
 ```python
 >>> client
-<Node {'arrays', 'dataframes', 'xarrays', 'nested', ...} ~5 entries>
+<Node {'big_image', 'small_image', 'tiny_image', 'tiny_cube', ...} ~11 entries>
 ```
 
 Nodes act like (nested) mappings in Python. All the (read-only) methods
@@ -62,15 +55,25 @@ that work on Python dictionaries work on Nodes. We can lookup a specific
 value by its key
 
 ```python
->>> client['arrays']
-<Node {'large', 'medium', 'small', 'tiny'}>
+>>> client['structured_data']
+<Node {'image_with_coords', 'xarray_dataset'}>
 ```
 
 list all the keys
 
 ```python
 >>> list(client)
-['arrays', 'dataframes', 'xarrays', 'nested', 'very_nested']
+['big_image',
+ 'small_image',
+ 'tiny_image',
+ 'tiny_cube',
+ 'tiny_hypercube',
+ 'low_entropy',
+ 'high_entropy',
+ 'short_table',
+ 'long_table',
+ 'labeled_data',
+ 'structured_data']
 ```
 
 and loop over keys, values, or ``(key, value)`` pairs.
@@ -96,14 +99,14 @@ from the middle.
 
 ```python
 >>> client.keys_indexer[1:3]  # Access just the keys for entries 1:3.
-['dataframes', 'xarrays']
+['small_image', 'tiny_image']
 
 >>> client.values_indexer[1:3]  # Access the values (which may be more expensive).
-[<Node {'df'}>, <Node {'large', 'medium', 'small', 'tiny'}>]
+[<ArrayClient>, <ArrayClient>]
 
 >>> client.items_indexer[1:3]  # Access (key, value) pairs.
-[('dataframes', <Node {'df'}>),
- ('xarrays', <Node {'large', 'medium', 'small', 'tiny'}>)]
+[('small_image', <ArrayClient>),
+[('tiny_image', <ArrayClient>),
 ```
 
 Each item has ``metadata``, which is a simple dict.
@@ -114,8 +117,8 @@ space to use or not.
 >>> client.metadata  # happens to be empty
 DictView({})
 
->>> client['xarrays'].metadata  # happens to have some stuff
-DictView({'description': 'the three main xarray data structures'})
+>>> client['short_table'].metadata  # happens to have some stuff
+DictView({'animal': 'dog', 'color': 'red'})
 ```
 
 See a later tutorial for how to search Nodes with queries.

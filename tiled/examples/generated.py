@@ -13,112 +13,107 @@ from tiled.trees.in_memory import Tree
 
 
 print("Generating large example data...", file=sys.stderr)
-array_data = {
-    "large": numpy.random.random((10_000, 10_000)),
-    "medium": numpy.random.random((1000, 1000)),
-    "small": numpy.random.random((10, 10)),
-    "tiny": numpy.random.random((3, 3)),
+data = {
+    "big_image": numpy.random.random((10_000, 10_000)),
+    "small_image": numpy.random.random((100, 100)),
+    "medium_image": numpy.random.random((1000, 1000)),
+    "tiny_image": numpy.random.random((10, 10)),
+    "tiny_cube": numpy.random.random((10, 10, 10)),
+    "tiny_hypercube": numpy.random.random((10, 10, 10, 10, 10)),
+    "high_entropy": numpy.random.random((100, 100)),
+    "low_entropy": numpy.ones((100, 100)),
+    "short_column": numpy.random.random(100),
+    "long_column": numpy.random.random(100_000),
 }
-A = numpy.random.random(100)
-B = numpy.random.random(100)
-C = numpy.random.random(100)
+print("Done generating example data.", file=sys.stderr)
 
-
-arrays = Tree({name: ArrayAdapter.from_array(arr) for name, arr in array_data.items()})
-
-dataframes = Tree(
+tree = Tree(
     {
-        "df": DataFrameAdapter.from_pandas(
+        "big_image": ArrayAdapter.from_array(data["big_image"]),
+        "small_image": ArrayAdapter.from_array(data["small_image"]),
+        "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
+        "tiny_cube": ArrayAdapter.from_array(data["tiny_cube"]),
+        "tiny_hypercube": ArrayAdapter.from_array(data["tiny_hypercube"]),
+        "low_entropy": ArrayAdapter.from_array(data["low_entropy"]),
+        "high_entropy": ArrayAdapter.from_array(data["high_entropy"]),
+        "short_table": DataFrameAdapter.from_pandas(
             pandas.DataFrame(
                 {
-                    "A": A,
-                    "B": B,
-                    "C": C,
+                    "A": data["short_column"],
+                    "B": 2 * data["short_column"],
+                    "C": 3 * data["short_column"],
                 },
-                index=pandas.Index(numpy.arange(100), name="index"),
+                index=pandas.Index(
+                    numpy.arange(len(data["short_column"])), name="index"
+                ),
             ),
-            npartitions=3,  # Partition for demo purposes, even though it's small.
-        )
-    }
-)
-xarrays = Tree(
-    {
-        name: Tree(
+            npartitions=1,
+            metadata={"animal": "dog", "color": "red"},
+        ),
+        "long_table": DataFrameAdapter.from_pandas(
+            pandas.DataFrame(
+                {
+                    "A": data["long_column"],
+                    "B": 2 * data["long_column"],
+                    "C": 3 * data["long_column"],
+                },
+                index=pandas.Index(
+                    numpy.arange(len(data["long_column"])), name="index"
+                ),
+            ),
+            npartitions=5,
+            metadata={"animal": "dog", "color": "green"},
+        ),
+        "labeled_data": Tree(
             {
-                "variable": VariableAdapter(
+                "image_with_dims": VariableAdapter(
                     xarray.Variable(
-                        data=dask.array.from_array(array),
+                        data=dask.array.from_array(data["medium_image"]),
                         dims=["x", "y"],
                         attrs={"thing": "stuff"},
                     ),
                 ),
-                "data_array": DataArrayAdapter(
+            }
+        ),
+        "structured_data": Tree(
+            {
+                "image_with_coords": DataArrayAdapter(
                     xarray.DataArray(
                         xarray.Variable(
-                            data=dask.array.from_array(array),
+                            data=dask.array.from_array(data["medium_image"]),
                             dims=["x", "y"],
                             attrs={"thing": "stuff"},
                         ),
                         coords={
-                            "x": dask.array.arange(len(array)),
-                            "y": 10 * dask.array.arange(len(array)),
+                            "x": dask.array.arange(len(data["medium_image"])) / 10,
+                            "y": dask.array.arange(len(data["medium_image"])) / 50,
                         },
                     ),
                 ),
-                "dataset": DatasetAdapter(
+                "xarray_dataset": DatasetAdapter(
                     xarray.Dataset(
                         {
                             "image": xarray.DataArray(
                                 xarray.Variable(
-                                    data=dask.array.from_array(array),
+                                    data=dask.array.from_array(data["medium_image"]),
                                     dims=["x", "y"],
                                     attrs={"thing": "stuff"},
                                 ),
                                 coords={
-                                    "x": dask.array.arange(len(array)),
-                                    "y": 10 * dask.array.arange(len(array)),
+                                    "x": dask.array.arange(len(data["medium_image"]))
+                                    / 10,
+                                    "y": dask.array.arange(len(data["medium_image"]))
+                                    / 50,
                                 },
                             ),
-                            "z": xarray.DataArray(data=dask.array.ones((len(array),))),
+                            "z": xarray.DataArray(
+                                data=dask.array.ones((len(data["medium_image"]),))
+                            ),
                         }
                     )
                 ),
-            }
-        )
-        for name, array in array_data.items()
+            },
+            metadata={"animal": "cat", "color": "green"},
+        ),
     },
-    metadata={"description": "the three main xarray data structures"},
 )
-
-
-# Build nested Tree of Trees.
-subtrees = {}
-for name, fruit, animal in zip(
-    ["tiny", "small", "medium", "large"],
-    ["apple", "banana", "orange", "grape"],
-    ["bird", "cat", "dog", "penguin"],
-):
-    subtrees[name] = Tree(
-        {
-            inner_name: ArrayAdapter.from_array(10 ** exponent * array_data[name])
-            for inner_name, exponent in zip(["ones", "tens", "hundreds"], [0, 1, 2])
-        },
-        metadata={"fruit": fruit, "animal": animal},
-    )
-nested = Tree(subtrees)
-
-
-# This a bit contrived, the same subtree used three times.
-very_nested = Tree({"a": nested, "b": nested, "c": nested})
-
-demo = Tree(
-    {
-        "arrays": arrays,
-        "dataframes": dataframes,
-        "xarrays": xarrays,
-        "nested": nested,
-        "very_nested": very_nested,
-    }
-)
-
-print("Done generating example data.", file=sys.stderr)

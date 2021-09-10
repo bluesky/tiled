@@ -294,7 +294,10 @@ def construct_entries_response(
             # Two non-equal KeyLookup queries must return no results.
             tree = TreeInMemory({})
         else:
-            tree = TreeInMemory({key_lookup: tree[key_lookup]})
+            try:
+                tree = TreeInMemory({key_lookup: tree[key_lookup]})
+            except KeyError:
+                tree = TreeInMemory({})
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []

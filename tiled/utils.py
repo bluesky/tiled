@@ -283,14 +283,14 @@ def gen_tree(tree, nodes=None, last=None):
     # when this function is used in a CLI where import overhead can accumulate to
     # about 2 seconds, the bulk of the time. Therefore, we do something a bit
     # "clever" here to override the normal structure clients with dummy placeholders.
+    from .client.node import Node
 
     def dummy_client(*args, **kwargs):
         return None
 
-    fast_tree = tree.new_variation(
-        structure_clients=collections.defaultdict(lambda: dummy_client)
-    )
-
+    structure_clients = collections.defaultdict(lambda: dummy_client)
+    structure_clients["node"] = Node
+    fast_tree = tree.new_variation(structure_clients=structure_clients)
     if nodes is None:
         last_index = len(fast_tree) - 1
         for index, node in enumerate(fast_tree):
