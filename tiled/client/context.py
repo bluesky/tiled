@@ -398,16 +398,21 @@ def context_from_tree(
 ):
     from ..server.app import serve_tree
 
-    authentication = authentication or {}
+    # By default make it "public" because there is no way to
+    # secure access from inside the same process anyway.
+    authentication = authentication or {"allow_anonymous_access": True}
     server_settings = server_settings or {}
     params = {}
     headers = headers or {}
     headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
-    if (authentication.get("authenticator") is None) and (
-        authentication.get("single_user_api_key") is None
+    # If a single-user API key will be used, generate the key here instead of
+    # letting serve_tree do it for us, so that we can give it to the client
+    # below.
+    if (
+        (authentication.get("authenticator") is None)
+        and (not authentication.get("allow_anonymous_access", False))
+        and (authentication.get("single_user_api_key") is None)
     ):
-        # Generate the key here instead of letting serve_tree do it for us,
-        # so that we can give it to the client below.
         single_user_api_key = os.getenv(
             "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
         )
