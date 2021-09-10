@@ -177,9 +177,14 @@ The profile will be ommitted. Fix this by removing one of the duplicates"""
     return combined
 
 
+@lru_cache(maxsize=1)
 def load_profiles():
     """
     Return a mapping of profile_name to (source_path, content).
+
+    The files are only actually read the first time this is called.
+    Thereafter, the results are cached. To clear the cache and re-read,
+    use load_profile.cache_clear().
 
     The search path for the source files is available from Python as:
 
