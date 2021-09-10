@@ -31,6 +31,7 @@ tree = Tree(
     {
         "big_image": ArrayAdapter.from_array(data["big_image"]),
         "small_image": ArrayAdapter.from_array(data["small_image"]),
+        "medium_image": ArrayAdapter.from_array(data["medium_image"]),
         "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
         "tiny_cube": ArrayAdapter.from_array(data["tiny_cube"]),
         "tiny_hypercube": ArrayAdapter.from_array(data["tiny_hypercube"]),
