@@ -184,7 +184,7 @@ def load_profiles():
 
     The files are only actually read the first time this is called.
     Thereafter, the results are cached. To clear the cache and re-read,
-    use load_profile.cache_clear().
+    use load_profiles.cache_clear().
 
     The search path for the source files is available from Python as:
 
@@ -202,7 +202,7 @@ def load_profiles():
     levels = gather_profiles(paths, strict=False)
     profiles = resolve_precedence(levels)
     # Convert import paths like "package.module:obj" to the live object.
-    for profile_name, (source_path, content) in profiles.items():
+    for (source_path, content) in profiles.values():
         with prepend_to_sys_path(os.path.dirname(source_path)):
             structure_clients = content.get("structure_clients", {})
             if not isinstance(structure_clients, str):
