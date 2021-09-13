@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import queue
 import threading
 import weakref
@@ -113,7 +114,7 @@ class AsyncClientBridge:
             self._thread.join()
 
     def send(self, *args, **kwargs):
-        return self._run(self._client.send, *args, **kwargs)
+        return ResponseProxy(self._run(self._client.send, *args, **kwargs), self)
 
     def build_request(self, *args, **kwargs):
         return self._client.build_request(*args, **kwargs)
@@ -121,3 +122,30 @@ class AsyncClientBridge:
     def close(self):
         self._run(self._client.aclose)
         self.shutdown()
+
+
+class ResponseProxy:
+    def __init__(self, response, bridge):
+        self._response = response
+        self._bridge = bridge
+
+    def __getattr__(self, name):
+        if not hasattr(self._response, name):
+            raise AttributeError(name)
+        attr = getattr(self._response, name)
+        if inspect.iscoroutine(attr):
+            return lambda *args, **kwargs: self._bridge._run(attr, *args, **kwargs)
+        else:
+            return attr
+
+    def close(self):
+        # Call async close.
+        return self._bridge._run(self._response.aclose)
+
+    def iter_bytes(self):
+        async_iterator = self._response.aiter_bytes()
+        while True:
+            try:
+                yield self._bridge._run(async_iterator.__anext__)
+            except StopAsyncIteration:
+                break
