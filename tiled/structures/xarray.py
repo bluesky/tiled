@@ -11,6 +11,7 @@ from .dataframe import (
     serialize_csv,
     serialize_excel,
     serialize_html,
+    serialize_parquet,
     XLSX_MIME_TYPE,
 )
 from ..media_type_registration import serialization_registry, deserialization_registry
@@ -127,6 +128,11 @@ serialization_registry.register(
     "dataset",
     APACHE_ARROW_FILE_MIME_TYPE,
     lambda ds, metadata: serialize_arrow(ds.to_dataframe(), metadata),
+)
+serialization_registry.register(
+    "dataset",
+    "application/x-parquet",
+    lambda ds, metadata: serialize_parquet(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
     "dataset",

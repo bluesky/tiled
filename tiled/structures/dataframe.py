@@ -53,6 +53,16 @@ def deserialize_arrow(buffer):
     return pyarrow.ipc.open_file(buffer).read_pandas()
 
 
+def serialize_parquet(df, metadata):
+    import pyarrow.parquet
+
+    table = pyarrow.Table.from_pandas(df)
+    sink = pyarrow.BufferOutputStream()
+    with pyarrow.parquet.ParquetWriter(sink, table.schema) as writer:
+        writer.write_table(table)
+    return memoryview(sink.getvalue())
+
+
 def serialize_csv(df, metadata):
     file = io.BytesIO()
     df.to_csv(file)  # TODO How would we expose options in the server?
@@ -77,6 +87,9 @@ serialization_registry.register(
 deserialization_registry.register(
     "dataframe", APACHE_ARROW_FILE_MIME_TYPE, deserialize_arrow
 )
+# There seems to be no official Parquet MIME type.
+# https://issues.apache.org/jira/browse/PARQUET-1889
+serialization_registry.register("dataframe", "application/x-parquet", serialize_parquet)
 serialization_registry.register("dataframe", "text/csv", serialize_csv)
 serialization_registry.register("dataframe", "text/plain", serialize_csv)
 serialization_registry.register("dataframe", "text/html", serialize_html)

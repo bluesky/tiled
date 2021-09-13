@@ -16,7 +16,7 @@ services to enable **search** and **structured, chunkwise access to data** in an
 extensible variety of appropriate formats, providing data in a consistent
 structure regardless of the format the data happens to be stored in at rest. The
 natively-supported formats span slow but widespread interchange formats (e.g.
-CSV, JSON) and fast, efficient ones (e.g. C buffers, Apache Arrow DataFrames).
+CSV, JSON) and fast, efficient ones (e.g. C buffers, Apache Arrow and Parquet).
 Tiled enables slicing and sub-selection to read and transfer only the data of
 interest, and it enables parallelized download of many chunks at once. Users can
 access data with very light software dependencies and fast partial downloads.
