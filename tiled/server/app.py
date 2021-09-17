@@ -1,3 +1,4 @@
+import asyncio
 import collections
 from functools import lru_cache, partial
 import os
@@ -48,7 +49,9 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 
-def get_app(query_registry, compression_registry, include_routers=None):
+def get_app(
+    query_registry, compression_registry, include_routers=None, background_tasks=None
+):
     """
     Construct an instance of the FastAPI application.
 
@@ -56,6 +59,8 @@ def get_app(query_registry, compression_registry, include_routers=None):
     ----------
     include_routers : list, optional
         List of additional FastAPI.Router objects to be included (merged) into the app
+    background_tasks: list, optional
+        List of async functions to be run on the event loop.
     """
     app = FastAPI()
     app.state.allow_origins = []
@@ -88,6 +93,9 @@ def get_app(query_registry, compression_registry, include_routers=None):
     python -c "import secrets; print(secrets.token_hex(32))"
     """
                 )
+
+        for task in background_tasks or []:
+            asyncio.create_task(task())
 
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
@@ -306,10 +314,16 @@ def serve_tree(
     include_routers = []
     include_routers.extend(getattr(tree, "include_routers", []))
     include_routers.extend(getattr(authenticator, "include_routers", []))
+    # Likewise, the Tree and Authenticator can run tasks in the background.
+    # These typically contain a periodic loop.
+    background_tasks = []
+    background_tasks.extend(getattr(tree, "background_tasks", []))
+    background_tasks.extend(getattr(authenticator, "background_tasks", []))
     app = get_app(
         query_registry or get_query_registry(),
         compression_registry or default_compression_registry,
         include_routers=include_routers,
+        background_tasks=background_tasks,
     )
     app.dependency_overrides[get_authenticator] = override_get_authenticator
     app.dependency_overrides[get_root_tree] = override_get_root_tree

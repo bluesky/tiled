@@ -20,6 +20,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         "_access_policy",
         "_authenticated_identity",
         "include_routers",
+        "background_tasks",
         "_mapping",
         "_metadata",
     )
@@ -56,6 +57,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
         self.include_routers = []
+        self.background_tasks = []
         super().__init__()
 
     @property
