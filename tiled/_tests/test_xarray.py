@@ -48,7 +48,8 @@ tree = Tree(
                         },
                     ),
                     "z": xarray.DataArray(data=dask.array.ones((len(array),))),
-                }
+                },
+                coords={"time": numpy.arange(len(array))},
             )
         ),
         "wide": DatasetAdapter(
@@ -79,6 +80,28 @@ def test_dataset_column_access():
         actual = client_dataset[col]
         expected = expected_dataset[col]
         xarray.testing.assert_equal(actual, expected)
+
+
+def test_dataset_coord_access():
+    client = from_tree(tree)
+    expected_dataset = tree["dataset"].read()
+    client_dataset = client["dataset"]
+
+    # Coordinate on data variable
+    actual = client_dataset["image"].coords["x"]
+    expected = expected_dataset["image"].coords["x"]
+    xarray.testing.assert_equal(actual, expected)
+    # Circular reference
+    actual = client_dataset["image"].coords["x"].coords["x"].coords["x"]
+    xarray.testing.assert_equal(actual, expected)
+
+    # Coordinate on dataset
+    actual = client_dataset.coords["time"]
+    expected = expected_dataset.coords["time"]
+    xarray.testing.assert_equal(actual, expected)
+    # Circular reference
+    actual = client_dataset.coords["time"].coords["time"].coords["time"].coords["time"]
+    xarray.testing.assert_equal(actual, expected)
 
 
 def test_url_limit_handling():

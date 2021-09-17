@@ -85,17 +85,22 @@ class DataArrayAdapter:
         return DictView(self._metadata)
 
     def macrostructure(self):
+        return self._recursive_macrostructure()
+
+    def _recursive_macrostructure(self, depth=0):
         variable_reader = VariableAdapter(self._data_array.variable)
         variable_structure = VariableStructure(
             macro=variable_reader.macrostructure(), micro=None
         )
         coords = {}
-        for k, v in self._data_array.coords.items():
-            coord_reader = VariableAdapter(v)
-            coord_structure = VariableStructure(
-                macro=coord_reader.macrostructure(), micro=None
-            )
-            coords[k] = coord_structure
+        if depth == 0:
+            for k, v in self._data_array.coords.items():
+                coord_reader = DataArrayAdapter(v)
+                coord_structure = DataArrayStructure(
+                    macro=coord_reader._recursive_macrostructure(depth=1 + depth),
+                    micro=None,
+                )
+                coords[k] = coord_structure
         return DataArrayMacroStructure(
             variable=variable_structure,
             coords=coords,
@@ -113,10 +118,10 @@ class DataArrayAdapter:
 
     def read_block(self, block, coord=None, slice=None):
         if coord is None:
-            variable = VariableAdapter(self._data_array.variable)
+            adapter = VariableAdapter(self._data_array.variable)
         else:
-            variable = VariableAdapter(self._data_array.coords[coord])
-        return variable.read_block(block, slice=slice)
+            adapter = DataArrayAdapter(self._data_array.coords[coord])
+        return adapter.read_block(block, slice=slice)
 
 
 class DatasetAdapter:
@@ -147,8 +152,8 @@ class DatasetAdapter:
             data_vars[k] = data_array_structure
         coords = {}
         for k, v in self._dataset.coords.items():
-            coord_reader = VariableAdapter(v)
-            coord_structure = VariableStructure(
+            coord_reader = DataArrayAdapter(v)
+            coord_structure = DataArrayStructure(
                 macro=coord_reader.macrostructure(), micro=None
             )
             coords[k] = coord_structure
@@ -171,8 +176,8 @@ class DatasetAdapter:
         return self._dataset[variable].compute()
 
     def read_block(self, variable, block, coord=None, slice=None):
-        if variable in self._dataset.coords:
-            return VariableAdapter(self._dataset.coords[variable]).read_block(
+        if variable is None:
+            return DataArrayAdapter(self._dataset.coords[coord]).read_block(
                 block, slice=slice
             )
         else:

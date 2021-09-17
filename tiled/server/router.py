@@ -662,7 +662,7 @@ def dataset_block(
     request: Request,
     reader=Depends(reader),
     block=Depends(block),
-    variable: str = Query(..., min_length=1),
+    variable: Optional[str] = Query(None, min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -688,9 +688,14 @@ def dataset_block(
                 status_code=400,
                 detail=f"No such variable {variable}.",
             )
+        if variable is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No such coordinate {coord}.",
+            )
         raise HTTPException(
             status_code=400,
-            detail=f"No such coordinate {coord}.",
+            detail=f"No such coordinate {coord} and/or variable {variable}.",
         )
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(

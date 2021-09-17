@@ -110,7 +110,8 @@ tree = Tree(
                             "z": xarray.DataArray(
                                 data=dask.array.ones((len(data["medium_image"]),))
                             ),
-                        }
+                        },
+                        coords={"time": numpy.arange(len(data["medium_image"]))},
                     )
                 ),
             },

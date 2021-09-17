@@ -1,6 +1,4 @@
 from collections.abc import Iterable
-import builtins
-import itertools
 
 import pandas
 import xarray
@@ -102,7 +100,7 @@ class DaskDataArrayClient(BaseArrayClient):
         """
         structure = self.structure().macro
         variable = structure.variable
-        variable_source = self.VARIABLE_CLIENT(
+        client = self.VARIABLE_CLIENT(
             context=self.context,
             item=self.item,
             path=self.path,
@@ -110,7 +108,7 @@ class DaskDataArrayClient(BaseArrayClient):
             structure=variable,
             route=self._route,
         )
-        return variable_source.read_block(block, slice)
+        return client.read_block(block, slice)
 
     @property
     def coords(self):
@@ -122,7 +120,7 @@ class DaskDataArrayClient(BaseArrayClient):
         structure = self.structure().macro
         result = {}
         for name, variable in structure.coords.items():
-            variable_source = self.VARIABLE_CLIENT(
+            client = type(self)(
                 context=self.context,
                 item=self.item,
                 path=self.path,
@@ -130,7 +128,7 @@ class DaskDataArrayClient(BaseArrayClient):
                 structure=variable,
                 route=self._route,
             )
-            result[name] = variable_source
+            result[name] = client
         return result
 
     def read(self, slice=None):
@@ -142,7 +140,7 @@ class DaskDataArrayClient(BaseArrayClient):
             slice = tuple([slice])
         structure = self.structure().macro
         variable = structure.variable
-        variable_source = self.VARIABLE_CLIENT(
+        client = self.VARIABLE_CLIENT(
             context=self.context,
             item=self.item,
             path=self.path,
@@ -150,12 +148,10 @@ class DaskDataArrayClient(BaseArrayClient):
             structure=variable,
             route=self._route,
         )
-        data = variable_source.read(slice)
+        data = client.read(slice)
         coords = {}
-        for coord_slice, (name, variable) in itertools.zip_longest(
-            slice, structure.coords.items(), fillvalue=builtins.slice(None, None)
-        ):
-            variable_source = self.VARIABLE_CLIENT(
+        for name, variable in structure.coords.items():
+            client = type(self)(
                 context=self.context,
                 item=self.item,
                 path=self.path,
@@ -163,7 +159,7 @@ class DaskDataArrayClient(BaseArrayClient):
                 structure=variable,
                 route=self._route,
             )
-            coords[name] = variable_source.read(coord_slice)
+            coords[name] = client.read(slice)
         return xarray.DataArray(data=data, coords=coords, name=structure.name)
 
     def __getitem__(self, slice):
@@ -285,7 +281,7 @@ class DaskDatasetClient(BaseArrayClient):
             ):
                 data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
             else:
-                data_array_source = self.DATA_ARRAY_CLIENT(
+                client = self.DATA_ARRAY_CLIENT(
                     context=self.context,
                     item=self.item,
                     path=self.path,
@@ -293,7 +289,7 @@ class DaskDatasetClient(BaseArrayClient):
                     structure=data_array,
                     route=self._route,
                 )
-                data_vars_clients[name] = data_array_source
+                data_vars_clients[name] = client
         # We deferred read() to the end for WideTableFetcher.
         data_vars = {k: v.read() for k, v in data_vars_clients.items()}
         return data_vars
@@ -303,15 +299,15 @@ class DaskDatasetClient(BaseArrayClient):
         for name, variable in structure.coords.items():
             if (variables is not None) and (name not in variables):
                 continue
-            variable_source = self.VARIABLE_CLIENT(
+            data_array_source = self.DATA_ARRAY_CLIENT(
                 context=self.context,
                 item=self.item,
                 path=self.path,
-                params={"variable": name, **self._params},
+                params={"coord": name, **self._params},
                 structure=variable,
                 route=self._route,
             )
-            coords[name] = variable_source.read()
+            coords[name] = data_array_source.read()
         return coords
 
     def read(self, variables=None):

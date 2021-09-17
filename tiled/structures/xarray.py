@@ -48,7 +48,7 @@ class VariableStructure:
 @dataclass
 class DataArrayMacroStructure:
     variable: VariableStructure
-    coords: Dict[str, VariableStructure]
+    coords: Dict[str, str]  # overridden below to be Dict[str, DataArrayStructure]
     name: str
 
     @classmethod
@@ -56,7 +56,7 @@ class DataArrayMacroStructure:
         return cls(
             variable=VariableStructure.from_json(structure["variable"]),
             coords={
-                key: VariableStructure.from_json(value)
+                key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
             },
             name=structure["name"],
@@ -75,10 +75,18 @@ class DataArrayStructure:
         )
 
 
+# Define a nested structure now that the necessary object has been defined.
+DataArrayMacroStructure.__annotations__[
+    "coords"
+] = DataArrayMacroStructure.__annotations__["coords"].copy_with(
+    (str, DataArrayMacroStructure)
+)
+
+
 @dataclass
 class DatasetMacroStructure:
     data_vars: Dict[str, DataArrayStructure]
-    coords: Dict[str, VariableStructure]
+    coords: Dict[str, DataArrayStructure]
     attrs: Dict  # TODO Use JSONSerializableDict
 
     @classmethod
@@ -89,7 +97,7 @@ class DatasetMacroStructure:
                 for key, value in structure["data_vars"].items()
             },
             coords={
-                key: VariableStructure.from_json(value)
+                key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
             },
             attrs=structure["attrs"],
