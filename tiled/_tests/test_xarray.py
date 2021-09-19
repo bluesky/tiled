@@ -1,5 +1,6 @@
 import dask.array
 import numpy
+import pandas
 import pytest
 import xarray.testing
 import xarray
@@ -102,6 +103,34 @@ def test_dataset_coord_access():
     # Circular reference
     actual = client_dataset.coords["time"].coords["time"].coords["time"].coords["time"]
     xarray.testing.assert_equal(actual, expected)
+
+
+@pytest.mark.xfail(raises=NotImplementedError)
+def test_nested_coords():
+    # Example from
+    # https://xarray.pydata.org/en/stable/user-guide/data-structures.html#creating-a-dataset
+    temp = 15 + 8 * numpy.random.randn(2, 2, 3)
+    precip = 10 * numpy.random.rand(2, 2, 3)
+    lon = [[-99.83, -99.32], [-99.79, -99.23]]
+    lat = [[42.25, 42.21], [42.63, 42.59]]
+
+    ds = xarray.Dataset(
+        {
+            "temperature": (["x", "y", "time"], temp),
+            "precipitation": (["x", "y", "time"], precip),
+        },
+        coords={
+            "lon": (["x", "y"], lon),
+            "lat": (["x", "y"], lat),
+            "time": pandas.date_range("2014-09-06", periods=3),
+            "reference_time": pandas.Timestamp("2014-09-05"),
+        },
+    )
+    tree = Tree({"ds": DatasetAdapter(ds)})
+    client = from_tree(tree)
+    expected_dataset = ds
+    client_dataset = client["ds"].read()
+    xarray.testing.assert_equal(client_dataset, expected_dataset)
 
 
 def test_url_limit_handling():
