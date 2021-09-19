@@ -91,17 +91,26 @@ def construct_serve_tree_kwargs(
         tree_aliases = {"files": "tiled.trees.files:Tree.from_directory"}
         trees = {}
         for item in config.get("trees", []):
+            access_control = item.get("access_control", {}) or {}
+            if access_control.get("access_policy") is not None:
+                policy_import_path = access_control["access_policy"]
+                policy_class = import_object(policy_import_path, accept_live_object=True)
+                access_policy = policy_class(**access_control.get("args", {}))
+            else:
+                access_policy = None
             segments = tuple(segment for segment in item["path"].split("/") if segment)
             tree_spec = item["tree"]
             import_path = tree_aliases.get(tree_spec, tree_spec)
             obj = import_object(import_path, accept_live_object=True)
-            if "args" in item:
+            if ("args" in item) or (access_policy is not None):
                 if not callable(obj):
                     raise ValueError(
                         f"Object imported from {import_path} cannot take args. "
                         "It is not callable."
                     )
                 # Interpret obj as tree *factory*.
+                if access_policy is not None:
+                    item["args"]["access_policy"] = access_policy
                 tree = obj(**item["args"])
             else:
                 # Interpret obj as tree instance.

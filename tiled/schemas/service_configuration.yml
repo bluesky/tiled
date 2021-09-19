@@ -73,6 +73,34 @@ properties:
               args:
                 directory: "path/to/files"
             ```
+        access_control:
+          description: |
+            AccessPolicy object encoding rules for which users can see which entries.
+            If this is set (not null) then an authenticator must also be set.
+
+            Example:
+
+            ```yaml
+            access_control:
+              access_policy: "tiled.trees.in_memory:SimpleAccessPolicy"
+              args:
+                access_lists:
+                  alice: ["A", "B"]
+                  bob: ["C"]
+                  cara: "tiled.trees.in_memory:SimpleAccessPolicy.ALL"
+            ```
+
+          type: [object, "null"]
+          additionalProperties: false
+          required:
+            - access_policy
+            - args
+          properties:
+            args:
+              type: object
+              additionalProperties: true
+            access_policy:
+              type: string
   media_types:
     type: object
     additionalProperties: true
