@@ -94,7 +94,9 @@ def construct_serve_tree_kwargs(
             access_control = item.get("access_control", {}) or {}
             if access_control.get("access_policy") is not None:
                 policy_import_path = access_control["access_policy"]
-                policy_class = import_object(policy_import_path, accept_live_object=True)
+                policy_class = import_object(
+                    policy_import_path, accept_live_object=True
+                )
                 access_policy = policy_class(**access_control.get("args", {}))
             else:
                 access_policy = None

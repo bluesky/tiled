@@ -85,7 +85,12 @@ def entry(
         # Traverse into sub-tree(s).
         for segment in path_parts:
             try:
-                entry = entry[segment]
+                unauthenticated_entry = entry[segment]
+                # TODO Update this when Tree has structure_family == "tree".
+                if not hasattr(unauthenticated_entry, "structure_family"):
+                    entry = unauthenticated_entry.authenticated_as(current_user)
+                else:
+                    entry = unauthenticated_entry
             except (KeyError, TypeError):
                 raise NoEntry(path_parts)
         return entry
