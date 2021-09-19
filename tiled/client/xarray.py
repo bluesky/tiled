@@ -88,9 +88,10 @@ class DaskDataArrayClient(BaseArrayClient):
     STRUCTURE_TYPE = DataArrayStructure  # used by base class
     VARIABLE_CLIENT = DaskVariableClient  # overriden in subclass
 
-    def __init__(self, *args, route="/data_array/block", **kwargs):
+    def __init__(self, *args, route="/data_array/block", coords=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._route = route
+        self._coords = coords
 
     def read_block(self, block, slice=None):
         """
@@ -118,6 +119,11 @@ class DaskDataArrayClient(BaseArrayClient):
         Intended for advanced uses. Enables access to read_block(...) on coords.
         """
         structure = self.structure().macro
+        # If this is part of a Dataset, the coords are fetched
+        # once and passed in so that they are not independently
+        # (re-)fetched by every DataArray.
+        if self._coords is not None:
+            return {k: v for k, v in self._coords.items() if k in structure.coords}
         result = {}
         for name, variable in structure.coords.items():
             client = type(self)(
@@ -149,17 +155,23 @@ class DaskDataArrayClient(BaseArrayClient):
             route=self._route,
         )
         data = client.read(slice)
-        coords = {}
-        for name, variable in structure.coords.items():
-            client = type(self)(
-                context=self.context,
-                item=self.item,
-                path=self.path,
-                params={"coord": name, **self._params},
-                structure=variable,
-                route=self._route,
-            )
-            coords[name] = client.read(slice)
+        # If this is part of a Dataset, the coords are fetched
+        # once and passed in so that they are not independently
+        # (re-)fetched by every DataArray.
+        if self._coords is not None:
+            coords = {k: v for k, v in self._coords.items() if k in structure.coords}
+        else:
+            coords = {}
+            for name, variable in structure.coords.items():
+                client = type(self)(
+                    context=self.context,
+                    item=self.item,
+                    path=self.path,
+                    params={"coord": name, **self._params},
+                    structure=variable,
+                    route=self._route,
+                )
+                coords[name] = client.read(slice)
         return xarray.DataArray(data=data, coords=coords, name=structure.name)
 
     def __getitem__(self, slice):
@@ -256,17 +268,18 @@ class DaskDatasetClient(BaseArrayClient):
     @property
     def data_vars(self):
         structure = self.structure().macro
-        return self._build_data_vars(structure)
+        coords = self._build_coords(structure)
+        return self._build_data_vars(structure, coords)
 
     @property
     def coords(self):
         structure = self.structure().macro
         return self._build_coords(structure)
 
-    def _build_data_vars(self, structure, variables=None):
+    def _build_data_vars(self, structure, coords, variables=None):
         data_vars_clients = {}
         wide_table_fetcher = _WideTableFetcher(
-            self.context.get_content, self.item["links"]["full_dataset"]
+            self.context.get_content, self.item["links"]["full_dataset"], coords
         )
         for name, data_array in structure.data_vars.items():
             if (variables is not None) and (name not in variables):
@@ -274,10 +287,8 @@ class DaskDatasetClient(BaseArrayClient):
 
             # Optimization: Download scalar data as DataFrame.
             data_shape = data_array.macro.variable.macro.data.macro.shape
-            if (
-                (data_shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
-                and (len(data_shape) < 2)
-                and (not data_array.macro.coords)
+            if (data_shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION) and (
+                len(data_shape) < 2
             ):
                 data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
             else:
@@ -287,6 +298,7 @@ class DaskDatasetClient(BaseArrayClient):
                     path=self.path,
                     params={"variable": name, **self._params},
                     structure=data_array,
+                    coords=coords,
                     route=self._route,
                 )
                 data_vars_clients[name] = client
@@ -294,12 +306,15 @@ class DaskDatasetClient(BaseArrayClient):
         data_vars = {k: v.read() for k, v in data_vars_clients.items()}
         return data_vars
 
-    def _build_coords(self, structure, variables=None):
+    def _build_coords(self, structure):
         coords = {}
         for name, variable in structure.coords.items():
-            if (variables is not None) and (name not in variables):
-                continue
-            data_array_source = self.DATA_ARRAY_CLIENT(
+            # Xarray greedily materializes coordiantes; they are not allowed to
+            # remain dask arrays. If we use self.DATA_ARRAY_CLIENT here, which
+            # may be DaskDataArrayClient, then each DataArray separately calls
+            # compute() and redundantly issues the same request. To avoid that,
+            # we fetch greedily here.
+            data_array_source = DataArrayClient(
                 context=self.context,
                 item=self.item,
                 path=self.path,
@@ -312,8 +327,8 @@ class DaskDatasetClient(BaseArrayClient):
 
     def read(self, variables=None):
         structure = self.structure().macro
-        data_vars = self._build_data_vars(structure, variables)
-        coords = self._build_coords(structure, variables)
+        coords = self._build_coords(structure)
+        data_vars = self._build_data_vars(structure, coords, variables)
         ds = xarray.Dataset(
             data_vars=data_vars,
             coords=coords,
@@ -356,9 +371,10 @@ _EXTRA_CHARS_PER_ITEM = len("&variable=")
 
 
 class _WideTableFetcher:
-    def __init__(self, get, link):
+    def __init__(self, get, link, coords):
         self.get = get
         self.link = link
+        self.coords = coords
         self.variables = []
         self._dataframe = None
 
@@ -423,6 +439,5 @@ class _MockClient:
             dims=s.macro.variable.macro.dims,
             attrs=s.macro.variable.macro.attrs,
         )
-        # This DataArray always has no coords, by construction.
-        assert not s.macro.coords
-        return xarray.DataArray(variable, name=s.macro.name, coords={})
+        coords = {name: self.wto.coords[name] for name in s.macro.coords}
+        return xarray.DataArray(variable, name=s.macro.name, coords=coords)
