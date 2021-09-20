@@ -144,7 +144,9 @@ class ArrayStructure:
 
 
 serialization_registry.register(
-    "array", "application/octet-stream", lambda array, metadata: memoryview(array)
+    "array",
+    "application/octet-stream",
+    lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
 )
 serialization_registry.register(
     "array",
