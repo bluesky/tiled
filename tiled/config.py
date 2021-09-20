@@ -62,7 +62,7 @@ def construct_serve_tree_kwargs(
         sys_path_additions.append(directory)
     with prepend_to_sys_path(*sys_path_additions):
         auth_spec = config.get("authentication", {}) or {}
-        access_control = config.get("access_control", {}) or {}
+        root_access_control = config.get("access_control", {}) or {}
         auth_aliases = {}
         # TODO Enable entrypoint as alias for authenticator_class?
         if auth_spec.get("authenticator") is not None:
@@ -72,12 +72,16 @@ def construct_serve_tree_kwargs(
             authenticator_class = import_object(import_path, accept_live_object=True)
             authenticator = authenticator_class(**auth_spec.get("args", {}))
             auth_spec["authenticator"] = authenticator
-        if access_control.get("access_policy") is not None:
-            policy_import_path = access_control["access_policy"]
-            policy_class = import_object(policy_import_path, accept_live_object=True)
-            access_policy = policy_class(**access_control.get("args", {}))
+        if root_access_control.get("access_policy") is not None:
+            root_policy_import_path = root_access_control["access_policy"]
+            root_policy_class = import_object(
+                root_policy_import_path, accept_live_object=True
+            )
+            root_access_policy = root_policy_class(
+                **root_access_control.get("args", {})
+            )
         else:
-            access_policy = None
+            root_access_policy = None
         # TODO Enable entrypoint to extend aliases?
         tree_aliases = {"files": "tiled.trees.files:Tree.from_directory"}
         trees = {}
@@ -103,6 +107,8 @@ def construct_serve_tree_kwargs(
                     )
                 # Interpret obj as tree *factory*.
                 if access_policy is not None:
+                    if "args" not in item:
+                        item["args"] = {}
                     item["args"]["access_policy"] = access_policy
                 tree = obj(**item["args"])
             else:
@@ -135,7 +141,7 @@ def construct_serve_tree_kwargs(
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
-            root_tree = Tree(mapping, access_policy=access_policy)
+            root_tree = Tree(mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
