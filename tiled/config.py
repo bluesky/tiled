@@ -173,6 +173,7 @@ def merge(configs):
     authentication_config_source = None
     access_control_config_source = None
     uvicorn_config_source = None
+    object_cache_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
     file_extensions = {}
@@ -210,6 +211,15 @@ def merge(configs):
                 )
             uvicorn_config_source = filepath
             merged["uvicorn"] = config["uvicorn"]
+        if "object_cache" in config:
+            if "object_cache" in merged:
+                raise ConfigError(
+                    "object_cache can only be specified in one file. "
+                    f"It was found in both {object_cache_config_source} and "
+                    f"{filepath}"
+                )
+            object_cache_config_source = filepath
+            merged["object_cache"] = config["object_cache"]
         for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
