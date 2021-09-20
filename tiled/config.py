@@ -4,6 +4,7 @@ This module handles server configuration.
 See profiles.py for client configuration.
 """
 from collections import defaultdict
+import copy
 from functools import lru_cache
 import os
 from pathlib import Path
@@ -33,7 +34,6 @@ def construct_serve_tree_kwargs(
     config,
     *,
     source_filepath=None,
-    validate=True,
     query_registry=None,
     compression_registry=None,
     serialization_registry=None,
@@ -46,16 +46,7 @@ def construct_serve_tree_kwargs(
     instances. By default, the singleton global instances of these registries
     and used (and modified).
     """
-    if validate:
-        try:
-            jsonschema.validate(instance=config, schema=schema())
-        except jsonschema.ValidationError as err:
-            original_msg = err.args[0]
-            if source_filepath is None:
-                msg = f"ValidationError while parsing configuration: {original_msg}"
-            else:
-                msg = f"ValidationError while parsing configuration file {source_filepath}: {original_msg}"
-            raise ConfigError(msg) from err
+    config = copy.deepcopy(config)  # Avoid mutating input.
     if query_registry is None:
         query_registry = default_query_registry
     if serialization_registry is None:
@@ -317,15 +308,10 @@ def direct_access(config, source_filepath=None):
     """
     if isinstance(config, (str, Path)):
         parsed_config = parse_configs(config)
-        # parse_configs validated for us, so we do not need to do it a second time.
-        validate = False
     else:
         parsed_config = config
-        # We do not know where this config came from. It may not yet have been validated.
-        validate = True
-    return construct_serve_tree_kwargs(
-        parsed_config, source_filepath=source_filepath, validate=validate
-    )["tree"]
+    kwargs = construct_serve_tree_kwargs(parsed_config, source_filepath=source_filepath)
+    return kwargs["tree"]
 
 
 def direct_access_from_profile(name):

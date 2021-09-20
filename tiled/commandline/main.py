@@ -301,9 +301,7 @@ def serve_config(
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_tree_kwargs(
-        parsed_config, source_filepath=config_path, validate=False
-    )
+    kwargs = construct_serve_tree_kwargs(parsed_config, source_filepath=config_path)
     web_app = serve_tree(**kwargs)
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
