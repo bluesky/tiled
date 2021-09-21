@@ -16,7 +16,6 @@ import sys
 import time
 from typing import Any, Optional
 
-import dask.base
 from fastapi import Depends, HTTPException, Query, Response, Request
 import msgpack
 import pydantic
@@ -24,6 +23,7 @@ from starlette.responses import JSONResponse, StreamingResponse, Send
 
 from . import models
 from .authentication import get_current_user
+from .etag import tokenize
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
 from ..query_registration import query_registry as default_query_registry
 from ..queries import KeyLookup, QueryValueError
@@ -346,7 +346,7 @@ def construct_data_response(
         specs = []
     default_media_type = DEFAULT_MEDIA_TYPES[structure_family]
     with record_timing(request.state.metrics, "tok"):
-        etag = dask.base.tokenize(payload)
+        etag = tokenize(payload)
     if request.headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
     # Give priority to the `format` query parameter. Otherwise, consult Accept
