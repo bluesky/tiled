@@ -86,13 +86,13 @@ def entry(
         for segment in path_parts:
             try:
                 unauthenticated_entry = entry[segment]
-                # TODO Update this when Tree has structure_family == "tree".
-                if not hasattr(unauthenticated_entry, "structure_family"):
-                    entry = unauthenticated_entry.authenticated_as(current_user)
-                else:
-                    entry = unauthenticated_entry
             except (KeyError, TypeError):
                 raise NoEntry(path_parts)
+            # TODO Update this when Tree has structure_family == "tree".
+            if not hasattr(unauthenticated_entry, "structure_family"):
+                entry = unauthenticated_entry.authenticated_as(current_user)
+            else:
+                entry = unauthenticated_entry
         return entry
     except NoEntry:
         raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
