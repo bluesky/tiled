@@ -20,8 +20,8 @@ def register_h5py():
     @normalize_token.register(h5py.Dataset)
     def normalize_dataset(dataset):
         path = Path(dataset.file.filename)
-        if path.is_file():
+        if path.is_file() and path.is_absolute():
             return (dataset.file.filename, path.stat().st_mtime, dataset.name)
-        # If we reach here, we have some HDF5 file not backed by a file on disk.
-        # (It could be BytesIO.)
+        # If we reach here, we have some HDF5 file with only a *relative* path or
+        # one not backed by a file on disk at all. (It could be BytesIO.)
         return normalize_object(dataset)
