@@ -146,7 +146,7 @@ def get_app(
         # information here we should keep in mind security concerns and perhaps
         # only include this for certain users.
         # Initialize a dict that routes and dependencies can stash metrics in.
-        metrics = collections.defaultdict(dict)
+        metrics = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
         request.state.metrics = metrics
         # Record the overall application time.
         with record_timing(metrics, "app"):

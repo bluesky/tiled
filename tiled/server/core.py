@@ -17,7 +17,7 @@ import time
 from typing import Any, Optional
 
 import dask.base
-from fastapi import Depends, HTTPException, Query, Response
+from fastapi import Depends, HTTPException, Query, Response, Request
 import msgpack
 import pydantic
 from starlette.responses import JSONResponse, StreamingResponse, Send
@@ -76,6 +76,7 @@ def get_root_tree():
 
 def entry(
     path: str,
+    request: Request,
     current_user: str = Depends(get_current_user),
     root_tree: pydantic.BaseSettings = Depends(get_root_tree),
 ):
@@ -85,12 +86,14 @@ def entry(
         # Traverse into sub-tree(s).
         for segment in path_parts:
             try:
-                unauthenticated_entry = entry[segment]
+                with record_timing(request.state.metrics, "acl"):
+                    unauthenticated_entry = entry[segment]
             except (KeyError, TypeError):
                 raise NoEntry(path_parts)
             # TODO Update this when Tree has structure_family == "tree".
             if not hasattr(unauthenticated_entry, "structure_family"):
-                entry = unauthenticated_entry.authenticated_as(current_user)
+                with record_timing(request.state.metrics, "acl"):
+                    entry = unauthenticated_entry.authenticated_as(current_user)
             else:
                 entry = unauthenticated_entry
         return entry
@@ -335,15 +338,16 @@ def construct_data_response(
     serialization_registry,
     payload,
     metadata,
-    request_headers,
+    request,
     format=None,
     specs=None,
 ):
     if specs is None:
         specs = []
     default_media_type = DEFAULT_MEDIA_TYPES[structure_family]
-    etag = dask.base.tokenize(payload)
-    if request_headers.get("If-None-Match", "") == etag:
+    with record_timing(request.state.metrics, "tok"):
+        etag = dask.base.tokenize(payload)
+    if request.headers.get("If-None-Match", "") == etag:
         return Response(status_code=304)
     # Give priority to the `format` query parameter. Otherwise, consult Accept
     # header.
@@ -360,7 +364,7 @@ def construct_data_response(
         # That variation is what we are handling below with lstrip.
         media_types = [
             s.lstrip(" ")
-            for s in request_headers.get("Accept", default_media_type).split(",")
+            for s in request.headers.get("Accept", default_media_type).split(",")
         ]
 
     # The client may give us a choice of media types. Find the first one
@@ -688,4 +692,4 @@ def record_timing(metrics, key):
     """
     t0 = time.perf_counter()
     yield
-    metrics[key]["dur"] = 1000 * (time.perf_counter() - t0)  # Units: ms
+    metrics[key]["dur"] += 1000 * (time.perf_counter() - t0)  # Units: ms

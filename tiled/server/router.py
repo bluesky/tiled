@@ -274,7 +274,7 @@ def array_block(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -324,7 +324,7 @@ def array_full(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -438,7 +438,7 @@ def dataframe_partition(
                 serialization_registry,
                 df,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -483,7 +483,7 @@ def dataframe_full(
                 serialization_registry,
                 df,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
                 specs,
             )
@@ -533,7 +533,7 @@ def variable_block(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -574,7 +574,7 @@ def variable_full(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -625,7 +625,7 @@ def data_array_variable_full(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -680,7 +680,7 @@ def data_array_block(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -743,7 +743,7 @@ def dataset_block(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -800,7 +800,7 @@ def dataset_data_var_full(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -848,7 +848,7 @@ def dataset_coord_full(
                 serialization_registry,
                 array,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
@@ -890,7 +890,7 @@ def dataset_full(
                 serialization_registry,
                 dataset,
                 reader.metadata,
-                request.headers,
+                request,
                 format,
             )
     except UnsupportedMediaTypes as err:
