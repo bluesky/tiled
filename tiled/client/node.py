@@ -60,6 +60,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "array": lambda: importlib.import_module(
                     "..array", Node.__module__
                 ).DaskArrayClient,
+                "structured_array_generic": lambda: importlib.import_module(
+                    "..array", Node.__module__
+                ).DaskArrayClient,
+                "structured_array_tabular": lambda: importlib.import_module(
+                    "..array", Node.__module__
+                ).DaskArrayClient,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Node.__module__
                 ).DaskDataFrameClient,
