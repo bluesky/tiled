@@ -127,7 +127,7 @@ class ArrayTabularMacroStructure:
 
 @dataclass
 class StructuredArrayTabularStructure:
-    macro: ArrayMacroStructure
+    macro: ArrayTabularMacroStructure
     micro: StructDtype
 
     @classmethod
