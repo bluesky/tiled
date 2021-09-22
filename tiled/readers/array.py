@@ -68,16 +68,6 @@ class ArrayAdapter:
         with get_object_cache().dask_context:
             return dask_array.compute()
 
-    def close(self):
-        # Allow the garbage collector to reclaim this memory.
-        self._data = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self):
-        self.close()
-
 
 class StructuredArrayGenericAdapter(ArrayAdapter):
     structure_family = "structured_array_generic"
