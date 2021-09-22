@@ -1,6 +1,7 @@
 import dask.array
 
 from ..structures.array import ArrayMacroStructure, MachineDataType
+from ..structures.structured_array import ArrayTabularMacroStructure, StructDtype
 from ..utils import DictView
 from ..server.object_cache import get_object_cache
 
@@ -66,3 +67,33 @@ class ArrayAdapter:
         # Note: If the cache is set to NO_CACHE, this is a null context.
         with get_object_cache().dask_context:
             return dask_array.compute()
+
+
+class StructuredArrayGenericAdapter(ArrayAdapter):
+    structure_family = "structured_array_generic"
+
+    def macrostructure(self):
+        "Structures of the layout of blocks of this array"
+        return ArrayMacroStructure(
+            shape=self._data.shape,
+            chunks=self._data.chunks,
+        )
+
+    def microstructure(self):
+        "Internal structure of a block of this array --- i.e. its data type"
+        return StructDtype.from_numpy_dtype(self._data.dtype)
+
+
+class StructuredArrayTabularAdapter(ArrayAdapter):
+    structure_family = "structured_array_tabular"
+
+    def macrostructure(self):
+        "Structures of the layout of blocks of this array"
+        return ArrayTabularMacroStructure(
+            shape=self._data.shape,
+            chunks=self._data.chunks,
+        )
+
+    def microstructure(self):
+        "Internal structure of a block of this array --- i.e. its data type"
+        return StructDtype.from_numpy_dtype(self._data.dtype)

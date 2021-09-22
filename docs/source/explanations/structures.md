@@ -7,11 +7,27 @@ potentially any language.
 
 ## Supported structure families
 
-Five structure families are currently supported. The most widespread are:
+Seven structure families are currently supported. The most widespread are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
+
+The "array" strucuture family handles unstructured data types only.
+Numpy's [strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html)
+are supported via two other structure families.
+
+* structured_array_tabular --- a one-dimensional array where each item has one level
+  of internal structure
+* structured_array_generic --- an array with any number of dimensions and
+  arbitrarily nested internal structure
+
+The structures "structured_array_tabular" and "dataframe" have some similarities,
+but they are not interchangeable. First, structured arrays are row-major and
+dataframes and column-major. Second, arrays have a known shape along every dimension
+and can be sliced and indexed along every dimension. Dataframes are "partitioned"
+into blocks of rows whose size cannot be known until the data is actually loaded.
+Despite these differences, they can be exported to many of the same formats.
 
 Three additional structures come from
 [xarray](https://xarray.pydata.org/en/stable/). They may be considered
@@ -95,7 +111,7 @@ This `(10, 10)`-shaped array fits in a single `(10, 10)`-shaped chunk.
 ### Array (multiple chunks)
 
 ```
-$ http :8000/metadata/arrays/large | jq .data.attributes.structure
+$ http :8000/metadata/big_image | jq .data.attributes.structure
 ```
 
 ```json
@@ -135,6 +151,62 @@ which is why the size of each chunk is given explicitly.
 Notice that we could derive `shape` from `chunks` so it is not
 technically necessary to include `shape` but it is convenient to
 have it given directly.
+
+### Structured Tabular Array
+
+This is a 1D array where each item has internal structure,
+as in numpy's [strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html)
+
+```
+$ http :8000/metadata/structured_data/pets | jq .data.attributes.structure
+```
+
+```json
+{
+  "macro": {
+    "chunks": [
+      [
+        2
+      ]
+    ],
+    "shape": [
+      2
+    ]
+  },
+  "micro": {
+    "itemsize": 48,
+    "fields": [
+      {
+        "name": "name",
+        "dtype": {
+          "endianness": "little",
+          "kind": "U",
+          "itemsize": 40
+        },
+        "shape": null
+      },
+      {
+        "name": "age",
+        "dtype": {
+          "endianness": "little",
+          "kind": "i",
+          "itemsize": 4
+        },
+        "shape": null
+      },
+      {
+        "name": "weight",
+        "dtype": {
+          "endianness": "little",
+          "kind": "f",
+          "itemsize": 4
+        },
+        "shape": null
+      }
+    ]
+  }
+}
+```
 
 ### DataFrame
 
@@ -215,7 +287,7 @@ large; `attrs` is not intended to hold large data.
 ```
 
 ```
-$ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure ```
+$ http :8000/metadata/structured_data/xarray_variable | jq .data.attributes.structure
 ```
 
 ```json
@@ -229,21 +301,15 @@ $ http :8000/metadata/xarrays/large/variable | jq .data.attributes.structure ```
       "macro": {
         "chunks": [
           [
-            2500,
-            2500,
-            2500,
-            2500
+            1000
           ],
           [
-            2500,
-            2500,
-            2500,
-            2500
+            1000
           ]
         ],
         "shape": [
-          10000,
-          10000
+          1000,
+          1000
         ]
       },
       "micro": {
@@ -269,7 +335,7 @@ Therefore, DataArray can be described as a container for one Variable and (optio
 additional Variables.
 
 ```
-$ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
+$ http :8000/metadata/structured_data/xarray_data_array | jq .data.attributes.structure
 ```
 
 ```json
@@ -285,21 +351,15 @@ $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
           "macro": {
             "chunks": [
               [
-                2500,
-                2500,
-                2500,
-                2500
+                1000
               ],
               [
-                2500,
-                2500,
-                2500,
-                2500
+                1000
               ]
             ],
             "shape": [
-              10000,
-              10000
+              1000,
+              1000
             ]
           },
           "micro": {
@@ -314,60 +374,7 @@ $ http :8000/metadata/xarrays/large/data_array | jq .data.attributes.structure
       },
       "micro": null
     },
-    "coords": {
-      "x": {
-        "macro": {
-          "dims": [
-            "x"
-          ],
-          "data": {
-            "macro": {
-              "chunks": [
-                [
-                  10000
-                ]
-              ],
-              "shape": [
-                10000
-              ]
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "i",
-              "itemsize": 8
-            }
-          },
-          "attrs": {}
-        },
-        "micro": null
-      },
-      "y": {
-        "macro": {
-          "dims": [
-            "y"
-          ],
-          "data": {
-            "macro": {
-              "chunks": [
-                [
-                  10000
-                ]
-              ],
-              "shape": [
-                10000
-              ]
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "i",
-              "itemsize": 8
-            }
-          },
-          "attrs": {}
-        },
-        "micro": null
-      }
-    },
+    "coords": {},
     "name": null
   }
 }
@@ -380,7 +387,7 @@ A
 is a dict-like collection of DataArrays that may share coordinates.
 
 ```
-$ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
+http :8000/metadata/structured_data/xarray_dataset | jq .data.attributes.structure
 ```
 
 ```json
@@ -399,21 +406,15 @@ $ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
                 "macro": {
                   "chunks": [
                     [
-                      2500,
-                      2500,
-                      2500,
-                      2500
+                      1000
                     ],
                     [
-                      2500,
-                      2500,
-                      2500,
-                      2500
+                      1000
                     ]
                   ],
                   "shape": [
-                    10000,
-                    10000
+                    1000,
+                    1000
                   ]
                 },
                 "micro": {
@@ -431,53 +432,67 @@ $ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
           "coords": {
             "x": {
               "macro": {
-                "dims": [
-                  "x"
-                ],
-                "data": {
+                "variable": {
                   "macro": {
-                    "chunks": [
-                      [
-                        10000
-                      ]
+                    "dims": [
+                      "x"
                     ],
-                    "shape": [
-                      10000
-                    ]
+                    "data": {
+                      "macro": {
+                        "chunks": [
+                          [
+                            1000
+                          ]
+                        ],
+                        "shape": [
+                          1000
+                        ]
+                      },
+                      "micro": {
+                        "endianness": "little",
+                        "kind": "f",
+                        "itemsize": 8
+                      }
+                    },
+                    "attrs": {}
                   },
-                  "micro": {
-                    "endianness": "little",
-                    "kind": "i",
-                    "itemsize": 8
-                  }
+                  "micro": null
                 },
-                "attrs": {}
+                "coords": {},
+                "name": "x"
               },
               "micro": null
             },
             "y": {
               "macro": {
-                "dims": [
-                  "y"
-                ],
-                "data": {
+                "variable": {
                   "macro": {
-                    "chunks": [
-                      [
-                        10000
-                      ]
+                    "dims": [
+                      "y"
                     ],
-                    "shape": [
-                      10000
-                    ]
+                    "data": {
+                      "macro": {
+                        "chunks": [
+                          [
+                            1000
+                          ]
+                        ],
+                        "shape": [
+                          1000
+                        ]
+                      },
+                      "micro": {
+                        "endianness": "little",
+                        "kind": "f",
+                        "itemsize": 8
+                      }
+                    },
+                    "attrs": {}
                   },
-                  "micro": {
-                    "endianness": "little",
-                    "kind": "i",
-                    "itemsize": 8
-                  }
+                  "micro": null
                 },
-                "attrs": {}
+                "coords": {},
+                "name": "y"
               },
               "micro": null
             }
@@ -497,11 +512,11 @@ $ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
                 "macro": {
                   "chunks": [
                     [
-                      10000
+                      1000
                     ]
                   ],
                   "shape": [
-                    10000
+                    1000
                   ]
                 },
                 "micro": {
@@ -523,53 +538,135 @@ $ http :8000/metadata/xarrays/large/dataset | jq .data.attributes.structure
     "coords": {
       "x": {
         "macro": {
-          "dims": [
-            "x"
-          ],
-          "data": {
+          "variable": {
             "macro": {
-              "chunks": [
-                [
-                  10000
-                ]
+              "dims": [
+                "x"
               ],
-              "shape": [
-                10000
-              ]
+              "data": {
+                "macro": {
+                  "chunks": [
+                    [
+                      1000
+                    ]
+                  ],
+                  "shape": [
+                    1000
+                  ]
+                },
+                "micro": {
+                  "endianness": "little",
+                  "kind": "f",
+                  "itemsize": 8
+                }
+              },
+              "attrs": {}
             },
-            "micro": {
-              "endianness": "little",
-              "kind": "i",
-              "itemsize": 8
+            "micro": null
+          },
+          "coords": {
+            "x": {
+              "macro": {
+                "variable": {
+                  "macro": {
+                    "dims": [
+                      "x"
+                    ],
+                    "data": {
+                      "macro": {
+                        "chunks": [
+                          [
+                            1000
+                          ]
+                        ],
+                        "shape": [
+                          1000
+                        ]
+                      },
+                      "micro": {
+                        "endianness": "little",
+                        "kind": "f",
+                        "itemsize": 8
+                      }
+                    },
+                    "attrs": {}
+                  },
+                  "micro": null
+                },
+                "coords": {},
+                "name": "x"
+              },
+              "micro": null
             }
           },
-          "attrs": {}
+          "name": "x"
         },
         "micro": null
       },
       "y": {
         "macro": {
-          "dims": [
-            "y"
-          ],
-          "data": {
+          "variable": {
             "macro": {
-              "chunks": [
-                [
-                  10000
-                ]
+              "dims": [
+                "y"
               ],
-              "shape": [
-                10000
-              ]
+              "data": {
+                "macro": {
+                  "chunks": [
+                    [
+                      1000
+                    ]
+                  ],
+                  "shape": [
+                    1000
+                  ]
+                },
+                "micro": {
+                  "endianness": "little",
+                  "kind": "f",
+                  "itemsize": 8
+                }
+              },
+              "attrs": {}
             },
-            "micro": {
-              "endianness": "little",
-              "kind": "i",
-              "itemsize": 8
+            "micro": null
+          },
+          "coords": {
+            "y": {
+              "macro": {
+                "variable": {
+                  "macro": {
+                    "dims": [
+                      "y"
+                    ],
+                    "data": {
+                      "macro": {
+                        "chunks": [
+                          [
+                            1000
+                          ]
+                        ],
+                        "shape": [
+                          1000
+                        ]
+                      },
+                      "micro": {
+                        "endianness": "little",
+                        "kind": "f",
+                        "itemsize": 8
+                      }
+                    },
+                    "attrs": {}
+                  },
+                  "micro": null
+                },
+                "coords": {},
+                "name": "y"
+              },
+              "micro": null
             }
           },
-          "attrs": {}
+          "name": "y"
         },
         "micro": null
       }

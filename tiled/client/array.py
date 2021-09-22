@@ -5,7 +5,6 @@ import dask
 import dask.array
 import numpy
 
-from ..structures.array import ArrayStructure
 from ..media_type_registration import deserialization_registry
 from .base import BaseArrayClient
 from .utils import export_util
@@ -14,13 +13,10 @@ from .utils import export_util
 class DaskArrayClient(BaseArrayClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
-    STRUCTURE_TYPE = ArrayStructure
-
-    def __init__(self, *args, route="/array/block", **kwargs):
-        super().__init__(*args, **kwargs)
-        if route.endswith("/"):
-            route = route[:-1]
-        self._route = route
+    def __init__(self, *args, item, route=None, **kwargs):
+        if route is None:
+            route = f"/{item['attributes']['structure_family']}/block"
+        super().__init__(*args, route=route, item=item, **kwargs)
 
     def _get_block(self, block, dtype, shape, slice=None):
         """

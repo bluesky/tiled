@@ -3,17 +3,13 @@ import mimetypes
 import io
 from typing import Any, List
 
-import dask.dataframe.utils
-import pandas
-import pyarrow
-
 from ..media_type_registration import serialization_registry, deserialization_registry
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
 
 
 @dataclass
 class DataFrameMicroStructure:
-    meta: pandas.DataFrame
+    meta: "pandas.DataFrame"
     divisions: List[Any]
 
     @classmethod
@@ -21,6 +17,8 @@ class DataFrameMicroStructure:
         # Make an *empty* DataFrame with the same structure as ddf.
         # TODO Look at make_meta_nonempty to see if the "objects" are str or
         # datetime or actually generic objects.
+        import dask.dataframe.utils
+
         meta = dask.dataframe.utils.make_meta(ddf)
         return cls(meta=meta, divisions=ddf.divisions)
 
@@ -42,6 +40,8 @@ class DataFrameStructure:
 
 
 def serialize_arrow(df, metadata):
+    import pyarrow
+
     table = pyarrow.Table.from_pandas(df)
     sink = pyarrow.BufferOutputStream()
     with pyarrow.ipc.new_file(sink, table.schema) as writer:
@@ -50,6 +50,8 @@ def serialize_arrow(df, metadata):
 
 
 def deserialize_arrow(buffer):
+    import pyarrow
+
     return pyarrow.ipc.open_file(buffer).read_pandas()
 
 
@@ -93,8 +95,10 @@ serialization_registry.register("dataframe", "application/x-parquet", serialize_
 serialization_registry.register("dataframe", "text/csv", serialize_csv)
 serialization_registry.register("dataframe", "text/plain", serialize_csv)
 serialization_registry.register("dataframe", "text/html", serialize_html)
-if modules_available("openpyxl"):
+if modules_available("openpyxl", "pandas"):
     # The optional pandas dependency openpyxel is required for Excel read/write.
+    import pandas
+
     serialization_registry.register(
         "dataframe",
         XLSX_MIME_TYPE,

@@ -12,6 +12,8 @@ or its dask counterpart. They can be used to build other Readers.
    :toctree: generated
 
    tiled.readers.array.ArrayAdapter
+   tiled.readers.array.StructuredArrayTabularAdapter
+   tiled.readers.array.StructuredArrayGenericAdapter
    tiled.readers.dataframe.DataFrameAdapter
    tiled.readers.xarray.VariableAdapter
    tiled.readers.xarray.DataArrayAdapter
@@ -122,6 +124,19 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.dataframe.DataFrameStructure
    tiled.structures.dataframe.DataFrameMacroStructure
    tiled.structures.dataframe.DataFrameMicroStructure
+```
+
+### Structured Arrays
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.structures.structured_array.Field
+   tiled.structures.structured_array.StructDtype
+   tiled.structures.structured_array.StructuredArrayGenericStructure
+   tiled.structures.structured_array.ArrayTabularMacroStructure
+   tiled.structures.structured_array.StructuredArrayTabularStructure
 ```
 
 ### Xarray Structures

@@ -1,4 +1,6 @@
-from ..utils import DictView, ListView
+import importlib
+
+from ..utils import DictView, ListView, OneShotCachedMap
 from ..trees.utils import UNCHANGED
 
 
@@ -120,11 +122,13 @@ class BaseStructureClient(BaseClient):
 class BaseArrayClient(BaseStructureClient):
     """
     Shared by Array, DataArray, Dataset
-
-    Subclass must define:
-
-    * STRUCTURE_TYPE : type
     """
+
+    def __init__(self, *args, route, **kwargs):
+        if route.endswith("/"):
+            route = route[:-1]
+        self._route = route
+        super().__init__(*args, **kwargs)
 
     def structure(self):
         # Notice that we are NOT *caching* in self._structure here. We are
@@ -135,12 +139,42 @@ class BaseArrayClient(BaseStructureClient):
             content = self.context.get_json(
                 self.uri,
                 params={
-                    "fields": ["structure.micro", "structure.macro"],
+                    "fields": [
+                        "structure.micro",
+                        "structure.macro",
+                        "structure_family",
+                    ],
                     **self._params,
                 },
             )
-            result = content["data"]["attributes"]["structure"]
-            structure = self.STRUCTURE_TYPE.from_json(result)
+            attributes = content["data"]["attributes"]
+            structure_type = ARRAY_STRUCTURE_TYPES[attributes["structure_family"]]
+            structure = structure_type.from_json(attributes["structure"])
         else:
             structure = self._structure
         return structure
+
+
+# Defer imports to avoid numpy requirement in this module.
+ARRAY_STRUCTURE_TYPES = OneShotCachedMap(
+    {
+        "array": lambda: importlib.import_module(
+            "...structures.array", BaseArrayClient.__module__
+        ).ArrayStructure,
+        "structured_array_generic": lambda: importlib.import_module(
+            "...structures.structured_array", BaseArrayClient.__module__
+        ).StructuredArrayGenericStructure,
+        "structured_array_tabular": lambda: importlib.import_module(
+            "...structures.structured_array", BaseArrayClient.__module__
+        ).StructuredArrayTabularStructure,
+        "variable": lambda: importlib.import_module(
+            "...structures.xarray", BaseArrayClient.__module__
+        ).VariableStructure,
+        "data_array": lambda: importlib.import_module(
+            "...structures.xarray", BaseArrayClient.__module__
+        ).DataArrayStructure,
+        "dataset": lambda: importlib.import_module(
+            "...structures.xarray", BaseArrayClient.__module__
+        ).DatasetStructure,
+    }
+)
