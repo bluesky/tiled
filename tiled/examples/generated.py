@@ -7,7 +7,7 @@ import numpy
 import pandas
 import xarray
 
-from tiled.readers.array import ArrayAdapter
+from tiled.readers.array import ArrayAdapter, StructuredArrayTabularAdapter
 from tiled.readers.dataframe import DataFrameAdapter
 from tiled.readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from tiled.trees.in_memory import Tree
@@ -74,6 +74,12 @@ mapping = {
     ),
     "structured_data": Tree(
         {
+            "pets": StructuredArrayTabularAdapter.from_array(
+                numpy.array(
+                    [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
+                    dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
+                )
+            ),
             "image_with_coords": DataArrayAdapter(
                 xarray.DataArray(
                     xarray.Variable(
@@ -105,6 +111,22 @@ mapping = {
                             data=dask.array.ones((len(data["medium_image"]),))
                         ),
                     }
+                )
+            ),
+            "xarray_data_array": DataArrayAdapter(
+                xarray.DataArray(
+                    xarray.Variable(
+                        data=dask.array.from_array(data["medium_image"]),
+                        dims=["x", "y"],
+                        attrs={"thing": "stuff"},
+                    )
+                )
+            ),
+            "xarray_variable": VariableAdapter(
+                xarray.Variable(
+                    data=dask.array.from_array(data["medium_image"]),
+                    dims=["x", "y"],
+                    attrs={"thing": "stuff"},
                 )
             ),
         },
