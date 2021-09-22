@@ -377,7 +377,7 @@ def structured_array_generic_block(
             serialization_registry,
             array,
             reader.metadata,
-            request.headers,
+            request,
             format,
         )
     except UnsupportedMediaTypes as err:
@@ -430,7 +430,7 @@ def structured_array_tabular_block(
             serialization_registry,
             array,
             reader.metadata,
-            request.headers,
+            request,
             format,
         )
     except UnsupportedMediaTypes as err:
@@ -480,7 +480,7 @@ def structured_array_tabular_full(
             serialization_registry,
             array,
             reader.metadata,
-            request.headers,
+            request,
             format,
         )
     except UnsupportedMediaTypes as err:
@@ -530,7 +530,7 @@ def structured_array_generic_full(
             serialization_registry,
             array,
             reader.metadata,
-            request.headers,
+            request,
             format,
         )
     except UnsupportedMediaTypes as err:
