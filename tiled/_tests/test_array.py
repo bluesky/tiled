@@ -24,7 +24,7 @@ array_cases = {
     # )
     # "M": numpy.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64'),
     "S": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="S3"),
-    "U": numpy.array([letter * 3 for letter in string.ascii_letters], dtype='U3'),
+    "U": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="U3"),
 }
 # TODO bitfield "t", void "v", and object "O" (which is not supported by default)
 scalar_cases = {k: numpy.array(v[0], dtype=v.dtype) for k, v in array_cases.items()}
