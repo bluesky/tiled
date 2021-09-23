@@ -15,7 +15,8 @@ from .authentication import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     REFRESH_TOKEN_COOKIE_NAME,
-    authentication_router,
+    password_authentication_router,
+    external_authentication_router,
     get_authenticator,
 )
 from .compression import CompressionMiddleware
@@ -65,8 +66,6 @@ def get_app(
     app = FastAPI()
     app.state.allow_origins = []
     app.include_router(router)
-    app.include_router(authentication_router)
-
     for user_router in include_routers or []:
         app.include_router(user_router)
 
@@ -93,6 +92,13 @@ def get_app(
     python -c "import secrets; print(secrets.token_hex(32))"
     """
                 )
+
+        authenticator = app.dependency_overrides[get_authenticator]()
+        if authenticator is not None:
+            if authenticator.handles_credentials:
+                app.include_router(password_authentication_router)
+            else:
+                app.include_router(external_authentication_router)
 
         for task in background_tasks or []:
             asyncio.create_task(task())

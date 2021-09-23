@@ -343,7 +343,9 @@ Navigate web browser to this address to obtain access code:
             )
             # The proper term for this is 'refresh token' but that may be
             # confusing jargon to the end user, so we say "access code".
-            refresh_token = input("Access code: ")
+            raw_refresh_token = input("Access code: ")
+            # Remove any accidentally-included quotes.
+            refresh_token = raw_refresh_token.replace('"', '')
             tokens = {"refresh_token": refresh_token}
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.

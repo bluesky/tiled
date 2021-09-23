@@ -57,7 +57,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
 api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
 api_key_cookie = APIKeyCookie(name="tiled_api_key", auto_error=False)
-authentication_router = APIRouter()
+password_authentication_router = APIRouter()
+external_authentication_router = APIRouter()
 
 
 def create_access_token(data: dict, expires_delta, secret_key):
@@ -174,7 +175,31 @@ async def get_current_user(
     return username
 
 
-@authentication_router.post("/token", response_model=AccessAndRefreshTokens)
+@external_authentication_router.get("/auth/code")
+async def auth_code(
+    request: Request,
+    authenticator: Any = Depends(get_authenticator),
+    settings: BaseSettings = Depends(get_settings),
+):
+    username = await authenticator.authenticate(request)
+    if not username:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication failure",
+        )
+    refresh_token = create_refresh_token(
+        data={"sub": username},
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    return refresh_token
+
+
+@password_authentication_router.post(
+    "/token", response_model=AccessAndRefreshTokens, include_in_schema=False
+)  # back-compat alias
+@password_authentication_router.post(
+    "/auth/token", response_model=AccessAndRefreshTokens
+)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
@@ -189,7 +214,7 @@ async def login_for_access_token(
                 "To authenticate, use the API key logged at server startup."
             )
         raise HTTPException(status_code=404, detail=msg)
-    username = authenticator.authenticate(
+    username = await authenticator.authenticate(
         username=form_data.username, password=form_data.password
     )
     if not username:
@@ -216,7 +241,12 @@ async def login_for_access_token(
     }
 
 
-@authentication_router.post("/token/refresh", response_model=AccessAndRefreshTokens)
+@password_authentication_router.post(
+    "/token/refresh", response_model=AccessAndRefreshTokens
+)
+@external_authentication_router.post(
+    "/token/refresh", response_model=AccessAndRefreshTokens
+)
 async def post_token_refresh(
     refresh_token: RefreshToken,
     settings: BaseSettings = Depends(get_settings),
@@ -267,7 +297,8 @@ def slide_session(refresh_token, settings):
     }
 
 
-@authentication_router.post("/logout")
+@external_authentication_router.post("/logout")
+@password_authentication_router.post("/logout")
 async def logout(
     response: Response,
 ):

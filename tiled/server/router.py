@@ -62,6 +62,16 @@ async def about(
             request.state.cookies_to_set.append(
                 {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
             )
+    if authenticator is None:
+        auth_type = "api_key"
+    else:
+        if authenticator.handles_credentials:
+            auth_type = "password"
+            auth_endpoint = None
+        else:
+            auth_type = "external"
+            auth_endpoint = authenticator.authorization_endpoint
+
     return json_or_msgpack(
         request.headers,
         models.About(
@@ -82,6 +92,11 @@ async def about(
             meta={"root_path": request.scope.get("root_path") or "/"}
             if (root_path is not None)
             else {},
+            authentication={
+                "type": auth_type,
+                "required": settings.allow_anonymous_access,
+                "endpoint": auth_endpoint,
+            },
         ),
     )
 
