@@ -11,3 +11,9 @@ server {
     }
 }
 
+# Redirect HTTP -> HTTPS.
+server {
+    listen 80 default_server;
+    server_name {{ server_name }};
+    return 301 https://$host$request_uri;
+}
