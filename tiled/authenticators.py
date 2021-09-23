@@ -109,14 +109,8 @@ public_keys:
         client_secret,
         redirect_uri,
         public_keys,
-        token_uri="https://orcid.org/oauth/token",
-        authorization_endpoint=(
-            "https://orcid.org/oauth/authorize?"
-            "client_id={client_id}&"
-            "response_type=code&"
-            "scope=openid&"
-            "redirect_uri={redirect_uri}"
-        ),
+        token_uri,
+        authorization_endpoint,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
