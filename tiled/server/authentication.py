@@ -247,6 +247,16 @@ async def login_for_access_token(
 @external_authentication_router.post(
     "/token/refresh", response_model=AccessAndRefreshTokens
 )
+@password_authentication_router.post(
+    "/auth/token/refresh",
+    response_model=AccessAndRefreshTokens,
+    include_in_schema=False,
+)  # back-compat alias
+@external_authentication_router.post(
+    "/auth/token/refresh",
+    response_model=AccessAndRefreshTokens,
+    include_in_schema=False,
+)  # back-compat alias
 async def post_token_refresh(
     refresh_token: RefreshToken,
     settings: BaseSettings = Depends(get_settings),
@@ -297,8 +307,20 @@ def slide_session(refresh_token, settings):
     }
 
 
-@external_authentication_router.post("/logout")
-@password_authentication_router.post("/logout")
+@external_authentication_router.get("/auth/whoami")
+@password_authentication_router.get("/auth/whoami")
+async def whoami(current_user: str = Depends(get_current_user)):
+    return {"username": current_user}
+
+
+@external_authentication_router.post("/auth/logout")
+@password_authentication_router.post("/auth/logout")
+@external_authentication_router.post(
+    "/logout", include_in_schema=False
+)  # back-compat alias
+@password_authentication_router.post(
+    "/logout", include_in_schema=False
+)  # back-compat alias
 async def logout(
     response: Response,
 ):

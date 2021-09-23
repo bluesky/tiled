@@ -311,6 +311,7 @@ class Context:
         return response
 
     def authenticate(self):
+        "Authenticate. Prompt for password or access code (refresh token)."
         auth_type = self._handshake_data["authentication"]["type"]
         if auth_type == "password":
             username = self._username or input("Username: ")
@@ -321,7 +322,10 @@ class Context:
                 "password": password,
             }
             token_request = self._client.build_request(
-                "POST", f"{self._authentication_uri}token", data=form_data, headers={}
+                "POST",
+                f"{self._authentication_uri}auth/token",
+                data=form_data,
+                headers={},
             )
             token_request.headers.pop("Authorization", None)
             token_response = self._client.send(token_request)
@@ -356,6 +360,7 @@ Navigate web browser to this address to obtain access code:
         return tokens
 
     def reauthenticate(self, prompt_on_failure=True):
+        "Refresh authentication. Prompt if refresh fails."
         try:
             return self._refresh()
         except CannotRefreshAuthentication:
@@ -366,6 +371,16 @@ Navigate web browser to this address to obtain access code:
                     # Re-run to get access token as well.
                     return self._refresh()
             raise
+
+    def whoami(self):
+        "Return username."
+        request = self._client.build_request(
+            "GET",
+            f"{self._authentication_uri}auth/whoami",
+        )
+        response = self._client.send(request)
+        handle_error(response)
+        return response.json()["username"]
 
     def _refresh(self, refresh_token=None):
         if refresh_token is None:
@@ -381,7 +396,7 @@ Navigate web browser to this address to obtain access code:
                 )
         token_request = self._client.build_request(
             "POST",
-            f"{self._authentication_uri}token/refresh",
+            f"{self._authentication_uri}/auth/token/refresh",
             json={"refresh_token": refresh_token},
             headers={"x-csrf": self._client.cookies["tiled_csrf"]},
         )
