@@ -1,0 +1,14 @@
+- name: test-nginx
+  command: nginx -t
+  become: true
+
+- name: reload-nginx
+  service:
+    name: nginx
+    state: reloaded
+  become: true
+ 
+- name: reload-systemd
+  systemd:
+    daemon_reload: yes
+  become: true

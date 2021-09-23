@@ -1,0 +1,33 @@
+---
+
+- set_fact:
+    admin_group: wheel
+    nginx:
+      conf_dir: /etc/nginx
+      log_dir: /var/log/nginx
+
+# - name: Enforce SELinux.
+#   selinux:
+#     state: enforcing
+#     policy: targeted
+
+- name: Install system dependencies on RedHat.
+  yum:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - acl
+    - epel-release
+    - gcc
+    - gcc-c++
+    - git
+    - nginx
+  become: true
+
+- name: Install system epel-provided dependencies on RedHat.
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - python3-pip
+  become: true

@@ -1,0 +1,25 @@
+---
+
+- set_fact:
+    admin_group: sudo
+    nginx:
+      conf_dir: /etc/nginx
+      log_dir: /var/log/nginx
+    postgresql:
+      service_name: postgresql
+
+- name: Install system dependencies on Debian.
+  apt:
+    name: "{{ item }}"
+    state: present
+    cache_valid_time: 3600
+    update_cache: yes
+  loop:
+    - acl
+    - apt-transport-https
+    - build-essential
+    - git
+    - nginx
+    - python3-pip
+    - python3-venv
+  become: true

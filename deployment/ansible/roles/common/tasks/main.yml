@@ -1,0 +1,87 @@
+- include: "{{ ansible_os_family }}.yml"
+  become: true
+ 
+- name: Create a venv and install tiled.
+  pip:
+    virtualenv: /srv/tiled/venv
+    name: tiled[server]
+    virtualenv_command: /usr/bin/python3 -m venv  # full path to python3 is needed
+  become: true
+  
+- name: Install deployment requirements.
+  pip:
+    virtualenv: /srv/tiled/venv
+    virtualenv_command: /usr/bin/python3 -m venv  # full path to python3 is needed
+    name: gunicorn
+  become: true
+
+- name: Create service account
+  user:
+    name: tiled-worker
+    comment: Service account for tiled gunicorn
+  become: true
+ 
+- name: Create log directory.
+  file:
+    path: /srv/tiled/logs
+    state: directory
+    owner: tiled-worker
+    group: tiled-worker
+    mode: '0755'
+  become: true
+
+# TODO. I placed a file manually at /etc/tiled/env.secret for now.
+# - name: Add secrets.
+
+- name: Create tiled config directory.
+  file:
+    path: /srv/tiled/logs
+    state: directory
+    owner: tiled-worker
+    group: tiled-worker
+    mode: '0755'
+  become: true
+
+- name: Place tiled config file.
+  template:
+    src: config.yml.j2
+    dest: /etc/tiled/config.yml
+    owner: tiled-worker
+    group: tiled-worker
+    mode: '0755'
+  become: true
+
+- name: Add a systemd service.
+  template:
+   src: tiled.service.j2
+   dest: /usr/lib/systemd/system/tiled.service
+   # TODO Should we use a variable from OS-specific set_fact here?
+   owner: root
+   group: root 
+   mode: u=rw,g=r,o=r
+  notify:
+    reload-systemd
+  become: true
+ 
+- name: Run systemd service.
+  systemd:
+    name: tiled
+    state: started
+  become: true
+
+- name: Copy nginx configuration into sites-available.
+  template:
+    src: nginx.j2
+    dest: "{{ nginx.conf_dir }}/sites-available/tiled"
+  become: true
+
+- name: Link nginx configuration into sites-enabled.
+  file: 
+    src: "{{ nginx.conf_dir }}/sites-available/tiled" 
+    dest: "{{ nginx.conf_dir }}/sites-enabled/tiled" 
+    state: link
+  notify:
+    - test-nginx
+    - reload-nginx
+  become: true
+ 
