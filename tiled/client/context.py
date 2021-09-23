@@ -174,7 +174,7 @@ class Context:
         if (not offline) and (
             self._handshake_data["authentication"]["required"] or (username is not None)
         ):
-            if self._handshake_data["authentication"]["required"] in (
+            if self._handshake_data["authentication"]["type"] in (
                 "password",
                 "external",
             ):
