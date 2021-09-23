@@ -23,13 +23,12 @@ DEFAULT_TOKEN_CACHE = os.getenv(
 )
 
 
-def _token_directory(token_cache, netloc, username):
+def _token_directory(token_cache, netloc):
     return Path(
         token_cache,
         urllib.parse.quote_plus(
             netloc.decode()
         ),  # Make a valid filename out of hostname:port.
-        username,
     )
 
 
@@ -152,9 +151,11 @@ class Context:
         self._cache = cache
         self._username = username
         self._offline = offline
-        if (username is not None) and isinstance(token_cache, (str, Path)):
+        self._token_cache_or_root_directory = token_cache
+        if isinstance(token_cache, (str, Path)):
             directory = _token_directory(
-                token_cache, self._client.base_url.netloc, username
+                token_cache,
+                self._client.base_url.netloc,
             )
             token_cache = TokenCache(directory)
         self._token_cache = token_cache
@@ -162,7 +163,7 @@ class Context:
 
         # Authenticate. If a valid refresh_token is available in the token_cache,
         # it will be used. Otherwise, this will prompt for a password.
-        if (username is not None) and not offline:
+        if not offline:
             tokens = self.reauthenticate()
             access_token = tokens["access_token"]
             client.headers["Authorization"] = f"Bearer {access_token}"
@@ -172,7 +173,10 @@ class Context:
             "GET", "/", params={"root_path": None}
         )
         handshake_response = self._client.send(handshake_request)
-        handle_error(handshake_response)
+        if handshake_response.json()["authentication"]["required"]:
+            tokens = self.reauthenticate()
+            access_token = tokens["access_token"]
+            client.headers["Authorization"] = f"Bearer {access_token}"
         data = handshake_response.json()
         base_path = data["meta"]["root_path"]
         url = httpx.URL(self._client.base_url)
@@ -310,23 +314,40 @@ class Context:
         handshake_request.headers.pop("Authorization", None)
         handshake_response = self._send(handshake_request)
         handle_error(handshake_response)
-        username = self._username or input("Username: ")
-        password = getpass.getpass()
-        form_data = {
-            "grant_type": "password",
-            "username": username,
-            "password": password,
-        }
-        token_request = self._client.build_request(
-            "POST", f"{self._authentication_uri}token", data=form_data, headers={}
-        )
-        token_request.headers.pop("Authorization", None)
-        token_response = self._client.send(token_request)
-        handle_error(token_response)
-        tokens = token_response.json()
+        handshake_data = handshake_response.json()
+        if handshake_data["authentication"]["type"] == "password":
+            username = self._username or input("Username: ")
+            password = getpass.getpass()
+            form_data = {
+                "grant_type": "password",
+                "username": username,
+                "password": password,
+            }
+            token_request = self._client.build_request(
+                "POST", f"{self._authentication_uri}token", data=form_data, headers={}
+            )
+            token_request.headers.pop("Authorization", None)
+            token_response = self._client.send(token_request)
+            handle_error(token_response)
+            tokens = token_response.json()
+            refresh_token = tokens["refresh_token"]
+        elif handshake_data["authentication"]["type"] == "external":
+            endpoint = handshake_data["authentication"]["endpoint"]
+            print(
+                f"""
+Navigate web browser to this address to obtain access code:
+
+{endpoint}
+
+"""
+            )
+            # The proper term for this is 'refresh token' but that may be
+            # confusing jargon to the end user, so we say "access code".
+            refresh_token = input("Access code: ")
+            tokens = {"refresh_token": refresh_token}
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
-            self._token_cache["refresh_token"] = tokens["refresh_token"]
+            self._token_cache["refresh_token"] = refresh_token
         return tokens
 
     def reauthenticate(self, prompt_on_failure=True):
@@ -334,10 +355,14 @@ class Context:
             return self._refresh()
         except CannotRefreshAuthentication:
             if prompt_on_failure:
-                return self.authenticate()
+                tokens = self.authenticate()
+                if "access_token" not in tokens:
+                    # A refresh token was pasted in by the user.
+                    # Re-run to get access token as well.
+                    return self._refresh()
             raise
 
-    def _refresh(self):
+    def _refresh(self, refresh_token=None):
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
@@ -348,17 +373,17 @@ class Context:
         handshake_request.headers.pop("Authorization", None)
         handshake_response = self._client.send(handshake_request)
         handle_error(handshake_response)
-        if self._token_cache is None:
-            # We are not using a token cache.
-            raise CannotRefreshAuthentication("No token cache was given")
-        # We are using a token_cache.
-        try:
-            refresh_token = self._token_cache["refresh_token"]
-        except KeyError:
-            raise CannotRefreshAuthentication(
-                "No refresh token was found in token cache"
-            )
-        # There is a refresh token in the cache.
+        if refresh_token is None:
+            if self._token_cache is None:
+                # We are not using a token cache.
+                raise CannotRefreshAuthentication("No token cache was given")
+            # We are using a token_cache.
+            try:
+                refresh_token = self._token_cache["refresh_token"]
+            except KeyError:
+                raise CannotRefreshAuthentication(
+                    "No refresh token was found in token cache"
+                )
         token_request = self._client.build_request(
             "POST",
             f"{self._authentication_uri}token/refresh",
