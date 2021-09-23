@@ -162,6 +162,7 @@ class Context:
         self._app = app
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
+        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         handshake_request = self._client.build_request("GET", self._authentication_uri)
         # If an Authorization header is set, that's for the Resource server.
         # Do not include it in the request to the Authentication server.
@@ -367,16 +368,6 @@ Navigate web browser to this address to obtain access code:
             raise
 
     def _refresh(self, refresh_token=None):
-        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        # Make an initial "safe" request to let the server set the CSRF cookie.
-        # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
-        # TODO: The server should support HEAD requests so we can do this more cheaply.
-        handshake_request = self._client.build_request("GET", self._authentication_uri)
-        # If an Authorization header is set, that's for the Resource server.
-        # Do not include it in the request to the Authentication server.
-        handshake_request.headers.pop("Authorization", None)
-        handshake_response = self._client.send(handshake_request)
-        handle_error(handshake_response)
         if refresh_token is None:
             if self._token_cache is None:
                 # We are not using a token cache.
