@@ -92,7 +92,7 @@ async def about(
             meta={"root_path": request.scope.get("root_path") or "/"},
             authentication={
                 "type": auth_type,
-                "required": settings.allow_anonymous_access,
+                "required": not settings.allow_anonymous_access,
                 "endpoint": auth_endpoint,
             },
         ),
