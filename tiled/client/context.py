@@ -297,17 +297,14 @@ class Context:
             response = self._client.send(request, stream=stream, timeout=timeout)
         if (response.status_code == 401) and (attempts == 0):
             # Try refreshing the token.
-            # TODO Use a more targeted signal to know that refreshing the token will help.
-            # Parse the error message? Add a special header from the server?
-            if self._username is not None:
-                tokens = self.reauthenticate()
-                access_token = tokens["access_token"]
-                auth_header = f"Bearer {access_token}"
-                # Patch in the Authorization header for this request...
-                request.headers["authorization"] = auth_header
-                # And update the default headers for future requests.
-                self._client.headers["Authorization"] = auth_header
-                return self._send(request, timeout, stream=stream, attempts=1)
+            tokens = self.reauthenticate()
+            access_token = tokens["access_token"]
+            auth_header = f"Bearer {access_token}"
+            # Patch in the Authorization header for this request...
+            request.headers["authorization"] = auth_header
+            # And update the default headers for future requests.
+            self._client.headers["Authorization"] = auth_header
+            return self._send(request, timeout, stream=stream, attempts=1)
         return response
 
     def authenticate(self):
@@ -429,6 +426,10 @@ Navigate web browser to this address to obtain access code:
         # If we get this far, reauthentication worked.
         # Store the new refresh token.
         self._token_cache["refresh_token"] = tokens["refresh_token"]
+        # Update the client's Authentication header.
+        access_token = tokens["access_token"]
+        auth_header = f"Bearer {access_token}"
+        self._client.headers["authorization"] = auth_header
         return tokens
 
 

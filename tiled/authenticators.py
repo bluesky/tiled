@@ -69,7 +69,7 @@ class PAMAuthenticator:
 
 class OIDCAuthenticator:
     handles_credentials = False
-    confirmation_message = "You have logged with ORCID as {username}"
+    confirmation_message = "You have logged with ORCID as {username}."
     configuration_schema = """
 client_id:
   type: string
