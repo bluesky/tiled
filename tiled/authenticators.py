@@ -69,7 +69,6 @@ class PAMAuthenticator:
 
 class OIDCAuthenticator:
     handles_credentials = False
-    confirmation_message = "You have logged with ORCID as {username}."
     configuration_schema = """
 client_id:
   type: string
@@ -111,9 +110,11 @@ public_keys:
         public_keys,
         token_uri,
         authorization_endpoint,
+        confirmation_message,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
+        self.confirmation_message = confirmation_message
         self.redirect_uri = redirect_uri
         self.public_keys = public_keys
         self.token_uri = token_uri
