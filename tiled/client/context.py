@@ -161,24 +161,29 @@ class Context:
         self._token_cache = token_cache
         self._app = app
 
-        # Authenticate. If a valid refresh_token is available in the token_cache,
-        # it will be used. Otherwise, this will prompt for a password.
-        if not offline:
-            tokens = self.reauthenticate()
-            access_token = tokens["access_token"]
-            client.headers["Authorization"] = f"Bearer {access_token}"
+        # Make an initial "safe" request to let the server set the CSRF cookie.
+        handshake_request = self._client.build_request("GET", self._authentication_uri)
+        # If an Authorization header is set, that's for the Resource server.
+        # Do not include it in the request to the Authentication server.
+        handshake_request.headers.pop("Authorization", None)
+        handshake_response = self._send(handshake_request)
+        handle_error(handshake_response)
+        self._handshake_data = handshake_response.json()
 
         # Ask the server what its root_path is.
-        handshake_request = self._client.build_request(
-            "GET", "/", params={"root_path": None}
-        )
-        handshake_response = self._client.send(handshake_request)
-        if handshake_response.json()["authentication"]["required"]:
-            tokens = self.reauthenticate()
-            access_token = tokens["access_token"]
-            client.headers["Authorization"] = f"Bearer {access_token}"
-        data = handshake_response.json()
-        base_path = data["meta"]["root_path"]
+        if (not offline) and (
+            self._handshake_data["authentication"]["required"] or (username is not None)
+        ):
+            if self._handshake_data["authentication"]["required"] in (
+                "password",
+                "external",
+            ):
+                # Authenticate. If a valid refresh_token is available in the token_cache,
+                # it will be used. Otherwise, this will prompt for input from the stdin.
+                tokens = self.reauthenticate()
+                access_token = tokens["access_token"]
+                client.headers["Authorization"] = f"Bearer {access_token}"
+        base_path = self._handshake_data["meta"]["root_path"]
         url = httpx.URL(self._client.base_url)
         base_url = urllib.parse.urlunsplit(
             (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
@@ -305,17 +310,8 @@ class Context:
         return response
 
     def authenticate(self):
-        # Make an initial "safe" request to let the server set the CSRF cookie.
-        # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
-        # TODO: The server should support HEAD requests so we can do this more cheaply.
-        handshake_request = self._client.build_request("GET", self._authentication_uri)
-        # If an Authorization header is set, that's for the Resource server.
-        # Do not include it in the request to the Authentication server.
-        handshake_request.headers.pop("Authorization", None)
-        handshake_response = self._send(handshake_request)
-        handle_error(handshake_response)
-        handshake_data = handshake_response.json()
-        if handshake_data["authentication"]["type"] == "password":
+        auth_type = self._handshake_data["authentication"]["type"]
+        if auth_type == "password":
             username = self._username or input("Username: ")
             password = getpass.getpass()
             form_data = {
@@ -331,8 +327,8 @@ class Context:
             handle_error(token_response)
             tokens = token_response.json()
             refresh_token = tokens["refresh_token"]
-        elif handshake_data["authentication"]["type"] == "external":
-            endpoint = handshake_data["authentication"]["endpoint"]
+        elif auth_type == "external":
+            endpoint = self._handshake_data["authentication"]["endpoint"]
             print(
                 f"""
 Navigate web browser to this address to obtain access code:
@@ -345,8 +341,14 @@ Navigate web browser to this address to obtain access code:
             # confusing jargon to the end user, so we say "access code".
             raw_refresh_token = input("Access code: ")
             # Remove any accidentally-included quotes.
-            refresh_token = raw_refresh_token.replace('"', '')
+            refresh_token = raw_refresh_token.replace('"', "")
             tokens = {"refresh_token": refresh_token}
+        elif auth_type == "api_key":
+            raise ValueError(
+                "authenticate() method is not applicable to API key authentication"
+            )
+        else:
+            raise ValueError(f"Server has unknown authentication type {auth_type!r}")
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
             self._token_cache["refresh_token"] = refresh_token

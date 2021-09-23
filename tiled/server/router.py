@@ -50,7 +50,6 @@ async def about(
     authenticator=Depends(get_authenticator),
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
-    root_path: str = Query(None),
 ):
     # TODO The lazy import of reader modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
@@ -64,6 +63,7 @@ async def about(
             )
     if authenticator is None:
         auth_type = "api_key"
+        auth_endpoint = None
     else:
         if authenticator.handles_credentials:
             auth_type = "password"
@@ -89,9 +89,7 @@ async def about(
             },
             queries=list(query_registry.name_to_query_type),
             # documentation_url=".../docs",  # TODO How to get the base URL?
-            meta={"root_path": request.scope.get("root_path") or "/"}
-            if (root_path is not None)
-            else {},
+            meta={"root_path": request.scope.get("root_path") or "/"},
             authentication={
                 "type": auth_type,
                 "required": settings.allow_anonymous_access,
