@@ -342,12 +342,31 @@ Navigate web browser to this address to obtain access code:
 
 """
             )
-            # The proper term for this is 'refresh token' but that may be
-            # confusing jargon to the end user, so we say "access code".
-            raw_refresh_token = input("Access code: ")
-            # Remove any accidentally-included quotes.
-            refresh_token = raw_refresh_token.replace('"', "")
-            tokens = {"refresh_token": refresh_token}
+            while True:
+                # The proper term for this is 'refresh token' but that may be
+                # confusing jargon to the end user, so we say "access code".
+                raw_refresh_token = input("Access code (quotes optional): ")
+                if not raw_refresh_token:
+                    print("No access token given. Failed.")
+                    break
+                # Remove any accidentally-included quotes.
+                refresh_token = raw_refresh_token.replace('"', "")
+                # Immediately refresh to (1) check that the copy/paste worked and
+                # (2) obtain an access token as well.
+                try:
+                    tokens = self._refresh(refresh_token=refresh_token)
+                except CannotRefreshAuthentication:
+                    print(
+                        "That didn't work. Try pasting the access code again, or press Enter to escape."
+                    )
+                else:
+                    break
+            confirmation_message = self._handshake_data["authentication"][
+                "confirmation_message"
+            ]
+            if confirmation_message:
+                username = username = self.whoami()
+                print(confirmation_message.format(username=username))
         elif auth_type == "api_key":
             raise ValueError(
                 "authenticate() method is not applicable to API key authentication"
@@ -365,11 +384,7 @@ Navigate web browser to this address to obtain access code:
             return self._refresh()
         except CannotRefreshAuthentication:
             if prompt_on_failure:
-                tokens = self.authenticate()
-                if "access_token" not in tokens:
-                    # A refresh token was pasted in by the user.
-                    # Re-run to get access token as well.
-                    return self._refresh()
+                return self.authenticate()
             raise
 
     def whoami(self):

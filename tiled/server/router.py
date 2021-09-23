@@ -94,6 +94,9 @@ async def about(
                 "type": auth_type,
                 "required": not settings.allow_anonymous_access,
                 "endpoint": auth_endpoint,
+                "confirmation_message": getattr(
+                    authenticator, "confirmation_message", None
+                ),
             },
         ),
     )
