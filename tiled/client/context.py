@@ -23,13 +23,12 @@ DEFAULT_TOKEN_CACHE = os.getenv(
 )
 
 
-def _token_directory(token_cache, netloc, username):
+def _token_directory(token_cache, netloc):
     return Path(
         token_cache,
         urllib.parse.quote_plus(
             netloc.decode()
         ),  # Make a valid filename out of hostname:port.
-        username,
     )
 
 
@@ -152,29 +151,40 @@ class Context:
         self._cache = cache
         self._username = username
         self._offline = offline
-        if (username is not None) and isinstance(token_cache, (str, Path)):
+        self._token_cache_or_root_directory = token_cache
+        if isinstance(token_cache, (str, Path)):
             directory = _token_directory(
-                token_cache, self._client.base_url.netloc, username
+                token_cache,
+                self._client.base_url.netloc,
             )
             token_cache = TokenCache(directory)
         self._token_cache = token_cache
         self._app = app
 
-        # Authenticate. If a valid refresh_token is available in the token_cache,
-        # it will be used. Otherwise, this will prompt for a password.
-        if (username is not None) and not offline:
-            tokens = self.reauthenticate()
-            access_token = tokens["access_token"]
-            client.headers["Authorization"] = f"Bearer {access_token}"
+        # Make an initial "safe" request to let the server set the CSRF cookie.
+        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+        handshake_request = self._client.build_request("GET", self._authentication_uri)
+        # If an Authorization header is set, that's for the Resource server.
+        # Do not include it in the request to the Authentication server.
+        handshake_request.headers.pop("Authorization", None)
+        handshake_response = self._send(handshake_request)
+        handle_error(handshake_response)
+        self._handshake_data = handshake_response.json()
 
         # Ask the server what its root_path is.
-        handshake_request = self._client.build_request(
-            "GET", "/", params={"root_path": None}
-        )
-        handshake_response = self._client.send(handshake_request)
-        handle_error(handshake_response)
-        data = handshake_response.json()
-        base_path = data["meta"]["root_path"]
+        if (not offline) and (
+            self._handshake_data["authentication"]["required"] or (username is not None)
+        ):
+            if self._handshake_data["authentication"]["type"] in (
+                "password",
+                "external",
+            ):
+                # Authenticate. If a valid refresh_token is available in the token_cache,
+                # it will be used. Otherwise, this will prompt for input from the stdin.
+                tokens = self.reauthenticate()
+                access_token = tokens["access_token"]
+                client.headers["Authorization"] = f"Bearer {access_token}"
+        base_path = self._handshake_data["meta"]["root_path"]
         url = httpx.URL(self._client.base_url)
         base_url = urllib.parse.urlunsplit(
             (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
@@ -287,49 +297,86 @@ class Context:
             response = self._client.send(request, stream=stream, timeout=timeout)
         if (response.status_code == 401) and (attempts == 0):
             # Try refreshing the token.
-            # TODO Use a more targeted signal to know that refreshing the token will help.
-            # Parse the error message? Add a special header from the server?
-            if self._username is not None:
-                tokens = self.reauthenticate()
-                access_token = tokens["access_token"]
-                auth_header = f"Bearer {access_token}"
-                # Patch in the Authorization header for this request...
-                request.headers["authorization"] = auth_header
-                # And update the default headers for future requests.
-                self._client.headers["Authorization"] = auth_header
-                return self._send(request, timeout, stream=stream, attempts=1)
+            tokens = self.reauthenticate()
+            access_token = tokens["access_token"]
+            auth_header = f"Bearer {access_token}"
+            # Patch in the Authorization header for this request...
+            request.headers["authorization"] = auth_header
+            # And update the default headers for future requests.
+            self._client.headers["Authorization"] = auth_header
+            return self._send(request, timeout, stream=stream, attempts=1)
         return response
 
     def authenticate(self):
-        # Make an initial "safe" request to let the server set the CSRF cookie.
-        # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
-        # TODO: The server should support HEAD requests so we can do this more cheaply.
-        handshake_request = self._client.build_request("GET", self._authentication_uri)
-        # If an Authorization header is set, that's for the Resource server.
-        # Do not include it in the request to the Authentication server.
-        handshake_request.headers.pop("Authorization", None)
-        handshake_response = self._send(handshake_request)
-        handle_error(handshake_response)
-        username = self._username or input("Username: ")
-        password = getpass.getpass()
-        form_data = {
-            "grant_type": "password",
-            "username": username,
-            "password": password,
-        }
-        token_request = self._client.build_request(
-            "POST", f"{self._authentication_uri}token", data=form_data, headers={}
-        )
-        token_request.headers.pop("Authorization", None)
-        token_response = self._client.send(token_request)
-        handle_error(token_response)
-        tokens = token_response.json()
+        "Authenticate. Prompt for password or access code (refresh token)."
+        auth_type = self._handshake_data["authentication"]["type"]
+        if auth_type == "password":
+            username = self._username or input("Username: ")
+            password = getpass.getpass()
+            form_data = {
+                "grant_type": "password",
+                "username": username,
+                "password": password,
+            }
+            token_request = self._client.build_request(
+                "POST",
+                f"{self._authentication_uri}auth/token",
+                data=form_data,
+                headers={},
+            )
+            token_request.headers.pop("Authorization", None)
+            token_response = self._client.send(token_request)
+            handle_error(token_response)
+            tokens = token_response.json()
+            refresh_token = tokens["refresh_token"]
+        elif auth_type == "external":
+            endpoint = self._handshake_data["authentication"]["endpoint"]
+            print(
+                f"""
+Navigate web browser to this address to obtain access code:
+
+{endpoint}
+
+"""
+            )
+            while True:
+                # The proper term for this is 'refresh token' but that may be
+                # confusing jargon to the end user, so we say "access code".
+                raw_refresh_token = input("Access code (quotes optional): ")
+                if not raw_refresh_token:
+                    print("No access token given. Failed.")
+                    break
+                # Remove any accidentally-included quotes.
+                refresh_token = raw_refresh_token.replace('"', "")
+                # Immediately refresh to (1) check that the copy/paste worked and
+                # (2) obtain an access token as well.
+                try:
+                    tokens = self._refresh(refresh_token=refresh_token)
+                except CannotRefreshAuthentication:
+                    print(
+                        "That didn't work. Try pasting the access code again, or press Enter to escape."
+                    )
+                else:
+                    break
+            confirmation_message = self._handshake_data["authentication"][
+                "confirmation_message"
+            ]
+            if confirmation_message:
+                username = username = self.whoami()
+                print(confirmation_message.format(username=username))
+        elif auth_type == "api_key":
+            raise ValueError(
+                "authenticate() method is not applicable to API key authentication"
+            )
+        else:
+            raise ValueError(f"Server has unknown authentication type {auth_type!r}")
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
-            self._token_cache["refresh_token"] = tokens["refresh_token"]
+            self._token_cache["refresh_token"] = refresh_token
         return tokens
 
     def reauthenticate(self, prompt_on_failure=True):
+        "Refresh authentication. Prompt if refresh fails."
         try:
             return self._refresh()
         except CannotRefreshAuthentication:
@@ -337,31 +384,31 @@ class Context:
                 return self.authenticate()
             raise
 
-    def _refresh(self):
-        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        # Make an initial "safe" request to let the server set the CSRF cookie.
-        # TODO: Skip this if we already have a valid CSRF cookie for the authentication domain.
-        # TODO: The server should support HEAD requests so we can do this more cheaply.
-        handshake_request = self._client.build_request("GET", self._authentication_uri)
-        # If an Authorization header is set, that's for the Resource server.
-        # Do not include it in the request to the Authentication server.
-        handshake_request.headers.pop("Authorization", None)
-        handshake_response = self._client.send(handshake_request)
-        handle_error(handshake_response)
-        if self._token_cache is None:
-            # We are not using a token cache.
-            raise CannotRefreshAuthentication("No token cache was given")
-        # We are using a token_cache.
-        try:
-            refresh_token = self._token_cache["refresh_token"]
-        except KeyError:
-            raise CannotRefreshAuthentication(
-                "No refresh token was found in token cache"
-            )
-        # There is a refresh token in the cache.
+    def whoami(self):
+        "Return username."
+        request = self._client.build_request(
+            "GET",
+            f"{self._authentication_uri}auth/whoami",
+        )
+        response = self._client.send(request)
+        handle_error(response)
+        return response.json()["username"]
+
+    def _refresh(self, refresh_token=None):
+        if refresh_token is None:
+            if self._token_cache is None:
+                # We are not using a token cache.
+                raise CannotRefreshAuthentication("No token cache was given")
+            # We are using a token_cache.
+            try:
+                refresh_token = self._token_cache["refresh_token"]
+            except KeyError:
+                raise CannotRefreshAuthentication(
+                    "No refresh token was found in token cache"
+                )
         token_request = self._client.build_request(
             "POST",
-            f"{self._authentication_uri}token/refresh",
+            f"{self._authentication_uri}/auth/token/refresh",
             json={"refresh_token": refresh_token},
             headers={"x-csrf": self._client.cookies["tiled_csrf"]},
         )
@@ -379,6 +426,10 @@ class Context:
         # If we get this far, reauthentication worked.
         # Store the new refresh token.
         self._token_cache["refresh_token"] = tokens["refresh_token"]
+        # Update the client's Authentication header.
+        access_token = tokens["access_token"]
+        auth_header = f"Bearer {access_token}"
+        self._client.headers["authorization"] = auth_header
         return tokens
 
 
