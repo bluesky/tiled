@@ -45,4 +45,4 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        ./docker/test_check_config.sh
+        ./deployment/docker/test_check_config.sh
