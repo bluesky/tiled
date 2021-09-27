@@ -310,12 +310,31 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def __getitem__(self, key):
-        # Lookup this key *within the search results* of this Node.
+    def __getitem__(self, keys):
+        """
+        Lookup this key *within the search results* of this Node.
+
+        Examples
+        --------
+
+        Simple case
+
+        >>> c["A"]
+
+        Nested lookups
+
+        >>> c["A"]["B"]["C"]
+
+        Faster nested lookups (same result, performend in a single HTTP request)
+
+        >>> c["A", "B", "C"]
+        """
+        if not isinstance(keys, tuple):
+            keys = (keys,)
         content = self.context.get_json(
             self.item["links"]["search"],
             params={
-                **_queries_to_params(KeyLookup(key)),
+                **_queries_to_params(*(KeyLookup(key) for key in keys)),
                 **self._queries_as_params,
                 **self._sorting_params,
                 **self._params,
@@ -327,7 +346,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         data = content["data"]
         if not data:
-            raise KeyError(key)
+            if len(keys) == 1:
+                raise KeyError(keys[0])
+            else:
+                raise KeyError(keys)
         assert (
             len(data) == 1
         ), "The key lookup query must never result more than one result."
