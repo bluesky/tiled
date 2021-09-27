@@ -294,14 +294,18 @@ def construct_entries_response(
             except QueryValueError as err:
                 raise HTTPException(status_code=400, detail=err.args[0])
     if key_lookups:
-        try:
-            node = tree
-            for key_lookup in key_lookups:
-                node = node[key_lookup]
-        except KeyError:
+        # Duplicates are technically legal because *any* query can be given
+        # with multiple parameters.
+        unique_key_lookups = set(key_lookups)
+        (key_lookup), *others = unique_key_lookups
+        if others:
+            # Two non-equal KeyLookup queries must return no results.
             tree = TreeInMemory({})
         else:
-            tree = TreeInMemory({key_lookup: node})
+            try:
+                tree = TreeInMemory({key_lookup: tree[key_lookup]})
+            except KeyError:
+                tree = TreeInMemory({})
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []
