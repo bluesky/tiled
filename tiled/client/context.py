@@ -298,12 +298,13 @@ class Context:
         if (response.status_code == 401) and (attempts == 0):
             # Try refreshing the token.
             tokens = self.reauthenticate()
+            # The line above updated self._client.headers["authorization"]
+            # so we will have a fresh token for the next call to
+            # client.build_request(...), but we need to retroactively patch the
+            # authorization header for this request and then re-send.
             access_token = tokens["access_token"]
             auth_header = f"Bearer {access_token}"
-            # Patch in the Authorization header for this request...
             request.headers["authorization"] = auth_header
-            # And update the default headers for future requests.
-            self._client.headers["Authorization"] = auth_header
             return self._send(request, timeout, stream=stream, attempts=1)
         return response
 
@@ -410,6 +411,8 @@ Navigate web browser to this address to obtain access code:
             "POST",
             f"{self._authentication_uri}/auth/token/refresh",
             json={"refresh_token": refresh_token},
+            # Submit CSRF token in both header and cookie.
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             headers={"x-csrf": self._client.cookies["tiled_csrf"]},
         )
         token_request.headers.pop("Authorization", None)
