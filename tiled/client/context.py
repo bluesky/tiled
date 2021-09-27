@@ -264,27 +264,49 @@ class Context:
                 return blosc.decompress(response.content)
             return response.content
         # If we get this far, we have an online client and a cache.
-        reservation = self._cache.get_reservation(url)
+        # Parse Cache-Control header directives.
+        cache_control = {
+            directive.lstrip(" ")
+            for directive in request.headers.get("Cache-Control", "").split(",")
+        }
+        if "no-cache" in cache_control:
+            reservation = None
+        else:
+            reservation = self._cache.get_reservation(url)
         try:
             if reservation is not None:
+                if not reservation.is_stale():
+                    # Short-circuit. Do not even bother consulting the server.
+                    return reservation.load_content()
                 request.headers["If-None-Match"] = reservation.etag
             response = self._send(request, stream=stream)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
+                # Update the expiration time.
+                reservation.renew(response.headers.get("expires"))
                 # Read from the cache
                 content = reservation.load_content()
             elif response.status_code == 200:
                 etag = response.headers.get("ETag")
                 content = response.content
-                if response.headers.get("content-encoding") == "blosc":
+                media_type = response.headers["content-type"]
+                encoding = response.headers.get("content-encoding")
+                # httpx handles standard HTTP encodings transparently, but we have to
+                # handle "blosc" manually.
+                if encoding == "blosc":
                     import blosc
 
                     content = blosc.decompress(content)
-                # TODO Respect Cache-control headers (e.g. "no-store")
-                if etag is not None:
+                if ("no-store" not in cache_control) and (etag is not None):
                     # Write to cache.
-                    self._cache.put_etag_for_url(url, etag)
-                    self._cache.put_content(etag, content)
+                    self._cache.put(
+                        url,
+                        etag,
+                        response.headers.get("expires"),
+                        media_type,
+                        encoding,
+                        response.content,
+                    )
             else:
                 raise NotImplementedError(
                     f"Unexpected status_code {response.status_code}"

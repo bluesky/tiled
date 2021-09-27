@@ -125,6 +125,8 @@ class Tree(TreeInMemory):
         error_if_missing=True,
         greedy=False,
         poll_interval=DEFAULT_POLL_INTERVAL,
+        entries_stale_after=None,
+        metadata_stale_after=None,
         **kwargs,
     ):
         """
@@ -160,6 +162,12 @@ class Tree(TreeInMemory):
             Time in seconds between scans of the directory for removed or
             changed files. If False or 0, do not poll for changes.
             Default value is 0.2 seconds, subject to change without notice.
+        entries_stale_after: timedelta
+            This server uses this to communite to the client how long
+            it should rely on a local cache before checking back for changes.
+        metadata_stale_after: timedelta
+            This server uses this to communite to the client how long
+            it should rely on a local cache before checking back for changes.
         """
 
         if error_if_missing:
@@ -333,6 +341,8 @@ class Tree(TreeInMemory):
             metadata=metadata,
             authenticated_identity=authenticated_identity,
             access_policy=access_policy,
+            entries_stale_after=entries_stale_after,
+            metadata_stale_after=metadata_stale_after,
             # The __init__ of this class does not accept any other
             # kwargs, but subclasses can use this to set up additional
             # instance state.
@@ -351,12 +361,16 @@ class Tree(TreeInMemory):
         metadata,
         access_policy,
         authenticated_identity,
+        entries_stale_after=None,
+        metadata_stale_after=None,
     ):
         super().__init__(
             mapping,
             metadata=metadata,
             access_policy=access_policy,
             authenticated_identity=authenticated_identity,
+            entries_stale_after=entries_stale_after,
+            metadata_stale_after=metadata_stale_after,
         )
         self._directory = directory
         self._index = index

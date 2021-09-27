@@ -11,6 +11,7 @@ The original cachey license (which, like Tiled's, is 3-clause BSD) is included i
 the same source directory as this module.
 """
 import collections.abc
+from datetime import datetime, timedelta
 import functools
 import hashlib
 import threading
@@ -19,6 +20,10 @@ from math import log
 from pathlib import Path
 
 from heapdict import heapdict
+
+
+if __debug__:
+    from .utils import logger
 
 
 def download(*entries):
@@ -65,6 +70,16 @@ def download(*entries):
         entry.touch()
 
 
+# This is a silly time format, but it is the HTTP standard.
+HTTP_EXPIRES_HEADER_FORMAT = "%a, %d %b %Y %H:%M:%S GMT"
+UNIT_SECOND = timedelta(seconds=1)
+ZERO_SECONDS = timedelta(seconds=0)
+
+
+def _round_seconds(dt):
+    return round(dt / UNIT_SECOND)
+
+
 class Reservation:
     """
     This represents a reservation on a cached piece of content.
@@ -74,19 +89,54 @@ class Reservation:
     using `ensure_released()`.
     """
 
-    def __init__(self, url, etag, lock, load_content):
+    def __init__(self, url, headers, renew, lock, load_content):
         self.url = url
-        self.etag = etag
+        self.headers = headers
+        self._renew = renew
         self._lock = lock
         self._lock_held = True
         self._load_content = load_content
         lock.acquire()
 
+    @property
+    def etag(self):
+        return self.headers["ETag"]
+
+    @property
+    def expires(self):
+        expires = self.headers.get("Expires")
+        if expires is not None:
+            return datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
+
     def load_content(self):
         "Return the content and release the reservation."
         content = self._load_content()
         self._lock.release()
+        if __debug__:
+            logger.debug("Cache Hit %r", self.url)
         return content
+
+    def is_stale(self):
+        if self.expires is None:
+            logger.debug(
+                "Cache entry %r is stale (no expiration was set).",
+                self.url,
+            )
+            return True
+
+        time_remaining = datetime.utcnow() - self.expires
+        stale = time_remaining > ZERO_SECONDS
+        if __debug__:
+            if stale:
+                logger.debug(
+                    "Cache entry %r became stale %d seconds ago",
+                    self.url,
+                    _round_seconds(time_remaining),
+                )
+        return stale
+
+    def renew(self, expires):
+        self._renew(expires=expires)
 
     def ensure_released(self):
         "Release the reservation. This is idempotent."
@@ -140,7 +190,7 @@ class Cache:
         """
         return cls(
             available_bytes,
-            url_to_etag_cache={},
+            url_to_headers_cache={},
             etag_to_content_cache={},
             sizes={},
             global_lock=threading.Lock(),
@@ -220,7 +270,7 @@ class Cache:
                 )
         instance = cls(
             available_bytes,
-            url_to_etag_cache=FileBasedCache(path / "url_to_etag_cache"),
+            url_to_headers_cache=FileBasedCache(path / "url_to_headers_cache"),
             etag_to_content_cache=etag_to_content_cache,
             sizes=sizes,
             global_lock=locket.lock_file(path / "global.lock"),
@@ -238,7 +288,7 @@ class Cache:
         self,
         available_bytes,
         *,
-        url_to_etag_cache,
+        url_to_headers_cache,
         etag_to_content_cache,
         sizes,
         global_lock,
@@ -252,14 +302,14 @@ class Cache:
 
         available_bytes : int
             The number of bytes of data to keep in the cache
-        url_to_etag_cache : MutableMapping
+        url_to_headers_cache : MutableMapping
             Dict-like object to use for cache
         etag_to_content_cache : MutableMapping
             Dict-like object to use for cache
         sizes : dict
             Byte size of each item in the etag_to_content_cache.
         global_lock : Lock
-            A lock used for the url_to_etag_cache
+            A lock used for the url_to_headers_cache
         lock_factory : callable
             Expected signature: ``f(etag) -> Lock``
         error_if_full : boolean, optional
@@ -282,11 +332,11 @@ class Cache:
         self.heap = heapdict()
         self.nbytes = dict()
         self.total_bytes = 0
-        self.url_to_etag_cache = url_to_etag_cache
+        self.url_to_headers_cache = url_to_headers_cache
         self.etag_to_content_cache = etag_to_content_cache
         self.etag_refcount = defaultdict(lambda: 0)
         self.etag_lock = LockDict.from_lock_factory(lock_factory)
-        self.url_to_etag_lock = global_lock
+        self.url_to_headers_lock = global_lock
         self.error_if_full = error_if_full
         # If the cache has data in it, initialize the internal caches.
         for etag in etag_to_content_cache:
@@ -296,19 +346,78 @@ class Cache:
             self.nbytes[etag] = nbytes
             self.total_bytes += nbytes
 
-    def put_etag_for_url(self, url, etag):
-        key = tokenize_url(url)
-        previous_etag = self.url_to_etag_cache.get(key)
-        if previous_etag:
+    def renew(self, url, etag, expires):
+        cache_key = tokenize_url(url)
+        if expires is None:
+            # Do not renew.
+            return
+        with self.url_to_headers_lock:
+            # Read cached headers.
+            headers = {}
+            for line in self.url_to_headers_cache[cache_key].decode().splitlines():
+                key, value = line.split(": ", 1)
+                headers[key] = value
+            assert headers["ETag"] == etag
+            # Update Expires.
+            headers["Expires"] = expires
+            # Write updated headers.
+            self.url_to_headers_cache[cache_key] = (
+                "\n".join(f"{key}: {value}" for key, value in headers.items())
+            ).encode()
+        if __debug__:
+            expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
+            logger.debug(
+                "Cache renewed %r for %d seconds",
+                url,
+                _round_seconds(expires_dt - datetime.utcnow()),
+            )
+
+    def put(self, url, etag, expires, media_type, encoding, content):
+        cache_key = tokenize_url(url)
+        cached = self.url_to_headers_cache.get(cache_key)
+        if cached:
+            headers = {}
+            for line in cached.decode().splitlines():
+                key, value = line.split(": ", 1)
+                headers[key] = value
+            previous_etag = headers["ETag"]
             self.etag_refcount[previous_etag] -= 1
             if self.etag_refcount[previous_etag] == 0:
                 # All URLs that referred to this content have since
                 # changed their ETags, so we can forget about this content.
                 self.retire(previous_etag)
-        with self.url_to_etag_lock:
-            self.url_to_etag_cache[key] = etag.encode()
+        headers = {
+            "ETag": etag,
+            "Content-Type": media_type,
+            "Content-Encoding": encoding,
+        }
+        if expires is not None:
+            headers["Expires"] = expires
+        with self.url_to_headers_lock:
+            self.url_to_headers_cache[cache_key] = "\n".join(
+                f"{key}: {value}" for key, value in headers.items()
+            ).encode()
+        nbytes = self._put_content(etag, content)
+        if __debug__:
+            if nbytes:
+                if expires is not None:
+                    expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
+                    logger.debug(
+                        "Cache stored %r (%d bytes) and will renew after %d seconds",
+                        url,
+                        nbytes,
+                        _round_seconds(expires_dt - datetime.utcnow()),
+                    )
+                else:
+                    logger.debug(
+                        "Cache stored %r (%d bytes) and will renew on next access",
+                        url,
+                        nbytes,
+                    )
+            else:
+                logger.debug("Cache delined to store %r", url)
 
-    def put_content(self, etag, content):
+    def _put_content(self, etag, content):
         nbytes = len(content)
         if nbytes < self.available_bytes:
             score = self.scorer.touch(etag, nbytes)
@@ -323,19 +432,29 @@ class Cache:
                 self.total_bytes += nbytes
                 # TODO We should actually shrink *first* to stay below the available_bytes.
                 self.shrink()
+                return nbytes
 
     def get_reservation(self, url):
         # Hold the global lock.
-        with self.url_to_etag_lock:
-            etag_bytes = self.url_to_etag_cache.get(tokenize_url(url))
-            if etag_bytes is None:
+        with self.url_to_headers_lock:
+            cached = self.url_to_headers_cache.get(tokenize_url(url))
+            if cached is None:
                 # We have nothing for this URL.
                 return None
-            etag = etag_bytes.decode()
+            # Parse cached headers.
+            headers = {}
+            for line in cached.decode().splitlines():
+                key, value = line.split(": ", 1)
+                headers[key] = value
             # Acquire a targeted lock, and then release and the global lock.
+            etag = headers["ETag"]
             lock = self.etag_lock[etag]
         return Reservation(
-            url, etag, lock, functools.partial(self._get_content_for_etag, etag)
+            url,
+            headers,
+            functools.partial(self.renew, url, etag),
+            lock,
+            functools.partial(self._get_content_for_etag, etag),
         )
 
     def _get_content_for_etag(self, etag):

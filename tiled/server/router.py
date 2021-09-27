@@ -1,4 +1,6 @@
 import dataclasses
+from datetime import datetime, timedelta
+from hashlib import md5
 import inspect
 from functools import lru_cache
 from hashlib import md5
@@ -99,6 +101,7 @@ async def about(
                 ),
             },
         ),
+        expires=datetime.utcnow() + timedelta(seconds=600),
     )
 
 
@@ -167,6 +170,7 @@ def declare_search_router(query_registry):
                     sort,
                     _get_base_url(request),
                 ),
+                expires=getattr(entry, "entries_stale_at", None),
             )
         except NoEntry:
             raise HTTPException(status_code=404, detail="No such entry.")
@@ -236,7 +240,11 @@ async def metadata(
         if (root_path is not None)
         else {}
     )
-    return json_or_msgpack(request, models.Response(data=resource, meta=meta))
+    return json_or_msgpack(
+        request,
+        models.Response(data=resource, meta=meta),
+        expires=getattr(entry, "metadata_stale_at", None),
+    )
 
 
 @router.get("/entries/{path:path}", response_model=models.Response)
@@ -268,6 +276,7 @@ async def entries(
                 sort,
                 _get_base_url(request),
             ),
+            expires=getattr(entry, "entries_stale_at", None),
         )
     except NoEntry:
         raise HTTPException(status_code=404, detail="No such entry.")
@@ -318,7 +327,13 @@ def array_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -361,7 +376,13 @@ def array_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -415,6 +436,7 @@ def structured_array_generic_block(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -468,6 +490,7 @@ def structured_array_tabular_block(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -518,6 +541,7 @@ def structured_array_tabular_full(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -568,6 +592,7 @@ def structured_array_generic_full(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -678,6 +703,7 @@ def dataframe_partition(
                 reader.metadata,
                 request,
                 format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -722,6 +748,7 @@ def dataframe_full(
                 request,
                 format,
                 specs,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -765,7 +792,13 @@ def variable_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -801,7 +834,13 @@ def variable_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -844,7 +883,13 @@ def data_array_variable_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -891,7 +936,13 @@ def data_array_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -943,7 +994,13 @@ def dataset_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -989,7 +1046,13 @@ def dataset_data_var_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -1029,7 +1092,13 @@ def dataset_coord_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -1072,6 +1141,7 @@ def dataset_full(
                 reader.metadata,
                 request,
                 format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))

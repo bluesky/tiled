@@ -1,4 +1,5 @@
 import collections.abc
+from datetime import datetime
 import itertools
 
 from ..queries import FullText
@@ -15,10 +16,12 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     __slots__ = (
         "_access_policy",
         "_authenticated_identity",
-        "include_routers",
-        "background_tasks",
         "_mapping",
         "_metadata",
+        "background_tasks",
+        "entries_stale_after",
+        "include_routers",
+        "metadata_stale_after",
     )
     # Define classmethods for managing what queries this Tree knows.
     query_registry = QueryTranslationRegistry()
@@ -26,7 +29,13 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     register_query_lazy = query_registry.register_lazy
 
     def __init__(
-        self, mapping, metadata=None, access_policy=None, authenticated_identity=None
+        self,
+        mapping,
+        metadata=None,
+        access_policy=None,
+        authenticated_identity=None,
+        entries_stale_after=None,
+        metadata_stale_after=None,
     ):
         """
         Create a simple Tree from any mapping (e.g. dict, OneShotCachedMap).
@@ -37,6 +46,12 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
         access_policy : AccessPolicy, optional
         authenticated_identity : str, optional
+        entries_stale_after: timedelta
+            This server uses this to communite to the client how long
+            it should rely on a local cache before checking back for changes.
+        metadata_stale_after: timedelta
+            This server uses this to communite to the client how long
+            it should rely on a local cache before checking back for changes.
         """
         self._mapping = mapping
         self._metadata = metadata or {}
@@ -50,6 +65,8 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         self._authenticated_identity = authenticated_identity
         self.include_routers = []
         self.background_tasks = []
+        self.entries_stale_after = entries_stale_after
+        self.metadata_stale_after = metadata_stale_after
         super().__init__()
 
     @property
@@ -79,6 +96,22 @@ class Tree(collections.abc.Mapping, IndexersMixin):
 
     def __len__(self):
         return len(self._mapping)
+
+    @property
+    def metadata_stale_at(self):
+        if self.metadata_stale_after is None:
+            return
+        if self.metadata_stale_after == 0:
+            return 0
+        return self.metadata_stale_after + datetime.utcnow()
+
+    @property
+    def entries_stale_at(self):
+        if self.entries_stale_after is None:
+            return
+        if self.entries_stale_after == 0:
+            return 0
+        return self.entries_stale_after + datetime.utcnow()
 
     def authenticated_as(self, identity):
         if self._authenticated_identity is not None:
@@ -111,6 +144,8 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             metadata=self._metadata,
             access_policy=self.access_policy,
             authenticated_identity=self.authenticated_identity,
+            entries_stale_after=self.entries_stale_after,
+            metadata_stale_after=self.entries_stale_after,
             **kwargs,
         )
 

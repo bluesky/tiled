@@ -326,6 +326,7 @@ def construct_data_response(
     request,
     format=None,
     specs=None,
+    expires=None,
 ):
     request.state.endpoint = "data"
     if specs is None:
@@ -376,9 +377,12 @@ def construct_data_response(
         # Create an ETag that uniquely identifies this content and the media
         # type that it will be encoded as.
         etag = tokenize((payload, media_type))
+    headers = {"ETag": etag}
+    if expires is not None:
+        headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304)
+        return Response(status_code=304, headers=headers)
     # This is the expensive step: actually serialize.
     content = serialization_registry(structure_family, media_type, payload, metadata)
     return PatchedResponse(
@@ -646,9 +650,11 @@ class MsgpackResponse(Response):
 
 JSON_MIME_TYPE = "application/json"
 MSGPACK_MIME_TYPE = "application/x-msgpack"
+# This is a silly time format, but it is the HTTP standard.
+HTTP_EXPIRES_HEADER_FORMAT = "%a, %d %b %Y %H:%M:%S GMT"
 
 
-def json_or_msgpack(request, content):
+def json_or_msgpack(request, content, expires=None):
     media_types = request.headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
@@ -666,11 +672,14 @@ def json_or_msgpack(request, content):
         media_type = JSON_MIME_TYPE
     assert media_type in {JSON_MIME_TYPE, MSGPACK_MIME_TYPE}
     content_as_dict = content.dict()
-    etag = md5(str(content_as_dict).encode()).hexdigest()
+    with record_timing(request.state.metrics, "tok"):
+        etag = md5(str(content_as_dict).encode()).hexdigest()
+    headers = {"ETag": etag}
+    if expires is not None:
+        headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304)
-    headers = {"ETag": etag}
+        return Response(status_code=304, headers=headers)
     if media_type == "application/x-msgpack":
         return MsgpackResponse(
             content_as_dict, headers=headers, metrics=request.state.metrics
