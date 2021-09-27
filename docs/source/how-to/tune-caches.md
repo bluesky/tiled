@@ -22,19 +22,19 @@ This can be done via configuration:
 ```yaml
 # Given in relative terms...
 object_cache:
-  bytes_available: 0.40  # 40% of total RAM
+  available_bytes: 0.40  # 40% of total RAM
 ```
 
 ```yaml
 # Given in absolute terms...
 object_cache:
-  bytes_available: 2_000_000_000 # 2 GB of RAM
+  available_bytes: 2_000_000_000 # 2 GB of RAM
 ```
 
 ```yaml
 # Disable object cache.
 object_cache:
-  bytes_available: 0
+  available_bytes: 0
 ```
 
 For `tiled serve {pyobject, directory}` it can be configured with a flag:
@@ -63,7 +63,7 @@ To log cache hits, misses, and stores, use this configuration setting
 
 ```yaml
 object_cache:
-  bytes_available: ...
+  available_bytes: ...
   log_level: DEBUG  # case-insensitive
 ```
 
