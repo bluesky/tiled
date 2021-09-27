@@ -347,10 +347,6 @@ def construct_data_response(
     if specs is None:
         specs = []
     default_media_type = DEFAULT_MEDIA_TYPES[structure_family]
-    with record_timing(request.state.metrics, "tok"):
-        etag = tokenize(payload)
-    if request.headers.get("If-None-Match", "") == etag:
-        return Response(status_code=304)
     # Give priority to the `format` query parameter. Otherwise, consult Accept
     # header.
     if format is not None:
@@ -377,18 +373,33 @@ def construct_data_response(
         # fall back to generic dataframe serializer if no specs present
         for spec in specs + [structure_family]:
             if media_type in serialization_registry.media_types(spec):
-                content = serialization_registry(
-                    structure_family, media_type, payload, metadata
-                )
-                return PatchedResponse(
-                    content=content, media_type=media_type, headers={"ETag": etag}
-                )
+                break
+        else:
+            # None of the specs or the structure_family can serialize to this
+            # media_type. Try the next one.
+            continue
+        # We found a match above. We have our media_type.
+        break
     else:
+        # We have checked each of the media_types, and we cannot serialize
+        # to any of them.
         raise UnsupportedMediaTypes(
             "None of the media types requested by the client are supported.",
             unsupported=media_types,
             supported=serialization_registry.media_types(structure_family),
         )
+    with record_timing(request.state.metrics, "tok"):
+        # Create an ETag that uniquely identifies this content and the media
+        # type that it will be encoded as.
+        etag = tokenize((payload, media_type))
+    if request.headers.get("If-None-Match", "") == etag:
+        # If the client already has this content, confirm that.
+        return Response(status_code=304)
+    # This is the expensive step: actually serialize.
+    content = serialization_registry(structure_family, media_type, payload, metadata)
+    return PatchedResponse(
+        content=content, media_type=media_type, headers={"ETag": etag}
+    )
 
 
 def construct_resource(base_url, path_parts, entry, fields):
@@ -638,25 +649,35 @@ class MsgpackResponse(Response):
             raise
 
 
+JSON_MIME_TYPE = "application/json"
+MSGPACK_MIME_TYPE = "application/x-msgpack"
+
+
 def json_or_msgpack(request_headers, content):
-    DEFAULT_MEDIA_TYPE = "application/json"
-    media_types = request_headers.get("Accept", DEFAULT_MEDIA_TYPE).split(", ")
-    content_as_dict = content.dict()
-    content_hash = md5(str(content_as_dict).encode()).hexdigest()
-    headers = {"ETag": content_hash}
+    media_types = request_headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
-            media_type = DEFAULT_MEDIA_TYPE
-        if media_type == "application/x-msgpack":
-            return MsgpackResponse(content_as_dict, headers=headers)
-        if media_type == "application/json":
-            return NumpySafeJSONResponse(content_as_dict, headers=headers)
+            media_type = JSON_MIME_TYPE
+        if media_type == MSGPACK_MIME_TYPE:
+            break
+        if media_type == JSON_MIME_TYPE:
+            break
     else:
         # It is commmon in HTTP to fall back on a default representation if
-        # none of the requested ones are avaiable. We do not do this for
+        # none of the requested ones are available. We do not do this for
         # data payloads, but it makes some sense to do it for these metadata
         # messages.
-        return JSONResponse(content_as_dict, headers=headers)
+        media_type == JSON_MIME_TYPE
+    assert media_type in {JSON_MIME_TYPE, MSGPACK_MIME_TYPE}
+    content_as_dict = content.dict()
+    etag = md5(str(content_as_dict).encode()).hexdigest()
+    if request_headers.get("If-None-Match", "") == etag:
+        # If the client already has this content, confirm that.
+        return Response(status_code=304)
+    headers = {"ETag": etag}
+    if media_type == "application/x-msgpack":
+        return MsgpackResponse(content_as_dict, headers=headers)
+    return NumpySafeJSONResponse(content_as_dict, headers=headers)
 
 
 class UnsupportedMediaTypes(Exception):
