@@ -107,6 +107,7 @@ class Reservation:
         expires = self.headers.get("Expires")
         if expires is not None:
             return datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
+        return None
 
     def load_content(self):
         "Return the content and release the reservation."

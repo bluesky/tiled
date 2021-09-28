@@ -246,6 +246,11 @@ class Context:
         url = request.url.raw  # URL as tuple
         if self._offline:
             # We must rely on the cache alone.
+            # The role of a 'reservation' is to ensure that the content
+            # of interest is not evicted from the cache between the moment
+            # that we start verifying its validity and the moment that
+            # we actually read the content. It is used more extensively
+            # below.
             reservation = self._cache.get_reservation(url)
             if reservation is None:
                 raise NotAvailableOffline(url)
@@ -285,7 +290,7 @@ class Context:
                 # Update the expiration time.
                 reservation.renew(response.headers.get("expires"))
                 # Read from the cache
-                content = reservation.load_content()
+                return reservation.load_content()
             elif response.status_code == 200:
                 etag = response.headers.get("ETag")
                 content = response.content
@@ -307,6 +312,7 @@ class Context:
                         encoding,
                         content,
                     )
+                return content
             else:
                 raise NotImplementedError(
                     f"Unexpected status_code {response.status_code}"
@@ -314,7 +320,6 @@ class Context:
         finally:
             if reservation is not None:
                 reservation.ensure_released()
-        return content
 
     def get_json(self, path, stream=False, **kwargs):
         return msgpack.unpackb(
