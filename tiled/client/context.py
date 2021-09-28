@@ -343,7 +343,7 @@ Navigate web browser to this address to obtain access code:
             while True:
                 # The proper term for this is 'refresh token' but that may be
                 # confusing jargon to the end user, so we say "access code".
-                raw_refresh_token = input("Access code (quotes optional): ")
+                raw_refresh_token = getpass.getpass("Access code (quotes optional): ")
                 if not raw_refresh_token:
                     print("No access token given. Failed.")
                     break
