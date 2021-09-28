@@ -389,10 +389,11 @@ class Cache:
         headers = {
             "ETag": etag,
             "Content-Type": media_type,
-            "Content-Encoding": encoding,
         }
         if expires is not None:
             headers["Expires"] = expires
+        if encoding is not None:
+            headers["Content-Encoding"] = encoding
         with self.url_to_headers_lock:
             self.url_to_headers_cache[cache_key] = "\n".join(
                 f"{key}: {value}" for key, value in headers.items()
