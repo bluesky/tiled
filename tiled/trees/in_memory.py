@@ -101,16 +101,12 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     def metadata_stale_at(self):
         if self.metadata_stale_after is None:
             return
-        if self.metadata_stale_after == 0:
-            return 0
         return self.metadata_stale_after + datetime.utcnow()
 
     @property
     def entries_stale_at(self):
         if self.entries_stale_after is None:
             return
-        if self.entries_stale_after == 0:
-            return 0
         return self.entries_stale_after + datetime.utcnow()
 
     def authenticated_as(self, identity):
