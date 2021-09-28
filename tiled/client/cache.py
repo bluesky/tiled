@@ -654,8 +654,11 @@ class FileBasedCache(collections.abc.MutableMapping):
 
 def _normalize(key):
     if isinstance(key, str):
-        return (key,)
-    return key
+        key = (key,)
+    # To avoid an overly large directory (which leads to slow performance)
+    # divide into subdirectories beginning with the first two characters of
+    # the contents' name.
+    return (key[0][:2],) + key
 
 
 class LockDict(dict):
