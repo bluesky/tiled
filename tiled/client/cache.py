@@ -122,7 +122,7 @@ class Reservation:
         self._lock.release()
         if __debug__:
             logger.debug(
-                "Cache Hit (%dB in %.1fms) %s", len(content), duration, self.url
+                "Cache read (%dB in %.1fms) %s", len(content), duration, self.url
             )
         return content
 
@@ -408,22 +408,25 @@ class Cache:
             self.url_to_headers_cache[cache_key] = "\n".join(
                 f"{key}: {value}" for key, value in headers.items()
             ).encode()
+        start = time.perf_counter()
         nbytes = self._put_content(etag, content)
+        duration = 1000 * (time.perf_counter() - start)  # units: ms
         if __debug__:
             if nbytes:
                 if expires is not None:
                     expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
                     logger.debug(
-                        "Cache stored %s (%d bytes). Renew after %d secs.",
-                        url,
+                        "Cache stored (%d B in %.1f ms) %s. Renew after %d secs.",
                         nbytes,
+                        duration,
+                        url,
                         _round_seconds(expires_dt - datetime.utcnow()),
                     )
                 else:
                     logger.debug(
-                        "Cache stored %s (%d bytes). Renew on next access.",
-                        url,
+                        "Cache stored (%d B in %.1f ms) %s. Renew on next access.",
                         nbytes,
+                        duration,
                     )
             else:
                 logger.debug(
