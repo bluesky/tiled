@@ -121,8 +121,12 @@ class Reservation:
         duration = 1000 * (time.perf_counter() - start)  # units: ms
         self._lock.release()
         if __debug__:
+            # Use _ for thousands separator in bytes.
             logger.debug(
-                "Cache read (%d B in %.1f ms) %s", len(content), duration, self.url
+                "Cache read (%s B in %.1f ms) %s",
+                f"{len(content):_}",
+                duration,
+                self.url,
             )
         return content
 
@@ -416,16 +420,16 @@ class Cache:
                 if expires is not None:
                     expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
                     logger.debug(
-                        "Cache stored (%d B in %.1f ms) %s. Renew after %d secs.",
-                        nbytes,
+                        "Cache stored (%s B in %.1f ms) %s. Renew after %d secs.",
+                        f"{nbytes:_}",  # Use _ for thousands separator.
                         duration,
                         url,
                         _round_seconds(expires_dt - datetime.utcnow()),
                     )
                 else:
                     logger.debug(
-                        "Cache stored (%d B in %.1f ms) %s. Renew on next access.",
-                        nbytes,
+                        "Cache stored (%s B in %.1f ms) %s. Renew on next access.",
+                        f"{nbytes:_}",  # Use _ for thousands separator.
                         duration,
                         url,
                     )
