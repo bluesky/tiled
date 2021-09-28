@@ -386,7 +386,9 @@ def construct_data_response(
     # This is the expensive step: actually serialize.
     content = serialization_registry(structure_family, media_type, payload, metadata)
     return PatchedResponse(
-        content=content, media_type=media_type, headers={"ETag": etag}
+        content=content,
+        media_type=media_type,
+        headers=headers,
     )
 
 
