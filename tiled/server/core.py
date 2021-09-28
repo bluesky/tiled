@@ -658,6 +658,7 @@ def json_or_msgpack(request_headers, content):
     for media_type in media_types:
         if media_type == "*/*":
             media_type = JSON_MIME_TYPE
+            break
         if media_type == MSGPACK_MIME_TYPE:
             break
         if media_type == JSON_MIME_TYPE:
@@ -667,7 +668,7 @@ def json_or_msgpack(request_headers, content):
         # none of the requested ones are available. We do not do this for
         # data payloads, but it makes some sense to do it for these metadata
         # messages.
-        media_type == JSON_MIME_TYPE
+        media_type = JSON_MIME_TYPE
     assert media_type in {JSON_MIME_TYPE, MSGPACK_MIME_TYPE}
     content_as_dict = content.dict()
     etag = md5(str(content_as_dict).encode()).hexdigest()
