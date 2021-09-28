@@ -122,7 +122,7 @@ class Reservation:
         self._lock.release()
         if __debug__:
             logger.debug(
-                "Cache read (%dB in %.1fms) %s", len(content), duration, self.url
+                "Cache read (%d B in %.1f ms) %s", len(content), duration, self.url
             )
         return content
 
