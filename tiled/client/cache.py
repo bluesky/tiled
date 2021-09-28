@@ -427,6 +427,7 @@ class Cache:
                         "Cache stored (%d B in %.1f ms) %s. Renew on next access.",
                         nbytes,
                         duration,
+                        url,
                     )
             else:
                 logger.debug(
