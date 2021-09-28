@@ -18,6 +18,11 @@ import threading
 from collections import defaultdict
 from math import log
 from pathlib import Path
+<<<<<<< HEAD
+=======
+import threading
+import time
+>>>>>>> Log cache hit bytesize and read time.
 
 from heapdict import heapdict
 
@@ -111,10 +116,14 @@ class Reservation:
 
     def load_content(self):
         "Return the content and release the reservation."
+        start = time.perf_counter()
         content = self._load_content()
+        duration = 1000 * (time.perf_counter() - start)  # units: ms
         self._lock.release()
         if __debug__:
-            logger.debug("Cache Hit %s", self.url)
+            logger.debug(
+                "Cache Hit (%dB in %.1fms) %s", len(content), duration, self.url
+            )
         return content
 
     def is_stale(self):
@@ -594,16 +603,12 @@ def tokenize_url(url):
     url_as_tuple = url.raw
     return hashlib.md5(
         b"".join(
-<<<<<<< HEAD
-            [url[0], url[1], f":{url[2]}".encode(), *url[3:]]  # e.g. 8000 -> b'8000'
-=======
             [
                 url_as_tuple[0],
                 url_as_tuple[1],
                 f":{url_as_tuple[2]}".encode(),  # e.g. 8000 -> b'8000'
                 *url_as_tuple[3:],
             ]
->>>>>>> Refine logging.
         )
     ).hexdigest()
 
