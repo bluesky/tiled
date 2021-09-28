@@ -98,7 +98,7 @@ include the configuration:
 
 ```yaml
 authentication:
-    allow_anonymous_access: true
+  allow_anonymous_access: true
 ```
 
 This is a complete working example:
@@ -106,10 +106,10 @@ This is a complete working example:
 ```yaml
 # config.yml
 authentication:
-    allow_anonymous_access: true
+  allow_anonymous_access: true
 trees:
-    - path: /
-      tree: tiled.examples.generated_minimal:tree
+  - path: /
+    tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -127,20 +127,18 @@ Tiled is designed to integrate with external user-management systems via a plugg
 Authenticator interface. For those familiar with JupyterHub, these are very
 similar to JupyterHub Authenticators. Authenticators fall into two groups:
 
-* Authenticators that accept user credentials directly at the ``POST /token``
-  endpoint, following the OAuth2 and OpenAPI standards as shown below, and
-  validate the credentials using some underlying authentication mechanism, such
-  as PAM.
-* Authenticators that use OAuth2 code flow to validate user credentials
-  without directly handling them. (No such Authenticators have been written yet
-  for Tiled, but track to do so has been laid, closely following the pattern
-  established by JupyterHub.)
+* Authenticators that accept user credentials directly, following the OAuth2 and
+  OpenAPI standards as shown below, and validate the credentials using some
+  underlying authentication mechanism, such as PAM.
+* Authenticators that use an external service such as Google or ORCID to validate
+  the user identity, without directly handling credentials in Tiled.
 
 This mode requires configuration files to be used, as in
 
 ```
 tiled serve config path/to/config_file(s)
 ```
+
 
 in order to specify the Authenticator and, when applicable, any parameters.
 The shorthands ``tiled serve pyobject ...`` and ``tiled serve directory ...``
@@ -160,9 +158,10 @@ You may configure:
 See {doc}`../reference/authentication` for advanced customization options and
 additional details.
 
-### Authenticate with local Linux/UNIX users
+### Authenticate with local system accounts
 
-This requires an additional dependency.
+Tiled includes a `PAMAuthenticator` for logging in with local user accounts
+using a username and password. It requires one additional dependency:
 
 ```
 pip install pamela
@@ -172,7 +171,7 @@ The configuration file(s) should include:
 
 ```yaml
 authentication:
-    authenticator: tiled.authenticators:PAMAuthenticator
+  authenticator: tiled.authenticators:PAMAuthenticator
 ```
 
 Here is a complete working example:
@@ -180,10 +179,10 @@ Here is a complete working example:
 ```yaml
 # pam_config.yml
 authentication:
-    authenticator: tiled.authenticators:PAMAuthenticator
+  authenticator: tiled.authenticators:PAMAuthenticator
 trees:
-    - path: /
-      tree: tiled.examples.generated_minimal:tree
+  - path: /
+    tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -192,7 +191,101 @@ tiled serve config pam_config.yml
 
 Authenticate using a system user account and password.
 
-### Toy examples
+
+### Authenticate with OpenID Connect Providers
+
+Tiled includes an `OIDCAuthenticator` for logging in with third-party identity
+providers including ORCID, Google, and many others using the web standard OpenID
+Connect. In this mode, Tiled does not directly handle users' login credentials.
+Instead, it provides a link to open in the browser, log in to the third-party
+service, and obtain an access code that will be accepted by Tiled.
+
+This uses the same technology that supports web-based flows like "Log in to
+Website X with Google!" but it does so in a way that works from command-line
+tools, scripts, Jupyter notebooks, and other applications. It works like this:
+
+User: Hello, Tiled! Please let me in.
+Tiled Server: Go to this URL and come back with an access code.
+User (in web browser): Hello OIDC Provider {ORCID, Google, etc.}, Tiled sent me.
+OIDC Provider: Do you authorize Tiled to see your account info?
+User (in web browser): Yes.
+OIDC Provider: _directs browser to Tiled Serer_
+Tiled Server: The OIDC provider has vouched that you are {username}. Copy/paste
+this access code.
+
+The `OIDCAuthenticator` requires an additional dependency. (Depending on how you
+installed Tiled, you may already have it because it is required by Tiled's
+Python _client_.)
+
+```
+pip install httpx
+```
+
+1. Deploy Tiled with HTTPS.
+2. Register your application with the OIDC Provider. You will be asked to
+   provide a Redirect URI. Give `https://.../auth/code`. You will be given a
+   Client ID and Client Secret.
+3. It is recommended to set the Client Secret as an environment variable, such
+   as `OIDC_CLIENT_SECRET`, and reference that from configuration file as shown
+   below.
+4. Obtain the OIDC provider's public key(s). These are published by the OIDC provider.
+   Starting from a URL like:
+
+   * [https://accounts.google.com/.well-known/openid-configuration](https://accounts.google.com/.well-known/openid-configuration)
+   * [https://orcid.org/.well-known/openid-configuration](https://orcid.org/.well-known/openid-configuration)
+
+   Navigate to the link under the key `jwks_uri`. These public key(s) are designed
+   to prevent man-in-the-middle attacks. They may be rotated over time.
+
+The configuration file(s) must include the following.
+
+```yaml
+authentication:
+  authenticator: tiled.authenticators:OIDCAuthenticator
+  args:
+    # All of these are given by the OIDC provider you register
+    # your application.
+    client_id: ...
+    client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
+    token_uri: ...
+    authorization_endpoint: ...
+    redirect_uri: ...  # https://{YOUR_TILED_SERVER_ADDRESS}/auth/code
+    # These come from the OIDC provider as described above.
+    public_keys:
+      - kty: ...
+        e: ...
+        use: ...
+        kid: ...
+        n: ...
+        alg: ...
+    confirmation_message: "You have logged with ... as {username}."
+```
+
+Here is an example for ORCID authentication running at
+`https://tiled-demo.blueskyproject.io`.
+
+```yaml
+authentication:
+  authenticator: tiled.authenticators:OIDCAuthenticator
+  args:
+    client_id: APP-0ROS9DU5F717F7XN  # obtained from ORCID for tiled-demo.blueskyproject.io; not secret
+    client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
+    redirect_uri: https://tiled-demo.blueskyproject.io/auth/code
+    token_uri: "https://orcid.org/oauth/token"
+    authorization_endpoint: "https://orcid.org/oauth/authorize?client_id={client_id}&response_type=code&scope=openid&redirect_uri={redirect_uri}"
+    # These values come from https://orcid.org/.well-known/openid-configuration.
+    # Obtain them directly from ORCID. They may change over time.
+    public_keys:
+      - kty: ...
+        e: ...
+        use: ...
+        kid: ...
+        n: ...
+        alg: RS256
+    confirmation_message: "You have logged with ORCID as {username}."
+```
+
+### Toy examples for testing and development
 
 The ``DictionaryAuthenticator`` authenticates using usernames and passwords
 specified directly in the configuration. The passwords may be extracted from
@@ -202,15 +295,15 @@ should only for used for development and demos.
 ```yaml
 # dictionary_config.yml
 authentication:
-    authenticator: tiled.authenticators:DictionaryAuthenticator
-    args:
-        users_to_passwords:
-            alice: ${ALICE_PASSWORD}
-            bob: ${BOB_PASSWORD}
-            cara: ${CARA_PASSWORD}
+  authenticator: tiled.authenticators:DictionaryAuthenticator
+  args:
+    users_to_passwords:
+      alice: ${ALICE_PASSWORD}
+      bob: ${BOB_PASSWORD}
+      cara: ${CARA_PASSWORD}
 trees:
-    - path: /
-      tree: tiled.examples.generated_minimal:tree
+  - path: /
+    tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -222,10 +315,10 @@ The ``DummyAuthenticator`` accepts *any* username and password combination.
 ```yaml
 # dummy_config.yml
 authentication:
-    authenticator: tiled.authenticators:DummyAuthenticator
+  authenticator: tiled.authenticators:DummyAuthenticator
 trees:
-    - path: /
-      tree: tiled.examples.generated_minimal:tree
+  - path: /
+    tree: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -245,7 +338,7 @@ include the configuration:
 
 ```yaml
 authentication:
-    allow_anonymous_access: true
+  allow_anonymous_access: true
 ```
 
 See also {doc}`../reference/service-configuration`.

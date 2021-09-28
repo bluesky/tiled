@@ -3,18 +3,23 @@
 See {doc}`../explanations/security` for an overview.
 This page addresses technical details relevant to:
 
-- Client authentcation flow
+- Client authentication flow
 * Customizing the various lifetimes (timeouts) in the system
 * Horizontally scaling deployments
 
-## Client authentcation flow
+## Client authentication flow
 
 In this section we'll use the command-line HTTP client
 [httpie](https://httie.io/) and [jq](https://stedolan.github.io/jq/) to parse
 the JSON responses.
 
-We'll start a tiled server with a demo "toy" authentcation system to work
-against. Save the following `config.yml` and start a server like so.
+Some Tiled servers handle credentials directly. Others refer the user to a web
+browser to authenticate with a third party (e.g. ORCID, Google) and return to
+Tiled with a token. We will demonstrate each in turn.
+
+To test the first kind, we'll start a tiled server with a demo "toy"
+authentication system to work against. Save the following `config.yml` and start
+a server like so.
 
 ```{eval-rst}
 .. literalinclude:: ../../../example_configs/toy_authentication.yml
@@ -24,10 +29,23 @@ against. Save the following `config.yml` and start a server like so.
 ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config config.yml
 ```
 
+To test the second kind, we'll use `https://tiled-demo.blueskyproject.io`, which
+is configured to use [ORCID](https://orcid.org/) for authentication.
+
+### Scenario 1: Authenticator Directly Handles Credentials
+
+An initial handshake with the `/` route tells us that this server uses
+`"password"` authentication.
+
+```
+$ http :8000/ | jq .authentication.type
+"password"
+```
+
 Exchange username/password credentials for "access" and "refresh" tokens.
 
 ```
-$ http --form POST :8000/token username=alice password=secret1 > tokens.json
+$ http --form POST :8000/auth/token username=alice password=secret1 > tokens.json
 ```
 
 The content of `tokens.json` looks like
@@ -97,7 +115,7 @@ set-cookie: tiled_csrf=6sPHOrjBRzZOiSuXOXNtaDNyNNeqQj86nPIXf7X3C1M; HttpOnly; Pa
 Exchange the refresh token for a fresh pair of access and refresh tokens.
 
 ```
-$ http POST :8000/token/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
+$ http POST :8000/auth/token/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
 ```
 
 And resume making requests with the new access token.
@@ -105,6 +123,36 @@ And resume making requests with the new access token.
 To experiment with token expiry and renewal, it can be useful to tune the various
 "max age" parameters very low---10 seconds or so. The next section describes how
 to configure these parameters.
+
+### Scenario 2: Authenticator Refers to a Third-Party Identity Provider
+
+An initial handshake with the `/` route tells us that this server uses
+`"external"` authentication.
+
+```
+$ http https://tiled-demo.blueskyproject.io/ | jq .authentication.type
+"external"
+```
+
+Elsewhere in this same response, we can find the authentication endpoint for
+this external identity provider.
+
+```
+$ http https://tiled-demo.blueskyproject.io/ | jq .authentication.endpoint
+"https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/auth/code",
+```
+
+Navigate to this address in a web browser, log in when prompted, and authorize
+Tiled when prompted.  You will be redirected to a page at
+`https://tiled-demo.blueskyproject.io/auth/code?code=[redacted]` and shown
+a valid refresh token from Tiled that encodes your ORCID username. Exchange the
+refresh token for an access token and a fresh refresh token like so.
+
+```
+$ http POST https://tiled-demo.blueskyproject.io/token/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
+```
+
+From here, everything follows the same as in Scenario 1, above.
 
 # Configure session lifetime parameters
 

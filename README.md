@@ -29,7 +29,9 @@ Tiled puts an emphasis on **structures** rather than formats, including:
 
 Tiled implements extensible **access control enforcement** based on web security
 standards, similar to JuptyerHub. Like Jupyter, Tiled can be used by a single
-user or deployed as a shared public or private resource.
+user or deployed as a shared public or private resource. Tiled can be configured
+to use third party services for login, such as Google, ORCID. or any OIDC
+authentication providers.
 
 Tiled facilitates **client-side caching** in a standard web browser or in
 Tiled's Python client, making efficient use of bandwidth and enabling an offline
