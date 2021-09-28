@@ -305,7 +305,7 @@ class Context:
                         response.headers.get("expires"),
                         media_type,
                         encoding,
-                        response.content,
+                        content,
                     )
             else:
                 raise NotImplementedError(
