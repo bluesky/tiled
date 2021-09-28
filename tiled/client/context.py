@@ -243,7 +243,7 @@ class Context:
         request = self._client.build_request("GET", path, **kwargs)
         if accept:
             request.headers["Accept"] = accept
-        url = request.url.raw  # URL as tuple
+        url = request.url
         if self._offline:
             # We must rely on the cache alone.
             # The role of a 'reservation' is to ensure that the content

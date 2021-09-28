@@ -126,31 +126,33 @@ if __debug__:
                 message = super().getMessage()
             return message
 
-    class ClientLogger(logging.Logger):
-        def makeRecord(
-            self,
-            name,
-            level,
-            fn,
-            lno,
-            msg,
-            args,
-            exc_info,
-            func=None,
-            extra=None,
-            sinfo=None,
-        ):
-            rv = ClientLogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
-            if extra is not None:
-                for key in extra:
-                    if (key in ["message", "asctime"]) or (key in rv.__dict__):
-                        raise KeyError("Attempt to overwrite %r in LogRecord" % key)
-                    rv.__dict__[key] = extra[key]
-            return rv
+    def patched_make_record(
+        name,
+        level,
+        fn,
+        lno,
+        msg,
+        args,
+        exc_info,
+        func=None,
+        extra=None,
+        sinfo=None,
+    ):
+        rv = ClientLogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
+        if extra is not None:
+            for key in extra:
+                if (key in ["message", "asctime"]) or (key in rv.__dict__):
+                    raise KeyError("Attempt to overwrite %r in LogRecord" % key)
+                rv.__dict__[key] = extra[key]
+        return rv
 
-    # Subscribe a handler to the root client logger,
-    # which is shared by the httpx logger and the cache logger.
-    logger = ClientLogger("tiled.client")
+    logger = logging.getLogger("tiled.client")
+    # Monkey-patch our logger!
+    # The logging framework provides no way to look a custom record factory into
+    # the global logging manager. I tried several ways to avoid monkey-patching
+    # and this is the least bad. Notice that it only touches the 'tiled.client'
+    # logger and will not affect the behavior of other loggers.
+    logger.makeRecord = patched_make_record
     handler = logging.StreamHandler()
     log_format = "%(asctime)s.%(msecs)03d %(message)s"
 

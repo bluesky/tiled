@@ -114,13 +114,13 @@ class Reservation:
         content = self._load_content()
         self._lock.release()
         if __debug__:
-            logger.debug("Cache Hit %r", self.url)
+            logger.debug("Cache Hit %s", self.url)
         return content
 
     def is_stale(self):
         if self.expires is None:
             logger.debug(
-                "Cache entry %r is stale (no expiration was set).",
+                "Cache entry %s is stale (no expiration was set).",
                 self.url,
             )
             return True
@@ -130,7 +130,7 @@ class Reservation:
         if __debug__:
             if stale:
                 logger.debug(
-                    "Cache entry %r became stale %d seconds ago",
+                    "Cache entry %s is stale (%d secs ago).",
                     self.url,
                     _round_seconds(time_remaining),
                 )
@@ -368,7 +368,7 @@ class Cache:
         if __debug__:
             expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
             logger.debug(
-                "Cache renewed %r for %d seconds",
+                "Cache renewed %s for %d secs.",
                 url,
                 _round_seconds(expires_dt - datetime.utcnow()),
             )
@@ -405,19 +405,21 @@ class Cache:
                 if expires is not None:
                     expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
                     logger.debug(
-                        "Cache stored %r (%d bytes) and will renew after %d seconds",
+                        "Cache stored %s (%d bytes). Renew after %d secs.",
                         url,
                         nbytes,
                         _round_seconds(expires_dt - datetime.utcnow()),
                     )
                 else:
                     logger.debug(
-                        "Cache stored %r (%d bytes) and will renew on next access",
+                        "Cache stored %s (%d bytes). Renew on next access.",
                         url,
                         nbytes,
                     )
             else:
-                logger.debug("Cache delined to store %r", url)
+                logger.debug(
+                    "Cache delined to store %s given its cost/benefit score.", url
+                )
 
     def _put_content(self, etag, content):
         nbytes = len(content)
@@ -589,9 +591,19 @@ def tokenize_url(url):
     >>> tokenize_url((b"https", b"localhost", 8000, b"/metadata/"))
     "some unique hash"
     """
+    url_as_tuple = url.raw
     return hashlib.md5(
         b"".join(
+<<<<<<< HEAD
             [url[0], url[1], f":{url[2]}".encode(), *url[3:]]  # e.g. 8000 -> b'8000'
+=======
+            [
+                url_as_tuple[0],
+                url_as_tuple[1],
+                f":{url_as_tuple[2]}".encode(),  # e.g. 8000 -> b'8000'
+                *url_as_tuple[3:],
+            ]
+>>>>>>> Refine logging.
         )
     ).hexdigest()
 
