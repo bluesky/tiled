@@ -133,7 +133,7 @@ class Reservation:
     def is_stale(self):
         if self.expires is None:
             logger.debug(
-                "Cache entry %s is stale (no expiration was set).",
+                "Cache is stale (no expiration was set) %s",
                 self.url,
             )
             return True
@@ -143,9 +143,9 @@ class Reservation:
         if __debug__:
             if stale:
                 logger.debug(
-                    "Cache entry %s is stale (%d secs ago).",
-                    self.url,
+                    "Cache is stale (%d secs ago) %s",
                     _round_seconds(time_remaining),
+                    self.url,
                 )
         return stale
 
