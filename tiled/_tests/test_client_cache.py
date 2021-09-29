@@ -58,9 +58,9 @@ def test_download(cache, structure_clients):
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_entries_stale_after(caplog, cache, structure_clients):
+def test_entries_stale_at(caplog, cache, structure_clients):
     """
-    Test that entries_stale_after causes us to rely on the cache for some time.
+    Test that entries_stale_at causes us to rely on the cache for some time.
     """
     logger.setLevel("DEBUG")
     EXPIRES_AFTER = 1  # seconds
@@ -109,9 +109,66 @@ def test_entries_stale_after(caplog, cache, structure_clients):
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_metadata_stale_after(caplog, cache, structure_clients):
+def test_content_stale_at(caplog, cache, structure_clients):
     """
-    Test that metadata_stale_after causes us to rely on the cache for some time.
+    Test that metadata_stale_at causes us to rely on the cache for some time.
+    """
+    logger.setLevel("DEBUG")
+    EXPIRES_AFTER = 3  # seconds
+    mapping = {"a": ArrayAdapter.from_array(numpy.arange(10))}
+    tree = Tree(
+        mapping,
+        entries_stale_after=timedelta(seconds=1_000),
+    )
+    # Monkey-patch this attribute on for now because we aren't decided
+    # how to best to expose this when initializing Adapters.
+    mapping["a"].content_stale_at = datetime.utcnow() + timedelta(seconds=EXPIRES_AFTER)
+    mapping["a"].metadata_stale_at = datetime.utcnow() + timedelta(seconds=1_000)
+    client = from_tree(tree, cache=cache, structure_clients=structure_clients)
+    assert client["a"].read().sum() == 45
+    # Content is stored in cache.
+    assert "Cache stored" in caplog.text
+    assert "Cache read" not in caplog.text
+    assert "Cache is stale" not in caplog.text
+    assert "Cache renewed" not in caplog.text
+    caplog.clear()
+    for _ in range(3):
+        assert client["a"].read().sum() == 45
+        # Content is read from cache *without contacting server*
+        assert "Cache read" in caplog.text
+        assert "Cache stored" not in caplog.text
+        assert "Cache is stale" not in caplog.text
+        assert "Cache renewed" not in caplog.text
+        caplog.clear()
+    time.sleep(EXPIRES_AFTER)
+    assert client["a"].read().sum() == 45
+    # Server is contacted to confirm cache is still valid ("renew" it).
+    # The cache is still valid. Content is read from cache.
+    assert "Cache is stale" in caplog.text
+    assert "Cache renewed" in caplog.text
+    assert "Cache read" in caplog.text
+    assert "Cache stored" not in caplog.text
+    caplog.clear()
+    # Change the content...
+    mapping["a"] = ArrayAdapter.from_array(2 * numpy.arange(10))
+    time.sleep(EXPIRES_AFTER)
+    assert client["a"].read().sum() == 2 * 45
+    # Server is contacted to confirm cache is still valid ("renew" it).
+    # The cache is NOT still valid. Content is read from server.
+    # Content is stored in cache.
+    assert "Cache is stale" in caplog.text
+    assert "Cache stored" in caplog.text
+    assert "Cache renewed" not in caplog.text
+    for record in caplog.records:
+        msg = record.getMessage()
+        if "/array/block" in msg:
+            assert "Cache read" not in msg
+
+
+@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
+def test_metadata_stale_at(caplog, cache, structure_clients):
+    """
+    Test that metadata_stale_at causes us to rely on the cache for some time.
     """
     logger.setLevel("DEBUG")
     EXPIRES_AFTER = 3  # seconds
@@ -121,6 +178,8 @@ def test_metadata_stale_after(caplog, cache, structure_clients):
         mapping,
         entries_stale_after=timedelta(seconds=1_000),
     )
+    # Monkey-patch this attribute on for now because we aren't decided
+    # how to best to expose this when initializing Adapters.
     mapping["a"].metadata_stale_at = datetime.utcnow() + timedelta(
         seconds=EXPIRES_AFTER
     )
