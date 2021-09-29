@@ -13,9 +13,10 @@ In this section we'll use the command-line HTTP client
 [httpie](https://httie.io/) and [jq](https://stedolan.github.io/jq/) to parse
 the JSON responses.
 
-Some Tiled servers handle credentials directly. Others refer the user to a web
-browser to authenticate with a third party (e.g. ORCID, Google) and return to
-Tiled with a token. We will demonstrate each in turn.
+Some Tiled servers are configured handle credentials directly. Others are
+configured to refer the user to a web browser to authenticate with a third party
+(e.g. ORCID, Google) and return to Tiled with a token. We will demonstrate each
+in turn.
 
 To test the first kind, we'll start a tiled server with a demo "toy"
 authentication system to work against. Save the following `config.yml` and start
