@@ -156,21 +156,30 @@ def declare_search_router(query_registry):
     ):
         request.state.endpoint = "search"
         try:
+            resource, metadata_stale_at = construct_entries_response(
+                query_registry,
+                entry,
+                "/search",
+                path,
+                offset,
+                limit,
+                fields,
+                filters,
+                sort,
+                _get_base_url(request),
+            )
+            # We only get one Expires header, so if different parts
+            # of this response become stale at different times, we
+            # cite the earliest one.
+            entries_stale_at = getattr(entry, "entries_stale_at", None)
+            if (metadata_stale_at is None) or (entries_stale_at is None):
+                expires = None
+            else:
+                expires = min(metadata_stale_at, entries_stale_at)
             return json_or_msgpack(
                 request,
-                construct_entries_response(
-                    query_registry,
-                    entry,
-                    "/search",
-                    path,
-                    offset,
-                    limit,
-                    fields,
-                    filters,
-                    sort,
-                    _get_base_url(request),
-                ),
-                expires=getattr(entry, "entries_stale_at", None),
+                resource,
+                expires=expires,
             )
         except NoEntry:
             raise HTTPException(status_code=404, detail="No such entry.")
@@ -262,22 +271,27 @@ async def entries(
 
     request.state.endpoint = "entries"
     try:
-        return json_or_msgpack(
-            request,
-            construct_entries_response(
-                query_registry,
-                entry,
-                "/entries",
-                path,
-                offset,
-                limit,
-                fields,
-                {},
-                sort,
-                _get_base_url(request),
-            ),
-            expires=getattr(entry, "entries_stale_at", None),
+        resource, metadata_stale_at = construct_entries_response(
+            query_registry,
+            entry,
+            "/entries",
+            path,
+            offset,
+            limit,
+            fields,
+            {},
+            sort,
+            _get_base_url(request),
         )
+        # We only get one Expires header, so if different parts
+        # of this response become stale at different times, we
+        # cite the earliest one.
+        entries_stale_at = getattr(entry, "entries_stale_at", None)
+        if (metadata_stale_at is None) or (entries_stale_at is None):
+            expires = None
+        else:
+            expires = min(metadata_stale_at, entries_stale_at)
+        return json_or_msgpack(request, resource, expires=expires)
     except NoEntry:
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:

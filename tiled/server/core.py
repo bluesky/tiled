@@ -2,6 +2,13 @@ import abc
 import collections.abc
 import contextlib
 import dataclasses
+<<<<<<< HEAD
+=======
+from datetime import datetime, timedelta
+import dateutil.tz
+from functools import lru_cache
+from hashlib import md5
+>>>>>>> Test entries_stale_at and metadata_stale_at.
 import itertools
 import json
 import math
@@ -301,10 +308,23 @@ def construct_entries_response(
             (key, None)
             for key in tree.keys_indexer[offset : offset + limit]  # noqa: E203
         )
+    # This value will not leak out. It just used to seed comparisons.
+    metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
     for key, entry in items:
         resource = construct_resource(base_url, path_parts + [key], entry, fields)
         data.append(resource)
-    return models.Response(data=data, links=links, meta={"count": count})
+        # If any entry has emtry.metadata_stale_at = None, then there will
+        # be no 'Expires' header. We will pessimistically assume the values
+        # are immediately stale.
+        if metadata_stale_at is not None:
+            if getattr(entry, "metadata_stale_at", None) is None:
+                metadata_stale_at = None
+            else:
+                metadata_stale_at = min(metadata_stale_at, entry.metadata_stale_at)
+    return (
+        models.Response(data=data, links=links, meta={"count": count}),
+        metadata_stale_at,
+    )
 
 
 DEFAULT_MEDIA_TYPES = {
