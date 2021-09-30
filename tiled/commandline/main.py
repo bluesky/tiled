@@ -15,28 +15,79 @@ cli_app.add_typer(
 
 @cli_app.command("login")
 def login(
-    tree: str = typer.Argument(..., help="Tree URI (http://...) or a profile name."),
+    uri_or_profile: str = typer.Argument(
+        ..., help="URI 'http[s]://...' or a profile name."
+    ),
     no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
+    show_secret_tokens: bool = typer.Option(
+        False, "--show-secret-tokens", help="Show secret tokens after successful login."
+    ),
 ):
-    from tiled.client.context import TreeValueError, login
+    """
+    Log in to an authenticated Tiled server.
+    """
     from tiled.client.utils import ClientError
 
+    options = {}
+    if no_verify:
+        options["verify"] = False
     try:
-        if no_verify:
-            login(tree, verify=False)
-        else:
-            # Defer to the profile, which may or may not verify.
-            login(tree)
-    except (TreeValueError, ClientError) as err:
+        client = _client_from_uri_or_profile(uri_or_profile, **options)
+    except (ValueError, ClientError) as err:
         (msg,) = err.args
         typer.echo(msg)
         raise typer.Abort()
+    if show_secret_tokens:
+        from pprint import pformat
+
+        typer.echo(pformat(dict(client.context.tokens)))
+
+
+@cli_app.command("sessions")
+def sessions(
+    show_secret_tokens: bool = typer.Option(
+        False, "--show-secret-tokens", help="Show secret (refresh) tokens."
+    ),
+):
+    """
+    List all authenticated Tiled sessions.
+    """
+    from tiled.client.context import sessions
+
+    if show_secret_tokens:
+        sessions_ = sessions()
+        max_netloc_len = max(len(netloc) for netloc in sessions_)
+        for netloc, token in sessions_.items():
+            typer.echo(f"{netloc}{' ' * (max_netloc_len - len(netloc))}   {token}")
+    else:
+        for netloc in sessions():
+            typer.echo(netloc)
+
+
+@cli_app.command("logout")
+def logout(
+    uri_or_profile: Optional[str] = typer.Argument(
+        None, help="URI 'http[s]://...' or a profile name. If blank, log out of all."
+    ),
+):
+    """
+    Log out from one or all authenticated Tiled servers.
+    """
+    from tiled.client.context import logout, logout_all
+
+    logged_out_from = []
+    if uri_or_profile is None:
+        logged_out_from.extend(logout_all())
+    else:
+        logged_out_from.append(logout(uri_or_profile))
+    for netloc in logged_out_from:
+        typer.echo(netloc)
 
 
 @cli_app.command("tree")
 def tree(
     uri_or_profile: str = typer.Argument(
-        ..., help="URI (http://...) or a profile name."
+        ..., help="URI 'http[s]://...' or a profile name."
     ),
     max_lines: int = typer.Argument(20, help="Max lines to show."),
     no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
@@ -66,7 +117,7 @@ def tree(
 @cli_app.command("download")
 def download(
     uri_or_profile: str = typer.Argument(
-        ..., help="URI (http://...) or a profile name."
+        ..., help="URI 'http[s]://...' or a profile name."
     ),
     cache_path: str = typer.Argument(..., help="Local directory for cache storage"),
     available_bytes: Optional[int] = None,

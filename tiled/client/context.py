@@ -11,11 +11,11 @@ import msgpack
 from .utils import (
     ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
-    EVENT_HOOKS,
     handle_error,
     NotAvailableOffline,
     UNSET,
 )
+from ..utils import DictView
 
 
 DEFAULT_TOKEN_CACHE = os.getenv(
@@ -32,96 +32,122 @@ def _token_directory(token_cache, netloc):
     )
 
 
-def login(
+def logout(
     uri_or_profile,
-    username=None,
-    authentication_uri=None,
-    verify=True,
     *,
     token_cache=DEFAULT_TOKEN_CACHE,
 ):
-    context = _context_from_uri_or_profile(
-        uri_or_profile, username, authentication_uri, token_cache, verify
-    )
-    # This has a side effect of storing the refresh token in the token_cache, if set.
-    return context.authenticate()
+    """
+    Logout of a given session.
+
+    If not logged in, calling this function has no effect.
+
+    Parameters
+    ----------
+    uri_or_profile : str
+    token_directory : str or Path, optional
+
+    Returns
+    -------
+    netloc : str
+    """
+    if isinstance(token_cache, (str, Path)):
+        netloc = _netloc_from_uri_or_profile(uri_or_profile)
+        directory = _token_directory(
+            token_cache,
+            netloc,
+        )
+    else:
+        netloc = None  # unknowable
+    token_cache = TokenCache(directory)
+    token_cache.pop("refresh_token", None)
+    return netloc
 
 
-def _context_from_uri_or_profile(
-    uri_or_profile,
-    username,
-    authentication_uri,
-    token_cache,
-    verify,
-    headers=None,
-):
-    headers = headers or {}
-    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
+def sessions(token_directory=DEFAULT_TOKEN_CACHE):
+    """
+    List all sessions.
+
+    Note that this may include expired sessions. It does not confirm that
+    any cached tokens are still valid.
+
+    Parameters
+    ----------
+    token_directory : str or Path, optional
+
+    Returns
+    -------
+    tokens : dict
+        Maps netloc to refresh_token
+    """
+    tokens = {}
+    for directory in Path(token_directory).iterdir():
+        if not directory.is_dir():
+            # Some stray file. Ignore it.
+            continue
+        refresh_token_file = directory / "refresh_token"
+        netloc = directory.name
+        if refresh_token_file.is_file():
+            with open(refresh_token_file) as file:
+                token = file.read()
+            tokens[netloc] = token
+    return tokens
+
+
+def logout_all(token_directory=DEFAULT_TOKEN_CACHE):
+    """
+    Logout of a all sessions.
+
+    If not logged in to any sessions, calling this function has no effect.
+
+    Parameters
+    ----------
+    token_directory : str or Path, optional
+
+    Returns
+    -------
+    logged_out_from : list
+        List of netloc of logged-out sessions
+    """
+    logged_out_from = []
+    for directory in Path(token_directory).iterdir():
+        if not directory.is_dir():
+            # Some stray file. Ignore it.
+            continue
+        refresh_token_file = directory / "refresh_token"
+        if refresh_token_file.is_file():
+            refresh_token_file.unlink()
+            netloc = directory.name
+            logged_out_from.append(netloc)
+    return logged_out_from
+
+
+def _netloc_from_uri_or_profile(uri_or_profile):
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
-        client = httpx.Client(
-            base_url=uri,
-            verify=verify,
-            event_hooks=EVENT_HOOKS,
-            headers=headers,
-            timeout=httpx.Timeout(5.0, read=20.0),
-        )
-        context = Context(
-            client,
-            username=username,
-            authentication_uri=authentication_uri,
-            token_cache=token_cache,
-        )
     else:
+        # Is this a profile name?
         from ..profiles import load_profiles
 
-        # Is this a profile name?
         profiles = load_profiles()
         if uri_or_profile in profiles:
             profile_name = uri_or_profile
-            filepath, profile_content = profiles[profile_name]
+            _, profile_content = profiles[profile_name]
             if "uri" in profile_content:
                 uri = profile_content["uri"]
-                verify = profile_content.get("verify", True)
-                headers.update(profile_content.get("headers", {}))
-                client = httpx.Client(
-                    base_url=uri,
-                    verify=verify,
-                    event_hooks=EVENT_HOOKS,
-                    headers=headers,
-                    timeout=httpx.Timeout(5.0, read=20.0),
-                )
-                context = Context(
-                    client,
-                    username=profile_content.get("username"),
-                    authentication_uri=profile_content.get("authentication_uri"),
-                    cache=profile_content.get("cache"),
-                    offline=profile_content.get("offline", False),
-                    token_cache=profile_content.get("token_cache", DEFAULT_TOKEN_CACHE),
-                )
-            elif "direct" in profile_content:
-                # The profiles specifies that there is no server. We should create
-                # an app ourselves and use it directly via ASGI.
-                from ..config import construct_serve_tree_kwargs
-
-                serve_tree_kwargs = construct_serve_tree_kwargs(
-                    profile_content.pop("direct", None), source_filepath=filepath
-                )
-                context = context_from_tree(**serve_tree_kwargs, **profile_content)
             else:
-                raise ValueError("Invalid profile content")
+                raise ValueError(
+                    "Logout does not apply to profiles with inline ('direct') "
+                    "server configuration."
+                )
         else:
-            raise TreeValueError(
+            raise ValueError(
                 f"Not sure what to do with tree {uri_or_profile!r}. "
                 "It does not look like a URI (it does not start with http[s]://) "
                 "and it does not match any profiles."
             )
-    return context
-
-
-class TreeValueError(ValueError):
-    pass
+    return httpx.URL(uri).netloc
 
 
 class CannotRefreshAuthentication(Exception):
@@ -159,6 +185,10 @@ class Context:
             )
             token_cache = TokenCache(directory)
         self._token_cache = token_cache
+        # The token *cache* is optional. The tokens attrbiute is always present,
+        # and it isn't actually used for anything internally. It's just a view
+        # of the current tokens.
+        self._tokens = {}
         self._app = app
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
@@ -196,6 +226,11 @@ class Context:
             # Strip "/metadata"
             path_parts.pop(0)
         self._path_parts = path_parts
+
+    @property
+    def tokens(self):
+        "A view of the current access and refresh tokens."
+        return DictView(self._tokens)
 
     @property
     def offline(self):
@@ -374,6 +409,9 @@ Navigate web browser to this address to obtain access code:
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
             self._token_cache["refresh_token"] = refresh_token
+        self._tokens.update(
+            refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
+        )
         return tokens
 
     def reauthenticate(self, prompt_on_failure=True):
@@ -394,6 +432,17 @@ Navigate web browser to this address to obtain access code:
         response = self._client.send(request)
         handle_error(response)
         return response.json()["username"]
+
+    def logout(self):
+        """
+        Clear the access token and the cached refresh token.
+
+        This method is idempotent.
+        """
+        self._client.headers.pop("Authentication", None)
+        if self._token_cache is not None:
+            self._token_cache.pop("refresh_token", None)
+        self._tokens.clear()
 
     def _refresh(self, refresh_token=None):
         if refresh_token is None:
@@ -433,6 +482,9 @@ Navigate web browser to this address to obtain access code:
         access_token = tokens["access_token"]
         auth_header = f"Bearer {access_token}"
         self._client.headers["authorization"] = auth_header
+        self._tokens.update(
+            refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
+        )
         return tokens
 
 

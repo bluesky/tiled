@@ -278,7 +278,6 @@ the same source directory as the `tiled.client.cache` module. (Cachey itself
    tiled.client.context.Context.get_content
    tiled.client.context.Context.base_url
    tiled.client.context.Context.path_parts
-   tiled.client.context.logout
    tiled.client.context.logout_all
    tiled.client.context.sessions
 ```

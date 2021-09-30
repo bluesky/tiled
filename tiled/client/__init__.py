@@ -5,5 +5,5 @@ from .constructors import (  # noqa: F401
     from_profile,
     from_uri,
 )
-from .context import login  # noqa: F401
+from .context import logout, logout_all, sessions
 from .node import ASCENDING, DESCENDING  # noqa: F401
