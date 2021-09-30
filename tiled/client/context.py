@@ -439,7 +439,7 @@ Navigate web browser to this address to obtain access code:
 
         This method is idempotent.
         """
-        self._client.headers.pop("Authentication", None)
+        self._client.headers.pop("Authorization", None)
         if self._token_cache is not None:
             self._token_cache.pop("refresh_token", None)
         self._tokens.clear()
