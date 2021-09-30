@@ -9,6 +9,7 @@ tutorials/navigation
 tutorials/slicing
 tutorials/caching
 tutorials/export
+tutorials/login
 tutorials/serving-files
 tutorials/search
 tutorials/plotly-integration

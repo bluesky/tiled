@@ -269,11 +269,16 @@ the same source directory as the `tiled.client.cache` module. (Cachey itself
    :toctree: generated
 
    tiled.client.context.Context
-   tiled.client.context.Context.get_json
-   tiled.client.context.Context.get_content
+   tiled.client.context.Context.offline
    tiled.client.context.Context.authenticate
    tiled.client.context.Context.reauthenticate
-   tiled.client.context.Context.offline
+   tiled.client.context.Context.logout
+   tiled.client.context.Context.tokens
+   tiled.client.context.Context.get_json
+   tiled.client.context.Context.get_content
    tiled.client.context.Context.base_url
    tiled.client.context.Context.path_parts
+   tiled.client.context.logout
+   tiled.client.context.logout_all
+   tiled.client.context.sessions
 ```
