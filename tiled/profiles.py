@@ -36,13 +36,15 @@ def schema():
 
 # Paths later in the list ("closer" to the user) have higher precedence.
 paths = [
-    os.getenv(
-        "TILED_SITE_PROFILES",
-        Path(appdirs.site_config_dir("tiled"), "profiles"),
+    Path(
+        os.getenv(
+            "TILED_SITE_PROFILES",
+            Path(appdirs.site_config_dir("tiled"), "profiles"),
+        )
     ),  # system
     Path(sys.prefix, "etc", "tiled", "profiles"),  # environment
-    os.getenv(
-        "TILED_PROFILES", Path(appdirs.user_config_dir("tiled"), "profiles")
+    Path(
+        os.getenv("TILED_PROFILES", Path(appdirs.user_config_dir("tiled"), "profiles"))
     ),  # user
 ]
 
