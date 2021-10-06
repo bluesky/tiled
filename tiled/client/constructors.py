@@ -7,7 +7,7 @@ import httpx
 from .context import context_from_tree, Context, DEFAULT_TOKEN_CACHE
 from .node import Node
 from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS
-from ..utils import import_object
+from ..utils import import_object, prepend_to_sys_path
 
 
 def from_uri(
@@ -260,6 +260,8 @@ def from_profile(name, structure_clients=None, **kwargs):
 
     Any additional parameters override profile content. See from_uri for details.
     """
+    # We accept structure_clients as a separate parameter so that it
+    # may be invoked positionally, as in from_profile("...", "dask").
     from ..profiles import load_profiles, paths, ProfileNotFound
 
     profiles = load_profiles()
@@ -289,22 +291,42 @@ def from_profile(name, structure_clients=None, **kwargs):
             # Interpret this as a Cache object passed in directly.
             cache = cache_config
         merged["cache"] = cache
-    structure_clients_ = merged.pop("structure_clients", None)
-    if structure_clients_ is not None:
-        if isinstance(structure_clients_, str):
-            # Nothing to do.
-            merged["structure_clients"] = structure_clients_
-        else:
-            # This is a dict mapping structure families like "array" and "dataframe"
-            # to values. The values may be client objects or importable strings.
+    # Below, we may convert importable strings like
+    # "package.module:obj" to live objects. Include the profile's
+    # source directory in the import path, temporarily.
+    with prepend_to_sys_path(filepath.parent):
+        structure_clients_ = merged.pop("structure_clients", None)
+        if structure_clients_ is not None:
+            if isinstance(structure_clients_, str):
+                # Nothing to do.
+                merged["structure_clients"] = structure_clients_
+            else:
+                # This is a dict mapping structure families like "array" and "dataframe"
+                # to values. The values may be client objects or importable strings.
+                result = {}
+                for key, value in structure_clients_.items():
+                    if isinstance(value, str):
+                        class_ = import_object(value, accept_live_object=True)
+                    else:
+                        class_ = value
+                    result[key] = class_
+                merged["structure_clients"] = result
+        special_clients_ = merged.pop("special_clients", None)
+        if special_clients_ is not None:
+            # This is a dict mapping specs like "BlueskyRun" to values. The
+            # values may be client objects or importable strings.
             result = {}
-            for key, value in structure_clients_.items():
+            for key, value in special_clients_.items():
                 if isinstance(value, str):
-                    class_ = import_object(value)
+                    try:
+                        class_ = import_object(value, accept_live_object=True)
+                    except Exception:
+                        breakpoint()
+                        raise
                 else:
                     class_ = value
                 result[key] = class_
-            merged["structure_clients"] = result
+            merged["special_clients"] = result
     if "direct" in merged:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.

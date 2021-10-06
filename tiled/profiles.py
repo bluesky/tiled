@@ -17,7 +17,7 @@ import warnings
 import appdirs
 import jsonschema
 
-from .utils import import_object, parse, prepend_to_sys_path
+from .utils import parse
 
 
 __all__ = ["list_profiles", "load_profiles", "paths"]
@@ -201,20 +201,6 @@ def load_profiles():
     """
     levels = gather_profiles(paths, strict=False)
     profiles = resolve_precedence(levels)
-    # Convert import paths like "package.module:obj" to the live object.
-    for (source_path, content) in profiles.values():
-        with prepend_to_sys_path(os.path.dirname(source_path)):
-            structure_clients = content.get("structure_clients", {})
-            if not isinstance(structure_clients, str):
-                for k, v in list(structure_clients.items()):
-                    content["structure_clients"][k] = import_object(
-                        v, accept_live_object=True
-                    )
-            special_clients = content.get("special_clients", {})
-            for k, v in list(special_clients.items()):
-                content["special_clients"][k] = import_object(
-                    v, accept_live_object=True
-                )
     return profiles
 
 
