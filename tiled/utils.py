@@ -432,7 +432,8 @@ def prepend_to_sys_path(*paths):
     "Temporarily prepend items to sys.path."
 
     for item in reversed(paths):
-        sys.path.insert(0, item)
+        # Ensure item is str (not pathlib.Path).
+        sys.path.insert(0, str(item))
     try:
         yield
     finally:

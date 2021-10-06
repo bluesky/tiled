@@ -38,11 +38,11 @@ def schema():
 paths = [
     os.getenv(
         "TILED_SITE_PROFILES",
-        os.path.join(appdirs.site_config_dir("tiled"), "profiles"),
+        Path(appdirs.site_config_dir("tiled"), "profiles"),
     ),  # system
-    os.path.join(sys.prefix, "etc", "tiled", "profiles"),  # environment
+    Path(sys.prefix, "etc", "tiled", "profiles"),  # environment
     os.getenv(
-        "TILED_PROFILES", os.path.join(appdirs.user_config_dir("tiled"), "profiles")
+        "TILED_PROFILES", Path(appdirs.user_config_dir("tiled"), "profiles")
     ),  # user
 ]
 
@@ -54,24 +54,24 @@ def gather_profiles(paths, strict=True):
     levels = []
     for path in paths:
         filepath_to_content = {}
-        if os.path.isdir(path):
-            for filename in os.listdir(path):
-                filepath = os.path.join(path, filename)
+        if path.is_dir():
+            for filename in path.iterdir():
+                filepath = path / filename
                 # Ignore hidden files and .py files.
                 if (
-                    filename.startswith(".")
-                    or filename.endswith(".py")
-                    or filename == "__pycache__"
+                    filename.name.startswith(".")
+                    or filename.suffix == ".py"
+                    or filename.name == "__pycache__"
                 ):
                     continue
                 try:
                     with open(filepath) as file:
                         content = parse(file)
                         if content is None:
-                            raise ProfileError("File {filepath} is empty.")
+                            raise ProfileError("File {filepath!s} is empty.")
                         if not isinstance(content, collections.abc.Mapping):
                             raise ProfileError(
-                                "File {filepath} does not have the expected structure."
+                                "File {filepath!s} does not have the expected structure."
                             )
                         for profile_name, profile_content in content.items():
                             try:
@@ -82,7 +82,7 @@ def gather_profiles(paths, strict=True):
                                 original_msg = validation_err.args[0]
                                 raise ProfileError(
                                     f"ValidationError while parsing profile {profile_name} "
-                                    f"in file {filepath}: {original_msg}"
+                                    f"in file {filepath!s}: {original_msg}"
                                 ) from validation_err
                             if len(profile_content.get("cache", {})) > 1:
                                 raise ProfileError(
@@ -95,7 +95,7 @@ def gather_profiles(paths, strict=True):
                         raise
                     else:
                         warnings.warn(
-                            f"Skipping {filepath!r}. Failed to parse with error: {err!r}."
+                            f"Skipping {filepath!s}. Failed to parse with error: {err!r}."
                         )
                         continue
                 if not isinstance(content, collections.abc.Mapping):
@@ -160,7 +160,7 @@ defines a profile with the name {profile_name!r}.
 
 The profile will be ommitted. Fix this by removing one of the duplicates"""
     for profile_name, filepaths in collisions.items():
-        if filepaths[0].startswith(paths[-1]):
+        if filepaths[0].is_relative_to(paths[-1]):
             msg = (MSG + ".").format(
                 filepaths="\n".join(filepaths), profile_name=profile_name
             )
