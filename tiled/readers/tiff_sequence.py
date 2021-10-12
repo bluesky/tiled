@@ -73,11 +73,11 @@ class TiffSequenceReader:
 
         # Print("Inside Reader:", slice)
         if slice is None:
-            return with_object_cache(self._cache_key, self._seq.asarray)
+            return with_object_cache(self._cache_key, _safe_asarray, self._seq)
         if isinstance(slice, int):
             # e.g. read(slice=0)
             return with_object_cache(
-                self._cache_key + (slice,), self._seq.asarray, file=slice
+                self._cache_key + (slice,), _safe_asarray, self._seq, index=slice
             )
         # e.g. read(slice=(...))
         if isinstance(slice, tuple):
@@ -87,7 +87,7 @@ class TiffSequenceReader:
             if isinstance(image_axis, int):
                 # e.g. read(slice=(0, ....))
                 arr = with_object_cache(
-                    self._cache_key + (image_axis,), self._seq.asarray, file=image_axis
+                    self._cache_key + (image_axis,), _safe_asarray, self._seq, index=image_axis
                 )
             if isinstance(image_axis, builtins.slice):
                 if image_axis.start is None:
@@ -101,7 +101,7 @@ class TiffSequenceReader:
                 arr = numpy.stack(
                     [
                         with_object_cache(
-                            self._cache_key + (i,), self._seq.asarray, file=i
+                            self._cache_key + (i,), _safe_asarray, self._seq, index=i
                         )
                         for i in range(slice_start, image_axis.stop, slice_step)
                     ]
@@ -120,7 +120,7 @@ class TiffSequenceReader:
                 slice_step = slice.step
             arr = numpy.stack(
                 [
-                    with_object_cache(self._cache_key + (i,), self._seq.asarray, file=i)
+                    with_object_cache(self._cache_key + (i,), _safe_asarray, self._seq, index=i)
                     for i in range(slice_start, slice.stop, slice_step)
                 ]
             )
@@ -151,3 +151,17 @@ class TiffSequenceReader:
                 (shape[2],),
             ),
         )
+
+
+def _safe_asarray(seq, index=None):
+    """
+    Wrap FileSequence.asarray to cope with this brekaing change in tifffile.
+
+    https://github.com/cgohlke/tifffile/commit/18315846ebf0b31126dfdeffee8e0ef30d81b31c#diff-d8d5cccae6533b861bdf6c0c20c6f49415978effec9a13797909535f3fc7390dL9563-R9746  # noqa
+    """
+
+    try:
+        return seq.asarray(index=index)
+    except TypeError:
+        # usage for versions before 2021.10.10
+        return seq.asarray(file=index)
