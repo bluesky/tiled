@@ -322,9 +322,7 @@ def array_full(
 
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read()
-        if slice:
-            array = array[slice]
+            array = reader.read(slice)
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
