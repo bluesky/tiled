@@ -458,7 +458,7 @@ Navigate web browser to this address to obtain access code:
                 )
         token_request = self._client.build_request(
             "POST",
-            f"{self._authentication_uri}/auth/token/refresh",
+            f"{self._authentication_uri}auth/token/refresh",
             json={"refresh_token": refresh_token},
             # Submit CSRF token in both header and cookie.
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
