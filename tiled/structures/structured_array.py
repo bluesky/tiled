@@ -6,7 +6,7 @@ import numpy
 
 from .array import MachineDataType as BuiltinType, ArrayMacroStructure
 from ..media_type_registration import serialization_registry
-
+from ..utils import NumpySafeJSONEncoder
 
 @dataclass
 class Field:
@@ -146,7 +146,7 @@ serialization_registry.register(
 serialization_registry.register(
     "structured_array_generic",
     "application/json",
-    lambda array, metadata: json.dumps(array.tolist()).encode(),
+    lambda array, metadata: json.dumps(array.tolist(), cls=NumpySafeJSONEncoder).encode(),
 )
 serialization_registry.register(
     "structured_array_tabular",
@@ -156,5 +156,5 @@ serialization_registry.register(
 serialization_registry.register(
     "structured_array_tabular",
     "application/json",
-    lambda array, metadata: json.dumps(array.tolist()).encode(),
+    lambda array, metadata: json.dumps(array.tolist(), cls=NumpySafeJSONEncoder).encode(),
 )

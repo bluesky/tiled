@@ -2,6 +2,7 @@ import string
 import warnings
 
 import dask.array
+import math
 import numpy
 import pytest
 
@@ -67,3 +68,19 @@ def test_shape_with_zero():
     client = from_tree(tree)
     actual = client["test"].read()
     assert numpy.array_equal(actual, expected)
+
+
+def test_infinity_handler():
+    data=numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf])
+    metadata={"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
+    inf_tree = Tree({"example": ArrayAdapter.from_array(data, metadata=metadata)}, metadata=metadata)
+    client = from_tree(inf_tree)
+    print(f"Metadata: {client['example'].metadata}")
+    print(f"Data: {client['example'].read()}")
+    client['example'].export('/tmp/test.json')
+    
+    import json
+    def strict_parse_constant(c):
+        raise ValueError(f"{c} is not valid JSON")
+    
+    json.load(open('/tmp/test.json', 'r'), parse_constant=strict_parse_constant)

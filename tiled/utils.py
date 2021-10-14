@@ -1,14 +1,19 @@
 import collections.abc
 import contextlib
 import builtins
+import dateutil.tz
 import enum
 import importlib
 import importlib.util
+import json
 import operator
 import os
 import sys
 import threading
 
+from datetime import datetime
+
+_LOCAL_TZINFO = dateutil.tz.gettz()
 
 class ListView(collections.abc.Sequence):
     "An immutable view of a list."
@@ -448,6 +453,88 @@ class MissingDependency(ModuleNotFoundError):
 class UnrecognizedExtension(ValueError):
     pass
 
+
+class NumpySafeJSONEncoder(json.JSONEncoder):
+    """
+    A json.JSONEncoder for encoding numpy objects using built-in Python types.
+
+    Examples
+    --------
+
+    Encode a Python object that includes an arbitrarily-nested numpy object.
+
+    >>> json.dumps({'a': {'b': numpy.array([1, 2, 3])}}, cls=NumpyEncoder)
+    """
+
+    def default(self, obj):
+        # JSON cannot represent the unicode/bytes distinction, so we send str.
+        # Msgpack *does* understand this distinction so clients can use that
+        # format if they care about the distinction.
+        if isinstance(obj, bytes):
+            return obj.decode()
+        # If numpy has not been imported yet, then we can be sure that obj
+        # is not a numpy object, and we want to avoid triggering a numpy
+        # import. (The server does not have a hard numpy dependency.)
+        if "numpy" in sys.modules:
+            import numpy
+
+            if isinstance(obj, (numpy.generic, numpy.ndarray)):
+                if numpy.isscalar(obj):
+                    return obj.item()
+                return obj.tolist()
+        if isinstance(obj, datetime):
+            # JSON has no datetime type, so we fall back to a string
+            # representation. If the client wants clarity about what
+            # is a datetime and what is a string-that-looks-like-a-datetime
+            # the client should request msgpack, which has higher data
+            # type fidelity in general.
+
+            # If this is naive, assign local timezone to be self-consistent
+            # with msgpack. (Msgpack requires us to set a timezone.)
+            if obj.tzinfo is None:
+                return obj.astimezone(_LOCAL_TZINFO).isoformat()
+            else:
+                return obj.isoformat()
+        return super().default(obj)
+    
+    
+    def iterencode(self, o, _one_shot=False):
+        """Encode the given object and yield each string
+        representation as available.
+        For example::
+            for chunk in JSONEncoder().iterencode(bigobject):
+                mysocket.write(chunk)
+        """
+        if self.check_circular:
+            markers = {}
+        else:
+            markers = None
+        if self.ensure_ascii:
+            _encoder = json.encoder.encode_basestring_ascii
+        else:
+            _encoder = json.encoder.encode_basestring
+
+        def floatstr(o, allow_nan=self.allow_nan,
+                _repr=float.__repr__, _inf= json.encoder.INFINITY, _neginf=-json.encoder.INFINITY):
+            # Check for specials.  Note that this type of test is processor
+            # and/or platform-specific, so do tests which don't depend on the
+            # internals.
+
+            if o != o:
+                text = '"NaN"'
+            elif o == _inf:
+                text = '"Infinity"'
+            elif o == _neginf:
+                text = '"-Infinity"'
+            else:
+                return _repr(o)
+
+            if not allow_nan:
+                raise ValueError(
+                    "Out of range float values are not JSON compliant: " +
+                    repr(o))
+
+            return text
 
 # The MIME type vnd.apache.arrow.file is provisional. See:
 # https://lists.apache.org/thread.html/r9b462400a15296576858b52ae22e73f13c3e66f031757b2c9522f247%40%3Cdev.arrow.apache.org%3E  # noqa

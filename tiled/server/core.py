@@ -24,7 +24,7 @@ from starlette.responses import JSONResponse, StreamingResponse, Send
 from . import models
 from .authentication import get_current_user
 from .etag import tokenize
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available, NumpySafeJSONEncoder
 from ..query_registration import query_registry as default_query_registry
 from ..queries import KeyLookup, QueryValueError
 from ..media_type_registration import (
@@ -590,7 +590,7 @@ class NumpySafeJSONResponse(JSONResponse):
             # Fast (optimistic) path
             return super().render(content)
         except Exception:
-            return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
+            return json.dumps(content, cls=NumpySafeJSONEncoder).encode()
 
 
 def _numpy_safe_msgpack_encoder(obj):

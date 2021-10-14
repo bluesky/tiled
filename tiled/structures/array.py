@@ -10,7 +10,7 @@ from typing import Tuple
 import numpy
 
 from ..media_type_registration import serialization_registry, deserialization_registry
-from ..utils import modules_available
+from ..utils import modules_available, NumpySafeJSONEncoder
 
 
 class Endianness(str, enum.Enum):
@@ -164,7 +164,7 @@ serialization_registry.register(
 serialization_registry.register(
     "array",
     "application/json",
-    lambda array, metadata: json.dumps(array.tolist()).encode(),
+    lambda array, metadata: json.dumps(array.tolist(), cls=NumpySafeJSONEncoder).encode(),
 )
 
 
