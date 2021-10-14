@@ -155,7 +155,7 @@ class TiffSequenceReader:
 
 def _safe_asarray(seq, index=None):
     """
-    Wrap FileSequence.asarray to cope with this brekaing change in tifffile.
+    Wrap FileSequence.asarray to cope with this breaking change in tifffile.
 
     https://github.com/cgohlke/tifffile/commit/18315846ebf0b31126dfdeffee8e0ef30d81b31c#diff-d8d5cccae6533b861bdf6c0c20c6f49415978effec9a13797909535f3fc7390dL9563-R9746  # noqa
     """
