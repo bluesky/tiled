@@ -164,7 +164,9 @@ serialization_registry.register(
 serialization_registry.register(
     "array",
     "application/json",
-    lambda array, metadata: json.dumps(array.tolist(), cls=NumpySafeJSONEncoder).encode(),
+    lambda array, metadata: json.dumps(
+        array.tolist(), cls=NumpySafeJSONEncoder
+    ).encode(),
 )
 
 
@@ -207,9 +209,7 @@ if modules_available("PIL"):
         return numpy.asarray(image).asdtype(dtype).reshape(shape)
 
     serialization_registry.register(
-        "array",
-        "image/png",
-        lambda array, metadata: save_to_buffer_PIL(array, "png"),
+        "array", "image/png", lambda array, metadata: save_to_buffer_PIL(array, "png"),
     )
     deserialization_registry.register(
         "array",
@@ -234,14 +234,10 @@ if modules_available("tifffile"):
         return file.getbuffer()
 
     serialization_registry.register(
-        "array",
-        "image/tiff",
-        save_to_buffer_tifffile,
+        "array", "image/tiff", save_to_buffer_tifffile,
     )
     deserialization_registry.register(
-        "array",
-        "image/tiff",
-        array_from_buffer_tifffile,
+        "array", "image/tiff", array_from_buffer_tifffile,
     )
 
 
@@ -265,7 +261,5 @@ def serialize_html(array, metadata):
 
 
 serialization_registry.register(
-    "array",
-    "text/html",
-    serialize_html,
+    "array", "text/html", serialize_html,
 )

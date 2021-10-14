@@ -101,9 +101,7 @@ def entry(
         raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
 
 
-def reader(
-    entry: Any = Depends(entry),
-):
+def reader(entry: Any = Depends(entry),):
     "Specify a path parameter and use it to look up a reader."
     if not isinstance(entry, DuckReader):
         raise HTTPException(status_code=404, detail="This is not a Reader.")
@@ -133,9 +131,7 @@ def expected_shape(
     return tuple(map(int, expected_shape.split(",")))
 
 
-def slice_(
-    slice: str = Query(None, regex="^[0-9,:]*$"),
-):
+def slice_(slice: str = Query(None, regex="^[0-9,:]*$"),):
     "Specify and parse a block index parameter."
     import numpy
 
@@ -225,16 +221,7 @@ class DuckTree(metaclass=abc.ABCMeta):
 
 
 def construct_entries_response(
-    query_registry,
-    tree,
-    route,
-    path,
-    offset,
-    limit,
-    fields,
-    filters,
-    sort,
-    base_url,
+    query_registry, tree, route, path, offset, limit, fields, filters, sort, base_url,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     if not isinstance(tree, DuckTree):

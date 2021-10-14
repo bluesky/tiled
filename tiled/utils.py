@@ -15,6 +15,7 @@ from datetime import datetime
 
 _LOCAL_TZINFO = dateutil.tz.gettz()
 
+
 class ListView(collections.abc.Sequence):
     "An immutable view of a list."
 
@@ -496,8 +497,7 @@ class NumpySafeJSONEncoder(json.JSONEncoder):
             else:
                 return obj.isoformat()
         return super().default(obj)
-    
-    
+
     def iterencode(self, o, _one_shot=False):
         """Encode the given object and yield each string
         representation as available.
@@ -514,8 +514,13 @@ class NumpySafeJSONEncoder(json.JSONEncoder):
         else:
             _encoder = json.encoder.encode_basestring
 
-        def floatstr(o, allow_nan=self.allow_nan,
-                _repr=float.__repr__, _inf= json.encoder.INFINITY, _neginf=-json.encoder.INFINITY):
+        def floatstr(
+            o,
+            allow_nan=self.allow_nan,
+            _repr=float.__repr__,
+            _inf=json.encoder.INFINITY,
+            _neginf=-json.encoder.INFINITY,
+        ):
             # Check for specials.  Note that this type of test is processor
             # and/or platform-specific, so do tests which don't depend on the
             # internals.
@@ -531,10 +536,11 @@ class NumpySafeJSONEncoder(json.JSONEncoder):
 
             if not allow_nan:
                 raise ValueError(
-                    "Out of range float values are not JSON compliant: " +
-                    repr(o))
+                    "Out of range float values are not JSON compliant: " + repr(o)
+                )
 
             return text
+
 
 # The MIME type vnd.apache.arrow.file is provisional. See:
 # https://lists.apache.org/thread.html/r9b462400a15296576858b52ae22e73f13c3e66f031757b2c9522f247%40%3Cdev.arrow.apache.org%3E  # noqa
