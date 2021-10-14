@@ -27,6 +27,7 @@ from .core import (
     PatchedStreamingResponse,
     record_timing,
 )
+from .metrics import capture_request_metrics
 from .object_cache import (
     ObjectCache,
     logger as object_cache_logger,
@@ -144,7 +145,13 @@ def get_app(
     )
 
     @app.middleware("http")
-    async def add_server_timing_header(request: Request, call_next):
+    async def capture_metrics(request: Request, call_next):
+        """
+        This does two things:
+
+        - Place metrics in Server-Timing header, in accordance with HTTP spec.
+        - Capture metrics in prometheus. The proemetheus metrics are availabe from /metrics.
+        """
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
         # https://w3c.github.io/server-timing/#the-server-timing-header-field
         # This information seems safe to share because the user can easily
@@ -157,12 +164,24 @@ def get_app(
         # Record the overall application time.
         with record_timing(metrics, "app"):
             response = await call_next(request)
+        # Server-Timing specifies times should be in milliseconds.
+        # Prometheus specifies times should be in seconds.
+        # Therefore, we store as seconds and convert to ms for Server-Timing here.
+        # That is what the factor of 1000 below is doing.
         response.headers["Server-Timing"] = ", ".join(
             f"{key};"
-            + ";".join(f"{metric}={value:.1f}" for metric, value in metrics_.items())
+            + ";".join(
+                (
+                    f"{metric}={value * 1000:.1f}"
+                    if metric == "dur"
+                    else "{metric}={value:.1f}"
+                )
+                for metric, value in metrics_.items()
+            )
             for key, metrics_ in metrics.items()
         )
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        capture_request_metrics(request, response)
         return response
 
     @app.middleware("http")

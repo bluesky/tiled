@@ -6,6 +6,7 @@ fastapi
 jsonschema
 msgpack
 psutil
+prometheus_client
 pydantic
 python-dateutil
 python-jose[cryptography]

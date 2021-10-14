@@ -3,7 +3,8 @@ from hashlib import md5
 import inspect
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, REGISTRY
 from pydantic import BaseSettings
 
 from .authentication import (
@@ -99,6 +100,16 @@ async def about(
                 ),
             },
         ),
+    )
+
+
+@router.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics
+    """
+    return Response(
+        generate_latest(REGISTRY), headers={"Content-Type": CONTENT_TYPE_LATEST}
     )
 
 

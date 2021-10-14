@@ -102,7 +102,7 @@ class CompressionResponder:
                         # CompressionMiddleware, formats these metrics alongside
                         # others in the Server-Timing header.
                         self.scope["state"]["metrics"]["compress"] = {
-                            "dur": 1000 * compression_time,  # Units: ms
+                            "dur": compression_time,  # Units: seconds
                             "ratio": compression_ratio,
                         }
 

@@ -722,4 +722,4 @@ def record_timing(metrics, key):
     """
     t0 = time.perf_counter()
     yield
-    metrics[key]["dur"] += 1000 * (time.perf_counter() - t0)  # Units: ms
+    metrics[key]["dur"] += time.perf_counter() - t0  # Units: seconds
