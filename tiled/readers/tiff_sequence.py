@@ -87,7 +87,10 @@ class TiffSequenceReader:
             if isinstance(image_axis, int):
                 # e.g. read(slice=(0, ....))
                 arr = with_object_cache(
-                    self._cache_key + (image_axis,), _safe_asarray, self._seq, index=image_axis
+                    self._cache_key + (image_axis,),
+                    _safe_asarray,
+                    self._seq,
+                    index=image_axis,
                 )
             if isinstance(image_axis, builtins.slice):
                 if image_axis.start is None:
@@ -120,7 +123,9 @@ class TiffSequenceReader:
                 slice_step = slice.step
             arr = numpy.stack(
                 [
-                    with_object_cache(self._cache_key + (i,), _safe_asarray, self._seq, index=i)
+                    with_object_cache(
+                        self._cache_key + (i,), _safe_asarray, self._seq, index=i
+                    )
                     for i in range(slice_start, slice.stop, slice_step)
                 ]
             )
