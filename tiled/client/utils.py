@@ -19,6 +19,8 @@ UNSET = Sentinel("UNSET")
 
 
 def handle_error(response):
+    if not response.is_error:
+        return
     try:
         response.raise_for_status()
     except httpx.RequestError:
