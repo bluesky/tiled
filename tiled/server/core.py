@@ -344,6 +344,7 @@ def construct_data_response(
     format=None,
     specs=None,
 ):
+    request.state.endpoint = "data"
     if specs is None:
         specs = []
     default_media_type = DEFAULT_MEDIA_TYPES[structure_family]

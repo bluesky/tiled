@@ -181,6 +181,7 @@ async def auth_code(
     authenticator: Any = Depends(get_authenticator),
     settings: BaseSettings = Depends(get_settings),
 ):
+    request.state.endpoint = "auth"
     username = await authenticator.authenticate(request)
     if not username:
         raise HTTPException(
@@ -201,10 +202,12 @@ async def auth_code(
     "/auth/token", response_model=AccessAndRefreshTokens
 )
 async def login_for_access_token(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     authenticator: Any = Depends(get_authenticator),
     settings: BaseSettings = Depends(get_settings),
 ):
+    request.state.endpoint = "auth"
     if authenticator is None:
         if settings.allow_anonymous_access:
             msg = "This is a public Tiled server with no login."
@@ -258,10 +261,12 @@ async def login_for_access_token(
     include_in_schema=False,
 )  # back-compat alias
 async def post_token_refresh(
+    request: Request,
     refresh_token: RefreshToken,
     settings: BaseSettings = Depends(get_settings),
 ):
     "Obtain a new access token and refresh token."
+    request.state.endpoint = "auth"
     new_tokens = slide_session(refresh_token.refresh_token, settings)
     return new_tokens
 
@@ -309,7 +314,8 @@ def slide_session(refresh_token, settings):
 
 @external_authentication_router.get("/auth/whoami")
 @password_authentication_router.get("/auth/whoami")
-async def whoami(current_user: str = Depends(get_current_user)):
+async def whoami(request: Request, current_user: str = Depends(get_current_user)):
+    request.state.endpoint = "auth"
     return {"username": current_user}
 
 
@@ -322,8 +328,10 @@ async def whoami(current_user: str = Depends(get_current_user)):
     "/logout", include_in_schema=False
 )  # back-compat alias
 async def logout(
+    request: Request,
     response: Response,
 ):
+    request.state.endpoint = "auth"
     response.delete_cookie(API_KEY_COOKIE_NAME)
     response.delete_cookie(CSRF_COOKIE_NAME)
     return {}

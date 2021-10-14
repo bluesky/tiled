@@ -57,6 +57,7 @@ async def about(
     # helpful for discovery! The registration can be made non-lazy, while the
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
     # etc.) can remain lazy.
+    request.state.endpoint = "about"
     if (authenticator is None) and has_single_user_api_key:
         if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
             request.state.cookies_to_set.append(
@@ -104,10 +105,11 @@ async def about(
 
 
 @router.get("/metrics")
-async def metrics():
+async def metrics(request: Request):
     """
     Prometheus metrics
     """
+    request.state.endpoint = "metrics"
     return Response(
         generate_latest(REGISTRY), headers={"Content-Type": CONTENT_TYPE_LATEST}
     )
@@ -133,6 +135,7 @@ def declare_search_router(query_registry):
         query_registry=Depends(get_query_registry),
         **filters,
     ):
+        request.state.endpoint = "search"
         try:
             return json_or_msgpack(
                 request.headers,
@@ -208,6 +211,7 @@ async def metadata(
 ):
     "Fetch the metadata for one Tree or Reader."
 
+    request.state.endpoint = "metadata"
     base_url = _get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
     resource = construct_resource(base_url, path_parts, entry, fields)
@@ -232,6 +236,7 @@ async def entries(
 ):
     "List the entries in a Tree, which may be sub-Trees or Readers."
 
+    request.state.endpoint = "entries"
     try:
         return json_or_msgpack(
             request.headers,
@@ -576,6 +581,7 @@ def dataframe_meta(
     """
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
     """
+    request.state.endpoint = "data"
     if reader.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
@@ -608,6 +614,7 @@ def dataframe_divisions(
     """
     Fetch the Apache Arrow serialization of the index values at the partition edges.
     """
+    request.state.endpoint = "data"
     if reader.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
