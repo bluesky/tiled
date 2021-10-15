@@ -524,7 +524,6 @@ class NumpySafeJSONEncoder(json.JSONEncoder):
             # Check for specials.  Note that this type of test is processor
             # and/or platform-specific, so do tests which don't depend on the
             # internals.
-
             if o != o:
                 text = '"NaN"'
             elif o == _inf:
@@ -540,6 +539,19 @@ class NumpySafeJSONEncoder(json.JSONEncoder):
                 )
 
             return text
+        
+        if (_one_shot and json.encoder.c_make_encoder is not None
+                and self.indent is None):
+            _iterencode = json.encoder.c_make_encoder(
+                markers, self.default, _encoder, self.indent,
+                self.key_separator, self.item_separator, self.sort_keys,
+                self.skipkeys, self.allow_nan)
+        else:
+            _iterencode = json.encoder._make_iterencode(
+                markers, self.default, _encoder, self.indent, floatstr,
+                self.key_separator, self.item_separator, self.sort_keys,
+                self.skipkeys, _one_shot)
+        return _iterencode(o, 0)
 
 
 # The MIME type vnd.apache.arrow.file is provisional. See:
