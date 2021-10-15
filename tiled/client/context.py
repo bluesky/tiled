@@ -13,7 +13,6 @@ from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
     handle_error,
     NotAvailableOffline,
-    UNSET,
 )
 from ..utils import DictView
 
@@ -251,7 +250,7 @@ class Context:
         "httpx.Client event hooks. This is exposed for testing."
         return self._client.event_hooks
 
-    def get_content(self, path, accept=None, timeout=UNSET, stream=False, **kwargs):
+    def get_content(self, path, accept=None, stream=False, **kwargs):
         request = self._client.build_request("GET", path, **kwargs)
         if accept:
             request.headers["Accept"] = accept
@@ -268,7 +267,7 @@ class Context:
             return content
         if self._cache is None:
             # No cache, so we can use the client straightforwardly.
-            response = self._send(request, stream=stream, timeout=timeout)
+            response = self._send(request, stream=stream)
             handle_error(response)
             if response.headers.get("content-encoding") == "blosc":
                 import blosc
@@ -280,7 +279,7 @@ class Context:
         try:
             if reservation is not None:
                 request.headers["If-None-Match"] = reservation.etag
-            response = self._send(request, stream=stream, timeout=timeout)
+            response = self._send(request, stream=stream)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
                 # Read from the cache
@@ -314,16 +313,11 @@ class Context:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def _send(self, request, timeout=UNSET, stream=False, attempts=0):
+    def _send(self, request, stream=False, attempts=0):
         """
-        Handle httpx's timeout API, which uses a special internal sentinel to mean
-        "no timeout" and therefore must not be passed any value (including None)
-        if we want no timeout.
+        If sending results in an authentication error, reauthenticate.
         """
-        if timeout is UNSET:
-            response = self._client.send(request, stream=stream)
-        else:
-            response = self._client.send(request, stream=stream, timeout=timeout)
+        response = self._client.send(request, stream=stream)
         if (response.status_code == 401) and (attempts == 0):
             # Try refreshing the token.
             tokens = self.reauthenticate()
@@ -334,7 +328,7 @@ class Context:
             access_token = tokens["access_token"]
             auth_header = f"Bearer {access_token}"
             request.headers["authorization"] = auth_header
-            return self._send(request, timeout, stream=stream, attempts=1)
+            return self._send(request, stream=stream, attempts=1)
         return response
 
     def authenticate(self):

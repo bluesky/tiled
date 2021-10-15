@@ -6,7 +6,7 @@ import weakref
 
 import httpx
 
-from .utils import Sentinel
+from ..utils import Sentinel
 
 
 class AsyncClientBridge:

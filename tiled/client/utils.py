@@ -3,7 +3,7 @@ from pathlib import Path
 
 import httpx
 
-from ..utils import modules_available, Sentinel
+from ..utils import modules_available
 
 
 # By default, the token in the authentication header is redacted from the logs.
@@ -14,8 +14,6 @@ TILED_LOG_AUTH_TOKEN = int(os.getenv("TILED_LOG_AUTH_TOKEN", False))
 DEFAULT_ACCEPTED_ENCODINGS = ["gzip"]
 if modules_available("blosc"):
     DEFAULT_ACCEPTED_ENCODINGS.append("blosc")
-
-UNSET = Sentinel("UNSET")
 
 
 def handle_error(response):
