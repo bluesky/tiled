@@ -174,7 +174,7 @@ def get_app(
                 (
                     f"{metric}={value * 1000:.1f}"
                     if metric == "dur"
-                    else "{metric}={value:.1f}"
+                    else f"{metric}={value:.1f}"
                 )
                 for metric, value in metrics_.items()
             )
