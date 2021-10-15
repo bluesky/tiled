@@ -13,6 +13,7 @@ from ..structures.xarray import (
 
 from .array import ArrayClient, DaskArrayClient
 from .base import BaseArrayClient
+from .utils import export_util
 
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
@@ -107,6 +108,11 @@ class DaskVariableClient(BaseArrayClient):
             filepath, format=format, slice=slice, link=link, template_vars=template_vars
         )
 
+    @property
+    def formats(self):
+        "List formats that the server can export this data as."
+        return self.context.get_json("")["formats"]["variable"]
+
 
 class VariableClient(DaskVariableClient):
 
@@ -124,7 +130,14 @@ class DaskDataArrayClient(BaseArrayClient):
     STRUCTURE_TYPE = DataArrayStructure  # used by base class
     VARIABLE_CLIENT = DaskVariableClient  # overriden in subclass
 
-    def __init__(self, *args, route="/data_array/block", variable_name=None, coords=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        route="/data_array/block",
+        variable_name=None,
+        coords=None,
+        **kwargs,
+    ):
         super().__init__(*args, route=route, **kwargs)
         self._coords = coords
         self._variable_name = variable_name  # if this is contained by a DatasetClient
@@ -260,14 +273,20 @@ class DaskDataArrayClient(BaseArrayClient):
             # This is a stand-alone DataArray.
             template_vars.update({"variable": self._variable_name})
         self._build_variable_client(variable).export(
-            filepath, format=format, slice=slice, link="full_variable", template_vars=template_vars
+            filepath,
+            format=format,
+            slice=slice,
+            link="full_variable",
+            template_vars=template_vars,
         )
-
 
     def export_all(self, filepath, format=None, slice=None):
         """
         Export data and coords.
         """
+        # The server has no endpoint for this.
+        # It's not clear if there any any appropriate formats for it.
+        # Export the whole Dataset instead.
         raise NotImplementedError
 
 
@@ -434,6 +453,38 @@ class DaskDatasetClient(BaseArrayClient):
         # `coord_name in ds`, but they are not included in the result of
         # `list(ds)`.
         yield from self.structure().macro.data_vars
+
+    def export(self, filepath, format=None, variables=None):
+        """
+        Download data in some format and write to a file.
+
+        Parameters
+        ----------
+        file: str or buffer
+            Filepath or writeable buffer.
+        format : str, optional
+            If format is None and `file` is a filepath, the format is inferred
+            from the name, like 'table.csv' implies format="text/csv". The format
+            may be given as a file extension ("csv") or a media type ("text/csv").
+        variables: List[str], optional
+        """
+        params = {}
+        if variables is not None:
+            # Note: The singular/plural inconsistency here is due to the fact that
+            # ["A", "B"] will be encoded in the URL as variable=A&variable=B
+            params["variable"] = ",".join(variables)
+        return export_util(
+            filepath,
+            format,
+            self.context.get_content,
+            self.item["links"]["full_dataset"],
+            params=params,
+        )
+
+    @property
+    def formats(self):
+        "List formats that the server can export this data as."
+        return self.context.get_json("")["formats"]["dataset"]
 
 
 class DatasetClient(DaskDatasetClient):

@@ -144,6 +144,13 @@ def test_export_xarray_dataset_coord(filename, structure_clients, tmpdir):
     )
 
 
+@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
+@pytest.mark.parametrize("filename", ["test.nc"])
+def test_export_xarray_dataset_all(filename, structure_clients, tmpdir):
+    client = from_tree(tree, structure_clients=structure_clients)
+    client["structured_data"]["xarray_dataset"].export(Path(tmpdir, filename))
+
+
 def test_path_as_Path_or_string(tmpdir):
     client = from_tree(tree)
     client["A"].export(Path(tmpdir, "test_path_as_path.txt"))

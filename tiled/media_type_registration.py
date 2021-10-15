@@ -29,11 +29,20 @@ class SerializationRegistry:
 
     """
 
+    # Supplement the defaults we get from the mimetypes module.
+    DEFAULT_ALIASES = {
+        "nc": "application/netcdf",
+        "text": "text/plain",
+        "txt": "text/plain",
+    }
+
     def __init__(self):
         self._lookup = defaultdict(dict)
         # TODO Think about whether lazy registration makes any sense here.
         self._custom_aliases_by_type = defaultdict(list)
         self._custom_aliases = {}
+        for ext, media_type in self.DEFAULT_ALIASES.items():
+            self.register_alias(ext, media_type)
 
     def media_types(self, structure_family):
         """
@@ -55,8 +64,8 @@ class SerializationRegistry:
         """
         result = {}
         for media_type in self.media_types(structure_family):
-            if media_type == "application/octet-stream":
-                # Skip the general binary type; it doesn't really apply.
+            # Skip types that are mapped to a zoo of file extension that do not apply.
+            if media_type in {"application/octet-stream", "text/plain"}:
                 continue
             aliases = []
             for k, v in mimetypes.types_map.items():

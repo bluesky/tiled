@@ -1132,6 +1132,7 @@ def dataset_full(
                 format,
             )
     except UnsupportedMediaTypes as err:
+        breakpoint()
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 
