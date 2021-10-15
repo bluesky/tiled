@@ -369,14 +369,20 @@ class DaskDatasetClient(BaseArrayClient):
     def data_vars(self):
         structure = self.structure().macro
         coords = self._build_coords_clients(structure)
-        return self._build_data_vars_clients(structure, coords)
+        # Turn off wide table optimization so that we return normal
+        # [Dask]DataArrayClients and not internal _MockClients.
+        return self._build_data_vars_clients(
+            structure, coords, optimize_wide_table=False
+        )
 
     @property
     def coords(self):
         structure = self.structure().macro
         return self._build_coords_clients(structure)
 
-    def _build_data_vars_clients(self, structure, coords, variables=None):
+    def _build_data_vars_clients(
+        self, structure, coords, variables=None, optimize_wide_table=True
+    ):
         data_vars_clients = {}
         wide_table_fetcher = _WideTableFetcher(
             self.context.get_content, self.item["links"]["full_dataset"], coords
@@ -387,8 +393,10 @@ class DaskDatasetClient(BaseArrayClient):
 
             # Optimization: Download scalar data as DataFrame.
             data_shape = data_array.macro.variable.macro.data.macro.shape
-            if (data_shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION) and (
-                len(data_shape) < 2
+            if (
+                optimize_wide_table
+                and (data_shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
+                and (len(data_shape) < 2)
             ):
                 data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
             else:
