@@ -75,7 +75,7 @@ async def about(
             auth_endpoint = authenticator.authorization_endpoint
 
     return json_or_msgpack(
-        request.headers,
+        request,
         models.About(
             library_version=__version__,
             api_version=0,
@@ -138,7 +138,7 @@ def declare_search_router(query_registry):
         request.state.endpoint = "search"
         try:
             return json_or_msgpack(
-                request.headers,
+                request,
                 construct_entries_response(
                     query_registry,
                     entry,
@@ -220,7 +220,7 @@ async def metadata(
         if (root_path is not None)
         else {}
     )
-    return json_or_msgpack(request.headers, models.Response(data=resource, meta=meta))
+    return json_or_msgpack(request, models.Response(data=resource, meta=meta))
 
 
 @router.get("/entries/{path:path}", response_model=models.Response)
@@ -239,7 +239,7 @@ async def entries(
     request.state.endpoint = "entries"
     try:
         return json_or_msgpack(
-            request.headers,
+            request,
             construct_entries_response(
                 query_registry,
                 entry,

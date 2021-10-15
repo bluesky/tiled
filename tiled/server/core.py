@@ -583,15 +583,21 @@ class _NumpySafeJSONEncoder(json.JSONEncoder):
 
 
 class NumpySafeJSONResponse(JSONResponse):
+    def __init__(self, *args, metrics, **kwargs):
+        self.__metrics = metrics
+        super().__init__(*args, **kwargs)
+
     def render(self, content: Any) -> bytes:
         # Try the built-in rendering. If it fails, do the more
         # expensive walk to convert any bytes objects to unicode
         # and any numpy objects to builtins.
         try:
             # Fast (optimistic) path
-            return super().render(content)
+            with record_timing(self.__metrics, "pack"):
+                return super().render(content)
         except Exception:
-            return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
+            with record_timing(self.__metrics, "pack"):
+                return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
 
 
 def _numpy_safe_msgpack_encoder(obj):
@@ -632,11 +638,16 @@ def _patch_naive_datetimes(obj):
 class MsgpackResponse(Response):
     media_type = "application/x-msgpack"
 
+    def __init__(self, *args, metrics, **kwargs):
+        self.__metrics = metrics
+        super().__init__(*args, **kwargs)
+
     def render(self, content: Any, _reentered=False) -> bytes:
         try:
-            return msgpack.packb(
-                content, default=_numpy_safe_msgpack_encoder, datetime=True
-            )
+            with record_timing(self.__metrics, "pack"):
+                return msgpack.packb(
+                    content, default=_numpy_safe_msgpack_encoder, datetime=True
+                )
         except TypeError as err:
             # msgpack tries to handle all datetimes, but if it
             # received a naive one (tzinfo=None) then it fails.
@@ -654,8 +665,8 @@ JSON_MIME_TYPE = "application/json"
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
 
-def json_or_msgpack(request_headers, content):
-    media_types = request_headers.get("Accept", JSON_MIME_TYPE).split(", ")
+def json_or_msgpack(request, content):
+    media_types = request.headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
             media_type = JSON_MIME_TYPE
@@ -673,13 +684,17 @@ def json_or_msgpack(request_headers, content):
     assert media_type in {JSON_MIME_TYPE, MSGPACK_MIME_TYPE}
     content_as_dict = content.dict()
     etag = md5(str(content_as_dict).encode()).hexdigest()
-    if request_headers.get("If-None-Match", "") == etag:
+    if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
         return Response(status_code=304)
     headers = {"ETag": etag}
     if media_type == "application/x-msgpack":
-        return MsgpackResponse(content_as_dict, headers=headers)
-    return NumpySafeJSONResponse(content_as_dict, headers=headers)
+        return MsgpackResponse(
+            content_as_dict, headers=headers, metrics=request.state.metrics
+        )
+    return NumpySafeJSONResponse(
+        content_as_dict, headers=headers, metrics=request.state.metrics
+    )
 
 
 class UnsupportedMediaTypes(Exception):
