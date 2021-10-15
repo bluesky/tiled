@@ -1,10 +1,10 @@
 import dataclasses
+from functools import lru_cache
 from hashlib import md5
 import inspect
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, REGISTRY
 from pydantic import BaseSettings
 
 from .authentication import (
@@ -104,15 +104,33 @@ async def about(
     )
 
 
+@lru_cache()
+def prometheus_registry():
+    """
+    Configure prometheus_client.
+
+    This is run the first time the /metrics endpoint is used.
+    """
+    # The multiprocess configuration makes it compatible with gunicorn.
+    # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
+    from prometheus_client import CollectorRegistry
+    from prometheus_client.multiprocess import MultiProcessCollector
+
+    registry = CollectorRegistry()
+    MultiProcessCollector(registry)  # This has a side effect, apparently.
+    return registry
+
+
 @router.get("/metrics")
 async def metrics(request: Request):
     """
     Prometheus metrics
     """
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
     request.state.endpoint = "metrics"
-    return Response(
-        generate_latest(REGISTRY), headers={"Content-Type": CONTENT_TYPE_LATEST}
-    )
+    data = generate_latest(prometheus_registry())
+    return Response(data, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
 def declare_search_router(query_registry):
