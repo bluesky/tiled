@@ -97,11 +97,17 @@ def test_dataset_coord_access():
     xarray.testing.assert_equal(actual, expected)
 
     # Coordinate on dataset
-    actual = client_dataset.coords["time"]
+    actual = client_dataset.coords["time"].read()
     expected = expected_dataset.coords["time"]
     xarray.testing.assert_equal(actual, expected)
     # Circular reference
-    actual = client_dataset.coords["time"].coords["time"].coords["time"].coords["time"]
+    actual = (
+        client_dataset.coords["time"]
+        .read()
+        .coords["time"]
+        .coords["time"]
+        .coords["time"]
+    )
     xarray.testing.assert_equal(actual, expected)
 
 

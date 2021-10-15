@@ -1012,7 +1012,7 @@ def dataset_data_var_full(
         )
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read_variable(variable)
+            array = reader.read_variable(variable).data
     except KeyError:
         raise HTTPException(
             status_code=400,
@@ -1020,7 +1020,7 @@ def dataset_data_var_full(
         )
     if coord is not None:
         try:
-            array = array.coords[coord]
+            array = array.coords[coord].data
         except KeyError:
             raise HTTPException(
                 status_code=400,
@@ -1068,7 +1068,7 @@ def dataset_coord_full(
         )
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read_variable(coord)
+            array = reader.read_variable(coord).data
     except KeyError:
         raise HTTPException(
             status_code=400,

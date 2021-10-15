@@ -26,7 +26,7 @@ class DaskVariableClient(BaseArrayClient):
     def __init__(self, *args, route="/variable/block", **kwargs):
         super().__init__(*args, route=route, **kwargs)
 
-    def _build_array_reader(self, structure):
+    def _build_array_client(self, structure):
         return self.ARRAY_CLIENT(
             context=self.context,
             item=self.item,
@@ -38,7 +38,7 @@ class DaskVariableClient(BaseArrayClient):
 
     @property
     def data(self):
-        return self._build_array_reader(self.structure().macro)
+        return self._build_array_client(self.structure().macro)
 
     def read_block(self, block, slice=None):
         """
@@ -52,7 +52,7 @@ class DaskVariableClient(BaseArrayClient):
         structure = self.structure().macro
         return xarray.Variable(
             dims=structure.dims,
-            data=self._build_array_reader(structure).read(slice),
+            data=self._build_array_client(structure).read(slice),
             attrs=structure.attrs,
         )
 
@@ -69,6 +69,43 @@ class DaskVariableClient(BaseArrayClient):
     def touch(self):
         super().touch()
         self.read().compute()
+
+    def export(self, filepath, format=None, slice=None, link=None, template_vars=None):
+        """
+        Download data in some format and write to a file.
+
+        Parameters
+        ----------
+        file: str or buffer
+            Filepath or writeable buffer.
+        format : str, optional
+            If format is None and `file` is a filepath, the format is inferred
+            from the name, like 'table.csv' implies format="text/csv". The format
+            may be given as a file extension ("csv") or a media type ("text/csv").
+        slice : List[slice], optional
+            List of slice objects. A convenient way to generate these is shown
+            in the examples.
+        link: str, optional
+            Used internally. Refers to a key in the dictionary of links sent
+            from the server.
+        template_vars: dict, optional
+            Used internally.
+
+        Examples
+        --------
+
+        Export all.
+
+        >>> a.export("numbers.csv")
+
+        Export an N-dimensional slice.
+
+        >>> import numpy
+        >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
+        """
+        self._build_array_client(self.structure().macro).export(
+            filepath, format=format, slice=slice, link=link, template_vars=template_vars
+        )
 
 
 class VariableClient(DaskVariableClient):
@@ -87,19 +124,13 @@ class DaskDataArrayClient(BaseArrayClient):
     STRUCTURE_TYPE = DataArrayStructure  # used by base class
     VARIABLE_CLIENT = DaskVariableClient  # overriden in subclass
 
-    def __init__(self, *args, route="/data_array/block", coords=None, **kwargs):
+    def __init__(self, *args, route="/data_array/block", variable_name=None, coords=None, **kwargs):
         super().__init__(*args, route=route, **kwargs)
         self._coords = coords
+        self._variable_name = variable_name  # if this is contained by a DatasetClient
 
-    def read_block(self, block, slice=None):
-        """
-        Read a block (optional sub-sliced) of array data from this DataArray's Variable.
-
-        Intended for advanced uses. Returns array-like, not Variable.
-        """
-        structure = self.structure().macro
-        variable = structure.variable
-        client = self.VARIABLE_CLIENT(
+    def _build_variable_client(self, variable):
+        return self.VARIABLE_CLIENT(
             context=self.context,
             item=self.item,
             path=self.path,
@@ -107,6 +138,15 @@ class DaskDataArrayClient(BaseArrayClient):
             structure=variable,
             route=self._route,
         )
+
+    def read_block(self, block, slice=None):
+        """
+        Read a block (optional sub-sliced) of array data from this DataArray's Variable.
+
+        Intended for advanced uses. Returns array-like, not Variable.
+        """
+        variable = self.structure().macro.variable
+        client = self._build_variable_client(variable)
         return client.read_block(block, slice)
 
     @property
@@ -185,6 +225,50 @@ class DaskDataArrayClient(BaseArrayClient):
     def touch(self):
         super().touch()
         self.read().compute()
+
+    def export_array(self, filepath, format=None, slice=None):
+        """
+        Download data in some format and write to a file.
+
+        Parameters
+        ----------
+        file: str or buffer
+            Filepath or writeable buffer.
+        format : str, optional
+            If format is None and `file` is a filepath, the format is inferred
+            from the name, like 'table.csv' implies format="text/csv". The format
+            may be given as a file extension ("csv") or a media type ("text/csv").
+        slice : List[slice]
+            List of slice objects. A convenient way to generate these is shown
+            in the examples.
+
+        Examples
+        --------
+
+        Export all.
+
+        >>> a.export("numbers.csv")
+
+        Export an N-dimensional slice.
+
+        >>> import numpy
+        >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
+        """
+        variable = self.structure().macro.variable
+        template_vars = {}
+        if self._variable_name is not None:
+            # This is a stand-alone DataArray.
+            template_vars.update({"variable": self._variable_name})
+        self._build_variable_client(variable).export(
+            filepath, format=format, slice=slice, link="full_variable", template_vars=template_vars
+        )
+
+
+    def export_all(self, filepath, format=None, slice=None):
+        """
+        Export data and coords.
+        """
+        raise NotImplementedError
 
 
 class DataArrayClient(DaskDataArrayClient):
@@ -265,15 +349,15 @@ class DaskDatasetClient(BaseArrayClient):
     @property
     def data_vars(self):
         structure = self.structure().macro
-        coords = self._build_coords(structure)
-        return self._build_data_vars(structure, coords)
+        coords = self._build_coords_clients(structure)
+        return self._build_data_vars_clients(structure, coords)
 
     @property
     def coords(self):
         structure = self.structure().macro
-        return self._build_coords(structure)
+        return self._build_coords_clients(structure)
 
-    def _build_data_vars(self, structure, coords, variables=None):
+    def _build_data_vars_clients(self, structure, coords, variables=None):
         data_vars_clients = {}
         wide_table_fetcher = _WideTableFetcher(
             self.context.get_content, self.item["links"]["full_dataset"], coords
@@ -297,13 +381,12 @@ class DaskDatasetClient(BaseArrayClient):
                     structure=data_array,
                     coords=coords,
                     route=self._route,
+                    variable_name=name,
                 )
                 data_vars_clients[name] = client
-        # We deferred read() to the end for WideTableFetcher.
-        data_vars = {k: v.read() for k, v in data_vars_clients.items()}
-        return data_vars
+        return data_vars_clients
 
-    def _build_coords(self, structure):
+    def _build_coords_clients(self, structure):
         coords = {}
         for name, variable in structure.coords.items():
             # Xarray greedily materializes coordiantes; they are not allowed to
@@ -311,21 +394,24 @@ class DaskDatasetClient(BaseArrayClient):
             # may be DaskDataArrayClient, then each DataArray separately calls
             # compute() and redundantly issues the same request. To avoid that,
             # we fetch greedily here.
-            data_array_source = DataArrayClient(
+            client = DataArrayClient(
                 context=self.context,
                 item=self.item,
                 path=self.path,
                 params={"coord": name, **self._params},
                 structure=variable,
                 route=self._route,
+                variable_name=name,
             )
-            coords[name] = data_array_source.read()
+            coords[name] = client
         return coords
 
     def read(self, variables=None):
         structure = self.structure().macro
-        coords = self._build_coords(structure)
-        data_vars = self._build_data_vars(structure, coords, variables)
+        coords_clients = self._build_coords_clients(structure)
+        coords = {k: v.read() for k, v in coords_clients.items()}
+        data_vars_clients = self._build_data_vars_clients(structure, coords, variables)
+        data_vars = {k: v.read() for k, v in data_vars_clients.items()}
         ds = xarray.Dataset(
             data_vars=data_vars,
             coords=coords,

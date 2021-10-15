@@ -139,7 +139,7 @@ class DaskArrayClient(BaseArrayClient):
         super().touch()
         self.read().compute()
 
-    def export(self, filepath, format=None, slice=None):
+    def export(self, filepath, format=None, slice=None, link=None, template_vars=None):
         """
         Download data in some format and write to a file.
 
@@ -151,9 +151,14 @@ class DaskArrayClient(BaseArrayClient):
             If format is None and `file` is a filepath, the format is inferred
             from the name, like 'table.csv' implies format="text/csv". The format
             may be given as a file extension ("csv") or a media type ("text/csv").
-        slice : List[slice]
+        slice : List[slice], optional
             List of slice objects. A convenient way to generate these is shown
             in the examples.
+        link: str, optional
+            Used internally. Refers to a key in the dictionary of links sent
+            from the server.
+        template_vars: dict, optional
+            Used internally.
 
         Examples
         --------
@@ -167,6 +172,10 @@ class DaskArrayClient(BaseArrayClient):
         >>> import numpy
         >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
         """
+        # For array, this is always 'full', but xarray clients set a custom link.
+        if link is None:
+            link = "full"
+        template_vars = template_vars or {}
         params = {}
         if slice is not None:
             slices = []
@@ -194,7 +203,7 @@ class DaskArrayClient(BaseArrayClient):
             filepath,
             format,
             self.context.get_content,
-            self.item["links"]["full"],
+            self.item["links"][link].format(**template_vars),
             params=params,
         )
 
