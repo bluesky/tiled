@@ -193,13 +193,7 @@ class Context:
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        handshake_request = self._client.build_request("GET", self._authentication_uri)
-        # If an Authorization header is set, that's for the Resource server.
-        # Do not include it in the request to the Authentication server.
-        handshake_request.headers.pop("Authorization", None)
-        handshake_response = self._send(handshake_request)
-        handle_error(handshake_response)
-        self._handshake_data = handshake_response.json()
+        self._handshake_data = self.get_json(self._authentication_uri)
 
         # Ask the server what its root_path is.
         if (not offline) and (
