@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 import numpy
+import orjson
 
 from ..media_type_registration import serialization_registry
 from .array import ArrayMacroStructure
@@ -147,7 +148,8 @@ serialization_registry.register(
 serialization_registry.register(
     "structured_array_generic",
     "application/json",
-    lambda array, metadata: json.dumps(array.tolist()).encode(),
+    #lambda array, metadata: json.dumps(array.tolist()).encode(),
+    lambda array, metadata: orjson.dumps(array.tolist()).encode(),
 )
 serialization_registry.register(
     "structured_array_tabular",
@@ -157,5 +159,6 @@ serialization_registry.register(
 serialization_registry.register(
     "structured_array_tabular",
     "application/json",
-    lambda array, metadata: json.dumps(array.tolist()).encode(),
+    # lambda array, metadata: json.dumps(array.tolist()).encode(),
+    lambda array, metadata: orjson.dumps(array.tolist()).encode(),
 )

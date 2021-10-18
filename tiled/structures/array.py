@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 import numpy
+import orjson
 
 from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import modules_available
@@ -160,7 +161,8 @@ serialization_registry.register(
 serialization_registry.register(
     "array",
     "application/json",
-    lambda array, metadata: json.dumps(array.tolist()).encode(),
+    # lambda array, metadata: json.dumps(array.tolist()).encode(),
+    lambda array, metadata: orjson.dumps(array.tolist()).encode(),
 )
 
 

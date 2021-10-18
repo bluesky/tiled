@@ -6,6 +6,7 @@ import itertools
 import json
 import math
 import operator
+import orjson
 import re
 import sys
 import time
@@ -579,7 +580,8 @@ class NumpySafeJSONResponse(JSONResponse):
                 return super().render(content)
         except Exception:
             with record_timing(self.__metrics, "pack"):
-                return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
+                # return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
+                return orjson.dumps(content).encode()
 
 
 def _numpy_safe_msgpack_encoder(obj):
