@@ -239,6 +239,17 @@ class DataFrameClient(DaskDataFrameClient):
         """
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
+        if self.structure().macro.npartitions == 1:
+            # Fast path: download the entire dataframe using /dataframe/full/
+            content = self.context.get_content(
+                f"/dataframe/full/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
+                params=self._params,
+                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                )
+            return deserialization_registry(
+                "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content
+                )
+        
         return super().read(columns).compute()
 
     def touch(self):
