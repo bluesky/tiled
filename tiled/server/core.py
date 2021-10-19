@@ -6,7 +6,6 @@ import itertools
 import json
 import math
 import operator
-import orjson
 import re
 import sys
 import time
@@ -18,6 +17,7 @@ from typing import Any, Optional
 
 import dateutil.tz
 import msgpack
+import orjson
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse

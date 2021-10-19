@@ -1,18 +1,15 @@
-from pathlib import Path
-
+import math
 import string
 import warnings
+from pathlib import Path
 
 import dask.array
-import math
 import numpy
-from pathlib import Path
 import pytest
 
 from ..client import from_tree
 from ..readers.array import ArrayAdapter
 from ..trees.in_memory import Tree
-
 
 array_cases = {
     "b": (numpy.arange(10) % 2).astype("b"),
