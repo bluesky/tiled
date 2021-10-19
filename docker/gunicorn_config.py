@@ -9,3 +9,11 @@ worker_tmp_dir = "/dev/shm"
 errorlog = "-"
 accesslog = "-"
 loglevel = "debug"
+capture_output = True
+
+
+# https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
+import prometheus_client.multiprocess
+
+def child_exit(server, worker):
+    prometheus_client.multiprocess.mark_process_dead(worker.pid)
