@@ -1,15 +1,15 @@
-from pathlib import Path
 import shutil
 import time
+from pathlib import Path
 
 import numpy
 import pytest
 import tifffile
 
 from ..client import from_config
-from ..examples.generate_files import generate_files, df1, data
+from ..examples.generate_files import data, df1, generate_files
 from ..readers.array import ArrayAdapter
-from ..trees.files import Change, DEFAULT_POLL_INTERVAL, strip_suffixes
+from ..trees.files import DEFAULT_POLL_INTERVAL, Change, strip_suffixes
 
 
 @pytest.fixture
@@ -32,8 +32,8 @@ def test_from_directory(example_data_dir):
                 "tree": "tiled.trees.files:Tree.from_directory",
                 "path": "/",
                 "args": {"directory": str(example_data_dir)},
-            },
-        ],
+            }
+        ]
     }
     client = from_config(config)
     arr = client["c"].read()
@@ -44,12 +44,8 @@ def test_files_config_alias(example_data_dir):
     """Test the config alias 'files' for 'tiled.trees.files:Tree.from_directory"""
     config = {
         "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": str(example_data_dir)},
-            },
-        ],
+            {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}
+        ]
     }
     # Testing successful construction is sufficient.
     from_config(config)
@@ -59,12 +55,8 @@ def test_item_added(example_data_dir):
     """Test that an added file or directory is detected."""
     config = {
         "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": str(example_data_dir)},
-            },
-        ],
+            {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}
+        ]
     }
     client = from_config(config)
 
@@ -92,12 +84,8 @@ def test_item_removed(example_data_dir):
     """Test that file and directory removal are detected."""
     config = {
         "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": str(example_data_dir)},
-            },
-        ],
+            {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}
+        ]
     }
     client = from_config(config)
 
@@ -122,12 +110,8 @@ def test_collision_at_startup(example_data_dir):
     """Test that files which produce key collisions are ignored until the collision is resolved."""
     config = {
         "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": str(example_data_dir)},
-            },
-        ],
+            {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}
+        ]
     }
 
     # Add a.tiff which will collide with a.tif.
@@ -154,12 +138,8 @@ def test_collision_after_startup(example_data_dir):
     """Test that files which produce key collisions are ignored until the collision is resolved."""
     config = {
         "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": str(example_data_dir)},
-            },
-        ],
+            {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}
+        ]
     }
 
     client = from_config(config)
@@ -185,12 +165,8 @@ def test_remove_and_re_add(example_data_dir):
     """Test that removing and re-adding a file does not constitute a collision."""
     config = {
         "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": str(example_data_dir)},
-            },
-        ],
+            {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}
+        ]
     }
 
     client = from_config(config)
@@ -214,8 +190,7 @@ def test_remove_and_re_add(example_data_dir):
 
 
 @pytest.mark.parametrize(
-    ("filename", "expected"),
-    [("a.txt", "a"), ("a.tar.gz", "a"), ("a", "a")],
+    ("filename", "expected"), [("a.txt", "a"), ("a.tar.gz", "a"), ("a", "a")]
 )
 def test_strip_suffixes(filename, expected):
     actual = strip_suffixes(filename)
@@ -228,15 +203,7 @@ def test_same_filename_separate_directory(tmpdir):
     Path(tmpdir, "two").mkdir()
     df1.to_csv(Path(tmpdir, "one", "a.csv"))
     df1.to_csv(Path(tmpdir, "two", "a.csv"))
-    config = {
-        "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": tmpdir},
-            },
-        ],
-    }
+    config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
     client = from_config(config)
     assert "a" in client["one"]
     assert "a" in client["two"]
@@ -273,8 +240,8 @@ def test_subdirectory_handler(tmpdir):
                     "directory": tmpdir,
                     "subdirectory_handler": example_subdirectory_handler,
                 },
-            },
-        ],
+            }
+        ]
     }
     client = from_config(config)
     client["individual_files"]

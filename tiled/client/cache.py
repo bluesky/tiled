@@ -10,13 +10,13 @@ We opted for an independent implementation because reusing cachey would have req
 The original cachey license (which, like Tiled's, is 3-clause BSD) is included in
 the same source directory as this module.
 """
-from collections import defaultdict
 import collections.abc
 import functools
 import hashlib
+import threading
+from collections import defaultdict
 from math import log
 from pathlib import Path
-import threading
 
 from heapdict import heapdict
 
@@ -194,8 +194,9 @@ class Cache:
             Determines which items to evict from the cache when it grows full.
             See tiled.client.cache.Scorer for example.
         """
-        import locket
         import shutil
+
+        import locket
 
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
@@ -469,12 +470,7 @@ def tokenize_url(url):
     """
     return hashlib.md5(
         b"".join(
-            [
-                url[0],
-                url[1],
-                f":{url[2]}".encode(),  # e.g. 8000 -> b'8000'
-                *url[3:],
-            ]
+            [url[0], url[1], f":{url[2]}".encode(), *url[3:]]  # e.g. 8000 -> b'8000'
         )
     ).hexdigest()
 

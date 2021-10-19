@@ -3,20 +3,22 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
-from collections import defaultdict
 import copy
-from functools import lru_cache
 import os
+from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 
 import jsonschema
 
-from .utils import import_object, parse, prepend_to_sys_path
 from .media_type_registration import (
-    serialization_registry as default_serialization_registry,
     compression_registry as default_compression_registry,
 )
+from .media_type_registration import (
+    serialization_registry as default_serialization_registry,
+)
 from .query_registration import query_registry as default_query_registry
+from .utils import import_object, parse, prepend_to_sys_path
 
 
 @lru_cache(maxsize=1)
@@ -348,7 +350,7 @@ def direct_access_from_profile(name):
     service-side Tree instance directly, not wrapped in a client.
     """
 
-    from .profiles import load_profiles, paths, ProfileNotFound
+    from .profiles import ProfileNotFound, load_profiles, paths
 
     profiles = load_profiles()
     try:

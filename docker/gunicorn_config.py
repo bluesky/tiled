@@ -1,3 +1,11 @@
+# https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
+import prometheus_client.multiprocess
+
+
+def child_exit(server, worker):
+    prometheus_client.multiprocess.mark_process_dead(worker.pid)
+
+
 bind = "0.0.0.0:8000"
 workers = 4
 worker_class = "uvicorn.workers.UvicornWorker"
@@ -10,11 +18,3 @@ errorlog = "-"
 accesslog = "-"
 loglevel = "debug"
 capture_output = True
-
-
-# https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
-import prometheus_client.multiprocess
-
-
-def child_exit(server, worker):
-    prometheus_client.multiprocess.mark_process_dead(worker.pid)

@@ -1,11 +1,10 @@
 import numpy
 import pytest
 
-from ..readers.array import ArrayAdapter
 from ..client import from_tree
-from ..trees.in_memory import Tree
 from ..queries import FullText
-
+from ..readers.array import ArrayAdapter
+from ..trees.in_memory import Tree
 
 tree = Tree(
     {
@@ -18,7 +17,7 @@ tree = Tree(
         "c": ArrayAdapter.from_array(
             numpy.arange(10), metadata={"cantalope": "orange", "animal": "cat"}
         ),
-    },
+    }
 )
 
 

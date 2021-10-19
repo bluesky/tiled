@@ -27,5 +27,3 @@ in tandem with the exploratory implementation.*
   do some internal caching for optimization, but the server will not
   explicitly hang on to any state between requests.
 * Path toward adding state / caching in external systems (e.g. Redis, nginx)
-
-

@@ -1,6 +1,6 @@
 import pytest
 
-from ..utils import OneShotCachedMap, CachingMap
+from ..utils import CachingMap, OneShotCachedMap
 
 
 def test_one_shot_cached_map():

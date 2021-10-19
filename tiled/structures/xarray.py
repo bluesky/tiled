@@ -1,25 +1,24 @@
-from dataclasses import dataclass
 import io
+from dataclasses import dataclass
 from typing import Dict, Tuple, Union
 
 import xarray
 
+from ..media_type_registration import deserialization_registry, serialization_registry
 from .array import ArrayStructure
-from .structured_array import (
-    StructuredArrayGenericStructure,
-    StructuredArrayTabularStructure,
-)
 from .dataframe import (
     APACHE_ARROW_FILE_MIME_TYPE,
+    XLSX_MIME_TYPE,
     serialize_arrow,
     serialize_csv,
     serialize_excel,
     serialize_html,
     serialize_parquet,
-    XLSX_MIME_TYPE,
 )
-from ..media_type_registration import serialization_registry, deserialization_registry
-
+from .structured_array import (
+    StructuredArrayGenericStructure,
+    StructuredArrayTabularStructure,
+)
 
 _ARRAY_STRUCTURES = {
     "array": ArrayStructure,

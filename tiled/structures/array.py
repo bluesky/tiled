@@ -1,15 +1,15 @@
 import base64
-from dataclasses import dataclass
 import enum
 import io
 import json
 import os
 import sys
+from dataclasses import dataclass
 from typing import Tuple
 
 import numpy
 
-from ..media_type_registration import serialization_registry, deserialization_registry
+from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import modules_available
 
 
@@ -90,11 +90,7 @@ class MachineDataType:
         "|": "not_applicable",
     }
 
-    __endianness_reverse_map = {
-        "big": ">",
-        "little": "<",
-        "not_applicable": "|",
-    }
+    __endianness_reverse_map = {"big": ">", "little": "<", "not_applicable": "|"}
 
     @classmethod
     def from_numpy_dtype(cls, dtype):
@@ -185,6 +181,7 @@ if modules_available("PIL"):
 
     def save_to_buffer_PIL(array, format):
         from PIL import Image
+
         from ._image_serializer_helpers import img_as_ubyte
 
         # Handle too *few* dimensions here, and let PIL raise if there are too
@@ -207,9 +204,7 @@ if modules_available("PIL"):
         return numpy.asarray(image).asdtype(dtype).reshape(shape)
 
     serialization_registry.register(
-        "array",
-        "image/png",
-        lambda array, metadata: save_to_buffer_PIL(array, "png"),
+        "array", "image/png", lambda array, metadata: save_to_buffer_PIL(array, "png")
     )
     deserialization_registry.register(
         "array",
@@ -233,16 +228,8 @@ if modules_available("tifffile"):
         imsave(file, normalized_array)
         return file.getbuffer()
 
-    serialization_registry.register(
-        "array",
-        "image/tiff",
-        save_to_buffer_tifffile,
-    )
-    deserialization_registry.register(
-        "array",
-        "image/tiff",
-        array_from_buffer_tifffile,
-    )
+    serialization_registry.register("array", "image/tiff", save_to_buffer_tifffile)
+    deserialization_registry.register("array", "image/tiff", array_from_buffer_tifffile)
 
 
 def serialize_html(array, metadata):
@@ -264,8 +251,4 @@ def serialize_html(array, metadata):
         )
 
 
-serialization_registry.register(
-    "array",
-    "text/html",
-    serialize_html,
-)
+serialization_registry.register("array", "text/html", serialize_html)

@@ -1,6 +1,7 @@
 import dask.array
 import numpy
 
+from ..readers.array import ArrayAdapter
 from ..structures.xarray import (
     ArrayStructure,
     DataArrayMacroStructure,
@@ -9,7 +10,6 @@ from ..structures.xarray import (
     VariableMacroStructure,
     VariableStructure,
 )
-from ..readers.array import ArrayAdapter
 from ..utils import DictView
 
 
@@ -42,8 +42,7 @@ class VariableAdapter:
         return VariableMacroStructure(
             dims=self._variable.dims,
             data=ArrayStructure(
-                macro=array_reader.macrostructure(),
-                micro=array_reader.microstructure(),
+                macro=array_reader.macrostructure(), micro=array_reader.microstructure()
             ),
             attrs=self._variable.attrs,
         )
@@ -102,9 +101,7 @@ class DataArrayAdapter:
                 )
                 coords[k] = coord_structure
         return DataArrayMacroStructure(
-            variable=variable_structure,
-            coords=coords,
-            name=self._data_array.name,
+            variable=variable_structure, coords=coords, name=self._data_array.name
         )
 
     def microstructure(self):
@@ -158,9 +155,7 @@ class DatasetAdapter:
             )
             coords[k] = coord_structure
         return DatasetMacroStructure(
-            data_vars=data_vars,
-            coords=coords,
-            attrs=self._dataset.attrs,
+            data_vars=data_vars, coords=coords, attrs=self._dataset.attrs
         )
 
     def microstructure(self):

@@ -79,7 +79,7 @@ You may read it in its entirety like so.
 ```python
 >>> client['short_table'].read()
               A         B         C
-index                              
+index
 0      0.100145  0.833089  0.381111
 1      0.634538  0.061177  0.544403
 2      0.838347  0.974533  0.402029
@@ -105,7 +105,7 @@ index
 2     0.838347
 3     0.953260
 4     0.305083
-        ...   
+        ...
 95    0.317265
 96    0.795716
 97    0.620561
@@ -115,7 +115,7 @@ Name: A, Length: 100, dtype: float64
 
 >>> client['short_table'][['A', 'B']]
               A         B
-index                    
+index
 0      0.100145  0.833089
 1      0.634538  0.061177
 2      0.838347  0.974533
@@ -157,7 +157,7 @@ dask.array<remote-dask-array, shape=(10000, 10000), dtype=float64, chunksize=(25
 >>> client["short_table"].read()
 Dask DataFrame Structure:
                      A        B        C
-npartitions=3                           
+npartitions=3
 0              float64  float64  float64
 34                 ...      ...      ...
 68                 ...      ...      ...

@@ -1,7 +1,7 @@
 # Run Tiled using Docker
 
 To run tiled using docker we must first obtain a docker image containing a tiled installation.
-To do this run 
+To do this run
 
 ```
 docker pull ghcr.io/bluesky/tiled:main

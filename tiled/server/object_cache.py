@@ -7,12 +7,11 @@ chunks. It is also available for usage outside of dask.
 The cache is a process-global singleton.
 """
 import contextlib
+import time
 from timeit import default_timer
 
 import cachey
 from dask.callbacks import Callback
-import time
-
 
 if __debug__:
     import logging

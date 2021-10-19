@@ -1,4 +1,5 @@
 import pytest
+
 from ..server.settings import get_settings
 
 

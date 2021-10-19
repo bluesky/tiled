@@ -60,7 +60,7 @@ package `blosc` is installed).
 
 ## Example Requests and Responses
 
-In these examples we'll use the command-line HTTP client 
+In these examples we'll use the command-line HTTP client
 [httpie](https://httie.io/) to show just the *headers* of HTTP
 requests and responses.
 

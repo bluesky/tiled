@@ -12,7 +12,6 @@ from tiled.readers.dataframe import DataFrameAdapter
 from tiled.readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from tiled.trees.in_memory import Tree
 
-
 print("Generating large example data...", file=sys.stderr)
 data = {
     "big_image": numpy.random.random((10_000, 10_000)),
@@ -68,8 +67,8 @@ mapping = {
                     data=dask.array.from_array(data["medium_image"]),
                     dims=["x", "y"],
                     attrs={"thing": "stuff"},
-                ),
-            ),
+                )
+            )
         }
     ),
     "structured_data": Tree(
@@ -91,7 +90,7 @@ mapping = {
                         "x": dask.array.arange(len(data["medium_image"])) / 10,
                         "y": dask.array.arange(len(data["medium_image"])) / 50,
                     },
-                ),
+                )
             ),
             "xarray_dataset": DatasetAdapter(
                 xarray.Dataset(

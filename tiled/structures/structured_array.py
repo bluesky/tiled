@@ -1,11 +1,12 @@
-from dataclasses import dataclass
 import json
-from typing import Tuple, List, Union, Optional
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, Union
 
 import numpy
 
-from .array import MachineDataType as BuiltinType, ArrayMacroStructure
 from ..media_type_registration import serialization_registry
+from .array import ArrayMacroStructure
+from .array import MachineDataType as BuiltinType
 
 
 @dataclass

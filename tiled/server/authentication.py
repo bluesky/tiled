@@ -1,19 +1,12 @@
-from datetime import datetime, timedelta
 import secrets
-from typing import Any, Optional
 import uuid
 import warnings
+from datetime import datetime, timedelta
+from typing import Any, Optional
 
-from fastapi import (
-    Depends,
-    APIRouter,
-    HTTPException,
-    Security,
-    Request,
-    Response,
-)
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.security.api_key import APIKeyCookie, APIKeyQuery, APIKeyHeader
+from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -21,11 +14,12 @@ from fastapi.security.api_key import APIKeyCookie, APIKeyQuery, APIKeyHeader
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from jose import ExpiredSignatureError, JWTError, jwt
+
 from pydantic import BaseModel, BaseSettings
 
+from ..utils import SpecialUsers
 from .models import AccessAndRefreshTokens, RefreshToken
 from .settings import get_settings
-from ..utils import SpecialUsers
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -184,10 +178,7 @@ async def auth_code(
     request.state.endpoint = "auth"
     username = await authenticator.authenticate(request)
     if not username:
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication failure",
-        )
+        raise HTTPException(status_code=401, detail="Authentication failure")
     refresh_token = create_refresh_token(
         data={"sub": username},
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
@@ -327,10 +318,7 @@ async def whoami(request: Request, current_user: str = Depends(get_current_user)
 @password_authentication_router.post(
     "/logout", include_in_schema=False
 )  # back-compat alias
-async def logout(
-    request: Request,
-    response: Response,
-):
+async def logout(request: Request, response: Response):
     request.state.endpoint = "auth"
     response.delete_cookie(API_KEY_COOKIE_NAME)
     response.delete_cookie(CSRF_COOKIE_NAME)

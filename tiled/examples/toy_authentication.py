@@ -4,10 +4,9 @@ server configuration that runs this example.
 """
 import numpy
 
-from tiled.utils import SpecialUsers
 from tiled.readers.array import ArrayAdapter
-from tiled.trees.in_memory import Tree, SimpleAccessPolicy
-
+from tiled.trees.in_memory import SimpleAccessPolicy, Tree
+from tiled.utils import SpecialUsers
 
 # Specify which entries each user is allowed to use.
 # SpecialUsers.public is a sentinel that means anyone can access.

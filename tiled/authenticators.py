@@ -1,10 +1,9 @@
 import logging
 import secrets
 
-from jose import jwt, jwk, JWTError
+from jose import JWTError, jwk, jwt
 
 from .utils import modules_available
-
 
 logger = logging.getLogger(__name__)
 
@@ -138,10 +137,7 @@ public_keys:
         key = find_key(id_token, self.public_keys)
         try:
             verified_body = jwt.decode(
-                id_token,
-                key,
-                access_token=access_token,
-                audience=self.client_id,
+                id_token, key, access_token=access_token, audience=self.client_id
             )
         except JWTError:
             logger.exception(

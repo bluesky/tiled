@@ -1,7 +1,7 @@
 # Write the benchmarking functions here.
 # See "Writing benchmarks" in the asv docs for more information.
-import time
 import subprocess
+import time
 
 from tiled.client import from_uri
 

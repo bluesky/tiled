@@ -1,45 +1,41 @@
 import asyncio
 import collections
-from functools import lru_cache, partial
 import os
 import secrets
 import sys
 import urllib.parse
+from functools import lru_cache, partial
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from ..media_type_registration import (
+    compression_registry as default_compression_registry,
+)
 from .authentication import (
     ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     REFRESH_TOKEN_COOKIE_NAME,
-    password_authentication_router,
     external_authentication_router,
     get_authenticator,
+    password_authentication_router,
 )
 from .compression import CompressionMiddleware
 from .core import (
-    get_root_tree,
-    get_query_registry,
-    get_serialization_registry,
     PatchedStreamingResponse,
+    get_query_registry,
+    get_root_tree,
+    get_serialization_registry,
     record_timing,
 )
 from .metrics import capture_request_metrics
-from .object_cache import (
-    ObjectCache,
-    logger as object_cache_logger,
-    NO_CACHE,
-    set_object_cache,
-)
+from .object_cache import NO_CACHE, ObjectCache
+from .object_cache import logger as object_cache_logger
+from .object_cache import set_object_cache
 from .router import declare_search_router, router
 from .settings import get_settings
-from ..media_type_registration import (
-    compression_registry as default_compression_registry,
-)
-
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -326,9 +322,7 @@ def serve_tree(
         )
         if object_cache_available_bytes is not None:
             setattr(
-                settings,
-                "object_cache_available_bytes",
-                object_cache_available_bytes,
+                settings, "object_cache_available_bytes", object_cache_available_bytes
             )
         return settings
 

@@ -1,4 +1,5 @@
-from dask.base import normalize_token, normalize_object, tokenize as dask_tokenize
+from dask.base import normalize_object, normalize_token
+from dask.base import tokenize as dask_tokenize
 
 
 def tokenize(obj):
@@ -15,6 +16,7 @@ def tokenize(obj):
 @normalize_token.register_lazy("h5py")
 def register_h5py():
     from pathlib import Path
+
     import h5py
 
     @normalize_token.register(h5py.Dataset)

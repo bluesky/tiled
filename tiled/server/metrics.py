@@ -6,7 +6,6 @@ conventions for metrics & labels. We generally prefer naming them
 
 from prometheus_client import Histogram
 
-
 REQUEST_DURATION = Histogram(
     "tiled_request_duration_seconds",
     "request duration for all HTTP requests",

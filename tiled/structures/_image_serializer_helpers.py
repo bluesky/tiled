@@ -2,9 +2,9 @@
 The contents of this module are vendored from scikit-image.
 """
 
-import numpy as np
 from warnings import warn
 
+import numpy as np
 
 _integer_types = (
     np.byte,

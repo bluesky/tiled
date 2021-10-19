@@ -1,14 +1,10 @@
 import collections.abc
 import itertools
 
-from ..query_registration import QueryTranslationRegistry
 from ..queries import FullText
-from ..utils import (
-    DictView,
-    import_object,
-    SpecialUsers,
-)
-from .utils import IndexersMixin, UNCHANGED
+from ..query_registration import QueryTranslationRegistry
+from ..utils import DictView, SpecialUsers, import_object
+from .utils import UNCHANGED, IndexersMixin
 
 
 class Tree(collections.abc.Mapping, IndexersMixin):
@@ -30,11 +26,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     register_query_lazy = query_registry.register_lazy
 
     def __init__(
-        self,
-        mapping,
-        metadata=None,
-        access_policy=None,
-        authenticated_identity=None,
+        self, mapping, metadata=None, access_policy=None, authenticated_identity=None
     ):
         """
         Create a simple Tree from any mapping (e.g. dict, OneShotCachedMap).
@@ -94,10 +86,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
                 f"Already authenticated as {self.authenticated_identity}"
             )
         if self._access_policy is not None:
-            tree = self._access_policy.filter_results(
-                self,
-                identity,
-            )
+            tree = self._access_policy.filter_results(self, identity)
         else:
             tree = self.new_variation(authenticated_identity=identity)
         return tree
@@ -136,18 +125,12 @@ class Tree(collections.abc.Mapping, IndexersMixin):
 
     def _keys_slice(self, start, stop, direction):
         if direction > 0:
-            yield from itertools.islice(
-                self._mapping.keys(),
-                start,
-                stop,
-            )
+            yield from itertools.islice(self._mapping.keys(), start, stop)
         else:
             keys_to_slice = reversed(
                 list(
                     itertools.islice(
-                        self._mapping.keys(),
-                        0,
-                        len(self._mapping) - start,
+                        self._mapping.keys(), 0, len(self._mapping) - start
                     )
                 )
             )

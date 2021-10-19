@@ -1,8 +1,7 @@
 from pathlib import Path
-
-import typer
 from typing import Optional
 
+import typer
 
 cli_app = typer.Typer()
 serve_app = typer.Typer()
@@ -126,7 +125,7 @@ def download(
     """
     Download content from a Tree to an on-disk cache.
     """
-    from ..client.cache import download, Cache
+    from ..client.cache import Cache, download
 
     cache = Cache.on_disk(cache_path, available_bytes=available_bytes)
     if no_verify:
@@ -168,8 +167,9 @@ def profile_list():
 @profile_app.command("show")
 def profile_show(profile_name: str):
     "Show the content of a profile."
-    import yaml
     import sys
+
+    import yaml
 
     from ..profiles import load_profiles
 
@@ -231,8 +231,8 @@ def serve_directory(
     ),
 ):
     "Serve a Tree instance from a directory of files."
+    from ..server.app import print_admin_api_key_if_generated, serve_tree
     from ..trees.files import Tree
-    from ..server.app import serve_tree, print_admin_api_key_if_generated
 
     tree_kwargs = {}
     server_settings = {}
@@ -283,7 +283,7 @@ def serve_pyobject(
     ),
 ):
     "Serve a Tree instance from a Python module."
-    from ..server.app import serve_tree, print_admin_api_key_if_generated
+    from ..server.app import print_admin_api_key_if_generated, serve_tree
     from ..utils import import_object
 
     tree = import_object(object_path)
@@ -326,6 +326,7 @@ def serve_config(
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
+
     from ..config import construct_serve_tree_kwargs, parse_configs
 
     config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
@@ -343,7 +344,7 @@ def serve_config(
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
-    from ..server.app import serve_tree, print_admin_api_key_if_generated
+    from ..server.app import print_admin_api_key_if_generated, serve_tree
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
@@ -366,7 +367,7 @@ def serve_config(
 
 
 def _client_from_uri_or_profile(uri_or_profile, verify=None, cache=None):
-    from ..client import from_uri, from_profile
+    from ..client import from_profile, from_uri
 
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.

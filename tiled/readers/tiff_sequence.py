@@ -4,10 +4,7 @@ import hashlib
 import numpy
 
 from ..server.object_cache import with_object_cache
-from ..structures.array import (
-    ArrayMacroStructure,
-    MachineDataType,
-)
+from ..structures.array import ArrayMacroStructure, MachineDataType
 
 
 def subdirectory_handler(path):
@@ -150,11 +147,7 @@ class TiffSequenceReader:
         return ArrayMacroStructure(
             shape=shape,
             # one chunks per underlying TIFF file
-            chunks=(
-                (1,) * shape[0],
-                (shape[1],),
-                (shape[2],),
-            ),
+            chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
         )
 
 

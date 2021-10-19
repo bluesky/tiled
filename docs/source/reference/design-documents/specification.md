@@ -30,7 +30,7 @@ Reader as well as a sample HTTP API based on
   a given generic structure.
 
 * Readers MUST implement a method ``structure()`` with no arguments
-  which returns a description of the structure of this data. For each structure family 
+  which returns a description of the structure of this data. For each structure family
   (array, dataframe, etc.) there will be a specific schema for this description
   (TBD). For example, "array" reports machine data type, shape, and chunks.
   Richer structure (e.g. xarray) will include high-level structure like columns,

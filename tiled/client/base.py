@@ -1,18 +1,11 @@
 import importlib
 
-from ..utils import DictView, ListView, OneShotCachedMap
 from ..trees.utils import UNCHANGED
+from ..utils import DictView, ListView, OneShotCachedMap
 
 
 class BaseClient:
-    def __init__(
-        self,
-        context,
-        *,
-        item,
-        path,
-        params,
-    ):
+    def __init__(self, context, *, item, path, params):
         self._context = context
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
@@ -65,12 +58,7 @@ class BaseClient:
     def offline(self, value):
         self.context.offline = bool(value)
 
-    def new_variation(
-        self,
-        path=UNCHANGED,
-        params=UNCHANGED,
-        **kwargs,
-    ):
+    def new_variation(self, path=UNCHANGED, params=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.
         """
@@ -78,22 +66,11 @@ class BaseClient:
             path = self._path
         if params is UNCHANGED:
             params = self._params
-        return type(self)(
-            item=self._item,
-            path=path,
-            params=params,
-            **kwargs,
-        )
+        return type(self)(item=self._item, path=path, params=params, **kwargs)
 
 
 class BaseStructureClient(BaseClient):
-    def __init__(
-        self,
-        context,
-        *,
-        structure=None,
-        **kwargs,
-    ):
+    def __init__(self, context, *, structure=None, **kwargs):
         super().__init__(context, **kwargs)
         self._structure = structure
 

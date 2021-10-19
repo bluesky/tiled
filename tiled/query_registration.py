@@ -4,8 +4,8 @@ into concrete queries for specific storage backends.
 
 This intentionally only uses built-in dataclasses, not pydantic models.
 """
-from dataclasses import fields
 import inspect
+from dataclasses import fields
 
 from .utils import DictView
 

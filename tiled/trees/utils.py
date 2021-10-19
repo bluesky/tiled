@@ -36,11 +36,7 @@ class IndexersMixin:
     * ``_items_slice``
     """
 
-    __slots__ = (
-        "keys_indexer",
-        "items_indexer",
-        "values_indexer",
-    )
+    __slots__ = ("keys_indexer", "items_indexer", "values_indexer")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

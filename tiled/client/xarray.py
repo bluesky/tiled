@@ -10,11 +10,9 @@ from ..structures.xarray import (
     DatasetStructure,
     VariableStructure,
 )
-
 from .array import ArrayClient, DaskArrayClient
 from .base import BaseArrayClient
 from .utils import export_util
-
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -350,8 +348,7 @@ class DaskDatasetClient(BaseArrayClient):
         """
         try:
             content = self.context.get_json(
-                self.uri,
-                params={"fields": "structure.macro", **self._params},
+                self.uri, params={"fields": "structure.macro", **self._params}
             )
             macro = content["data"]["attributes"]["structure"]["macro"]
             variables = [*macro["data_vars"], *macro["coords"]]
@@ -439,11 +436,7 @@ class DaskDatasetClient(BaseArrayClient):
         coords = {k: v.read() for k, v in coords_clients.items()}
         data_vars_clients = self._build_data_vars_clients(structure, coords, variables)
         data_vars = {k: v.read() for k, v in data_vars_clients.items()}
-        ds = xarray.Dataset(
-            data_vars=data_vars,
-            coords=coords,
-            attrs=structure.attrs,
-        )
+        ds = xarray.Dataset(data_vars=data_vars, coords=coords, attrs=structure.attrs)
         return ds
 
     def __getitem__(self, variables):
@@ -558,10 +551,7 @@ class _WideTableFetcher:
     def _fetch_variables(self, variables):
         content = self.get(
             self.link,
-            params={
-                "format": APACHE_ARROW_FILE_MIME_TYPE,
-                "variable": variables,
-            },
+            params={"format": APACHE_ARROW_FILE_MIME_TYPE, "variable": variables},
         )
         return deserialize_arrow(content)
 

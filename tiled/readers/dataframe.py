@@ -1,9 +1,9 @@
 import dask.base
 import dask.dataframe
 
+from ..server.object_cache import NO_CACHE, get_object_cache
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
-from ..server.object_cache import get_object_cache, NO_CACHE
 
 
 class DataFrameAdapter:

@@ -3,10 +3,10 @@ from datetime import datetime
 import numpy
 import pytest
 
-from ..readers.array import ArrayAdapter
-from ..trees.in_memory import Tree
 from ..client import from_config
+from ..readers.array import ArrayAdapter
 from ..server.authentication import create_refresh_token
+from ..trees.in_memory import Tree
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
@@ -47,10 +47,7 @@ def test_top_level_access_control():
                     },
                 },
             },
-            {
-                "tree": f"{__name__}:tree_b",
-                "path": "/b",
-            },
+            {"tree": f"{__name__}:tree_b", "path": "/b"},
         ],
     }
     # Directly generate a refresh token.

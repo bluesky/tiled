@@ -1,41 +1,39 @@
 import dataclasses
+import inspect
 from functools import lru_cache
 from hashlib import md5
-import inspect
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseSettings
 
+from .. import __version__
+from . import models
 from .authentication import (
     API_KEY_COOKIE_NAME,
-    get_authenticator,
     check_single_user_api_key,
+    get_authenticator,
 )
-from .settings import get_settings
-
 from .core import (
     APACHE_ARROW_FILE_MIME_TYPE,
+    NoEntry,
+    PatchedResponse,
+    UnsupportedMediaTypes,
+    WrongTypeForRoute,
     block,
     construct_data_response,
     construct_entries_response,
     construct_resource,
-    get_query_registry,
-    get_serialization_registry,
-    reader,
     entry,
     expected_shape,
+    get_query_registry,
+    get_serialization_registry,
     json_or_msgpack,
-    NoEntry,
-    PatchedResponse,
+    reader,
     record_timing,
     slice_,
-    WrongTypeForRoute,
-    UnsupportedMediaTypes,
 )
-from . import models
-from .. import __version__
-
+from .settings import get_settings
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -320,12 +318,7 @@ def array_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -368,12 +361,7 @@ def array_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -586,9 +574,7 @@ def structured_array_generic_full(
 
 
 @router.get(
-    "/dataframe/meta/{path:path}",
-    response_model=models.Response,
-    name="dataframe meta",
+    "/dataframe/meta/{path:path}", response_model=models.Response, name="dataframe meta"
 )
 def dataframe_meta(
     request: Request,
@@ -612,9 +598,7 @@ def dataframe_meta(
         )
     headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
-        content,
-        media_type=APACHE_ARROW_FILE_MIME_TYPE,
-        headers=headers,
+        content, media_type=APACHE_ARROW_FILE_MIME_TYPE, headers=headers
     )
 
 
@@ -650,9 +634,7 @@ def dataframe_divisions(
         )
     headers = {"ETag": md5(content).hexdigest()}
     return PatchedResponse(
-        content,
-        media_type=APACHE_ARROW_FILE_MIME_TYPE,
-        headers=headers,
+        content, media_type=APACHE_ARROW_FILE_MIME_TYPE, headers=headers
     )
 
 
@@ -702,9 +684,7 @@ def dataframe_partition(
 
 
 @router.get(
-    "/dataframe/full/{path:path}",
-    response_model=models.Response,
-    name="full dataframe",
+    "/dataframe/full/{path:path}", response_model=models.Response, name="full dataframe"
 )
 def dataframe_full(
     request: Request,
@@ -785,12 +765,7 @@ def variable_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -826,12 +801,7 @@ def variable_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -865,10 +835,7 @@ def data_array_variable_full(
         try:
             array = array.coords[coord]
         except KeyError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No such coordinate {coord}.",
-            )
+            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(
             status_code=400,
@@ -877,12 +844,7 @@ def data_array_variable_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -918,10 +880,7 @@ def data_array_block(
         raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
         if coord is not None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No such coordinate {coord}.",
-            )
+            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
         else:
             raise
     if (expected_shape is not None) and (expected_shape != array.shape):
@@ -932,12 +891,7 @@ def data_array_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -974,15 +928,9 @@ def dataset_block(
         raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
         if coord is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No such variable {variable}.",
-            )
+            raise HTTPException(status_code=400, detail=f"No such variable {variable}.")
         if variable is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No such coordinate {coord}.",
-            )
+            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
         raise HTTPException(
             status_code=400,
             detail=f"No such coordinate {coord} and/or variable {variable}.",
@@ -995,12 +943,7 @@ def dataset_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -1032,18 +975,12 @@ def dataset_data_var_full(
         with record_timing(request.state.metrics, "read"):
             array = reader.read_variable(variable).data
     except KeyError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No such variable {variable}.",
-        )
+        raise HTTPException(status_code=400, detail=f"No such variable {variable}.")
     if coord is not None:
         try:
             array = array.coords[coord].data
         except KeyError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No such coordinate {coord}.",
-            )
+            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(
             status_code=400,
@@ -1052,12 +989,7 @@ def dataset_data_var_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -1088,10 +1020,7 @@ def dataset_coord_full(
         with record_timing(request.state.metrics, "read"):
             array = reader.read_variable(coord).data
     except KeyError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No such coordinate {coord}.",
-        )
+        raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(
             status_code=400,
@@ -1100,12 +1029,7 @@ def dataset_coord_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
+                "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -1150,7 +1074,6 @@ def dataset_full(
                 format,
             )
     except UnsupportedMediaTypes as err:
-        breakpoint()
         raise HTTPException(status_code=406, detail=", ".join(err.supported))
 
 

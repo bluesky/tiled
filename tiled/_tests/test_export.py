@@ -6,12 +6,11 @@ import pandas
 import pytest
 import xarray
 
+from ..client import from_tree
 from ..readers.array import ArrayAdapter, StructuredArrayTabularAdapter
 from ..readers.dataframe import DataFrameAdapter
 from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
-from ..client import from_tree
 from ..trees.in_memory import Tree
-
 
 data = numpy.random.random((10, 10))
 tree = Tree(
@@ -54,7 +53,7 @@ tree = Tree(
                             "x": dask.array.arange(len(data)) / 10,
                             "y": dask.array.arange(len(data)) / 50,
                         },
-                    ),
+                    )
                 ),
                 "xarray_dataset": DatasetAdapter(
                     xarray.Dataset(
@@ -85,7 +84,7 @@ tree = Tree(
                 ),
             }
         ),
-    },
+    }
 )
 
 

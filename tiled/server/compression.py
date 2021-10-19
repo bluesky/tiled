@@ -7,10 +7,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 class CompressionMiddleware:
     def __init__(
-        self,
-        app: ASGIApp,
-        compression_registry,
-        minimum_size: int = 500,
+        self, app: ASGIApp, compression_registry, minimum_size: int = 500
     ) -> None:
         self.app = app
         self.compression_registry = compression_registry
@@ -61,8 +58,7 @@ class CompressionResponder:
             for encoding in self.compression_registry.encodings(media_type):
                 if encoding in self.accepted:
                     file_factory = self.compression_registry.dispatch(
-                        media_type=media_type,
-                        encoding=encoding,
+                        media_type=media_type, encoding=encoding
                     )
                     self.compressed_buffer = io.BytesIO()
                     self.compressed_file = file_factory(self.compressed_buffer)

@@ -1,13 +1,13 @@
 import dask
 import dask.dataframe
 
+from ..media_type_registration import deserialization_registry
 from ..structures.dataframe import (
     APACHE_ARROW_FILE_MIME_TYPE,
     DataFrameMacroStructure,
     DataFrameMicroStructure,
     DataFrameStructure,
 )
-from ..media_type_registration import deserialization_registry
 from .base import BaseStructureClient
 from .utils import export_util
 
@@ -57,8 +57,7 @@ class DaskDataFrameClient(BaseStructureClient):
         """
         try:
             content = self.context.get_json(
-                self.uri,
-                params={"fields": "structure.macro", **self._params},
+                self.uri, params={"fields": "structure.macro", **self._params}
             )
             columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
         except Exception:
@@ -151,22 +150,14 @@ class DaskDataFrameClient(BaseStructureClient):
             f"{'-'.join(map(repr, sorted(self._params.items())))}"
         )
         dask_tasks = {
-            (name,)
-            + (partition,): (
-                self._get_partition,
-                partition,
-                columns,
-            )
+            (name,) + (partition,): (self._get_partition, partition, columns)
             for partition in range(structure.macro.npartitions)
         }
         meta = structure.micro.meta
         if columns is not None:
             meta = meta[columns]
         ddf = dask.dataframe.DataFrame(
-            dask_tasks,
-            name=name,
-            meta=meta,
-            divisions=structure.micro.divisions,
+            dask_tasks, name=name, meta=meta, divisions=structure.micro.divisions
         )
         if columns is not None:
             ddf = ddf[columns]

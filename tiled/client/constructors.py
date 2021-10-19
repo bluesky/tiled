@@ -4,10 +4,10 @@ import urllib.parse
 
 import httpx
 
-from .context import context_from_tree, Context, DEFAULT_TOKEN_CACHE
+from ..utils import import_object, prepend_to_sys_path
+from .context import DEFAULT_TOKEN_CACHE, Context, context_from_tree
 from .node import Node
 from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS
-from ..utils import import_object, prepend_to_sys_path
 
 
 def from_uri(
@@ -96,9 +96,7 @@ def from_uri(
         token_cache=token_cache,
     )
     return from_context(
-        context,
-        structure_clients=structure_clients,
-        special_clients=special_clients,
+        context, structure_clients=structure_clients, special_clients=special_clients
     )
 
 
@@ -172,18 +170,12 @@ def from_tree(
         headers=headers,
     )
     return from_context(
-        context,
-        structure_clients=structure_clients,
-        special_clients=special_clients,
+        context, structure_clients=structure_clients, special_clients=special_clients
     )
 
 
 def from_context(
-    context,
-    structure_clients="numpy",
-    *,
-    path=None,
-    special_clients=None,
+    context, structure_clients="numpy", *, path=None, special_clients=None
 ):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -221,8 +213,7 @@ def from_context(
     if Node.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
         Node.discover_special_clients()
     special_clients = collections.ChainMap(
-        special_clients or {},
-        Node.DEFAULT_SPECIAL_CLIENT_DISPATCH,
+        special_clients or {}, Node.DEFAULT_SPECIAL_CLIENT_DISPATCH
     )
     content = context.get_json(f"/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
@@ -262,7 +253,7 @@ def from_profile(name, structure_clients=None, **kwargs):
     """
     # We accept structure_clients as a separate parameter so that it
     # may be invoked positionally, as in from_profile("...", "dask").
-    from ..profiles import load_profiles, paths, ProfileNotFound
+    from ..profiles import ProfileNotFound, load_profiles, paths
 
     profiles = load_profiles()
     try:
@@ -321,7 +312,6 @@ def from_profile(name, structure_clients=None, **kwargs):
                     try:
                         class_ = import_object(value, accept_live_object=True)
                     except Exception:
-                        breakpoint()
                         raise
                 else:
                     class_ = value

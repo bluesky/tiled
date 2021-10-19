@@ -4,8 +4,8 @@ import numpy
 import pytest
 import tifffile as tf
 
-from ..readers.tiff_sequence import subdirectory_handler, TiffSequenceReader
 from ..client import from_config, from_tree
+from ..readers.tiff_sequence import TiffSequenceReader, subdirectory_handler
 from ..trees.in_memory import Tree
 
 
@@ -75,8 +75,8 @@ a,b,c
                     "directory": tmpdir,
                     "subdirectory_handler": subdirectory_handler,
                 },
-            },
-        ],
+            }
+        ]
     }
     client = from_config(config)
     # This whole directory of files is one dataset.

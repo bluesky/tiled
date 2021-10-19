@@ -211,7 +211,7 @@ $ http :8000/metadata/structured_data/pets | jq .data.attributes.structure
 ### DataFrame
 
 ```
-$ http :8000/metadata/long_table | jq .data.attributes.structure 
+$ http :8000/metadata/long_table | jq .data.attributes.structure
 ```
 
 ```json

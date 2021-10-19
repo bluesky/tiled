@@ -2,14 +2,13 @@ import dask.array
 import numpy
 import pandas
 import pytest
-import xarray.testing
 import xarray
+import xarray.testing
 
-from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
-from ..trees.in_memory import Tree
 from ..client import xarray as xarray_client
-
+from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
+from ..trees.in_memory import Tree
 
 array = numpy.random.random((10, 10))
 tree = Tree(
@@ -19,7 +18,7 @@ tree = Tree(
                 data=dask.array.from_array(array),
                 dims=["x", "y"],
                 attrs={"thing": "stuff"},
-            ),
+            )
         ),
         "data_array": DataArrayAdapter(
             xarray.DataArray(
@@ -32,7 +31,7 @@ tree = Tree(
                     "x": dask.array.arange(len(array)),
                     "y": 10 * dask.array.arange(len(array)),
                 },
-            ),
+            )
         ),
         "dataset": DatasetAdapter(
             xarray.Dataset(

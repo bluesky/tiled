@@ -10,20 +10,9 @@ TIFF_PATHS = [
     ("a.tif",),
     ("b.tif",),
     ("c.tif",),
-    (
-        "more",
-        "d.tif",
-    ),
-    (
-        "more",
-        "even_more",
-        "e.tif",
-    ),
-    (
-        "more",
-        "even_more",
-        "f.tif",
-    ),
+    ("more", "d.tif"),
+    ("more", "even_more", "e.tif"),
+    ("more", "even_more", "f.tif"),
 ]
 
 # TODO Generate more interesting images.

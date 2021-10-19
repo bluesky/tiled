@@ -1,11 +1,10 @@
 import numpy
 import pytest
 
-from ..readers.array import ArrayAdapter
 from ..client import from_tree
 from ..client.cache import Cache, download
+from ..readers.array import ArrayAdapter
 from ..trees.in_memory import Tree
-
 
 tree = Tree(
     {"arr": ArrayAdapter.from_array(numpy.arange(10), metadata={"a": 1})},

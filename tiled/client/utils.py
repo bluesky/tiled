@@ -5,7 +5,6 @@ import httpx
 
 from ..utils import modules_available
 
-
 # By default, the token in the authentication header is redacted from the logs.
 # Set thie env var to 1 to show it for debugging purposes.
 TILED_LOG_AUTH_TOKEN = int(os.getenv("TILED_LOG_AUTH_TOKEN", False))
@@ -97,11 +96,7 @@ if __debug__:
     import logging
 
     class LogFormatter(logging.Formatter):
-        def __init__(
-            self,
-            fmt,
-            datefmt,
-        ):
+        def __init__(self, fmt, datefmt):
             super().__init__(datefmt=datefmt)
             self._fmt = fmt
 

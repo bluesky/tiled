@@ -1,9 +1,9 @@
-from .dataframe import DataFrameAdapter
-from ..trees.in_memory import Tree
-from ..server.object_cache import get_object_cache, NO_CACHE, with_object_cache
-
 import dask.dataframe
 import pandas
+
+from ..server.object_cache import NO_CACHE, get_object_cache, with_object_cache
+from ..trees.in_memory import Tree
+from .dataframe import DataFrameAdapter
 
 
 class ExcelReader(Tree):

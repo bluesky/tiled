@@ -1,21 +1,20 @@
 import getpass
 import os
-from pathlib import Path, PurePosixPath
 import secrets
 import urllib.parse
+from pathlib import Path, PurePosixPath
 
 import appdirs
 import httpx
 import msgpack
 
+from ..utils import DictView
 from .utils import (
     ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
-    handle_error,
     NotAvailableOffline,
+    handle_error,
 )
-from ..utils import DictView
-
 
 DEFAULT_TOKEN_CACHE = os.getenv(
     "TILED_TOKEN_CACHE", os.path.join(appdirs.user_config_dir("tiled"), "tokens")
@@ -31,11 +30,7 @@ def _token_directory(token_cache, netloc):
     )
 
 
-def logout(
-    uri_or_profile,
-    *,
-    token_cache=DEFAULT_TOKEN_CACHE,
-):
+def logout(uri_or_profile, *, token_cache=DEFAULT_TOKEN_CACHE):
     """
     Logout of a given session.
 
@@ -52,10 +47,7 @@ def logout(
     """
     if isinstance(token_cache, (str, Path)):
         netloc = _netloc_from_uri_or_profile(uri_or_profile)
-        directory = _token_directory(
-            token_cache,
-            netloc,
-        )
+        directory = _token_directory(token_cache, netloc)
     else:
         netloc = None  # unknowable
     token_cache = TokenCache(directory)
@@ -178,10 +170,7 @@ class Context:
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
         if isinstance(token_cache, (str, Path)):
-            directory = _token_directory(
-                token_cache,
-                self._client.base_url.netloc,
-            )
+            directory = _token_directory(token_cache, self._client.base_url.netloc)
             token_cache = TokenCache(directory)
         self._token_cache = token_cache
         # The token *cache* is optional. The tokens attrbiute is always present,
@@ -414,8 +403,7 @@ Navigate web browser to this address to obtain access code:
     def whoami(self):
         "Return username."
         request = self._client.build_request(
-            "GET",
-            f"{self._authentication_uri}auth/whoami",
+            "GET", f"{self._authentication_uri}auth/whoami"
         )
         response = self._client.send(request)
         handle_error(response)

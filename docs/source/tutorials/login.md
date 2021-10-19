@@ -20,7 +20,7 @@ Navigate web browser to this address to obtain access code:
 https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/auth/code
 
 
-Access code (quotes optional): 
+Access code (quotes optional):
 ```
 
 Copy/paste that link into a web browser.

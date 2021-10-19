@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-import mimetypes
 import io
+import mimetypes
+from dataclasses import dataclass
 from typing import Any, List
 
-from ..media_type_registration import serialization_registry, deserialization_registry
+from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
 
 
@@ -99,14 +99,6 @@ if modules_available("openpyxl", "pandas"):
     # The optional pandas dependency openpyxel is required for Excel read/write.
     import pandas
 
-    serialization_registry.register(
-        "dataframe",
-        XLSX_MIME_TYPE,
-        serialize_excel,
-    )
-    deserialization_registry.register(
-        "dataframe",
-        XLSX_MIME_TYPE,
-        pandas.read_excel,
-    )
+    serialization_registry.register("dataframe", XLSX_MIME_TYPE, serialize_excel)
+    deserialization_registry.register("dataframe", XLSX_MIME_TYPE, pandas.read_excel)
     mimetypes.types_map.setdefault(".xlsx", XLSX_MIME_TYPE)

@@ -1,10 +1,7 @@
 import tifffile
 
-from ..structures.array import (
-    ArrayMacroStructure,
-    MachineDataType,
-)
 from ..server.object_cache import with_object_cache
+from ..structures.array import ArrayMacroStructure, MachineDataType
 
 
 class TiffReader:
@@ -56,7 +53,4 @@ class TiffReader:
         else:
             arr = with_object_cache(self._cache_key, self._file.asarray)
             shape = arr.shape
-        return ArrayMacroStructure(
-            shape=shape,
-            chunks=tuple((dim,) for dim in shape),
-        )
+        return ArrayMacroStructure(shape=shape, chunks=tuple((dim,) for dim in shape))

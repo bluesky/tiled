@@ -30,7 +30,7 @@ properties:
     type: string
     description: |
       URI of a Tiled server, such as
-      
+
           http://localhost:8000
   authentication_uri:
     type: [string, "null"]

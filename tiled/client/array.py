@@ -115,11 +115,7 @@ class DaskArrayClient(BaseArrayClient):
             for block in itertools.product(*num_blocks)
         }
         dask_array = dask.array.Array(
-            dask=dask_tasks,
-            name=name,
-            chunks=chunks,
-            dtype=dtype,
-            shape=shape,
+            dask=dask_tasks, name=name, chunks=chunks, dtype=dtype, shape=shape
         )
         if slice is not None:
             dask_array = dask_array[slice]

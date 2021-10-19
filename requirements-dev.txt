@@ -3,6 +3,7 @@
 codecov
 coverage
 flake8
+pre-commit
 pytest
 pytest-asyncio
 sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0

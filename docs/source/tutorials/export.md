@@ -102,7 +102,7 @@ client to save, a user can write TIFF files (for example) without actually
 having any TIFF-writing Python library installed!
 ```
 
-## Export to an open file or buffer 
+## Export to an open file or buffer
 
 It is also possible to export directly into an open file (or any writeable
 buffer) in which case the format must be specified.
@@ -139,7 +139,7 @@ df.to_csv("table.csv", sep=";", header=["custom", "column", "headings"])
 Or else add or change the exporters provided by the service to better suit your
 needs.
 
-## Consider: Is there a better way? 
+## Consider: Is there a better way?
 
 If your data analysis is taking place in Python, then you may have
 no need to export files. Your code will be faster and simpler if you

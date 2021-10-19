@@ -41,7 +41,7 @@ DictView({'animal': 'dog', 'color': 'green'})
 
 >>> client['long_table'].read().compute()
               A         B         C
-index                              
+index
 0      0.748885  0.769644  0.296070
 1      0.071319  0.364743  0.718473
 2      0.322665  0.897854  0.558606

@@ -1,6 +1,6 @@
+import builtins
 import collections.abc
 import contextlib
-import builtins
 import enum
 import importlib
 import importlib.util

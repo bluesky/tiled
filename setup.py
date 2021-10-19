@@ -1,8 +1,9 @@
-from os import path
-from setuptools import setup, find_packages
 import sys
-import versioneer
+from os import path
 
+from setuptools import find_packages, setup
+
+import versioneer
 
 # NOTE: This file must remain Python 2 compatible for the foreseeable future,
 # to ensure that we error out properly for people with outdated setuptools
@@ -98,16 +99,12 @@ setup(
     install_requires=[],  # Requirements depend on use case (e.g. client vs server).
     extras_require=extras_require,
     packages=find_packages(exclude=["docs", "tests"]),
-    entry_points={
-        "console_scripts": [
-            "tiled = tiled.commandline.main:main",
-        ]
-    },
+    entry_points={"console_scripts": ["tiled = tiled.commandline.main:main"]},
     package_data={
         "tiled": [
             # When adding files here, remember to update MANIFEST.in as well,
             # or else they will not be included in the distribution on PyPI!
-            "schemas/*.yml",
+            "schemas/*.yml"
         ]
     },
     license="BSD (3-clause)",

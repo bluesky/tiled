@@ -1,9 +1,9 @@
 import enum
+from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
 
 import pydantic
 import pydantic.dataclasses
 import pydantic.generics
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
 
 DataT = TypeVar("DataT")
 

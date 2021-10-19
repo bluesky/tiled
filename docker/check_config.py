@@ -2,6 +2,7 @@
 
 import os
 import sys
+
 from tiled.config import parse_configs
 
 

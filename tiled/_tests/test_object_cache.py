@@ -1,12 +1,12 @@
-from pathlib import Path
 import time
+from pathlib import Path
 
 import numpy
 import psutil
 import pytest
 
 from ..client import from_config
-from ..server.object_cache import ObjectCache, get_object_cache, NO_CACHE
+from ..server.object_cache import NO_CACHE, ObjectCache, get_object_cache
 from ..trees.files import DEFAULT_POLL_INTERVAL
 
 
@@ -69,15 +69,7 @@ a,b,c
 1,2,3
 """
         )
-    config = {
-        "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": tmpdir},
-            },
-        ],
-    }
+    config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
     client = from_config(config)
     cache = get_object_cache()
     assert cache.hits == cache.misses == 0
@@ -106,13 +98,7 @@ a,b,c
 """
         )
     config = {
-        "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": tmpdir},
-            },
-        ],
+        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 0},
     }
     client = from_config(config)
@@ -130,15 +116,7 @@ a,b,c
 1,2,3
 """
         )
-    config = {
-        "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": tmpdir},
-            },
-        ],
-    }
+    config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
     client = from_config(config)
     cache = get_object_cache()
     assert cache.hits == cache.misses == 0
@@ -174,13 +152,7 @@ a,b,c
 
 def test_cache_size_absolute(tmpdir):
     config = {
-        "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": tmpdir},
-            },
-        ],
+        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 1000},
     }
     from_config(config)
@@ -191,13 +163,7 @@ def test_cache_size_absolute(tmpdir):
 def test_cache_size_relative(tmpdir):
     # As a fraction of system memory
     config = {
-        "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {"directory": tmpdir},
-            },
-        ],
+        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 0.1},
     }
     from_config(config)

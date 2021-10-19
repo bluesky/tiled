@@ -1,7 +1,6 @@
 import collections
 import gzip
 import mimetypes
-
 from collections import defaultdict
 
 from .utils import (
@@ -214,10 +213,7 @@ if modules_available("zstandard"):
     # TODO Make compression settings configurable.
     # This complex in our case because, as with gzip, we may
     # want configure differently for different media types.
-    zstd_compressor = zstandard.ZstdCompressor(
-        level=3,
-        threads=0,
-    )
+    zstd_compressor = zstandard.ZstdCompressor(level=3, threads=0)
 
     class ZstdBuffer:
         """
@@ -246,11 +242,7 @@ if modules_available("zstandard"):
         "text/html",
         "text/plain",
     ]:
-        compression_registry.register(
-            media_type,
-            "zstd",
-            ZstdBuffer,
-        )
+        compression_registry.register(media_type, "zstd", ZstdBuffer)
 
 if modules_available("lz4"):
 
@@ -307,11 +299,7 @@ if modules_available("lz4"):
         "text/html",
         "text/plain",
     ]:
-        compression_registry.register(
-            media_type,
-            "lz4",
-            LZ4Buffer,
-        )
+        compression_registry.register(media_type, "lz4", LZ4Buffer)
 
 if modules_available("blosc"):
 
@@ -347,8 +335,4 @@ if modules_available("blosc"):
             pass
 
     for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:
-        compression_registry.register(
-            media_type,
-            "blosc",
-            BloscBuffer,
-        )
+        compression_registry.register(media_type, "blosc", BloscBuffer)

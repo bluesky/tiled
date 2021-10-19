@@ -1,12 +1,7 @@
 import abc
-from collections import defaultdict
 import collections.abc
 import contextlib
 import dataclasses
-from datetime import datetime
-import dateutil.tz
-from functools import lru_cache
-from hashlib import md5
 import itertools
 import json
 import math
@@ -14,27 +9,30 @@ import operator
 import re
 import sys
 import time
+from collections import defaultdict
+from datetime import datetime
+from functools import lru_cache
+from hashlib import md5
 from typing import Any, Optional
 
-from fastapi import Depends, HTTPException, Query, Response, Request
+import dateutil.tz
 import msgpack
 import pydantic
-from starlette.responses import JSONResponse, StreamingResponse, Send
-
-from . import models
-from .authentication import get_current_user
-from .etag import tokenize
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
-from ..query_registration import query_registry as default_query_registry
-from ..queries import KeyLookup, QueryValueError
-from ..media_type_registration import (
-    serialization_registry as default_serialization_registry,
-)
-from ..trees.in_memory import Tree as TreeInMemory
-
+from fastapi import Depends, HTTPException, Query, Request, Response
+from starlette.responses import JSONResponse, Send, StreamingResponse
 
 # These modules are not directly used, but they register things on import.
 from .. import queries
+from ..media_type_registration import (
+    serialization_registry as default_serialization_registry,
+)
+from ..queries import KeyLookup, QueryValueError
+from ..query_registration import query_registry as default_query_registry
+from ..trees.in_memory import Tree as TreeInMemory
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
+from . import models
+from .authentication import get_current_user
+from .etag import tokenize
 
 del queries
 if modules_available("numpy", "dask.array"):
@@ -200,11 +198,7 @@ class DuckReader(metaclass=abc.ABCMeta):
     def __subclasshook__(cls, candidate):
         # If the following condition is True, candidate is recognized
         # to "quack" like a Reader.
-        EXPECTED_ATTRS = (
-            "read",
-            "macrostructure",
-            "microstructure",
-        )
+        EXPECTED_ATTRS = ("read", "macrostructure", "microstructure")
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
 
@@ -217,24 +211,12 @@ class DuckTree(metaclass=abc.ABCMeta):
     def __subclasshook__(cls, candidate):
         # If the following condition is True, candidate is recognized
         # to "quack" like a Tree.
-        EXPECTED_ATTRS = (
-            "__getitem__",
-            "__iter__",
-        )
+        EXPECTED_ATTRS = ("__getitem__", "__iter__")
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
 
 def construct_entries_response(
-    query_registry,
-    tree,
-    route,
-    path,
-    offset,
-    limit,
-    fields,
-    filters,
-    sort,
-    base_url,
+    query_registry, tree, route, path, offset, limit, fields, filters, sort, base_url
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     if not isinstance(tree, DuckTree):

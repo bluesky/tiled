@@ -110,7 +110,7 @@ properties:
         additionalProperties: true
         description: |
           Additional exporters (a.k.a. serializers) for array structures.
-          
+
           Given as a media type (a.k.a MIME type) mapped to an importable function,
           as in
 
@@ -122,7 +122,7 @@ properties:
         additionalProperties: true
         description: |
           Additional exporters (a.k.a. serializers) for dataframe structures.
-          
+
           Given as a media type (a.k.a MIME type) mapped to an importable function,
           as in
 
@@ -134,8 +134,8 @@ properties:
         additionalProperties: true
         description: |
           Additional exporters (a.k.a. serializers) for xarray dataset structures.
-          
-          
+
+
           Given as a media type (a.k.a MIME type) mapped to an importable function,
           as in
 
@@ -162,7 +162,7 @@ properties:
         type: string
         description: |
           Type of Authenticator to use.
-          
+
           These are typically from the tiled.authenticators module,
           though user-defined ones may be used as well.
 
@@ -179,7 +179,7 @@ properties:
         description: |
           Named arguments to pass to Authenticator. If there are none,
           `args` may be omitted or empty.
-    
+
           Example:
 
           ```yaml
@@ -213,7 +213,7 @@ properties:
           that are not specifically controlled with an access policy.
 
           Default is false.
-      
+
       single_user_api_key:
         type: string
         description: |
@@ -230,15 +230,15 @@ properties:
           With ``python``:
 
               python -c "import secrets; print(secrets.token_hex(32))"
-            
-      access_token_max_age:  
+
+      access_token_max_age:
         type: number
         description: |
           This controls how often fresh access token have to be
           re-issued. The process is transparent to the user and just affects performance.
           An *access* token cannot be revoked, so its lifetime should be short. The
           default is 900 seconds (15 minutes).
-          
+
           Units are **seconds**.
       refresh_token_max_age:
         type: number
@@ -248,7 +248,7 @@ properties:
           Default is
 
           Units are **seconds**.
-      session_max_age: 
+      session_max_age:
         type: [number, "null"]
         description: |
           Even *active* sessions are timed out after this

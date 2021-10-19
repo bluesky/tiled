@@ -1,11 +1,10 @@
-from datetime import timedelta
-from functools import lru_cache
 import os
 import secrets
+from datetime import timedelta
+from functools import lru_cache
 from typing import Any, List, Optional
 
 from pydantic import BaseSettings
-
 
 if os.getenv("TILED_SESSION_MAX_AGE"):
     DEFAULT_SESSION_MAX_AGE = timedelta(

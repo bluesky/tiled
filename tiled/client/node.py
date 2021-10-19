@@ -1,25 +1,18 @@
 import collections
 import collections.abc
-from dataclasses import fields
 import importlib
 import itertools
 import time
 import warnings
+from dataclasses import fields
 
 import entrypoints
 
-from ..query_registration import query_registry
 from ..queries import KeyLookup
-from ..utils import (
-    OneShotCachedMap,
-    Sentinel,
-)
+from ..query_registration import query_registry
+from ..trees.utils import UNCHANGED, IndexersMixin, tree_repr
+from ..utils import OneShotCachedMap, Sentinel
 from .base import BaseClient
-from ..trees.utils import (
-    tree_repr,
-    IndexersMixin,
-    UNCHANGED,
-)
 
 
 class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -145,12 +138,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
             )
         }
-        super().__init__(
-            context=context,
-            item=item,
-            path=path,
-            params=params,
-        )
+        super().__init__(context=context, item=item, path=path, params=params)
 
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
@@ -220,10 +208,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         elif item["type"] == "reader":
             return class_(
-                context=self.context,
-                item=item,
-                path=path,
-                params=self._params,
+                context=self.context, item=item, path=path, params=self._params
             )
         else:
             raise NotImplementedError(
@@ -407,11 +392,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         while next_page_url is not None:
             content = self.context.get_json(
                 next_page_url,
-                params={
-                    **self._queries_as_params,
-                    **sorting_params,
-                    **self._params,
-                },
+                params={**self._queries_as_params, **sorting_params, **self._params},
             )
             self._cached_len = (
                 content["meta"]["count"],
@@ -436,11 +417,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         content = self.context.get_json(
             next_page_url,
-            params={
-                **self._queries_as_params,
-                **sorting_params,
-                **self._params,
-            },
+            params={**self._queries_as_params, **sorting_params, **self._params},
         )
         self._cached_len = (
             content["meta"]["count"],
@@ -461,9 +438,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> from tiled.queries import FullText
         >>> tree.search(FullText("hello"))
         """
-        return self.new_variation(
-            queries=self._queries + [query],
-        )
+        return self.new_variation(queries=self._queries + [query])
 
     def sort(self, sorting):
         """
@@ -480,9 +455,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
         may be used as a synonym for ``DESCENDING``.
         """
-        return self.new_variation(
-            sorting=sorting,
-        )
+        return self.new_variation(sorting=sorting)
 
     def _ipython_key_completions_(self):
         """

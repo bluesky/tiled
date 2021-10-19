@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from .query_registration import register
 
 

@@ -8,17 +8,16 @@ but the user-facing functionality is striaghtforward.
 """
 import collections
 import collections.abc
-from functools import lru_cache
 import os
-from pathlib import Path
 import sys
 import warnings
+from functools import lru_cache
+from pathlib import Path
 
 import appdirs
 import jsonschema
 
 from .utils import parse
-
 
 __all__ = ["list_profiles", "load_profiles", "paths"]
 
@@ -38,8 +37,7 @@ def schema():
 paths = [
     Path(
         os.getenv(
-            "TILED_SITE_PROFILES",
-            Path(appdirs.site_config_dir("tiled"), "profiles"),
+            "TILED_SITE_PROFILES", Path(appdirs.site_config_dir("tiled"), "profiles")
         )
     ),  # system
     Path(sys.prefix, "etc", "tiled", "profiles"),  # environment

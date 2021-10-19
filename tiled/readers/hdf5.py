@@ -5,9 +5,9 @@ import dask.array
 import h5py
 import numpy
 
-from .array import ArrayAdapter
+from ..trees.utils import IndexersMixin, tree_repr
 from ..utils import DictView
-from ..trees.utils import tree_repr, IndexersMixin
+from .array import ArrayAdapter
 
 
 class HDF5DatasetAdapter(ArrayAdapter):

@@ -3,19 +3,18 @@ import functools
 import importlib
 import mimetypes
 import os
-from pathlib import Path
 import queue
 import re
 import threading
 import warnings
+from pathlib import Path
 
 import cachetools
-from watchgod.watcher import RegExpWatcher, Change
+from watchgod.watcher import Change, RegExpWatcher
 
 from ..structures.dataframe import XLSX_MIME_TYPE
-from ..utils import CachingMap, import_object, OneShotCachedMap
+from ..utils import CachingMap, OneShotCachedMap, import_object
 from .in_memory import Tree as TreeInMemory
-
 
 # The Adapter objects are light because any large data they stash should be
 # placed in the global internal cache, not in the Adapter state itself.
@@ -413,11 +412,7 @@ def _watch(
     collision_tracker,
     poll_interval,
 ):
-    watcher = RegExpWatcher(
-        directory,
-        re_files=ignore_re_files,
-        re_dirs=ignore_re_dirs,
-    )
+    watcher = RegExpWatcher(directory, re_files=ignore_re_files, re_dirs=ignore_re_dirs)
     queued_changes = []
     event = None
     while not watcher_thread_kill_switch:
@@ -552,9 +547,7 @@ def _process_changes(
                                 )
                     try:
                         reader_factory = _reader_factory_for_file(
-                            readers_by_mimetype,
-                            mimetypes_by_file_ext,
-                            path,
+                            readers_by_mimetype, mimetypes_by_file_ext, path
                         )
                     except NoReaderAvailable:
                         # Ignore this file in the future.
@@ -609,9 +602,7 @@ def _process_changes(
                 # that this could be the first time we see this path.
                 try:
                     reader_factory = _reader_factory_for_file(
-                        readers_by_mimetype,
-                        mimetypes_by_file_ext,
-                        path,
+                        readers_by_mimetype, mimetypes_by_file_ext, path
                     )
                 except NoReaderAvailable:
                     # Ignore this file in the future.

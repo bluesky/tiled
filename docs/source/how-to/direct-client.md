@@ -12,7 +12,7 @@ convenient to access a Tree's data more directly in Python. Such as:
 
 In these situations, you may run the service and the client in the same process.
 
-## From a (service-side) Tree instance 
+## From a (service-side) Tree instance
 
 ```py
 from tiled.examples.generated_minimal import tree as service_side_tree

@@ -1,7 +1,7 @@
 # Add Support for a Custom Format
 
 For a given "structure family" (e.g. `array`, `dataframe`) the Tiled server
-can provide the data---in whole or in part---in a variety of formats. 
+can provide the data---in whole or in part---in a variety of formats.
 See {doc}`../tutorials/export` for a list of the formats supported out of the
 box.
 
