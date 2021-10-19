@@ -1,5 +1,6 @@
 # These are used by the server to read files in the respective formats.
 h5py
 openpyxl
-tifffile
 pillow
+scipy  # for netCDF
+tifffile
