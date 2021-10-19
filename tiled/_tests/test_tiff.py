@@ -43,6 +43,13 @@ def test_tiff_sequence_block(directory, block_input, correct_shape):
 
 
 def test_tiff_sequence_with_directory_walker(tmpdir):
+    """
+    directory/
+      sequence/  # should trigger subdirectory_handler
+      other_stuff/  # should not
+      other_file1.csv  # should not
+      other_file2.csv  # should not
+    """
     data = numpy.random.random((100, 101))
     # This directory should be detected as a TIFF sequence.
     Path(tmpdir, "sequence").mkdir()
@@ -51,13 +58,14 @@ def test_tiff_sequence_with_directory_walker(tmpdir):
     # This directory should *not* be detected as a TIFF sequence.
     Path(tmpdir, "other_stuff").mkdir()
     tf.imwrite(Path(tmpdir, "other_stuff", "image.tif"), data)
-    with open(Path(tmpdir, "other_stuff", "stuff.csv"), "w") as file:
-        file.write(
-            """
+    for target in ["other_stuff/stuff.csv", "other_file1.csv", "other_file2.csv"]:
+        with open(Path(tmpdir, target), "w") as file:
+            file.write(
+                """
 a,b,c
 1,2,3
 """
-        )
+            )
     config = {
         "trees": [
             {
@@ -74,5 +82,7 @@ a,b,c
     # This whole directory of files is one dataset.
     assert client["sequence"].read().shape == (10, 100, 101)
     # This directory has one dataset per file, in the normal fashion.
-    client["other_stuff"]["stuff"].read()
     client["other_stuff"]["image"].read()
+    assert list(client["other_stuff"]["stuff"].read().columns) == ["a", "b", "c"]
+    assert list(client["other_file1"].read().columns) == ["a", "b", "c"]
+    assert list(client["other_file2"].read().columns) == ["a", "b", "c"]
