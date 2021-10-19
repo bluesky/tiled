@@ -2,13 +2,6 @@ import abc
 import collections.abc
 import contextlib
 import dataclasses
-<<<<<<< HEAD
-=======
-from datetime import datetime, timedelta
-import dateutil.tz
-from functools import lru_cache
-from hashlib import md5
->>>>>>> Test entries_stale_at and metadata_stale_at.
 import itertools
 import json
 import math
@@ -17,7 +10,7 @@ import re
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from hashlib import md5
 from typing import Any, Optional

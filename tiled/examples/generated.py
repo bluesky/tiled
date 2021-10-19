@@ -1,6 +1,6 @@
 import asyncio
-from datetime import timedelta
 import sys
+from datetime import timedelta
 
 import dask.array
 import dask.dataframe

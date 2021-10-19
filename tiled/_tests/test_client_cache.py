@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta
 import time
+from datetime import datetime, timedelta
 
 import numpy
 import pytest
 
 from ..client import from_tree
-from ..client.utils import logger
 from ..client.cache import Cache, download
+from ..client.utils import logger
 from ..readers.array import ArrayAdapter
 from ..trees.in_memory import Tree
 

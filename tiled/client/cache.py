@@ -11,21 +11,16 @@ The original cachey license (which, like Tiled's, is 3-clause BSD) is included i
 the same source directory as this module.
 """
 import collections.abc
-from datetime import datetime, timedelta
 import functools
 import hashlib
 import threading
+import time
 from collections import defaultdict
+from datetime import datetime, timedelta
 from math import log
 from pathlib import Path
-<<<<<<< HEAD
-=======
-import threading
-import time
->>>>>>> Log cache hit bytesize and read time.
 
 from heapdict import heapdict
-
 
 if __debug__:
     from .utils import logger

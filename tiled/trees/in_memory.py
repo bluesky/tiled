@@ -1,6 +1,6 @@
 import collections.abc
-from datetime import datetime
 import itertools
+from datetime import datetime
 
 from ..queries import FullText
 from ..query_registration import QueryTranslationRegistry
