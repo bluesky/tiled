@@ -161,8 +161,7 @@ serialization_registry.register(
 serialization_registry.register(
     "array",
     "application/json",
-    # lambda array, metadata: json.dumps(array.tolist()).encode(),
-    lambda array, metadata: orjson.dumps(array.tolist()).encode(),
+    lambda array, metadata: orjson.dumps(array.tolist()),
 )
 
 

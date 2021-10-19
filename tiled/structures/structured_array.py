@@ -148,8 +148,7 @@ serialization_registry.register(
 serialization_registry.register(
     "structured_array_generic",
     "application/json",
-    #lambda array, metadata: json.dumps(array.tolist()).encode(),
-    lambda array, metadata: orjson.dumps(array.tolist()).encode(),
+    lambda array, metadata: orjson.dumps(array.tolist()),
 )
 serialization_registry.register(
     "structured_array_tabular",
@@ -159,6 +158,5 @@ serialization_registry.register(
 serialization_registry.register(
     "structured_array_tabular",
     "application/json",
-    # lambda array, metadata: json.dumps(array.tolist()).encode(),
-    lambda array, metadata: orjson.dumps(array.tolist()).encode(),
+    lambda array, metadata: orjson.dumps(array.tolist()),
 )

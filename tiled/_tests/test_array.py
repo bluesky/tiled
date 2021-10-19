@@ -4,11 +4,13 @@ import warnings
 import dask.array
 import math
 import numpy
+from pathlib import Path
 import pytest
 
 from ..client import from_tree
 from ..readers.array import ArrayAdapter
 from ..trees.in_memory import Tree
+
 
 array_cases = {
     "b": (numpy.arange(10) % 2).astype("b"),
@@ -69,21 +71,28 @@ def test_shape_with_zero():
     assert numpy.array_equal(actual, expected)
 
 
-def test_nan_infinity_handler():
+def test_nan_infinity_handler(tmpdir):
     data = numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf])
     metadata = {"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
     inf_tree = Tree(
         {"example": ArrayAdapter.from_array(data, metadata=metadata)}, metadata=metadata
     )
-    
+
     client = from_tree(inf_tree)
     print(f"Metadata: {client['example'].metadata}")
     print(f"Data: {client['example'].read()}")
-    client["example"].export("/tmp/test.json")
+    Path(tmpdir, "testjson").mkdir()
+    client["example"].export(Path(tmpdir, "testjson", "test.json"))
 
     import json
 
     def strict_parse_constant(c):
         raise ValueError(f"{c} is not valid JSON")
 
-    json.load(open("/tmp/test.json", "r"), parse_constant=strict_parse_constant)
+    open_json = json.load(
+        open(Path(tmpdir, "testjson", "test.json"), "r"),
+        parse_constant=strict_parse_constant,
+    )
+
+    expected_list = [0.0, 1.0, None, None, None]
+    assert open_json == expected_list
