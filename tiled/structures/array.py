@@ -1,14 +1,13 @@
 import base64
 import enum
 import io
-import json
+import orjson
 import os
 import sys
 from dataclasses import dataclass
 from typing import Tuple
 
 import numpy
-import orjson
 
 from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import modules_available

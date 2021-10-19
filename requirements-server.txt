@@ -5,6 +5,7 @@ dask
 fastapi
 jsonschema
 msgpack
+orjson
 psutil
 prometheus_client
 pydantic
