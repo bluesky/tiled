@@ -82,8 +82,6 @@ target/
 .ipynb_checkpoints
 
 example_files/
-*.yml
-*.json
 
 # generated docs
 docs/source/reference/client-profiles.md
