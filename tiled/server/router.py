@@ -155,7 +155,7 @@ def declare_search_router(query_registry):
     ):
         request.state.endpoint = "search"
         try:
-            resource, metadata_stale_at = construct_entries_response(
+            resource, metadata_stale_at, must_revalidate = construct_entries_response(
                 query_registry,
                 entry,
                 "/search",
@@ -171,14 +171,18 @@ def declare_search_router(query_registry):
             # of this response become stale at different times, we
             # cite the earliest one.
             entries_stale_at = getattr(entry, "entries_stale_at", None)
+            headers = {}
             if (metadata_stale_at is None) or (entries_stale_at is None):
                 expires = None
             else:
                 expires = min(metadata_stale_at, entries_stale_at)
+            if must_revalidate:
+                headers["Cache-Control"] = "must-revalidate"
             return json_or_msgpack(
                 request,
                 resource,
                 expires=expires,
+                headers=headers,
             )
         except NoEntry:
             raise HTTPException(status_code=404, detail="No such entry.")
@@ -270,7 +274,7 @@ async def entries(
 
     request.state.endpoint = "entries"
     try:
-        resource, metadata_stale_at = construct_entries_response(
+        resource, metadata_stale_at, must_revalidate = construct_entries_response(
             query_registry,
             entry,
             "/entries",
@@ -290,7 +294,10 @@ async def entries(
             expires = None
         else:
             expires = min(metadata_stale_at, entries_stale_at)
-        return json_or_msgpack(request, resource, expires=expires)
+        headers = {}
+        if must_revalidate:
+            headers["Cache-Control"] = "must-revalidate"
+        return json_or_msgpack(request, resource, expires=expires, headers=headers)
     except NoEntry:
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:

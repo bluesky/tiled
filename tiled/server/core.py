@@ -245,6 +245,9 @@ def construct_entries_response(
                 status_code=400, detail="This Tree does not support sorting."
             )
         tree = tree.sort(sorting)
+    # We will set must_revalidate = True, and it may be overridden by
+    # a search query whose results are expected to be stable.
+    must_revalidate = True
     # Apply the queries and obtain a narrowed tree.
     key_lookups = []
     for query_name, parameters_dict_of_lists in queries.items():
@@ -267,6 +270,11 @@ def construct_entries_response(
                     ]
             try:
                 query = query_class(**parameters)
+                # Any query can tell us that it narrows the search results down to a stable
+                # results set.
+                must_revalidate = must_revalidate and getattr(
+                    query, "must_revalidate", True
+                )
                 # Special case: Do key-lookups at the end after all other filtering.
                 # We do not require trees to implement this query; we implement it
                 # directly here by just calling __getitem__.
@@ -317,6 +325,7 @@ def construct_entries_response(
     return (
         models.Response(data=data, links=links, meta={"count": count}),
         metadata_stale_at,
+        must_revalidate,
     )
 
 
@@ -669,7 +678,7 @@ MSGPACK_MIME_TYPE = "application/x-msgpack"
 HTTP_EXPIRES_HEADER_FORMAT = "%a, %d %b %Y %H:%M:%S GMT"
 
 
-def json_or_msgpack(request, content, expires=None):
+def json_or_msgpack(request, content, expires=None, headers=None):
     media_types = request.headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
@@ -689,7 +698,8 @@ def json_or_msgpack(request, content, expires=None):
     content_as_dict = content.dict()
     with record_timing(request.state.metrics, "tok"):
         etag = md5(str(content_as_dict).encode()).hexdigest()
-    headers = {"ETag": etag}
+    headers = headers or {}
+    headers["ETag"] = etag
     if expires is not None:
         headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:

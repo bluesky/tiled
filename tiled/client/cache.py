@@ -21,9 +21,71 @@ from math import log
 from pathlib import Path
 
 from heapdict import heapdict
+from httpx import Headers
 
 if __debug__:
     from .utils import logger
+
+
+class UrlItem(
+    collections.namedtuple(
+        "UrlItem",
+        [
+            "pinned",
+            "size",
+            "media_type",
+            "encoding",
+            "etag",
+            "must_revalidate",
+            "expires",
+        ],
+    )
+):
+    """
+    An item in the cache mapping URLs to ETags (with other Headers info)
+    """
+
+    @classmethod
+    def from_headers(cls, headers):
+        expires_str = headers.get("expires")
+        if expires_str is not None:
+            expires = datetime.strptime(expires_str, HTTP_EXPIRES_HEADER_FORMAT)
+        else:
+            expires = None
+        return cls(
+            pinned=bool(int(headers.pop("__tiled_client_pinned__", "0"))),
+            size=int(headers["content-length"]),
+            media_type=headers["content-type"],
+            encoding=headers.get("content-encoding"),
+            etag=headers["etag"],
+            must_revalidate="must-revalidate" in headers.get("cache-control", ""),
+            expires=expires,
+        )
+
+    @classmethod
+    def from_text(cls, text):
+        headers = Headers()
+        for line in text.splitlines():
+            k, v = line.split(": ", 1)
+            headers[k] = v
+        return cls.from_headers(headers)
+
+    def to_text(self):
+        headers = {
+            "__tiled_client_pinned__": str(
+                int(self.pinned)
+            ),  # "0" or "1" for False or True
+            "content-length": str(self.size),
+            "content-type": self.media_type,
+            "etag": self.etag,
+        }
+        if self.must_revalidate:
+            headers["cache-control"] = "must-revalidate"
+        if self.expires is not None:
+            headers["expires"] = self.expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
+        if self.encoding is not None:
+            headers["content-encoding"] = self.encoding
+        return "\n".join(f"{k}: {v}" for k, v in headers.items())
 
 
 def download(*entries):
@@ -89,9 +151,9 @@ class Reservation:
     using `ensure_released()`.
     """
 
-    def __init__(self, url, headers, renew, lock, load_content):
+    def __init__(self, url, item, renew, lock, load_content):
         self.url = url
-        self.headers = headers
+        self.item = item
         self._renew = renew
         self._lock = lock
         self._lock_held = True
@@ -100,14 +162,13 @@ class Reservation:
 
     @property
     def etag(self):
-        return self.headers["ETag"]
+        # This is a relic of a refactor. Might be able to remove this indirection.
+        return self.item.etag
 
     @property
     def expires(self):
-        expires = self.headers.get("Expires")
-        if expires is not None:
-            return datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
-        return None
+        # This is a relic of a refactor. Might be able to remove this indirection.
+        return self.item.expires
 
     def load_content(self):
         "Return the content and release the reservation."
@@ -169,7 +230,7 @@ class Cache:
     """
 
     @classmethod
-    def in_memory(cls, available_bytes, *, error_if_full=False, scorer=None):
+    def in_memory(cls, available_bytes, *, scorer=None):
         """
         An in-memory cache of data from the server
 
@@ -185,14 +246,6 @@ class Cache:
         ----------
         available_bytes : integer
             e.g. 2e9 to use up to 2 GB of RAM
-        error_if_full : boolean, optional
-            By default, the cache starts evicting the least-used items when
-            it fills up. This is generally fine when working with a
-            connection to the server. But if the goal is to cache for
-            *offline* use, it is better to be notified by and error that the
-            cache is full. Then the user can respond by increasing
-            available_bytes, using a different storage volume for the cache,
-            or choosing to a different (smaller) set of entries to download.
         scorer : Scorer
             Determines which items to evict from the cache when it grows full.
             See tiled.client.cache.Scorer for example.
@@ -201,10 +254,8 @@ class Cache:
             available_bytes,
             url_to_headers_cache={},
             etag_to_content_cache={},
-            sizes={},
             global_lock=threading.Lock(),
             lock_factory=lambda etag: threading.Lock(),
-            error_if_full=error_if_full,
             scorer=scorer,
         )
 
@@ -215,7 +266,6 @@ class Cache:
         available_bytes=None,
         *,
         cull_on_startup=False,
-        error_if_full=False,
         scorer=None,
     ):
         """
@@ -241,14 +291,6 @@ class Cache:
             If reusing an existing cache directory which is already larger than the
             available_bytes, an error is raised. Set this to True to delete
             items from the cache until it fits in available_bytes. False by default.
-        error_if_full : boolean, optional
-            By default, the cache starts evicting the least-used items when
-            it fills up. This is generally fine when working with a
-            connection to the server. But if the goal is to cache for
-            *offline* use, it is better to be notified by and error that the
-            cache is full. Then the user can respond by increasing
-            available_bytes, using a different storage volume for the cache,
-            or choosing to a different (smaller) set of entries to download.
         scorer : Scorer
             Determines which items to evict from the cache when it grows full.
             See tiled.client.cache.Scorer for example.
@@ -263,30 +305,15 @@ class Cache:
             # By default, use (X - 1 GB) where X is the current free space
             # on the volume containing `path`.
             available_bytes = shutil.disk_usage(path).free - 1e9
-        # Get the nbytes for each object in the cache if it is not empty.
-        # The FileBasedCache provides a `sizes` property that computes this
-        # using stat(). That is, we do not actually read the content into
-        # memory at this point.
         etag_to_content_cache = FileBasedCache(path / "etag_to_content_cache")
-        sizes = etag_to_content_cache.sizes
-        total_size = sum(sizes.values())
-        if total_size > available_bytes:
-            if not cull_on_startup:
-                raise AlreadyTooLarge(
-                    f"The cache directory is already {total_size} bytes which is greater "
-                    f"that the specified available_bytes {available_bytes}. To delete items "
-                    "from the cache until it fits, set cull_on_startup=True."
-                )
         instance = cls(
             available_bytes,
-            url_to_headers_cache=FileBasedCache(path / "url_to_headers_cache"),
+            url_to_headers_cache=FileBasedUrlCache(path / "url_to_headers_cache"),
             etag_to_content_cache=etag_to_content_cache,
-            sizes=sizes,
             global_lock=locket.lock_file(path / "global.lock"),
             lock_factory=lambda etag: locket.lock_file(
                 path / "etag_to_content_cache" / f"{etag}.lock"
             ),
-            error_if_full=error_if_full,
             scorer=scorer,
         )
         # Ensure we fit in available_bytes.
@@ -299,10 +326,8 @@ class Cache:
         *,
         url_to_headers_cache,
         etag_to_content_cache,
-        sizes,
         global_lock,
         lock_factory,
-        error_if_full=False,
         scorer=None,
     ):
         """
@@ -315,20 +340,10 @@ class Cache:
             Dict-like object to use for cache
         etag_to_content_cache : MutableMapping
             Dict-like object to use for cache
-        sizes : dict
-            Byte size of each item in the etag_to_content_cache.
         global_lock : Lock
             A lock used for the url_to_headers_cache
         lock_factory : callable
             Expected signature: ``f(etag) -> Lock``
-        error_if_full : boolean, optional
-            By default, the cache starts evicting the least-used items when
-            it fills up. This is generally fine when working with a
-            connection to the server. But if the goal is to cache for
-            *offline* use, it is better to be notified by and error that the
-            cache is full. Then the user can respond by increasing
-            available_bytes, using a different storage volume for the cache,
-            or choosing to a different (smaller) set of entries to download.
         scorer: Scorer, optional
             A Scorer object that controls how we decide what to retire when space
             is low.
@@ -338,6 +353,7 @@ class Cache:
             scorer = Scorer(halflife=1000)
         self.scorer = scorer
         self.available_bytes = available_bytes
+        self.pinned_bytes = 0
         self.heap = heapdict()
         self.nbytes = dict()
         self.total_bytes = 0
@@ -346,10 +362,10 @@ class Cache:
         self.etag_refcount = defaultdict(lambda: 0)
         self.etag_lock = LockDict.from_lock_factory(lock_factory)
         self.url_to_headers_lock = global_lock
-        self.error_if_full = error_if_full
         # If the cache has data in it, initialize the internal caches.
         for etag in etag_to_content_cache:
-            nbytes = sizes[etag]
+            # This tells us the content size without actually reading in the data.
+            nbytes = etag_to_content_cache.sizeof(etag)
             score = self.scorer.touch(etag, nbytes)
             self.heap[etag] = score
             self.nbytes[etag] = nbytes
@@ -361,65 +377,45 @@ class Cache:
             # Do not renew.
             return
         with self.url_to_headers_lock:
-            # Read cached headers.
-            headers = {}
-            for line in self.url_to_headers_cache[cache_key].decode().splitlines():
-                key, value = line.split(": ", 1)
-                headers[key] = value
-            assert headers["ETag"] == etag
-            # Update Expires.
-            headers["Expires"] = expires
-            # Write updated headers.
-            self.url_to_headers_cache[cache_key] = (
-                "\n".join(f"{key}: {value}" for key, value in headers.items())
-            ).encode()
-        if __debug__:
+            item = self.url_to_headers_cache[cache_key]
+            assert item.etag == etag
+            # TO DO We end up going str -> datetime -> str here.
+            # It may be worth adding a fast path.
             expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
+            updated_item = item._replace(expires=expires_dt)
+            self.url_to_headers_cache[cache_key] = updated_item
+        if __debug__:
             logger.debug(
                 "Cache renewed %s for %d secs.",
                 url,
                 _round_seconds(expires_dt - datetime.utcnow()),
             )
 
-    def put(self, url, etag, expires, media_type, encoding, content):
+    def put(self, url, headers, content):
         cache_key = tokenize_url(url)
         cached = self.url_to_headers_cache.get(cache_key)
         if cached:
-            headers = {}
-            for line in cached.decode().splitlines():
-                key, value = line.split(": ", 1)
-                headers[key] = value
-            previous_etag = headers["ETag"]
+            previous_etag = cached.etag
             self.etag_refcount[previous_etag] -= 1
             if self.etag_refcount[previous_etag] == 0:
                 # All URLs that referred to this content have since
                 # changed their ETags, so we can forget about this content.
                 self.retire(previous_etag)
-        headers = {
-            "ETag": etag,
-            "Content-Type": media_type,
-        }
-        if expires is not None:
-            headers["Expires"] = expires
-        if encoding is not None:
-            headers["Content-Encoding"] = encoding
-        with self.url_to_headers_lock:
-            self.url_to_headers_cache[cache_key] = "\n".join(
-                f"{key}: {value}" for key, value in headers.items()
-            ).encode()
+        item = UrlItem.from_headers(headers)
         start = time.perf_counter()
-        nbytes = self._put_content(etag, content)
+        with self.url_to_headers_lock:
+            self.url_to_headers_cache[cache_key] = item
+        nbytes = self._put_content(item.etag, content)
         duration = 1000 * (time.perf_counter() - start)  # units: ms
         if __debug__:
             if nbytes:
-                if expires is not None:
-                    expires_dt = datetime.strptime(expires, HTTP_EXPIRES_HEADER_FORMAT)
+                if item.expires is not None:
                     logger.debug(
                         "Cache stored (%s B in %.1f ms) %s. Renew after %d secs.",
                         f"{nbytes:_}",  # Use _ for thousands separator.
                         duration,
                         url,
-                        _round_seconds(expires_dt - datetime.utcnow()),
+                        _round_seconds(item.expires - datetime.utcnow()),
                     )
                 else:
                     logger.debug(
@@ -457,30 +453,25 @@ class Cache:
             if cached is None:
                 # We have nothing for this URL.
                 return None
-            # Parse cached headers.
-            headers = {}
-            for line in cached.decode().splitlines():
-                key, value = line.split(": ", 1)
-                headers[key] = value
             # Acquire a targeted lock, and then release and the global lock.
-            etag = headers["ETag"]
-            lock = self.etag_lock[etag]
+            lock = self.etag_lock[cached.etag]
         return Reservation(
             url,
-            headers,
-            functools.partial(self.renew, url, etag),
+            cached,
+            functools.partial(self.renew, url, cached.etag),
             lock,
-            functools.partial(self._get_content_for_etag, etag),
+            functools.partial(self._get_content_for_etag, cached.etag),
         )
 
     def _get_content_for_etag(self, etag):
-        if etag in self.etag_to_content_cache:
-            value = self.etag_to_content_cache[etag]
+        try:
+            content = self.etag_to_content_cache[etag]
             # Access this item increases its score.
-            nbytes = len(value)
-            score = self.scorer.touch(etag, nbytes)
+            score = self.scorer.touch(etag, len(content))
             self.heap[etag] = score
-            return value
+            return content
+        except KeyError:
+            return None
 
     def retire(self, etag):
         """Retire/remove a etag from the cache
@@ -637,12 +628,9 @@ class FileBasedCache(collections.abc.MutableMapping):
     def directory(self):
         return self._directory
 
-    @property
-    def sizes(self):
-        return {
-            path.relative_to(self._directory).parts: path.stat().st_size
-            for path in self._directory.iterdir()
-        }
+    def sizeof(self, key):
+        path = Path(self._directory, *_normalize(key))
+        return path.stat().st_size
 
     def __getitem__(self, key):
         path = Path(self._directory, *_normalize(key))
@@ -666,20 +654,26 @@ class FileBasedCache(collections.abc.MutableMapping):
 
     def __iter__(self):
         for path in self._directory.iterdir():
-            yield path.relative_to(self._directory).parts
+            parts = path.relative_to(self._directory).parts
+            if len(parts) == 1:
+                # top-level metadata like "client_library_version"
+                continue
+            yield _unnormalize(parts)
 
     def __contains__(self, key):
         path = Path(self._directory, *_normalize(key))
         return path.is_file()
 
 
-def _normalize(key):
-    if isinstance(key, str):
-        key = (key,)
+def _normalize(*key):
     # To avoid an overly large directory (which leads to slow performance)
     # divide into subdirectories beginning with the first two characters of
     # the contents' name.
     return (key[0][:2],) + key
+
+
+def _unnormalize(key):
+    return [key][1]
 
 
 class LockDict(dict):
@@ -693,6 +687,16 @@ class LockDict(dict):
         value = self._lock_factory(key)
         self[key] = value
         return value
+
+
+class FileBasedUrlCache(FileBasedCache):
+    def __getitem__(self, key):
+        data = super().__getitem__(key)
+        return UrlItem.from_text(data.decode())
+
+    def __setitem__(self, key, value):
+        data = value.to_text().encode()
+        super().__setitem__(key, data)
 
 
 class AlreadyTooLarge(Exception):

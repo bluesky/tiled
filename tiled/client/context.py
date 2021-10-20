@@ -293,9 +293,8 @@ class Context:
                 return reservation.load_content()
             elif response.status_code == 200:
                 etag = response.headers.get("ETag")
+                encoding = response.headers.get("Content-Encoding")
                 content = response.content
-                media_type = response.headers["content-type"]
-                encoding = response.headers.get("content-encoding")
                 # httpx handles standard HTTP encodings transparently, but we have to
                 # handle "blosc" manually.
                 if encoding == "blosc":
@@ -306,10 +305,7 @@ class Context:
                     # Write to cache.
                     self._cache.put(
                         url,
-                        etag,
-                        response.headers.get("expires"),
-                        media_type,
-                        encoding,
+                        response.headers,
                         content,
                     )
                 return content
