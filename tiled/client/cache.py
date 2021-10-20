@@ -11,6 +11,7 @@ The original cachey license (which, like Tiled's, is 3-clause BSD) is included i
 the same source directory as this module.
 """
 import collections.abc
+import enum
 import functools
 import hashlib
 import threading
@@ -25,6 +26,12 @@ from httpx import Headers
 
 if __debug__:
     from .utils import logger
+
+
+class Revalidate(enum.Enum):
+    FORCE = enum.auto()
+    IF_EXPIRED = enum.auto()
+    IF_WE_MUST = enum.auto()
 
 
 class UrlItem(
@@ -160,16 +167,6 @@ class Reservation:
         self._load_content = load_content
         lock.acquire()
 
-    @property
-    def etag(self):
-        # This is a relic of a refactor. Might be able to remove this indirection.
-        return self.item.etag
-
-    @property
-    def expires(self):
-        # This is a relic of a refactor. Might be able to remove this indirection.
-        return self.item.expires
-
     def load_content(self):
         "Return the content and release the reservation."
         start = time.perf_counter()
@@ -187,14 +184,14 @@ class Reservation:
         return content
 
     def is_stale(self):
-        if self.expires is None:
+        if self.item.expires is None:
             logger.debug(
                 "Cache is stale (no expiration was set) %s",
                 self.url,
             )
             return True
 
-        time_remaining = datetime.utcnow() - self.expires
+        time_remaining = datetime.utcnow() - self.item.expires
         stale = time_remaining > ZERO_SECONDS
         if __debug__:
             if stale:

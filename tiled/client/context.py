@@ -8,6 +8,7 @@ import appdirs
 import httpx
 import msgpack
 
+from ..cache import Revalidate
 from ..utils import DictView
 from .utils import (
     ASYNC_EVENT_HOOKS,
@@ -166,6 +167,7 @@ class Context:
         self._client = client
         self._authentication_uri = authentication_uri
         self._cache = cache
+        self.revalidate = Revalidate.IF_WE_MUST
         self._username = username
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
@@ -239,7 +241,10 @@ class Context:
         "httpx.Client event hooks. This is exposed for testing."
         return self._client.event_hooks
 
-    def get_content(self, path, accept=None, stream=False, **kwargs):
+    def get_content(self, path, accept=None, stream=False, revalidate=None, **kwargs):
+        if revalidate is None:
+            # Fallback to context default.
+            revalidate = self.revalidate
         request = self._client.build_request("GET", path, **kwargs)
         if accept:
             request.headers["Accept"] = accept
@@ -280,10 +285,20 @@ class Context:
             reservation = self._cache.get_reservation(url)
         try:
             if reservation is not None:
-                if not reservation.is_stale():
+                is_stale = reservation.is_stale()
+                if not (
+                    # This condition means "client user wants us to unconditionally revalidate"
+                    (revalidate == Revalidate.FORCE)
+                    or
+                    # This condition means "client user wants us to revalidate if expired"
+                    (is_stale and Revalidate.IF_EXPIRED)
+                    or
+                    # This condition means "server really wants us to revalidate"
+                    (is_stale and reservation.item.must_revalidate)
+                ):
                     # Short-circuit. Do not even bother consulting the server.
                     return reservation.load_content()
-                request.headers["If-None-Match"] = reservation.etag
+                request.headers["If-None-Match"] = reservation.item.etag
             response = self._send(request, stream=stream)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
