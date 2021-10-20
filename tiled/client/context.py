@@ -8,8 +8,8 @@ import appdirs
 import httpx
 import msgpack
 
-from ..cache import Revalidate
 from ..utils import DictView
+from .cache import Revalidate
 from .utils import (
     ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
