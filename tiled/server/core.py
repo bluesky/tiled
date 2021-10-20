@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 import dateutil.tz
 import msgpack
+import orjson
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
@@ -579,7 +580,7 @@ class NumpySafeJSONResponse(JSONResponse):
                 return super().render(content)
         except Exception:
             with record_timing(self.__metrics, "pack"):
-                return json.dumps(content, cls=_NumpySafeJSONEncoder).encode()
+                return orjson.dumps(content)
 
 
 def _numpy_safe_msgpack_encoder(obj):
