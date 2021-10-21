@@ -539,9 +539,9 @@ class Scorer:
     --------
 
     >>> s = Scorer(halflife=10)
-    >>> s.download('x', cost=2)  # score is similar to cost
+    >>> s.touch('x', cost=2)  # score is similar to cost
     2
-    >>> s.download('x')  # scores increase on every download
+    >>> s.touch('x')  # scores increase on every touch
     4.138629436111989
     """
 
@@ -553,7 +553,7 @@ class Scorer:
         self.tick = 1
         self._base = 1
 
-    def download(self, key, cost=None):
+    def touch(self, key, cost=None):
         """Update score for key
         Provide a cost the first time and optionally thereafter.
         """
@@ -615,6 +615,7 @@ class FileBasedCache(collections.abc.MutableMapping):
         return self._directory
 
     def sizeof(self, key):
+        # This is vestigial and can likely be removed.
         path = Path(self._directory, *_normalize(key))
         return path.stat().st_size
 
