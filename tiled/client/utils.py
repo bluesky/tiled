@@ -44,25 +44,6 @@ class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."
 
 
-class NoCache(Exception):
-    pass
-
-
-def verify_cache(cache):
-    if cache is None:
-        raise NoCache(
-            """To download, the Tiled client needs to be configured
-with a cache, such as:
-
-from tiled.client import from_uri
-from tiled.client.cache import Cache
-
-c = from_uri("http://tiled-demo.blueskyproject.io", cache = Cache.on_disk("data"))
-
-See https://blueskyproject.io/tiled/tutorials/caching.html for details."""
-        )
-
-
 def export_util(file, format, get, link, params):
     """
     Download client data in some format and write to a file.

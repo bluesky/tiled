@@ -405,7 +405,7 @@ class Cache:
                     )
                 else:
                     logger.debug(
-                        "Cache stored (%s B in %.1f ms) %s. Immediate stale.",
+                        "Cache stored (%s B in %.1f ms) %s. Immediately stale.",
                         f"{nbytes:_}",  # Use _ for thousands separator.
                         duration,
                         url,
@@ -691,3 +691,22 @@ class AlreadyTooLarge(Exception):
 
 class CacheIsFull(Exception):
     pass
+
+
+class NoCache(Exception):
+    pass
+
+
+def verify_cache(cache):
+    if cache is None:
+        raise NoCache(
+            """To download, the Tiled client needs to be configured
+with a cache, such as:
+
+from tiled.client import from_uri
+from tiled.client.cache import Cache
+
+c = from_uri("http://tiled-demo.blueskyproject.io", cache = Cache.on_disk("data"))
+
+See https://blueskyproject.io/tiled/tutorials/caching.html for details."""
+        )

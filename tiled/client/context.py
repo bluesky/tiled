@@ -218,6 +218,10 @@ class Context:
         return DictView(self._tokens)
 
     @property
+    def cache(self):
+        return self._cache
+
+    @property
     def offline(self):
         return self._offline
 

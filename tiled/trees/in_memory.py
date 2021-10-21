@@ -147,6 +147,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             authenticated_identity=self.authenticated_identity,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,
+            must_revalidate=self.must_revalidate,
             **kwargs,
         )
 

@@ -1,8 +1,8 @@
 import importlib
 
 from ..trees.utils import UNCHANGED
-from ..utils import DictView, ListView, OneShotCachedMap, verify_cache
-from .cache import Revalidate
+from ..utils import DictView, ListView, OneShotCachedMap
+from .cache import Revalidate, verify_cache
 
 
 class BaseClient:
