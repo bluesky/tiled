@@ -78,6 +78,8 @@ class TiffSequenceReader:
             )
         # e.g. read(slice=(...))
         if isinstance(slice, tuple):
+            if len(slice) == 0:
+                return with_object_cache(self._cache_key, _safe_asarray, self._seq)
             image_axis, *the_rest = slice
             # Could be int or slice
             # (0, slice(...)) or (0,....) are converted to a list

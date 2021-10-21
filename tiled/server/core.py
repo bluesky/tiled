@@ -30,7 +30,12 @@ from ..media_type_registration import (
 from ..queries import KeyLookup, QueryValueError
 from ..query_registration import query_registry as default_query_registry
 from ..trees.in_memory import Tree as TreeInMemory
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
+from ..utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    SerializationError,
+    UnsupportedShape,
+    modules_available,
+)
 from . import models
 from .authentication import get_current_user
 from .etag import tokenize
@@ -351,13 +356,16 @@ def construct_data_response(
 
     # The client may give us a choice of media types. Find the first one
     # that we support.
+    supported = set()
     for media_type in media_types:
         if media_type == "*/*":
             media_type = default_media_type
         # fall back to generic dataframe serializer if no specs present
         for spec in specs + [structure_family]:
-            if media_type in serialization_registry.media_types(spec):
+            media_types_for_spec = serialization_registry.media_types(spec)
+            if media_type in media_types_for_spec:
                 break
+            supported.update(media_types_for_spec)
         else:
             # None of the specs or the structure_family can serialize to this
             # media_type. Try the next one.
@@ -368,9 +376,8 @@ def construct_data_response(
         # We have checked each of the media_types, and we cannot serialize
         # to any of them.
         raise UnsupportedMediaTypes(
-            "None of the media types requested by the client are supported.",
-            unsupported=media_types,
-            supported=serialization_registry.media_types(structure_family),
+            f"None of the media types requested by the client are supported. "
+            f"Supported: {', '.join(supported)}. Requested: {', '.join(media_types)}.",
         )
     with record_timing(request.state.metrics, "tok"):
         # Create an ETag that uniquely identifies this content and the media
@@ -380,7 +387,19 @@ def construct_data_response(
         # If the client already has this content, confirm that.
         return Response(status_code=304)
     # This is the expensive step: actually serialize.
-    content = serialization_registry(structure_family, media_type, payload, metadata)
+    try:
+        content = serialization_registry(
+            structure_family, media_type, payload, metadata
+        )
+    except UnsupportedShape as err:
+        raise UnsupportedMediaTypes(
+            f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
+            f"Slice it or choose a different format.",
+        )
+    except SerializationError:
+        raise UnsupportedMediaTypes(
+            "This type is supported in general but there was an unknown error packing this specific data.",
+        )
     return PatchedResponse(
         content=content, media_type=media_type, headers={"ETag": etag}
     )
@@ -681,10 +700,7 @@ def json_or_msgpack(request, content):
 
 
 class UnsupportedMediaTypes(Exception):
-    def __init__(self, message, unsupported, supported):
-        self.unsupported = unsupported
-        self.supported = supported
-        super().__init__(message)
+    pass
 
 
 class NoEntry(KeyError):

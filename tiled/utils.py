@@ -449,6 +449,14 @@ class UnrecognizedExtension(ValueError):
     pass
 
 
+class SerializationError(Exception):
+    pass
+
+
+class UnsupportedShape(SerializationError):
+    pass
+
+
 # The MIME type vnd.apache.arrow.file is provisional. See:
 # https://lists.apache.org/thread.html/r9b462400a15296576858b52ae22e73f13c3e66f031757b2c9522f247%40%3Cdev.arrow.apache.org%3E  # noqa
 # TODO Should we actually use vnd.apache.arrow.stream? I think 'file' is right
