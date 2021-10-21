@@ -10,7 +10,7 @@ import numpy
 import orjson
 
 from ..media_type_registration import deserialization_registry, serialization_registry
-from ..utils import modules_available
+from ..utils import UnsupportedShape, modules_available
 
 
 class Endianness(str, enum.Enum):
@@ -165,6 +165,8 @@ serialization_registry.register(
 
 
 def serialize_csv(array, metadata):
+    if array.ndim > 2:
+        raise UnsupportedShape(array.shape)
     file = io.StringIO()
     numpy.savetxt(file, array, fmt="%s", delimiter=",")
     return file.getvalue().encode()

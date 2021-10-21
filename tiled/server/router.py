@@ -321,7 +321,8 @@ def array_block(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        # raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -364,7 +365,7 @@ def array_full(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -417,7 +418,7 @@ def structured_array_generic_block(
             format,
         )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -470,7 +471,7 @@ def structured_array_tabular_block(
             format,
         )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -520,7 +521,7 @@ def structured_array_tabular_full(
             format,
         )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -570,7 +571,7 @@ def structured_array_generic_full(
             format,
         )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -680,7 +681,7 @@ def dataframe_partition(
                 format,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -724,7 +725,7 @@ def dataframe_full(
                 specs,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -768,7 +769,7 @@ def variable_block(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -804,7 +805,7 @@ def variable_full(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -847,7 +848,7 @@ def data_array_variable_full(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -894,7 +895,7 @@ def data_array_block(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -946,7 +947,7 @@ def dataset_block(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -992,7 +993,7 @@ def dataset_data_var_full(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -1032,7 +1033,7 @@ def dataset_coord_full(
                 "array", serialization_registry, array, reader.metadata, request, format
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
@@ -1074,7 +1075,7 @@ def dataset_full(
                 format,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=", ".join(err.supported))
+        raise HTTPException(status_code=406, detail=err.args[0])
 
 
 def _get_base_url(request):
