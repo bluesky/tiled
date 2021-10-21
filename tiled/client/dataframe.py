@@ -65,8 +65,8 @@ class DaskDataFrameClient(BaseStructureClient):
             return []
         return columns
 
-    def touch(self):
-        super().touch()
+    def download(self):
+        super().download()
         self._ipython_key_completions_()
         self.read().compute()
 
@@ -232,9 +232,9 @@ class DataFrameClient(DaskDataFrameClient):
         """
         return super().read(columns).compute()
 
-    def touch(self):
-        # Do not run super().touch() because DaskDataFrameClient calls compute()
+    def download(self):
+        # Do not run super().download() because DaskDataFrameClient calls compute()
         # which does not apply here.
-        BaseStructureClient.touch(self)
+        BaseStructureClient.download(self)
         self._ipython_key_completions_()
         self.read()

@@ -22,6 +22,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         "entries_stale_after",
         "include_routers",
         "metadata_stale_after",
+        "must_revalidate",
     )
     # Define classmethods for managing what queries this Tree knows.
     query_registry = QueryTranslationRegistry()
@@ -36,6 +37,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         authenticated_identity=None,
         entries_stale_after=None,
         metadata_stale_after=None,
+        must_revalidate=True,
     ):
         """
         Create a simple Tree from any mapping (e.g. dict, OneShotCachedMap).
@@ -52,6 +54,8 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         metadata_stale_after: timedelta
             This server uses this to communite to the client how long
             it should rely on a local cache before checking back for changes.
+        must_revalidate : bool
+            Whether the client should strictly refresh stale cache items.
         """
         self._mapping = mapping
         self._metadata = metadata or {}
@@ -63,6 +67,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
+        self.must_revalidate = must_revalidate
         self.include_routers = []
         self.background_tasks = []
         self.entries_stale_after = entries_stale_after

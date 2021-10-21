@@ -1,3 +1,4 @@
+import contextlib
 import getpass
 import os
 import secrets
@@ -241,6 +242,26 @@ class Context:
         "httpx.Client event hooks. This is exposed for testing."
         return self._client.event_hooks
 
+    @contextlib.contextmanager
+    def revalidation(self, revalidate):
+        """
+        Parameters
+        ----------
+        revalidate: string or tiled.client.cache.Revalidate enum member
+        """
+        try:
+            member = Revalidate(revalidate)
+        except ValueError as err:
+            # This raises a more helpful error that lists the valid options.
+            raise ValueError(
+                f"Revalidation {revalidate} not recognized. Must be one of {set(Revalidate.__members__)}"
+            ) from err
+        original = self.revalidate
+        self.revalidate = member
+        yield
+        # Upon leaving context, set it back.
+        self.revalidate = original
+
     def get_content(self, path, accept=None, stream=False, revalidate=None, **kwargs):
         if revalidate is None:
             # Fallback to context default.
@@ -291,7 +312,7 @@ class Context:
                     (revalidate == Revalidate.FORCE)
                     or
                     # This condition means "client user wants us to revalidate if expired"
-                    (is_stale and Revalidate.IF_EXPIRED)
+                    (is_stale and (revalidate == Revalidate.IF_EXPIRED))
                     or
                     # This condition means "server really wants us to revalidate"
                     (is_stale and reservation.item.must_revalidate)
@@ -604,7 +625,7 @@ class TokenCache:
         if not isinstance(value, str):
             raise ValueError("Expected string value, got {value!r}")
         filepath = self._directory / key
-        filepath.touch(mode=0o600)  # Set permissions.
+        filepath.download(mode=0o600)  # Set permissions.
         with open(filepath, "w") as file:
             file.write(value)
 

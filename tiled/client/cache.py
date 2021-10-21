@@ -29,9 +29,9 @@ if __debug__:
 
 
 class Revalidate(enum.Enum):
-    FORCE = enum.auto()
-    IF_EXPIRED = enum.auto()
-    IF_WE_MUST = enum.auto()
+    FORCE = "FORCE"
+    IF_EXPIRED = "IF_EXPIRED"
+    IF_WE_MUST = "IF_WE_MUST"
 
 
 class UrlItem(
@@ -136,7 +136,7 @@ def download(*entries):
     """
     # TODO Use multiple processes to ensure we are saturating our network connection.
     for entry in entries:
-        entry.touch()
+        entry.download()
 
 
 # This is a silly time format, but it is the HTTP standard.
@@ -185,21 +185,10 @@ class Reservation:
 
     def is_stale(self):
         if self.item.expires is None:
-            logger.debug(
-                "Cache is stale (no expiration was set) %s",
-                self.url,
-            )
-            return True
-
-        time_remaining = datetime.utcnow() - self.item.expires
-        stale = time_remaining > ZERO_SECONDS
-        if __debug__:
-            if stale:
-                logger.debug(
-                    "Cache is stale (%d secs ago) %s",
-                    _round_seconds(time_remaining),
-                    self.url,
-                )
+            stale = True
+        else:
+            time_remaining = datetime.utcnow() - self.item.expires
+            stale = time_remaining > ZERO_SECONDS
         return stale
 
     def renew(self, expires):
@@ -363,7 +352,7 @@ class Cache:
         for etag in etag_to_content_cache:
             # This tells us the content size without actually reading in the data.
             nbytes = etag_to_content_cache.sizeof(etag)
-            score = self.scorer.touch(etag, nbytes)
+            score = self.scorer.download(etag, nbytes)
             self.heap[etag] = score
             self.nbytes[etag] = nbytes
             self.total_bytes += nbytes
@@ -408,7 +397,7 @@ class Cache:
             if nbytes:
                 if item.expires is not None:
                     logger.debug(
-                        "Cache stored (%s B in %.1f ms) %s. Renew after %d secs.",
+                        "Cache stored (%s B in %.1f ms) %s. Stale in %d secs.",
                         f"{nbytes:_}",  # Use _ for thousands separator.
                         duration,
                         url,
@@ -416,7 +405,7 @@ class Cache:
                     )
                 else:
                     logger.debug(
-                        "Cache stored (%s B in %.1f ms) %s. Renew on next access.",
+                        "Cache stored (%s B in %.1f ms) %s. Immediate stale.",
                         f"{nbytes:_}",  # Use _ for thousands separator.
                         duration,
                         url,
@@ -429,7 +418,7 @@ class Cache:
     def _put_content(self, etag, content):
         nbytes = len(content)
         if nbytes < self.available_bytes:
-            score = self.scorer.touch(etag, nbytes)
+            score = self.scorer.download(etag, nbytes)
             if (
                 nbytes + self.total_bytes < self.available_bytes
                 or not self.heap
@@ -464,7 +453,7 @@ class Cache:
         try:
             content = self.etag_to_content_cache[etag]
             # Access this item increases its score.
-            score = self.scorer.touch(etag, len(content))
+            score = self.scorer.download(etag, len(content))
             self.heap[etag] = score
             return content
         except KeyError:
@@ -550,9 +539,9 @@ class Scorer:
     --------
 
     >>> s = Scorer(halflife=10)
-    >>> s.touch('x', cost=2)  # score is similar to cost
+    >>> s.download('x', cost=2)  # score is similar to cost
     2
-    >>> s.touch('x')  # scores increase on every touch
+    >>> s.download('x')  # scores increase on every download
     4.138629436111989
     """
 
@@ -564,7 +553,7 @@ class Scorer:
         self.tick = 1
         self._base = 1
 
-    def touch(self, key, cost=None):
+    def download(self, key, cost=None):
         """Update score for key
         Provide a cost the first time and optionally thereafter.
         """

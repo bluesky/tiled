@@ -11,8 +11,9 @@ import entrypoints
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..trees.utils import UNCHANGED, IndexersMixin, tree_repr
-from ..utils import OneShotCachedMap, Sentinel
+from ..utils import OneShotCachedMap, Sentinel, verify_cache
 from .base import BaseClient
+from .cache import Revalidate
 
 
 class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -156,17 +157,35 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return list(self._sorting)
 
-    def touch(self):
+    def download(self):
         """
         Access all the data in this Node.
 
         This causes it to be cached if the context is configured with a cache.
         """
+        verify_cache(self.context.cache)
         self.context.get_json(self.uri)
         repr(self)
         for key in self:
             entry = self[key]
-            entry.touch()
+            entry.download()
+
+    def refresh(self, force=False):
+        """
+        Refresh cached data for this node.
+
+        Parameters
+        ----------
+        force: bool
+            If False, (default) refresh only expired cache entries.
+            If True, refresh all cache entries.
+        """
+        if force:
+            revalidate = Revalidate.FORCE
+        else:
+            revalidate = Revalidate.IF_EXPIRED
+        with self.context.revalidation(revalidate):
+            self.download()
 
     def _get_class(self, item):
         # The server can use specs to tell us that this is not just *any*

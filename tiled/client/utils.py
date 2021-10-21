@@ -44,6 +44,25 @@ class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."
 
 
+class NoCache(Exception):
+    pass
+
+
+def verify_cache(cache):
+    if cache is None:
+        raise NoCache(
+            """To download, the Tiled client needs to be configured
+with a cache, such as:
+
+from tiled.client import from_uri
+from tiled.client.cache import Cache
+
+c = from_uri("http://tiled-demo.blueskyproject.io", cache = Cache.on_disk("data"))
+
+See https://blueskyproject.io/tiled/tutorials/caching.html for details."""
+        )
+
+
 def export_util(file, format, get, link, params):
     """
     Download client data in some format and write to a file.
@@ -150,7 +169,7 @@ if __debug__:
     # Monkey-patch our logger!
     # The logging framework provides no way to look a custom record factory into
     # the global logging manager. I tried several ways to avoid monkey-patching
-    # and this is the least bad. Notice that it only touches the 'tiled.client'
+    # and this is the least bad. Notice that it only downloades the 'tiled.client'
     # logger and will not affect the behavior of other loggers.
     logger.makeRecord = patched_make_record
     handler = logging.StreamHandler()

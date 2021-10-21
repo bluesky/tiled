@@ -71,41 +71,34 @@ def test_entries_stale_at(caplog, cache, structure_clients):
         entries_stale_after=timedelta(seconds=EXPIRES_AFTER),
     )
     client = from_tree(tree, cache=cache, structure_clients=structure_clients)
-    assert "'a'" in repr(client)
+    client["a"].download()
     # Entries are stored in cache.
     assert "Cache stored" in caplog.text
-    assert "Cache read" not in caplog.text
-    assert "Cache is stale" not in caplog.text
-    assert "Cache renewed" not in caplog.text
     caplog.clear()
     for _ in range(3):
-        assert "'a'" in repr(client)
+        client["a"].download()
         # Entries are read from cache *without contacting server*
         assert "Cache read" in caplog.text
         assert "Cache stored" not in caplog.text
-        assert "Cache is stale" not in caplog.text
-        assert "Cache renewed" not in caplog.text
+        assert "<- 304" not in caplog.text
         caplog.clear()
-    time.sleep(EXPIRES_AFTER)
-    assert "'a'" in repr(client)
-    # Server is contacted to confirm cache is still valid ("renew" it).
+    client["a"].download()
+    # By default, we do not refresh stale entries.
+    assert "Cache read" in caplog.text
+    assert "<- 304" not in caplog.text
+    assert "Cache stored" not in caplog.text
+    caplog.clear()
+    client["a"].refresh()
+    # Server is contacted to confirm cache is still valid.
     # The cache is still valid. Entries are read from cache.
-    assert "Cache is stale" in caplog.text
-    assert "Cache renewed" in caplog.text
+    assert "<- 304" in caplog.text
     assert "Cache read" in caplog.text
     assert "Cache stored" not in caplog.text
     caplog.clear()
     # Change the entries...
     mapping["b"] = ArrayAdapter.from_array(2 * numpy.arange(10), metadata={"b": 2})
-    time.sleep(EXPIRES_AFTER)
-    assert "'b'" in repr(client)
-    # Server is contacted to confirm cache is still valid ("renew" it).
-    # The cache is NOT still valid. Entries are read from server.
-    # Entries are stored in cache.
-    assert "Cache is stale" in caplog.text
+    client["b"].download()
     assert "Cache stored" in caplog.text
-    assert "Cache renewed" not in caplog.text
-    assert "Cache read" not in caplog.text
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
