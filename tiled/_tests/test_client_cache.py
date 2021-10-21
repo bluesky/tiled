@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import numpy
@@ -7,6 +8,7 @@ from ..client import from_tree
 from ..client.cache import Cache, NoCache, download
 from ..client.utils import logger
 from ..queries import FullText
+from ..query_registration import register
 from ..readers.array import ArrayAdapter
 from ..trees.in_memory import Tree
 
@@ -228,7 +230,25 @@ def test_download_with_no_cache():
         client.download()
 
 
+@register("stable")
+@dataclass
+class StableQuery:
+    "A dummy query whose results will not change"
+    dummy: str
+
+
 def test_must_revalidate(caplog, cache):
+    """
+    By default, search results set Cache-Control: must-revalidate.
+    Queries can override this if they expect the results to be very stable.
+    (The motivating application is Bluesky scan_id lookup --- not _technically_
+    unique but generally expected to be stable and not worth revalidating.)
+    """
+
+    def stable_query_search(query, tree):
+        result = tree.new_variation(must_revalidate=False)
+        return result
+
     logger.setLevel("DEBUG")
     mapping = {
         "a": ArrayAdapter.from_array(numpy.arange(10), metadata={"color": "red"})
@@ -238,6 +258,7 @@ def test_must_revalidate(caplog, cache):
         metadata={"t": 1},
         must_revalidate=True,
     )
+    tree.register_query(StableQuery, stable_query_search)
     client = from_tree(tree, cache=cache)
     caplog.clear()
     list(client.search(FullText("red")))
@@ -249,4 +270,15 @@ def test_must_revalidate(caplog, cache):
     assert "<- 304" in caplog.text
     assert "must-revalidate" in caplog.text
     # But the results have not changed.
+    assert "<- 200" not in caplog.text
+
+    # The StableQuery does not require revalidation.
+    caplog.clear()
+    list(client.search(StableQuery(dummy="stuff")))
+    assert "must-revalidate" not in caplog.text
+
+    caplog.clear()
+    list(client.search(StableQuery(dummy="stuff")))
+    assert "must-revalidate" not in caplog.text
+    assert "<- 304" not in caplog.text
     assert "<- 200" not in caplog.text

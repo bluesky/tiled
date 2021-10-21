@@ -131,6 +131,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         mapping=UNCHANGED,
         metadata=UNCHANGED,
         authenticated_identity=UNCHANGED,
+        must_revalidate=UNCHANGED,
         **kwargs,
     ):
         if mapping is UNCHANGED:
@@ -139,6 +140,8 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             metadata = self._metadata
         if authenticated_identity is UNCHANGED:
             authenticated_identity = self._authenticated_identity
+        if must_revalidate is UNCHANGED:
+            must_revalidate = self.must_revalidate
         return type(self)(
             *args,
             mapping=mapping,
@@ -147,7 +150,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             authenticated_identity=self.authenticated_identity,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,
-            must_revalidate=self.must_revalidate,
+            must_revalidate=must_revalidate,
             **kwargs,
         )
 
