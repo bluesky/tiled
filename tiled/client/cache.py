@@ -529,13 +529,14 @@ class Cache:
                     try:
                         self.heap.pop(etag)
                         self.etag_to_content_cache.pop(etag)
-                        self.total_bytes -= self.nbytes.pop(etag)
+                        nbytes = self.nbytes.pop(etag)
+                        self.total_bytes -= nbytes
                         self.etag_lock.pop(etag)
                     finally:
                         lock.release()
                     break
             if __debug__:
-                logger.debug("Cache evicted content with ETag %s", etag)
+                logger.debug("Cache evicted %d B with ETag %s", nbytes, etag)
 
     def resize(self, capacity):
         """Resize the cache.
