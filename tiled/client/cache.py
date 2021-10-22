@@ -269,7 +269,6 @@ class Cache:
         path,
         capacity=None,
         *,
-        cull_on_startup=False,
         scorer=None,
     ):
         """
@@ -291,16 +290,10 @@ class Cache:
             e.g. 2e9 to use up to 2 GB of disk space. If None, this will consume
             up to (X - 1 GB) where X is the free space remaining on the volume
             containing `path`.
-        cull_on_startup : boolean, optional
-            If reusing an existing cache directory which is already larger than the
-            capacity, an error is raised. Set this to True to delete
-            items from the cache until it fits in capacity. False by default.
         scorer : Scorer
             Determines which items to evict from the cache when it grows full.
             See tiled.client.cache.Scorer for example.
         """
-        import shutil
-
         import locket
 
         path = Path(path)
@@ -308,6 +301,8 @@ class Cache:
         if capacity is None:
             # By default, use (X - 1 GB) where X is the current free space
             # on the volume containing `path`.
+            import shutil
+
             capacity = shutil.disk_usage(path).free - 1e9
         etag_to_content_cache = FileBasedCache(path / "etag_to_content_cache")
         instance = cls(
@@ -320,9 +315,6 @@ class Cache:
             ),
             scorer=scorer,
         )
-        if cull_on_startup:
-            # Ensure we fit in capacity.
-            instance.shrink()
         return instance
 
     def __init__(

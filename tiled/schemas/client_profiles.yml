@@ -140,16 +140,6 @@ properties:
           available_bytes:
             type: number
             description: Deprecated alias for "capacity"
-          error_if_full:
-            type: boolean
-            description: |
-              By default, the cache starts evicting the least-used items when
-              it fills up. This is generally fine when working with a
-              connection to the server. But if the goal is to cache for
-              *offline* use, it is better to be notified by and error that the
-              cache is full. Then the user can respond by increasing
-              available_bytes, using a different storage volume for the cache,
-              or choosing to a different (smaller) set of entries to download.
       disk:
         type: object
         required:
@@ -177,22 +167,6 @@ properties:
           available_bytes:
             type: number
             description: Deprecated alias for "capacity"
-          error_if_full:
-            type: boolean
-            description: |
-              By default, the cache starts evicting the least-used items when
-              it fills up. This is generally fine when working with a
-              connection to the server. But if the goal is to cache for
-              *offline* use, it is better to be notified by and error that the
-              cache is full. Then the user can respond by increasing
-              available_bytes, using a different storage volume for the cache,
-              or choosing to a different (smaller) set of entries to download.
-          cull_on_startup:
-            type: boolean
-            description: |
-              If reusing an existing cache directory which is already larger than the
-              available_bytes, an error is raised. Set this to True to delete
-              items from the cache until it fits in available_bytes. False by default.
   token_cache:
     type: string
     description: |
