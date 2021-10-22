@@ -152,7 +152,7 @@ properties:
               It is safe to reuse an existing cache directory and to share a cache
               directory between multiple processes.
               available_bytes:
-          available_bytes:
+          capacity:
             type: number
             description: |
               Maximum storage space (in bytes) that the cache may consume.
