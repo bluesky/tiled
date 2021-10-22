@@ -641,10 +641,10 @@ def tokenize_url(url):
     ("domain", "md5_hash_of_the_rest")
     """
     url_as_tuple = url.raw
-    return (
-        f"url_as_tuple[1]:{url_as_tuple[2]}",
-        hashlib.md5(b"".join(url_as_tuple[3:])).hexdigest(),
-    )
+    address = url_as_tuple[1].decode()
+    if url_as_tuple[2]:
+        address += f":{url_as_tuple[2]}"
+    return (address, hashlib.md5(b"".join(url_as_tuple[3:])).hexdigest())
 
 
 class OnDiskState:
@@ -661,9 +661,9 @@ class OnDiskState:
                     # Check to see if this cache has an internal layout that we
                     # understand.
                     version = packaging.version.parse(file.read())
-                    if version <= packaging.version.parse("0.1.0a42"):
+                    if version <= packaging.version.parse("0.1.0a43"):
                         raise ValueError(
-                            "Cache directory {directory} was used by an older version of Tiled. "
+                            f"Cache directory {directory} was used by an older version of Tiled. "
                             "It cannot be used by this version. Choose a different directory, "
                             "or delete all the cached data in that directory. (In the future "
                             "Tiled caching will be backward compatible, but not during alpha.)"
@@ -755,15 +755,17 @@ class FileBasedCache(collections.abc.MutableMapping):
         return path.is_file()
 
 
-def _normalize(*key):
+def _normalize(key):
+    if isinstance(key, str):
+        key = (key,)
     # To avoid an overly large directory (which leads to slow performance)
     # divide into subdirectories beginning with the first two characters of
     # the contents' name.
-    return (key[0], key[1][:2], key[1][:2])
+    return (*key[:-1], key[-1][:2], key[-1])
 
 
 def _unnormalize(key):
-    return (key[0], key[2])
+    return (*key[:-2], key[-1])
 
 
 class LockDict(dict):
