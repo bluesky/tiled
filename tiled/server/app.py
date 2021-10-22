@@ -130,7 +130,7 @@ def get_app(
                 object_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100
             )
             object_cache_logger.info(
-                f"Will use up to {object_cache_available_bytes} bytes ({percentage:d}% of total physical RAM)"
+                f"Will use up to {object_cache_available_bytes:_} bytes ({percentage:d}% of total physical RAM)"
             )
         set_object_cache(cache)
 

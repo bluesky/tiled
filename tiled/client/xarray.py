@@ -65,8 +65,8 @@ class DaskVariableClient(BaseArrayClient):
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.data.macro.shape[0]
 
-    def touch(self):
-        super().touch()
+    def download(self):
+        super().download()
         self.read().compute()
 
     def export(self, filepath, format=None, slice=None, link=None, template_vars=None):
@@ -116,10 +116,10 @@ class VariableClient(DaskVariableClient):
 
     ARRAY_CLIENT = ArrayClient
 
-    def touch(self):
-        # Do not run super().touch() because DaskVariableClient calls compute()
+    def download(self):
+        # Do not run super().download() because DaskVariableClient calls compute()
         # which does not apply here.
-        BaseArrayClient.touch(self)
+        BaseArrayClient.download(self)
         self.read()
 
 
@@ -233,8 +233,8 @@ class DaskDataArrayClient(BaseArrayClient):
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.variable.macro.data.macro.shape[0]
 
-    def touch(self):
-        super().touch()
+    def download(self):
+        super().download()
         self.read().compute()
 
     def export_array(self, filepath, format=None, slice=None):
@@ -292,10 +292,10 @@ class DataArrayClient(DaskDataArrayClient):
 
     VARIABLE_CLIENT = VariableClient
 
-    def touch(self):
-        # Do not run super().touch() because DaskDataArrayClient calls compute()
+    def download(self):
+        # Do not run super().download() because DaskDataArrayClient calls compute()
         # which does not apply here.
-        BaseArrayClient.touch(self)
+        BaseArrayClient.download(self)
         self.read()
 
 
@@ -357,8 +357,8 @@ class DaskDatasetClient(BaseArrayClient):
             return []
         return variables
 
-    def touch(self):
-        super().touch()
+    def download(self):
+        super().download()
         self._ipython_key_completions_()
         self.read().compute()
 
@@ -493,10 +493,10 @@ class DatasetClient(DaskDatasetClient):
     DATA_ARRAY_CLIENT = DataArrayClient
     VARIABLE_CLIENT = VariableClient
 
-    def touch(self):
-        # Do not run super().touch() because DaskDatasetClient calls compute()
+    def download(self):
+        # Do not run super().download() because DaskDatasetClient calls compute()
         # which does not apply here.
-        BaseArrayClient.touch(self)
+        BaseArrayClient.download(self)
         self._ipython_key_completions_()
         self.read()
 

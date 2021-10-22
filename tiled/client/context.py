@@ -1,3 +1,4 @@
+import contextlib
 import getpass
 import os
 import secrets
@@ -9,6 +10,7 @@ import httpx
 import msgpack
 
 from ..utils import DictView
+from .cache import Revalidate
 from .utils import (
     ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
@@ -166,6 +168,7 @@ class Context:
         self._client = client
         self._authentication_uri = authentication_uri
         self._cache = cache
+        self._revalidate = Revalidate.IF_WE_MUST
         self._username = username
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
@@ -181,7 +184,12 @@ class Context:
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        self._handshake_data = self.get_json(self._authentication_uri)
+        if offline:
+            self._handshake_data = self.get_json(self._authentication_uri)
+        else:
+            # We need a CSRF token.
+            with self.disable_cache(allow_read=False, allow_write=True):
+                self._handshake_data = self.get_json(self._authentication_uri)
 
         # Ask the server what its root_path is.
         if (not offline) and (
@@ -215,16 +223,24 @@ class Context:
         return DictView(self._tokens)
 
     @property
-    def offline(self):
-        return self._offline
+    def cache(self):
+        return self._cache
 
     @property
-    def app(self):
-        return self._app
+    def offline(self):
+        return self._offline
 
     @offline.setter
     def offline(self, value):
         self._offline = bool(value)
+        if not self._offline:
+            # We need a CSRF token.
+            with self.disable_cache(allow_read=False, allow_write=True):
+                self._handshake_data = self.get_json(self._authentication_uri)
+
+    @property
+    def app(self):
+        return self._app
 
     @property
     def path_parts(self):
@@ -239,13 +255,67 @@ class Context:
         "httpx.Client event hooks. This is exposed for testing."
         return self._client.event_hooks
 
-    def get_content(self, path, accept=None, stream=False, **kwargs):
+    @property
+    def revalidate(self):
+        """
+        This controls how aggressively to check whether cache entries are out of date.
+
+        - FORCE: Always revalidate (generally too aggressive and expensive)
+        - IF_EXPIRED: Revalidate if the "Expire" date provided by the server has passed
+        - IF_WE_MUST: Only revalidate if the server indicated that is is a
+          particularly volatile entry, such as a search result to a dynamic query.
+        """
+        return self._revalidate
+
+    @revalidate.setter
+    def revalidate(self, value):
+        self._revalidate = Revalidate(value)
+
+    @contextlib.contextmanager
+    def revalidation(self, revalidate):
+        """
+        Temporarily change the 'revalidate' property in a context.
+
+        Parameters
+        ----------
+        revalidate: string or tiled.client.cache.Revalidate enum member
+        """
+        try:
+            member = Revalidate(revalidate)
+        except ValueError as err:
+            # This raises a more helpful error that lists the valid options.
+            raise ValueError(
+                f"Revalidation {revalidate} not recognized. Must be one of {set(Revalidate.__members__)}"
+            ) from err
+        original = self.revalidate
+        self.revalidate = member
+        yield
+        # Upon leaving context, set it back.
+        self.revalidate = original
+
+    @contextlib.contextmanager
+    def disable_cache(self, allow_read=False, allow_write=False):
+        self._disable_cache_read = not allow_read
+        self._disable_cache_write = not allow_write
+        yield
+        self._disable_cache_read = False
+        self._disable_cache_write = False
+
+    def get_content(self, path, accept=None, stream=False, revalidate=None, **kwargs):
+        if revalidate is None:
+            # Fallback to context default.
+            revalidate = self.revalidate
         request = self._client.build_request("GET", path, **kwargs)
         if accept:
             request.headers["Accept"] = accept
-        url = request.url.raw  # URL as tuple
+        url = request.url
         if self._offline:
             # We must rely on the cache alone.
+            # The role of a 'reservation' is to ensure that the content
+            # of interest is not evicted from the cache between the moment
+            # that we start verifying its validity and the moment that
+            # we actually read the content. It is used more extensively
+            # below.
             reservation = self._cache.get_reservation(url)
             if reservation is None:
                 raise NotAvailableOffline(url)
@@ -264,27 +334,62 @@ class Context:
                 return blosc.decompress(response.content)
             return response.content
         # If we get this far, we have an online client and a cache.
-        reservation = self._cache.get_reservation(url)
+        # Parse Cache-Control header directives.
+        cache_control = {
+            directive.lstrip(" ")
+            for directive in request.headers.get("Cache-Control", "").split(",")
+        }
+        if "no-cache" in cache_control:
+            reservation = None
+        else:
+            reservation = self._cache.get_reservation(url)
         try:
             if reservation is not None:
-                request.headers["If-None-Match"] = reservation.etag
+                is_stale = reservation.is_stale()
+                if not (
+                    # This condition means "client user wants us to unconditionally revalidate"
+                    (revalidate == Revalidate.FORCE)
+                    or
+                    # This condition means "client user wants us to revalidate if expired"
+                    (is_stale and (revalidate == Revalidate.IF_EXPIRED))
+                    or
+                    # This condition means "server really wants us to revalidate"
+                    (is_stale and reservation.item.must_revalidate)
+                    or self._disable_cache_read
+                ):
+                    # Short-circuit. Do not even bother consulting the server.
+                    return reservation.load_content()
+                if not self._disable_cache_read:
+                    request.headers["If-None-Match"] = reservation.item.etag
             response = self._send(request, stream=stream)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
+                # Update the expiration time.
+                reservation.renew(response.headers.get("expires"))
                 # Read from the cache
-                content = reservation.load_content()
-            elif response.status_code == 200:
+                return reservation.load_content()
+            elif not response.is_error:
                 etag = response.headers.get("ETag")
+                encoding = response.headers.get("Content-Encoding")
                 content = response.content
-                if response.headers.get("content-encoding") == "blosc":
+                # httpx handles standard HTTP encodings transparently, but we have to
+                # handle "blosc" manually.
+                if encoding == "blosc":
                     import blosc
 
                     content = blosc.decompress(content)
-                # TODO Respect Cache-control headers (e.g. "no-store")
-                if etag is not None:
+                if (
+                    ("no-store" not in cache_control)
+                    and (etag is not None)
+                    and (not self._disable_cache_write)
+                ):
                     # Write to cache.
-                    self._cache.put_etag_for_url(url, etag)
-                    self._cache.put_content(etag, content)
+                    self._cache.put(
+                        url,
+                        response.headers,
+                        content,
+                    )
+                return content
             else:
                 raise NotImplementedError(
                     f"Unexpected status_code {response.status_code}"
@@ -292,7 +397,6 @@ class Context:
         finally:
             if reservation is not None:
                 reservation.ensure_released()
-        return content
 
     def get_json(self, path, stream=False, **kwargs):
         return msgpack.unpackb(

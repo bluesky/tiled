@@ -95,15 +95,11 @@ if __debug__:
 
     import logging
 
-    class LogFormatter(logging.Formatter):
-        def __init__(self, fmt, datefmt):
-            super().__init__(datefmt=datefmt)
-            self._fmt = fmt
-
-        def format(self, record):
-            if isinstance(record.msg, httpx.Request):
-                request = record.msg
-                record.message = f"-> {request.method} '{request.url}' " + " ".join(
+    class ClientLogRecord(logging.LogRecord):
+        def getMessage(self):
+            if hasattr(self, "request"):
+                request = self.request
+                message = f"-> {request.method} '{request.url}' " + " ".join(
                     f"'{k}:{v}'"
                     for k, v in request.headers.items()
                     if k != "authorization"
@@ -114,41 +110,72 @@ if __debug__:
                 # But for screen-sharing demos, it should be redacted.
                 if TILED_LOG_AUTH_TOKEN:
                     if "authorization" in request.headers:
-                        record.message += (
+                        message += (
                             f" 'authorization:{request.headers['authorization']}'"
                         )
                 else:
                     if "authorization" in request.headers:
-                        record.message += " 'authorization:[redacted]'"
-            elif isinstance(record.msg, httpx.Response):
-                response = record.msg
+                        message += " 'authorization:[redacted]'"
+            elif hasattr(self, "response"):
+                response = self.response
                 request = response.request
-                record.message = f"<- {response.status_code} " + " ".join(
+                message = f"<- {response.status_code} " + " ".join(
                     f"{k}:{v}" for k, v in response.headers.items()
                 )
-            record.asctime = self.formatTime(record, self.datefmt)
+            else:
+                message = super().getMessage()
+            return message
 
-            formatted = self._fmt % record.__dict__
-
-            if record.exc_info and not record.exc_text:
-                record.exc_text = self.formatException(record.exc_info)
-            if record.exc_text:
-                formatted = "{}\n{}".format(formatted.rstrip(), record.exc_text)
-            return formatted.replace("\n", "\n    ")
+    def patched_make_record(
+        name,
+        level,
+        fn,
+        lno,
+        msg,
+        args,
+        exc_info,
+        func=None,
+        extra=None,
+        sinfo=None,
+    ):
+        rv = ClientLogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
+        if extra is not None:
+            for key in extra:
+                if (key in ["message", "asctime"]) or (key in rv.__dict__):
+                    raise KeyError("Attempt to overwrite %r in LogRecord" % key)
+                rv.__dict__[key] = extra[key]
+        return rv
 
     logger = logging.getLogger("tiled.client")
+    # Monkey-patch our logger!
+    # The logging framework provides no way to look a custom record factory into
+    # the global logging manager. I tried several ways to avoid monkey-patching
+    # and this is the least bad. Notice that it only downloades the 'tiled.client'
+    # logger and will not affect the behavior of other loggers.
+    logger.makeRecord = patched_make_record
     handler = logging.StreamHandler()
     log_format = "%(asctime)s.%(msecs)03d %(message)s"
 
-    handler.setFormatter(LogFormatter(log_format, datefmt="%H:%M:%S"))
+    handler.setFormatter(logging.Formatter(log_format, datefmt="%H:%M:%S"))
     logger.addHandler(handler)
-    log = logger.debug
 
-    async def async_log(*args, **kwargs):
-        return log(*args, **kwargs)
+    def log_request(request):
+        logger.debug("", extra={"request": request})
 
-    EVENT_HOOKS = {"request": [log], "response": [log]}
-    ASYNC_EVENT_HOOKS = {"request": [async_log], "response": [async_log]}
+    def log_response(response):
+        logger.debug("", extra={"response": response})
+
+    async def async_log_request(request):
+        return log_request(request)
+
+    async def async_log_response(response):
+        return log_response(response)
+
+    EVENT_HOOKS = {"request": [log_request], "response": [log_response]}
+    ASYNC_EVENT_HOOKS = {
+        "request": [async_log_request],
+        "response": [async_log_response],
+    }
 else:
     # We take this path when Python is started with -O optimizations.
     ASYNC_EVENT_HOOKS = EVENT_HOOKS = {"request": [], "response": []}

@@ -1,5 +1,6 @@
 import dataclasses
 import inspect
+from datetime import datetime, timedelta
 from functools import lru_cache
 from hashlib import md5
 from typing import Any, List, Optional
@@ -99,6 +100,7 @@ async def about(
                 ),
             },
         ),
+        expires=datetime.utcnow() + timedelta(seconds=600),
     )
 
 
@@ -153,20 +155,34 @@ def declare_search_router(query_registry):
     ):
         request.state.endpoint = "search"
         try:
+            resource, metadata_stale_at, must_revalidate = construct_entries_response(
+                query_registry,
+                entry,
+                "/search",
+                path,
+                offset,
+                limit,
+                fields,
+                filters,
+                sort,
+                _get_base_url(request),
+            )
+            # We only get one Expires header, so if different parts
+            # of this response become stale at different times, we
+            # cite the earliest one.
+            entries_stale_at = getattr(entry, "entries_stale_at", None)
+            headers = {}
+            if (metadata_stale_at is None) or (entries_stale_at is None):
+                expires = None
+            else:
+                expires = min(metadata_stale_at, entries_stale_at)
+            if must_revalidate:
+                headers["Cache-Control"] = "must-revalidate"
             return json_or_msgpack(
                 request,
-                construct_entries_response(
-                    query_registry,
-                    entry,
-                    "/search",
-                    path,
-                    offset,
-                    limit,
-                    fields,
-                    filters,
-                    sort,
-                    _get_base_url(request),
-                ),
+                resource,
+                expires=expires,
+                headers=headers,
             )
         except NoEntry:
             raise HTTPException(status_code=404, detail="No such entry.")
@@ -236,7 +252,11 @@ async def metadata(
         if (root_path is not None)
         else {}
     )
-    return json_or_msgpack(request, models.Response(data=resource, meta=meta))
+    return json_or_msgpack(
+        request,
+        models.Response(data=resource, meta=meta),
+        expires=getattr(entry, "metadata_stale_at", None),
+    )
 
 
 @router.get("/entries/{path:path}", response_model=models.Response)
@@ -254,21 +274,30 @@ async def entries(
 
     request.state.endpoint = "entries"
     try:
-        return json_or_msgpack(
-            request,
-            construct_entries_response(
-                query_registry,
-                entry,
-                "/entries",
-                path,
-                offset,
-                limit,
-                fields,
-                {},
-                sort,
-                _get_base_url(request),
-            ),
+        resource, metadata_stale_at, must_revalidate = construct_entries_response(
+            query_registry,
+            entry,
+            "/entries",
+            path,
+            offset,
+            limit,
+            fields,
+            {},
+            sort,
+            _get_base_url(request),
         )
+        # We only get one Expires header, so if different parts
+        # of this response become stale at different times, we
+        # cite the earliest one.
+        entries_stale_at = getattr(entry, "entries_stale_at", None)
+        if (metadata_stale_at is None) or (entries_stale_at is None):
+            expires = None
+        else:
+            expires = min(metadata_stale_at, entries_stale_at)
+        headers = {}
+        if must_revalidate:
+            headers["Cache-Control"] = "must-revalidate"
+        return json_or_msgpack(request, resource, expires=expires, headers=headers)
     except NoEntry:
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:
@@ -318,7 +347,13 @@ def array_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         # raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -362,7 +397,13 @@ def array_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -416,6 +457,7 @@ def structured_array_generic_block(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -469,6 +511,7 @@ def structured_array_tabular_block(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -519,6 +562,7 @@ def structured_array_tabular_full(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -569,6 +613,7 @@ def structured_array_generic_full(
             reader.metadata,
             request,
             format,
+            expires=getattr(reader, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -679,6 +724,7 @@ def dataframe_partition(
                 reader.metadata,
                 request,
                 format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -723,6 +769,7 @@ def dataframe_full(
                 request,
                 format,
                 specs,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -766,7 +813,13 @@ def variable_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -802,7 +855,13 @@ def variable_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -845,7 +904,13 @@ def data_array_variable_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -892,7 +957,13 @@ def data_array_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -944,7 +1015,13 @@ def dataset_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -990,7 +1067,13 @@ def dataset_data_var_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -1030,7 +1113,13 @@ def dataset_coord_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array", serialization_registry, array, reader.metadata, request, format
+                "array",
+                serialization_registry,
+                array,
+                reader.metadata,
+                request,
+                format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -1073,6 +1162,7 @@ def dataset_full(
                 reader.metadata,
                 request,
                 format,
+                expires=getattr(reader, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])

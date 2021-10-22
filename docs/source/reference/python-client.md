@@ -60,7 +60,7 @@ It adds the following attributes
    tiled.client.node.Node.uri
 ```
 
-And it adds these methods, which return a new Node instance.
+It adds these methods, which return a new Node instance.
 
 ```{eval-rst}
 .. autosummary::
@@ -68,6 +68,16 @@ And it adds these methods, which return a new Node instance.
 
    tiled.client.node.Node.search
    tiled.client.node.Node.sort
+```
+
+It adds these methods for downloading and refreshing cached data.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.node.Node.download
+   tiled.client.node.Node.refresh
 ```
 
 Finally, it adds attributes that provide efficient positional-based lookup,
@@ -91,7 +101,6 @@ in advanced applications.
 
    tiled.client.node.Node.client_for_item
    tiled.client.node.Node.new_variation
-   tiled.client.node.Node.touch
 ```
 
 ## Structure Clients
@@ -119,7 +128,8 @@ Tiled currently includes two clients for each structure family:
    tiled.client.base.BaseClient.metadata tiled.client.base.BaseClient.path tiled.client.base.BaseClient.uri tiled.client.base.BaseClient.username
    tiled.client.base.BaseClient.item
    tiled.client.base.BaseClient.new_variation
-   tiled.client.base.BaseStructureClient.touch
+   tiled.client.base.BaseStructureClient.download
+   tiled.client.base.BaseStructureClient.refresh
    tiled.client.base.BaseStructureClient.structure
    tiled.client.base.BaseArrayClient.structure
 ```

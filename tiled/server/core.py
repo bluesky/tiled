@@ -10,7 +10,7 @@ import re
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from hashlib import md5
 from typing import Any, Optional
@@ -291,7 +291,9 @@ def construct_entries_response(
             tree = TreeInMemory({})
         else:
             try:
-                tree = TreeInMemory({key_lookup: tree[key_lookup]})
+                tree = TreeInMemory(
+                    {key_lookup: tree[key_lookup]}, must_revalidate=False
+                )
             except KeyError:
                 tree = TreeInMemory({})
     count = len_or_approx(tree)
@@ -306,10 +308,25 @@ def construct_entries_response(
             (key, None)
             for key in tree.keys_indexer[offset : offset + limit]  # noqa: E203
         )
+    # This value will not leak out. It just used to seed comparisons.
+    metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
+    must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
         resource = construct_resource(base_url, path_parts + [key], entry, fields)
         data.append(resource)
-    return models.Response(data=data, links=links, meta={"count": count})
+        # If any entry has emtry.metadata_stale_at = None, then there will
+        # be no 'Expires' header. We will pessimistically assume the values
+        # are immediately stale.
+        if metadata_stale_at is not None:
+            if getattr(entry, "metadata_stale_at", None) is None:
+                metadata_stale_at = None
+            else:
+                metadata_stale_at = min(metadata_stale_at, entry.metadata_stale_at)
+    return (
+        models.Response(data=data, links=links, meta={"count": count}),
+        metadata_stale_at,
+        must_revalidate,
+    )
 
 
 DEFAULT_MEDIA_TYPES = {
@@ -331,6 +348,7 @@ def construct_data_response(
     request,
     format=None,
     specs=None,
+    expires=None,
 ):
     request.state.endpoint = "data"
     if specs is None:
@@ -383,9 +401,12 @@ def construct_data_response(
         # Create an ETag that uniquely identifies this content and the media
         # type that it will be encoded as.
         etag = tokenize((payload, media_type))
+    headers = {"ETag": etag}
+    if expires is not None:
+        headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304)
+        return Response(status_code=304, headers=headers)
     # This is the expensive step: actually serialize.
     try:
         content = serialization_registry(
@@ -401,7 +422,9 @@ def construct_data_response(
             "This type is supported in general but there was an unknown error packing this specific data.",
         )
     return PatchedResponse(
-        content=content, media_type=media_type, headers={"ETag": etag}
+        content=content,
+        media_type=media_type,
+        headers=headers,
     )
 
 
@@ -665,9 +688,11 @@ class MsgpackResponse(Response):
 
 JSON_MIME_TYPE = "application/json"
 MSGPACK_MIME_TYPE = "application/x-msgpack"
+# This is a silly time format, but it is the HTTP standard.
+HTTP_EXPIRES_HEADER_FORMAT = "%a, %d %b %Y %H:%M:%S GMT"
 
 
-def json_or_msgpack(request, content):
+def json_or_msgpack(request, content, expires=None, headers=None):
     media_types = request.headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
@@ -685,11 +710,15 @@ def json_or_msgpack(request, content):
         media_type = JSON_MIME_TYPE
     assert media_type in {JSON_MIME_TYPE, MSGPACK_MIME_TYPE}
     content_as_dict = content.dict()
-    etag = md5(str(content_as_dict).encode()).hexdigest()
+    with record_timing(request.state.metrics, "tok"):
+        etag = md5(str(content_as_dict).encode()).hexdigest()
+    headers = headers or {}
+    headers["ETag"] = etag
+    if expires is not None:
+        headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304)
-    headers = {"ETag": etag}
+        return Response(status_code=304, headers=headers)
     if media_type == "application/x-msgpack":
         return MsgpackResponse(
             content_as_dict, headers=headers, metrics=request.state.metrics

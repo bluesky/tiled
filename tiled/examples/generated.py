@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from datetime import timedelta
 
 import dask.array
 import dask.dataframe
@@ -134,7 +135,9 @@ mapping = {
     # Below, an asynchronous task modifies this value over time.
     "dynamic": ArrayAdapter.from_array(numpy.zeros((3, 3))),
 }
-tree = Tree(mapping)
+# The entries aren't actually dynamic, but set entries_stale_after
+# to demonstrate cache expiry.
+tree = Tree(mapping, entries_stale_after=timedelta(seconds=10))
 
 
 async def increment_dynamic():

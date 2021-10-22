@@ -1,5 +1,6 @@
 import collections.abc
 import itertools
+from datetime import datetime
 
 from ..queries import FullText
 from ..query_registration import QueryTranslationRegistry
@@ -15,10 +16,13 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     __slots__ = (
         "_access_policy",
         "_authenticated_identity",
-        "include_routers",
-        "background_tasks",
         "_mapping",
         "_metadata",
+        "_must_revalidate",
+        "background_tasks",
+        "entries_stale_after",
+        "include_routers",
+        "metadata_stale_after",
     )
     # Define classmethods for managing what queries this Tree knows.
     query_registry = QueryTranslationRegistry()
@@ -26,7 +30,14 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     register_query_lazy = query_registry.register_lazy
 
     def __init__(
-        self, mapping, metadata=None, access_policy=None, authenticated_identity=None
+        self,
+        mapping,
+        metadata=None,
+        access_policy=None,
+        authenticated_identity=None,
+        entries_stale_after=None,
+        metadata_stale_after=None,
+        must_revalidate=True,
     ):
         """
         Create a simple Tree from any mapping (e.g. dict, OneShotCachedMap).
@@ -37,6 +48,14 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
         access_policy : AccessPolicy, optional
         authenticated_identity : str, optional
+        entries_stale_after: timedelta
+            This server uses this to communite to the client how long
+            it should rely on a local cache before checking back for changes.
+        metadata_stale_after: timedelta
+            This server uses this to communite to the client how long
+            it should rely on a local cache before checking back for changes.
+        must_revalidate : bool
+            Whether the client should strictly refresh stale cache items.
         """
         self._mapping = mapping
         self._metadata = metadata or {}
@@ -48,9 +67,20 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
+        self._must_revalidate = must_revalidate
         self.include_routers = []
         self.background_tasks = []
+        self.entries_stale_after = entries_stale_after
+        self.metadata_stale_after = metadata_stale_after
         super().__init__()
+
+    @property
+    def must_revalidate(self):
+        return self._must_revalidate
+
+    @must_revalidate.setter
+    def must_revalidate(self, value):
+        self._must_revalidate = value
 
     @property
     def access_policy(self):
@@ -80,6 +110,18 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     def __len__(self):
         return len(self._mapping)
 
+    @property
+    def metadata_stale_at(self):
+        if self.metadata_stale_after is None:
+            return
+        return self.metadata_stale_after + datetime.utcnow()
+
+    @property
+    def entries_stale_at(self):
+        if self.entries_stale_after is None:
+            return
+        return self.entries_stale_after + datetime.utcnow()
+
     def authenticated_as(self, identity):
         if self._authenticated_identity is not None:
             raise RuntimeError(
@@ -97,6 +139,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         mapping=UNCHANGED,
         metadata=UNCHANGED,
         authenticated_identity=UNCHANGED,
+        must_revalidate=UNCHANGED,
         **kwargs,
     ):
         if mapping is UNCHANGED:
@@ -105,12 +148,17 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             metadata = self._metadata
         if authenticated_identity is UNCHANGED:
             authenticated_identity = self._authenticated_identity
+        if must_revalidate is UNCHANGED:
+            must_revalidate = self.must_revalidate
         return type(self)(
             *args,
             mapping=mapping,
             metadata=self._metadata,
             access_policy=self.access_policy,
             authenticated_identity=self.authenticated_identity,
+            entries_stale_after=self.entries_stale_after,
+            metadata_stale_after=self.entries_stale_after,
+            must_revalidate=must_revalidate,
             **kwargs,
         )
 

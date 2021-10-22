@@ -2,6 +2,7 @@ import importlib
 
 from ..trees.utils import UNCHANGED
 from ..utils import DictView, ListView, OneShotCachedMap
+from .cache import Revalidate, verify_cache
 
 
 class BaseClient:
@@ -79,14 +80,32 @@ class BaseStructureClient(BaseClient):
             structure = self._structure
         return super().new_variation(structure=structure, **kwargs)
 
-    def touch(self):
+    def download(self):
         """
-        Access all the data.
+        Download all data into the cache.
 
         This causes it to be cached if the context is configured with a cache.
         """
+        verify_cache(self.context.cache)
         repr(self)
         self.read()
+
+    def refresh(self, force=False):
+        """
+        Refresh cached data for this node.
+
+        Parameters
+        ----------
+        force: bool
+            If False, (default) refresh only expired cache entries.
+            If True, refresh all cache entries.
+        """
+        if force:
+            revalidate = Revalidate.FORCE
+        else:
+            revalidate = Revalidate.IF_EXPIRED
+        with self.context.revalidation(revalidate):
+            self.download()
 
     def structure(self):
         """
