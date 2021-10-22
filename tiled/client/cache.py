@@ -16,6 +16,7 @@ import functools
 import hashlib
 import threading
 import time
+import types
 import warnings
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -255,6 +256,7 @@ class Cache:
             etag_to_content_cache={},
             global_lock=threading.Lock(),
             lock_factory=lambda etag: threading.Lock(),
+            state=types.SimpleNamespace(),
             scorer=scorer,
         )
 
@@ -308,6 +310,7 @@ class Cache:
             lock_factory=lambda etag: locket.lock_file(
                 path / "etag_to_content_cache" / f"{etag}.lock"
             ),
+            state=OnDiskState(path),
             scorer=scorer,
         )
         return instance
@@ -320,6 +323,7 @@ class Cache:
         etag_to_content_cache,
         global_lock,
         lock_factory,
+        state,
         scorer=None,
     ):
         """
@@ -336,6 +340,8 @@ class Cache:
             A lock used for the url_to_headers_cache
         lock_factory : callable
             Expected signature: ``f(etag) -> Lock``
+        state : object
+            Namespace used for storing general-purpose cache state
         scorer: Scorer, optional
             A Scorer object that controls how we decide what to retire when space
             is low.
@@ -344,8 +350,10 @@ class Cache:
         if scorer is None:
             scorer = Scorer(halflife=1000)
         self.scorer = scorer
+        self._state = state
+        if not hasattr(state, "when_full"):
+            state.when_full = b"evict"
         self.capacity = capacity
-        self._when_full = WhenFull.EVICT
         self.heap = heapdict()
         self.nbytes = dict()
         self.total_bytes = 0
@@ -373,11 +381,11 @@ class Cache:
         * WARN - Leave the cache content alone and warn that nothing new will be cached.
           This is not recommended.
         """
-        return self._when_full
+        return WhenFull(self._state.when_full.decode())
 
     @when_full.setter
     def when_full(self, value):
-        self._when_full = WhenFull(value)
+        self._state.when_full = WhenFull(value).value.encode()
 
     def renew(self, url, etag, expires):
         cache_key = tokenize_url(url)
@@ -642,19 +650,68 @@ def tokenize_url(url):
     ).hexdigest()
 
 
+class OnDiskState:
+    def __init__(self, directory):
+        self._directory = Path(directory)
+        self._ttl_cache = {}
+
+        if self._directory.exists():
+            import packaging.version
+
+            version_filepath = self._directory / "client_library_version"
+            if version_filepath.is_file():
+                with open(version_filepath, "rt") as file:
+                    # Check to see if this cache has an internal layout that we
+                    # understand.
+                    version = packaging.version.parse(file.read())
+                    if version <= packaging.version.parse("0.1.0a42"):
+                        raise ValueError(
+                            "Cache directory {directory} was used by an older version of Tiled. "
+                            "It cannot be used by this version. Choose a different directory, "
+                            "or delete all the cached data in that directory. (In the future "
+                            "Tiled caching will be backward compatible, but not during alpha.)"
+                        )
+        self._directory.mkdir(parents=True, exist_ok=True)
+        # Record the version which may be useful to future code that needs
+        # to deal with a change in internal format or layout.
+        with open(self._directory / "client_library_version", "wt") as file:
+            from tiled import __version__
+
+            file.write(__version__)
+
+    def __getattr__(self, key):
+        try:
+            deadline, value = self._ttl_cache[key]
+            if deadline < time.monotonic():
+                return value
+        except KeyError:
+            pass
+        try:
+            with open(self._directory / key, "rb") as file:
+                value = file.read()
+        except FileNotFoundError:
+            raise AttributeError(key)
+        TIMEOUT = 1  # second
+        deadline = TIMEOUT + time.monotonic()
+        self._ttl_cache[key] = deadline, value
+        return value
+
+    def __setattr__(self, key, value):
+        if key.startswith("_"):
+            return super().__setattr__(key, value)
+        TIMEOUT = 1  # second
+        deadline = TIMEOUT + time.monotonic()
+        self._ttl_cache[key] = deadline, value
+        with open(self._directory / key, "wb") as file:
+            return file.write(value)
+
+
 class FileBasedCache(collections.abc.MutableMapping):
     "Locking is handled in the other layer, by Cache."
 
     def __init__(self, directory, mode="w"):
         self._directory = Path(directory)
         self._directory.mkdir(parents=True, exist_ok=True)
-        if mode == "w":
-            # Record the version which may be useful to future code that needs
-            # to deal with a change in internal format or layout.
-            with open(self._directory / "client_library_version", "wt") as file:
-                from tiled import __version__
-
-                file.write(__version__)
 
     def __repr__(self):
         return repr(dict(self))
