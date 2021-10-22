@@ -18,11 +18,11 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         "_authenticated_identity",
         "_mapping",
         "_metadata",
+        "_must_revalidate",
         "background_tasks",
         "entries_stale_after",
         "include_routers",
         "metadata_stale_after",
-        "must_revalidate",
     )
     # Define classmethods for managing what queries this Tree knows.
     query_registry = QueryTranslationRegistry()
@@ -67,12 +67,20 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
-        self.must_revalidate = must_revalidate
+        self._must_revalidate = must_revalidate
         self.include_routers = []
         self.background_tasks = []
         self.entries_stale_after = entries_stale_after
         self.metadata_stale_after = metadata_stale_after
         super().__init__()
+
+    @property
+    def must_revalidate(self):
+        return self._must_revalidate
+
+    @must_revalidate.setter
+    def must_revalidate(self, value):
+        self._must_revalidate = value
 
     @property
     def access_policy(self):
