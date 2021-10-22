@@ -5,7 +5,14 @@ import numpy
 import pytest
 
 from ..client import from_tree
-from ..client.cache import Cache, CacheIsFull, NoCache, download, TooLargeForCache, WhenFull
+from ..client.cache import (
+    Cache,
+    CacheIsFull,
+    NoCache,
+    TooLargeForCache,
+    WhenFull,
+    download,
+)
 from ..client.utils import logger
 from ..queries import FullText
 from ..query_registration import register
@@ -324,21 +331,6 @@ def test_when_full(caplog):
     assert "stored (8_000_000 B" in caplog.text
     assert "evicted 8_000_000 B" in caplog.text
 
-    # ignore
-    caplog.clear()
-    cache = Cache.in_memory(1.5 * arr.nbytes)
-    cache.when_full = "ignore"
-    c = from_tree(tree, cache=cache)
-    c["a"][:]
-    assert "stored (8_000_000 B" in caplog.text
-    caplog.clear()
-    c["b"][:]
-    assert "stored (8_000_000 B" not in caplog.text
-    assert "evicted" not in caplog.text
-    caplog.clear()
-    c["a"][:]
-    assert "read" in caplog.text
-
 
 def test_too_large(caplog):
     logger.setLevel("DEBUG")
@@ -364,13 +356,6 @@ def test_too_large(caplog):
     c["a"]
     with pytest.warns(UserWarning):
         c["a"][:]
-
-    # ignore
-    cache = Cache.in_memory(0.5 * arr.nbytes)
-    cache.when_full = "ignore"
-    c = from_tree(tree, cache=cache)
-    c["a"]
-    c["a"][:]
 
     # evict
     cache = Cache.in_memory(0.5 * arr.nbytes)

@@ -14,14 +14,13 @@ import collections.abc
 import enum
 import functools
 import hashlib
-import itertools
 import threading
 import time
+import warnings
 from collections import defaultdict
 from datetime import datetime, timedelta
 from math import log
 from pathlib import Path
-import warnings
 
 from heapdict import heapdict
 from httpx import Headers
@@ -45,7 +44,6 @@ class WhenFull(enum.Enum):
     EVICT = "evict"
     ERROR = "error"
     WARN = "warn"
-    IGNORE = "ignore"
 
     def __call__(member):
         if isinstance(member, str):
@@ -148,13 +146,10 @@ def download(*entries):
     >>> from tiled.client.cache import Cache
     >>> client = from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
     """
-    # TODO Use multiple processes to ensure we are saturating our network connection.
-    peek_at_me, entries = itertools.tee(entries)
-    entry = next(iter(peek_at_me))
-    entry.context.cache.when_full = WhenFull.ERROR
-    del peek_at_me
     for entry in entries:
         entry.download()
+    # Protect explicitly downloaded data from being silently evicted.
+    entry.context.cache.when_full = WhenFull.ERROR
 
 
 # This is a silly time format, but it is the HTTP standard.
@@ -376,7 +371,7 @@ class Cache:
         * EVICT - Make a cost/benefit judgement about what (if anything) to evict to make room.
         * ERROR - Raise an error.
         * WARN - Leave the cache content alone and warn that nothing new will be cached.
-        * IGNORE - Leave the cache content alone and silently cache nothing new.
+          This is not recommended.
         """
         return self._when_full
 
@@ -453,19 +448,17 @@ class Cache:
                 raise TooLargeForCache(msg)
             elif self.when_full == WhenFull.WARN:
                 warnings.warn(msg)
-            # If we are set to IGNORE or EVICT, just do not bother storing items too large for the cache.
+            # If we are set to EVICT, just do not bother storing items too large for the cache.
             return
         if nbytes + self.total_bytes > self.capacity:
-            if self.when_full == WhenFull.IGNORE:
-                return
-            elif self.when_full == WhenFull.ERROR:
+            if self.when_full == WhenFull.ERROR:
                 raise CacheIsFull(
                     f"""All {self.capacity} bytes of the cache's capacity are used. Options:
     1. Set larger capacity (and if necessary a different storage volume with more room).
     2. Choose a smaller set of entries to cache.
     3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
     4. Let the cache sit as it is, keeping the items it has but not adding any more,
-    by setting cache.when_full = "ignore" or cache.when_full = "warn"."""
+       This is not recommended but it is doable by setting cache.when_full = "warn"."""
                 )
             elif self.when_full == WhenFull.WARN:
                 warnings.warn(
@@ -473,8 +466,8 @@ class Cache:
     1. Set larger capacity (and if necessary a different storage volume with more room).
     2. Choose a smaller set of entries to cache.
     3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
-    4. Let the cache sit as it is, keeping the items it has but not adding any more.
-    This is the current setting. To disable these warnings, set cache.when_full = "ignore"."""
+    4. Let the cache sit as it is, keeping the items it has but not adding any more,
+       This is not recommended but it is doable by setting cache.when_full = "warn"."""
                 )
                 return
         # If we reach here, either the data fits or we are going to
