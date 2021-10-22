@@ -5,7 +5,7 @@ import numpy
 import pytest
 
 from ..client import from_tree
-from ..client.cache import Cache, CacheIsFull, NoCache, download, TooLargeForCache
+from ..client.cache import Cache, CacheIsFull, NoCache, download, TooLargeForCache, WhenFull
 from ..client.utils import logger
 from ..queries import FullText
 from ..query_registration import register
@@ -65,6 +65,7 @@ def test_offline(cache, structure_clients):
 def test_download(cache, structure_clients):
     client = from_tree(tree, cache=cache, structure_clients=structure_clients)
     download(client)
+    assert cache.when_full == WhenFull.ERROR
     client.offline = True
     # smoke test
     client.metadata
@@ -296,14 +297,16 @@ def test_when_full(caplog):
     )
 
     # error
-    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="error")
+    cache = Cache.in_memory(1.5 * arr.nbytes)
+    cache.when_full = "error"
     c = from_tree(tree, cache=cache)
     c["a"][:]
     with pytest.raises(CacheIsFull):
         c["b"][:]
 
     # warn
-    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="warn")
+    cache = Cache.in_memory(1.5 * arr.nbytes)
+    cache.when_full = "warn"
     c = from_tree(tree, cache=cache)
     c["a"][:]
     with pytest.warns(UserWarning):
@@ -311,7 +314,8 @@ def test_when_full(caplog):
 
     # evict
     caplog.clear()
-    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="evict")
+    cache = Cache.in_memory(1.5 * arr.nbytes)
+    assert cache.when_full == WhenFull.EVICT  # default
     c = from_tree(tree, cache=cache)
     c["a"][:]
     assert "stored (8_000_000 B" in caplog.text
@@ -322,7 +326,8 @@ def test_when_full(caplog):
 
     # ignore
     caplog.clear()
-    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="ignore")
+    cache = Cache.in_memory(1.5 * arr.nbytes)
+    cache.when_full = "ignore"
     c = from_tree(tree, cache=cache)
     c["a"][:]
     assert "stored (8_000_000 B" in caplog.text
@@ -345,15 +350,31 @@ def test_too_large(caplog):
     )
 
     # error
-    cache = Cache.in_memory(0.5 * arr.nbytes, when_full="error")
+    cache = Cache.in_memory(0.5 * arr.nbytes)
+    cache.when_full = "error"
     c = from_tree(tree, cache=cache)
     c["a"]
     with pytest.raises(TooLargeForCache):
         c["a"][:]
 
     # warn
-    cache = Cache.in_memory(0.5 * arr.nbytes, when_full="warn")
+    cache = Cache.in_memory(0.5 * arr.nbytes)
+    cache.when_full = "warn"
     c = from_tree(tree, cache=cache)
     c["a"]
     with pytest.warns(UserWarning):
         c["a"][:]
+
+    # ignore
+    cache = Cache.in_memory(0.5 * arr.nbytes)
+    cache.when_full = "ignore"
+    c = from_tree(tree, cache=cache)
+    c["a"]
+    c["a"][:]
+
+    # evict
+    cache = Cache.in_memory(0.5 * arr.nbytes)
+    assert cache.when_full == WhenFull.EVICT  # default
+    c = from_tree(tree, cache=cache)
+    c["a"]
+    c["a"][:]

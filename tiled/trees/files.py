@@ -363,6 +363,7 @@ class Tree(TreeInMemory):
         authenticated_identity,
         entries_stale_after=None,
         metadata_stale_after=None,
+        must_revalidate=True,
     ):
         super().__init__(
             mapping,
@@ -371,6 +372,7 @@ class Tree(TreeInMemory):
             authenticated_identity=authenticated_identity,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
+            must_revalidate=must_revalidate,
         )
         self._directory = directory
         self._index = index
