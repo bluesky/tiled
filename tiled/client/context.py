@@ -168,7 +168,7 @@ class Context:
         self._client = client
         self._authentication_uri = authentication_uri
         self._cache = cache
-        self.revalidate = Revalidate.IF_WE_MUST
+        self._revalidate = Revalidate.IF_WE_MUST
         self._username = username
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
@@ -246,9 +246,27 @@ class Context:
         "httpx.Client event hooks. This is exposed for testing."
         return self._client.event_hooks
 
+    @property
+    def revalidate(self):
+        """
+        This controls how aggressively to check whether cache entries are out of date.
+
+        - FORCE: Always revalidate (generally too aggressive and expensive)
+        - IF_EXPIRED: Revalidate if the "Expire" date provided by the server has passed
+        - IF_WE_MUST: Only revalidate if the server indicated that is is a
+          particularly volatile entry, such as a search result to a dynamic query.
+        """
+        return self._revalidate
+
+    @revalidate.setter
+    def revalidate(self, value):
+        self._revalidate = Revalidate(value)
+
     @contextlib.contextmanager
     def revalidation(self, revalidate):
         """
+        Temporarily change the 'revalidate' property in a context.
+
         Parameters
         ----------
         revalidate: string or tiled.client.cache.Revalidate enum member

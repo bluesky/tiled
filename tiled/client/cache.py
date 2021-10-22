@@ -14,12 +14,14 @@ import collections.abc
 import enum
 import functools
 import hashlib
+import itertools
 import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from math import log
 from pathlib import Path
+import warnings
 
 from heapdict import heapdict
 from httpx import Headers
@@ -29,16 +31,32 @@ if __debug__:
 
 
 class Revalidate(enum.Enum):
-    FORCE = "FORCE"
-    IF_EXPIRED = "IF_EXPIRED"
-    IF_WE_MUST = "IF_WE_MUST"
+    FORCE = "force"
+    IF_EXPIRED = "if_expired"
+    IF_WE_MUST = "if_we_must"
+
+    def __call__(member):
+        if isinstance(member, str):
+            member = member.lower()
+        return super().__call__(member)
+
+
+class WhenFull(enum.Enum):
+    EVICT = "evict"
+    ERROR = "error"
+    WARN = "warn"
+    IGNORE = "ignore"
+
+    def __call__(member):
+        if isinstance(member, str):
+            member = member.lower()
+        return super().__call__(member)
 
 
 class UrlItem(
     collections.namedtuple(
         "UrlItem",
         [
-            "pinned",
             "size",
             "media_type",
             "encoding",
@@ -60,7 +78,6 @@ class UrlItem(
         else:
             expires = None
         return cls(
-            pinned=bool(int(headers.pop("__tiled_client_pinned__", "0"))),
             size=int(headers["content-length"]),
             media_type=headers["content-type"],
             encoding=headers.get("content-encoding"),
@@ -79,9 +96,6 @@ class UrlItem(
 
     def to_text(self):
         headers = {
-            "__tiled_client_pinned__": str(
-                int(self.pinned)
-            ),  # "0" or "1" for False or True
             "content-length": str(self.size),
             "content-type": self.media_type,
             "etag": self.etag,
@@ -135,6 +149,10 @@ def download(*entries):
     >>> client = from_uri("http://...", cache=Cache.on_disk("my_cache_directory"), offline=True)
     """
     # TODO Use multiple processes to ensure we are saturating our network connection.
+    peek_at_me, entries = itertools.tee(entries)
+    entry = next(iter(peek_at_me))
+    entry.context.cache.when_full = WhenFull.ERROR
+    del peek_at_me
     for entry in entries:
         entry.download()
 
@@ -216,7 +234,7 @@ class Cache:
     """
 
     @classmethod
-    def in_memory(cls, available_bytes, *, scorer=None):
+    def in_memory(cls, capacity, when_full="evict", *, scorer=None):
         """
         An in-memory cache of data from the server
 
@@ -230,14 +248,18 @@ class Cache:
 
         Parameters
         ----------
-        available_bytes : integer
+        capacity : integer
             e.g. 2e9 to use up to 2 GB of RAM
+        when_full: {"evict", "error", "warn", "ignore"}
+            Controls what happens when the cache is at capacity. Must be
+            a member of the tiled.client.cache.WhenFull enum or str equivalent
         scorer : Scorer
             Determines which items to evict from the cache when it grows full.
             See tiled.client.cache.Scorer for example.
         """
         return cls(
-            available_bytes,
+            capacity,
+            when_full,
             url_to_headers_cache={},
             etag_to_content_cache={},
             global_lock=threading.Lock(),
@@ -249,7 +271,8 @@ class Cache:
     def on_disk(
         cls,
         path,
-        available_bytes=None,
+        capacity=None,
+        when_full="evict",
         *,
         cull_on_startup=False,
         scorer=None,
@@ -269,14 +292,17 @@ class Cache:
             A directory will be created at this path if it does not yet exist.
             It is safe to reuse an existing cache directory and to share a cache
             directory between multiple processes.
-        available_bytes : integer, optional
+        capacity : integer, optional
             e.g. 2e9 to use up to 2 GB of disk space. If None, this will consume
             up to (X - 1 GB) where X is the free space remaining on the volume
             containing `path`.
+        when_full: {"evict", "error", "warn", "ignore"}
+            Controls what happens when the cache is at capacity. Must be
+            a member of the tiled.client.cache.WhenFull enum or str equivalent
         cull_on_startup : boolean, optional
             If reusing an existing cache directory which is already larger than the
-            available_bytes, an error is raised. Set this to True to delete
-            items from the cache until it fits in available_bytes. False by default.
+            capacity, an error is raised. Set this to True to delete
+            items from the cache until it fits in capacity. False by default.
         scorer : Scorer
             Determines which items to evict from the cache when it grows full.
             See tiled.client.cache.Scorer for example.
@@ -287,13 +313,14 @@ class Cache:
 
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        if available_bytes is None:
+        if capacity is None:
             # By default, use (X - 1 GB) where X is the current free space
             # on the volume containing `path`.
-            available_bytes = shutil.disk_usage(path).free - 1e9
+            capacity = shutil.disk_usage(path).free - 1e9
         etag_to_content_cache = FileBasedCache(path / "etag_to_content_cache")
         instance = cls(
-            available_bytes,
+            capacity,
+            when_full,
             url_to_headers_cache=FileBasedUrlCache(path / "url_to_headers_cache"),
             etag_to_content_cache=etag_to_content_cache,
             global_lock=locket.lock_file(path / "global.lock"),
@@ -302,13 +329,15 @@ class Cache:
             ),
             scorer=scorer,
         )
-        # Ensure we fit in available_bytes.
-        instance.shrink()
+        if cull_on_startup:
+            # Ensure we fit in capacity.
+            instance.shrink()
         return instance
 
     def __init__(
         self,
-        available_bytes,
+        capacity,
+        when_full,
         *,
         url_to_headers_cache,
         etag_to_content_cache,
@@ -320,8 +349,11 @@ class Cache:
         Parameters
         ----------
 
-        available_bytes : int
+        capacity : int
             The number of bytes of data to keep in the cache
+        when_full: {"evict", "error", "warn", "ignore"}
+            Controls what happens when the cache is at capacity. Must be
+            a member of the tiled.client.cache.WhenFull enum or str equivalent
         url_to_headers_cache : MutableMapping
             Dict-like object to use for cache
         etag_to_content_cache : MutableMapping
@@ -338,8 +370,8 @@ class Cache:
         if scorer is None:
             scorer = Scorer(halflife=1000)
         self.scorer = scorer
-        self.available_bytes = available_bytes
-        self.pinned_bytes = 0
+        self.capacity = capacity
+        self._when_full = WhenFull(when_full)
         self.heap = heapdict()
         self.nbytes = dict()
         self.total_bytes = 0
@@ -352,10 +384,18 @@ class Cache:
         for etag in etag_to_content_cache:
             # This tells us the content size without actually reading in the data.
             nbytes = etag_to_content_cache.sizeof(etag)
-            score = self.scorer.download(etag, nbytes)
+            score = self.scorer.touch(etag, nbytes)
             self.heap[etag] = score
             self.nbytes[etag] = nbytes
             self.total_bytes += nbytes
+
+    @property
+    def when_full(self):
+        return self._when_full
+
+    @when_full.setter
+    def when_full(self, value):
+        self._when_full = WhenFull(value)
 
     def renew(self, url, etag, expires):
         cache_key = tokenize_url(url)
@@ -417,20 +457,29 @@ class Cache:
 
     def _put_content(self, etag, content):
         nbytes = len(content)
-        if nbytes < self.available_bytes:
-            score = self.scorer.download(etag, nbytes)
-            if (
-                nbytes + self.total_bytes < self.available_bytes
-                or not self.heap
-                or score > self.heap.peekitem()[1]
-            ):
-                self.etag_to_content_cache[etag] = content
-                self.heap[etag] = score
-                self.nbytes[etag] = nbytes
-                self.total_bytes += nbytes
-                # TODO We should actually shrink *first* to stay below the available_bytes.
-                self.shrink()
-                return nbytes
+        if nbytes > self.capacity:
+            msg = (
+                f"A single item of size {nbytes} is too large for the "
+                f"cache of capacity {self.capacity}."
+            )
+            if self.when_full == WhenFull.ERROR:
+                raise TooLargeForCache(msg)
+            elif self.when_full == WhenFull.WARN:
+                warnings.warn(msg)
+            # If we are set to IGNORE or EVICT, just do not bother storing this one.
+            return
+        score = self.scorer.touch(etag, nbytes)
+        if (
+            nbytes + self.total_bytes < self.capacity
+            or not self.heap
+            or score > self.heap.peekitem()[1]
+        ):
+            self.shrink(target=self.capacity - nbytes)
+            self.etag_to_content_cache[etag] = content
+            self.heap[etag] = score
+            self.nbytes[etag] = nbytes
+            self.total_bytes += nbytes
+            return nbytes
 
     def get_reservation(self, url):
         # Hold the global lock.
@@ -453,7 +502,7 @@ class Cache:
         try:
             content = self.etag_to_content_cache[etag]
             # Access this item increases its score.
-            score = self.scorer.download(etag, len(content))
+            score = self.scorer.touch(etag, len(content))
             self.heap[etag] = score
             return content
         except KeyError:
@@ -486,33 +535,45 @@ class Cache:
                         lock.release()
                     break
 
-    def resize(self, available_bytes):
+    def resize(self, capacity):
         """Resize the cache.
 
-        Will fit the cache into available_bytes by calling `shrink()`.
+        Will fit the cache into capacity by calling `shrink()`.
         """
-        self.available_bytes = available_bytes
+        self.capacity = capacity
         self.shrink()
 
-    def shrink(self):
+    def shrink(self, target=None):
         """Retire keys from the cache until we're under bytes budget
 
         See Also:
             retire
         """
-        if self.total_bytes <= self.available_bytes:
+        if target is None:
+            target = self.capacity
+        if self.total_bytes <= target:
             return
 
-        if self._error_if_full:
+        if self.when_full == WhenFull.ERROR:
             raise CacheIsFull(
-                f"""All {self.available_bytes} are used. Options:
-1. Set larger available_bytes (and if necessary a different storage volume with more room).
+                f"""All {self.capacity} bytes of the cache's capacity are used. Options:
+1. Set larger capacity (and if necessary a different storage volume with more room).
 2. Choose a smaller set of entries to cache.
-3. Allow the cache to evict items that do not fit by setting error_if_full=False.
-"""
+3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
+4. Let the cache sit as it is, keeping the items it has but not adding any more,
+   by setting cache.when_full = "ignore" or cache.when_full = "warn"."""
+            )
+        if self.when_full == WhenFull.WARN:
+            warnings.warn(
+                f"""All {self.capacity} bytes of the cache's capacity are used. Options:
+1. Set larger capacity (and if necessary a different storage volume with more room).
+2. Choose a smaller set of entries to cache.
+3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
+4. Let the cache sit as it is, keeping the items it has but not adding any more.
+   This is the current setting. To disable these warnings, set cache.when_full = "ignore"."""
             )
 
-        while self.total_bytes > self.available_bytes:
+        while self.total_bytes > target:
             self._shrink_one()
 
     def clear(self):
@@ -691,6 +752,10 @@ class AlreadyTooLarge(Exception):
 
 
 class CacheIsFull(Exception):
+    pass
+
+
+class TooLargeForCache(Exception):
     pass
 
 

@@ -119,10 +119,13 @@ properties:
       # but in the Python code that parses the profiles, not here.
       memory:
         type: object
-        required:
-          - available_bytes
+        anyOf:
+          required:
+            - capacity
+          required:
+            - available_bytes  # deprecated alias for 'capacity'
         properties:
-          available_bytes:
+          capacity:
             type: number
             description: |
               Maximum memory (in bytes) that the cache may consume.
@@ -134,6 +137,9 @@ properties:
               available_bytes: 2_000_000_000  # 2GB
               ```
 
+          available_bytes:
+            type: number
+            description: Deprecated alias for "capacity"
           error_if_full:
             type: boolean
             description: |
@@ -168,6 +174,9 @@ properties:
               available_bytes: 2_000_000_000  # 2GB
               ```
 
+          available_bytes:
+            type: number
+            description: Deprecated alias for "capacity"
           error_if_full:
             type: boolean
             description: |

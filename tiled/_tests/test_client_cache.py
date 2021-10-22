@@ -23,7 +23,7 @@ def cache(request, tmpdir):
     if request.param == "in_memory":
         return Cache.in_memory(2e9)
     if request.param == "on_disk":
-        return Cache.on_disk(tmpdir, available_bytes=2e9)
+        return Cache.on_disk(tmpdir, capacity=2e9)
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
