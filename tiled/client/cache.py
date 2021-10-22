@@ -637,20 +637,14 @@ class Scorer:
 
 def tokenize_url(url):
     """
-    >>> tokenize_url((b"https", b"localhost", 8000, b"/metadata/"))
-    "some unique hash"
+    >>> tokenize_url(httpx_URL)
+    ("domain", "md5_hash_of_the_rest")
     """
     url_as_tuple = url.raw
-    return hashlib.md5(
-        b"".join(
-            [
-                url_as_tuple[0],
-                url_as_tuple[1],
-                f":{url_as_tuple[2]}".encode(),  # e.g. 8000 -> b'8000'
-                *url_as_tuple[3:],
-            ]
-        )
-    ).hexdigest()
+    return (
+        f"url_as_tuple[1]:{url_as_tuple[2]}",
+        hashlib.md5(b"".join(url_as_tuple[3:])).hexdigest(),
+    )
 
 
 class OnDiskState:
@@ -765,11 +759,11 @@ def _normalize(*key):
     # To avoid an overly large directory (which leads to slow performance)
     # divide into subdirectories beginning with the first two characters of
     # the contents' name.
-    return (key[0][:2],) + key
+    return (key[0], key[1][:2], key[1][:2])
 
 
 def _unnormalize(key):
-    return [key][1]
+    return (key[0], key[2])
 
 
 class LockDict(dict):
