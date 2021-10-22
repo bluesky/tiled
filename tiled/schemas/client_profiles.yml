@@ -120,9 +120,9 @@ properties:
       memory:
         type: object
         anyOf:
-          required:
+          - required:
             - capacity
-          required:
+          - required:
             - available_bytes  # deprecated alias for 'capacity'
         properties:
           capacity:

@@ -647,7 +647,7 @@ class TokenCache:
         if not isinstance(value, str):
             raise ValueError("Expected string value, got {value!r}")
         filepath = self._directory / key
-        filepath.download(mode=0o600)  # Set permissions.
+        filepath.touch(mode=0o600)  # Set permissions.
         with open(filepath, "w") as file:
             file.write(value)
 
