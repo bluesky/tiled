@@ -184,7 +184,12 @@ class Context:
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        self._handshake_data = self.get_json(self._authentication_uri)
+        if offline:
+            self._handshake_data = self.get_json(self._authentication_uri)
+        else:
+            # We need a CSRF token.
+            with self.disable_cache(allow_read=False, allow_write=True):
+                self._handshake_data = self.get_json(self._authentication_uri)
 
         # Ask the server what its root_path is.
         if (not offline) and (
@@ -225,13 +230,17 @@ class Context:
     def offline(self):
         return self._offline
 
-    @property
-    def app(self):
-        return self._app
-
     @offline.setter
     def offline(self, value):
         self._offline = bool(value)
+        if not self._offline:
+            # We need a CSRF token.
+            with self.disable_cache(allow_read=False, allow_write=True):
+                self._handshake_data = self.get_json(self._authentication_uri)
+
+    @property
+    def app(self):
+        return self._app
 
     @property
     def path_parts(self):
@@ -283,6 +292,14 @@ class Context:
         yield
         # Upon leaving context, set it back.
         self.revalidate = original
+
+    @contextlib.contextmanager
+    def disable_cache(self, allow_read=False, allow_write=False):
+        self._disable_cache_read = not allow_read
+        self._disable_cache_write = not allow_write
+        yield
+        self._disable_cache_read = False
+        self._disable_cache_write = False
 
     def get_content(self, path, accept=None, stream=False, revalidate=None, **kwargs):
         if revalidate is None:
@@ -338,10 +355,12 @@ class Context:
                     or
                     # This condition means "server really wants us to revalidate"
                     (is_stale and reservation.item.must_revalidate)
+                    or self._disable_cache_read
                 ):
                     # Short-circuit. Do not even bother consulting the server.
                     return reservation.load_content()
-                request.headers["If-None-Match"] = reservation.item.etag
+                if not self._disable_cache_read:
+                    request.headers["If-None-Match"] = reservation.item.etag
             response = self._send(request, stream=stream)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
@@ -349,7 +368,7 @@ class Context:
                 reservation.renew(response.headers.get("expires"))
                 # Read from the cache
                 return reservation.load_content()
-            elif response.status_code == 200:
+            elif not response.is_error:
                 etag = response.headers.get("ETag")
                 encoding = response.headers.get("Content-Encoding")
                 content = response.content
@@ -359,7 +378,11 @@ class Context:
                     import blosc
 
                     content = blosc.decompress(content)
-                if ("no-store" not in cache_control) and (etag is not None):
+                if (
+                    ("no-store" not in cache_control)
+                    and (etag is not None)
+                    and (not self._disable_cache_write)
+                ):
                     # Write to cache.
                     self._cache.put(
                         url,
