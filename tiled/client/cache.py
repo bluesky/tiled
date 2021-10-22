@@ -234,7 +234,7 @@ class Cache:
     """
 
     @classmethod
-    def in_memory(cls, capacity, when_full="evict", *, scorer=None):
+    def in_memory(cls, capacity, *, scorer=None):
         """
         An in-memory cache of data from the server
 
@@ -250,16 +250,12 @@ class Cache:
         ----------
         capacity : integer
             e.g. 2e9 to use up to 2 GB of RAM
-        when_full: {"evict", "error", "warn", "ignore"}
-            Controls what happens when the cache is at capacity. Must be
-            a member of the tiled.client.cache.WhenFull enum or str equivalent
         scorer : Scorer
             Determines which items to evict from the cache when it grows full.
             See tiled.client.cache.Scorer for example.
         """
         return cls(
             capacity,
-            when_full,
             url_to_headers_cache={},
             etag_to_content_cache={},
             global_lock=threading.Lock(),
@@ -272,7 +268,6 @@ class Cache:
         cls,
         path,
         capacity=None,
-        when_full="evict",
         *,
         cull_on_startup=False,
         scorer=None,
@@ -296,9 +291,6 @@ class Cache:
             e.g. 2e9 to use up to 2 GB of disk space. If None, this will consume
             up to (X - 1 GB) where X is the free space remaining on the volume
             containing `path`.
-        when_full: {"evict", "error", "warn", "ignore"}
-            Controls what happens when the cache is at capacity. Must be
-            a member of the tiled.client.cache.WhenFull enum or str equivalent
         cull_on_startup : boolean, optional
             If reusing an existing cache directory which is already larger than the
             capacity, an error is raised. Set this to True to delete
@@ -320,7 +312,6 @@ class Cache:
         etag_to_content_cache = FileBasedCache(path / "etag_to_content_cache")
         instance = cls(
             capacity,
-            when_full,
             url_to_headers_cache=FileBasedUrlCache(path / "url_to_headers_cache"),
             etag_to_content_cache=etag_to_content_cache,
             global_lock=locket.lock_file(path / "global.lock"),
@@ -337,7 +328,6 @@ class Cache:
     def __init__(
         self,
         capacity,
-        when_full,
         *,
         url_to_headers_cache,
         etag_to_content_cache,
@@ -351,9 +341,6 @@ class Cache:
 
         capacity : int
             The number of bytes of data to keep in the cache
-        when_full: {"evict", "error", "warn", "ignore"}
-            Controls what happens when the cache is at capacity. Must be
-            a member of the tiled.client.cache.WhenFull enum or str equivalent
         url_to_headers_cache : MutableMapping
             Dict-like object to use for cache
         etag_to_content_cache : MutableMapping
@@ -371,7 +358,7 @@ class Cache:
             scorer = Scorer(halflife=1000)
         self.scorer = scorer
         self.capacity = capacity
-        self._when_full = WhenFull(when_full)
+        self._when_full = WhenFull.EVICT
         self.heap = heapdict()
         self.nbytes = dict()
         self.total_bytes = 0
@@ -391,6 +378,14 @@ class Cache:
 
     @property
     def when_full(self):
+        """
+        Controls what happens the cache is at capacity
+
+        * EVICT - Make a cost/benefit judgement about what (if anything) to evict to make room.
+        * ERROR - Raise an error.
+        * WARN - Leave the cache content alone and warn that nothing new will be cached.
+        * IGNORE - Leave the cache content alone and silently cache nothing new.
+        """
         return self._when_full
 
     @when_full.setter
@@ -466,8 +461,32 @@ class Cache:
                 raise TooLargeForCache(msg)
             elif self.when_full == WhenFull.WARN:
                 warnings.warn(msg)
-            # If we are set to IGNORE or EVICT, just do not bother storing this one.
+            # If we are set to IGNORE or EVICT, just do not bother storing items too large for the cache.
             return
+        if nbytes + self.total_bytes > self.capacity:
+            if self.when_full == WhenFull.IGNORE:
+                return
+            elif self.when_full == WhenFull.ERROR:
+                raise CacheIsFull(
+                    f"""All {self.capacity} bytes of the cache's capacity are used. Options:
+    1. Set larger capacity (and if necessary a different storage volume with more room).
+    2. Choose a smaller set of entries to cache.
+    3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
+    4. Let the cache sit as it is, keeping the items it has but not adding any more,
+    by setting cache.when_full = "ignore" or cache.when_full = "warn"."""
+                )
+            elif self.when_full == WhenFull.WARN:
+                warnings.warn(
+                    f"""All {self.capacity} bytes of the cache's capacity are used. Options:
+    1. Set larger capacity (and if necessary a different storage volume with more room).
+    2. Choose a smaller set of entries to cache.
+    3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
+    4. Let the cache sit as it is, keeping the items it has but not adding any more.
+    This is the current setting. To disable these warnings, set cache.when_full = "ignore"."""
+                )
+                return
+        # If we reach here, either the data fits or we are going to
+        # make a cost/benefit assessment of whether to evict things to make room for it.
         score = self.scorer.touch(etag, nbytes)
         if (
             nbytes + self.total_bytes < self.capacity
@@ -536,7 +555,7 @@ class Cache:
                         lock.release()
                     break
             if __debug__:
-                logger.debug("Cache evicted %d B with ETag %s", nbytes, etag)
+                logger.debug("Cache evicted %s B with ETag %s", f"{nbytes:_}", etag)
 
     def resize(self, capacity):
         """Resize the cache.
@@ -556,25 +575,6 @@ class Cache:
             target = self.capacity
         if self.total_bytes <= target:
             return
-
-        if self.when_full == WhenFull.ERROR:
-            raise CacheIsFull(
-                f"""All {self.capacity} bytes of the cache's capacity are used. Options:
-1. Set larger capacity (and if necessary a different storage volume with more room).
-2. Choose a smaller set of entries to cache.
-3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
-4. Let the cache sit as it is, keeping the items it has but not adding any more,
-   by setting cache.when_full = "ignore" or cache.when_full = "warn"."""
-            )
-        if self.when_full == WhenFull.WARN:
-            warnings.warn(
-                f"""All {self.capacity} bytes of the cache's capacity are used. Options:
-1. Set larger capacity (and if necessary a different storage volume with more room).
-2. Choose a smaller set of entries to cache.
-3. Allow the cache to evict items that do not fit by setting cache.when_full = "evict".
-4. Let the cache sit as it is, keeping the items it has but not adding any more.
-   This is the current setting. To disable these warnings, set cache.when_full = "ignore"."""
-            )
 
         while self.total_bytes > target:
             self._shrink_one()

@@ -5,7 +5,7 @@ import numpy
 import pytest
 
 from ..client import from_tree
-from ..client.cache import Cache, NoCache, download
+from ..client.cache import Cache, CacheIsFull, NoCache, download, TooLargeForCache
 from ..client.utils import logger
 from ..queries import FullText
 from ..query_registration import register
@@ -282,3 +282,78 @@ def test_must_revalidate(caplog, cache):
     assert "must-revalidate" not in caplog.text
     assert "<- 304" not in caplog.text
     assert "<- 200" not in caplog.text
+
+
+def test_when_full(caplog):
+    logger.setLevel("DEBUG")
+    arr = numpy.random.random((1000, 1000))
+    tree = Tree(
+        {
+            "a": ArrayAdapter.from_array(arr),
+            "b": ArrayAdapter.from_array(arr),
+            "c": ArrayAdapter.from_array(arr),
+        }
+    )
+
+    # error
+    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="error")
+    c = from_tree(tree, cache=cache)
+    c["a"][:]
+    with pytest.raises(CacheIsFull):
+        c["b"][:]
+
+    # warn
+    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="warn")
+    c = from_tree(tree, cache=cache)
+    c["a"][:]
+    with pytest.warns(UserWarning):
+        c["b"][:]
+
+    # evict
+    caplog.clear()
+    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="evict")
+    c = from_tree(tree, cache=cache)
+    c["a"][:]
+    assert "stored (8_000_000 B" in caplog.text
+    caplog.clear()
+    c["b"][:]
+    assert "stored (8_000_000 B" in caplog.text
+    assert "evicted 8_000_000 B" in caplog.text
+
+    # ignore
+    caplog.clear()
+    cache = Cache.in_memory(1.5 * arr.nbytes, when_full="ignore")
+    c = from_tree(tree, cache=cache)
+    c["a"][:]
+    assert "stored (8_000_000 B" in caplog.text
+    caplog.clear()
+    c["b"][:]
+    assert "stored (8_000_000 B" not in caplog.text
+    assert "evicted" not in caplog.text
+    caplog.clear()
+    c["a"][:]
+    assert "read" in caplog.text
+
+
+def test_too_large(caplog):
+    logger.setLevel("DEBUG")
+    arr = numpy.random.random((1000, 1000))
+    tree = Tree(
+        {
+            "a": ArrayAdapter.from_array(arr),
+        }
+    )
+
+    # error
+    cache = Cache.in_memory(0.5 * arr.nbytes, when_full="error")
+    c = from_tree(tree, cache=cache)
+    c["a"]
+    with pytest.raises(TooLargeForCache):
+        c["a"][:]
+
+    # warn
+    cache = Cache.in_memory(0.5 * arr.nbytes, when_full="warn")
+    c = from_tree(tree, cache=cache)
+    c["a"]
+    with pytest.warns(UserWarning):
+        c["a"][:]
