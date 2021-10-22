@@ -534,6 +534,8 @@ class Cache:
                     finally:
                         lock.release()
                     break
+            if __debug__:
+                logger.debug("Cache evicted content with ETag %s", etag)
 
     def resize(self, capacity):
         """Resize the cache.
