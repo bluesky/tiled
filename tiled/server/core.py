@@ -3,7 +3,6 @@ import collections.abc
 import contextlib
 import dataclasses
 import itertools
-import json
 import math
 import operator
 import re
@@ -563,66 +562,14 @@ class PatchedStreamingResponse(StreamingResponse):
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-class _NumpySafeJSONEncoder(json.JSONEncoder):
-    """
-    A json.JSONEncoder for encoding numpy objects using built-in Python types.
-
-    Examples
-    --------
-
-    Encode a Python object that includes an arbitrarily-nested numpy object.
-
-    >>> json.dumps({'a': {'b': numpy.array([1, 2, 3])}}, cls=NumpyEncoder)
-    """
-
-    def default(self, obj):
-        # JSON cannot represent the unicode/bytes distinction, so we send str.
-        # Msgpack *does* understand this distinction so clients can use that
-        # format if they care about the distinction.
-        if isinstance(obj, bytes):
-            return obj.decode()
-        # If numpy has not been imported yet, then we can be sure that obj
-        # is not a numpy object, and we want to avoid triggering a numpy
-        # import. (The server does not have a hard numpy dependency.)
-        if "numpy" in sys.modules:
-            import numpy
-
-            if isinstance(obj, (numpy.generic, numpy.ndarray)):
-                if numpy.isscalar(obj):
-                    return obj.item()
-                return obj.tolist()
-        if isinstance(obj, datetime):
-            # JSON has no datetime type, so we fall back to a string
-            # representation. If the client wants clarity about what
-            # is a datetime and what is a string-that-looks-like-a-datetime
-            # the client should request msgpack, which has higher data
-            # type fidelity in general.
-
-            # If this is naive, assign local timezone to be self-consistent
-            # with msgpack. (Msgpack requires us to set a timezone.)
-            if obj.tzinfo is None:
-                return obj.astimezone(_LOCAL_TZINFO).isoformat()
-            else:
-                return obj.isoformat()
-        return super().default(obj)
-
-
 class NumpySafeJSONResponse(JSONResponse):
     def __init__(self, *args, metrics, **kwargs):
         self.__metrics = metrics
         super().__init__(*args, **kwargs)
 
     def render(self, content: Any) -> bytes:
-        # Try the built-in rendering. If it fails, do the more
-        # expensive walk to convert any bytes objects to unicode
-        # and any numpy objects to builtins.
-        try:
-            # Fast (optimistic) path
-            with record_timing(self.__metrics, "pack"):
-                return super().render(content)
-        except Exception:
-            with record_timing(self.__metrics, "pack"):
-                return orjson.dumps(content)
+        with record_timing(self.__metrics, "pack"):
+            return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY)
 
 
 def _numpy_safe_msgpack_encoder(obj):
