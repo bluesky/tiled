@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Tuple
 
 import numpy
-import orjson
 
 from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import UnsupportedShape, modules_available
@@ -157,11 +156,14 @@ serialization_registry.register(
     "application/octet-stream",
     lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
 )
-serialization_registry.register(
-    "array",
-    "application/json",
-    lambda array, metadata: orjson.dumps(array.tolist()),
-)
+if modules_available("orjson"):
+    import orjson
+
+    serialization_registry.register(
+        "array",
+        "application/json",
+        lambda array, metadata: orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY),
+    )
 
 
 def serialize_csv(array, metadata):

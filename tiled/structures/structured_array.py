@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 import numpy
-import orjson
 
 from ..media_type_registration import serialization_registry
+from ..utils import modules_available
 from .array import ArrayMacroStructure
 from .array import MachineDataType as BuiltinType
 
@@ -145,17 +145,20 @@ serialization_registry.register(
     lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
 )
 serialization_registry.register(
-    "structured_array_generic",
-    "application/json",
-    lambda array, metadata: orjson.dumps(array.tolist()),
-)
-serialization_registry.register(
     "structured_array_tabular",
     "application/octet-stream",
     lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
 )
-serialization_registry.register(
-    "structured_array_tabular",
-    "application/json",
-    lambda array, metadata: orjson.dumps(array.tolist()),
-)
+if modules_available("orjson"):
+    import orjson
+
+    serialization_registry.register(
+        "structured_array_generic",
+        "application/json",
+        lambda array, metadata: orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY),
+    )
+    serialization_registry.register(
+        "structured_array_tabular",
+        "application/json",
+        lambda array, metadata: orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY),
+    )
