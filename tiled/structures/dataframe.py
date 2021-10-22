@@ -102,3 +102,8 @@ if modules_available("openpyxl", "pandas"):
     serialization_registry.register("dataframe", XLSX_MIME_TYPE, serialize_excel)
     deserialization_registry.register("dataframe", XLSX_MIME_TYPE, pandas.read_excel)
     mimetypes.types_map.setdefault(".xlsx", XLSX_MIME_TYPE)
+serialization_registry.register(
+    "dataframe",
+    "application/json",
+    lambda df, metadata: df.to_json().encode(),
+)

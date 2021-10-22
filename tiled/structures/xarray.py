@@ -183,6 +183,11 @@ serialization_registry.register(
     XLSX_MIME_TYPE,
     lambda ds, metadata: serialize_excel(ds.to_dataframe(), metadata),
 )
+serialization_registry.register(
+    "dataset",
+    "application/json",
+    lambda ds, metadata: ds.to_dataframe().to_json().encode(),
+)
 
 deserialization_registry.register(
     "dataset", "application/x-zarr", lambda ds, metadata: xarray.open_zarr(ds)
