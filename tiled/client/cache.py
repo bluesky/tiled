@@ -79,7 +79,10 @@ class UrlItem(
         return cls(
             size=int(headers["content-length"]),
             media_type=headers["content-type"],
-            encoding=headers.get("content-encoding"),
+            encoding=None,
+            # Record encoding when we start writing compressed data.
+            # We currently always write it uncompressed, so the encoding is None.
+            # encoding=headers.get("content-encoding"),
             etag=headers["etag"],
             must_revalidate="must-revalidate" in headers.get("cache-control", ""),
             expires=expires,
