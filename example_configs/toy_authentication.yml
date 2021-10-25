@@ -5,6 +5,14 @@ authentication:
             alice: ${ALICE_PASSWORD}
             bob: ${BOB_PASSWORD}
             cara: ${CARA_PASSWORD}
+access_control:
+    access_policy: tiled.trees.in_memory:SimpleAccessPolicy
+    args:
+        access_lists:
+            alice: ["A", "B"]
+            bob: ["A", "C"]
+            cara: tiled.trees.in_memory:SimpleAccessPolicy.ALL
+        public: ["D"]
 trees:
     - path: /
       tree: tiled.examples.toy_authentication:tree

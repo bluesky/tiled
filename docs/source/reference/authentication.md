@@ -19,15 +19,16 @@ configured to refer the user to a web browser to authenticate with a third party
 in turn.
 
 To test the first kind, we'll start a tiled server with a demo "toy"
-authentication system to work against. Save the following `config.yml` and start
-a server like so.
+authentication system to work against. Use this example configuration that
+is included with the tiled source code, and start a server like so.
 
 ```{eval-rst}
 .. literalinclude:: ../../../example_configs/toy_authentication.yml
+   :caption: example_configs/toy_authentication.py
 ```
 
 ```
-ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config config.yml
+ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/toy_authentication.yml
 ```
 
 To test the second kind, we'll use `https://tiled-demo.blueskyproject.io`, which
