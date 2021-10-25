@@ -290,8 +290,9 @@ class SimpleAccessPolicy:
 
     ALL = object()  # sentinel
 
-    def __init__(self, access_lists):
+    def __init__(self, access_lists, public=None):
         self.access_lists = {}
+        self.public = set(public or [])
         for key, value in access_lists.items():
             if isinstance(value, str):
                 value = import_object(value)
@@ -305,7 +306,7 @@ class SimpleAccessPolicy:
         return queries
 
     def filter_results(self, tree, authenticated_identity):
-        allowed = self.access_lists.get(authenticated_identity, [])
+        allowed = set(self.access_lists.get(authenticated_identity, [])) | self.public
         if (authenticated_identity is SpecialUsers.admin) or (allowed is self.ALL):
             mapping = tree._mapping
         else:
