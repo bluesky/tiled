@@ -116,6 +116,8 @@ def construct_serve_tree_kwargs(
             else:
                 # Interpret obj as tree instance.
                 tree = obj
+                if root_access_policy is not None:
+                    tree.access_policy = root_access_policy
             if segments in trees:
                 raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
             trees[segments] = tree

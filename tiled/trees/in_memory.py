@@ -86,6 +86,10 @@ class Tree(collections.abc.Mapping, IndexersMixin):
     def access_policy(self):
         return self._access_policy
 
+    @access_policy.setter
+    def access_policy(self, value):
+        self._access_policy = value
+
     @property
     def authenticated_identity(self):
         return self._authenticated_identity
