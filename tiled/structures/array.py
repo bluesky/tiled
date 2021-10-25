@@ -167,11 +167,12 @@ if modules_available("orjson"):
 
 
 def serialize_csv(array, metadata):
-    if array.ndim > 2:
+    try:
+        file = io.StringIO()
+        numpy.savetxt(file, array, fmt="%s", delimiter=",")
+        return file.getvalue().encode()
+    except (TypeError, ValueError):
         raise UnsupportedShape(array.shape)
-    file = io.StringIO()
-    numpy.savetxt(file, array, fmt="%s", delimiter=",")
-    return file.getvalue().encode()
 
 
 serialization_registry.register("array", "text/csv", serialize_csv)
