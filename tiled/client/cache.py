@@ -22,6 +22,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from math import log
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from heapdict import heapdict
 from httpx import Headers
@@ -638,13 +639,13 @@ class Scorer:
 def tokenize_url(url):
     """
     >>> tokenize_url(httpx_URL)
-    ("domain", "md5_hash_of_the_rest")
+    ("urlsafe_host_and_port", "md5_hash_of_the_rest")
     """
     url_as_tuple = url.raw
     address = url_as_tuple[1].decode()
     if url_as_tuple[2]:
         address += f":{url_as_tuple[2]}"
-    return (address, hashlib.md5(b"".join(url_as_tuple[3:])).hexdigest())
+    return (quote_plus(address), hashlib.md5(b"".join(url_as_tuple[3:])).hexdigest())
 
 
 class OnDiskState:
