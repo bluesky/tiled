@@ -258,6 +258,10 @@ properties:
       This section describes whether and how to authenticate users.
   access_control:
     type: object
+    additionalProperties: false
+    required:
+      - access_policy
+      - args
     properties:
       access_policy:
         type: [string, "null"]
