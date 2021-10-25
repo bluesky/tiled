@@ -143,6 +143,7 @@ def test_export_xarray_dataset_coord(filename, structure_clients, tmpdir):
     )
 
 
+@pytest.mark.flaky(reruns=5)
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 @pytest.mark.parametrize("filename", ["test.nc"])
 def test_export_xarray_dataset_all(filename, structure_clients, tmpdir):
