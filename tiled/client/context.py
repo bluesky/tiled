@@ -2,6 +2,7 @@ import contextlib
 import getpass
 import os
 import secrets
+import threading
 import urllib.parse
 from pathlib import Path, PurePosixPath
 
@@ -172,6 +173,7 @@ class Context:
         self._username = username
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
+        self._refresh_lock = threading.Lock()
         if isinstance(token_cache, (str, Path)):
             directory = _token_directory(token_cache, self._client.base_url.netloc)
             token_cache = TokenCache(directory)
@@ -525,47 +527,49 @@ Navigate web browser to this address to obtain access code:
         self._tokens.clear()
 
     def _refresh(self, refresh_token=None):
-        if refresh_token is None:
-            if self._token_cache is None:
-                # We are not using a token cache.
-                raise CannotRefreshAuthentication("No token cache was given")
-            # We are using a token_cache.
-            try:
-                refresh_token = self._token_cache["refresh_token"]
-            except KeyError:
-                raise CannotRefreshAuthentication(
-                    "No refresh token was found in token cache"
-                )
-        token_request = self._client.build_request(
-            "POST",
-            f"{self._authentication_uri}auth/token/refresh",
-            json={"refresh_token": refresh_token},
-            # Submit CSRF token in both header and cookie.
-            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
-        )
-        token_request.headers.pop("Authorization", None)
-        token_response = self._client.send(token_request)
-        if token_response.status_code == 401:
-            # Refreshing the token failed.
-            # Discard the expired (or otherwise invalid) refresh_token file.
-            self._token_cache.pop("refresh_token", None)
-            raise CannotRefreshAuthentication(
-                "Server rejected attempt to refresh token"
+        with self._refresh_lock:
+            if refresh_token is None:
+                if self._token_cache is None:
+                    # We are not using a token cache.
+                    raise CannotRefreshAuthentication("No token cache was given")
+                # We are using a token_cache.
+                try:
+                    refresh_token = self._token_cache["refresh_token"]
+                except KeyError:
+                    raise CannotRefreshAuthentication(
+                        "No refresh token was found in token cache"
+                    )
+            token_request = self._client.build_request(
+                "POST",
+                f"{self._authentication_uri}auth/token/refresh",
+                json={"refresh_token": refresh_token},
+                # Submit CSRF token in both header and cookie.
+                # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+                headers={"x-csrf": self._client.cookies["tiled_csrf"]},
             )
-        handle_error(token_response)
-        tokens = token_response.json()
-        # If we get this far, reauthentication worked.
-        # Store the new refresh token.
-        self._token_cache["refresh_token"] = tokens["refresh_token"]
-        # Update the client's Authentication header.
-        access_token = tokens["access_token"]
-        auth_header = f"Bearer {access_token}"
-        self._client.headers["authorization"] = auth_header
-        self._tokens.update(
-            refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
-        )
-        return tokens
+            token_request.headers.pop("Authorization", None)
+            token_response = self._client.send(token_request)
+            if token_response.status_code == 401:
+                # Refreshing the token failed.
+                # Discard the expired (or otherwise invalid) refresh_token file.
+                self._token_cache.pop("refresh_token", None)
+                raise CannotRefreshAuthentication(
+                    "Server rejected attempt to refresh token"
+                )
+            handle_error(token_response)
+            tokens = token_response.json()
+            # If we get this far, reauthentication worked.
+            # Store the new refresh token.
+            self._token_cache["refresh_token"] = tokens["refresh_token"]
+            # Update the client's Authentication header.
+            access_token = tokens["access_token"]
+            auth_header = f"Bearer {access_token}"
+            self._client.headers["authorization"] = auth_header
+            self._tokens.update(
+                refresh_token=tokens["refresh_token"],
+                access_token=tokens["access_token"],
+            )
+            return tokens
 
 
 def context_from_tree(
