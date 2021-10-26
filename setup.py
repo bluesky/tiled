@@ -99,7 +99,11 @@ setup(
     install_requires=[],  # Requirements depend on use case (e.g. client vs server).
     extras_require=extras_require,
     packages=find_packages(exclude=["docs", "tests"]),
-    entry_points={"console_scripts": ["tiled = tiled.commandline.main:main"]},
+    entry_points={
+        "console_scripts": ["tiled = tiled.commandline.main:main"],
+        'intake.drivers': [
+            'tiled = tiled.intake:TiledCatalog']
+    },
     package_data={
         "tiled": [
             # When adding files here, remember to update MANIFEST.in as well,
