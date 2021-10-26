@@ -21,6 +21,9 @@ def login(
     show_secret_tokens: bool = typer.Option(
         False, "--show-secret-tokens", help="Show secret tokens after successful login."
     ),
+    refresh_or_fail: bool = typer.Option(
+        False, "--refresh-or-fail", help="Refresh authentication or exit with failure."
+    ),
 ):
     """
     Log in to an authenticated Tiled server.
@@ -30,6 +33,8 @@ def login(
     options = {}
     if no_verify:
         options["verify"] = False
+    if refresh_or_fail:
+        options["prompt_for_reauthentication"] = "never"
     try:
         client = _client_from_uri_or_profile(uri_or_profile, **options)
     except (ValueError, ClientError) as err:

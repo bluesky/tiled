@@ -5,7 +5,12 @@ import urllib.parse
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
-from .context import DEFAULT_TOKEN_CACHE, Context, context_from_tree
+from .context import (
+    DEFAULT_TOKEN_CACHE,
+    Context,
+    PromptForReauthentication,
+    context_from_tree,
+)
 from .node import Node
 from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS
 
@@ -21,6 +26,7 @@ def from_uri(
     special_clients=None,
     verify=True,
     authentication_uri=None,
+    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     headers=None,
 ):
     """
@@ -54,6 +60,7 @@ def from_uri(
         intended for development and testing only.
     authentication_uri : str, optional
         URL of authentication server
+    prompt_for_reauthentication : {"at_init", "always", "never"}
     headers : dict, optional
         Extra HTTP headers.
     """
@@ -94,6 +101,7 @@ def from_uri(
         cache=cache,
         offline=offline,
         token_cache=token_cache,
+        prompt_for_reauthentication=prompt_for_reauthentication,
     )
     return from_context(
         context, structure_clients=structure_clients, special_clients=special_clients
@@ -102,13 +110,13 @@ def from_uri(
 
 def from_tree(
     tree,
+    *,
     authentication=None,
     server_settings=None,
     query_registry=None,
     serialization_registry=None,
     compression_registry=None,
     structure_clients="numpy",
-    *,
     cache=None,
     offline=False,
     username=None,
@@ -152,6 +160,7 @@ def from_tree(
         ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
+    prompt_for_reauthentication : {"at_init", "always", "never"}
     """
     context = context_from_tree(
         tree=tree,
@@ -346,11 +355,12 @@ def from_profile(name, structure_clients=None, **kwargs):
 
 def from_config(
     config,
-    authentication_uri=None,
+    *,
     username=None,
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
+    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     **kwargs,
 ):
     """
@@ -401,6 +411,7 @@ def from_config(
         cache=cache,
         offline=offline,
         token_cache=token_cache,
+        prompt_for_reauthentication=prompt_for_reauthentication,
         **serve_tree_kwargs,
     )
     return from_context(context, **kwargs)

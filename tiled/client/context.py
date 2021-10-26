@@ -1,4 +1,5 @@
 import contextlib
+import enum
 import getpass
 import os
 import secrets
@@ -148,6 +149,12 @@ class CannotRefreshAuthentication(Exception):
     pass
 
 
+class PromptForReauthentication(enum.Enum):
+    AT_INIT = "at_init"
+    NEVER = "never"
+    ALWAYS = "always"
+
+
 class Context:
     """
     Wrap an httpx.Client with an optional cache and authentication functionality.
@@ -156,11 +163,13 @@ class Context:
     def __init__(
         self,
         client,
+        *,
         authentication_uri=None,
         username=None,
         cache=None,
         offline=False,
         token_cache=DEFAULT_TOKEN_CACHE,
+        prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
         authentication_uri = authentication_uri or "/"
@@ -173,6 +182,9 @@ class Context:
         self._username = username
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
+        self._prompt_for_reauthentication = PromptForReauthentication(
+            prompt_for_reauthentication
+        )
         self._refresh_lock = threading.Lock()
         if isinstance(token_cache, (str, Path)):
             directory = _token_directory(token_cache, self._client.base_url.netloc)
@@ -202,8 +214,13 @@ class Context:
                 "external",
             ):
                 # Authenticate. If a valid refresh_token is available in the token_cache,
-                # it will be used. Otherwise, this will prompt for input from the stdin.
-                tokens = self.reauthenticate()
+                # it will be used. Otherwise, this will prompt for input from the stdin
+                # or raise CannotRefreshAuthentication.
+                prompt = (
+                    prompt_for_reauthentication == PromptForReauthentication.AT_INIT
+                    or prompt_for_reauthentication == PromptForReauthentication.ALWAYS
+                )
+                tokens = self.reauthenticate(prompt=prompt)
                 access_token = tokens["access_token"]
                 client.headers["Authorization"] = f"Bearer {access_token}"
         base_path = self._handshake_data["meta"]["root_path"]
@@ -497,12 +514,23 @@ Navigate web browser to this address to obtain access code:
         )
         return tokens
 
-    def reauthenticate(self, prompt_on_failure=True):
-        "Refresh authentication. Prompt if refresh fails."
+    def reauthenticate(self, prompt=None):
+        """
+        Refresh authentication.
+
+        Parameters
+        ----------
+        prompt : bool
+            If True, give interactive prompt for authentication when refreshing
+            tokens fails. If False raise an error. If None, fall back
+            to default `prompt_for_reauthentication` set in Context.__init__.
+        """
         try:
             return self._refresh()
         except CannotRefreshAuthentication:
-            if prompt_on_failure:
+            if prompt is None:
+                prompt = self._prompt_for_reauthentication
+            if prompt:
                 return self.authenticate()
             raise
 
@@ -531,13 +559,19 @@ Navigate web browser to this address to obtain access code:
             if refresh_token is None:
                 if self._token_cache is None:
                     # We are not using a token cache.
-                    raise CannotRefreshAuthentication("No token cache was given")
+                    raise CannotRefreshAuthentication(
+                        "No token cache was given. "
+                        "Provide fresh credentials. "
+                        "For a given client c, use c.context.authenticate()."
+                    )
                 # We are using a token_cache.
                 try:
                     refresh_token = self._token_cache["refresh_token"]
                 except KeyError:
                     raise CannotRefreshAuthentication(
-                        "No refresh token was found in token cache"
+                        "No refresh token was found in token cache. "
+                        "Provide fresh credentials. "
+                        "For a given client c, use c.context.authenticate()."
                     )
             token_request = self._client.build_request(
                 "POST",
@@ -554,7 +588,9 @@ Navigate web browser to this address to obtain access code:
                 # Discard the expired (or otherwise invalid) refresh_token file.
                 self._token_cache.pop("refresh_token", None)
                 raise CannotRefreshAuthentication(
-                    "Server rejected attempt to refresh token"
+                    "Server rejected attempt to refresh token. "
+                    "Provide fresh credentials. "
+                    "For a given client c, use c.context.authenticate()."
                 )
             handle_error(token_response)
             tokens = token_response.json()
@@ -583,6 +619,7 @@ def context_from_tree(
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
+    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     username=None,
     headers=None,
 ):
@@ -651,6 +688,7 @@ def context_from_tree(
         offline=offline,
         token_cache=token_cache,
         username=username,
+        prompt_for_reauthentication=prompt_for_reauthentication,
         app=app,
     )
 
