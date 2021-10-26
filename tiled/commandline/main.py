@@ -371,26 +371,27 @@ def serve_config(
     uvicorn.run(web_app, **uvicorn_kwargs)
 
 
-def _client_from_uri_or_profile(uri_or_profile, verify=None, cache=None):
+def _client_from_uri_or_profile(
+    uri_or_profile, verify=None, cache=None, prompt_for_reauthentication=None
+):
     from ..client import from_profile, from_uri
 
+    options = {}
+    if verify is False:
+        options["verify"] = False
+    if prompt_for_reauthentication is not None:
+        options["prompt_for_reauthentication"] = prompt_for_reauthentication
     if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
         # This looks like a URI.
         uri = uri_or_profile
-        if verify is False:
-            return from_uri(uri, cache=cache, verify=False)
-        else:
-            return from_uri(uri, cache=cache)
+        return from_uri(uri, cache=cache, **options)
     else:
         from ..profiles import list_profiles
 
         # Is this a profile name?
         if uri_or_profile in list_profiles():
             profile_name = uri_or_profile
-            if verify is False:
-                return from_profile(profile_name, cache=cache, verify=False)
-            else:
-                return from_profile(profile_name, cache=cache)
+            return from_profile(profile_name, cache=cache, **options)
         typer.echo(
             f"Not sure what to do with tree {uri_or_profile!r}. "
             "It does not look like a URI (it does not start with http[s]://) "
