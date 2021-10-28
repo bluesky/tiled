@@ -306,7 +306,9 @@ class SimpleAccessPolicy:
         return queries
 
     def filter_results(self, tree, authenticated_identity):
-        allowed = set(self.access_lists.get(authenticated_identity, [])) | self.public
+        allowed = (
+            set(self.access_lists.get(authenticated_identity, []) or []) | self.public
+        )
         if (authenticated_identity is SpecialUsers.admin) or (allowed is self.ALL):
             mapping = tree._mapping
         else:
