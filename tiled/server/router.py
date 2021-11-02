@@ -194,7 +194,7 @@ def declare_search_router(query_registry):
         except JMESPathError as err:
             raise HTTPException(
                 status_code=400,
-                detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err.args[0]}",
+                detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
             )
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
@@ -262,7 +262,7 @@ async def metadata(
     except JMESPathError as err:
         raise HTTPException(
             status_code=400,
-            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err.args[0]}",
+            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
     meta = (
         {"root_path": request.scope.get("root_path") or "/"}
@@ -324,7 +324,7 @@ async def entries(
     except JMESPathError as err:
         raise HTTPException(
             status_code=400,
-            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err.args[0]}",
+            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
 
 
