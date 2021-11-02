@@ -15,6 +15,7 @@ from hashlib import md5
 from typing import Any, Optional
 
 import dateutil.tz
+import jmespath
 import msgpack
 import orjson
 import pydantic
@@ -221,7 +222,17 @@ class DuckTree(metaclass=abc.ABCMeta):
 
 
 def construct_entries_response(
-    query_registry, tree, route, path, offset, limit, fields, filters, sort, base_url
+    query_registry,
+    tree,
+    route,
+    path,
+    offset,
+    limit,
+    fields,
+    select_metadata,
+    filters,
+    sort,
+    base_url,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     if not isinstance(tree, DuckTree):
@@ -311,7 +322,9 @@ def construct_entries_response(
     metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
-        resource = construct_resource(base_url, path_parts + [key], entry, fields)
+        resource = construct_resource(
+            base_url, path_parts + [key], entry, fields, select_metadata
+        )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
         # be no 'Expires' header. We will pessimistically assume the values
@@ -427,11 +440,16 @@ def construct_data_response(
     )
 
 
-def construct_resource(base_url, path_parts, entry, fields):
+def construct_resource(base_url, path_parts, entry, fields, select_metadata):
     path_str = "/".join(path_parts)
     attributes = {}
     if models.EntryFields.metadata in fields:
-        attributes["metadata"] = entry.metadata
+        if select_metadata is not None:
+            attributes["metadata"] = jmespath.compile(select_metadata).search(
+                entry.metadata
+            )
+        else:
+            attributes["metadata"] = entry.metadata
     if models.EntryFields.specs in fields:
         attributes["specs"] = getattr(entry, "specs", None)
     if isinstance(entry, DuckTree):

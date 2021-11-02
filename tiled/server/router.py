@@ -146,6 +146,7 @@ def declare_search_router(query_registry):
         request: Request,
         path: str,
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+        select_metadata: Optional[str] = Query(None),
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
@@ -163,6 +164,7 @@ def declare_search_router(query_registry):
                 offset,
                 limit,
                 fields,
+                select_metadata,
                 filters,
                 sort,
                 _get_base_url(request),
@@ -237,6 +239,7 @@ async def metadata(
     request: Request,
     path: str,
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    select_metadata: Optional[str] = Query(None),
     entry: Any = Depends(entry),
     root_path: str = Query(None),
     settings: BaseSettings = Depends(get_settings),
@@ -246,7 +249,7 @@ async def metadata(
     request.state.endpoint = "metadata"
     base_url = _get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
-    resource = construct_resource(base_url, path_parts, entry, fields)
+    resource = construct_resource(base_url, path_parts, entry, fields, select_metadata)
     meta = (
         {"root_path": request.scope.get("root_path") or "/"}
         if (root_path is not None)
@@ -267,6 +270,7 @@ async def entries(
     limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
     sort: Optional[str] = Query(None),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    select_metadata: Optional[str] = Query(None),
     entry: Any = Depends(entry),
     query_registry=Depends(get_query_registry),
 ):
@@ -282,6 +286,7 @@ async def entries(
             offset,
             limit,
             fields,
+            select_metadata,
             {},
             sort,
             _get_base_url(request),

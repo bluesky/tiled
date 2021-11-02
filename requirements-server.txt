@@ -3,6 +3,7 @@ cachey
 cachetools
 dask
 fastapi
+jmespath
 jsonschema
 msgpack
 orjson
