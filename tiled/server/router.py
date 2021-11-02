@@ -6,6 +6,7 @@ from hashlib import md5
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 
 from .. import __version__
@@ -190,6 +191,11 @@ def declare_search_router(query_registry):
             raise HTTPException(status_code=404, detail="No such entry.")
         except WrongTypeForRoute as err:
             raise HTTPException(status_code=404, detail=err.args[0])
+        except JMESPathError as err:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err.args[0]}",
+            )
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
     # documentation on the signature of the route function. We do not know what
@@ -249,7 +255,15 @@ async def metadata(
     request.state.endpoint = "metadata"
     base_url = _get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
-    resource = construct_resource(base_url, path_parts, entry, fields, select_metadata)
+    try:
+        resource = construct_resource(
+            base_url, path_parts, entry, fields, select_metadata
+        )
+    except JMESPathError as err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err.args[0]}",
+        )
     meta = (
         {"root_path": request.scope.get("root_path") or "/"}
         if (root_path is not None)
@@ -307,6 +321,11 @@ async def entries(
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:
         raise HTTPException(status_code=404, detail=err.args[0])
+    except JMESPathError as err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err.args[0]}",
+        )
 
 
 @router.get(
