@@ -230,6 +230,7 @@ def construct_entries_response(
     limit,
     fields,
     select_metadata,
+    omit_links,
     filters,
     sort,
     base_url,
@@ -323,7 +324,7 @@ def construct_entries_response(
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
         resource = construct_resource(
-            base_url, path_parts + [key], entry, fields, select_metadata
+            base_url, path_parts + [key], entry, fields, select_metadata, omit_links
         )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
@@ -440,7 +441,9 @@ def construct_data_response(
     )
 
 
-def construct_resource(base_url, path_parts, entry, fields, select_metadata):
+def construct_resource(
+    base_url, path_parts, entry, fields, select_metadata, omit_links
+):
     path_str = "/".join(path_parts)
     attributes = {}
     if models.EntryFields.metadata in fields:
@@ -457,17 +460,17 @@ def construct_resource(base_url, path_parts, entry, fields, select_metadata):
             attributes["count"] = len_or_approx(entry)
             if hasattr(entry, "sorting"):
                 attributes["sorting"] = entry.sorting
-        resource = models.TreeResource(
-            **{
-                "id": path_parts[-1] if path_parts else "",
-                "attributes": models.TreeAttributes(**attributes),
-                "type": models.EntryType.tree,
-                "links": {
-                    "self": f"{base_url}metadata/{path_str}",
-                    "search": f"{base_url}search/{path_str}",
-                },
+        d = {
+            "id": path_parts[-1] if path_parts else "",
+            "attributes": models.TreeAttributes(**attributes),
+            "type": models.EntryType.tree,
+        }
+        if not omit_links:
+            d["links"] = {
+                "self": f"{base_url}metadata/{path_str}",
+                "search": f"{base_url}search/{path_str}",
             }
-        )
+        resource = models.TreeResource(**d)
     else:
         links = {"self": f"{base_url}metadata/{path_str}"}
         structure = {}
@@ -539,14 +542,14 @@ def construct_resource(base_url, path_parts, entry, fields, select_metadata):
                     ] = f"{base_url}dataset/block/{path_str}?variable={{variable}}&block={{block_indexes}}"
                     microstructure = entry.microstructure()
             attributes["structure"] = structure
-        resource = models.ReaderResource(
-            **{
-                "id": path_parts[-1],
-                "attributes": models.ReaderAttributes(**attributes),
-                "type": models.EntryType.reader,
-                "links": links,
-            }
-        )
+        d = {
+            "id": path_parts[-1],
+            "attributes": models.ReaderAttributes(**attributes),
+            "type": models.EntryType.reader,
+        }
+        if not omit_links:
+            d["links"] = links
+        resource = models.ReaderResource(**d)
     return resource
 
 

@@ -151,6 +151,7 @@ def declare_search_router(query_registry):
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
+        omit_links: bool = Query(False),
         entry: Any = Depends(entry),
         query_registry=Depends(get_query_registry),
         **filters,
@@ -166,6 +167,7 @@ def declare_search_router(query_registry):
                 limit,
                 fields,
                 select_metadata,
+                omit_links,
                 filters,
                 sort,
                 _get_base_url(request),
@@ -246,6 +248,7 @@ async def metadata(
     path: str,
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     select_metadata: Optional[str] = Query(None),
+    omit_links: bool = Query(False),
     entry: Any = Depends(entry),
     root_path: str = Query(None),
     settings: BaseSettings = Depends(get_settings),
@@ -257,7 +260,7 @@ async def metadata(
     path_parts = [segment for segment in path.split("/") if segment]
     try:
         resource = construct_resource(
-            base_url, path_parts, entry, fields, select_metadata
+            base_url, path_parts, entry, fields, select_metadata, omit_links
         )
     except JMESPathError as err:
         raise HTTPException(
@@ -285,6 +288,7 @@ async def entries(
     sort: Optional[str] = Query(None),
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     select_metadata: Optional[str] = Query(None),
+    omit_links: bool = Query(False),
     entry: Any = Depends(entry),
     query_registry=Depends(get_query_registry),
 ):
@@ -301,6 +305,7 @@ async def entries(
             limit,
             fields,
             select_metadata,
+            omit_links,
             {},
             sort,
             _get_base_url(request),
