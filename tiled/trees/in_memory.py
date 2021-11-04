@@ -283,7 +283,7 @@ class DummyAccessPolicy:
 
 class SimpleAccessPolicy:
     """
-    Refer to a mapping of user names to lists of entries they can access.
+    A mapping of user names to lists of entries they can access.
 
     >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]})
     """
@@ -306,12 +306,13 @@ class SimpleAccessPolicy:
         return queries
 
     def filter_results(self, tree, authenticated_identity):
-        allowed = (
-            set(self.access_lists.get(authenticated_identity, []) or []) | self.public
-        )
-        if (authenticated_identity is SpecialUsers.admin) or (allowed is self.ALL):
+        # either list of paths or ALL
+        access_list = self.access_lists.get(authenticated_identity, [])
+
+        if (authenticated_identity is SpecialUsers.admin) or (access_list is self.ALL):
             mapping = tree._mapping
         else:
+            allowed = set(access_list or []) | self.public
             mapping = {k: v for k, v in tree._mapping.items() if k in allowed}
         return type(tree)(
             mapping=mapping,
