@@ -230,7 +230,16 @@ class DataFrameClient(DaskDataFrameClient):
         """
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
-        return super().read(columns).compute()
+        content = self.context.get_content(
+            f"/dataframe/full/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
+            params=self._params,
+            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+        )
+        df = deserialization_registry("dataframe", APACHE_ARROW_FILE_MIME_TYPE, content)
+
+        if columns is not None:
+            df = df[columns]
+        return df
 
     def download(self):
         # Do not run super().download() because DaskDataFrameClient calls compute()

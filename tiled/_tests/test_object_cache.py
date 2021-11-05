@@ -74,19 +74,19 @@ a,b,c
     cache = get_object_cache()
     assert cache.hits == cache.misses == 0
     client["data"].read()
-    assert cache.misses == 2  # two dask objects in the cache
+    assert cache.misses == 1  # two dask objects in the cache
     assert cache.hits == 0
     client["data"].read()
-    assert cache.misses == 2
-    assert cache.hits == 2
+    assert cache.misses == 1
+    assert cache.hits == 1
     # Simulate eviction.
     cache.clear()
     client["data"].read()
-    assert cache.misses == 4
-    assert cache.hits == 2
+    assert cache.misses == 2
+    assert cache.hits == 1
     client["data"].read()
-    assert cache.misses == 4
-    assert cache.hits == 4
+    assert cache.misses == 2
+    assert cache.hits == 2
 
 
 def test_object_cache_disabled(tmpdir):
