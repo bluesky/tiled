@@ -31,7 +31,7 @@ def _read_xdi(f):
     fields = collections.defaultdict(dict)
 
     line = f.readline()
-    m = re.match(r"# XDI/(\S*)\s*(\S*)?", line)
+    m = re.match(r"#\s*XDI/(\S*)\s*(\S*)?", line)
     if not m:
         raise ValueError(
             f"not an XDI file, no XDI versioning information in first line\n{line}"
