@@ -4,6 +4,8 @@ import importlib
 import itertools
 import time
 import warnings
+import asyncio
+import threading
 from dataclasses import fields
 
 import entrypoints
@@ -157,18 +159,42 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return list(self._sorting)
 
+    # FIXME somehow this doesn't help the timing at all
+    async def _download_async(self):
+        async def f(k):
+            entry = self[k]
+            entry.download()
+
+        tasks = [asyncio.create_task(f(k)) for k in self]
+
+        await asyncio.wait(tasks)
+
+    def _download(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self._download_async())
+
     def download(self):
         """
         Access all the data in this Node.
 
         This causes it to be cached if the context is configured with a cache.
         """
-        verify_cache(self.context.cache)
-        self.context.get_json(self.uri)
-        repr(self)
-        for key in self:
-            entry = self[key]
-            entry.download()
+
+#        verify_cache(self.context.cache)
+#        self.context.get_json(self.uri)
+#        repr(self)
+#        for key in self:
+#            entry = self[key]
+#            entry.download()
+
+#        asyncio.run(self._download())
+#        loop = asyncio.new_event_loop()
+#        asyncio.set_event_loop(loop)
+#        loop.run_until_complete(self._download())
+        t = threading.Thread(target=self._download)
+        t.start()
+        t.join()
 
     def refresh(self, force=False):
         """
