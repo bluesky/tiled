@@ -28,6 +28,9 @@ COPY --from=builder /app /app
 
 WORKDIR /deploy
 
+RUN mkdir /deploy/prometheus
+ENV PROMETHEUS_MULTIPROC_DIR=/deploy/prometheus
+
 EXPOSE 8000
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
