@@ -159,10 +159,19 @@ serialization_registry.register(
 if modules_available("orjson"):
     import orjson
 
+    def serialize_json(array, metadata):
+        try:
+            return orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY)
+        except TypeError:
+            # Not all numpy dtypes are supported by orjson.
+            # Fall back to converting to a (possibly nested) Python list.
+            return orjson.dumps(array.tolist())
+
+
     serialization_registry.register(
         "array",
         "application/json",
-        lambda array, metadata: orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY),
+        serialize_json,
     )
 
 
@@ -192,8 +201,8 @@ if modules_available("PIL"):
         # *many* because it depends on the shape (RGB, RGBA, etc.)
         array = numpy.atleast_2d(array).astype(numpy.float32)
         # Auto-scale. TODO Use percentile.
-        low = numpy.percentile(array, 1)
-        high = numpy.percentile(array, 99)
+        low = numpy.percentile(array.ravel(), 1)
+        high = numpy.percentile(array.ravel(), 99)
         scaled_array = numpy.clip((array - low) / (high - low), 0, 1)
         file = io.BytesIO()
         image = Image.fromarray(img_as_ubyte(scaled_array))

@@ -821,6 +821,10 @@ def variable_block(
     """
     Fetch a chunk of array-like data from an xarray.Variable.
     """
+    # Deferred import because this is not a required dependency of the server
+    # for some use cases.
+    import numpy
+
     if reader.structure_family != "variable":
         raise HTTPException(
             status_code=404,
@@ -832,6 +836,7 @@ def variable_block(
             array = reader.read_block(block, slice=slice)
         if slice:
             array = array[slice]
+        array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
     if (expected_shape is not None) and (expected_shape != array.shape):
@@ -1066,6 +1071,7 @@ def dataset_data_var_full(
     reader=Depends(reader),
     variable: str = Query(..., min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
+    slice: str = Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -1073,6 +1079,10 @@ def dataset_data_var_full(
     """
     Fetch a full xarray.Variable from within an xarray.Dataset.
     """
+    # Deferred import because this is not a required dependency of the server
+    # for some use cases.
+    import numpy
+
     if reader.structure_family != "dataset":
         raise HTTPException(
             status_code=404,
@@ -1093,6 +1103,9 @@ def dataset_data_var_full(
             status_code=400,
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
+    if slice:
+        array = array[slice]
+    array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(

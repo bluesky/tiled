@@ -5,6 +5,7 @@ from typing import Dict, Tuple, Union
 import xarray
 
 from ..media_type_registration import deserialization_registry, serialization_registry
+from ..utils import modules_available
 from .array import ArrayStructure
 from .dataframe import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -183,11 +184,18 @@ serialization_registry.register(
     XLSX_MIME_TYPE,
     lambda ds, metadata: serialize_excel(ds.to_dataframe(), metadata),
 )
-serialization_registry.register(
-    "dataset",
-    "application/json",
-    lambda ds, metadata: ds.to_dataframe().to_json().encode(),
-)
+if modules_available("orjson"):
+    import orjson
+
+    def serialize_json(ds, metadata):
+        df = ds.to_dataframe()
+        return orjson.dumps({column: df[column].tolist() for column in df}, option=orjson.OPT_SERIALIZE_NUMPY)
+
+    serialization_registry.register(
+        "dataset",
+        "application/json",
+        serialize_json,
+    )
 
 deserialization_registry.register(
     "dataset", "application/x-zarr", lambda ds, metadata: xarray.open_zarr(ds)

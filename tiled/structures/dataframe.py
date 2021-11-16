@@ -102,8 +102,12 @@ if modules_available("openpyxl", "pandas"):
     serialization_registry.register("dataframe", XLSX_MIME_TYPE, serialize_excel)
     deserialization_registry.register("dataframe", XLSX_MIME_TYPE, pandas.read_excel)
     mimetypes.types_map.setdefault(".xlsx", XLSX_MIME_TYPE)
-serialization_registry.register(
-    "dataframe",
-    "application/json",
-    lambda df, metadata: df.to_json().encode(),
-)
+if modules_available("orjson"):
+    import orjson
+
+    serialization_registry.register(
+        "dataframe",
+        "application/json",
+        lambda array, metadata: orjson.dumps({column: df[column].tolist() for column in df}, option=orjson.OPT_SERIALIZE_NUMPY),
+    )
+
