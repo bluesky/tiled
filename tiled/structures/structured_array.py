@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 import numpy
 
 from ..media_type_registration import serialization_registry
-from ..utils import modules_available
+from ..utils import modules_available, safe_json_dump_array
 from .array import ArrayMacroStructure
 from .array import MachineDataType as BuiltinType
 
@@ -150,15 +150,14 @@ serialization_registry.register(
     lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
 )
 if modules_available("orjson"):
-    import orjson
 
     serialization_registry.register(
         "structured_array_generic",
         "application/json",
-        lambda array, metadata: orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY),
+        lambda array, metadata: safe_json_dump_array(array),
     )
     serialization_registry.register(
         "structured_array_tabular",
         "application/json",
-        lambda array, metadata: orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY),
+        lambda array, metadata: safe_json_dump_array(array),
     )

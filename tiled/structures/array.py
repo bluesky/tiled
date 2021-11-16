@@ -9,7 +9,7 @@ from typing import Tuple
 import numpy
 
 from ..media_type_registration import deserialization_registry, serialization_registry
-from ..utils import UnsupportedShape, modules_available
+from ..utils import UnsupportedShape, modules_available, safe_json_dump_array
 
 
 class Endianness(str, enum.Enum):
@@ -157,12 +157,10 @@ serialization_registry.register(
     lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
 )
 if modules_available("orjson"):
-    import orjson
-
     serialization_registry.register(
         "array",
         "application/json",
-        lambda array, metadata: orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY),
+        lambda array, metadata: safe_json_dump_array(array),
     )
 
 

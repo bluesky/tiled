@@ -441,6 +441,20 @@ def prepend_to_sys_path(*paths):
             sys.path.pop(0)
 
 
+def safe_json_dump_array(array):
+    """
+    Try to use native orjson path; fall back to going through Python list.
+    """
+    import orjson
+
+    try:
+        return orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY)
+    except TypeError:
+        # Not all numpy dtypes are supported by orjson.
+        # Fall back to converting to a (possibly nested) Python list.
+        return orjson.dumps(array.tolist())
+
+
 class MissingDependency(ModuleNotFoundError):
     pass
 
