@@ -41,7 +41,7 @@ class EntryFields(str, enum.Enum):
 class StructureFamilies(str, enum.Enum):
     node = "node"
     array = "array"
-    table = "table"
+    dataframe = "dataframe"
     structured_array_tabular = "structured_array_tabular"
     structured_array_generic = "structured_array_generic"
     variable = "variable"
