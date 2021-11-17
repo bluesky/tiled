@@ -2,7 +2,6 @@ import dataclasses
 import inspect
 from datetime import datetime, timedelta
 from functools import lru_cache
-from hashlib import md5
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -17,9 +16,7 @@ from .authentication import (
     get_authenticator,
 )
 from .core import (
-    APACHE_ARROW_FILE_MIME_TYPE,
     NoEntry,
-    PatchedResponse,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
     adapter,
@@ -664,70 +661,6 @@ def structured_array_generic_full(
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/dataframe/meta/{path:path}", response_model=models.Response, name="dataframe meta"
-)
-def dataframe_meta(
-    request: Request,
-    adapter=Depends(adapter),
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
-    """
-    request.state.endpoint = "data"
-    if adapter.structure_family != "dataframe":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {adapter.structure_family} structure with /dataframe/meta route.",
-        )
-    meta = adapter.microstructure().meta
-    with record_timing(request.state.metrics, "pack"):
-        content = serialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta, {}
-        )
-    headers = {"ETag": md5(content).hexdigest()}
-    return PatchedResponse(
-        content, media_type=APACHE_ARROW_FILE_MIME_TYPE, headers=headers
-    )
-
-
-@router.get(
-    "/dataframe/divisions/{path:path}",
-    response_model=models.Response,
-    name="dataframe divisions",
-)
-def dataframe_divisions(
-    request: Request,
-    adapter=Depends(adapter),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch the Apache Arrow serialization of the index values at the partition edges.
-    """
-    request.state.endpoint = "data"
-    if adapter.structure_family != "dataframe":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {adapter.structure_family} structure with /dataframe/division route.",
-        )
-    import pandas
-
-    divisions = adapter.microstructure().divisions
-    # divisions is a tuple. Wrap it in a DataFrame so
-    # that we can easily serialize it with Arrow in the normal way.
-    divisions_wrapped_in_df = pandas.DataFrame({"divisions": list(divisions)})
-    with record_timing(request.state.metrics, "pack"):
-        content = serialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_wrapped_in_df, {}
-        )
-    headers = {"ETag": md5(content).hexdigest()}
-    return PatchedResponse(
-        content, media_type=APACHE_ARROW_FILE_MIME_TYPE, headers=headers
-    )
 
 
 @router.get(

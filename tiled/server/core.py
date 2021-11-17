@@ -533,10 +533,6 @@ def construct_resource(
                     structure["micro"] = {
                         "meta": arrow_encoded_meta,
                         "divisions": arrow_encoded_divisions,
-                        "links": {
-                            "meta": f"{base_url}dataframe/meta/{path_str}",
-                            "divisions": f"{base_url}dataframe/divisions/{path_str}",
-                        },
                     }
                 else:
                     microstructure = entry.microstructure()
