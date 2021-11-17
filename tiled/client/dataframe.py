@@ -2,12 +2,8 @@ import dask
 import dask.dataframe
 
 from ..media_type_registration import deserialization_registry
-from ..structures.dataframe import (
-    APACHE_ARROW_FILE_MIME_TYPE,
-    DataFrameMacroStructure,
-    DataFrameMicroStructure,
-    DataFrameStructure,
-)
+from ..structures.dataframe import APACHE_ARROW_FILE_MIME_TYPE, DataFrameStructure
+from ..trees.utils import UNCHANGED
 from .base import BaseStructureClient
 from .utils import export_util
 
@@ -15,8 +11,14 @@ from .utils import export_util
 class DaskDataFrameClient(BaseStructureClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, structure=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self._structure = structure
+
+    def new_variation(self, structure=UNCHANGED, **kwargs):
+        if structure is UNCHANGED:
+            structure = self._structure
+        return super().new_variation(structure=structure, **kwargs)
 
     def _repr_pretty_(self, p, cycle):
         """
@@ -71,30 +73,28 @@ class DaskDataFrameClient(BaseStructureClient):
         self.read().compute()
 
     def structure(self):
-        meta_content = self.context.get_content(
-            f"/dataframe/meta/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
-            params=self._params,
-        )
-        meta = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_content
-        )
-        divisions_content = self.context.get_content(
-            f"/dataframe/divisions/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
-            params=self._params,
-        )
-        divisions_wrapped_in_df = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_content
-        )
-        divisions = tuple(divisions_wrapped_in_df["divisions"].values)
-        return DataFrameStructure(
-            micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
-            # We could get the macrostructure by making another HTTP request
-            # but it's knowable from the microstructure, so we'll just recreate it
-            # that way.
-            macro=DataFrameMacroStructure(
-                npartitions=len(divisions) - 1, columns=meta.columns
-            ),
-        )
+        # Notice that we are NOT *caching* in self._structure here. We are
+        # allowing that the creator of this instance might have already known
+        # our structure (as part of the some larger structure) and passed it
+        # in.
+        if self._structure is None:
+            content = self.context.get_json(
+                self.uri,
+                params={
+                    "fields": [
+                        "structure.micro",
+                        "structure.macro",
+                        "structure_family",
+                    ],
+                    **self._params,
+                },
+            )
+            structure = DataFrameStructure.from_json(
+                content["data"]["attributes"]["structure"]
+            )
+        else:
+            structure = self._structure
+        return structure
 
     def _get_partition(self, partition, columns):
         """

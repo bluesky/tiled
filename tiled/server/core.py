@@ -1,4 +1,5 @@
 import abc
+import base64
 import collections.abc
 import contextlib
 import dataclasses
@@ -29,6 +30,7 @@ from ..media_type_registration import (
 )
 from ..queries import KeyLookup, QueryValueError
 from ..query_registration import query_registry as default_query_registry
+from ..structures.dataframe import serialize_arrow
 from ..trees.in_memory import Tree as TreeInMemory
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -234,6 +236,7 @@ def construct_entries_response(
     filters,
     sort,
     base_url,
+    media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     if not isinstance(tree, DuckTree):
@@ -324,7 +327,13 @@ def construct_entries_response(
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
         resource = construct_resource(
-            base_url, path_parts + [key], entry, fields, select_metadata, omit_links
+            base_url,
+            path_parts + [key],
+            entry,
+            fields,
+            select_metadata,
+            omit_links,
+            media_type,
         )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
@@ -442,7 +451,13 @@ def construct_data_response(
 
 
 def construct_resource(
-    base_url, path_parts, entry, fields, select_metadata, omit_links
+    base_url,
+    path_parts,
+    entry,
+    fields,
+    select_metadata,
+    omit_links,
+    media_type,
 ):
     path_str = "/".join(path_parts)
     attributes = {}
@@ -491,14 +506,37 @@ def construct_resource(
                     structure["macro"] = dataclasses.asdict(macrostructure)
             if models.EntryFields.microstructure in fields:
                 if entry.structure_family == "dataframe":
-                    # Special case: its microstructure is cannot be JSON-serialized
-                    # and is therefore available from separate routes. Sends links
-                    # instead of the actual payload.
+                    import pandas
+
+                    microstructure = entry.microstructure()
+                    arrow_encoded_meta = bytes(serialize_arrow(microstructure.meta, {}))
+                    divisions_wrapped_in_df = pandas.DataFrame(
+                        {"divisions": list(microstructure.divisions)}
+                    )
+                    arrow_encoded_divisions = bytes(
+                        serialize_arrow(divisions_wrapped_in_df, {})
+                    )
+                    if media_type == "application/json":
+                        # For JSON, base64-encode the binary Arrow-encoded data,
+                        # and indicate that this has been done in the data URI.
+                        data_uri = f"data:{APACHE_ARROW_FILE_MIME_TYPE};base64,"
+                        arrow_encoded_meta = (
+                            data_uri + base64.b64encode(arrow_encoded_meta).decode()
+                        )
+                        arrow_encoded_divisions = (
+                            data_uri
+                            + base64.b64encode(arrow_encoded_divisions).decode()
+                        )
+                    else:
+                        # In msgpack, we can encode the binary Arrow-encoded data directly.
+                        assert media_type == "application/x-msgpack"
                     structure["micro"] = {
+                        "meta": arrow_encoded_meta,
+                        "divisions": arrow_encoded_divisions,
                         "links": {
                             "meta": f"{base_url}dataframe/meta/{path_str}",
                             "divisions": f"{base_url}dataframe/divisions/{path_str}",
-                        }
+                        },
                     }
                 else:
                     microstructure = entry.microstructure()
@@ -659,7 +697,7 @@ MSGPACK_MIME_TYPE = "application/x-msgpack"
 HTTP_EXPIRES_HEADER_FORMAT = "%a, %d %b %Y %H:%M:%S GMT"
 
 
-def json_or_msgpack(request, content, expires=None, headers=None):
+def resolve_media_type(request):
     media_types = request.headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
@@ -676,6 +714,10 @@ def json_or_msgpack(request, content, expires=None, headers=None):
         # messages.
         media_type = JSON_MIME_TYPE
     assert media_type in {JSON_MIME_TYPE, MSGPACK_MIME_TYPE}
+    return media_type
+
+
+def json_or_msgpack(request, content, media_type, expires=None, headers=None):
     content_as_dict = content.dict()
     with record_timing(request.state.metrics, "tok"):
         etag = md5(str(content_as_dict).encode()).hexdigest()

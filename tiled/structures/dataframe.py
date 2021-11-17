@@ -38,6 +38,20 @@ class DataFrameStructure:
     micro: DataFrameMicroStructure
     macro: DataFrameMacroStructure
 
+    @classmethod
+    def from_json(cls, content):
+        divisions_wrapped_in_df = deserialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content["micro"]["divisions"]
+        )
+        divisions = tuple(divisions_wrapped_in_df["divisions"].values)
+        meta = deserialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content["micro"]["meta"]
+        )
+        return cls(
+            micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
+            macro=DataFrameMacroStructure(**content["macro"]),
+        )
+
 
 def serialize_arrow(df, metadata):
     import pyarrow

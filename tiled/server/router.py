@@ -33,6 +33,7 @@ from .core import (
     get_serialization_registry,
     json_or_msgpack,
     record_timing,
+    resolve_media_type,
     slice_,
 )
 from .settings import get_settings
@@ -101,6 +102,7 @@ async def about(
                 ),
             },
         ),
+        resolve_media_type(request),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
 
@@ -171,6 +173,7 @@ def declare_search_router(query_registry):
                 filters,
                 sort,
                 _get_base_url(request),
+                resolve_media_type(request),
             )
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
@@ -186,6 +189,7 @@ def declare_search_router(query_registry):
             return json_or_msgpack(
                 request,
                 resource,
+                resolve_media_type(request),
                 expires=expires,
                 headers=headers,
             )
@@ -260,7 +264,13 @@ async def metadata(
     path_parts = [segment for segment in path.split("/") if segment]
     try:
         resource = construct_resource(
-            base_url, path_parts, entry, fields, select_metadata, omit_links
+            base_url,
+            path_parts,
+            entry,
+            fields,
+            select_metadata,
+            omit_links,
+            resolve_media_type(request),
         )
     except JMESPathError as err:
         raise HTTPException(
@@ -275,6 +285,7 @@ async def metadata(
     return json_or_msgpack(
         request,
         models.Response(data=resource, meta=meta),
+        resolve_media_type(request),
         expires=getattr(entry, "metadata_stale_at", None),
     )
 
@@ -309,6 +320,7 @@ async def entries(
             {},
             sort,
             _get_base_url(request),
+            resolve_media_type(request),
         )
         # We only get one Expires header, so if different parts
         # of this response become stale at different times, we
@@ -321,7 +333,13 @@ async def entries(
         headers = {}
         if must_revalidate:
             headers["Cache-Control"] = "must-revalidate"
-        return json_or_msgpack(request, resource, expires=expires, headers=headers)
+        return json_or_msgpack(
+            request,
+            resource,
+            resolve_media_type(request),
+            expires=expires,
+            headers=headers,
+        )
     except NoEntry:
         raise HTTPException(status_code=404, detail="No such entry.")
     except WrongTypeForRoute as err:
