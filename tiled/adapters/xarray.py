@@ -1,7 +1,7 @@
 import dask.array
 import numpy
 
-from ..readers.array import ArrayAdapter
+from ..adapters.array import ArrayAdapter
 from ..structures.xarray import (
     ArrayStructure,
     DataArrayMacroStructure,

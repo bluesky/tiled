@@ -22,6 +22,7 @@ from .core import (
     PatchedResponse,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
+    adapter,
     block,
     construct_data_response,
     construct_entries_response,
@@ -31,7 +32,6 @@ from .core import (
     get_query_registry,
     get_serialization_registry,
     json_or_msgpack,
-    reader,
     record_timing,
     slice_,
 )
@@ -52,7 +52,7 @@ async def about(
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
 ):
-    # TODO The lazy import of reader modules and serializers means that the
+    # TODO The lazy import of adapter modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
     # helpful for discovery! The registration can be made non-lazy, while the
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
@@ -253,7 +253,7 @@ async def metadata(
     root_path: str = Query(None),
     settings: BaseSettings = Depends(get_settings),
 ):
-    "Fetch the metadata for one Tree or Reader."
+    "Fetch the metadata for one Tree or adapter."
 
     request.state.endpoint = "metadata"
     base_url = _get_base_url(request)
@@ -292,7 +292,7 @@ async def entries(
     entry: Any = Depends(entry),
     query_registry=Depends(get_query_registry),
 ):
-    "List the entries in a Tree, which may be sub-Trees or Readers."
+    "List the entries in a Tree, which may be sub-Trees or adapters."
 
     request.state.endpoint = "entries"
     try:
@@ -338,7 +338,7 @@ async def entries(
 )
 def array_block(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -348,24 +348,24 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if reader.structure_family != "array":
+    if adapter.structure_family != "array":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /array/block route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /array/block route.",
         )
     if block == ():
         # Handle special case of numpy scalar.
-        if reader.macrostructure().shape != ():
+        if adapter.macrostructure().shape != ():
             raise HTTPException(
                 status_code=400,
-                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
+                detail=f"Requested scalar but shape is {adapter.macrostructure().shape}",
             )
         with record_timing(request.state.metrics, "read"):
-            array = reader.read()
+            array = adapter.read()
     else:
         try:
             with record_timing(request.state.metrics, "read"):
-                array = reader.read_block(block, slice=slice)
+                array = adapter.read_block(block, slice=slice)
         except IndexError:
             raise HTTPException(status_code=400, detail="Block index out of range")
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -379,10 +379,10 @@ def array_block(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         # raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -394,7 +394,7 @@ def array_block(
 )
 def array_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -403,10 +403,10 @@ def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if reader.structure_family != "array":
+    if adapter.structure_family != "array":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /array/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /array/full route.",
         )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
@@ -414,7 +414,7 @@ def array_full(
 
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read(slice)
+            array = adapter.read(slice)
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
@@ -429,10 +429,10 @@ def array_full(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -445,7 +445,7 @@ def array_full(
 )
 def structured_array_generic_block(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -455,22 +455,22 @@ def structured_array_generic_block(
     """
     Fetch a chunk of array-like data.
     """
-    if reader.structure_family != "structured_array_generic":
+    if adapter.structure_family != "structured_array_generic":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_generic/block route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /structured_array_generic/block route.",
         )
     if block == ():
         # Handle special case of numpy scalar.
-        if reader.macrostructure().shape != ():
+        if adapter.macrostructure().shape != ():
             raise HTTPException(
                 status_code=400,
-                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
+                detail=f"Requested scalar but shape is {adapter.macrostructure().shape}",
             )
-        array = reader.read()
+        array = adapter.read()
     else:
         try:
-            array = reader.read_block(block, slice=slice)
+            array = adapter.read_block(block, slice=slice)
         except IndexError:
             raise HTTPException(status_code=400, detail="Block index out of range")
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -483,10 +483,10 @@ def structured_array_generic_block(
             "structured_array_generic",
             serialization_registry,
             array,
-            reader.metadata,
+            adapter.metadata,
             request,
             format,
-            expires=getattr(reader, "content_stale_at", None),
+            expires=getattr(adapter, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -499,7 +499,7 @@ def structured_array_generic_block(
 )
 def structured_array_tabular_block(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -509,22 +509,22 @@ def structured_array_tabular_block(
     """
     Fetch a chunk of array-like data.
     """
-    if reader.structure_family != "structured_array_tabular":
+    if adapter.structure_family != "structured_array_tabular":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_tabular/block route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /structured_array_tabular/block route.",
         )
     if block == ():
         # Handle special case of numpy scalar.
-        if reader.macrostructure().shape != ():
+        if adapter.macrostructure().shape != ():
             raise HTTPException(
                 status_code=400,
-                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
+                detail=f"Requested scalar but shape is {adapter.macrostructure().shape}",
             )
-        array = reader.read()
+        array = adapter.read()
     else:
         try:
-            array = reader.read_block(block, slice=slice)
+            array = adapter.read_block(block, slice=slice)
         except IndexError:
             raise HTTPException(status_code=400, detail="Block index out of range")
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -537,10 +537,10 @@ def structured_array_tabular_block(
             "structured_array_tabular",
             serialization_registry,
             array,
-            reader.metadata,
+            adapter.metadata,
             request,
             format,
-            expires=getattr(reader, "content_stale_at", None),
+            expires=getattr(adapter, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -553,7 +553,7 @@ def structured_array_tabular_block(
 )
 def structured_array_tabular_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -562,17 +562,17 @@ def structured_array_tabular_full(
     """
     Fetch a slice of array-like data.
     """
-    if reader.structure_family != "structured_array_tabular":
+    if adapter.structure_family != "structured_array_tabular":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_tabular/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /structured_array_tabular/full route.",
         )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
 
     try:
-        array = reader.read()
+        array = adapter.read()
         if slice:
             array = array[slice]
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
@@ -588,10 +588,10 @@ def structured_array_tabular_full(
             "structured_array_tabular",
             serialization_registry,
             array,
-            reader.metadata,
+            adapter.metadata,
             request,
             format,
-            expires=getattr(reader, "content_stale_at", None),
+            expires=getattr(adapter, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -604,7 +604,7 @@ def structured_array_tabular_full(
 )
 def structured_array_generic_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -613,17 +613,17 @@ def structured_array_generic_full(
     """
     Fetch a slice of array-like data.
     """
-    if reader.structure_family != "structured_array_generic":
+    if adapter.structure_family != "structured_array_generic":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_generic/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /structured_array_generic/full route.",
         )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
 
     try:
-        array = reader.read()
+        array = adapter.read()
         if slice:
             array = array[slice]
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
@@ -639,10 +639,10 @@ def structured_array_generic_full(
             "structured_array_generic",
             serialization_registry,
             array,
-            reader.metadata,
+            adapter.metadata,
             request,
             format,
-            expires=getattr(reader, "content_stale_at", None),
+            expires=getattr(adapter, "content_stale_at", None),
         )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -653,7 +653,7 @@ def structured_array_generic_full(
 )
 def dataframe_meta(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
@@ -661,12 +661,12 @@ def dataframe_meta(
     Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
     """
     request.state.endpoint = "data"
-    if reader.structure_family != "dataframe":
+    if adapter.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/meta route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataframe/meta route.",
         )
-    meta = reader.microstructure().meta
+    meta = adapter.microstructure().meta
     with record_timing(request.state.metrics, "pack"):
         content = serialization_registry(
             "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta, {}
@@ -684,7 +684,7 @@ def dataframe_meta(
 )
 def dataframe_divisions(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
@@ -692,14 +692,14 @@ def dataframe_divisions(
     Fetch the Apache Arrow serialization of the index values at the partition edges.
     """
     request.state.endpoint = "data"
-    if reader.structure_family != "dataframe":
+    if adapter.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/division route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataframe/division route.",
         )
     import pandas
 
-    divisions = reader.microstructure().divisions
+    divisions = adapter.microstructure().divisions
     # divisions is a tuple. Wrap it in a DataFrame so
     # that we can easily serialize it with Arrow in the normal way.
     divisions_wrapped_in_df = pandas.DataFrame({"divisions": list(divisions)})
@@ -721,7 +721,7 @@ def dataframe_divisions(
 def dataframe_partition(
     request: Request,
     partition: int,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -729,16 +729,16 @@ def dataframe_partition(
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
     """
-    if reader.structure_family != "dataframe":
+    if adapter.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/parition route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataframe/parition route.",
         )
     try:
         # The singular/plural mismatch here of "columns" and "column" is
         # due to the ?column=A&column=B&column=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = reader.read_partition(partition, columns=column)
+            df = adapter.read_partition(partition, columns=column)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
@@ -750,10 +750,10 @@ def dataframe_partition(
                 "dataframe",
                 serialization_registry,
                 df,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -764,7 +764,7 @@ def dataframe_partition(
 )
 def dataframe_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -772,19 +772,19 @@ def dataframe_full(
     """
     Fetch all the rows of DataFrame.
     """
-    if reader.structure_family != "dataframe":
+    if adapter.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataframe/full route.",
         )
 
-    specs = getattr(reader, "specs", [])
+    specs = getattr(adapter, "specs", [])
 
     try:
         # The singular/plural mismatch here of "columns" and "column" is
         # due to the ?column=A&column=B&column=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = reader.read(columns=column)
+            df = adapter.read(columns=column)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such column {key}.")
@@ -794,11 +794,11 @@ def dataframe_full(
                 "dataframe",
                 serialization_registry,
                 df,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
                 specs,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -811,7 +811,7 @@ def dataframe_full(
 )
 def variable_block(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -821,15 +821,15 @@ def variable_block(
     """
     Fetch a chunk of array-like data from an xarray.Variable.
     """
-    if reader.structure_family != "variable":
+    if adapter.structure_family != "variable":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /variable/block route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /variable/block route.",
         )
     try:
         # Lookup block on the `data` attribute of the Variable.
         with record_timing(request.state.metrics, "read"):
-            array = reader.read_block(block, slice=slice)
+            array = adapter.read_block(block, slice=slice)
         if slice:
             array = array[slice]
     except IndexError:
@@ -845,10 +845,10 @@ def variable_block(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -861,7 +861,7 @@ def variable_block(
 )
 def variable_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -869,13 +869,13 @@ def variable_full(
     """
     Fetch a full xarray.Variable.
     """
-    if reader.structure_family != "variable":
+    if adapter.structure_family != "variable":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /variable/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /variable/full route.",
         )
     with record_timing(request.state.metrics, "read"):
-        array = reader.read()
+        array = adapter.read()
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(
             status_code=400,
@@ -887,10 +887,10 @@ def variable_full(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -903,7 +903,7 @@ def variable_full(
 )
 def data_array_variable_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     coord: Optional[str] = Query(None, min_length=1),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -912,14 +912,14 @@ def data_array_variable_full(
     """
     Fetch a chunk from an xarray.DataArray.
     """
-    if reader.structure_family != "data_array":
+    if adapter.structure_family != "data_array":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /data_array/variable/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /data_array/variable/full route.",
         )
     # TODO Should read() accept a `coord` argument?
     with record_timing(request.state.metrics, "read"):
-        array = reader.read()
+        array = adapter.read()
     if coord is not None:
         try:
             array = array.coords[coord]
@@ -936,10 +936,10 @@ def data_array_variable_full(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -952,7 +952,7 @@ def data_array_variable_full(
 )
 def data_array_block(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     block=Depends(block),
     coord: Optional[str] = Query(None, min_length=1),
     slice=Depends(slice_),
@@ -963,14 +963,14 @@ def data_array_block(
     """
     Fetch a chunk from an xarray.DataArray.
     """
-    if reader.structure_family != "data_array":
+    if adapter.structure_family != "data_array":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /data_array/block route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /data_array/block route.",
         )
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read_block(block, coord, slice=slice)
+            array = adapter.read_block(block, coord, slice=slice)
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
@@ -989,10 +989,10 @@ def data_array_block(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -1005,7 +1005,7 @@ def data_array_block(
 )
 def dataset_block(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     block=Depends(block),
     variable: Optional[str] = Query(None, min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
@@ -1017,14 +1017,14 @@ def dataset_block(
     """
     Fetch a chunk from an xarray.Dataset.
     """
-    if reader.structure_family != "dataset":
+    if adapter.structure_family != "dataset":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/block route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataset/block route.",
         )
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read_block(variable, block, coord, slice=slice)
+            array = adapter.read_block(variable, block, coord, slice=slice)
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
     except KeyError:
@@ -1047,10 +1047,10 @@ def dataset_block(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -1063,7 +1063,7 @@ def dataset_block(
 )
 def dataset_data_var_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     variable: str = Query(..., min_length=1),
     coord: Optional[str] = Query(None, min_length=1),
     slice: str = Depends(slice_),
@@ -1078,14 +1078,14 @@ def dataset_data_var_full(
     # for some use cases.
     import numpy
 
-    if reader.structure_family != "dataset":
+    if adapter.structure_family != "dataset":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/data_var/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataset/data_var/full route.",
         )
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read_variable(variable).data
+            array = adapter.read_variable(variable).data
     except KeyError:
         raise HTTPException(status_code=400, detail=f"No such variable {variable}.")
     if coord is not None:
@@ -1107,10 +1107,10 @@ def dataset_data_var_full(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -1123,7 +1123,7 @@ def dataset_data_var_full(
 )
 def dataset_coord_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     coord: str = Query(..., min_length=1),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -1132,14 +1132,14 @@ def dataset_coord_full(
     """
     Fetch a full coordinate from within an xarray.Dataset.
     """
-    if reader.structure_family != "dataset":
+    if adapter.structure_family != "dataset":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/coord/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataset/coord/full route.",
         )
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read_variable(coord).data
+            array = adapter.read_variable(coord).data
     except KeyError:
         raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
     if (expected_shape is not None) and (expected_shape != array.shape):
@@ -1153,10 +1153,10 @@ def dataset_coord_full(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -1169,7 +1169,7 @@ def dataset_coord_full(
 )
 def dataset_full(
     request: Request,
-    reader=Depends(reader),
+    adapter=Depends(adapter),
     variable: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -1177,16 +1177,16 @@ def dataset_full(
     """
     Fetch a full coordinate from within an xarray.Dataset.
     """
-    if reader.structure_family != "dataset":
+    if adapter.structure_family != "dataset":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/full route.",
+            detail=f"Cannot read {adapter.structure_family} structure with /dataset/full route.",
         )
     try:
         # The singular/plural mismatch here of "variables" and "variable" is
         # due to the ?variable=A&variable=B&variable=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            dataset = reader.read(variables=variable)
+            dataset = adapter.read(variables=variable)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such variable {key}.")
@@ -1196,10 +1196,10 @@ def dataset_full(
                 "dataset",
                 serialization_registry,
                 dataset,
-                reader.metadata,
+                adapter.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(adapter, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])

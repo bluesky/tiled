@@ -6,10 +6,10 @@ import pandas
 import pytest
 import xarray
 
+from ..adapters.array import ArrayAdapter, StructuredArrayTabularAdapter
+from ..adapters.dataframe import DataFrameAdapter
+from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
-from ..readers.array import ArrayAdapter, StructuredArrayTabularAdapter
-from ..readers.dataframe import DataFrameAdapter
-from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..trees.in_memory import Tree
 
 data = numpy.random.random((10, 10))

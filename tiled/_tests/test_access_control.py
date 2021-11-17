@@ -3,8 +3,8 @@ from datetime import datetime
 import numpy
 import pytest
 
+from ..adapters.array import ArrayAdapter
 from ..client import from_config
-from ..readers.array import ArrayAdapter
 from ..server.authentication import create_refresh_token
 from ..trees.in_memory import Tree
 

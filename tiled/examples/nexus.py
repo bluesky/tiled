@@ -23,7 +23,7 @@ import io
 import h5py
 import httpx
 
-from tiled.readers.hdf5 import HDF5Reader
+from tiled.adapters.hdf5 import HDF5Adapter
 
 
 def Tree(url):
@@ -32,7 +32,7 @@ def Tree(url):
     # Access the buffer with h5py, which can treat it like a "file".
     file = h5py.File(buffer, "r")
     # Wrap the h5py.File in a Tree to serve it with Tiled.
-    return HDF5Reader(file)
+    return HDF5Adapter(file)
 
 
 EXAMPLE_URL = "https://github.com/nexusformat/exampledata/blob/master/APS/EPICSareaDetector/hdf5/AgBehenate_228.hdf5?raw=true"  # noqa

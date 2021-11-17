@@ -4,9 +4,8 @@ import numpy
 import pytest
 import tifffile as tf
 
+from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter, subdirectory_handler
 from ..client import from_config, from_tree
-from ..readers.tiff import TiffReader
-from ..readers.tiff_sequence import TiffSequenceReader, subdirectory_handler
 from ..trees.in_memory import Tree
 
 

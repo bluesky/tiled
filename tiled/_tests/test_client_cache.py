@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import numpy
 import pytest
 
+from ..adapters.array import ArrayAdapter
 from ..client import from_tree
 from ..client.cache import (
     Cache,
@@ -16,7 +17,6 @@ from ..client.cache import (
 from ..client.utils import logger
 from ..queries import FullText
 from ..query_registration import register
-from ..readers.array import ArrayAdapter
 from ..trees.in_memory import Tree
 
 tree = Tree(

@@ -30,7 +30,7 @@ class Response(pydantic.generics.GenericModel, Generic[DataT]):
 
 class EntryType(str, enum.Enum):
     tree = "tree"
-    reader = "reader"
+    Adapter = "Adapter"
 
 
 class EntryFields(str, enum.Enum):
@@ -60,7 +60,7 @@ class StructureFamilies(str, enum.Enum):
     dataset = "dataset"
 
 
-class ReaderAttributes(pydantic.BaseModel):
+class AdapterAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     structure_family: Optional[StructureFamilies]
     structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
@@ -80,9 +80,9 @@ class TreeResource(Resource):
     attributes: TreeAttributes
 
 
-class ReaderResource(Resource):
-    "Representation of a Reader as a JSON API Resource"
-    attributes: ReaderAttributes
+class AdapterResource(Resource):
+    "Representation of a Adapter as a JSON API Resource"
+    attributes: AdapterAttributes
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):

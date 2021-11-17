@@ -1,8 +1,8 @@
 import numpy
 import pandas.testing
 
+from ..adapters.dataframe import DataFrameAdapter
 from ..client import from_tree
-from ..readers.dataframe import DataFrameAdapter
 from ..trees.in_memory import Tree
 
 tree = Tree(

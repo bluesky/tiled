@@ -5,9 +5,9 @@ import pytest
 import xarray
 import xarray.testing
 
+from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
 from ..client import xarray as xarray_client
-from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..trees.in_memory import Tree
 
 array = numpy.random.random((10, 10))

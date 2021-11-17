@@ -1,5 +1,7 @@
 # Draft Specification
 
+_This design of Tiled has evolved past this document, but it retained for reference._
+
 There are four user-facing objects in the system:
 
 * **Reader** -- extracts the metadata, structure, and (tiled) data from some

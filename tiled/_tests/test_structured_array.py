@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
+from tiled.adapters.array import StructuredArrayTabularAdapter
 from tiled.client import from_tree
-from tiled.readers.array import StructuredArrayTabularAdapter
 from tiled.structures.structured_array import StructDtype
 from tiled.trees.in_memory import Tree
 

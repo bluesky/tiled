@@ -8,9 +8,9 @@ import numpy
 import pandas
 import xarray
 
-from tiled.readers.array import ArrayAdapter, StructuredArrayTabularAdapter
-from tiled.readers.dataframe import DataFrameAdapter
-from tiled.readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
+from tiled.adapters.array import ArrayAdapter, StructuredArrayTabularAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from tiled.trees.in_memory import Tree
 
 print("Generating large example data...", file=sys.stderr)

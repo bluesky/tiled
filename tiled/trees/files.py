@@ -78,16 +78,16 @@ class Tree(TreeInMemory):
     DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         {
             "image/tiff": lambda: importlib.import_module(
-                "...readers.tiff", Tree.__module__
+                "...adapters.tiff", Tree.__module__
             ).TiffReader,
             "text/csv": lambda: importlib.import_module(
-                "...readers.dataframe", Tree.__module__
+                "...adapters.dataframe", Tree.__module__
             ).DataFrameAdapter.read_csv,
             XLSX_MIME_TYPE: lambda: importlib.import_module(
-                "...readers.excel", Tree.__module__
+                "...adapters.excel", Tree.__module__
             ).ExcelReader.from_file,
             "application/x-hdf5": lambda: importlib.import_module(
-                "...readers.hdf5", Tree.__module__
+                "...adapters.hdf5", Tree.__module__
             ).HDF5Reader.from_file,
         }
     )

@@ -3,8 +3,8 @@ from datetime import datetime
 import numpy
 import pandas
 
-from tiled.readers.array import ArrayAdapter
-from tiled.readers.dataframe import DataFrameAdapter
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.trees.in_memory import Tree
 
 tree = Tree(

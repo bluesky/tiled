@@ -64,8 +64,8 @@ search capability and some other features drawn from Databroker. Tiled has a
 *Tree* abstraction similar to Intake's *Catalog*, with small but important
 differences to suit the server--client interaction. (It is hoped that Tiled
 Trees and Intake Catalogs can be made interoperable in the near future.)
-Finally, Tiled has a *Reader* abstraction that is something like an amalgam of
-PIMS Readers and Intake's Datasources.
+Finally, Tiled has an *Adapter* abstraction that is something like an amalgam of
+PIMS Readers and Intake's DataSources.
 
 In summary:
 

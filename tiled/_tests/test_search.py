@@ -1,9 +1,9 @@
 import numpy
 import pytest
 
+from ..adapters.array import ArrayAdapter
 from ..client import from_tree
 from ..queries import FullText
-from ..readers.array import ArrayAdapter
 from ..trees.in_memory import Tree
 
 tree = Tree(

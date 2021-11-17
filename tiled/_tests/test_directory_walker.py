@@ -6,9 +6,9 @@ import numpy
 import pytest
 import tifffile
 
+from ..adapters.array import ArrayAdapter
 from ..client import from_config
 from ..examples.generate_files import data, df1, generate_files
-from ..readers.array import ArrayAdapter
 from ..trees.files import DEFAULT_POLL_INTERVAL, Change, strip_suffixes
 
 

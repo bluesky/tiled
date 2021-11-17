@@ -105,12 +105,12 @@ def entry(
         raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
 
 
-def reader(
+def adapter(
     entry: Any = Depends(entry),
 ):
-    "Specify a path parameter and use it to look up a reader."
-    if not isinstance(entry, DuckReader):
-        raise HTTPException(status_code=404, detail="This is not a Reader.")
+    "Specify a path parameter and use it to look up a adapter."
+    if not isinstance(entry, Duckadapter):
+        raise HTTPException(status_code=404, detail="This is not a adapter.")
     return entry
 
 
@@ -195,15 +195,15 @@ def pagination_links(route, path_parts, offset, limit, length_hint):
     return links
 
 
-class DuckReader(metaclass=abc.ABCMeta):
+class Duckadapter(metaclass=abc.ABCMeta):
     """
-    Used for isinstance(obj, DuckReader):
+    Used for isinstance(obj, Duckadapter):
     """
 
     @classmethod
     def __subclasshook__(cls, candidate):
         # If the following condition is True, candidate is recognized
-        # to "quack" like a Reader.
+        # to "quack" like a adapter.
         EXPECTED_ATTRS = ("read", "macrostructure", "microstructure")
         return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
 
@@ -544,12 +544,12 @@ def construct_resource(
             attributes["structure"] = structure
         d = {
             "id": path_parts[-1],
-            "attributes": models.ReaderAttributes(**attributes),
-            "type": models.EntryType.reader,
+            "attributes": models.adapterAttributes(**attributes),
+            "type": models.EntryType.adapter,
         }
         if not omit_links:
             d["links"] = links
-        resource = models.ReaderResource(**d)
+        resource = models.adapterResource(**d)
     return resource
 
 

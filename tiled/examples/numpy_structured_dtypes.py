@@ -6,7 +6,7 @@ https://numpy.org/doc/stable/user/basics.rec.html
 """
 import numpy
 
-from tiled.readers.array import StructuredArrayTabularAdapter
+from tiled.adapters.array import StructuredArrayTabularAdapter
 from tiled.trees.in_memory import Tree
 
 tree = Tree(
