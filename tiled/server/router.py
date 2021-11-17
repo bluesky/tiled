@@ -654,7 +654,6 @@ def structured_array_generic_full(
 def dataframe_meta(
     request: Request,
     adapter=Depends(adapter),
-    format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
