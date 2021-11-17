@@ -79,16 +79,16 @@ class Tree(TreeInMemory):
         {
             "image/tiff": lambda: importlib.import_module(
                 "...adapters.tiff", Tree.__module__
-            ).TiffReader,
+            ).TiffAdapter,
             "text/csv": lambda: importlib.import_module(
                 "...adapters.dataframe", Tree.__module__
             ).DataFrameAdapter.read_csv,
             XLSX_MIME_TYPE: lambda: importlib.import_module(
                 "...adapters.excel", Tree.__module__
-            ).ExcelReader.from_file,
+            ).ExcelAdapter.from_file,
             "application/x-hdf5": lambda: importlib.import_module(
                 "...adapters.hdf5", Tree.__module__
-            ).HDF5Reader.from_file,
+            ).HDF5Adapter.from_file,
         }
     )
 

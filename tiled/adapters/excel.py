@@ -6,7 +6,7 @@ from ..trees.in_memory import Tree
 from .dataframe import DataFrameAdapter
 
 
-class ExcelReader(Tree):
+class ExcelAdapter(Tree):
     """
     Read the sheets in an Excel file.
 
@@ -18,18 +18,18 @@ class ExcelReader(Tree):
 
     Given a file path
 
-    >>> ExcelReader.from_file("path/to/excel_file.xlsx")
+    >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
 
     Given a file object
 
     >>> file = open("path/to/excel_file.xlsx")
-    >>> ExcelReader.from_file(file)
+    >>> ExcelAdapter.from_file(file)
 
     Given a pandas.ExcelFile object
 
     >>> import pandas
     >>> ef = pandas.ExcelFile(file)
-    >>> ExcelReader.from_file(ef)
+    >>> ExcelAdapter.from_file(ef)
     """
 
     @classmethod

@@ -8,7 +8,7 @@ from ..utils import DictView
 
 class DataFrameAdapter:
     """
-    Wrap a dataframe-like in a "Reader".
+    Wrap a dataframe-like object in an interface that Tiled can serve.
 
     Examples
     --------

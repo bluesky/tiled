@@ -16,7 +16,7 @@ class HDF5DatasetAdapter(ArrayAdapter):
         super().__init__(dask.array.from_array(dataset), metadata=dataset.attrs)
 
 
-class HDF5Reader(collections.abc.Mapping, IndexersMixin):
+class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     """
     Read an HDF5 file or a group within one.
 
@@ -28,19 +28,19 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
     From the root node of a file given a filepath
 
     >>> import h5py
-    >>> HDF5Reader.from_file("path/to/file.h5")
+    >>> HDF5Adapter.from_file("path/to/file.h5")
 
     From the root node of a file given an h5py.File object
 
     >>> import h5py
     >>> file = h5py.File("path/to/file.h5")
-    >>> HDF5Reader.from_file(file)
+    >>> HDF5Adapter.from_file(file)
 
     From a group within a file
 
     >>> import h5py
     >>> file = h5py.File("path/to/file.h5")
-    >>> HDF5Reader(file["some_group']["some_sub_group"])
+    >>> HDF5Adapter(file["some_group']["some_sub_group"])
 
     """
 
@@ -103,7 +103,7 @@ class HDF5Reader(collections.abc.Mapping, IndexersMixin):
     def __getitem__(self, key):
         value = self._node[key]
         if isinstance(value, h5py.Group):
-            return HDF5Reader(value)
+            return HDF5Adapter(value)
         else:
             if value.dtype == numpy.dtype("O"):
                 warnings.warn(

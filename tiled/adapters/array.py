@@ -8,7 +8,7 @@ from ..utils import DictView
 
 class ArrayAdapter:
     """
-    Wrap an array-like in a "Reader".
+    Wrap an array-like object in an interface that Tiled can serve.
 
     Examples
     --------

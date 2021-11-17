@@ -28,7 +28,7 @@ def directory(tmpdir):
     ],
 )
 def test_tiff_sequence(directory, slice_input, correct_shape):
-    tree = Tree({"A": TiffSequenceReader(tf.TiffSequence(directory))})
+    tree = Tree({"A": TiffSequenceAdapter(tf.TiffSequence(directory))})
     client = from_tree(tree)
     arr = client["A"].read(slice=slice_input)
     assert arr.shape == correct_shape
@@ -36,7 +36,7 @@ def test_tiff_sequence(directory, slice_input, correct_shape):
 
 @pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0), (1, 100, 100))])
 def test_tiff_sequence_block(directory, block_input, correct_shape):
-    tree = Tree({"A": TiffSequenceReader(tf.TiffSequence(directory))})
+    tree = Tree({"A": TiffSequenceAdapter(tf.TiffSequence(directory))})
     client = from_tree(tree)
     arr = client["A"].read_block(block_input)
     assert arr.shape == correct_shape
