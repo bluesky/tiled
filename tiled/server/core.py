@@ -456,21 +456,21 @@ def construct_resource(
     if models.EntryFields.specs in fields:
         attributes["specs"] = getattr(entry, "specs", None)
     if isinstance(entry, DuckTree):
+        attributes["structure_family"] = "node"
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
             if hasattr(entry, "sorting"):
                 attributes["sorting"] = entry.sorting
         d = {
             "id": path_parts[-1] if path_parts else "",
-            "attributes": models.TreeAttributes(**attributes),
-            "type": models.EntryType.tree,
+            "attributes": models.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = {
                 "self": f"{base_url}metadata/{path_str}",
                 "search": f"{base_url}search/{path_str}",
             }
-        resource = models.TreeResource(**d)
+        resource = models.Resource(**d)
     else:
         links = {"self": f"{base_url}metadata/{path_str}"}
         structure = {}
@@ -544,12 +544,11 @@ def construct_resource(
             attributes["structure"] = structure
         d = {
             "id": path_parts[-1],
-            "attributes": models.adapterAttributes(**attributes),
-            "type": models.EntryType.adapter,
+            "attributes": models.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = links
-        resource = models.adapterResource(**d)
+        resource = models.Resource(**d)
     return resource
 
 

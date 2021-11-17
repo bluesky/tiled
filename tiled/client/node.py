@@ -200,13 +200,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             if class_ is None:
                 continue
             return class_
-        if item["type"] == "reader":
-            structure_family = item["attributes"]["structure_family"]
-            try:
-                return self.structure_clients[structure_family]
-            except KeyError:
-                raise UnknownStructureFamily(structure_family) from None
-        return self.structure_clients["node"]
+        structure_family = item["attributes"]["structure_family"]
+        try:
+            return self.structure_clients[structure_family]
+        except KeyError:
+            raise UnknownStructureFamily(structure_family) from None
 
     def client_for_item(self, item, path):
         """
@@ -215,7 +213,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         This is intended primarily for internal use and use by subclasses.
         """
         class_ = self._get_class(item)
-        if item["type"] == "tree":
+        structure_family = item["attributes"]["structure_family"]
+        if structure_family == "node":
             return class_(
                 context=self.context,
                 item=item,
@@ -225,13 +224,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 params=self._params,
                 queries=None,  # This is the only difference.
             )
-        elif item["type"] == "reader":
+        else:
             return class_(
                 context=self.context, item=item, path=path, params=self._params
-            )
-        else:
-            raise NotImplementedError(
-                f"Server sent item of unrecognized type {item['type']}"
             )
 
     def new_variation(
