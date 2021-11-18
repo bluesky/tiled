@@ -6,12 +6,12 @@ https://numpy.org/doc/stable/user/basics.rec.html
 """
 import numpy
 
-from tiled.adapters.array import StructuredArrayTabularAdapter
+from tiled.adapters.array import ArrayAdapter
 from tiled.trees.in_memory import Tree
 
 tree = Tree(
     {
-        "A": StructuredArrayTabularAdapter.from_array(
+        "A": ArrayAdapter.from_array(
             numpy.array(
                 [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
                 dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],

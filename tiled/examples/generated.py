@@ -8,7 +8,7 @@ import numpy
 import pandas
 import xarray
 
-from tiled.adapters.array import ArrayAdapter, StructuredArrayTabularAdapter
+from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from tiled.trees.in_memory import Tree
@@ -74,7 +74,7 @@ mapping = {
     ),
     "structured_data": Tree(
         {
-            "pets": StructuredArrayTabularAdapter.from_array(
+            "pets": ArrayAdapter.from_array(
                 numpy.array(
                     [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
                     dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],

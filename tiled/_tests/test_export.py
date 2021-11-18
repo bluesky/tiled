@@ -6,7 +6,7 @@ import pandas
 import pytest
 import xarray
 
-from ..adapters.array import ArrayAdapter, StructuredArrayTabularAdapter
+from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
@@ -29,7 +29,7 @@ tree = Tree(
         ),
         "structured_data": Tree(
             {
-                "pets": StructuredArrayTabularAdapter.from_array(
+                "pets": ArrayAdapter.from_array(
                     numpy.array(
                         [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
                         dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],

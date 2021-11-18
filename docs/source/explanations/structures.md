@@ -13,21 +13,8 @@ Seven structure families are currently supported. The most widespread are:
 * dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
 
-The "array" strucuture family handles unstructured data types only.
-Numpy's [strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html)
-are supported via two other structure families.
-
-* structured_array_tabular --- a one-dimensional array where each item has one level
-  of internal structure
-* structured_array_generic --- an array with any number of dimensions and
-  arbitrarily nested internal structure
-
-The structures "structured_array_tabular" and "dataframe" have some similarities,
-but they are not interchangeable. First, structured arrays are row-major and
-dataframes and column-major. Second, arrays have a known shape along every dimension
-and can be sliced and indexed along every dimension. Dataframes are "partitioned"
-into blocks of rows whose size cannot be known until the data is actually loaded.
-Despite these differences, they can be exported to many of the same formats.
+The "array" strucuture family handles both built-in data types and
+[strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html).
 
 Three additional structures come from
 [xarray](https://xarray.pydata.org/en/stable/). They may be considered

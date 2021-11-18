@@ -12,8 +12,6 @@ or its dask counterpart.
    :toctree: generated
 
    tiled.adapters.array.ArrayAdapter
-   tiled.adapters.array.StructuredArrayTabularAdapter
-   tiled.adapters.array.StructuredArrayGenericAdapter
    tiled.adapters.dataframe.DataFrameAdapter
    tiled.adapters.xarray.VariableAdapter
    tiled.adapters.xarray.DataArrayAdapter
@@ -110,7 +108,7 @@ See {doc}`../explanations/structures` for more context.
 
    tiled.structures.array.ArrayStructure
    tiled.structures.array.ArrayMacroStructure
-   tiled.structures.array.MachineDataType
+   tiled.structures.array.BuiltinDtype
    tiled.structures.array.Kind
    tiled.structures.array.Endianness
 ```
@@ -124,19 +122,6 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.dataframe.DataFrameStructure
    tiled.structures.dataframe.DataFrameMacroStructure
    tiled.structures.dataframe.DataFrameMicroStructure
-```
-
-### Structured Arrays
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.structures.structured_array.Field
-   tiled.structures.structured_array.StructDtype
-   tiled.structures.structured_array.StructuredArrayGenericStructure
-   tiled.structures.structured_array.ArrayTabularMacroStructure
-   tiled.structures.structured_array.StructuredArrayTabularStructure
 ```
 
 ### Xarray Structures

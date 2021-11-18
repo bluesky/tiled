@@ -1,6 +1,6 @@
 import io
 from dataclasses import dataclass
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 
 import xarray
 
@@ -16,37 +16,21 @@ from .dataframe import (
     serialize_html,
     serialize_parquet,
 )
-from .structured_array import (
-    StructuredArrayGenericStructure,
-    StructuredArrayTabularStructure,
-)
-
-_ARRAY_STRUCTURES = {
-    "array": ArrayStructure,
-    "structured_array_generic": StructuredArrayGenericStructure,
-    "structured_array_tabular": StructuredArrayTabularStructure,
-}
 
 
 @dataclass
 class VariableMacroStructure:
     dims: Tuple[str]
-    data: Union[
-        ArrayStructure, StructuredArrayGenericStructure, StructuredArrayTabularStructure
-    ]
+    data: ArrayStructure
     attrs: Dict  # TODO Use JSONSerializableDict
-    array_structure_family: str = "array"
     # TODO Variables also have `encoding`. Do we want to carry that as well?
 
     @classmethod
     def from_json(cls, structure):
         # Fall back to "array" default for backward-compatibility.
-        array_structure_cls = _ARRAY_STRUCTURES[
-            structure.get("array_structure_family", "array")
-        ]
         return cls(
             dims=structure["dims"],
-            data=array_structure_cls.from_json(structure["data"]),
+            data=ArrayStructure.from_json(structure["data"]),
             attrs=structure["attrs"],
         )
 

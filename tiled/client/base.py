@@ -157,12 +157,6 @@ ARRAY_STRUCTURE_TYPES = OneShotCachedMap(
         "array": lambda: importlib.import_module(
             "...structures.array", BaseArrayClient.__module__
         ).ArrayStructure,
-        "structured_array_generic": lambda: importlib.import_module(
-            "...structures.structured_array", BaseArrayClient.__module__
-        ).StructuredArrayGenericStructure,
-        "structured_array_tabular": lambda: importlib.import_module(
-            "...structures.structured_array", BaseArrayClient.__module__
-        ).StructuredArrayTabularStructure,
         "variable": lambda: importlib.import_module(
             "...structures.xarray", BaseArrayClient.__module__
         ).VariableStructure,

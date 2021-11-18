@@ -5,7 +5,7 @@ import numpy
 import tifffile
 
 from ..server.object_cache import with_object_cache
-from ..structures.array import ArrayMacroStructure, MachineDataType
+from ..structures.array import ArrayMacroStructure, BuiltinDtype
 
 
 class TiffAdapter:
@@ -52,7 +52,7 @@ class TiffAdapter:
         return arr
 
     def microstructure(self):
-        return MachineDataType.from_numpy_dtype(self._file.series[0].dtype)
+        return BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype)
 
     def macrostructure(self):
         if self._file.is_shaped:
@@ -163,7 +163,7 @@ class TiffSequenceAdapter:
 
     def microstructure(self):
         # Assume all files have the same data type
-        return MachineDataType.from_numpy_dtype(self.read(slice=0).dtype)
+        return BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype)
 
     def macrostructure(self):
         shape = (len(self._seq), *self.read(slice=0).shape)
