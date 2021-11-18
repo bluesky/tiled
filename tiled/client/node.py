@@ -64,9 +64,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         ),
     }
 
-    # This is populated when the first instance is created. To populate or
-    # refresh it manually, call classmethod discover_special_clients().
-    DEFAULT_SPECIAL_CLIENT_DISPATCH = None
+    # This is populated when the first instance is created.
+    STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
     @classmethod
     def _discover_entrypoints(cls, entrypoint_name):
@@ -80,22 +79,29 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
     @classmethod
-    def discover_special_clients(cls):
+    def discover_clients_from_entrypoints(cls):
         """
-        Search the software environment for libraries that register special clients.
+        Search the software environment for libraries that register structure clients.
 
         This is called once automatically the first time Node.from_uri
-        is called. You may call it again manually to refresh, and it will
-        reflect any changes to the environment since it was first populated.
+        is called. It is idempotent.
         """
+        if cls.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is not None:
+            # short-circuit
+            return
         # The modules associated with these entrypoints will be imported
         # lazily, only when the item is first accessed.
-        cls.DEFAULT_SPECIAL_CLIENT_DISPATCH = cls._discover_entrypoints(
-            "tiled.special_client"
-        )
-        # Note: We could use entrypoints to discover custom structure_family types as
-        # well, and in fact we did do this in an early draft. It was removed
-        # for simplicity, at least for now.
+        cls.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = OneShotCachedMap()
+        # Check old name (special_client) and new name (structure_client).
+        for entrypoint_name in ["tiled.special_client", "tiled.structure_client"]:
+            for name, entrypoint in entrypoints.get_group_named(
+                entrypoint_name
+            ).items():
+                cls.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS.set(name, entrypoint.load)
+                cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH["numpy"].set(
+                    name, entrypoint.load
+                )
+                cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH["dask"].set(name, entrypoint.load)
 
     def __init__(
         self,
@@ -104,7 +110,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         path,
         item,
         structure_clients,
-        special_clients,
         params=None,
         queries=None,
         sorting=None,
@@ -112,7 +117,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         "This is not user-facing. Use Node.from_uri."
 
         self.structure_clients = structure_clients
-        self.special_clients = special_clients
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
         sorting = item["attributes"].get("sorting")
@@ -179,12 +183,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # The server can use specs to tell us that this is not just *any*
         # node/array/dataframe/etc. but that is matches a certain specification
         # for which there may be a special client available.
-        # Check each spec in order for a matching special client. Use the first
-        # one we find. If we find no special client for any spec, fall back on
-        # the defaults.
+        # Check each spec in order for a matching structure client. Use the first
+        # one we find. If we find no structure client for any spec, fall back on
+        # the default for this structure family.
         specs = item["attributes"].get("specs", []) or []
         for spec in specs:
-            class_ = self.special_clients.get(spec)
+            class_ = self.structure_clients.get(spec)
             if class_ is None:
                 continue
             return class_
@@ -208,7 +212,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 item=item,
                 path=path,
                 structure_clients=self.structure_clients,
-                special_clients=self.special_clients,
                 params=self._params,
                 queries=None,  # This is the only difference.
             )
@@ -221,7 +224,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         self,
         *,
         structure_clients=UNCHANGED,
-        special_clients=UNCHANGED,
         queries=UNCHANGED,
         sorting=UNCHANGED,
         **kwargs,
@@ -237,8 +239,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             ]
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
-        if special_clients is UNCHANGED:
-            special_clients = self.special_clients
         if queries is UNCHANGED:
             queries = self._queries
         if sorting is UNCHANGED:
@@ -246,7 +246,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         return super().new_variation(
             context=self.context,
             structure_clients=structure_clients,
-            special_clients=special_clients,
             queries=queries,
             sorting=sorting,
             **kwargs,
