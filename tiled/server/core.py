@@ -548,21 +548,11 @@ def construct_resource(
                     links[
                         "partition"
                     ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
-                elif entry.structure_family == "variable":
-                    block_template = ",".join(
-                        f"{{index_{index}}}"
-                        for index in range(
-                            len(structure["macro"]["data"]["macro"]["shape"])
-                        )
-                    )
-                    links[
-                        "block"
-                    ] = f"{base_url}variable/block/{path_str}?block={block_template}"
                 elif entry.structure_family == "data_array":
                     block_template = ",".join(
                         f"{{index_{index}}}"
                         for index in range(
-                            len(structure["macro"]["variable"]["macro"]["data"])
+                            len(structure["macro"]["variable"]["macro"]["shape"])
                         )
                     )
                     links[

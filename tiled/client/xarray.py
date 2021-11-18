@@ -8,7 +8,6 @@ from ..structures.xarray import (
     APACHE_ARROW_FILE_MIME_TYPE,
     DataArrayStructure,
     DatasetStructure,
-    VariableStructure,
 )
 from .array import ArrayClient, DaskArrayClient
 from .base import BaseArrayClient
@@ -17,94 +16,22 @@ from .utils import export_util
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 
-class DaskVariableClient(BaseArrayClient):
-
-    STRUCTURE_TYPE = VariableStructure  # used by base class
-    ARRAY_CLIENT = DaskArrayClient  # overridden by subclass
-
-    def __init__(self, *args, route="/variable/block", **kwargs):
-        super().__init__(*args, route=route, **kwargs)
-
-    def _build_array_client(self, structure):
-        return self.ARRAY_CLIENT(
-            context=self.context,
-            item=self.item,
-            path=self.path,
-            params=self._params,
-            structure=structure.data,
-            route=self._route,
-        )
+class _VariableMixin:
+    """
+    Extend [Dask]ArrayClient to wrap array in xarray.Variable.
+    """
 
     @property
-    def data(self):
-        return self._build_array_client(self.structure().macro)
+    def attrs(self):
+        return self.metadata["attrs"]
 
-    def read_block(self, block, slice=None):
-        """
-        Read a block (optional sub-sliced) of array data from this Variable.
+    @property
+    def dims(self):
+        return self.metadata["dims"]
 
-        Intended for advanced uses. Returns array-like, not Variable.
-        """
-        return self.data.read_block(block, slice)
-
-    def read(self, slice=None):
-        structure = self.structure().macro
-        return xarray.Variable(
-            dims=structure.dims,
-            data=self._build_array_client(structure).read(slice),
-            attrs=structure.attrs,
-        )
-
-    def __getitem__(self, slice):
-        return self.read(slice)
-
-    # The default object.__iter__ works as expected here, no need to
-    # implemented it specifically.
-
-    def __len__(self):
-        # As with numpy, len(arr) is the size of the zeroth axis.
-        return self.structure().macro.data.macro.shape[0]
-
-    def download(self):
-        super().download()
-        self.read().compute()
-
-    def export(self, filepath, format=None, slice=None, link=None, template_vars=None):
-        """
-        Download data in some format and write to a file.
-
-        Parameters
-        ----------
-        file: str or buffer
-            Filepath or writeable buffer.
-        format : str, optional
-            If format is None and `file` is a filepath, the format is inferred
-            from the name, like 'table.csv' implies format="text/csv". The format
-            may be given as a file extension ("csv") or a media type ("text/csv").
-        slice : List[slice], optional
-            List of slice objects. A convenient way to generate these is shown
-            in the examples.
-        link: str, optional
-            Used internally. Refers to a key in the dictionary of links sent
-            from the server.
-        template_vars: dict, optional
-            Used internally.
-
-        Examples
-        --------
-
-        Export all.
-
-        >>> a.export("numbers.csv")
-
-        Export an N-dimensional slice.
-
-        >>> import numpy
-        >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
-        """
-        self._build_array_client(self.structure().macro).export(
-            filepath, format=format, slice=slice, link=link, template_vars=template_vars
-        )
+    def read(self, *args, **kwargs):
+        data = super().read(*args, **kwargs)
+        return xarray.Variable(data=data, dims=self.dims, attrs=self.attrs)
 
     @property
     def formats(self):
@@ -112,15 +39,12 @@ class DaskVariableClient(BaseArrayClient):
         return self.context.get_json("")["formats"]["variable"]
 
 
-class VariableClient(DaskVariableClient):
+class DaskVariableClient(_VariableMixin, DaskArrayClient):
+    pass
 
-    ARRAY_CLIENT = ArrayClient
 
-    def download(self):
-        # Do not run super().download() because DaskVariableClient calls compute()
-        # which does not apply here.
-        BaseArrayClient.download(self)
-        self.read()
+class VariableClient(_VariableMixin, ArrayClient):
+    pass
 
 
 class DaskDataArrayClient(BaseArrayClient):

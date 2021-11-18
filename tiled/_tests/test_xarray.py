@@ -11,17 +11,26 @@ from ..client import xarray as xarray_client
 from ..trees.in_memory import Tree
 
 array = numpy.random.random((10, 10))
-tree = Tree(
-    {
-        "variable": VariableAdapter(
-            xarray.Variable(
-                data=dask.array.from_array(array),
-                dims=["x", "y"],
-                attrs={"thing": "stuff"},
-            )
+EXPECTED = {
+    "variable": xarray.Variable(
+        data=dask.array.from_array(array),
+        dims=["x", "y"],
+        attrs={"thing": "stuff"},
+    ),
+    "data_array": xarray.DataArray(
+        xarray.Variable(
+            data=dask.array.from_array(array),
+            dims=["x", "y"],
+            attrs={"thing": "stuff"},
         ),
-        "data_array": DataArrayAdapter(
-            xarray.DataArray(
+        coords={
+            "x": dask.array.arange(len(array)),
+            "y": 10 * dask.array.arange(len(array)),
+        },
+    ),
+    "dataset": xarray.Dataset(
+        {
+            "image": xarray.DataArray(
                 xarray.Variable(
                     data=dask.array.from_array(array),
                     dims=["x", "y"],
@@ -31,35 +40,22 @@ tree = Tree(
                     "x": dask.array.arange(len(array)),
                     "y": 10 * dask.array.arange(len(array)),
                 },
-            )
-        ),
-        "dataset": DatasetAdapter(
-            xarray.Dataset(
-                {
-                    "image": xarray.DataArray(
-                        xarray.Variable(
-                            data=dask.array.from_array(array),
-                            dims=["x", "y"],
-                            attrs={"thing": "stuff"},
-                        ),
-                        coords={
-                            "x": dask.array.arange(len(array)),
-                            "y": 10 * dask.array.arange(len(array)),
-                        },
-                    ),
-                    "z": xarray.DataArray(data=dask.array.ones((len(array),))),
-                },
-                coords={"time": numpy.arange(len(array))},
-            )
-        ),
-        "wide": DatasetAdapter(
-            xarray.Dataset(
-                {
-                    f"column_{i:03}": xarray.DataArray(i * numpy.ones(10))
-                    for i in range(500)
-                }
-            )
-        ),
+            ),
+            "z": xarray.DataArray(data=dask.array.ones((len(array),))),
+        },
+        coords={"time": numpy.arange(len(array))},
+    ),
+    "wide": xarray.Dataset(
+        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
+    ),
+}
+
+tree = Tree(
+    {
+        "variable": VariableAdapter(EXPECTED["variable"]),
+        "data_array": DataArrayAdapter(EXPECTED["data_array"]),
+        "dataset": DatasetAdapter(EXPECTED["dataset"]),
+        "wide": DatasetAdapter(EXPECTED["wide"]),
     }
 )
 
@@ -67,7 +63,7 @@ tree = Tree(
 @pytest.mark.parametrize("key", list(tree))
 def test_xarrays(key):
     client = from_tree(tree)
-    expected = tree[key].read()
+    expected = EXPECTED[key]
     actual = client[key].read()
     xarray.testing.assert_equal(actual, expected)
 

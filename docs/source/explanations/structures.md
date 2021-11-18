@@ -139,7 +139,7 @@ Notice that we could derive `shape` from `chunks` so it is not
 technically necessary to include `shape` but it is convenient to
 have it given directly.
 
-### Structured Tabular Array
+### Array (with a structured data type)
 
 This is a 1D array where each item has internal structure,
 as in numpy's [strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html)
@@ -212,10 +212,8 @@ $ http :8000/metadata/long_table | jq .data.attributes.structure
     ]
   },
   "micro": {
-    "links": {
-      "meta": "http://localhost:8000/dataframe/meta/dataframes/df",
-      "divisions": "http://localhost:8000/dataframe/divisions/dataframes/df"
-    }
+    "meta": "data:vnd.apache.arrow.file;base64,...",
+    "divisions": "data:vnd.apache.arrow.file;base64,...",
   }
 }
 ```
@@ -229,14 +227,13 @@ subset of the *columns*, and we can fetch partitions one at a time in any
 order, but we cannot make requests like "rows 100-200". Dask has the same
 limitation, for the same reason.
 
-Notice that the microstructure contains links to other endpoints.
+Notice that the microstructure contains base64-encoded data.
 The correct way to encode dataframes and their data types in a cross-language
 way is with Apache Arrow.  Apache Arrow is a binary format. It explicitly
 does not support JSON.  (There is a JSON implementation, but the documentation
 states that it is intended only for integration testing and should not be used
-by external code.) Therefore, we direct the client to endpoints that serve
-(binary) Apache Arrow-encoded data to express the microstructure because we
-have no reasonable way of placing it inline in the response.
+by external code.) Therefore, when JSON is requested, we base64-encode it.
+When binary msgpack is requested instead of JSON, we pack the binary data directly.
 
 The microstructure has two parts:
 
@@ -249,123 +246,6 @@ The microstructure has two parts:
 Both of the concepts (and their names) are borrowed directly from
 dask.dataframe. They should enable any client, including in languages other than
 Python, to perform the same function.
-
-### Variable (xarray)
-
-As stated above, in this context all xarray structures can be thought of as
-containers of array structures. They have no microstructure of their own, only a
-macrostructure that contains array structures.
-
-[Variable](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Variable)
-is a low-level structure in xarray that describes a single N-dimensional array,
-adding names to each dimension (`dims`) and a dict of metadata (`attrs`).
-
-```{note}
-In xarray, there is a *soft* requirement that `attrs` contain only
-JSON-serializable types like strings, numbers, and lists, and dicts. Most parts
-of xarray will work even if this does not hold, but certain export functions
-will not work. Likewise, Tiled can only serve xarray objects where the `attrs`
-are JSON serializable.
-
-Tiled *does* accept numpy scalars and arrays in `attrs` (or any metadata).
-Before serializing to JSON or msgpack, it converts them to built-in numeric
-types and lists, respectively. This works well as long as the arrays are not
-large; `attrs` is not intended to hold large data.
-```
-
-```
-$ http :8000/metadata/structured_data/xarray_variable | jq .data.attributes.structure
-```
-
-```json
-{
-  "macro": {
-    "dims": [
-      "x",
-      "y"
-    ],
-    "data": {
-      "macro": {
-        "chunks": [
-          [
-            1000
-          ],
-          [
-            1000
-          ]
-        ],
-        "shape": [
-          1000,
-          1000
-        ]
-      },
-      "micro": {
-        "endianness": "little",
-        "kind": "f",
-        "itemsize": 8
-      }
-    },
-    "attrs": {
-      "thing": "stuff"
-    }
-  }
-}
-```
-
-### DataArray (xarray)
-
-A
-[DataArray](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-DataArray)
-contains one Variable alongside coordinates (`coords`) that are meant to serve as "tick
-labels" for the primary Variable. The "coordinates" are themselves Variables.
-Therefore, DataArray can be described as a container for one Variable and (optional)
-additional Variables.
-
-```
-$ http :8000/metadata/structured_data/xarray_data_array | jq .data.attributes.structure
-```
-
-```json
-{
-  "macro": {
-    "variable": {
-      "macro": {
-        "dims": [
-          "x",
-          "y"
-        ],
-        "data": {
-          "macro": {
-            "chunks": [
-              [
-                1000
-              ],
-              [
-                1000
-              ]
-            ],
-            "shape": [
-              1000,
-              1000
-            ]
-          },
-          "micro": {
-            "endianness": "little",
-            "kind": "f",
-            "itemsize": 8
-          }
-        },
-        "attrs": {
-          "thing": "stuff"
-        }
-      },
-      "micro": null
-    },
-    "coords": {},
-    "name": null
-  }
-}
-```
 
 ### Dataset (xarray)
 

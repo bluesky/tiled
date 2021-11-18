@@ -1,13 +1,12 @@
+from functools import cached_property
+
 import dask.array
-import numpy
 
 from ..adapters.array import ArrayAdapter
 from ..structures.xarray import (
-    ArrayStructure,
     DataArrayMacroStructure,
     DataArrayStructure,
     DatasetMacroStructure,
-    VariableMacroStructure,
     VariableStructure,
 )
 from ..utils import DictView
@@ -18,51 +17,41 @@ class VariableAdapter:
     Wrap an xarray.Variable
     """
 
-    structure_family = "variable"
+    structure_family = "array"
+    specs = ["variable"]
 
-    def __init__(self, variable, metadata=None):
+    def __init__(self, variable):
         self._variable = variable
-        self._metadata = metadata or {}
 
     def __repr__(self):
         return f"{type(self).__name__}({self._variable!r})"
 
-    @property
+    @cached_property
     def metadata(self):
-        return DictView(self._metadata)
+        return DictView({"attrs": self._variable.attrs, "dims": self._variable.dims})
 
-    def macrostructure(self):
+    @cached_property
+    def _array_adapter(self):
         # Coordinates are greedily loaded into numpy, so we cannot insist or
         # assume that these are dask-backed the way that we do in the other
         # adapters.
         if isinstance(self._variable.data, dask.array.Array):
-            array_reader = ArrayAdapter(self._variable.data)
+            array_adapter = ArrayAdapter(self._variable.data)
         else:
-            array_reader = ArrayAdapter.from_array(self._variable.data)
-        return VariableMacroStructure(
-            dims=self._variable.dims,
-            data=ArrayStructure(
-                macro=array_reader.macrostructure(), micro=array_reader.microstructure()
-            ),
-            attrs=self._variable.attrs,
-        )
+            array_adapter = ArrayAdapter.from_array(self._variable.data)
+        return array_adapter
+
+    def macrostructure(self):
+        return self._array_adapter.macrostructure()
 
     def microstructure(self):
-        return None
+        return self._array_adapter.microstructure()
 
-    def read(self):
-        return self._variable
+    def read(self, *args, **kwargs):
+        return self._array_adapter.read(*args, **kwargs)
 
-    def read_block(self, block, slice=None):
-        data = self._variable.data
-        if isinstance(data, numpy.ndarray):
-            if block != (0,):
-                raise NotImplementedError
-            return data
-        dask_array = data.blocks[block]
-        if slice is not None:
-            dask_array = dask_array[slice]
-        return dask_array.compute()
+    def read_block(self, *args, **kwargs):
+        return self._array_adapter.read_block(*args, **kwargs)
 
 
 class DataArrayAdapter:
