@@ -1,4 +1,3 @@
-import abc
 import base64
 import collections.abc
 import contextlib
@@ -107,15 +106,6 @@ def entry(
         raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
 
 
-def adapter(
-    entry: Any = Depends(entry),
-):
-    "Specify a path parameter and use it to look up a adapter."
-    if not isinstance(entry, Duckadapter):
-        raise HTTPException(status_code=404, detail="This is not a adapter.")
-    return entry
-
-
 def block(
     # Ellipsis as the "default" tells FastAPI to make this parameter required.
     block: str = Query(..., regex="^[0-9]*(,[0-9]+)*$"),
@@ -197,32 +187,6 @@ def pagination_links(route, path_parts, offset, limit, length_hint):
     return links
 
 
-class Duckadapter(metaclass=abc.ABCMeta):
-    """
-    Used for isinstance(obj, Duckadapter):
-    """
-
-    @classmethod
-    def __subclasshook__(cls, candidate):
-        # If the following condition is True, candidate is recognized
-        # to "quack" like a adapter.
-        EXPECTED_ATTRS = ("read", "macrostructure", "microstructure")
-        return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
-
-
-class DuckTree(metaclass=abc.ABCMeta):
-    """
-    Used for isinstance(obj, DuckTree):
-    """
-
-    @classmethod
-    def __subclasshook__(cls, candidate):
-        # If the following condition is True, candidate is recognized
-        # to "quack" like a Tree.
-        EXPECTED_ATTRS = ("__getitem__", "__iter__")
-        return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
-
-
 def construct_entries_response(
     query_registry,
     tree,
@@ -239,8 +203,8 @@ def construct_entries_response(
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    if not isinstance(tree, DuckTree):
-        raise WrongTypeForRoute("This is not a Tree.")
+    if tree.structure_family != "node":
+        raise WrongTypeForRoute("This is not a Node; it does not have entries.")
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
@@ -468,7 +432,7 @@ def construct_resource(
             attributes["metadata"] = entry.metadata
     if models.EntryFields.specs in fields:
         attributes["specs"] = getattr(entry, "specs", None)
-    if isinstance(entry, DuckTree):
+    if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)

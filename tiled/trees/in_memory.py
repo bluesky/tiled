@@ -24,6 +24,9 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         "include_routers",
         "metadata_stale_after",
     )
+
+    structure_family = "node"
+
     # Define classmethods for managing what queries this Tree knows.
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
