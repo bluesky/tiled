@@ -125,7 +125,7 @@ class OneShotCachedMap(collections.abc.Mapping):
             raise ValueError(
                 "This requires a callable that return a value, not the value itself."
             )
-        self.__mapping[key] = value_factory
+        self.__mapping[key] = _OneShotCachedMapWrapper(value_factory)
 
     def discard(self, key):
         """
