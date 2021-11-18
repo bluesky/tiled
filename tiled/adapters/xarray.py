@@ -1,4 +1,4 @@
-from functools import cached_property
+import sys
 
 import dask.array
 
@@ -10,6 +10,11 @@ from ..structures.xarray import (
     VariableStructure,
 )
 from ..utils import DictView
+
+if sys.version_info < (3, 8):
+    from cached_property import cached_property  # isort:skip
+else:
+    from functools import cached_property  # isort:skip
 
 
 class VariableAdapter:
