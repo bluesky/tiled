@@ -50,6 +50,10 @@ class DaskDataArrayClient(Node):
     def __repr__(self):
         return f"<{type(self).__name__}>"
 
+    @property
+    def coords(self):
+        return self.get("coords", {})
+
     def read(self):
         data = self["variable"].read()
         coords = {name: coord.read() for name, coord in self.get("coords", {}).items()}
@@ -87,26 +91,13 @@ class DaskDataArrayClient(Node):
         >>> import numpy
         >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
         """
-        variable = self.structure().macro.variable
-        template_vars = {}
-        if self._variable_name is not None:
-            # This is a stand-alone DataArray.
-            template_vars.update({"variable": self._variable_name})
-        self._build_variable_client(variable).export(
-            filepath,
-            format=format,
-            slice=slice,
-            link="full_variable",
-            template_vars=template_vars,
-        )
+        return self["variable"].export(filepath, format=format, slice=slice)
 
     def export_all(self, filepath, format=None, slice=None):
         """
         Export data and coords.
         """
-        # The server has no endpoint for this.
-        # It's not clear if there any any appropriate formats for it.
-        # Export the whole Dataset instead.
+        # TODO It should be possible to export this as Arrow or maybe HDF5.
         raise NotImplementedError
 
 

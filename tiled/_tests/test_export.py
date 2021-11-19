@@ -55,7 +55,7 @@ tree = Tree(
                         },
                     )
                 ),
-                "xarray_dataset": DatasetAdapter.from_data_array(
+                "xarray_dataset": DatasetAdapter(
                     xarray.Dataset(
                         {
                             "image": xarray.DataArray(
