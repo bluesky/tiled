@@ -232,8 +232,8 @@ class Context:
         client.headers["x-base-url"] = base_url
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
         if path_parts:
-            # Strip "/metadata"
-            path_parts.pop(0)
+            # Strip "/node/metadata"
+            path_parts.pop(1)
         self._path_parts = path_parts
 
     @property

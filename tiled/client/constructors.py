@@ -56,7 +56,7 @@ def from_uri(
     headers : dict, optional
         Extra HTTP headers.
     """
-    # The uri is expected to reach the root or /metadata/[...] route.
+    # The uri is expected to reach the root or /node/metadata/[...] route.
     url = httpx.URL(uri)
     headers = headers or {}
     headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
@@ -192,7 +192,7 @@ def from_context(context, structure_clients="numpy", *, path=None):
     if isinstance(structure_clients, str):
         structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     path = path or []
-    content = context.get_json(f"/metadata/{'/'.join(context.path_parts)}")
+    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
     instance = Node(
         context,

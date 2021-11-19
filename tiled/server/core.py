@@ -444,12 +444,12 @@ def construct_resource(
         }
         if not omit_links:
             d["links"] = {
-                "self": f"{base_url}metadata/{path_str}",
+                "self": f"{base_url}node/metadata/{path_str}",
                 "search": f"{base_url}search/{path_str}",
             }
         resource = models.Resource(**d)
     else:
-        links = {"self": f"{base_url}metadata/{path_str}"}
+        links = {"self": f"{base_url}node/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
