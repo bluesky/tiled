@@ -105,7 +105,7 @@ class DataArrayClient(DaskDataArrayClient):
     def download(self):
         # Do not run super().download() because DaskDataArrayClient calls compute()
         # which does not apply here.
-        BaseArrayClient.download(self)
+        Node.download(self)
         self.read()
 
 
