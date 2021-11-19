@@ -3,12 +3,8 @@ import sys
 import dask.array
 
 from ..adapters.array import ArrayAdapter
-from ..structures.xarray import (
-    DataArrayMacroStructure,
-    DataArrayStructure,
-    DatasetMacroStructure,
-    VariableStructure,
-)
+from ..structures.xarray import DataArrayStructure, DatasetMacroStructure
+from ..trees.in_memory import Tree
 from ..utils import DictView
 
 if sys.version_info < (3, 8):
@@ -59,60 +55,29 @@ class VariableAdapter:
         return self._array_adapter.read_block(*args, **kwargs)
 
 
-class DataArrayAdapter:
+class DataArrayAdapter(Tree):
     """
     Wrap an xarray.DataArray
     """
 
-    structure_family = "data_array"
+    specs = ["data_array"]
 
-    def __init__(self, data_array, metadata=None):
-        self._data_array = data_array
-        self._metadata = metadata or {}
+    @classmethod
+    def from_data_array(cls, data_array, depth=0):
+        # TODO recursion with coords that are also DataArrays that may
+        # contian themselves
+        mapping = {"variable": VariableAdapter(data_array.variable)}
+        if depth == 0:
+            mapping["coords"] = Tree(
+                {
+                    name: cls.from_data_array(coord, depth=1 + depth)
+                    for name, coord in data_array.coords.items()
+                }
+            )
+        return cls(mapping, metadata={"name": data_array.name})
 
     def __repr__(self):
-        return f"{type(self).__name__}({self._data_array!r})"
-
-    @property
-    def metadata(self):
-        return DictView(self._metadata)
-
-    def macrostructure(self):
-        return self._recursive_macrostructure()
-
-    def _recursive_macrostructure(self, depth=0):
-        variable_reader = VariableAdapter(self._data_array.variable)
-        variable_structure = VariableStructure(
-            macro=variable_reader.macrostructure(), micro=None
-        )
-        coords = {}
-        if depth == 0:
-            for k, v in self._data_array.coords.items():
-                coord_reader = DataArrayAdapter(v)
-                coord_structure = DataArrayStructure(
-                    macro=coord_reader._recursive_macrostructure(depth=1 + depth),
-                    micro=None,
-                )
-                coords[k] = coord_structure
-        return DataArrayMacroStructure(
-            variable=variable_structure, coords=coords, name=self._data_array.name
-        )
-
-    def microstructure(self):
-        return None
-
-    def read(self, slice=None):
-        data_array = self._data_array
-        if slice is not None:
-            data_array = data_array[slice]
-        return data_array.compute()
-
-    def read_block(self, block, coord=None, slice=None):
-        if coord is None:
-            adapter = VariableAdapter(self._data_array.variable)
-        else:
-            adapter = DataArrayAdapter(self._data_array.coords[coord])
-        return adapter.read_block(block, slice=slice)
+        return f"<{type(self).__name__}>"
 
 
 class DatasetAdapter:

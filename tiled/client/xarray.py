@@ -1,16 +1,11 @@
-from collections.abc import Iterable
-
 import pandas
 import xarray
 
 from ..structures.dataframe import deserialize_arrow
-from ..structures.xarray import (
-    APACHE_ARROW_FILE_MIME_TYPE,
-    DataArrayStructure,
-    DatasetStructure,
-)
+from ..structures.xarray import APACHE_ARROW_FILE_MIME_TYPE, DatasetStructure
 from .array import ArrayClient, DaskArrayClient
 from .base import BaseArrayClient
+from .node import Node
 from .utils import export_util
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
@@ -47,115 +42,18 @@ class VariableClient(_VariableMixin, ArrayClient):
     pass
 
 
-class DaskDataArrayClient(BaseArrayClient):
+class DaskDataArrayClient(Node):
+    def __init__(self, *args, **kwargs):
+        # TODO Inject DaskArrayClient.
+        super().__init__(*args, **kwargs)
 
-    STRUCTURE_TYPE = DataArrayStructure  # used by base class
-    VARIABLE_CLIENT = DaskVariableClient  # overriden in subclass
+    def __repr__(self):
+        return f"<{type(self).__name__}>"
 
-    def __init__(
-        self,
-        *args,
-        route="/data_array/block",
-        variable_name=None,
-        coords=None,
-        **kwargs,
-    ):
-        super().__init__(*args, route=route, **kwargs)
-        self._coords = coords
-        self._variable_name = variable_name  # if this is contained by a DatasetClient
-
-    def _build_variable_client(self, variable):
-        return self.VARIABLE_CLIENT(
-            context=self.context,
-            item=self.item,
-            path=self.path,
-            params=self._params,
-            structure=variable,
-            route=self._route,
-        )
-
-    def read_block(self, block, slice=None):
-        """
-        Read a block (optional sub-sliced) of array data from this DataArray's Variable.
-
-        Intended for advanced uses. Returns array-like, not Variable.
-        """
-        variable = self.structure().macro.variable
-        client = self._build_variable_client(variable)
-        return client.read_block(block, slice)
-
-    @property
-    def coords(self):
-        """
-        A dict mapping coord names to Variables.
-
-        Intended for advanced uses. Enables access to read_block(...) on coords.
-        """
-        structure = self.structure().macro
-        # If this is part of a Dataset, the coords are fetched
-        # once and passed in so that they are not independently
-        # (re-)fetched by every DataArray.
-        if self._coords is not None:
-            return {k: v for k, v in self._coords.items() if k in structure.coords}
-        result = {}
-        for name, variable in structure.coords.items():
-            client = type(self)(
-                context=self.context,
-                item=self.item,
-                path=self.path,
-                params={"coord": name, **self._params},
-                structure=variable,
-                route=self._route,
-            )
-            result[name] = client
-        return result
-
-    def read(self, slice=None):
-        if slice is None:
-            slice = ()
-        elif isinstance(slice, Iterable):
-            slice = tuple(slice)
-        else:
-            slice = tuple([slice])
-        structure = self.structure().macro
-        variable = structure.variable
-        client = self.VARIABLE_CLIENT(
-            context=self.context,
-            item=self.item,
-            path=self.path,
-            params=self._params,
-            structure=variable,
-            route=self._route,
-        )
-        data = client.read(slice)
-        # If this is part of a Dataset, the coords are fetched
-        # once and passed in so that they are not independently
-        # (re-)fetched by every DataArray.
-        if self._coords is not None:
-            coords = {k: v for k, v in self._coords.items() if k in structure.coords}
-        else:
-            coords = {}
-            for name, variable in structure.coords.items():
-                client = type(self)(
-                    context=self.context,
-                    item=self.item,
-                    path=self.path,
-                    params={"coord": name, **self._params},
-                    structure=variable,
-                    route=self._route,
-                )
-                coords[name] = client.read(slice)
-        return xarray.DataArray(data=data, coords=coords, name=structure.name)
-
-    def __getitem__(self, slice):
-        return self.read(slice)
-
-    # The default object.__iter__ works as expected here, no need to
-    # implemented it specifically.
-
-    def __len__(self):
-        # As with numpy, len(arr) is the size of the zeroth axis.
-        return self.structure().macro.variable.macro.data.macro.shape[0]
+    def read(self):
+        data = self["variable"].read()
+        coords = {name: coord.read() for name, coord in self.get("coords", {}).items()}
+        return xarray.DataArray(data=data, coords=coords, name=self.metadata["name"])
 
     def download(self):
         super().download()
@@ -213,9 +111,6 @@ class DaskDataArrayClient(BaseArrayClient):
 
 
 class DataArrayClient(DaskDataArrayClient):
-
-    VARIABLE_CLIENT = VariableClient
-
     def download(self):
         # Do not run super().download() because DaskDataArrayClient calls compute()
         # which does not apply here.

@@ -80,7 +80,7 @@ mapping = {
                     dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
                 )
             ),
-            "image_with_coords": DataArrayAdapter(
+            "image_with_coords": DataArrayAdapter.from_data_array(
                 xarray.DataArray(
                     xarray.Variable(
                         data=dask.array.from_array(data["medium_image"]),
@@ -113,7 +113,7 @@ mapping = {
                     }
                 )
             ),
-            "xarray_data_array": DataArrayAdapter(
+            "xarray_data_array": DataArrayAdapter.from_data_array(
                 xarray.DataArray(
                     xarray.Variable(
                         data=dask.array.from_array(data["medium_image"]),

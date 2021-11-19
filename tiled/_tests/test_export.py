@@ -42,7 +42,7 @@ tree = Tree(
                         attrs={"thing": "stuff"},
                     )
                 ),
-                "image_with_coords": DataArrayAdapter(
+                "image_with_coords": DataArrayAdapter.from_data_array(
                     xarray.DataArray(
                         xarray.Variable(
                             data=dask.array.from_array(data),
@@ -55,7 +55,7 @@ tree = Tree(
                         },
                     )
                 ),
-                "xarray_dataset": DatasetAdapter(
+                "xarray_dataset": DatasetAdapter.from_data_array(
                     xarray.Dataset(
                         {
                             "image": xarray.DataArray(
@@ -73,7 +73,7 @@ tree = Tree(
                         }
                     )
                 ),
-                "xarray_data_array": DataArrayAdapter(
+                "xarray_data_array": DataArrayAdapter.from_data_array(
                     xarray.DataArray(
                         xarray.Variable(
                             data=dask.array.from_array(data),

@@ -53,7 +53,7 @@ EXPECTED = {
 tree = Tree(
     {
         "variable": VariableAdapter(EXPECTED["variable"]),
-        "data_array": DataArrayAdapter(EXPECTED["data_array"]),
+        "data_array": DataArrayAdapter.from_data_array(EXPECTED["data_array"]),
         "dataset": DatasetAdapter(EXPECTED["dataset"]),
         "wide": DatasetAdapter(EXPECTED["wide"]),
     }
