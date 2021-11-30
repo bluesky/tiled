@@ -641,12 +641,12 @@ class MsgpackResponse(Response):
                 return msgpack.packb(
                     content, default=_numpy_safe_msgpack_encoder, datetime=True
                 )
-        except TypeError as err:
+        except (ValueError, TypeError) as err:
             # msgpack tries to handle all datetimes, but if it
             # received a naive one (tzinfo=None) then it fails.
             # We cannot use the default hook to handle this because
             # it is not called.
-            if err.args == ("can not serialize 'datetime.datetime' object",) and (
+            if "can not serialize 'datetime.datetime' object" in str(err) and (
                 not _reentered
             ):
                 patched_content = _patch_naive_datetimes(content)
