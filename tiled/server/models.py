@@ -44,7 +44,7 @@ class StructureFamilies(str, enum.Enum):
     dataframe = "dataframe"
     variable = "variable"
     data_array = "data_array"
-    dataset = "dataset"
+    xarray_dataset = "xarray_dataset"
 
 
 class NodeAttributes(pydantic.BaseModel):

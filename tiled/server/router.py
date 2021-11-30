@@ -558,7 +558,7 @@ def node_full(
     """
     Fetch a full coordinate from within an xarray.Dataset.
     """
-    if entry.structure_family != "dataset":
+    if entry.structure_family != "xarray_dataset":
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /dataset/full route.",
@@ -574,7 +574,7 @@ def node_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "dataset",
+                "xarray_dataset",
                 serialization_registry,
                 dataset,
                 entry.metadata,

@@ -157,13 +157,7 @@ ARRAY_STRUCTURE_TYPES = OneShotCachedMap(
         "array": lambda: importlib.import_module(
             "...structures.array", BaseArrayClient.__module__
         ).ArrayStructure,
-        "variable": lambda: importlib.import_module(
-            "...structures.xarray", BaseArrayClient.__module__
-        ).VariableStructure,
-        "data_array": lambda: importlib.import_module(
-            "...structures.xarray", BaseArrayClient.__module__
-        ).DataArrayStructure,
-        "dataset": lambda: importlib.import_module(
+        "xarray_dataset": lambda: importlib.import_module(
             "...structures.xarray", BaseArrayClient.__module__
         ).DatasetStructure,
     }

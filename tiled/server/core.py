@@ -320,7 +320,7 @@ DEFAULT_MEDIA_TYPES = {
     "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
     "variable": "application/octet-stream",
     "data_array": "application/octet-stream",
-    "dataset": "application/netcdf",
+    "xarray_dataset": "application/netcdf",
 }
 
 
@@ -512,21 +512,6 @@ def construct_resource(
                     links[
                         "partition"
                     ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
-                elif entry.structure_family == "data_array":
-                    block_template = ",".join(
-                        f"{{index_{index}}}"
-                        for index in range(
-                            len(structure["macro"]["variable"]["macro"]["shape"])
-                        )
-                    )
-                    links[
-                        "block"
-                    ] = f"{base_url}data_array/block/{path_str}?block={block_template}"
-                elif entry.structure_family == "dataset":
-                    links[
-                        "block"
-                    ] = f"{base_url}dataset/block/{path_str}?variable={{variable}}&block={{block_indexes}}"
-                    microstructure = entry.microstructure()
             attributes["structure"] = structure
         d = {
             "id": path_parts[-1],
@@ -700,11 +685,9 @@ class WrongTypeForRoute(Exception):
 FULL_LINKS = {
     "array": {"full": "{base_url}array/full/{path}"},
     "dataframe": {"full": "{base_url}dataframe/full/{path}"},
-    "variable": {"full": "{base_url}variable/full/{path}"},
-    "data_array": {"full_variable": "{base_url}data_array/variable/full/{path}"},
-    "dataset": {
-        "full_variable": "{base_url}dataset/data_var/full/{path}?variable={{variable}}",
-        "full_coordinate": "{base_url}dataset/coord/full/{path}?variable={{variable}}",
+    "xarray_dataset": {
+        "full_variable": "{base_url}array/full/{path}/data_vars/{{variable}}",
+        "full_coord": "{base_url}array/full/{path}/coords/{{coord}}",
         "full_dataset": "{base_url}dataset/full/{path}",
     },
 }
