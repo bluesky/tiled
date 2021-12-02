@@ -105,6 +105,13 @@ def get_app(
         app.include_router(declare_search_router(query_registry))
 
         app.state.allow_origins.extend(settings.allow_origins)
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=app.state.allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         object_cache_logger.setLevel(settings.object_cache_log_level.upper())
         object_cache_available_bytes = settings.object_cache_available_bytes
@@ -230,14 +237,6 @@ def get_app(
             params.setdefault("samesite", "lax")
             response.set_cookie(**params)
         return response
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=app.state.allow_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
     app.openapi = partial(custom_openapi, app)
     return app
