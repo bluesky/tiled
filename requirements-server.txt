@@ -1,4 +1,5 @@
 # These are the requirements needed for basic server functionality.
+ariadne
 cachey
 cachetools
 dask
