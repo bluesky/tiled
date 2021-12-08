@@ -37,8 +37,11 @@ class TiffReader:
         return arr
 
     def read_block(self, block, slice=None):
-        if block != (0, 0):
+        # For simplicity, this adapter always treat a single TIFF file as one
+        # chunk. This could be relaxed in the future.
+        if sum(block) != 0:
             raise IndexError(block)
+
         arr = with_object_cache(self._cache_key, self._file.asarray)
         if slice is not None:
             arr = arr[slice]
