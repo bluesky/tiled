@@ -19,6 +19,21 @@ class ListView(collections.abc.Sequence):
     def __repr__(self):
         return f"{type(self).__name__}({self._internal_list!r})"
 
+    def _repr_pretty_(self, p, cycle):
+        """
+        Provide "pretty" display in IPython/Jupyter.
+
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
+        """
+        from pprint import pformat
+
+        list_ = self._internal_list
+        # pformat only works on literal list, so convert if we have
+        # some other list-like
+        if not type(list_) is list:
+            list_ = list(self._internal_list)
+        p.text(pformat(list_))
+
     def __getitem__(self, index):
         return self._internal_list[index]
 
@@ -43,6 +58,21 @@ class DictView(collections.abc.Mapping):
 
     def __repr__(self):
         return f"{type(self).__name__}({self._internal_dict!r})"
+
+    def _repr_pretty_(self, p, cycle):
+        """
+        Provide "pretty" display in IPython/Jupyter.
+
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
+        """
+        from pprint import pformat
+
+        d = self._internal_dict
+        # pformat only works on literal dict, so convert if we have
+        # some other dict-like
+        if not type(d) is dict:
+            d = dict(self._internal_dict)
+        p.text(pformat(d))
 
     def __getitem__(self, key):
         return self._internal_dict[key]
