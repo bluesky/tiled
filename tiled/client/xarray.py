@@ -18,11 +18,7 @@ class _VariableMixin:
 
     @property
     def attrs(self):
-        return self.metadata["attrs"]
-
-    @property
-    def dims(self):
-        return self.metadata["dims"]
+        return self.metadata
 
     def read(self, *args, **kwargs):
         data = super().read(*args, **kwargs)

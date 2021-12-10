@@ -3,6 +3,7 @@ import sys
 import dask.array
 
 from ..adapters.array import ArrayAdapter
+from ..structures.xarray import DatasetMacroStructure
 from ..trees.in_memory import Tree
 from ..utils import DictView
 
@@ -28,7 +29,7 @@ class VariableAdapter:
 
     @cached_property
     def metadata(self):
-        return DictView({"attrs": self._variable.attrs, "dims": self._variable.dims})
+        return DictView(self._variable.attrs)
 
     @cached_property
     def _array_adapter(self):
@@ -36,9 +37,11 @@ class VariableAdapter:
         # assume that these are dask-backed the way that we do in the other
         # adapters.
         if isinstance(self._variable.data, dask.array.Array):
-            array_adapter = ArrayAdapter(self._variable.data)
+            array_adapter = ArrayAdapter(self._variable.data, dims=self._variable.dims)
         else:
-            array_adapter = ArrayAdapter.from_array(self._variable.data)
+            array_adapter = ArrayAdapter.from_array(
+                self._variable.data, dims=self._variable.dims
+            )
         return array_adapter
 
     def macrostructure(self):
@@ -87,17 +90,29 @@ class DatasetAdapter:
     def __init__(self, dataset):
         self._dataset = dataset
 
+    @property
     def metadata(self):
-        return self._dataset.metadata
+        return self._dataset.attrs
+
+    def microstructure(self):
+        return None
 
     def macrostructure(self):
         data_vars = {}
         for k, v in self._dataset.data_vars.items():
-            data_vars[k] = VariableApdater.from_data_array(v.variable).macrostructure()
+            adapter = VariableAdapter(v.variable)
+            data_vars[k] = {
+                "macro": adapter.macrostructure(),
+                "micro": adapter.microstructure(),
+            }
         coords = {}
         for k, v in self._dataset.coords.items():
-            coords[k] = VariableApdater.from_data_array(v.variable).macrostructure()
-        return DatasetMacrostructure(data_vars=data_vars, coords=coords)
+            adapter = VariableAdapter(v.variable)
+            coords[k] = {
+                "macro": adapter.macrostructure(),
+                "micro": adapter.microstructure(),
+            }
+        return DatasetMacroStructure(data_vars=data_vars, coords=coords)
 
     def __repr__(self):
         return f"<{type(self).__name__}>"

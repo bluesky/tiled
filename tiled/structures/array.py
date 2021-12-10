@@ -79,13 +79,18 @@ class Kind(str, enum.Enum):
 @dataclass
 class ArrayMacroStructure:
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
-    shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
+    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
+    dims: Optional[Tuple[str, ...]]  # None or tuple of names like ("x", "y")
 
     @classmethod
     def from_json(cls, structure):
+        dims = structure["dims"]
+        if dims is not None:
+            dims = tuple(dims)
         return cls(
             chunks=tuple(map(tuple, structure["chunks"])),
             shape=tuple(structure["shape"]),
+            dims=dims,
         )
 
 

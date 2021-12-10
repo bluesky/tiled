@@ -23,15 +23,16 @@ class ArrayAdapter:
 
     structure_family = "array"
 
-    def __init__(self, data, metadata=None):
+    def __init__(self, data, *, metadata=None, dims=None):
         if not isinstance(data, dask.array.Array):
             raise TypeError(f"data must be a dask.array.Array, not a {type(data)}")
         self._data = data
         self._metadata = metadata or {}
+        self._dims = dims
 
     @classmethod
-    def from_array(cls, data, metadata=None):
-        return cls(dask.array.from_array(data), metadata)
+    def from_array(cls, data, *, metadata=None, dims=None):
+        return cls(dask.array.from_array(data), metadata=metadata, dims=dims)
 
     def __repr__(self):
         return f"{type(self).__name__}({self._data!r})"
@@ -42,7 +43,9 @@ class ArrayAdapter:
 
     def macrostructure(self):
         "Structures of the layout of blocks of this array"
-        return ArrayMacroStructure(shape=self._data.shape, chunks=self._data.chunks)
+        return ArrayMacroStructure(
+            shape=self._data.shape, chunks=self._data.chunks, dims=self._dims
+        )
 
     def microstructure(self):
         "Internal structure of a block of this array --- i.e. its data type"

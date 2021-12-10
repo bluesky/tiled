@@ -130,16 +130,6 @@ Xarrays are "meta" structures that contain chunks of arrays. For this reason,
 they have no microstructure. Their macrostructure encompasses nested array
 structures.
 
-#### Variable
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.structures.xarray.VariableStructure
-   tiled.structures.xarray.VariableMacroStructure
-```
-
 #### DataArray
 
 ```{eval-rst}

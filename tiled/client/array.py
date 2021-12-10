@@ -18,6 +18,10 @@ class DaskArrayClient(BaseArrayClient):
             route = f"/{item['attributes']['structure_family']}/block"
         super().__init__(*args, route=route, item=item, **kwargs)
 
+    @property
+    def dims(self):
+        return self.structure().macro.dims
+
     def _get_block(self, block, dtype, shape, slice=None):
         """
         Fetch the actual data for one block in a chunked (dask) array.

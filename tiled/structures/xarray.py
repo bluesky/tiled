@@ -1,6 +1,6 @@
 import io
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict
 
 import xarray
 
@@ -19,90 +19,21 @@ from .dataframe import (
 
 
 @dataclass
-class VariableMacroStructure:
-    dims: Tuple[str]
-    data: ArrayStructure
-    attrs: Dict  # TODO Use JSONSerializableDict
-    # TODO Variables also have `encoding`. Do we want to carry that as well?
-
-    @classmethod
-    def from_json(cls, structure):
-        # Fall back to "array" default for backward-compatibility.
-        return cls(
-            dims=structure["dims"],
-            data=ArrayStructure.from_json(structure["data"]),
-            attrs=structure["attrs"],
-        )
-
-
-@dataclass
-class VariableStructure:
-    macro: VariableMacroStructure
-    micro: None
-
-    @classmethod
-    def from_json(cls, structure):
-        return cls(
-            macro=VariableMacroStructure.from_json(structure["macro"]), micro=None
-        )
-
-
-@dataclass
-class DataArrayMacroStructure:
-    variable: VariableStructure
-    coords: Dict[str, str]  # overridden below to be Dict[str, DataArrayStructure]
-    name: str
-
-    @classmethod
-    def from_json(cls, structure):
-        return cls(
-            variable=VariableStructure.from_json(structure["variable"]),
-            coords={
-                key: DataArrayStructure.from_json(value)
-                for key, value in structure["coords"].items()
-            },
-            name=structure["name"],
-        )
-
-
-@dataclass
-class DataArrayStructure:
-    macro: DataArrayMacroStructure
-    micro: None
-
-    @classmethod
-    def from_json(cls, structure):
-        return cls(
-            macro=DataArrayMacroStructure.from_json(structure["macro"]), micro=None
-        )
-
-
-# Define a nested structure now that the necessary object has been defined.
-DataArrayMacroStructure.__annotations__[
-    "coords"
-] = DataArrayMacroStructure.__annotations__["coords"].copy_with(
-    (str, DataArrayMacroStructure)
-)
-
-
-@dataclass
 class DatasetMacroStructure:
-    data_vars: Dict[str, DataArrayStructure]
-    coords: Dict[str, DataArrayStructure]
-    attrs: Dict  # TODO Use JSONSerializableDict
+    data_vars: Dict[str, ArrayStructure]
+    coords: Dict[str, ArrayStructure]
 
     @classmethod
     def from_json(cls, structure):
         return cls(
             data_vars={
-                key: DataArrayStructure.from_json(value)
+                key: ArrayStructure.from_json(value)
                 for key, value in structure["data_vars"].items()
             },
             coords={
-                key: DataArrayStructure.from_json(value)
+                key: ArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
             },
-            attrs=structure["attrs"],
         )
 
 

@@ -37,7 +37,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "data_array": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DataArrayClient,
-                "dataset": lambda: importlib.import_module(
+                "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DatasetClient,
             }
@@ -57,7 +57,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "data_array": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskDataArrayClient,
-                "dataset": lambda: importlib.import_module(
+                "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskDatasetClient,
             }

@@ -467,7 +467,10 @@ def construct_resource(
                 if macrostructure is not None:
                     structure["macro"] = dataclasses.asdict(macrostructure)
             if models.EntryFields.microstructure in fields:
-                if entry.structure_family == "dataframe":
+                if entry.structure_family == "node":
+                    assert False  # not sure if this ever happens
+                    pass
+                elif entry.structure_family == "dataframe":
                     import pandas
 
                     microstructure = entry.microstructure()
