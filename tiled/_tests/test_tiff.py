@@ -5,6 +5,7 @@ import pytest
 import tifffile as tf
 
 from ..client import from_config, from_tree
+from ..readers.tiff import TiffReader
 from ..readers.tiff_sequence import TiffSequenceReader, subdirectory_handler
 from ..trees.in_memory import Tree
 
@@ -86,3 +87,15 @@ a,b,c
     assert list(client["other_stuff"]["stuff"].read().columns) == ["a", "b", "c"]
     assert list(client["other_file1"].read().columns) == ["a", "b", "c"]
     assert list(client["other_file2"].read().columns) == ["a", "b", "c"]
+
+
+def test_rgb(tmpdir):
+    "Test an RGB TIFF."
+    data = numpy.random.randint(0, 255, (11, 17, 3), dtype="uint8")
+    path = Path(tmpdir, "temp.tif")
+    tf.imwrite(path, data)
+
+    tree = Tree({"A": TiffReader(str(path))})
+    client = from_tree(tree)
+    arr = client["A"].read()
+    assert arr.shape == data.shape
