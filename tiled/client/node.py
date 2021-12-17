@@ -185,7 +185,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         with self.context.revalidation(revalidate):
             self.download()
 
-    def _get_class(self, item):
+    def client_for_item(self, item, path):
+        """
+        Create an instance of the appropriate client class for an item.
+
+        This is intended primarily for internal use and use by subclasses.
+        """
         # The server can use specs to tell us that this is not just *any*
         # node/array/dataframe/etc. but that is matches a certain specification
         # for which there may be a special client available.
@@ -195,40 +200,21 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs = item["attributes"].get("specs", []) or []
         for spec in specs:
             class_ = self.structure_clients.get(spec)
-            if class_ is None:
-                continue
-            return class_
-        structure_family = item["attributes"]["structure_family"]
-        try:
-            return self.structure_clients[structure_family]
-        except KeyError:
-            raise UnknownStructureFamily(structure_family) from None
-
-    def client_for_item(self, item, path):
-        """
-        Create an instance of the appropriate client class for an item.
-
-        This is intended primarily for internal use and use by subclasses.
-        """
-        class_ = self._get_class(item)
-        structure_family = item["attributes"]["structure_family"]
-        if structure_family == "node":
-            return class_(
-                context=self.context,
-                item=item,
-                path=path,
-                structure_clients=self.structure_clients,
-                params=self._params,
-                queries=None,  # This is the only difference.
-            )
+            if class_ is not None:
+                break
         else:
-            return class_(
-                context=self.context,
-                item=item,
-                path=path,
-                structure_clients=self.structure_clients,
-                params=self._params,
-            )
+            structure_family = item["attributes"]["structure_family"]
+            try:
+                class_ = self.structure_clients[structure_family]
+            except KeyError:
+                raise UnknownStructureFamily(structure_family) from None
+        return class_(
+            context=self.context,
+            item=item,
+            path=path,
+            structure_clients=self.structure_clients,
+            params=self._params,
+        )
 
     def new_variation(
         self,
