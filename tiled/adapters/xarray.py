@@ -119,6 +119,10 @@ class DataArrayAdapter:
     def structure(self):
         return DataArrayStructure(macro=self.macrostructure(), micro=None)
 
+    def read(self):
+        raise NotImplementedError
+        # return xarray.DataArray(...)
+
 
 class DatasetAdapter:
     """
