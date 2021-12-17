@@ -19,6 +19,34 @@ from .dataframe import (
 
 
 @dataclass
+class DataArrayMacroStructure:
+    variable: ArrayStructure
+    coords: Dict[str, ArrayStructure]
+
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            variable=ArrayStructure.from_json(structure["variable"]),
+            coords={
+                key: ArrayStructure.from_json(value)
+                for key, value in structure["coords"].items()
+            },
+        )
+
+
+@dataclass
+class DataArrayStructure:
+    macro: DataArrayMacroStructure
+    micro: None
+
+    @classmethod
+    def from_json(cls, structure):
+        return cls(
+            macro=DataArrayMacroStructure.from_json(structure["macro"]), micro=None
+        )
+
+
+@dataclass
 class DatasetMacroStructure:
     data_vars: Dict[str, ArrayStructure]
     coords: Dict[str, ArrayStructure]
@@ -70,32 +98,32 @@ serialization_registry.register("dataset", "application/x-netcdf", serialize_net
 # This doesn't make much sense for N-dimensional variables, but for
 # 1-dimensional variables it is useful.
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     APACHE_ARROW_FILE_MIME_TYPE,
     lambda ds, metadata: serialize_arrow(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "application/x-parquet",
     lambda ds, metadata: serialize_parquet(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "text/csv",
     lambda ds, metadata: serialize_csv(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "text/plain",
     lambda ds, metadata: serialize_csv(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "text/html",
     lambda ds, metadata: serialize_html(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     XLSX_MIME_TYPE,
     lambda ds, metadata: serialize_excel(ds.to_dataframe(), metadata),
 )
@@ -109,7 +137,7 @@ if modules_available("orjson"):
         )
 
     serialization_registry.register(
-        "dataset",
+        "xarray_dataset",
         "application/json",
         serialize_json,
     )

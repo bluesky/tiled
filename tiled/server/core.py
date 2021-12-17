@@ -319,7 +319,7 @@ DEFAULT_MEDIA_TYPES = {
     "array": "application/octet-stream",
     "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
     "variable": "application/octet-stream",
-    "data_array": "application/octet-stream",
+    "xarray_data_array": "application/octet-stream",
     "xarray_dataset": "application/netcdf",
 }
 
@@ -688,6 +688,7 @@ class WrongTypeForRoute(Exception):
 FULL_LINKS = {
     "array": {"full": "{base_url}array/full/{path}"},
     "dataframe": {"full": "{base_url}dataframe/full/{path}"},
+    "xarray_data_array": {},
     "xarray_dataset": {
         "full_variable": "{base_url}array/full/{path}/data_vars/{{variable}}",
         "full_coord": "{base_url}array/full/{path}/coords/{{coord}}",

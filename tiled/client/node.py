@@ -34,7 +34,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "variable": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).VariableClient,
-                "data_array": lambda: importlib.import_module(
+                "xarray_data_array": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DataArrayClient,
                 "xarray_dataset": lambda: importlib.import_module(
@@ -54,7 +54,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "variable": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskVariableClient,
-                "data_array": lambda: importlib.import_module(
+                "xarray_data_array": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskDataArrayClient,
                 "xarray_dataset": lambda: importlib.import_module(
@@ -131,7 +131,13 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
             )
         }
-        super().__init__(context=context, item=item, path=path, params=params)
+        super().__init__(
+            context=context,
+            item=item,
+            path=path,
+            params=params,
+            structure_clients=structure_clients,
+        )
 
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
@@ -217,7 +223,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         else:
             return class_(
-                context=self.context, item=item, path=path, params=self._params
+                context=self.context,
+                item=item,
+                path=path,
+                structure_clients=self.structure_clients,
+                params=self._params,
             )
 
     def new_variation(

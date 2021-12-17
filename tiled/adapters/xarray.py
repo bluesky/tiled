@@ -2,8 +2,14 @@ import sys
 
 import dask.array
 
+from tiled.structures.array import ArrayStructure
+
 from ..adapters.array import ArrayAdapter
-from ..structures.xarray import DatasetMacroStructure
+from ..structures.xarray import (
+    DataArrayMacroStructure,
+    DataArrayStructure,
+    DatasetMacroStructure,
+)
 from ..trees.in_memory import Tree
 from ..utils import DictView
 
@@ -50,6 +56,9 @@ class VariableAdapter:
     def microstructure(self):
         return self._array_adapter.microstructure()
 
+    def structure(self):
+        return ArrayStructure(macro=self.macrostructure(), micro=self.microstructure())
+
     def read(self, *args, **kwargs):
         return self._array_adapter.read(*args, **kwargs)
 
@@ -57,27 +66,58 @@ class VariableAdapter:
         return self._array_adapter.read_block(*args, **kwargs)
 
 
-class DataArrayAdapter(Tree):
+class DataArrayAdapter:
     """
     Wrap an xarray.DataArray
     """
 
-    specs = ["data_array"]
+    structure_family = "xarray_data_array"
 
     @classmethod
     def from_data_array(cls, data_array, _depth=0):
-        mapping = {"variable": VariableAdapter(data_array.variable)}
+        variable = VariableAdapter(data_array.variable)
         if _depth == 0:
-            mapping["coords"] = Tree(
+            coords = Tree(
                 {
                     name: cls.from_data_array(coord, _depth=1 + _depth)
                     for name, coord in data_array.coords.items()
                 }
             )
-        return cls(mapping, metadata={"name": data_array.name})
+        else:
+            coords = {}
+        return cls(variable, coords, data_array.name)
+
+    def __init__(self, variable, coords, name):
+        self._variable = variable
+        self._coords = coords
+        self._name = name
+
+    @property
+    def metadata(self):
+        return {"name": self._name}
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
+
+    def __getitem__(self, key):
+        if key == "variable":
+            return self._variable
+        elif key == "coords":
+            return self._coords
+        else:
+            raise KeyError(key)
+
+    def microstructure(self):
+        return None
+
+    def macrostructure(self):
+        return DataArrayMacroStructure(
+            variable=self._variable.structure(),
+            coords={k: v.structure() for k, v in self._coords.items()},
+        )
+
+    def structure(self):
+        return DataArrayStructure(macro=self.macrostructure(), micro=None)
 
 
 class DatasetAdapter:

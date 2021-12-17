@@ -6,7 +6,7 @@ from .cache import Revalidate, verify_cache
 
 
 class BaseClient:
-    def __init__(self, context, *, item, path, params):
+    def __init__(self, context, *, item, path, params, structure_clients):
         self._context = context
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
@@ -15,6 +15,7 @@ class BaseClient:
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self._params = params or {}
+        self.structure_clients = structure_clients
         super().__init__()
 
     def __repr__(self):
@@ -59,7 +60,9 @@ class BaseClient:
     def offline(self, value):
         self.context.offline = bool(value)
 
-    def new_variation(self, path=UNCHANGED, params=UNCHANGED, **kwargs):
+    def new_variation(
+        self, path=UNCHANGED, params=UNCHANGED, structure_clients=UNCHANGED, **kwargs
+    ):
         """
         This is intended primarily for internal use and use by subclasses.
         """
@@ -67,7 +70,15 @@ class BaseClient:
             path = self._path
         if params is UNCHANGED:
             params = self._params
-        return type(self)(item=self._item, path=path, params=params, **kwargs)
+        if structure_clients is UNCHANGED:
+            structure_clients = self.structure_clients
+        return type(self)(
+            item=self._item,
+            path=path,
+            params=params,
+            structure_clients=structure_clients,
+            **kwargs,
+        )
 
 
 class BaseStructureClient(BaseClient):
