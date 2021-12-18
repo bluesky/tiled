@@ -21,14 +21,14 @@ from .dataframe import (
 @dataclass
 class DataArrayMacroStructure:
     variable: ArrayStructure
-    coords: Dict[str, ArrayStructure]
+    coords: Dict[str, str]  # overridden below to be Dict[str, DataArrayStructure]
 
     @classmethod
     def from_json(cls, structure):
         return cls(
             variable=ArrayStructure.from_json(structure["variable"]),
             coords={
-                key: ArrayStructure.from_json(value)
+                key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
             },
         )
@@ -44,6 +44,14 @@ class DataArrayStructure:
         return cls(
             macro=DataArrayMacroStructure.from_json(structure["macro"]), micro=None
         )
+
+
+# Define a nested structure now that the necessary object has been defined.
+DataArrayMacroStructure.__annotations__[
+    "coords"
+] = DataArrayMacroStructure.__annotations__["coords"].copy_with(
+    (str, DataArrayMacroStructure)
+)
 
 
 @dataclass

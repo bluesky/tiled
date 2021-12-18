@@ -128,23 +128,22 @@ class DaskDataArrayClient(BaseArrayClient):
     def __init__(
         self,
         *args,
-        route="/data_array/block",
         variable_name=None,
         coords=None,
         **kwargs,
     ):
-        super().__init__(*args, route=route, **kwargs)
+        super().__init__(*args, **kwargs)
         self._coords = coords
         self._variable_name = variable_name  # if this is contained by a DatasetClient
 
     def _build_variable_client(self, variable):
         return self.VARIABLE_CLIENT(
             context=self.context,
-            item=self.item,
-            path=self.path,
+            item=self.item,  # ???
+            path=list(self.path) + ["variable"],
             params=self._params,
             structure=variable,
-            route=self._route,
+            structure_clients=self.structure_clients,
         )
 
     def read_block(self, block, slice=None):
@@ -174,11 +173,11 @@ class DaskDataArrayClient(BaseArrayClient):
         for name, variable in structure.coords.items():
             client = type(self)(
                 context=self.context,
-                item=self.item,
-                path=self.path,
-                params={"coord": name, **self._params},
+                item=self.item,  # ???
+                path=list(self.path) + ["coords", name],
+                params=self._params,
                 structure=variable,
-                route=self._route,
+                structure_clients=self.structure_clients,
             )
             result[name] = client
         return result
@@ -194,11 +193,11 @@ class DaskDataArrayClient(BaseArrayClient):
         variable = structure.variable
         client = self.VARIABLE_CLIENT(
             context=self.context,
-            item=self.item,
-            path=self.path,
+            item=self.item,  # ???
+            path=list(self.path) + ["variable"],
             params=self._params,
             structure=variable,
-            route=self._route,
+            structure_clients=self.structure_clients,
         )
         data = client.read(slice)
         # If this is part of a Dataset, the coords are fetched
@@ -211,14 +210,14 @@ class DaskDataArrayClient(BaseArrayClient):
             for name, variable in structure.coords.items():
                 client = type(self)(
                     context=self.context,
-                    item=self.item,
-                    path=self.path,
-                    params={"coord": name, **self._params},
+                    item=self.item,  # ???
+                    path=list(self.path) + ["coords", name],
+                    params=self._params,
                     structure=variable,
-                    route=self._route,
+                    structure_clients=self.structure_clients,
                 )
                 coords[name] = client.read(slice)
-        return xarray.DataArray(data=data, coords=coords, name=structure.name)
+        return xarray.DataArray(data=data, coords=coords, name=self.metadata["name"])
 
     def __getitem__(self, slice):
         return self.read(slice)
