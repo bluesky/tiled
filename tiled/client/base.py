@@ -131,12 +131,6 @@ class BaseArrayClient(BaseStructureClient):
     Shared by Array, DataArray, Dataset
     """
 
-    def __init__(self, *args, route, **kwargs):
-        if route.endswith("/"):
-            route = route[:-1]
-        self._route = route
-        super().__init__(*args, **kwargs)
-
     def structure(self):
         # Notice that we are NOT *caching* in self._structure here. We are
         # allowing that the creator of this instance might have already known
@@ -168,6 +162,9 @@ ARRAY_STRUCTURE_TYPES = OneShotCachedMap(
         "array": lambda: importlib.import_module(
             "...structures.array", BaseArrayClient.__module__
         ).ArrayStructure,
+        "xarray_data_array": lambda: importlib.import_module(
+            "...structures.xarray", BaseArrayClient.__module__
+        ).DataArrayStructure,
         "xarray_dataset": lambda: importlib.import_module(
             "...structures.xarray", BaseArrayClient.__module__
         ).DatasetStructure,

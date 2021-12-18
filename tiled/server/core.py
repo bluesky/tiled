@@ -91,12 +91,10 @@ def entry(
         # Traverse into sub-tree(s).
         for segment in path_parts:
             try:
-                with record_timing(request.state.metrics, "acl"):
-                    unauthenticated_entry = entry[segment]
+                unauthenticated_entry = entry[segment]
             except (KeyError, TypeError):
                 raise NoEntry(path_parts)
-            # TODO Update this when Tree has structure_family == "tree".
-            if not hasattr(unauthenticated_entry, "structure_family"):
+            if hasattr(unauthenticated_entry, "authenticated_as"):
                 with record_timing(request.state.metrics, "acl"):
                     entry = unauthenticated_entry.authenticated_as(current_user)
             else:

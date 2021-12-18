@@ -1,10 +1,11 @@
 import pandas
 import xarray
 
+from ..structures.array import ArrayStructure
 from ..structures.dataframe import deserialize_arrow
 from ..structures.xarray import APACHE_ARROW_FILE_MIME_TYPE, DatasetStructure
 from .array import ArrayClient, DaskArrayClient
-from .base import BaseArrayClient
+from .base import BaseArrayClient, BaseStructureClient
 from .node import Node
 from .utils import export_util
 
@@ -38,17 +39,34 @@ class VariableClient(_VariableMixin, ArrayClient):
     pass
 
 
-class DaskDataArrayClient(Node):
-    def __init__(self, *args, **kwargs):
-        # TODO Inject DaskArrayClient.
-        super().__init__(*args, **kwargs)
+class DaskDataArrayClient(BaseStructureClient):
+    VARIABLE_CLIENT = DaskVariableClient
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
 
     @property
+    def variable(self):
+        return self.VARIABLE_CLIENT(
+            context=self.context,
+            item=self.item,  # ???
+            path=list(self.path) + ["variable"],
+            structure_clients=self.structure_clients,
+            params=self._params,
+            structure=ArrayStructure.from_json(
+                self.item["attributes"]["structure"]["macro"]["variable"]
+            ),
+        )
+
+    @property
     def coords(self):
-        return self.get("coords", {})
+        return Node(
+            context=self.context,
+            item=self.item,  # ???
+            path=list(self.path) + ["coords"],
+            structure_clients=self.structure_clients,
+            params=self._params,
+        )
 
     def read(self):
         data = self["variable"].read()
@@ -98,6 +116,8 @@ class DaskDataArrayClient(Node):
 
 
 class DataArrayClient(DaskDataArrayClient):
+    VARIABLE_CLIENT = VariableClient
+
     def download(self):
         # Do not run super().download() because DaskDataArrayClient calls compute()
         # which does not apply here.

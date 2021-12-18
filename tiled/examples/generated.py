@@ -93,7 +93,7 @@ mapping = {
                     },
                 )
             ),
-            "xarray_dataset": DatasetAdapter.from_dataset(
+            "xarray_dataset": DatasetAdapter(
                 xarray.Dataset(
                     {
                         "image": xarray.DataArray(
