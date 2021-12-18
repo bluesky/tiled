@@ -19,11 +19,10 @@ The routes are generally spelled like ``GET /{action}/{path}/``, like GitHub
 repository URLs, with the path following the structure of the Tree
 entries.
 
-The ``GET /entries`` route lists Trees and provides configurable subset of
-the metadata about each entry. The ``GET /search`` route provides a subset of
-the entries matching a query.
+the metadata about each entry. The ``GET /node/search`` route provides
+paginated access to a node, with optional filtering (search).
 
-The ``GET /metadata`` route provides the metadata about one entry.
+The ``GET /node/metadata`` route provides the metadata about one node.
 
 The data access routes like ``GET /array/block`` and ``GET /array/full`` are
 designed to different kinds of clients. Both support slicing / sub-selection

@@ -443,7 +443,7 @@ def construct_resource(
         if not omit_links:
             d["links"] = {
                 "self": f"{base_url}node/metadata/{path_str}",
-                "search": f"{base_url}search/{path_str}",
+                "search": f"{base_url}node/search/{path_str}",
             }
         resource = models.Resource(**d)
     else:

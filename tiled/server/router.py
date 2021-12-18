@@ -159,7 +159,7 @@ def declare_search_router(query_registry):
             resource, metadata_stale_at, must_revalidate = construct_entries_response(
                 query_registry,
                 entry,
-                "/search",
+                "/node/search",
                 path,
                 offset,
                 limit,
@@ -235,10 +235,10 @@ def declare_search_router(query_registry):
 
     # Register the search route.
     router = APIRouter()
-    router.get("/search", response_model=models.Response, include_in_schema=False)(
+    router.get("/node/search", response_model=models.Response, include_in_schema=False)(
         search
     )
-    router.get("/search/{path:path}", response_model=models.Response)(search)
+    router.get("/node/search/{path:path}", response_model=models.Response)(search)
     return router
 
 
@@ -284,67 +284,6 @@ async def metadata(
         resolve_media_type(request),
         expires=getattr(entry, "metadata_stale_at", None),
     )
-
-
-@router.get("/node/entries/{path:path}", response_model=models.Response)
-async def entries(
-    request: Request,
-    path: Optional[str],
-    offset: Optional[int] = Query(0, alias="page[offset]"),
-    limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
-    sort: Optional[str] = Query(None),
-    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
-    select_metadata: Optional[str] = Query(None),
-    omit_links: bool = Query(False),
-    entry: Any = Depends(entry),
-    query_registry=Depends(get_query_registry),
-):
-    "List the entries in a Tree, which may be sub-Trees or entrys."
-
-    request.state.endpoint = "entries"
-    try:
-        resource, metadata_stale_at, must_revalidate = construct_entries_response(
-            query_registry,
-            entry,
-            "/entries",
-            path,
-            offset,
-            limit,
-            fields,
-            select_metadata,
-            omit_links,
-            {},
-            sort,
-            _get_base_url(request),
-            resolve_media_type(request),
-        )
-        # We only get one Expires header, so if different parts
-        # of this response become stale at different times, we
-        # cite the earliest one.
-        entries_stale_at = getattr(entry, "entries_stale_at", None)
-        if (metadata_stale_at is None) or (entries_stale_at is None):
-            expires = None
-        else:
-            expires = min(metadata_stale_at, entries_stale_at)
-        headers = {}
-        if must_revalidate:
-            headers["Cache-Control"] = "must-revalidate"
-        return json_or_msgpack(
-            request,
-            resource,
-            resolve_media_type(request),
-            expires=expires,
-            headers=headers,
-        )
-    except NoEntry:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    except WrongTypeForRoute as err:
-        raise HTTPException(status_code=404, detail=err.args[0])
-    except JMESPathError as err:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
-        )
 
 
 @router.get(
