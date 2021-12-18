@@ -3,12 +3,12 @@ from collections.abc import Iterable
 import pandas
 import xarray
 
+from ..structures.array import ArrayStructure
 from ..structures.dataframe import deserialize_arrow
 from ..structures.xarray import (
     APACHE_ARROW_FILE_MIME_TYPE,
     DataArrayStructure,
     DatasetStructure,
-    VariableStructure,
 )
 from .array import ArrayClient, DaskArrayClient
 from .base import BaseArrayClient
@@ -19,11 +19,8 @@ LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 class DaskVariableClient(BaseArrayClient):
 
-    STRUCTURE_TYPE = VariableStructure  # used by base class
+    STRUCTURE_TYPE = ArrayStructure  # used by base class
     ARRAY_CLIENT = DaskArrayClient  # overridden by subclass
-
-    def __init__(self, *args, route="/variable/block", **kwargs):
-        super().__init__(*args, route=route, **kwargs)
 
     def _build_array_client(self, structure):
         return self.ARRAY_CLIENT(
@@ -31,8 +28,8 @@ class DaskVariableClient(BaseArrayClient):
             item=self.item,
             path=self.path,
             params=self._params,
-            structure=structure.data,
-            route=self._route,
+            structure=structure,
+            structure_clients=self.structure_clients,
         )
 
     @property
@@ -48,11 +45,11 @@ class DaskVariableClient(BaseArrayClient):
         return self.data.read_block(block, slice)
 
     def read(self, slice=None):
-        structure = self.structure().macro
+        structure = self.structure()
         return xarray.Variable(
-            dims=structure.dims,
+            dims=structure.macro.dims,
             data=self._build_array_client(structure).read(slice),
-            attrs=structure.attrs,
+            attrs=self.metadata,
         )
 
     def __getitem__(self, slice):
@@ -102,7 +99,7 @@ class DaskVariableClient(BaseArrayClient):
         >>> import numpy
         >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
         """
-        self._build_array_client(self.structure().macro).export(
+        self._build_array_client(self.structure()).export(
             filepath, format=format, slice=slice, link=link, template_vars=template_vars
         )
 
