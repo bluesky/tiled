@@ -94,7 +94,8 @@ class DataArrayAdapter:
 
     @property
     def metadata(self):
-        return {"name": self._name}
+        # TODO Allow metadata to be None / null.
+        return {}
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -114,6 +115,7 @@ class DataArrayAdapter:
         return DataArrayMacroStructure(
             variable=self._variable.structure(),
             coords={k: v.structure() for k, v in self._coords.items()},
+            name=self._name,
         )
 
     def structure(self):
@@ -133,6 +135,18 @@ class DatasetAdapter:
 
     def __init__(self, dataset):
         self._dataset = dataset
+        self._data_vars = Tree(
+            {
+                k: DataArrayAdapter.from_data_array(v)
+                for k, v in self._dataset.data_vars.items()
+            }
+        )
+        self._coords = Tree(
+            {
+                k: DataArrayAdapter.from_data_array(v)
+                for k, v in self._dataset.coords.items()
+            }
+        )
 
     @property
     def metadata(self):
@@ -144,14 +158,14 @@ class DatasetAdapter:
     def macrostructure(self):
         data_vars = {}
         for k, v in self._dataset.data_vars.items():
-            adapter = VariableAdapter(v.variable)
+            adapter = DataArrayAdapter.from_data_array(v)
             data_vars[k] = {
                 "macro": adapter.macrostructure(),
                 "micro": adapter.microstructure(),
             }
         coords = {}
         for k, v in self._dataset.coords.items():
-            adapter = VariableAdapter(v.variable)
+            adapter = DataArrayAdapter.from_data_array(v)
             coords[k] = {
                 "macro": adapter.macrostructure(),
                 "micro": adapter.microstructure(),
@@ -167,5 +181,10 @@ class DatasetAdapter:
             ds = ds[variables]
         return ds.compute()
 
-    def __getitem__(self, variable):
-        return self._dataset[variable]
+    def __getitem__(self, key):
+        if key == "data_vars":
+            return self._data_vars
+        elif key == "coords":
+            return self._coords
+        else:
+            raise KeyError(key)

@@ -217,7 +217,7 @@ class DaskDataArrayClient(BaseArrayClient):
                     structure_clients=self.structure_clients,
                 )
                 coords[name] = client.read(slice)
-        return xarray.DataArray(data=data, coords=coords, name=self.metadata["name"])
+        return xarray.DataArray(data=data, coords=coords, name=structure.name)
 
     def __getitem__(self, slice):
         return self.read(slice)
@@ -301,9 +301,6 @@ class DaskDatasetClient(BaseArrayClient):
     DATA_ARRAY_CLIENT = DaskDataArrayClient  # overridden by subclass
     VARIABLE_CLIENT = DaskVariableClient  # overridden by subclass
 
-    def __init__(self, *args, route="/dataset/block", **kwargs):
-        super().__init__(*args, route=route, **kwargs)
-
     def _repr_pretty_(self, p, cycle):
         """
         Provide "pretty" display in IPython/Jupyter.
@@ -385,7 +382,7 @@ class DaskDatasetClient(BaseArrayClient):
                 continue
 
             # Optimization: Download scalar data as DataFrame.
-            data_shape = data_array.macro.variable.macro.data.macro.shape
+            data_shape = data_array.macro.variable.macro.shape
             if (
                 optimize_wide_table
                 and (data_shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
@@ -395,13 +392,13 @@ class DaskDatasetClient(BaseArrayClient):
             else:
                 client = self.DATA_ARRAY_CLIENT(
                     context=self.context,
-                    item=self.item,
-                    path=self.path,
-                    params={"variable": name, **self._params},
+                    item=self.item,  # ???
+                    path=list(self.path) + ["data_vars", name],
+                    params=self._params,
                     structure=data_array,
                     coords=coords,
-                    route=self._route,
                     variable_name=name,
+                    structure_clients=self.structure_clients,
                 )
                 data_vars_clients[name] = client
         return data_vars_clients
@@ -416,11 +413,11 @@ class DaskDatasetClient(BaseArrayClient):
             # we fetch greedily here.
             client = DataArrayClient(
                 context=self.context,
-                item=self.item,
-                path=self.path,
-                params={"coord": name, **self._params},
+                item=self.item,  # ???
+                path=list(self.path) + ["coords", name],
+                params=self._params,
                 structure=variable,
-                route=self._route,
+                structure_clients=self.structure_clients,
                 variable_name=name,
             )
             coords[name] = client
@@ -432,7 +429,7 @@ class DaskDatasetClient(BaseArrayClient):
         coords = {k: v.read() for k, v in coords_clients.items()}
         data_vars_clients = self._build_data_vars_clients(structure, coords, variables)
         data_vars = {k: v.read() for k, v in data_vars_clients.items()}
-        ds = xarray.Dataset(data_vars=data_vars, coords=coords, attrs=structure.attrs)
+        ds = xarray.Dataset(data_vars=data_vars, coords=coords, attrs=self.metadata)
         return ds
 
     def __getitem__(self, variables):
@@ -565,7 +562,7 @@ class _MockClient:
         variable = xarray.Variable(
             data=data,
             dims=s.macro.variable.macro.dims,
-            attrs=s.macro.variable.macro.attrs,
+            # attrs=s.macro.variable.macro.attrs,
         )
         coords = {name: self.wto.coords[name] for name in s.macro.coords}
         return xarray.DataArray(variable, name=s.macro.name, coords=coords)

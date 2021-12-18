@@ -22,6 +22,7 @@ from .dataframe import (
 class DataArrayMacroStructure:
     variable: ArrayStructure
     coords: Dict[str, str]  # overridden below to be Dict[str, DataArrayStructure]
+    name: str
 
     @classmethod
     def from_json(cls, structure):
@@ -31,6 +32,7 @@ class DataArrayMacroStructure:
                 key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
             },
+            name=structure["name"],
         )
 
 
@@ -56,18 +58,18 @@ DataArrayMacroStructure.__annotations__[
 
 @dataclass
 class DatasetMacroStructure:
-    data_vars: Dict[str, ArrayStructure]
-    coords: Dict[str, ArrayStructure]
+    data_vars: Dict[str, DataArrayStructure]
+    coords: Dict[str, DataArrayStructure]
 
     @classmethod
     def from_json(cls, structure):
         return cls(
             data_vars={
-                key: ArrayStructure.from_json(value)
+                key: DataArrayStructure.from_json(value)
                 for key, value in structure["data_vars"].items()
             },
             coords={
-                key: ArrayStructure.from_json(value)
+                key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
             },
         )
