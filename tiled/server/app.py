@@ -141,6 +141,9 @@ def get_app(
             )
         set_object_cache(cache)
 
+        # Expose the root_tree here to make it easier to access it from tests,
+        # in usages like:
+        # client.context.app.state.root_tree
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
     app.add_middleware(
