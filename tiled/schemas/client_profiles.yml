@@ -68,8 +68,8 @@ properties:
           "array": {"type": "string"},
           "dataframe": {"type": "string"},
           "variable": {"type": "string"},
-          "data_array": {"type": "string"},
-          "dataset": {"type": "string"}
+          "xarray_data_array": {"type": "string"},
+          "xarray_dataset": {"type": "string"}
         }
       }
     ]

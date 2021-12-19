@@ -478,7 +478,7 @@ class DaskDatasetClient(BaseArrayClient):
     @property
     def formats(self):
         "List formats that the server can export this data as."
-        return self.context.get_json("")["formats"]["dataset"]
+        return self.context.get_json("")["formats"]["xarray_dataset"]
 
 
 class DatasetClient(DaskDatasetClient):
