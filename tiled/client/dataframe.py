@@ -105,10 +105,15 @@ class DaskDataFrameClient(BaseStructureClient):
         params = {"partition": partition}
         if columns:
             # Note: The singular/plural inconsistency here is due to the fact that
-            # ["A", "B"] will be encoded in the URL as column=A&column=B
-            params["column"] = columns
+            # ["A", "B"] will be encoded in the URL as field=A&field=B
+            params["field"] = columns
+        full_path = (
+            "/dataframe/partition"
+            + "".join(f"/{path}" for path in self.context.path_parts)
+            + "".join(f"/{path}" for path in self._path)
+        )
         content = self.context.get_content(
-            f"/dataframe/partition/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
+            full_path,
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params={**params, **self._params},
         )

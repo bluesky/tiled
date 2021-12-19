@@ -175,10 +175,10 @@ class DatasetAdapter:
     def __repr__(self):
         return f"<{type(self).__name__}>"
 
-    def read(self, variables=None):
+    def read(self, fields=None):
         ds = self._dataset
-        if variables is not None:
-            ds = ds[variables]
+        if fields is not None:
+            ds = ds[fields]
         return ds.compute()
 
     def __getitem__(self, key):

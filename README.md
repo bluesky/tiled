@@ -144,13 +144,13 @@ data in whole or in efficiently-chunked parts in the format of your choice:
 
 ```
 # Download tabular data as CSV
-http://localhost:8000/dataframe/full/long_table?format=csv
+http://localhost:8000/node/full/long_table?format=csv
 
 # or XLSX (Excel)
-http://localhost:8000/dataframe/full/long_table?format=xslx
+http://localhost:8000/node/full/long_table?format=xslx
 
 # and subselect columns.
-http://localhost:8000/dataframe/full/long_table?format=xslx&column=A&column=B
+http://localhost:8000/node/full/long_table?format=xslx&field=A&field=B
 
 # View or download (2D) array data as PNG
 http://localhost:8000/array/full/medium_image?format=png

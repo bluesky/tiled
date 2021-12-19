@@ -465,8 +465,8 @@ class DaskDatasetClient(BaseArrayClient):
         params = {}
         if variables is not None:
             # Note: The singular/plural inconsistency here is due to the fact that
-            # ["A", "B"] will be encoded in the URL as variable=A&variable=B
-            params["variable"] = variables
+            # ["A", "B"] will be encoded in the URL as field=A&field=B
+            params["field"] = variables
         return export_util(
             filepath,
             format,

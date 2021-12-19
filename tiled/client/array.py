@@ -48,8 +48,8 @@ class DaskArrayClient(BaseArrayClient):
             expected_shape = "scalar"
         full_path = (
             "/array/block"
-            + "".join([f"/{part}" for part in self.context.path_parts])
-            + "".join([f"/{part}" for part in self._path])
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
         )
         content = self.context.get_content(
             full_path,

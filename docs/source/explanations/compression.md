@@ -118,8 +118,8 @@ the client lists it as one that it supports. Here, the client lists `zstd` and
 `gzip`.
 
 ```
-$ http -p Hh :8000/dataframe/full/C accept-encoding:zstd,gzip
-GET /dataframe/full/C HTTP/1.1
+$ http -p Hh :8000/node/full/C accept-encoding:zstd,gzip
+GET /node/full/C HTTP/1.1
 Accept: */*
 Connection: keep-alive
 Host: localhost:8000

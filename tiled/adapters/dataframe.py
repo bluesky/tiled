@@ -77,23 +77,23 @@ class DataFrameAdapter:
     def microstructure(self):
         return DataFrameMicroStructure.from_dask_dataframe(self._ddf)
 
-    def read(self, columns=None):
+    def read(self, fields=None):
         # TODO For the array reader we require returning a *lazy* object here.
         # Should rethink that. As is, this is inconsistent.
         # But we very intentionally do not support fancy row-slicing because
         # that becomes complex fast and it out of scope for Tiled.
         ddf = self._ddf
-        if columns is not None:
-            ddf = ddf[columns]
+        if fields is not None:
+            ddf = ddf[fields]
         # Note: If the cache is set to NO_CACHE, this is a null context.
         with get_object_cache().dask_context:
             return ddf.compute()
 
-    def read_partition(self, partition, columns=None):
+    def read_partition(self, partition, fields=None):
         partition = self._ddf.partitions[partition]
-        if columns is not None:
-            # Sub-select columns.
-            partition = partition[columns]
+        if fields is not None:
+            # Sub-select fields.
+            partition = partition[fields]
         # Note: If the cache is set to NO_CACHE, this is a null context.
         with get_object_cache().dask_context:
             return partition.compute()

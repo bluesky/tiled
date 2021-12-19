@@ -400,7 +400,7 @@ def dataframe_partition(
     request: Request,
     partition: int,
     entry=Depends(entry),
-    column: Optional[List[str]] = Query(None, min_length=1),
+    field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
@@ -413,15 +413,15 @@ def dataframe_partition(
             detail=f"Cannot read {entry.structure_family} structure with /dataframe/parition route.",
         )
     try:
-        # The singular/plural mismatch here of "columns" and "column" is
-        # due to the ?column=A&column=B&column=C... encodes in a URL.
+        # The singular/plural mismatch here of "fields" and "field" is
+        # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = entry.read_partition(partition, columns=column)
+            df = entry.read_partition(partition, fields=field)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such column {key}.")
+        raise HTTPException(status_code=400, detail=f"No such field {key}.")
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -431,51 +431,6 @@ def dataframe_partition(
                 entry.metadata,
                 request,
                 format,
-                expires=getattr(entry, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/dataframe/full/{path:path}", response_model=models.Response, name="full dataframe"
-)
-def dataframe_full(
-    request: Request,
-    entry=Depends(entry),
-    column: Optional[List[str]] = Query(None, min_length=1),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch all the rows of DataFrame.
-    """
-    if entry.structure_family != "dataframe":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /dataframe/full route.",
-        )
-
-    specs = getattr(entry, "specs", [])
-
-    try:
-        # The singular/plural mismatch here of "columns" and "column" is
-        # due to the ?column=A&column=B&column=C... encodes in a URL.
-        with record_timing(request.state.metrics, "read"):
-            df = entry.read(columns=column)
-    except KeyError as err:
-        (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such column {key}.")
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "dataframe",
-                serialization_registry,
-                df,
-                entry.metadata,
-                request,
-                format,
-                specs,
                 expires=getattr(entry, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
@@ -490,30 +445,25 @@ def dataframe_full(
 def node_full(
     request: Request,
     entry=Depends(entry),
-    variable: Optional[List[str]] = Query(None, min_length=1),
+    field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
-    Fetch a full coordinate from within an xarray.Dataset.
+    Fetch the data below the given node.
     """
-    if entry.structure_family != "xarray_dataset":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /dataset/full route.",
-        )
     try:
-        # The singular/plural mismatch here of "variables" and "variable" is
-        # due to the ?variable=A&variable=B&variable=C... encodes in a URL.
+        # The singular/plural mismatch here of "fields" and "field" is
+        # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            dataset = entry.read(variables=variable)
+            dataset = entry.read(fields=field)
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such variable {key}.")
+        raise HTTPException(status_code=400, detail=f"No such field {key}.")
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "xarray_dataset",
+                entry.structure_family,
                 serialization_registry,
                 dataset,
                 entry.metadata,

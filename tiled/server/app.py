@@ -141,6 +141,8 @@ def get_app(
             )
         set_object_cache(cache)
 
+        app.state.root_tree = app.dependency_overrides[get_root_tree]()
+
     app.add_middleware(
         CompressionMiddleware,
         compression_registry=compression_registry,

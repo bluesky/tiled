@@ -685,12 +685,12 @@ class WrongTypeForRoute(Exception):
 
 FULL_LINKS = {
     "array": {"full": "{base_url}array/full/{path}"},
-    "dataframe": {"full": "{base_url}dataframe/full/{path}"},
+    "dataframe": {"full": "{base_url}node/full/{path}"},
     "xarray_data_array": {},
     "xarray_dataset": {
         "full_variable": "{base_url}array/full/{path}/data_vars/{{variable}}",
         "full_coord": "{base_url}array/full/{path}/coords/{{coord}}",
-        "full_dataset": "{base_url}dataset/full/{path}",
+        "full_dataset": "{base_url}node/full/{path}",
     },
 }
 
