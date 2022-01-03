@@ -11,7 +11,6 @@ from ..structures.xarray import (
     DatasetMacroStructure,
 )
 from ..trees.in_memory import Tree
-from ..utils import DictView
 
 if sys.version_info < (3, 8):
     from cached_property import cached_property  # isort:skip
@@ -35,7 +34,7 @@ class VariableAdapter:
 
     @cached_property
     def metadata(self):
-        return DictView(self._variable.attrs)
+        return self._variable.attrs
 
     @cached_property
     def _array_adapter(self):
@@ -94,8 +93,10 @@ class DataArrayAdapter:
 
     @property
     def metadata(self):
-        # TODO Allow metadata to be None / null.
-        return {}
+        return {
+            "variable": self._variable.metadata,
+            "coords": {name: c.metadata for name, c in self._coords.items()},
+        }
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -150,7 +151,11 @@ class DatasetAdapter:
 
     @property
     def metadata(self):
-        return self._dataset.attrs
+        return {
+            "attrs": self._dataset.attrs,
+            "data_vars": {name: da.metadata for name, da in self._data_vars.items()},
+            "coords": {name: da.metadata for name, da in self._coords.items()},
+        }
 
     def microstructure(self):
         return None

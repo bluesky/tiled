@@ -137,10 +137,14 @@ class DaskDataArrayClient(BaseArrayClient):
         self._variable_name = variable_name  # if this is contained by a DatasetClient
 
     def _build_variable_client(self, variable):
+        item = {
+            "attributes": {"metadata": self.metadata["variable"]},
+            "links": {"self": self.item["links"]["self"] + "/variable"},
+        }
         return self.VARIABLE_CLIENT(
             context=self.context,
-            item=self.item,  # ???
-            path=list(self.path) + ["variable"],
+            item=item,
+            path=self.path + ["variable"],
             params=self._params,
             structure=variable,
             structure_clients=self.structure_clients,
@@ -171,10 +175,14 @@ class DaskDataArrayClient(BaseArrayClient):
             return {k: v for k, v in self._coords.items() if k in structure.coords}
         result = {}
         for name, variable in structure.coords.items():
+            item = {
+                "attributes": {"metadata": self.metadata["coords"][name]},
+                "links": {"self": self.item["links"]["self"] + f"/coords/{name}"},
+            }
             client = type(self)(
                 context=self.context,
-                item=self.item,  # ???
-                path=list(self.path) + ["coords", name],
+                item=item,
+                path=self.path + ["coords", name],
                 params=self._params,
                 structure=variable,
                 structure_clients=self.structure_clients,
@@ -190,33 +198,14 @@ class DaskDataArrayClient(BaseArrayClient):
         else:
             slice = tuple([slice])
         structure = self.structure().macro
-        variable = structure.variable
-        client = self.VARIABLE_CLIENT(
-            context=self.context,
-            item=self.item,  # ???
-            path=list(self.path) + ["variable"],
-            params=self._params,
-            structure=variable,
-            structure_clients=self.structure_clients,
-        )
+        client = self._build_variable_client(structure.variable)
         data = client.read(slice)
         # If this is part of a Dataset, the coords are fetched
         # once and passed in so that they are not independently
         # (re-)fetched by every DataArray.
-        if self._coords is not None:
-            coords = {k: v for k, v in self._coords.items() if k in structure.coords}
-        else:
-            coords = {}
-            for name, variable in structure.coords.items():
-                client = type(self)(
-                    context=self.context,
-                    item=self.item,  # ???
-                    path=list(self.path) + ["coords", name],
-                    params=self._params,
-                    structure=variable,
-                    structure_clients=self.structure_clients,
-                )
-                coords[name] = client.read(slice)
+        coords = {}
+        for name, client in self.coords.items():
+            coords[name] = client.read(slice)
         return xarray.DataArray(data=data, coords=coords, name=structure.name)
 
     def __getitem__(self, slice):
@@ -390,10 +379,19 @@ class DaskDatasetClient(BaseArrayClient):
             ):
                 data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
             else:
+                item = {
+                    "attributes": {
+                        "metadata": self.metadata["data_vars"][name]["variable"]
+                    },
+                    "links": {
+                        "self": self.item["links"]["self"]
+                        + f"/data_vars/{name}/variable"
+                    },
+                }
                 client = self.DATA_ARRAY_CLIENT(
                     context=self.context,
-                    item=self.item,  # ???
-                    path=list(self.path) + ["data_vars", name],
+                    item=item,
+                    path=self.path + ["data_vars", name],
                     params=self._params,
                     structure=data_array,
                     coords=coords,
@@ -411,10 +409,16 @@ class DaskDatasetClient(BaseArrayClient):
             # may be DaskDataArrayClient, then each DataArray separately calls
             # compute() and redundantly issues the same request. To avoid that,
             # we fetch greedily here.
+            item = {
+                "attributes": {"metadata": self.metadata["coords"][name]["variable"]},
+                "links": {
+                    "self": self.item["links"]["self"] + f"/coords/{name}/variable"
+                },
+            }
             client = DataArrayClient(
                 context=self.context,
-                item=self.item,  # ???
-                path=list(self.path) + ["coords", name],
+                item=item,
+                path=self.path + ["coords", name],
                 params=self._params,
                 structure=variable,
                 structure_clients=self.structure_clients,

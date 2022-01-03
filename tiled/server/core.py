@@ -564,7 +564,7 @@ class NumpySafeJSONResponse(JSONResponse):
             return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY)
 
 
-def _numpy_safe_msgpack_encoder(obj):
+def _fallback_msgpack_encoder(obj):
     # If numpy has not been imported yet, then we can be sure that obj
     # is not a numpy object, and we want to avoid triggering a numpy
     # import. (The server does not have a hard numpy dependency.)
@@ -610,7 +610,7 @@ class MsgpackResponse(Response):
         try:
             with record_timing(self.__metrics, "pack"):
                 return msgpack.packb(
-                    content, default=_numpy_safe_msgpack_encoder, datetime=True
+                    content, default=_fallback_msgpack_encoder, datetime=True
                 )
         except (ValueError, TypeError) as err:
             # msgpack tries to handle all datetimes, but if it

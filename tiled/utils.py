@@ -49,6 +49,9 @@ class ListView(collections.abc.Sequence):
     def __delitem__(self, index):
         raise TypeError("Deleting values is not allowed.")
 
+    def __add__(self, other):
+        return type(self)(self._internal_list + other)
+
 
 class DictView(collections.abc.Mapping):
     "An immutable view of a dict."

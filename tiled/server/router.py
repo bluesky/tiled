@@ -141,7 +141,7 @@ def declare_search_router(query_registry):
     this route.
     """
 
-    async def search(
+    async def node_search(
         request: Request,
         path: str,
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
@@ -210,7 +210,7 @@ def declare_search_router(query_registry):
     # accepted via **filters.
 
     # Make a copy of the original parameters.
-    signature = inspect.signature(search)
+    signature = inspect.signature(node_search)
     parameters = list(signature.parameters.values())
     # Drop the **filters parameter from the signature.
     del parameters[-1]
@@ -230,20 +230,20 @@ def declare_search_router(query_registry):
                 annotation=Optional[List[field_type]],
             )
             parameters.append(injected_parameter)
-    search.__signature__ = signature.replace(parameters=parameters)
+    node_search.__signature__ = signature.replace(parameters=parameters)
     # End black magic
 
     # Register the search route.
     router = APIRouter()
     router.get("/node/search", response_model=models.Response, include_in_schema=False)(
-        search
+        node_search
     )
-    router.get("/node/search/{path:path}", response_model=models.Response)(search)
+    router.get("/node/search/{path:path}", response_model=models.Response)(node_search)
     return router
 
 
 @router.get("/node/metadata/{path:path}", response_model=models.Response)
-async def metadata(
+async def node_metadata(
     request: Request,
     path: str,
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
@@ -251,7 +251,6 @@ async def metadata(
     omit_links: bool = Query(False),
     entry: Any = Depends(entry),
     root_path: str = Query(None),
-    settings: BaseSettings = Depends(get_settings),
 ):
     "Fetch the metadata for one Tree or entry."
 
