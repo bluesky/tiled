@@ -94,7 +94,7 @@ def test_rgb(tmpdir):
     path = Path(tmpdir, "temp.tif")
     tf.imwrite(path, data)
 
-    tree = Tree({"A": TiffReader(str(path))})
+    tree = Tree({"A": TiffAdapter(str(path))})
     client = from_tree(tree)
     arr = client["A"].read()
     assert arr.shape == data.shape
