@@ -82,14 +82,16 @@ class BaseClient:
 
 
 class BaseStructureClient(BaseClient):
-    def __init__(self, context, *, structure=None, **kwargs):
-        super().__init__(context, **kwargs)
-        self._structure = structure
-
-    def new_variation(self, structure=UNCHANGED, **kwargs):
-        if structure is UNCHANGED:
-            structure = self._structure
-        return super().new_variation(structure=structure, **kwargs)
+    def __init__(self, *args, structure=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if structure is not None:
+            # Allow the caller to optionally hand us a structure that is already
+            # parsed from a dict into a structure dataclass.
+            self._structure = structure
+        else:
+            attributes = self.item["attributes"]
+            structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
+            self._structure = structure_type.from_json(attributes["structure"])
 
     def download(self):
         """
@@ -122,51 +124,29 @@ class BaseStructureClient(BaseClient):
         """
         Return a dataclass describing the structure of the data.
         """
-        # This is implemented by subclasses.
-        pass
-
-
-class BaseArrayClient(BaseStructureClient):
-    """
-    Shared by Array, DataArray, Dataset
-    """
-
-    def structure(self):
-        # Notice that we are NOT *caching* in self._structure here. We are
-        # allowing that the creator of this instance might have already known
-        # our structure (as part of the some larger structure) and passed it
-        # in.
-        if self._structure is None:
-            content = self.context.get_json(
-                self.uri,
-                params={
-                    "fields": [
-                        "structure.micro",
-                        "structure.macro",
-                        "structure_family",
-                    ],
-                    **self._params,
-                },
+        if self._structure.macro.resizable:
+            # In the future, conditionally fetch updated information.
+            raise NotImplementedError(
+                "The server has indicated that this has a dynamic, resizable "
+                "structure and this version of the Tiled Python client cannot "
+                "cope with that."
             )
-            attributes = content["data"]["attributes"]
-            structure_type = ARRAY_STRUCTURE_TYPES[attributes["structure_family"]]
-            structure = structure_type.from_json(attributes["structure"])
-        else:
-            structure = self._structure
-        return structure
+        return self._structure
 
 
-# Defer imports to avoid numpy requirement in this module.
-ARRAY_STRUCTURE_TYPES = OneShotCachedMap(
+STRUCTURE_TYPES = OneShotCachedMap(
     {
         "array": lambda: importlib.import_module(
-            "...structures.array", BaseArrayClient.__module__
+            "...structures.array", BaseStructureClient.__module__
         ).ArrayStructure,
+        "dataframe": lambda: importlib.import_module(
+            "...structures.dataframe", BaseStructureClient.__module__
+        ).DataFrameStructure,
         "xarray_data_array": lambda: importlib.import_module(
-            "...structures.xarray", BaseArrayClient.__module__
+            "...structures.xarray", BaseStructureClient.__module__
         ).DataArrayStructure,
         "xarray_dataset": lambda: importlib.import_module(
-            "...structures.xarray", BaseArrayClient.__module__
+            "...structures.xarray", BaseStructureClient.__module__
         ).DatasetStructure,
     }
 )

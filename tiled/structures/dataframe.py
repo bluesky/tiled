@@ -1,7 +1,7 @@
 import io
 import mimetypes
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, List, Tuple, Union
 
 from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
@@ -27,6 +27,7 @@ class DataFrameMicroStructure:
 class DataFrameMacroStructure:
     npartitions: int
     columns: List[str]
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_dask_dataframe(cls, ddf):

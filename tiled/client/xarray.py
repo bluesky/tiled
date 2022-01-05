@@ -11,30 +11,30 @@ from ..structures.xarray import (
     DatasetStructure,
 )
 from .array import ArrayClient, DaskArrayClient
-from .base import BaseArrayClient
+from .base import BaseStructureClient
 from .utils import export_util
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 
-class DaskVariableClient(BaseArrayClient):
+class DaskVariableClient(BaseStructureClient):
 
     STRUCTURE_TYPE = ArrayStructure  # used by base class
     ARRAY_CLIENT = DaskArrayClient  # overridden by subclass
 
-    def _build_array_client(self, structure):
+    def _build_array_client(self):
         return self.ARRAY_CLIENT(
             context=self.context,
             item=self.item,
             path=self.path,
             params=self._params,
-            structure=structure,
             structure_clients=self.structure_clients,
+            structure=self.structure(),
         )
 
     @property
     def data(self):
-        return self._build_array_client(self.structure().macro)
+        return self._build_array_client()
 
     def read_block(self, block, slice=None):
         """
@@ -45,10 +45,9 @@ class DaskVariableClient(BaseArrayClient):
         return self.data.read_block(block, slice)
 
     def read(self, slice=None):
-        structure = self.structure()
         return xarray.Variable(
-            dims=structure.macro.dims,
-            data=self._build_array_client(structure).read(slice),
+            dims=self.structure().macro.dims,
+            data=self._build_array_client().read(slice),
             attrs=self.metadata,
         )
 
@@ -60,7 +59,7 @@ class DaskVariableClient(BaseArrayClient):
 
     def __len__(self):
         # As with numpy, len(arr) is the size of the zeroth axis.
-        return self.structure().macro.data.macro.shape[0]
+        return self.structure().macro.shape[0]
 
     def download(self):
         super().download()
@@ -99,7 +98,7 @@ class DaskVariableClient(BaseArrayClient):
         >>> import numpy
         >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
         """
-        self._build_array_client(self.structure()).export(
+        self._build_array_client().export(
             filepath, format=format, slice=slice, link=link, template_vars=template_vars
         )
 
@@ -116,11 +115,11 @@ class VariableClient(DaskVariableClient):
     def download(self):
         # Do not run super().download() because DaskVariableClient calls compute()
         # which does not apply here.
-        BaseArrayClient.download(self)
+        BaseStructureClient.download(self)
         self.read()
 
 
-class DaskDataArrayClient(BaseArrayClient):
+class DaskDataArrayClient(BaseStructureClient):
 
     STRUCTURE_TYPE = DataArrayStructure  # used by base class
     VARIABLE_CLIENT = DaskVariableClient  # overriden in subclass
@@ -138,7 +137,10 @@ class DaskDataArrayClient(BaseArrayClient):
 
     def _build_variable_client(self, variable):
         item = {
-            "attributes": {"metadata": self.metadata["attrs"]},
+            "attributes": {
+                "metadata": self.metadata["attrs"],
+                "structure_family": "array",
+            },
             "links": {"self": self.item["links"]["self"] + "/variable"},
         }
         return self.VARIABLE_CLIENT(
@@ -286,11 +288,11 @@ class DataArrayClient(DaskDataArrayClient):
     def download(self):
         # Do not run super().download() because DaskDataArrayClient calls compute()
         # which does not apply here.
-        BaseArrayClient.download(self)
+        BaseStructureClient.download(self)
         self.read()
 
 
-class DaskDatasetClient(BaseArrayClient):
+class DaskDatasetClient(BaseStructureClient):
 
     STRUCTURE_TYPE = DatasetStructure  # used by base class
     DATA_ARRAY_CLIENT = DaskDataArrayClient  # overridden by subclass
@@ -497,7 +499,7 @@ class DatasetClient(DaskDatasetClient):
     def download(self):
         # Do not run super().download() because DaskDatasetClient calls compute()
         # which does not apply here.
-        BaseArrayClient.download(self)
+        BaseStructureClient.download(self)
         self._ipython_key_completions_()
         self.read()
 

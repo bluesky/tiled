@@ -81,6 +81,7 @@ class ArrayMacroStructure:
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):
@@ -91,6 +92,7 @@ class ArrayMacroStructure:
             chunks=tuple(map(tuple, structure["chunks"])),
             shape=tuple(structure["shape"]),
             dims=dims,
+            resizable=structure.get("resizable", False),
         )
 
 

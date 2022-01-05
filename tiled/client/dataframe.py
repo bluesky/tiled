@@ -2,7 +2,7 @@ import dask
 import dask.dataframe
 
 from ..media_type_registration import deserialization_registry
-from ..structures.dataframe import APACHE_ARROW_FILE_MIME_TYPE, DataFrameStructure
+from ..structures.dataframe import APACHE_ARROW_FILE_MIME_TYPE
 from ..trees.utils import UNCHANGED
 from .base import BaseStructureClient
 from .utils import export_util
@@ -10,10 +10,6 @@ from .utils import export_util
 
 class DaskDataFrameClient(BaseStructureClient):
     "Client-side wrapper around an array-like that returns dask arrays"
-
-    def __init__(self, *args, structure=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._structure = structure
 
     def new_variation(self, structure=UNCHANGED, **kwargs):
         if structure is UNCHANGED:
@@ -26,30 +22,38 @@ class DaskDataFrameClient(BaseStructureClient):
 
         See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
         """
-        # Try to get the column names, but give up quickly to avoid blocking
-        # for long.
-        TIMEOUT = 0.2  # seconds
-        try:
-            content = self.context.get_json(
-                self.uri,
-                params={"fields": "structure.macro", **self._params},
-                timeout=TIMEOUT,
-            )
-        except TimeoutError:
-            p.text(
-                f"<{type(self).__name__} Loading column names took too long; use list(...) >"
-            )
-        except Exception as err:
-            p.text(f"<{type(self).__name__} Loading column names raised error {err!r}>")
+        structure = self.structure()
+        if not structure.macro.resizable:
+            p.text(f"<{type(self).__name__} {structure.macro.columns}>")
         else:
+            # Try to get the column names, but give up quickly to avoid blocking
+            # for long.
+            TIMEOUT = 0.2  # seconds
             try:
-                columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
+                content = self.context.get_json(
+                    self.uri,
+                    params={"fields": "structure.macro", **self._params},
+                    timeout=TIMEOUT,
+                )
+            except TimeoutError:
+                p.text(
+                    f"<{type(self).__name__} Loading column names took too long; use list(...) >"
+                )
             except Exception as err:
                 p.text(
                     f"<{type(self).__name__} Loading column names raised error {err!r}>"
                 )
             else:
-                p.text(f"<{type(self).__name__} {columns}>")
+                try:
+                    columns = content["data"]["attributes"]["structure"]["macro"][
+                        "columns"
+                    ]
+                except Exception as err:
+                    p.text(
+                        f"<{type(self).__name__} Loading column names raised error {err!r}>"
+                    )
+                else:
+                    p.text(f"<{type(self).__name__} {columns}>")
 
     def _ipython_key_completions_(self):
         """
@@ -57,6 +61,9 @@ class DaskDataFrameClient(BaseStructureClient):
 
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
+        structure = self.structure()
+        if not structure.macro.resizable:
+            return structure.macro.columns
         try:
             content = self.context.get_json(
                 self.uri, params={"fields": "structure.macro", **self._params}
@@ -71,30 +78,6 @@ class DaskDataFrameClient(BaseStructureClient):
         super().download()
         self._ipython_key_completions_()
         self.read().compute()
-
-    def structure(self):
-        # Notice that we are NOT *caching* in self._structure here. We are
-        # allowing that the creator of this instance might have already known
-        # our structure (as part of the some larger structure) and passed it
-        # in.
-        if self._structure is None:
-            content = self.context.get_json(
-                self.uri,
-                params={
-                    "fields": [
-                        "structure.micro",
-                        "structure.macro",
-                        "structure_family",
-                    ],
-                    **self._params,
-                },
-            )
-            structure = DataFrameStructure.from_json(
-                content["data"]["attributes"]["structure"]
-            )
-        else:
-            structure = self._structure
-        return structure
 
     def _get_partition(self, partition, columns):
         """

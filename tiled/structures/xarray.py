@@ -1,6 +1,6 @@
 import io
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import xarray
 
@@ -26,6 +26,7 @@ class DataArrayMacroStructure:
     ]  # overridden below to be Optional[Dict[str, DataArrayStructure]]
     coord_names: List[str]
     name: str
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):
@@ -68,6 +69,7 @@ DataArrayMacroStructure.__annotations__[
 class DatasetMacroStructure:
     data_vars: Dict[str, DataArrayStructure]
     coords: Dict[str, DataArrayStructure]
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):

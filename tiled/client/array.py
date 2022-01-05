@@ -6,11 +6,11 @@ import dask.array
 import numpy
 
 from ..media_type_registration import deserialization_registry
-from .base import BaseArrayClient
+from .base import BaseStructureClient
 from .utils import export_util
 
 
-class DaskArrayClient(BaseArrayClient):
+class DaskArrayClient(BaseStructureClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     def __init__(self, *args, item, **kwargs):
@@ -232,5 +232,5 @@ class ArrayClient(DaskArrayClient):
     def download(self):
         # Do not run super().download() because DaskArrayClient calls compute()
         # which does not apply here.
-        BaseArrayClient.download(self)
+        BaseStructureClient.download(self)
         self.read()
