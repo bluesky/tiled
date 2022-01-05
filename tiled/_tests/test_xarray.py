@@ -106,7 +106,6 @@ def test_dataset_coord_access():
     xarray.testing.assert_equal(actual, expected)
 
 
-@pytest.mark.xfail(raises=NotImplementedError)
 def test_nested_coords():
     # Example from
     # https://xarray.pydata.org/en/stable/user-guide/data-structures.html#creating-a-dataset
