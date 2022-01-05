@@ -1,6 +1,5 @@
 import dask.array
 import numpy
-import pandas
 import pytest
 import xarray
 import xarray.testing
@@ -122,8 +121,8 @@ def test_nested_coords():
         coords={
             "lon": (["x", "y"], lon),
             "lat": (["x", "y"], lat),
-            "time": pandas.date_range("2014-09-06", periods=3),
-            "reference_time": pandas.Timestamp("2014-09-05"),
+            "time": [1, 2, 3],
+            "reference_time": [11, 12, 13],
         },
     )
     tree = Tree({"ds": DatasetAdapter(ds)})
