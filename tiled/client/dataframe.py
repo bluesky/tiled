@@ -63,6 +63,7 @@ class DaskDataFrameClient(BaseStructureClient):
         """
         structure = self.structure()
         if not structure.macro.resizable:
+            # Use cached structure.
             return structure.macro.columns
         try:
             content = self.context.get_json(

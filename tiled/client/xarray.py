@@ -143,7 +143,7 @@ class DaskDataArrayClient(BaseStructureClient):
             },
             "links": {
                 "self": self.item["links"]["self"] + "/variable",
-                "full_variable": self.context.base_url
+                "full_variable": str(self.context.base_url)
                 + "array/full/"
                 + "/".join(self.path)
                 + "/variable",
@@ -310,31 +310,39 @@ class DaskDatasetClient(BaseStructureClient):
 
         See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
         """
-        # Try to get the column names, but give up quickly to avoid blocking
-        # for long.
-        TIMEOUT = 0.2  # seconds
-        try:
-            content = self.context.get_json(
-                self.uri,
-                params={"fields": "structure.macro", **self._params},
-                timeout=TIMEOUT,
-            )
-        except TimeoutError:
-            p.text(
-                f"<{type(self).__name__} Loading column names took too long; use list(...) >"
-            )
-        except Exception as err:
-            p.text(f"<{type(self).__name__} Loading column names raised error {err!r}>")
+        structure = self.structure()
+        if not structure.macro.resizable:
+            # Use cached structure.
+            variables = [*structure.macro.data_vars, *structure.macro.coords]
+            p.text(f"<{type(self).__name__} {variables}>")
         else:
+            # Try to get the column names, but give up quickly to avoid blocking
+            # for long.
+            TIMEOUT = 0.2  # seconds
             try:
-                macro = content["data"]["attributes"]["structure"]["macro"]
-                variables = [*macro["data_vars"], *macro["coords"]]
+                content = self.context.get_json(
+                    self.uri,
+                    params={"fields": "structure.macro", **self._params},
+                    timeout=TIMEOUT,
+                )
+            except TimeoutError:
+                p.text(
+                    f"<{type(self).__name__} Loading column names took too long; use list(...) >"
+                )
             except Exception as err:
                 p.text(
                     f"<{type(self).__name__} Loading column names raised error {err!r}>"
                 )
             else:
-                p.text(f"<{type(self).__name__} {variables}>")
+                try:
+                    macro = content["data"]["attributes"]["structure"]["macro"]
+                    variables = [*macro["data_vars"], *macro["coords"]]
+                except Exception as err:
+                    p.text(
+                        f"<{type(self).__name__} Loading column names raised error {err!r}>"
+                    )
+                else:
+                    p.text(f"<{type(self).__name__} {variables}>")
 
     def _ipython_key_completions_(self):
         """
@@ -342,15 +350,20 @@ class DaskDatasetClient(BaseStructureClient):
 
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
-        try:
-            content = self.context.get_json(
-                self.uri, params={"fields": "structure.macro", **self._params}
-            )
-            macro = content["data"]["attributes"]["structure"]["macro"]
-            variables = [*macro["data_vars"], *macro["coords"]]
-        except Exception:
-            # Do not print messy traceback from thread. Just fail silently.
-            return []
+        structure = self.structure()
+        if not structure.macro.resizable:
+            # Use cached structure.
+            variables = [*structure.macro.data_vars, *structure.macro.coords]
+        else:
+            try:
+                content = self.context.get_json(
+                    self.uri, params={"fields": "structure.macro", **self._params}
+                )
+                macro = content["data"]["attributes"]["structure"]["macro"]
+                variables = [*macro["data_vars"], *macro["coords"]]
+            except Exception:
+                # Do not print messy traceback from thread. Just fail silently.
+                return []
         return variables
 
     def download(self):
