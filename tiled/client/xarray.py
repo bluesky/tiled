@@ -503,7 +503,7 @@ class DatasetClient(DaskDatasetClient):
 
 
 URL_CHARACTER_LIMIT = 2000  # number of characters
-_EXTRA_CHARS_PER_ITEM = len("&variable=")
+_EXTRA_CHARS_PER_ITEM = len("&field=")
 
 
 class _WideTableFetcher:
@@ -552,7 +552,7 @@ class _WideTableFetcher:
     def _fetch_variables(self, variables):
         content = self.get(
             self.link,
-            params={"format": APACHE_ARROW_FILE_MIME_TYPE, "variable": variables},
+            params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
         )
         return deserialize_arrow(content)
 
@@ -572,7 +572,7 @@ class _MockClient:
             dims=s.macro.variable.macro.dims,
             # attrs=s.macro.variable.macro.attrs,
         )
-        coords = {name: self.wto.coords[name] for name in s.macro.coords}
+        coords = {name: self.wto.coords[name] for name in s.macro.coord_names}
         return xarray.DataArray(variable, name=s.macro.name, coords=coords)
 
 
