@@ -300,11 +300,6 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family != "array":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
-        )
     if block == ():
         # Handle special case of numpy scalar.
         if entry.macrostructure().shape != ():
@@ -404,7 +399,7 @@ def dataframe_partition(
     if entry.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /dataframe/parition route.",
+            detail=f"Cannot read {entry.structure_family} structure with /dataframe/partition route.",
         )
     try:
         # The singular/plural mismatch here of "fields" and "field" is

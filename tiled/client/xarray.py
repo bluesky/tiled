@@ -176,9 +176,9 @@ class DaskDataArrayClient(BaseStructureClient):
         Intended for advanced uses. Enables access to read_block(...) on coords.
         """
         structure = self.structure().macro
-        # If this is part of a Dataset, the coords are fetched
-        # once and passed in so that they are not independently
-        # (re-)fetched by every DataArray.
+        # If this is a DataArray within a Dataset or coord DataArray within a
+        # DataArray, the coords are fetched once and passed in so that they are
+        # not independently (re-)fetched by every DataArray.
         if self._coords is not None:
             return {
                 k: WrapperClient(v)
@@ -186,7 +186,8 @@ class DaskDataArrayClient(BaseStructureClient):
                 if k in structure.coord_names
             }
             # return {k: v for k, v in self._coords.items() if k in structure.coord_names}
-        result = {}
+        coords_clients = {}
+        coords = {}
         if structure.coords:
             for name, variable in structure.coords.items():
                 item = {
@@ -200,9 +201,11 @@ class DaskDataArrayClient(BaseStructureClient):
                     params=self._params,
                     structure=variable,
                     structure_clients=self.structure_clients,
+                    coords=coords,
                 )
-                result[name] = client
-        return result
+                coords_clients[name] = client
+        coords.update({k: v.read() for k, v in coords_clients.items()})
+        return coords_clients
 
     def read(self, slice=None):
         if slice is None:
@@ -427,6 +430,7 @@ class DaskDatasetClient(BaseStructureClient):
         return data_vars_clients
 
     def _build_coords_clients(self, structure):
+        coords_clients = {}
         coords = {}
         for name, variable in structure.coords.items():
             # Xarray greedily materializes coordiantes; they are not allowed to
@@ -448,9 +452,11 @@ class DaskDatasetClient(BaseStructureClient):
                 structure=variable,
                 structure_clients=self.structure_clients,
                 variable_name=name,
+                coords=coords,
             )
-            coords[name] = client
-        return coords
+            coords_clients[name] = client
+        coords.update({k: v.read() for k, v in coords_clients.items()})
+        return coords_clients
 
     def read(self, variables=None):
         structure = self.structure().macro
