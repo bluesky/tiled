@@ -464,7 +464,9 @@ class DaskDatasetClient(BaseStructureClient):
         coords = {k: v.read() for k, v in coords_clients.items()}
         data_vars_clients = self._build_data_vars_clients(structure, coords, variables)
         data_vars = {k: v.read() for k, v in data_vars_clients.items()}
-        ds = xarray.Dataset(data_vars=data_vars, coords=coords, attrs=self.metadata)
+        ds = xarray.Dataset(
+            data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
+        )
         return ds
 
     def __getitem__(self, variables):

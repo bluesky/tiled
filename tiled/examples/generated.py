@@ -110,7 +110,8 @@ mapping = {
                         "z": xarray.DataArray(
                             data=dask.array.ones((len(data["medium_image"]),))
                         ),
-                    }
+                    },
+                    attrs={"snow": "cold"},
                 )
             ),
             "xarray_data_array": DataArrayAdapter.from_data_array(
