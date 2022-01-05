@@ -246,10 +246,20 @@ class ArrayStructure:
         )
 
 
+def as_buffer(array, metadata):
+    "Give back a zero-copy memoryview of the array if possible. Otherwise, copy to bytes."
+    # The memoryview path fails for datetime type (and possibly some others?)
+    # but it generally works for standard types like int, float, bool, str.
+    try:
+        return memoryview(numpy.ascontiguousarray(array))
+    except ValueError:
+        return numpy.asarray(array).tobytes()
+
+
 serialization_registry.register(
     "array",
     "application/octet-stream",
-    lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
+    as_buffer,
 )
 if modules_available("orjson"):
     serialization_registry.register(
