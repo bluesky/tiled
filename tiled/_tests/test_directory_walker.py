@@ -6,9 +6,9 @@ import pytest
 import tifffile
 
 from ..adapters.array import ArrayAdapter
+from ..adapters.files import Change, strip_suffixes
 from ..client import from_config
 from ..examples.generate_files import data, df1, generate_files
-from ..trees.files import Change, strip_suffixes
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def test_from_directory(example_data_dir):
     config = {
         "trees": [
             {
-                "tree": "tiled.trees.files:Tree.from_directory",
+                "tree": "tiled.adapters.files:DirectoryAdapter.from_directory",
                 "path": "/",
                 "args": {"directory": str(example_data_dir)},
             }
@@ -51,7 +51,7 @@ def test_from_directory(example_data_dir):
 
 
 def test_files_config_alias(example_data_dir):
-    """Test the config alias 'files' for 'tiled.trees.files:Tree.from_directory"""
+    """Test the config alias 'files' for 'tiled.adapters.files:DirectoryAdapter.from_directory"""
     config = {
         "trees": [
             {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}

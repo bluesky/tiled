@@ -23,7 +23,7 @@ Take the following server configuration below:
 # config.yml
 trees:
   - path: /
-    tree: tiled.trees.files:Tree.from_directory
+    tree: tiled.adapters.files:DirectoryAdapter.from_directory
     args:
       directory: "example_files"
 uvicorn:

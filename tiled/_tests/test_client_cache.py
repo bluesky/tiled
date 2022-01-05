@@ -5,6 +5,7 @@ import numpy
 import pytest
 
 from ..adapters.array import ArrayAdapter
+from ..adapters.mapping import MappingAdapter
 from ..client import from_tree
 from ..client.cache import (
     Cache,
@@ -17,9 +18,8 @@ from ..client.cache import (
 from ..client.utils import logger
 from ..queries import FullText
 from ..query_registration import register
-from ..trees.in_memory import Tree
 
-tree = Tree(
+tree = MappingAdapter(
     {"arr": ArrayAdapter.from_array(numpy.arange(10), metadata={"a": 1})},
     metadata={"t": 1},
 )
@@ -90,7 +90,7 @@ def test_entries_stale_at(caplog, cache, structure_clients):
     logger.setLevel("DEBUG")
     EXPIRES_AFTER = 1  # seconds
     mapping = {"a": ArrayAdapter.from_array(numpy.arange(10), metadata={"a": 1})}
-    tree = Tree(
+    tree = MappingAdapter(
         mapping,
         metadata={"t": 1},
         entries_stale_after=timedelta(seconds=EXPIRES_AFTER),
@@ -133,7 +133,7 @@ def test_content_stale_at(caplog, cache, structure_clients):
     """
     logger.setLevel("DEBUG")
     mapping = {"a": ArrayAdapter.from_array(numpy.arange(10))}
-    tree = Tree(
+    tree = MappingAdapter(
         mapping,
         entries_stale_after=timedelta(seconds=1_000),
     )
@@ -186,7 +186,7 @@ def test_metadata_stale_at(caplog, cache, structure_clients):
     logger.setLevel("DEBUG")
     metadata = {"a": 1}
     mapping = {"a": ArrayAdapter.from_array(numpy.arange(10), metadata=metadata)}
-    tree = Tree(
+    tree = MappingAdapter(
         mapping,
         entries_stale_after=timedelta(seconds=1_000),
     )
@@ -232,7 +232,7 @@ def test_metadata_stale_at(caplog, cache, structure_clients):
 
 
 def test_download_with_no_cache():
-    tree = Tree({})
+    tree = MappingAdapter({})
     client = from_tree(tree)
     with pytest.raises(NoCache):
         client.download()
@@ -261,7 +261,7 @@ def test_must_revalidate(caplog, cache):
     mapping = {
         "a": ArrayAdapter.from_array(numpy.arange(10), metadata={"color": "red"})
     }
-    tree = Tree(
+    tree = MappingAdapter(
         mapping,
         metadata={"t": 1},
         must_revalidate=True,
@@ -295,7 +295,7 @@ def test_must_revalidate(caplog, cache):
 def test_when_full(caplog):
     logger.setLevel("DEBUG")
     arr = numpy.random.random((1000, 1000))
-    tree = Tree(
+    tree = MappingAdapter(
         {
             "a": ArrayAdapter.from_array(arr),
             "b": ArrayAdapter.from_array(arr),
@@ -335,7 +335,7 @@ def test_when_full(caplog):
 def test_too_large(caplog):
     logger.setLevel("DEBUG")
     arr = numpy.random.random((1000, 1000))
-    tree = Tree(
+    tree = MappingAdapter(
         {
             "a": ArrayAdapter.from_array(arr),
         }

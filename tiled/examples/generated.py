@@ -10,8 +10,8 @@ import xarray
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.mapping import MappingAdapter
 from tiled.adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
-from tiled.trees.in_memory import Tree
 
 print("Generating large example data...", file=sys.stderr)
 data = {
@@ -61,7 +61,7 @@ mapping = {
         npartitions=5,
         metadata={"animal": "dog", "color": "green"},
     ),
-    "labeled_data": Tree(
+    "labeled_data": MappingAdapter(
         {
             "image_with_dims": VariableAdapter(
                 xarray.Variable(
@@ -72,7 +72,7 @@ mapping = {
             )
         }
     ),
-    "structured_data": Tree(
+    "structured_data": MappingAdapter(
         {
             "pets": ArrayAdapter.from_array(
                 numpy.array(
@@ -137,7 +137,7 @@ mapping = {
 }
 # The entries aren't actually dynamic, but set entries_stale_after
 # to demonstrate cache expiry.
-tree = Tree(mapping, entries_stale_after=timedelta(seconds=10))
+tree = MappingAdapter(mapping, entries_stale_after=timedelta(seconds=10))
 
 
 async def increment_dynamic():

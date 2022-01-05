@@ -1,7 +1,6 @@
 import importlib
 
-from ..trees.utils import UNCHANGED
-from ..utils import DictView, ListView, OneShotCachedMap
+from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
 from .cache import Revalidate, verify_cache
 
 

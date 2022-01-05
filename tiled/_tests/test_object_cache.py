@@ -5,9 +5,9 @@ import numpy
 import psutil
 import pytest
 
+from ..adapters.files import DEFAULT_POLL_INTERVAL
 from ..client import from_config
 from ..server.object_cache import NO_CACHE, ObjectCache, get_object_cache
-from ..trees.files import DEFAULT_POLL_INTERVAL
 
 
 def test_tallying_hits_and_misses():

@@ -384,6 +384,9 @@ class Sentinel:
         return f"<{self.name}>"
 
 
+UNCHANGED = Sentinel("UNCHANGED")
+
+
 def import_object(colon_separated_string, accept_live_object=False):
     if not isinstance(colon_separated_string, str):
         # We have been handed the live object itself.

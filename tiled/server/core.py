@@ -24,13 +24,13 @@ from starlette.responses import JSONResponse, Send, StreamingResponse
 
 # These modules are not directly used, but they register things on import.
 from .. import queries
+from ..adapters.mapping import MappingAdapter
 from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
 from ..queries import KeyLookup, QueryValueError
 from ..query_registration import query_registry as default_query_registry
 from ..structures.dataframe import serialize_arrow
-from ..trees.in_memory import Tree as TreeInMemory
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
@@ -264,14 +264,14 @@ def construct_entries_response(
         (key_lookup), *others = unique_key_lookups
         if others:
             # Two non-equal KeyLookup queries must return no results.
-            tree = TreeInMemory({})
+            tree = MappingAdapter({})
         else:
             try:
-                tree = TreeInMemory(
+                tree = MappingAdapter(
                     {key_lookup: tree[key_lookup]}, must_revalidate=False
                 )
             except KeyError:
-                tree = TreeInMemory({})
+                tree = MappingAdapter({})
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []

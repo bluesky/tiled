@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from tiled.adapters.array import ArrayAdapter
-from tiled.client import from_tree
-from tiled.structures.array import StructDtype
-from tiled.trees.in_memory import Tree
+from ..adapters.array import ArrayAdapter
+from ..adapters.mapping import MappingAdapter
+from ..client import from_tree
+from ..structures.array import StructDtype
 
 
 @pytest.mark.parametrize(
@@ -32,7 +32,7 @@ def test_read():
         [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
         dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
     )
-    tree = Tree({"A": ArrayAdapter.from_array(data)})
+    tree = MappingAdapter({"A": ArrayAdapter.from_array(data)})
 
     client = from_tree(tree)
 

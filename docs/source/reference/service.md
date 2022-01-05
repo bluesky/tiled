@@ -2,7 +2,7 @@
 
 ## Adapters
 
-### Object Adapters
+### Python Object Adapters
 
 These Adapters don't do any I/O, but instead wrap a structure in memory
 or its dask counterpart.
@@ -11,6 +11,7 @@ or its dask counterpart.
 .. autosummary::
    :toctree: generated
 
+   tiled.adapters.mapping.MappingAdapter
    tiled.adapters.array.ArrayAdapter
    tiled.adapters.dataframe.DataFrameAdapter
    tiled.adapters.xarray.VariableAdapter
@@ -18,27 +19,17 @@ or its dask counterpart.
    tiled.adapters.xarray.DatasetAdapter
 ```
 
-### File Adapters
+### File and Directory Adapters
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
+   tiled.adapters.files.DirectoryAdapter
    tiled.adapters.dataframe.DataFrameAdapter.read_csv
    tiled.adapters.tiff.TiffAdapter
    tiled.adapters.excel.ExcelAdapter
    tiled.adapters.hdf5.HDF5Adapter
-```
-
-## Trees
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.trees.files.Tree
-   tiled.trees.in_memory.Tree
-   tiled.trees.utils
 ```
 
 ## Search Queries

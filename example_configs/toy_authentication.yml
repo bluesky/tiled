@@ -6,12 +6,12 @@ authentication:
             bob: ${BOB_PASSWORD}
             cara: ${CARA_PASSWORD}
 access_control:
-    access_policy: tiled.trees.in_memory:SimpleAccessPolicy
+    access_policy: tiled.adapters.mapping:SimpleAccessPolicy
     args:
         access_lists:
             alice: ["A", "B"]
             bob: ["A", "C"]
-            cara: tiled.trees.in_memory:SimpleAccessPolicy.ALL
+            cara: tiled.adapters.mapping:SimpleAccessPolicy.ALL
         public: ["D"]
 trees:
     - path: /

@@ -3,7 +3,7 @@ import dask.dataframe
 
 from ..media_type_registration import deserialization_registry
 from ..structures.dataframe import APACHE_ARROW_FILE_MIME_TYPE
-from ..trees.utils import UNCHANGED
+from ..utils import UNCHANGED
 from .base import BaseStructureClient
 from .utils import export_util
 

@@ -5,7 +5,7 @@ import dask.array
 import h5py
 import numpy
 
-from ..trees.utils import IndexersMixin, tree_repr
+from ..adapters.utils import IndexersMixin, tree_repr
 from ..utils import DictView
 from .array import ArrayAdapter
 

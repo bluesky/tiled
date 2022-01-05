@@ -1,7 +1,5 @@
 import operator
 
-from ..utils import Sentinel
-
 
 class IndexCallable:
     """Provide getitem syntax for functions
@@ -146,9 +144,6 @@ def slice_to_interval(slice_):
     assert start_ >= 0
     assert (stop_ is None) or (stop_ >= start_)
     return start_, stop_, direction
-
-
-UNCHANGED = Sentinel("UNCHANGED")
 
 
 def tree_repr(tree, sample):

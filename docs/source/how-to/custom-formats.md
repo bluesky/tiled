@@ -103,7 +103,7 @@ Now take the following simple server configuration:
 # config.yml
 trees:
   - path: /
-    tree: tiled.trees.files:Tree.from_directory
+    tree: tiled.adapters.files:DirectoryAdapter.from_directory
     args:
       directory: "data"
       mimetypes_by_file_ext:
@@ -213,7 +213,7 @@ Add new sections to the configuration as follows.
 ```yaml
 trees:
   - path: /
-    tree: tiled.trees.files:Tree.from_directory
+    tree: tiled.adapters.files:DirectoryAdapter.from_directory
     args:
       directory: "data"
       mimetypes_by_file_ext:

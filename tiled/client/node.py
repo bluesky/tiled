@@ -8,10 +8,10 @@ from dataclasses import fields
 
 import entrypoints
 
+from ..adapters.utils import IndexersMixin, tree_repr
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..trees.utils import UNCHANGED, IndexersMixin, tree_repr
-from ..utils import OneShotCachedMap, Sentinel
+from ..utils import UNCHANGED, OneShotCachedMap, Sentinel
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
 

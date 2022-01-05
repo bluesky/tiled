@@ -8,12 +8,12 @@ import xarray
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
+from ..adapters.mapping import MappingAdapter
 from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
-from ..trees.in_memory import Tree
 
 data = numpy.random.random((10, 10))
-tree = Tree(
+tree = MappingAdapter(
     {
         "A": ArrayAdapter.from_array(numpy.random.random((100, 100))),
         "B": ArrayAdapter.from_array(numpy.random.random((100, 100, 100))),
@@ -27,7 +27,7 @@ tree = Tree(
             ),
             npartitions=3,
         ),
-        "structured_data": Tree(
+        "structured_data": MappingAdapter(
             {
                 "pets": ArrayAdapter.from_array(
                     numpy.array(

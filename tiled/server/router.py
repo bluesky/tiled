@@ -252,7 +252,7 @@ async def node_metadata(
     entry: Any = Depends(entry),
     root_path: str = Query(None),
 ):
-    "Fetch the metadata for one Tree or entry."
+    "Fetch the metadata and structure information for one entry."
 
     request.state.endpoint = "metadata"
     base_url = _get_base_url(request)

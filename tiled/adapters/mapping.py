@@ -5,13 +5,13 @@ from datetime import datetime
 from ..queries import FullText
 from ..query_registration import QueryTranslationRegistry
 from ..structures.node import NodeMacroStructure
-from ..utils import DictView, SpecialUsers, import_object
-from .utils import UNCHANGED, IndexersMixin
+from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
+from .utils import IndexersMixin
 
 
-class Tree(collections.abc.Mapping, IndexersMixin):
+class MappingAdapter(collections.abc.Mapping, IndexersMixin):
     """
-    A Tree backed by a mapping.
+    Adapt any mapping (dictionary-like object) to Tiled.
     """
 
     __slots__ = (
@@ -28,7 +28,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
 
     structure_family = "node"
 
-    # Define classmethods for managing what queries this Tree knows.
+    # Define classmethods for managing what queries this Adapter knows.
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
@@ -44,7 +44,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
         must_revalidate=True,
     ):
         """
-        Create a simple Tree from any mapping (e.g. dict, OneShotCachedMap).
+        Create a simple Adapter from any mapping (e.g. dict, OneShotCachedMap).
 
         Parameters
         ----------
@@ -67,7 +67,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
             not access_policy.check_compatibility(self)
         ):
             raise ValueError(
-                f"Access policy {access_policy} is not compatible with this Tree."
+                f"Access policy {access_policy} is not compatible with this Adapter."
             )
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
@@ -100,7 +100,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
 
     @property
     def metadata(self):
-        "Metadata about this Tree."
+        "Metadata about this Adapter."
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
         # persistent.
@@ -178,7 +178,7 @@ class Tree(collections.abc.Mapping, IndexersMixin):
 
     def search(self, query):
         """
-        Return a Tree with a subset of the mapping.
+        Return a Adapter with a subset of the mapping.
         """
         return self.query_registry(query, self)
 
@@ -269,15 +269,15 @@ def full_text_search(query, tree):
     return tree.new_variation(mapping=matches)
 
 
-Tree.register_query(FullText, full_text_search)
+MappingAdapter.register_query(FullText, full_text_search)
 
 
 class DummyAccessPolicy:
     "Impose no access restrictions."
 
     def check_compatibility(self, tree):
-        # This only works on in-memory Tree or subclases.
-        return isinstance(tree, Tree)
+        # This only works on in-memory Adapter or subclases.
+        return isinstance(tree, MappingAdapter)
 
     def modify_queries(self, queries, authenticated_identity):
         return queries
@@ -309,8 +309,8 @@ class SimpleAccessPolicy:
             self.access_lists[key] = value
 
     def check_compatibility(self, tree):
-        # This only works on in-memory Tree or subclases.
-        return isinstance(tree, Tree)
+        # This only works on MappingAdapter or subclases.
+        return isinstance(tree, MappingAdapter)
 
     def modify_queries(self, queries, authenticated_identity):
         return queries

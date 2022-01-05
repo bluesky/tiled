@@ -85,7 +85,7 @@ def construct_serve_tree_kwargs(
         else:
             root_access_policy = None
         # TODO Enable entrypoint to extend aliases?
-        tree_aliases = {"files": "tiled.trees.files:Tree.from_directory"}
+        tree_aliases = {"files": "tiled.adapters.files:DirectoryAdapter.from_directory"}
         trees = {}
         for item in config.get("trees", []):
             access_control = item.get("access_control", {}) or {}
@@ -128,8 +128,8 @@ def construct_serve_tree_kwargs(
             root_tree = tree
         else:
             # There are one or more tree(s) to be served at
-            # sub-paths. Merged them into one root in-memory Tree.
-            from .trees.in_memory import Tree
+            # sub-paths. Merged them into one root MappingAdapter.
+            from .adapters.mapping import MappingAdapter
 
             mapping = {}
             include_routers = []
@@ -145,7 +145,7 @@ def construct_serve_tree_kwargs(
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
-            root_tree = Tree(mapping, access_policy=root_access_policy)
+            root_tree = MappingAdapter(mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
@@ -291,7 +291,7 @@ def parse_configs(config_path):
 
 def direct_access(config, source_filepath=None):
     """
-    Return the server-side Tree object defined by a configuration.
+    Return the server-side Adapter object defined by a configuration.
 
     Parameters
     ----------
@@ -320,7 +320,7 @@ def direct_access(config, source_filepath=None):
                 "trees":
                     [
                         "path": "/",
-                        "tree": "tiled.files.Tree.from_files",
+                        "tree": "tiled.files.DirectoryAdapter.from_directory",
                         "args": {"diretory": "path/to/files"}
                     ]
             }
@@ -336,7 +336,7 @@ def direct_access(config, source_filepath=None):
 
 def direct_access_from_profile(name):
     """
-    Return the server-side Tree object from a profile.
+    Return the server-side Adapter object from a profile.
 
     Some profiles are purely client side, providing an address like
 
@@ -349,7 +349,7 @@ def direct_access_from_profile(name):
         tree: ...
 
     This function only works on the latter kind. It returns the
-    service-side Tree instance directly, not wrapped in a client.
+    service-side Adapter instance directly, not wrapped in a client.
     """
 
     from .profiles import ProfileNotFound, load_profiles, paths

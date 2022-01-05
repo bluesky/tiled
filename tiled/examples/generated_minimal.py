@@ -5,9 +5,9 @@ import pandas
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
-from tiled.trees.in_memory import Tree
+from tiled.adapters.mapping import MappingAdapter
 
-tree = Tree(
+tree = MappingAdapter(
     {
         "A": ArrayAdapter.from_array(numpy.ones((100, 100))),
         "B": ArrayAdapter.from_array(numpy.ones((100, 100, 100))),

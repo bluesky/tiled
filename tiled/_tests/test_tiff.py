@@ -4,9 +4,9 @@ import numpy
 import pytest
 import tifffile as tf
 
+from ..adapters.mapping import MappingAdapter
 from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter, subdirectory_handler
 from ..client import from_config, from_tree
-from ..trees.in_memory import Tree
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def directory(tmpdir):
     ],
 )
 def test_tiff_sequence(directory, slice_input, correct_shape):
-    tree = Tree({"A": TiffSequenceAdapter(tf.TiffSequence(directory))})
+    tree = MappingAdapter({"A": TiffSequenceAdapter(tf.TiffSequence(directory))})
     client = from_tree(tree)
     arr = client["A"].read(slice=slice_input)
     assert arr.shape == correct_shape
@@ -36,7 +36,7 @@ def test_tiff_sequence(directory, slice_input, correct_shape):
 
 @pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0), (1, 100, 100))])
 def test_tiff_sequence_block(directory, block_input, correct_shape):
-    tree = Tree({"A": TiffSequenceAdapter(tf.TiffSequence(directory))})
+    tree = MappingAdapter({"A": TiffSequenceAdapter(tf.TiffSequence(directory))})
     client = from_tree(tree)
     arr = client["A"].read_block(block_input)
     assert arr.shape == correct_shape
@@ -94,7 +94,7 @@ def test_rgb(tmpdir):
     path = Path(tmpdir, "temp.tif")
     tf.imwrite(path, data)
 
-    tree = Tree({"A": TiffAdapter(str(path))})
+    tree = MappingAdapter({"A": TiffAdapter(str(path))})
     client = from_tree(tree)
     arr = client["A"].read()
     assert arr.shape == data.shape

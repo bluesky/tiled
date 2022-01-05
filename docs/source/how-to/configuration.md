@@ -59,7 +59,7 @@ is equivalent to
 ```yaml
 trees:
     - path: /
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: "path/to/files"
 ```
@@ -72,7 +72,7 @@ The alias
 
 may be used in place of the full import path
 
-    tree: tiled.trees.files:Tree.from_directory
+    tree: tiled.adapters.files:DirectoryAdapter.from_directory
 
 ```
 
@@ -96,7 +96,7 @@ Finally, any environment variables in the YAML file, given as `$VAR` or
 ```yaml
 trees:
     - path: /
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: ${DIRECTORY}  # expanded value of environment variable $DIRECTORY
 ```
@@ -108,11 +108,11 @@ trees:
 ```yaml
 trees:
     - path: /a
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: "path/to/files"
     - path: /b
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: "path/to/other/files"
 ```

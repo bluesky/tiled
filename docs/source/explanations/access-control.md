@@ -30,7 +30,7 @@ Under `access_lists:` usernames are mapped to the keys of the entries the user m
 The section `public:` designates entries that an
 unauthenticated (anonymous) user may access *if* the server is configured to
 allow anonymous access. (See {doc}`security`.) The special value
-``tiled.trees.in_memory:SimpleAccessPolicy.ALL`` designates that the user may access any entry
+``tiled.adapters.mapping:SimpleAccessPolicy.ALL`` designates that the user may access any entry
 in the Tree.
 
 ```

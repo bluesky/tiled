@@ -7,10 +7,10 @@ example_configs/toy_authentication.yml
 import numpy
 
 from tiled.adapters.array import ArrayAdapter
-from tiled.trees.in_memory import Tree
+from tiled.adapters.mapping import MappingAdapter
 
-# Make a Tree with a couple arrays in it.
-tree = Tree(
+# Make a MappingAdapter with a couple arrays in it.
+tree = MappingAdapter(
     {
         "A": ArrayAdapter.from_array(10 * numpy.ones((10, 10))),
         "B": ArrayAdapter.from_array(20 * numpy.ones((10, 10))),

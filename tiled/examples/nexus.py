@@ -11,7 +11,7 @@ authentication:
     allow_anonymous_access: true
 trees:
     - path: /
-      tree: tiled.examples.nexus:Tree
+      tree: tiled.examples.nexus:MappingAdapter
       args:
           url: YOUR_URL_HERE
 ```
@@ -26,14 +26,14 @@ import httpx
 from tiled.adapters.hdf5 import HDF5Adapter
 
 
-def Tree(url):
+def build_tree(url):
     # Download a Nexus file into a memory buffer.
     buffer = io.BytesIO(httpx.get(url).content)
     # Access the buffer with h5py, which can treat it like a "file".
     file = h5py.File(buffer, "r")
-    # Wrap the h5py.File in a Tree to serve it with Tiled.
+    # Wrap the h5py.File in a MappingAdapter to serve it with Tiled.
     return HDF5Adapter(file)
 
 
 EXAMPLE_URL = "https://github.com/nexusformat/exampledata/blob/master/APS/EPICSareaDetector/hdf5/AgBehenate_228.hdf5?raw=true"  # noqa
-tree = Tree(EXAMPLE_URL)
+tree = build_tree(EXAMPLE_URL)

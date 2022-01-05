@@ -4,19 +4,19 @@ import numpy
 import pytest
 
 from ..adapters.array import ArrayAdapter
+from ..adapters.mapping import MappingAdapter
 from ..client import from_config
 from ..server.authentication import create_refresh_token
-from ..trees.in_memory import Tree
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
 
 def tree_a(access_policy):
-    return Tree({"A1": arr, "A2": arr}, access_policy=access_policy)
+    return MappingAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
 
 
 def tree_b(access_policy):
-    return Tree({"B1": arr, "B2": arr}, access_policy=access_policy)
+    return MappingAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
 
 
 def test_top_level_access_control():
@@ -28,7 +28,7 @@ def test_top_level_access_control():
             "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
         },
         "access_control": {
-            "access_policy": "tiled.trees.in_memory:SimpleAccessPolicy",
+            "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
             "args": {"access_lists": {"alice": ["a"]}},
         },
         "trees": [
@@ -36,7 +36,7 @@ def test_top_level_access_control():
                 "tree": f"{__name__}:tree_a",
                 "path": "/a",
                 "access_control": {
-                    "access_policy": "tiled.trees.in_memory:SimpleAccessPolicy",
+                    "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
                     "args": {
                         "access_lists": {
                             "alice": ["A2"],
