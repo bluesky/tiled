@@ -138,7 +138,7 @@ class DaskDataArrayClient(BaseArrayClient):
 
     def _build_variable_client(self, variable):
         item = {
-            "attributes": {"metadata": self.metadata["variable"]},
+            "attributes": {"metadata": self.metadata["attrs"]},
             "links": {"self": self.item["links"]["self"] + "/variable"},
         }
         return self.VARIABLE_CLIENT(

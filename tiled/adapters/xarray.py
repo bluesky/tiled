@@ -98,7 +98,7 @@ class DataArrayAdapter:
     @property
     def metadata(self):
         result = {
-            "variable": self._variable.metadata,
+            "attrs": self._variable.metadata,
         }
         if self._depth == 0:
             result["coords"] = {name: c.metadata for name, c in self._coords.items()}
