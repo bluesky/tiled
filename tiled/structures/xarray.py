@@ -1,6 +1,6 @@
 import io
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List, Optional
 
 import xarray
 
@@ -21,17 +21,25 @@ from .dataframe import (
 @dataclass
 class DataArrayMacroStructure:
     variable: ArrayStructure
-    coords: Dict[str, str]  # overridden below to be Dict[str, DataArrayStructure]
+    coords: Optional[
+        Dict[str, str]
+    ]  # overridden below to be Dict[str, DataArrayStructure]
+    coord_names: List[str]
     name: str
 
     @classmethod
     def from_json(cls, structure):
-        return cls(
-            variable=ArrayStructure.from_json(structure["variable"]),
-            coords={
+        if structure["coords"] is not None:
+            coords = {
                 key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
-            },
+            }
+        else:
+            coords = None
+        return cls(
+            variable=ArrayStructure.from_json(structure["variable"]),
+            coords=coords,
+            coord_names=structure["coord_names"],
             name=structure["name"],
         )
 

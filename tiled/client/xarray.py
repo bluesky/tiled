@@ -174,20 +174,21 @@ class DaskDataArrayClient(BaseArrayClient):
         if self._coords is not None:
             return {k: v for k, v in self._coords.items() if k in structure.coords}
         result = {}
-        for name, variable in structure.coords.items():
-            item = {
-                "attributes": {"metadata": self.metadata["coords"][name]},
-                "links": {"self": self.item["links"]["self"] + f"/coords/{name}"},
-            }
-            client = type(self)(
-                context=self.context,
-                item=item,
-                path=self.path + ["coords", name],
-                params=self._params,
-                structure=variable,
-                structure_clients=self.structure_clients,
-            )
-            result[name] = client
+        if structure.coords:
+            for name, variable in structure.coords.items():
+                item = {
+                    "attributes": {"metadata": self.metadata["coords"][name]},
+                    "links": {"self": self.item["links"]["self"] + f"/coords/{name}"},
+                }
+                client = type(self)(
+                    context=self.context,
+                    item=item,
+                    path=self.path + ["coords", name],
+                    params=self._params,
+                    structure=variable,
+                    structure_clients=self.structure_clients,
+                )
+                result[name] = client
         return result
 
     def read(self, slice=None):

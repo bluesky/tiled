@@ -75,7 +75,9 @@ class DataArrayAdapter:
     @classmethod
     def from_data_array(cls, data_array, _depth=0):
         variable = VariableAdapter(data_array.variable)
+        coord_names = list(data_array.coords)
         if _depth == 0:
+            # At top level, encode the structure of each coordinate.
             coords = Tree(
                 {
                     name: cls.from_data_array(coord, _depth=1 + _depth)
@@ -83,20 +85,24 @@ class DataArrayAdapter:
                 }
             )
         else:
-            coords = {}
-        return cls(variable, coords, data_array.name)
+            coords = None
+        return cls(variable, coords, coord_names, data_array.name, _depth=_depth)
 
-    def __init__(self, variable, coords, name):
+    def __init__(self, variable, coords, coord_names, name, *, _depth=0):
         self._variable = variable
         self._coords = coords
+        self._coord_names = coord_names
         self._name = name
+        self._depth = _depth
 
     @property
     def metadata(self):
-        return {
+        result = {
             "variable": self._variable.metadata,
-            "coords": {name: c.metadata for name, c in self._coords.items()},
         }
+        if self._depth == 0:
+            result["coords"] = {name: c.metadata for name, c in self._coords.items()}
+        return result
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -104,18 +110,31 @@ class DataArrayAdapter:
     def __getitem__(self, key):
         if key == "variable":
             return self._variable
-        elif key == "coords":
+        elif (key == "coords") and (self._depth == 0):
             return self._coords
         else:
             raise KeyError(key)
+
+    def __iter__(self):
+        keys = ["variable"]
+        if self._depth == 0:
+            keys.append("coords")
+        yield from keys
+
+    # TODO Add keys_indexer, etc. to support /node/search.
 
     def microstructure(self):
         return None
 
     def macrostructure(self):
+        if self._depth == 0:
+            coords = {k: v.structure() for k, v in self._coords.items()}
+        else:
+            coords = self._coords
         return DataArrayMacroStructure(
             variable=self._variable.structure(),
-            coords={k: v.structure() for k, v in self._coords.items()},
+            coords=coords,
+            coord_names=self._coord_names,
             name=self._name,
         )
 
