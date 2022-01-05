@@ -141,7 +141,13 @@ class DaskDataArrayClient(BaseStructureClient):
                 "metadata": self.metadata["attrs"],
                 "structure_family": "array",
             },
-            "links": {"self": self.item["links"]["self"] + "/variable"},
+            "links": {
+                "self": self.item["links"]["self"] + "/variable",
+                "full_variable": self.context.base_url
+                + "array/full/"
+                + "/".join(self.path)
+                + "/variable",
+            },
         }
         return self.VARIABLE_CLIENT(
             context=self.context,

@@ -355,11 +355,6 @@ def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if entry.structure_family != "array":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
-        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
