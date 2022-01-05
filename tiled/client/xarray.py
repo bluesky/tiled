@@ -172,7 +172,12 @@ class DaskDataArrayClient(BaseArrayClient):
         # once and passed in so that they are not independently
         # (re-)fetched by every DataArray.
         if self._coords is not None:
-            return {k: v for k, v in self._coords.items() if k in structure.coords}
+            return {
+                k: WrapperClient(v)
+                for k, v in self._coords.items()
+                if k in structure.coord_names
+            }
+            # return {k: v for k, v in self._coords.items() if k in structure.coord_names}
         result = {}
         if structure.coords:
             for name, variable in structure.coords.items():
@@ -381,9 +386,7 @@ class DaskDatasetClient(BaseArrayClient):
                 data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
             else:
                 item = {
-                    "attributes": {
-                        "metadata": self.metadata["data_vars"][name]["variable"]
-                    },
+                    "attributes": {"metadata": self.metadata["data_vars"][name]},
                     "links": {
                         "self": self.item["links"]["self"]
                         + f"/data_vars/{name}/variable"
@@ -411,7 +414,7 @@ class DaskDatasetClient(BaseArrayClient):
             # compute() and redundantly issues the same request. To avoid that,
             # we fetch greedily here.
             item = {
-                "attributes": {"metadata": self.metadata["coords"][name]["variable"]},
+                "attributes": {"metadata": self.metadata["coords"][name]},
                 "links": {
                     "self": self.item["links"]["self"] + f"/coords/{name}/variable"
                 },
@@ -571,3 +574,15 @@ class _MockClient:
         )
         coords = {name: self.wto.coords[name] for name in s.macro.coords}
         return xarray.DataArray(variable, name=s.macro.name, coords=coords)
+
+
+class WrapperClient:
+    def __init__(self, data_array):
+        self._data_array = data_array
+
+    def read(self, slice=None):
+        if slice is not None:
+            result = self._data_array[slice]
+        else:
+            result = self._data_array
+        return result

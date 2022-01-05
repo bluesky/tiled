@@ -182,14 +182,14 @@ class DatasetAdapter:
     def macrostructure(self):
         data_vars = {}
         for k, v in self._dataset.data_vars.items():
-            adapter = DataArrayAdapter.from_data_array(v)
+            adapter = DataArrayAdapter.from_data_array(v, _depth=1)
             data_vars[k] = {
                 "macro": adapter.macrostructure(),
                 "micro": adapter.microstructure(),
             }
         coords = {}
         for k, v in self._dataset.coords.items():
-            adapter = DataArrayAdapter.from_data_array(v)
+            adapter = DataArrayAdapter.from_data_array(v, _depth=1)
             coords[k] = {
                 "macro": adapter.macrostructure(),
                 "micro": adapter.microstructure(),

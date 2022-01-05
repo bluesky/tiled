@@ -23,7 +23,7 @@ class DataArrayMacroStructure:
     variable: ArrayStructure
     coords: Optional[
         Dict[str, str]
-    ]  # overridden below to be Dict[str, DataArrayStructure]
+    ]  # overridden below to be Optional[Dict[str, DataArrayStructure]]
     coord_names: List[str]
     name: str
 
