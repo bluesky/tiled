@@ -169,6 +169,11 @@ class MappingAdapter(collections.abc.Mapping, IndexersMixin):
             **kwargs,
         )
 
+    def read(self, fields=None):
+        if fields is not None:
+            raise NotImplementedError
+        return self
+
     def search(self, query):
         """
         Return a Adapter with a subset of the mapping.

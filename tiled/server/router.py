@@ -445,7 +445,7 @@ def node_full(
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            dataset = entry.read(fields=field)
+            data = entry.read(fields=field)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
@@ -454,7 +454,7 @@ def node_full(
             return construct_data_response(
                 entry.structure_family,
                 serialization_registry,
-                dataset,
+                data,
                 entry.metadata,
                 request,
                 format,

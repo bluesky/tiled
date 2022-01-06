@@ -22,7 +22,7 @@ import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
 
-# These modules are not directly used, but they register things on import.
+# Some are not directly used, but they register things on import.
 from .. import queries
 from ..adapters.mapping import MappingAdapter
 from ..media_type_registration import (
@@ -30,6 +30,7 @@ from ..media_type_registration import (
 )
 from ..queries import KeyLookup, QueryValueError
 from ..query_registration import query_registry as default_query_registry
+from ..structures import node  # noqa: F401
 from ..structures.dataframe import serialize_arrow
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -316,6 +317,7 @@ def construct_entries_response(
 DEFAULT_MEDIA_TYPES = {
     "array": "application/octet-stream",
     "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
+    "node": "application/x-hdf5",
     "variable": "application/octet-stream",
     "xarray_data_array": "application/octet-stream",
     "xarray_dataset": "application/netcdf",

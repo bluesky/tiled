@@ -115,6 +115,12 @@ class DataArrayAdapter:
         else:
             raise KeyError(key)
 
+    def items(self):
+        keys = ["variable"]
+        if self._depth == 0:
+            keys.append("coords")
+        yield from ((key, self[key]) for key in keys)
+
     def __iter__(self):
         keys = ["variable"]
         if self._depth == 0:
@@ -212,3 +218,6 @@ class DatasetAdapter:
             return self._coords
         else:
             raise KeyError(key)
+
+    def items(self):
+        yield from ((key, self[key]) for key in ["data_vars", "coords"])

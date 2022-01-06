@@ -72,6 +72,9 @@ class DataFrameAdapter:
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self._ddf[key].values.compute())
 
+    def items(self):
+        yield from ((key, self[key]) for key in self._ddf.columns)
+
     @property
     def metadata(self):
         return DictView(self._metadata)
