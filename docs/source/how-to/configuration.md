@@ -27,11 +27,11 @@ TILED_CONFIG=my_config_directory/ tiled serve config
 ```
 
 Finally, if the environment variable is not yet, a default location
-`config.yml` is set. But explicitly specifying the configuration location is
+`./config.yml` is set. But explicitly specifying the configuration location is
 recommended for any important use.
 
 ```
-tiled serve config  # uses config.yml if environment variable TILED_CONFIG is unset
+tiled serve config  # uses ./config.yml if environment variable TILED_CONFIG is unset
 ```
 
 For use with containers, this:
