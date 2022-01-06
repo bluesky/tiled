@@ -8,7 +8,7 @@ import numpy
 import pytest
 
 from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
 
 array_cases = {
@@ -31,10 +31,8 @@ array_cases = {
 scalar_cases = {k: numpy.array(v[0], dtype=v.dtype) for k, v in array_cases.items()}
 for v in scalar_cases.values():
     assert v.shape == ()
-array_tree = MappingAdapter(
-    {k: ArrayAdapter.from_array(v) for k, v in array_cases.items()}
-)
-scalar_tree = MappingAdapter(
+array_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in array_cases.items()})
+scalar_tree = MapAdapter(
     {k: ArrayAdapter.from_array(v) for k, v in scalar_cases.items()}
 )
 
@@ -62,7 +60,7 @@ def test_shape_with_zero():
     # Suppress RuntimeWarning: divide by zero encountered in true_divide
     # from dask.array.core.
     with warnings.catch_warnings():
-        tree = MappingAdapter(
+        tree = MapAdapter(
             {
                 "test": ArrayAdapter(
                     dask.array.from_array(expected, chunks=expected.shape)
@@ -77,7 +75,7 @@ def test_shape_with_zero():
 def test_nan_infinity_handler(tmpdir):
     data = numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf])
     metadata = {"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
-    inf_tree = MappingAdapter(
+    inf_tree = MapAdapter(
         {"example": ArrayAdapter.from_array(data, metadata=metadata)}, metadata=metadata
     )
 

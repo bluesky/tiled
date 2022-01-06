@@ -4,7 +4,7 @@ import numpy
 import pytest
 
 from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_config
 from ..server.authentication import create_refresh_token
 
@@ -12,11 +12,11 @@ arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
 
 def tree_a(access_policy):
-    return MappingAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
+    return MapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
 
 
 def tree_b(access_policy):
-    return MappingAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
+    return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
 
 
 def test_top_level_access_control():

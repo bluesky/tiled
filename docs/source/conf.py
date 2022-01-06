@@ -278,13 +278,11 @@ generate_schema_documentation(
     "reference/client-profiles.md",
 )
 
-from tiled.adapters.mapping import MappingAdapter
+from tiled.adapters.mapping import MapAdapter
 from tiled.authenticators import DummyAuthenticator
 from tiled.server.app import serve_tree
 
-app = serve_tree(
-    MappingAdapter({}), authentication={"authenticator": DummyAuthenticator()}
-)
+app = serve_tree(MapAdapter({}), authentication={"authenticator": DummyAuthenticator()})
 api = app.openapi()
 
 with open("reference/api.yml", "w") as file:

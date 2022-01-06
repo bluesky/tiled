@@ -1,12 +1,12 @@
 import dask.dataframe
 import pandas
 
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..server.object_cache import NO_CACHE, get_object_cache, with_object_cache
 from .dataframe import DataFrameAdapter
 
 
-class ExcelAdapter(MappingAdapter):
+class ExcelAdapter(MapAdapter):
     """
     Read the sheets in an Excel file.
 

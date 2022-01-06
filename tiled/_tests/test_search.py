@@ -2,11 +2,11 @@ import numpy
 import pytest
 
 from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
 from ..queries import FullText
 
-tree = MappingAdapter(
+tree = MapAdapter(
     {
         "a": ArrayAdapter.from_array(
             numpy.arange(10), metadata={"apple": "red", "animal": "dog"}

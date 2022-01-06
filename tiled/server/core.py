@@ -24,7 +24,7 @@ from starlette.responses import JSONResponse, Send, StreamingResponse
 
 # Some are not directly used, but they register things on import.
 from .. import queries
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
@@ -265,14 +265,12 @@ def construct_entries_response(
         (key_lookup), *others = unique_key_lookups
         if others:
             # Two non-equal KeyLookup queries must return no results.
-            tree = MappingAdapter({})
+            tree = MapAdapter({})
         else:
             try:
-                tree = MappingAdapter(
-                    {key_lookup: tree[key_lookup]}, must_revalidate=False
-                )
+                tree = MapAdapter({key_lookup: tree[key_lookup]}, must_revalidate=False)
             except KeyError:
-                tree = MappingAdapter({})
+                tree = MapAdapter({})
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []

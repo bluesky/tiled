@@ -128,8 +128,8 @@ def construct_serve_tree_kwargs(
             root_tree = tree
         else:
             # There are one or more tree(s) to be served at
-            # sub-paths. Merged them into one root MappingAdapter.
-            from .adapters.mapping import MappingAdapter
+            # sub-paths. Merged them into one root MapAdapter.
+            from .adapters.mapping import MapAdapter
 
             mapping = {}
             include_routers = []
@@ -145,7 +145,7 @@ def construct_serve_tree_kwargs(
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
-            root_tree = MappingAdapter(mapping, access_policy=root_access_policy)
+            root_tree = MapAdapter(mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")

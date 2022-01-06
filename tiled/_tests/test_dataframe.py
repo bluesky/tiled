@@ -2,10 +2,10 @@ import numpy
 import pandas.testing
 
 from ..adapters.dataframe import DataFrameAdapter
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
 
-tree = MappingAdapter(
+tree = MapAdapter(
     {
         # a dataframe divided into three partitions
         "basic": DataFrameAdapter.from_pandas(

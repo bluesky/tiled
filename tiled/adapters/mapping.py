@@ -8,7 +8,7 @@ from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
 from .utils import IndexersMixin
 
 
-class MappingAdapter(collections.abc.Mapping, IndexersMixin):
+class MapAdapter(collections.abc.Mapping, IndexersMixin):
     """
     Adapt any mapping (dictionary-like object) to Tiled.
     """
@@ -267,7 +267,7 @@ def full_text_search(query, tree):
     return tree.new_variation(mapping=matches)
 
 
-MappingAdapter.register_query(FullText, full_text_search)
+MapAdapter.register_query(FullText, full_text_search)
 
 
 class DummyAccessPolicy:
@@ -275,7 +275,7 @@ class DummyAccessPolicy:
 
     def check_compatibility(self, tree):
         # This only works on in-memory Adapter or subclases.
-        return isinstance(tree, MappingAdapter)
+        return isinstance(tree, MapAdapter)
 
     def modify_queries(self, queries, authenticated_identity):
         return queries
@@ -307,8 +307,8 @@ class SimpleAccessPolicy:
             self.access_lists[key] = value
 
     def check_compatibility(self, tree):
-        # This only works on MappingAdapter or subclases.
-        return isinstance(tree, MappingAdapter)
+        # This only works on MapAdapter or subclases.
+        return isinstance(tree, MapAdapter)
 
     def modify_queries(self, queries, authenticated_identity):
         return queries

@@ -11,7 +11,7 @@ or its dask counterpart.
 .. autosummary::
    :toctree: generated
 
-   tiled.adapters.mapping.MappingAdapter
+   tiled.adapters.mapping.MapAdapter
    tiled.adapters.array.ArrayAdapter
    tiled.adapters.dataframe.DataFrameAdapter
    tiled.adapters.xarray.VariableAdapter

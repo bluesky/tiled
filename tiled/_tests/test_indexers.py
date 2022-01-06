@@ -3,10 +3,10 @@ import string
 import numpy
 
 from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
 
-tree = MappingAdapter(
+tree = MapAdapter(
     {
         letter: ArrayAdapter.from_array(number * numpy.ones(10))
         for letter, number in zip(string.ascii_lowercase, range(26))

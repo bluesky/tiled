@@ -5,7 +5,7 @@ import dask.array
 from tiled.structures.array import ArrayStructure
 
 from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..structures.xarray import (
     DataArrayMacroStructure,
     DataArrayStructure,
@@ -78,7 +78,7 @@ class DataArrayAdapter:
         coord_names = list(data_array.coords)
         if _depth == 0:
             # At top level, encode the structure of each coordinate.
-            coords = MappingAdapter(
+            coords = MapAdapter(
                 {
                     name: cls.from_data_array(coord, _depth=1 + _depth)
                     for name, coord in data_array.coords.items()
@@ -161,13 +161,13 @@ class DatasetAdapter:
 
     def __init__(self, dataset):
         self._dataset = dataset
-        self._data_vars = MappingAdapter(
+        self._data_vars = MapAdapter(
             {
                 k: DataArrayAdapter.from_data_array(v)
                 for k, v in self._dataset.data_vars.items()
             }
         )
-        self._coords = MappingAdapter(
+        self._coords = MapAdapter(
             {
                 k: DataArrayAdapter.from_data_array(v)
                 for k, v in self._dataset.coords.items()

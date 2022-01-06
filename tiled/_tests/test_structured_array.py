@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
 from ..structures.array import StructDtype
 
@@ -32,7 +32,7 @@ def test_read():
         [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
         dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
     )
-    tree = MappingAdapter({"A": ArrayAdapter.from_array(data)})
+    tree = MapAdapter({"A": ArrayAdapter.from_array(data)})
 
     client = from_tree(tree)
 

@@ -11,7 +11,7 @@ authentication:
     allow_anonymous_access: true
 trees:
     - path: /
-      tree: tiled.examples.nexus:MappingAdapter
+      tree: tiled.examples.nexus:MapAdapter
       args:
           url: YOUR_URL_HERE
 ```
@@ -31,7 +31,7 @@ def build_tree(url):
     buffer = io.BytesIO(httpx.get(url).content)
     # Access the buffer with h5py, which can treat it like a "file".
     file = h5py.File(buffer, "r")
-    # Wrap the h5py.File in a MappingAdapter to serve it with Tiled.
+    # Wrap the h5py.File in a MapAdapter to serve it with Tiled.
     return HDF5Adapter(file)
 
 

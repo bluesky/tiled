@@ -14,7 +14,7 @@ from watchgod.watcher import Change, RegExpWatcher
 
 from ..structures.dataframe import XLSX_MIME_TYPE
 from ..utils import CachingMap, OneShotCachedMap, import_object
-from .mapping import MappingAdapter
+from .mapping import MapAdapter
 
 # The Adapter objects are light because any large data they stash should be
 # placed in the global internal cache, not in the Adapter state itself.
@@ -53,7 +53,7 @@ def identity(filename):
     return filename
 
 
-class DirectoryAdapter(MappingAdapter):
+class DirectoryAdapter(MapAdapter):
     """
     An Adapter constructed by walking a directory and watching it for changes.
 
@@ -697,9 +697,7 @@ def _new_subdir(
             {}, cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
         )
         index[parent_parts + (subdirectory,)] = mapping
-        index[parent_parts].set(
-            subdirectory, functools.partial(MappingAdapter, mapping)
-        )
+        index[parent_parts].set(subdirectory, functools.partial(MapAdapter, mapping))
         if greedy:
             index[parent_parts][subdirectory]
     else:

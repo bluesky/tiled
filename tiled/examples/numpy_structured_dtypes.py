@@ -7,9 +7,9 @@ https://numpy.org/doc/stable/user/basics.rec.html
 import numpy
 
 from tiled.adapters.array import ArrayAdapter
-from tiled.adapters.mapping import MappingAdapter
+from tiled.adapters.mapping import MapAdapter
 
-tree = MappingAdapter(
+tree = MapAdapter(
     {
         "A": ArrayAdapter.from_array(
             numpy.array(

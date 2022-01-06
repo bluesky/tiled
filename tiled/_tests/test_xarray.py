@@ -4,7 +4,7 @@ import pytest
 import xarray
 import xarray.testing
 
-from ..adapters.mapping import MappingAdapter
+from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
 from ..client import xarray as xarray_client
@@ -49,7 +49,7 @@ EXPECTED = {
     ),
 }
 
-tree = MappingAdapter(
+tree = MapAdapter(
     {
         "variable": VariableAdapter(EXPECTED["variable"]),
         "data_array": DataArrayAdapter.from_data_array(EXPECTED["data_array"]),
@@ -125,7 +125,7 @@ def test_nested_coords():
             "reference_time": [11, 12, 13],
         },
     )
-    tree = MappingAdapter({"ds": DatasetAdapter(ds)})
+    tree = MapAdapter({"ds": DatasetAdapter(ds)})
     client = from_tree(tree)
     expected_dataset = ds
     client_dataset = client["ds"].read()
