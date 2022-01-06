@@ -4,7 +4,6 @@ from datetime import datetime
 
 from ..queries import FullText
 from ..query_registration import QueryTranslationRegistry
-from ..structures.node import NodeMacroStructure
 from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
 from .utils import IndexersMixin
 
@@ -105,12 +104,6 @@ class MappingAdapter(collections.abc.Mapping, IndexersMixin):
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._metadata)
-
-    def macrostructure(self):
-        return NodeMacroStructure(count=len(self))
-
-    def microstructure(self):
-        return None
 
     def __repr__(self):
         return f"<{type(self).__name__}({set(self._mapping)!r})>"
