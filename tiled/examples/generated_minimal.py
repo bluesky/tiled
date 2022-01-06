@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import numpy
 import pandas
 
@@ -22,5 +20,5 @@ tree = MappingAdapter(
             npartitions=3,
         ),
     },
-    metadata={"d": datetime.now()},
+    metadata={"thing": "stuff"},
 )

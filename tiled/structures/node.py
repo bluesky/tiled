@@ -36,16 +36,24 @@ if modules_available("h5py"):
         import h5py
 
         buffer = io.BytesIO()
+        root_node = node
         with h5py.File(buffer, mode="w") as file:
+            for k, v in metadata.items():
+                file.attrs.create(k, v)
             for key_path, array_adapter in walk(node):
                 group = file
+                node = root_node
                 for key in key_path[:-1]:
+                    node = node[key]
                     if key in group:
                         group = group[key]
                     else:
                         group = group.create_group(key)
+                        group.attrs.update(node.metadata)
                 data = array_adapter.read()
-                group.create_dataset(key_path[-1], data=data)
+                dataset = group.create_dataset(key_path[-1], data=data)
+                for k, v in array_adapter.metadata.items():
+                    dataset.attrs.create(k, v)
         return buffer.getbuffer()
 
 
