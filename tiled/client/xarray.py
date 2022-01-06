@@ -168,24 +168,18 @@ class DaskDataArrayClient(BaseStructureClient):
         client = self._build_variable_client(variable)
         return client.read_block(block, slice)
 
-    @property
-    def coords(self):
-        """
-        A dict mapping coord names to Variables.
-
-        Intended for advanced uses. Enables access to read_block(...) on coords.
-        """
+    def _build_coords_clients(self):
         structure = self.structure().macro
         # If this is a DataArray within a Dataset or coord DataArray within a
         # DataArray, the coords are fetched once and passed in so that they are
         # not independently (re-)fetched by every DataArray.
         if self._coords is not None:
-            return {
+            coords_clients = {
                 k: WrapperClient(v)
                 for k, v in self._coords.items()
                 if k in structure.coord_names
             }
-            # return {k: v for k, v in self._coords.items() if k in structure.coord_names}
+            return coords_clients, self._coords
         coords_clients = {}
         coords = {}
         if structure.coords:
@@ -194,7 +188,7 @@ class DaskDataArrayClient(BaseStructureClient):
                     "attributes": {"metadata": self.metadata["coords"][name]},
                     "links": {"self": self.item["links"]["self"] + f"/coords/{name}"},
                 }
-                client = type(self)(
+                client = DataArrayClient(
                     context=self.context,
                     item=item,
                     path=self.path + ["coords", name],
@@ -205,6 +199,16 @@ class DaskDataArrayClient(BaseStructureClient):
                 )
                 coords_clients[name] = client
         coords.update({k: v.read() for k, v in coords_clients.items()})
+        return coords_clients, coords
+
+    @property
+    def coords(self):
+        """
+        A dict mapping coord names to Variables.
+
+        Intended for advanced uses. Enables access to read_block(...) on coords.
+        """
+        coords_clients, _coords = self._build_coords_clients()
         return coords_clients
 
     def read(self, slice=None):
@@ -377,7 +381,7 @@ class DaskDatasetClient(BaseStructureClient):
     @property
     def data_vars(self):
         structure = self.structure().macro
-        coords = self._build_coords_clients(structure)
+        _coords_clients, coords = self._build_coords_clients(structure)
         # Turn off wide table optimization so that we return normal
         # [Dask]DataArrayClients and not internal _MockClients.
         return self._build_data_vars_clients(
@@ -387,7 +391,8 @@ class DaskDatasetClient(BaseStructureClient):
     @property
     def coords(self):
         structure = self.structure().macro
-        return self._build_coords_clients(structure)
+        coords_clients, _coords = self._build_coords_clients(structure)
+        return coords_clients
 
     def _build_data_vars_clients(
         self, structure, coords, variables=None, optimize_wide_table=True
@@ -456,12 +461,11 @@ class DaskDatasetClient(BaseStructureClient):
             )
             coords_clients[name] = client
         coords.update({k: v.read() for k, v in coords_clients.items()})
-        return coords_clients
+        return coords_clients, coords
 
     def read(self, variables=None):
         structure = self.structure().macro
-        coords_clients = self._build_coords_clients(structure)
-        coords = {k: v.read() for k, v in coords_clients.items()}
+        _coords_clients, coords = self._build_coords_clients(structure)
         data_vars_clients = self._build_data_vars_clients(structure, coords, variables)
         data_vars = {k: v.read() for k, v in data_vars_clients.items()}
         ds = xarray.Dataset(
@@ -606,6 +610,7 @@ class _MockClient:
 
 
 class WrapperClient:
+    # TODO Build out the rest of the client API.
     def __init__(self, data_array):
         self._data_array = data_array
 
