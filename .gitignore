@@ -86,3 +86,4 @@ example_files/
 # generated docs
 docs/source/reference/client-profiles.md
 docs/source/reference/service-configuration.md
+docs/source/reference/api.yml
