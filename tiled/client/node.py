@@ -354,7 +354,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             sorting_params = self._reversed_sorting_params
         assert start >= 0
-        assert stop >= 0
+        assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
@@ -383,7 +383,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             sorting_params = self._reversed_sorting_params
         assert start >= 0
-        assert stop >= 0
+        assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
