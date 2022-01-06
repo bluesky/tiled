@@ -49,7 +49,6 @@ reference/authentication
 reference/commandline
 reference/service-configuration
 reference/client-profiles
-reference/design-documents/index
 reference/release-history
 reference/min-versions
 ```

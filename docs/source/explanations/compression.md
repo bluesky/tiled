@@ -142,8 +142,8 @@ Finally, in this example. the server decides that the raw, compressed content is
 so small (304 bytes) that is isn't not worth compressing.
 
 ```
-$ http -p Hh :8000/metadata/
-GET /metadata/ HTTP/1.1
+$ http -p Hh :8000/node/metadata/
+GET /node/metadata/ HTTP/1.1
 Accept: */*
 Accept-Encoding: gzip, deflate
 Connection: keep-alive
