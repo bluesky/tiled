@@ -4,6 +4,7 @@ import dask.dataframe
 from ..server.object_cache import NO_CACHE, get_object_cache
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
+from .array import ArrayAdapter
 
 
 class DataFrameAdapter:
@@ -66,6 +67,10 @@ class DataFrameAdapter:
 
     def __repr__(self):
         return f"{type(self).__name__}({self._ddf!r})"
+
+    def __getitem__(self, key):
+        # Must compute to determine shape.
+        return ArrayAdapter.from_array(self._ddf[key].values.compute())
 
     @property
     def metadata(self):
