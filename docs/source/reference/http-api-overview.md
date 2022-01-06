@@ -19,21 +19,24 @@ The routes are generally spelled like ``GET /{action}/{path}/``, like GitHub
 repository URLs, with the path following the structure of the Tree
 entries.
 
-the metadata about each entry. The ``GET /node/search`` route provides
-paginated access to a node, with optional filtering (search).
+The ``GET /node/metadata/{path}`` route provides the metadata about one node.
+The ``GET /node/search/{path}`` route provides paginated access to the children of
+a given node, with optional filtering (search). The ``GET /node/full/{path}`` route
+provides all the metadata and data below a given node.
 
-The ``GET /node/metadata`` route provides the metadata about one node.
-
-The data access routes like ``GET /array/block`` and ``GET /array/full`` are
-designed to different kinds of clients. Both support slicing / sub-selection
-as appropriate to the data structure. Generic clients, like a web browser,
-should use the "full" route, which sends the entire (sliced) result in one
-response. More sophisticated clients that can reassemble tiled results should
-use the other routes, which support efficient chunk-based access.
+Specialized data access routes ``GET /array/block/{path}``, ``GET /array/full/{path}``,
+and ``GET /dataframe/partition/{path}`` provide options for slicing and sub-selection
+specific to arrays and dataframes. Generic clients, like a web browser,
+should use the "full" routes, which send the entire (sliced) result in one
+response. More sophisticated clients with some knowledge of Tiled may use the
+other routes, which enable parallel chunk-based access.
 
 The ``POST /token`` route accepts form-encoded credentials and responds with
 an access token and a refresh token. The ``POST /token/refresh`` route accepts a
 refresh token and responds with a new set of tokens.
+
+The root route, `GET /` provides general information about the server and the formats
+it supports.
 
 ## Reference
 
