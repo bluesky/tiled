@@ -391,7 +391,7 @@ def app_factory():
     web_app = serve_tree(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_admin_api_key_if_generated(
-        web_app, host=uvicorn_config["host"], port=uvicorn_config["port"]
+        web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
     )
     return web_app
 
