@@ -119,7 +119,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         self.structure_clients = structure_clients
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
-        sorting = item["attributes"].get("sorting")
+        # If the user has not specified a sorting, give the server the opportunity
+        # to tell us the default sorting.
+        sorting = sorting or item["attributes"].get("sorting")
         self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
         self._sorting_params = {
             "sort": ",".join(
@@ -437,7 +439,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(queries=self._queries + [query])
 
-    def sort(self, sorting):
+    def sort(self, *sorting):
         """
         Make a Node with the same entries but sorted according to `sorting`.
 
@@ -447,7 +449,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         Sort by "color" in ascending order, and then by "height" in descending order.
 
         >>> from tiled.client import ASCENDING, DESCENDING
-        >>> tree.sort([("color", ASCENDING), ("height", DESCENDING)])
+        >>> tree.sort(("color", ASCENDING), ("height", DESCENDING))
 
         Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
         may be used as a synonym for ``DESCENDING``.
