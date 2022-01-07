@@ -6,14 +6,14 @@ import pandas
 import pytest
 import xarray
 
+from ..adapters.array import ArrayAdapter
+from ..adapters.dataframe import DataFrameAdapter
+from ..adapters.mapping import MapAdapter
+from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
-from ..readers.array import ArrayAdapter, StructuredArrayTabularAdapter
-from ..readers.dataframe import DataFrameAdapter
-from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
-from ..trees.in_memory import Tree
 
 data = numpy.random.random((10, 10))
-tree = Tree(
+tree = MapAdapter(
     {
         "A": ArrayAdapter.from_array(numpy.random.random((100, 100))),
         "B": ArrayAdapter.from_array(numpy.random.random((100, 100, 100))),
@@ -27,9 +27,9 @@ tree = Tree(
             ),
             npartitions=3,
         ),
-        "structured_data": Tree(
+        "structured_data": MapAdapter(
             {
-                "pets": StructuredArrayTabularAdapter.from_array(
+                "pets": ArrayAdapter.from_array(
                     numpy.array(
                         [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
                         dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
@@ -42,7 +42,7 @@ tree = Tree(
                         attrs={"thing": "stuff"},
                     )
                 ),
-                "image_with_coords": DataArrayAdapter(
+                "image_with_coords": DataArrayAdapter.from_data_array(
                     xarray.DataArray(
                         xarray.Variable(
                             data=dask.array.from_array(data),
@@ -73,7 +73,7 @@ tree = Tree(
                         }
                     )
                 ),
-                "xarray_data_array": DataArrayAdapter(
+                "xarray_data_array": DataArrayAdapter.from_data_array(
                     xarray.DataArray(
                         xarray.Variable(
                             data=dask.array.from_array(data),

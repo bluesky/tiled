@@ -1,6 +1,6 @@
 import io
 from dataclasses import dataclass
-from typing import Dict, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import xarray
 
@@ -16,67 +16,31 @@ from .dataframe import (
     serialize_html,
     serialize_parquet,
 )
-from .structured_array import (
-    StructuredArrayGenericStructure,
-    StructuredArrayTabularStructure,
-)
-
-_ARRAY_STRUCTURES = {
-    "array": ArrayStructure,
-    "structured_array_generic": StructuredArrayGenericStructure,
-    "structured_array_tabular": StructuredArrayTabularStructure,
-}
-
-
-@dataclass
-class VariableMacroStructure:
-    dims: Tuple[str]
-    data: Union[
-        ArrayStructure, StructuredArrayGenericStructure, StructuredArrayTabularStructure
-    ]
-    attrs: Dict  # TODO Use JSONSerializableDict
-    array_structure_family: str = "array"
-    # TODO Variables also have `encoding`. Do we want to carry that as well?
-
-    @classmethod
-    def from_json(cls, structure):
-        # Fall back to "array" default for backward-compatibility.
-        array_structure_cls = _ARRAY_STRUCTURES[
-            structure.get("array_structure_family", "array")
-        ]
-        return cls(
-            dims=structure["dims"],
-            data=array_structure_cls.from_json(structure["data"]),
-            attrs=structure["attrs"],
-        )
-
-
-@dataclass
-class VariableStructure:
-    macro: VariableMacroStructure
-    micro: None
-
-    @classmethod
-    def from_json(cls, structure):
-        return cls(
-            macro=VariableMacroStructure.from_json(structure["macro"]), micro=None
-        )
 
 
 @dataclass
 class DataArrayMacroStructure:
-    variable: VariableStructure
-    coords: Dict[str, str]  # overridden below to be Dict[str, DataArrayStructure]
+    variable: ArrayStructure
+    coords: Optional[
+        Dict[str, str]
+    ]  # overridden below to be Optional[Dict[str, DataArrayStructure]]
+    coord_names: List[str]
     name: str
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):
-        return cls(
-            variable=VariableStructure.from_json(structure["variable"]),
-            coords={
+        if structure["coords"] is not None:
+            coords = {
                 key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
-            },
+            }
+        else:
+            coords = None
+        return cls(
+            variable=ArrayStructure.from_json(structure["variable"]),
+            coords=coords,
+            coord_names=structure["coord_names"],
             name=structure["name"],
         )
 
@@ -105,7 +69,7 @@ DataArrayMacroStructure.__annotations__[
 class DatasetMacroStructure:
     data_vars: Dict[str, DataArrayStructure]
     coords: Dict[str, DataArrayStructure]
-    attrs: Dict  # TODO Use JSONSerializableDict
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):
@@ -118,7 +82,6 @@ class DatasetMacroStructure:
                 key: DataArrayStructure.from_json(value)
                 for key, value in structure["coords"].items()
             },
-            attrs=structure["attrs"],
         )
 
 
@@ -148,39 +111,43 @@ def serialize_netcdf(dataset, metadata):
 
 # Both application/netcdf and application/x-netcdf are used.
 # https://en.wikipedia.org/wiki/NetCDF
-serialization_registry.register("dataset", "application/netcdf", serialize_netcdf)
-serialization_registry.register("dataset", "application/x-netcdf", serialize_netcdf)
+serialization_registry.register(
+    "xarray_dataset", "application/netcdf", serialize_netcdf
+)
+serialization_registry.register(
+    "xarray_dataset", "application/x-netcdf", serialize_netcdf
+)
 
 # Support DataFrame formats by first converting to DataFrame.
 # This doesn't make much sense for N-dimensional variables, but for
 # 1-dimensional variables it is useful.
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     APACHE_ARROW_FILE_MIME_TYPE,
     lambda ds, metadata: serialize_arrow(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "application/x-parquet",
     lambda ds, metadata: serialize_parquet(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "text/csv",
     lambda ds, metadata: serialize_csv(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "text/plain",
     lambda ds, metadata: serialize_csv(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     "text/html",
     lambda ds, metadata: serialize_html(ds.to_dataframe(), metadata),
 )
 serialization_registry.register(
-    "dataset",
+    "xarray_dataset",
     XLSX_MIME_TYPE,
     lambda ds, metadata: serialize_excel(ds.to_dataframe(), metadata),
 )
@@ -194,12 +161,12 @@ if modules_available("orjson"):
         )
 
     serialization_registry.register(
-        "dataset",
+        "xarray_dataset",
         "application/json",
         serialize_json,
     )
 
 deserialization_registry.register(
-    "dataset", "application/x-zarr", lambda ds, metadata: xarray.open_zarr(ds)
+    "xarray_dataset", "application/x-zarr", lambda ds, metadata: xarray.open_zarr(ds)
 )
 # TODO How should we add support for access via Zarr?

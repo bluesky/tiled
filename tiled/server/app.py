@@ -141,6 +141,11 @@ def get_app(
             )
         set_object_cache(cache)
 
+        # Expose the root_tree here to make it easier to access it from tests,
+        # in usages like:
+        # client.context.app.state.root_tree
+        app.state.root_tree = app.dependency_overrides[get_root_tree]()
+
     app.add_middleware(
         CompressionMiddleware,
         compression_registry=compression_registry,
@@ -386,7 +391,7 @@ def app_factory():
     web_app = serve_tree(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_admin_api_key_if_generated(
-        web_app, host=uvicorn_config["host"], port=uvicorn_config["port"]
+        web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
     )
     return web_app
 
@@ -396,7 +401,10 @@ def __getattr__(name):
     This supports tiled.server.app.app by creating app on demand.
     """
     if name == "app":
-        return app_factory()
+        try:
+            return app_factory()
+        except Exception as err:
+            raise Exception("Failed to create app.") from err
     raise AttributeError(name)
 
 

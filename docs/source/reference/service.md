@@ -1,46 +1,35 @@
 # Service-side Components
 
-## Readers
+## Adapters
 
-### Adapters
+### Python Object Adapters
 
-These "readers" don't do an I/O at all, but instead wrap a structure in memory
-or its dask counterpart. They can be used to build other Readers.
+These Adapters don't do any I/O, but instead wrap a structure in memory
+or its dask counterpart.
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.readers.array.ArrayAdapter
-   tiled.readers.array.StructuredArrayTabularAdapter
-   tiled.readers.array.StructuredArrayGenericAdapter
-   tiled.readers.dataframe.DataFrameAdapter
-   tiled.readers.xarray.VariableAdapter
-   tiled.readers.xarray.DataArrayAdapter
-   tiled.readers.xarray.DatasetAdapter
+   tiled.adapters.mapping.MapAdapter
+   tiled.adapters.array.ArrayAdapter
+   tiled.adapters.dataframe.DataFrameAdapter
+   tiled.adapters.xarray.VariableAdapter
+   tiled.adapters.xarray.DataArrayAdapter
+   tiled.adapters.xarray.DatasetAdapter
 ```
 
-### File Readers
+### File and Directory Adapters
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.readers.dataframe.DataFrameAdapter.read_csv
-   tiled.readers.tiff.TiffReader
-   tiled.readers.excel.ExcelReader
-   tiled.readers.hdf5.HDF5Reader
-```
-
-## Trees
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.trees.files.Tree
-   tiled.trees.in_memory.Tree
-   tiled.trees.utils
+   tiled.adapters.files.DirectoryAdapter
+   tiled.adapters.dataframe.DataFrameAdapter.read_csv
+   tiled.adapters.tiff.TiffAdapter
+   tiled.adapters.excel.ExcelAdapter
+   tiled.adapters.hdf5.HDF5Adapter
 ```
 
 ## Search Queries
@@ -110,7 +99,7 @@ See {doc}`../explanations/structures` for more context.
 
    tiled.structures.array.ArrayStructure
    tiled.structures.array.ArrayMacroStructure
-   tiled.structures.array.MachineDataType
+   tiled.structures.array.BuiltinDtype
    tiled.structures.array.Kind
    tiled.structures.array.Endianness
 ```
@@ -126,34 +115,11 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.dataframe.DataFrameMicroStructure
 ```
 
-### Structured Arrays
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.structures.structured_array.Field
-   tiled.structures.structured_array.StructDtype
-   tiled.structures.structured_array.StructuredArrayGenericStructure
-   tiled.structures.structured_array.ArrayTabularMacroStructure
-   tiled.structures.structured_array.StructuredArrayTabularStructure
-```
-
 ### Xarray Structures
 
 Xarrays are "meta" structures that contain chunks of arrays. For this reason,
 they have no microstructure. Their macrostructure encompasses nested array
 structures.
-
-#### Variable
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.structures.xarray.VariableStructure
-   tiled.structures.xarray.VariableMacroStructure
-```
 
 #### DataArray
 
@@ -207,7 +173,7 @@ Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 Adapters that use the cache _must_ use a tuple of strings and/or numbers as a
 cache key and _should_ use a cache key of the form `(class.__module__,
 class.__qualname__, ...)` to avoid collisions with other Adapters. See
-`tiled.readers.tiff` for a generic example and see `tiled.readers.dataframe` for
+`tiled.adapters.tiff` for a generic example and see `tiled.adapters.dataframe` for
 an example that uses integration with dask.
 
 ```{eval-rst}

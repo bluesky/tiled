@@ -1,12 +1,12 @@
 import numpy
 import pytest
 
+from ..adapters.array import ArrayAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
 from ..queries import FullText
-from ..readers.array import ArrayAdapter
-from ..trees.in_memory import Tree
 
-tree = Tree(
+tree = MapAdapter(
     {
         "a": ArrayAdapter.from_array(
             numpy.arange(10), metadata={"apple": "red", "animal": "dog"}

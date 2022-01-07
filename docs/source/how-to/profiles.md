@@ -222,7 +222,7 @@ my_profile:
     direct:
         trees:
             - path: /
-            tree: tiled.trees.files:Tree.from_directory
+            tree: tiled.adapters.files:DirectoryAdapter.from_directory
             args:
                 directory: "path/to/files"
 ```
@@ -238,7 +238,7 @@ my_profile:
     direct:
         trees:
             - path: /
-            tree: tiled.trees.files:Tree.from_directory
+            tree: tiled.adapters.files:DirectoryAdapter.from_directory
             args:
                 directory: "path/to/files"
     cache:

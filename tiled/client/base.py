@@ -1,12 +1,11 @@
 import importlib
 
-from ..trees.utils import UNCHANGED
-from ..utils import DictView, ListView, OneShotCachedMap
+from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
 from .cache import Revalidate, verify_cache
 
 
 class BaseClient:
-    def __init__(self, context, *, item, path, params):
+    def __init__(self, context, *, item, path, params, structure_clients):
         self._context = context
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
@@ -15,6 +14,7 @@ class BaseClient:
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self._params = params or {}
+        self.structure_clients = structure_clients
         super().__init__()
 
     def __repr__(self):
@@ -59,7 +59,9 @@ class BaseClient:
     def offline(self, value):
         self.context.offline = bool(value)
 
-    def new_variation(self, path=UNCHANGED, params=UNCHANGED, **kwargs):
+    def new_variation(
+        self, path=UNCHANGED, params=UNCHANGED, structure_clients=UNCHANGED, **kwargs
+    ):
         """
         This is intended primarily for internal use and use by subclasses.
         """
@@ -67,18 +69,28 @@ class BaseClient:
             path = self._path
         if params is UNCHANGED:
             params = self._params
-        return type(self)(item=self._item, path=path, params=params, **kwargs)
+        if structure_clients is UNCHANGED:
+            structure_clients = self.structure_clients
+        return type(self)(
+            item=self._item,
+            path=path,
+            params=params,
+            structure_clients=structure_clients,
+            **kwargs,
+        )
 
 
 class BaseStructureClient(BaseClient):
-    def __init__(self, context, *, structure=None, **kwargs):
-        super().__init__(context, **kwargs)
-        self._structure = structure
-
-    def new_variation(self, structure=UNCHANGED, **kwargs):
-        if structure is UNCHANGED:
-            structure = self._structure
-        return super().new_variation(structure=structure, **kwargs)
+    def __init__(self, *args, structure=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if structure is not None:
+            # Allow the caller to optionally hand us a structure that is already
+            # parsed from a dict into a structure dataclass.
+            self._structure = structure
+        else:
+            attributes = self.item["attributes"]
+            structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
+            self._structure = structure_type.from_json(attributes["structure"])
 
     def download(self):
         """
@@ -111,66 +123,29 @@ class BaseStructureClient(BaseClient):
         """
         Return a dataclass describing the structure of the data.
         """
-        # This is implemented by subclasses.
-        pass
-
-
-class BaseArrayClient(BaseStructureClient):
-    """
-    Shared by Array, DataArray, Dataset
-    """
-
-    def __init__(self, *args, route, **kwargs):
-        if route.endswith("/"):
-            route = route[:-1]
-        self._route = route
-        super().__init__(*args, **kwargs)
-
-    def structure(self):
-        # Notice that we are NOT *caching* in self._structure here. We are
-        # allowing that the creator of this instance might have already known
-        # our structure (as part of the some larger structure) and passed it
-        # in.
-        if self._structure is None:
-            content = self.context.get_json(
-                self.uri,
-                params={
-                    "fields": [
-                        "structure.micro",
-                        "structure.macro",
-                        "structure_family",
-                    ],
-                    **self._params,
-                },
+        if self._structure.macro.resizable:
+            # In the future, conditionally fetch updated information.
+            raise NotImplementedError(
+                "The server has indicated that this has a dynamic, resizable "
+                "structure and this version of the Tiled Python client cannot "
+                "cope with that."
             )
-            attributes = content["data"]["attributes"]
-            structure_type = ARRAY_STRUCTURE_TYPES[attributes["structure_family"]]
-            structure = structure_type.from_json(attributes["structure"])
-        else:
-            structure = self._structure
-        return structure
+        return self._structure
 
 
-# Defer imports to avoid numpy requirement in this module.
-ARRAY_STRUCTURE_TYPES = OneShotCachedMap(
+STRUCTURE_TYPES = OneShotCachedMap(
     {
         "array": lambda: importlib.import_module(
-            "...structures.array", BaseArrayClient.__module__
+            "...structures.array", BaseStructureClient.__module__
         ).ArrayStructure,
-        "structured_array_generic": lambda: importlib.import_module(
-            "...structures.structured_array", BaseArrayClient.__module__
-        ).StructuredArrayGenericStructure,
-        "structured_array_tabular": lambda: importlib.import_module(
-            "...structures.structured_array", BaseArrayClient.__module__
-        ).StructuredArrayTabularStructure,
-        "variable": lambda: importlib.import_module(
-            "...structures.xarray", BaseArrayClient.__module__
-        ).VariableStructure,
-        "data_array": lambda: importlib.import_module(
-            "...structures.xarray", BaseArrayClient.__module__
+        "dataframe": lambda: importlib.import_module(
+            "...structures.dataframe", BaseStructureClient.__module__
+        ).DataFrameStructure,
+        "xarray_data_array": lambda: importlib.import_module(
+            "...structures.xarray", BaseStructureClient.__module__
         ).DataArrayStructure,
-        "dataset": lambda: importlib.import_module(
-            "...structures.xarray", BaseArrayClient.__module__
+        "xarray_dataset": lambda: importlib.import_module(
+            "...structures.xarray", BaseStructureClient.__module__
         ).DatasetStructure,
     }
 )

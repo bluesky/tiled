@@ -68,8 +68,8 @@ properties:
           "array": {"type": "string"},
           "dataframe": {"type": "string"},
           "variable": {"type": "string"},
-          "data_array": {"type": "string"},
-          "dataset": {"type": "string"}
+          "xarray_data_array": {"type": "string"},
+          "xarray_dataset": {"type": "string"}
         }
       }
     ]
@@ -89,25 +89,14 @@ properties:
       structure_clients: "dask"
       ```
 
-      To use custom clients, map each structure family you want to support
+      To use custom clients, map each structure family or spec you want to support
       to an import path:
 
       ```yaml
       structure_clients:
         array: "package.module:CustomArrayClient"
         dataframe: "package.module:CustomDataFrameClient"
-      ```
-  special_clients:
-    type: object
-    additionalProperties:
-      type: string
-    description: |
-      Use this to dispatch handling of structures that are marked with a given "spec"
-      to a special class.
-
-      ```yaml
-      special_clients:
-        some_spec: "package.module:CustomClient"
+        my_custom_spec: "package.module:CUstomClient"
       ```
   cache:
     type: object

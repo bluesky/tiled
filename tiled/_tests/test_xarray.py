@@ -1,27 +1,35 @@
 import dask.array
 import numpy
-import pandas
 import pytest
 import xarray
 import xarray.testing
 
+from ..adapters.mapping import MapAdapter
+from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 from ..client import from_tree
 from ..client import xarray as xarray_client
-from ..readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
-from ..trees.in_memory import Tree
 
 array = numpy.random.random((10, 10))
-tree = Tree(
-    {
-        "variable": VariableAdapter(
-            xarray.Variable(
-                data=dask.array.from_array(array),
-                dims=["x", "y"],
-                attrs={"thing": "stuff"},
-            )
+EXPECTED = {
+    "variable": xarray.Variable(
+        data=dask.array.from_array(array),
+        dims=["x", "y"],
+        attrs={"thing": "stuff"},
+    ),
+    "data_array": xarray.DataArray(
+        xarray.Variable(
+            data=dask.array.from_array(array),
+            dims=["x", "y"],
+            attrs={"thing": "stuff"},
         ),
-        "data_array": DataArrayAdapter(
-            xarray.DataArray(
+        coords={
+            "x": dask.array.arange(len(array)),
+            "y": 10 * dask.array.arange(len(array)),
+        },
+    ),
+    "dataset": xarray.Dataset(
+        {
+            "image": xarray.DataArray(
                 xarray.Variable(
                     data=dask.array.from_array(array),
                     dims=["x", "y"],
@@ -31,35 +39,22 @@ tree = Tree(
                     "x": dask.array.arange(len(array)),
                     "y": 10 * dask.array.arange(len(array)),
                 },
-            )
-        ),
-        "dataset": DatasetAdapter(
-            xarray.Dataset(
-                {
-                    "image": xarray.DataArray(
-                        xarray.Variable(
-                            data=dask.array.from_array(array),
-                            dims=["x", "y"],
-                            attrs={"thing": "stuff"},
-                        ),
-                        coords={
-                            "x": dask.array.arange(len(array)),
-                            "y": 10 * dask.array.arange(len(array)),
-                        },
-                    ),
-                    "z": xarray.DataArray(data=dask.array.ones((len(array),))),
-                },
-                coords={"time": numpy.arange(len(array))},
-            )
-        ),
-        "wide": DatasetAdapter(
-            xarray.Dataset(
-                {
-                    f"column_{i:03}": xarray.DataArray(i * numpy.ones(10))
-                    for i in range(500)
-                }
-            )
-        ),
+            ),
+            "z": xarray.DataArray(data=dask.array.ones((len(array),))),
+        },
+        coords={"time": numpy.arange(len(array))},
+    ),
+    "wide": xarray.Dataset(
+        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
+    ),
+}
+
+tree = MapAdapter(
+    {
+        "variable": VariableAdapter(EXPECTED["variable"]),
+        "data_array": DataArrayAdapter.from_data_array(EXPECTED["data_array"]),
+        "dataset": DatasetAdapter(EXPECTED["dataset"]),
+        "wide": DatasetAdapter(EXPECTED["wide"]),
     }
 )
 
@@ -67,7 +62,7 @@ tree = Tree(
 @pytest.mark.parametrize("key", list(tree))
 def test_xarrays(key):
     client = from_tree(tree)
-    expected = tree[key].read()
+    expected = EXPECTED[key]
     actual = client[key].read()
     xarray.testing.assert_equal(actual, expected)
 
@@ -110,7 +105,6 @@ def test_dataset_coord_access():
     xarray.testing.assert_equal(actual, expected)
 
 
-@pytest.mark.xfail(raises=NotImplementedError)
 def test_nested_coords():
     # Example from
     # https://xarray.pydata.org/en/stable/user-guide/data-structures.html#creating-a-dataset
@@ -127,11 +121,11 @@ def test_nested_coords():
         coords={
             "lon": (["x", "y"], lon),
             "lat": (["x", "y"], lat),
-            "time": pandas.date_range("2014-09-06", periods=3),
-            "reference_time": pandas.Timestamp("2014-09-05"),
+            "time": [1, 2, 3],
+            "reference_time": [11, 12, 13],
         },
     )
-    tree = Tree({"ds": DatasetAdapter(ds)})
+    tree = MapAdapter({"ds": DatasetAdapter(ds)})
     client = from_tree(tree)
     expected_dataset = ds
     client_dataset = client["ds"].read()

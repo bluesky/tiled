@@ -28,61 +28,41 @@ class Response(pydantic.generics.GenericModel, Generic[DataT]):
         return v
 
 
-class EntryType(str, enum.Enum):
-    tree = "tree"
-    reader = "reader"
-
-
 class EntryFields(str, enum.Enum):
     metadata = "metadata"
     structure_family = "structure_family"
     microstructure = "structure.micro"
     macrostructure = "structure.macro"
     count = "count"
+    sorting = "sorting"
     specs = "specs"
     none = ""
 
 
-class TreeAttributes(pydantic.BaseModel):
-    metadata: Optional[dict]  # free-form, user-specified dict
-    count: Optional[int]
-    sorting: Optional[List[Tuple[str, int]]]
-    specs: Optional[List[str]]
-
-
 class StructureFamilies(str, enum.Enum):
+    node = "node"
     array = "array"
     dataframe = "dataframe"
-    structured_array_tabular = "structured_array_tabular"
-    structured_array_generic = "structured_array_generic"
     variable = "variable"
-    data_array = "data_array"
-    dataset = "dataset"
+    xarray_data_array = "xarray_data_array"
+    xarray_dataset = "xarray_dataset"
 
 
-class ReaderAttributes(pydantic.BaseModel):
-    metadata: Optional[dict]  # free-form, user-specified dict
+class NodeAttributes(pydantic.BaseModel):
     structure_family: Optional[StructureFamilies]
-    structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
     specs: Optional[List[str]]
+    metadata: Optional[dict]  # free-form, user-specified dict
+    structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
+    count: Optional[int]
+    sorting: Optional[List[Tuple[str, int]]]
 
 
 class Resource(pydantic.BaseModel):
     "A JSON API Resource"
     id: str
-    type: EntryType
     meta: Optional[dict]
     links: Optional[dict]
-
-
-class TreeResource(Resource):
-    "Representation of a Tree as a JSON API Resource"
-    attributes: TreeAttributes
-
-
-class ReaderResource(Resource):
-    "Representation of a Reader as a JSON API Resource"
-    attributes: ReaderAttributes
+    attributes: NodeAttributes
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):

@@ -236,13 +236,13 @@ def serve_directory(
     ),
 ):
     "Serve a Tree instance from a directory of files."
+    from ..adapters.files import DirectoryAdapter
     from ..server.app import print_admin_api_key_if_generated, serve_tree
-    from ..trees.files import Tree
 
     tree_kwargs = {}
     server_settings = {}
     if keep_ext:
-        from ..trees.files import identity
+        from ..adapters.files import identity
 
         tree_kwargs.update({"key_from_filename": identity})
     if poll_interval is not None:
@@ -252,7 +252,7 @@ def serve_directory(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    tree = Tree.from_directory(directory, **tree_kwargs)
+    tree = DirectoryAdapter.from_directory(directory, **tree_kwargs)
     web_app = serve_tree(tree, {"allow_anonymous_access": public}, server_settings)
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 

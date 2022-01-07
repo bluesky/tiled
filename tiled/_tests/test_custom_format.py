@@ -1,10 +1,10 @@
 import io
 
+from ..adapters.mapping import MapAdapter
 from ..client import from_config
 from ..examples.xdi import XDIDataFrameAdapter, data, read_xdi
-from ..trees.in_memory import Tree
 
-tree = Tree({"example": XDIDataFrameAdapter.from_file(io.StringIO(data))})
+tree = MapAdapter({"example": XDIDataFrameAdapter.from_file(io.StringIO(data))})
 
 
 def test_xdi_round_trip():

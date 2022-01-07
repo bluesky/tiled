@@ -1,13 +1,11 @@
-from datetime import datetime
-
 import numpy
 import pandas
 
-from tiled.readers.array import ArrayAdapter
-from tiled.readers.dataframe import DataFrameAdapter
-from tiled.trees.in_memory import Tree
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.mapping import MapAdapter
 
-tree = Tree(
+tree = MapAdapter(
     {
         "A": ArrayAdapter.from_array(numpy.ones((100, 100))),
         "B": ArrayAdapter.from_array(numpy.ones((100, 100, 100))),
@@ -22,5 +20,5 @@ tree = Tree(
             npartitions=3,
         ),
     },
-    metadata={"d": datetime.now()},
+    metadata={"thing": "stuff"},
 )

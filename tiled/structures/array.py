@@ -4,7 +4,7 @@ import io
 import os
 import sys
 from dataclasses import dataclass
-from typing import Tuple
+from typing import List, Optional, Tuple, Union
 
 import numpy
 
@@ -77,7 +77,27 @@ class Kind(str, enum.Enum):
 
 
 @dataclass
-class MachineDataType:
+class ArrayMacroStructure:
+    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
+    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
+    dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
+    resizable: Union[bool, Tuple[bool, ...]] = False
+
+    @classmethod
+    def from_json(cls, structure):
+        dims = structure["dims"]
+        if dims is not None:
+            dims = tuple(dims)
+        return cls(
+            chunks=tuple(map(tuple, structure["chunks"])),
+            shape=tuple(structure["shape"]),
+            dims=dims,
+            resizable=structure.get("resizable", False),
+        )
+
+
+@dataclass
+class BuiltinDtype:
     endianness: Endianness
     kind: Kind
     itemsize: int
@@ -126,35 +146,120 @@ class MachineDataType:
 
 
 @dataclass
-class ArrayMacroStructure:
-    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
-    shape: Tuple[int, ...]  # tuple-of-ints like (3, 3)
+class Field:
+    name: str
+    dtype: Union[BuiltinDtype, "StructDtype"]
+    shape: Optional[Tuple[int, ...]]
+
+    @classmethod
+    def from_numpy_descr(cls, field):
+        name, *rest = field
+        if name == "":
+            raise ValueError(
+                f"You seem to have gotten descr of a base or subdtype: {field}"
+            )
+        if len(rest) == 1:
+            (f_type,) = rest
+            shape = None
+        else:
+            f_type, shape = rest
+
+        if isinstance(f_type, str):
+            FType = BuiltinDtype.from_numpy_dtype(numpy.dtype(f_type))
+        else:
+            FType = StructDtype.from_numpy_dtype(numpy.dtype(f_type))
+        return cls(name=name, dtype=FType, shape=shape)
+
+    def to_numpy_descr(self):
+        if isinstance(self.dtype, BuiltinDtype):
+            base = [self.name, self.dtype.to_numpy_str()]
+        else:
+            base = [self.name, self.dtype.to_numpy_descr()]
+        if self.shape is None:
+            return tuple(base)
+        else:
+            return tuple(base + [self.shape])
+
+    @classmethod
+    def from_json(cls, structure):
+        name = structure["name"]
+        if "fields" in structure["dtype"]:
+            ftype = StructDtype.from_json(structure["dtype"])
+        else:
+            ftype = BuiltinDtype.from_json(structure["dtype"])
+        return cls(name=name, dtype=ftype, shape=structure["shape"])
+
+
+@dataclass
+class StructDtype:
+    itemsize: int
+    fields: List[Field]
+
+    @classmethod
+    def from_numpy_dtype(cls, dtype):
+        # subdtypes push extra dimensions into arrays, we should handle these
+        # a layer up and report an array with bigger dimensions.
+        if dtype.subdtype is not None:
+            raise ValueError(f"We do not know how to encode subdtypes: {dtype}")
+        # If this is a builtin type, require the use of BuiltinDtype (nee .array.BuiltinDtype)
+        if dtype.fields is None:
+            raise ValueError(f"You have a base type: {dtype}")
+        return cls(
+            itemsize=dtype.itemsize,
+            fields=[Field.from_numpy_descr(f) for f in dtype.descr],
+        )
+
+    def to_numpy_dtype(self):
+        return numpy.dtype(self.to_numpy_descr())
+
+    def to_numpy_descr(self):
+        return [f.to_numpy_descr() for f in self.fields]
+
+    def max_depth(self):
+        return max(
+            1 if isinstance(f.dtype, BuiltinDtype) else 1 + f.dtype.max_depth()
+            for f in self.fields
+        )
 
     @classmethod
     def from_json(cls, structure):
         return cls(
-            chunks=tuple(map(tuple, structure["chunks"])),
-            shape=tuple(structure["shape"]),
+            itemsize=structure["itemsize"],
+            fields=[Field.from_json(f) for f in structure["fields"]],
         )
 
 
 @dataclass
 class ArrayStructure:
     macro: ArrayMacroStructure
-    micro: MachineDataType
+    micro: Union[BuiltinDtype, StructDtype]
 
     @classmethod
     def from_json(cls, structure):
+        if "fields" in structure["micro"]:
+            micro = StructDtype.from_json(structure["micro"])
+        else:
+            micro = BuiltinDtype.from_json(structure["micro"])
         return cls(
             macro=ArrayMacroStructure.from_json(structure["macro"]),
-            micro=MachineDataType.from_json(structure["micro"]),
+            micro=micro,
         )
+
+
+def as_buffer(array, metadata):
+    "Give back a zero-copy memoryview of the array if possible. Otherwise, copy to bytes."
+    # The memoryview path fails for datetime type (and possibly some others?)
+    # but it generally works for standard types like int, float, bool, str.
+    try:
+        return memoryview(numpy.ascontiguousarray(array))
+    except ValueError:
+        return numpy.asarray(array).tobytes()
 
 
 serialization_registry.register(
     "array",
     "application/octet-stream",
-    lambda array, metadata: memoryview(numpy.ascontiguousarray(array)),
+    as_buffer,
 )
 if modules_available("orjson"):
     serialization_registry.register(

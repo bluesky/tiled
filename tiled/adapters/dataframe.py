@@ -4,11 +4,12 @@ import dask.dataframe
 from ..server.object_cache import NO_CACHE, get_object_cache
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
+from .array import ArrayAdapter
 
 
 class DataFrameAdapter:
     """
-    Wrap a dataframe-like in a "Reader".
+    Wrap a dataframe-like object in an interface that Tiled can serve.
 
     Examples
     --------
@@ -67,6 +68,13 @@ class DataFrameAdapter:
     def __repr__(self):
         return f"{type(self).__name__}({self._ddf!r})"
 
+    def __getitem__(self, key):
+        # Must compute to determine shape.
+        return ArrayAdapter.from_array(self._ddf[key].values.compute())
+
+    def items(self):
+        yield from ((key, self[key]) for key in self._ddf.columns)
+
     @property
     def metadata(self):
         return DictView(self._metadata)
@@ -77,23 +85,23 @@ class DataFrameAdapter:
     def microstructure(self):
         return DataFrameMicroStructure.from_dask_dataframe(self._ddf)
 
-    def read(self, columns=None):
+    def read(self, fields=None):
         # TODO For the array reader we require returning a *lazy* object here.
         # Should rethink that. As is, this is inconsistent.
         # But we very intentionally do not support fancy row-slicing because
         # that becomes complex fast and it out of scope for Tiled.
         ddf = self._ddf
-        if columns is not None:
-            ddf = ddf[columns]
+        if fields is not None:
+            ddf = ddf[fields]
         # Note: If the cache is set to NO_CACHE, this is a null context.
         with get_object_cache().dask_context:
             return ddf.compute()
 
-    def read_partition(self, partition, columns=None):
+    def read_partition(self, partition, fields=None):
         partition = self._ddf.partitions[partition]
-        if columns is not None:
-            # Sub-select columns.
-            partition = partition[columns]
+        if fields is not None:
+            # Sub-select fields.
+            partition = partition[fields]
         # Note: If the cache is set to NO_CACHE, this is a null context.
         with get_object_cache().dask_context:
             return partition.compute()

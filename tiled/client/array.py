@@ -6,17 +6,19 @@ import dask.array
 import numpy
 
 from ..media_type_registration import deserialization_registry
-from .base import BaseArrayClient
+from .base import BaseStructureClient
 from .utils import export_util
 
 
-class DaskArrayClient(BaseArrayClient):
+class DaskArrayClient(BaseStructureClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
-    def __init__(self, *args, item, route=None, **kwargs):
-        if route is None:
-            route = f"/{item['attributes']['structure_family']}/block"
-        super().__init__(*args, route=route, item=item, **kwargs)
+    def __init__(self, *args, item, **kwargs):
+        super().__init__(*args, item=item, **kwargs)
+
+    @property
+    def dims(self):
+        return self.structure().macro.dims
 
     def _get_block(self, block, dtype, shape, slice=None):
         """
@@ -44,12 +46,13 @@ class DaskArrayClient(BaseArrayClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
+        full_path = (
+            "/array/block"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+        )
         content = self.context.get_content(
-            self._route
-            + "/"
-            + "/".join(self.context.path_parts)
-            + "/"
-            + "/".join(self._path),
+            full_path,
             headers={"Accept": media_type},
             params={
                 "block": ",".join(map(str, block)),
@@ -229,5 +232,5 @@ class ArrayClient(DaskArrayClient):
     def download(self):
         # Do not run super().download() because DaskArrayClient calls compute()
         # which does not apply here.
-        BaseArrayClient.download(self)
+        BaseStructureClient.download(self)
         self.read()

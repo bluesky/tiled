@@ -8,10 +8,10 @@ import numpy
 import pandas
 import xarray
 
-from tiled.readers.array import ArrayAdapter, StructuredArrayTabularAdapter
-from tiled.readers.dataframe import DataFrameAdapter
-from tiled.readers.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
-from tiled.trees.in_memory import Tree
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
 
 print("Generating large example data...", file=sys.stderr)
 data = {
@@ -61,7 +61,7 @@ mapping = {
         npartitions=5,
         metadata={"animal": "dog", "color": "green"},
     ),
-    "labeled_data": Tree(
+    "labeled_data": MapAdapter(
         {
             "image_with_dims": VariableAdapter(
                 xarray.Variable(
@@ -72,15 +72,15 @@ mapping = {
             )
         }
     ),
-    "structured_data": Tree(
+    "structured_data": MapAdapter(
         {
-            "pets": StructuredArrayTabularAdapter.from_array(
+            "pets": ArrayAdapter.from_array(
                 numpy.array(
                     [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
                     dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
                 )
             ),
-            "image_with_coords": DataArrayAdapter(
+            "image_with_coords": DataArrayAdapter.from_data_array(
                 xarray.DataArray(
                     xarray.Variable(
                         data=dask.array.from_array(data["medium_image"]),
@@ -110,10 +110,11 @@ mapping = {
                         "z": xarray.DataArray(
                             data=dask.array.ones((len(data["medium_image"]),))
                         ),
-                    }
+                    },
+                    attrs={"snow": "cold"},
                 )
             ),
-            "xarray_data_array": DataArrayAdapter(
+            "xarray_data_array": DataArrayAdapter.from_data_array(
                 xarray.DataArray(
                     xarray.Variable(
                         data=dask.array.from_array(data["medium_image"]),
@@ -137,7 +138,7 @@ mapping = {
 }
 # The entries aren't actually dynamic, but set entries_stale_after
 # to demonstrate cache expiry.
-tree = Tree(mapping, entries_stale_after=timedelta(seconds=10))
+tree = MapAdapter(mapping, entries_stale_after=timedelta(seconds=10))
 
 
 async def increment_dynamic():

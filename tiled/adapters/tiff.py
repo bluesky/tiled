@@ -2,46 +2,68 @@ import builtins
 import hashlib
 
 import numpy
+import tifffile
 
 from ..server.object_cache import with_object_cache
-from ..structures.array import ArrayMacroStructure, MachineDataType
+from ..structures.array import ArrayMacroStructure, BuiltinDtype
 
 
-def subdirectory_handler(path):
+class TiffAdapter:
     """
-    Sniff a subdirectory for TIFF sequences.
+    Read a TIFF file.
+
+    Examples
+    --------
+
+    >>> TiffAdapter("path/to/file.tiff")
     """
-    # Max fraction of files that do not look like TIFF sequence files
-    RELATIVE_THRESHOLD = 0.2
-    # Max number of files that do not look like TIFF sequence files
-    ABSOLUTE_THRESHOLD = 10
-    filepaths = []
-    outliers = 0
-    for filepath in path.iterdir():
-        if not filepath.is_file():
-            # Skip directories.
-            continue
-        if filepath.name.startswith("."):
-            # Skip hidden files.
-            continue
-        if (filepath.suffix in (".tif", ".tiff")) and filepath.stem[-3:].isdigit():
-            # This looks like something123.tif.
-            filepaths.append(filepath)
-            continue
-        outliers += 1
 
-    fraction = outliers / (outliers + len(filepaths))
-    if (outliers <= ABSOLUTE_THRESHOLD) and (fraction <= RELATIVE_THRESHOLD):
-        # This looks like a TIFF sequence directory.
-        import tifffile
+    structure_family = "array"
 
-        seq = tifffile.TiffSequence(sorted(filepaths))
-        return TiffSequenceReader(seq)
+    def __init__(self, path):
+        self._file = tifffile.TiffFile(path)
+        self._cache_key = (type(self).__module__, type(self).__qualname__, path)
 
-    return None
+    @property
+    def metadata(self):
+        # This contains some enums, but Python's built-in JSON serializer
+        # handles them fine (converting  to str or int as appropriate).
+        return {tag.name: tag.value for tag in self._file.pages[0].tags.values()}
+
+    def read(self, slice=None):
+        # TODO Is there support for reading less than the whole array
+        # if we only want a slice? I do not think that is possible with a
+        # single-page TIFF but I'm not sure. Certainly it *is* possible for
+        # multi-page TIFFs.
+        arr = with_object_cache(self._cache_key, self._file.asarray)
+        if slice is not None:
+            arr = arr[slice]
+        return arr
+
+    def read_block(self, block, slice=None):
+        # For simplicity, this adapter always treat a single TIFF file as one
+        # chunk. This could be relaxed in the future.
+        if sum(block) != 0:
+            raise IndexError(block)
+
+        arr = with_object_cache(self._cache_key, self._file.asarray)
+        if slice is not None:
+            arr = arr[slice]
+        return arr
+
+    def microstructure(self):
+        return BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype)
+
+    def macrostructure(self):
+        if self._file.is_shaped:
+            shape = tuple(self._file.shaped_metadata[0]["shape"])
+        else:
+            arr = with_object_cache(self._cache_key, self._file.asarray)
+            shape = arr.shape
+        return ArrayMacroStructure(shape=shape, chunks=tuple((dim,) for dim in shape))
 
 
-class TiffSequenceReader:
+class TiffSequenceAdapter:
 
     structure_family = "array"
 
@@ -68,7 +90,7 @@ class TiffSequenceReader:
         of a group of images
         """
 
-        # Print("Inside Reader:", slice)
+        # Print("Inside Adapter:", slice)
         if slice is None:
             return with_object_cache(self._cache_key, _safe_asarray, self._seq)
         if isinstance(slice, int):
@@ -141,7 +163,7 @@ class TiffSequenceReader:
 
     def microstructure(self):
         # Assume all files have the same data type
-        return MachineDataType.from_numpy_dtype(self.read(slice=0).dtype)
+        return BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype)
 
     def macrostructure(self):
         shape = (len(self._seq), *self.read(slice=0).shape)
@@ -151,6 +173,40 @@ class TiffSequenceReader:
             # one chunks per underlying TIFF file
             chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
         )
+
+
+def subdirectory_handler(path):
+    """
+    Sniff a subdirectory for TIFF sequences.
+    """
+    # Max fraction of files that do not look like TIFF sequence files
+    RELATIVE_THRESHOLD = 0.2
+    # Max number of files that do not look like TIFF sequence files
+    ABSOLUTE_THRESHOLD = 10
+    filepaths = []
+    outliers = 0
+    for filepath in path.iterdir():
+        if not filepath.is_file():
+            # Skip directories.
+            continue
+        if filepath.name.startswith("."):
+            # Skip hidden files.
+            continue
+        if (filepath.suffix in (".tif", ".tiff")) and filepath.stem[-3:].isdigit():
+            # This looks like something123.tif.
+            filepaths.append(filepath)
+            continue
+        outliers += 1
+
+    fraction = outliers / (outliers + len(filepaths))
+    if (outliers <= ABSOLUTE_THRESHOLD) and (fraction <= RELATIVE_THRESHOLD):
+        # This looks like a TIFF sequence directory.
+        import tifffile
+
+        seq = tifffile.TiffSequence(sorted(filepaths))
+        return TiffSequenceAdapter(seq)
+
+    return None
 
 
 def _safe_asarray(seq, index=None):

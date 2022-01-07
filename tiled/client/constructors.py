@@ -23,7 +23,6 @@ def from_uri(
     offline=False,
     username=None,
     token_cache=DEFAULT_TOKEN_CACHE,
-    special_clients=None,
     verify=True,
     authentication_uri=None,
     prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
@@ -39,10 +38,8 @@ def from_uri(
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
-        DataFrames). For advanced use, provide dict mapping
-        structure_family names ("array", "dataframe", "variable",
-        "data_array", "dataset") to client objects. See
-        ``Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        DataFrames). For advanced use, provide dict mapping a
+        structure_family or a spec to a client object.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
@@ -50,11 +47,6 @@ def from_uri(
         Username for authenticated access.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
-    special_clients : dict, optional
-        Advanced: Map spec from the server to special client
-        tree objects. See also
-        ``Node.discover_special_clients()`` and
-        ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     verify : bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
@@ -64,7 +56,7 @@ def from_uri(
     headers : dict, optional
         Extra HTTP headers.
     """
-    # The uri is expected to reach the root or /metadata/[...] route.
+    # The uri is expected to reach the root or /node/metadata/[...] route.
     url = httpx.URL(uri)
     headers = headers or {}
     headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
@@ -103,9 +95,7 @@ def from_uri(
         token_cache=token_cache,
         prompt_for_reauthentication=prompt_for_reauthentication,
     )
-    return from_context(
-        context, structure_clients=structure_clients, special_clients=special_clients
-    )
+    return from_context(context, structure_clients=structure_clients)
 
 
 def from_tree(
@@ -120,7 +110,6 @@ def from_tree(
     cache=None,
     offline=False,
     username=None,
-    special_clients=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     headers=None,
 ):
@@ -146,18 +135,11 @@ def from_tree(
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
-        DataFrames). For advanced use, provide dict mapping
-        structure_family names ("array", "dataframe", "variable",
-        "data_array", "dataset") to client objects. See
-        ``Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        DataFrames). For advanced use, provide dict mapping a
+        structure_family or a spec to a client object.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
-    special_clients : dict, optional
-        Advanced: Map spec from the server to special client
-        tree objects. See also
-        ``Node.discover_special_clients()`` and
-        ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     prompt_for_reauthentication : {"at_init", "always", "never"}
@@ -178,14 +160,10 @@ def from_tree(
         username=username,
         headers=headers,
     )
-    return from_context(
-        context, structure_clients=structure_clients, special_clients=special_clients
-    )
+    return from_context(context, structure_clients=structure_clients)
 
 
-def from_context(
-    context, structure_clients="numpy", *, path=None, special_clients=None
-):
+def from_context(context, structure_clients="numpy", *, path=None):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
 
@@ -195,43 +173,32 @@ def from_context(
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
-        DataFrames). For advanced use, provide dict mapping
-        structure_family names ("array", "dataframe", "variable",
-        "data_array", "dataset") to client objects. See
-        ``Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH``.
+        DataFrames). For advanced use, provide dict mapping a
+        structure_family or a spec to a client object.
     username : str, optional
         Username for authenticated access.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
-    special_clients : dict, optional
-        Advanced: Map spec from the server to special client
-        tree objects. See also
-        ``Node.discover_special_clients()`` and
-        ``Node.DEFAULT_SPECIAL_CLIENT_DISPATCH``.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     authentication_uri : str, optional
         URL of authentication server
     """
+    # Do entrypoint discovery if it hasn't yet been done.
+    if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
+        Node.discover_clients_from_entrypoints()
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
         structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     path = path or []
-    # Do entrypoint discovery if it hasn't yet been done.
-    if Node.DEFAULT_SPECIAL_CLIENT_DISPATCH is None:
-        Node.discover_special_clients()
-    special_clients = collections.ChainMap(
-        special_clients or {}, Node.DEFAULT_SPECIAL_CLIENT_DISPATCH
-    )
-    content = context.get_json(f"/metadata/{'/'.join(context.path_parts)}")
+    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
     instance = Node(
         context,
         item=item,
         path=path,
         structure_clients=structure_clients,
-        special_clients=special_clients,
     )
     return instance.client_for_item(item, path=path)
 
@@ -325,21 +292,6 @@ def from_profile(name, structure_clients=None, **kwargs):
                         class_ = value
                     result[key] = class_
                 merged["structure_clients"] = result
-        special_clients_ = merged.pop("special_clients", None)
-        if special_clients_ is not None:
-            # This is a dict mapping specs like "BlueskyRun" to values. The
-            # values may be client objects or importable strings.
-            result = {}
-            for key, value in special_clients_.items():
-                if isinstance(value, str):
-                    try:
-                        class_ = import_object(value, accept_live_object=True)
-                    except Exception:
-                        raise
-                else:
-                    class_ = value
-                result[key] = class_
-            merged["special_clients"] = result
     if "direct" in merged:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.

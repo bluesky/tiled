@@ -1,11 +1,11 @@
 import numpy
 import pandas.testing
 
+from ..adapters.dataframe import DataFrameAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
-from ..readers.dataframe import DataFrameAdapter
-from ..trees.in_memory import Tree
 
-tree = Tree(
+tree = MapAdapter(
     {
         # a dataframe divided into three partitions
         "basic": DataFrameAdapter.from_pandas(

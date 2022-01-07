@@ -1,35 +1,35 @@
 import dask.dataframe
 import pandas
 
+from ..adapters.mapping import MapAdapter
 from ..server.object_cache import NO_CACHE, get_object_cache, with_object_cache
-from ..trees.in_memory import Tree
 from .dataframe import DataFrameAdapter
 
 
-class ExcelReader(Tree):
+class ExcelAdapter(MapAdapter):
     """
     Read the sheets in an Excel file.
 
     This maps the Excel file, which may contain one of more spreadsheets,
-    onto a "Tree" of tabular structures.
+    onto a tree of tabular structures.
 
     Examples
     --------
 
     Given a file path
 
-    >>> ExcelReader.from_file("path/to/excel_file.xlsx")
+    >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
 
     Given a file object
 
     >>> file = open("path/to/excel_file.xlsx")
-    >>> ExcelReader.from_file(file)
+    >>> ExcelAdapter.from_file(file)
 
     Given a pandas.ExcelFile object
 
     >>> import pandas
     >>> ef = pandas.ExcelFile(file)
-    >>> ExcelReader.from_file(ef)
+    >>> ExcelAdapter.from_file(ef)
     """
 
     @classmethod

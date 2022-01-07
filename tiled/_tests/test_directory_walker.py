@@ -1,15 +1,14 @@
 import shutil
-import time
 from pathlib import Path
 
 import numpy
 import pytest
 import tifffile
 
+from ..adapters.array import ArrayAdapter
+from ..adapters.files import Change, strip_suffixes
 from ..client import from_config
 from ..examples.generate_files import data, df1, generate_files
-from ..readers.array import ArrayAdapter
-from ..trees.files import DEFAULT_POLL_INTERVAL, Change, strip_suffixes
 
 
 @pytest.fixture
@@ -24,12 +23,23 @@ def example_data_dir(tmpdir_factory):
     return tmpdir
 
 
+def force_update(client):
+    """
+    Reach into the tree force it to process an updates. Block until complete.
+
+    We could just wait (i.e. sleep) instead until the next polling loop completes,
+    but this makes the tests take longer to run, and it can be flaky on CI services
+    where things can take longer than they do in normal use.
+    """
+    client.context.app.state.root_tree.update_now()
+
+
 def test_from_directory(example_data_dir):
     """Tests that from_config with a Tree from a directory produces a node"""
     config = {
         "trees": [
             {
-                "tree": "tiled.trees.files:Tree.from_directory",
+                "tree": "tiled.adapters.files:DirectoryAdapter.from_directory",
                 "path": "/",
                 "args": {"directory": str(example_data_dir)},
             }
@@ -41,7 +51,7 @@ def test_from_directory(example_data_dir):
 
 
 def test_files_config_alias(example_data_dir):
-    """Test the config alias 'files' for 'tiled.trees.files:Tree.from_directory"""
+    """Test the config alias 'files' for 'tiled.adapters.files:DirectoryAdapter.from_directory"""
     config = {
         "trees": [
             {"tree": "files", "path": "/", "args": {"directory": str(example_data_dir)}}
@@ -70,8 +80,7 @@ def test_item_added(example_data_dir):
     p.parent.mkdir()
     df1.to_csv(p)
 
-    # Wait for worker thread to discover changes.
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
+    force_update(client)
 
     assert "added_file_top_level" in client
     assert "added_file_in_subdir" in client["more"]
@@ -98,9 +107,7 @@ def test_item_removed(example_data_dir):
     Path(example_data_dir, "c.tif").unlink()
     Path(example_data_dir, "more", "d.tif").unlink()
 
-    # Wait for worker thread to discover changes.
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
-
+    force_update(client)
     assert "c" not in client
     assert "even_more" not in client
     assert "d" not in client["more"]
@@ -128,9 +135,7 @@ def test_collision_at_startup(example_data_dir):
     # Resolve the collision.
     p.unlink()
 
-    # Wait for worker thread to discover changes.
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
-
+    force_update(client)
     assert "a" in client
 
 
@@ -150,14 +155,14 @@ def test_collision_after_startup(example_data_dir):
     p = Path(example_data_dir, "a.tiff")
     with pytest.warns(UserWarning):
         tifffile.imsave(str(p), data)
-        time.sleep(DEFAULT_POLL_INTERVAL * 4)
+        force_update(client)
 
     assert "a" not in client
 
     # Resolve the collision.
     p.unlink()
 
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
+    force_update(client)
     assert "a" in client
 
 
@@ -178,14 +183,14 @@ def test_remove_and_re_add(example_data_dir):
     p.unlink()
 
     # Confirm it is gone.
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
+    force_update(client)
     assert "a" not in client
 
     # Add it back.
     tifffile.imsave(str(p), data)
 
     # Confirm it is back (no spurious collision).
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
+    force_update(client)
     assert "a" in client
 
 
@@ -251,19 +256,19 @@ def test_subdirectory_handler(tmpdir):
     assert isinstance(arr, numpy.ndarray)
 
     df1.to_csv(Path(tmpdir, "individual_files", "c.csv"))
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
+    force_update(client)
     assert "c" in client["individual_files"]
 
     # Adding, changing, or, removing files should notify the handler.
     df1.to_csv(Path(tmpdir, "separately_managed", "c.csv"))  # added
     df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))  # modified
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
+    force_update(client)
 
     Path(tmpdir, "separately_managed", "c.csv").unlink()  # removed
     # Add a new file in a new subdirectory.
     Path(tmpdir, "separately_managed", "new_subdir").mkdir()
     df1.to_csv(Path(tmpdir, "separately_managed", "new_subdir", "d.csv"))
-    time.sleep(DEFAULT_POLL_INTERVAL * 4)
+    force_update(client)
 
     expected_first_batch = [
         (Change.added, Path("c.csv")),

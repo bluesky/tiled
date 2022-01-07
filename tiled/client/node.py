@@ -8,10 +8,10 @@ from dataclasses import fields
 
 import entrypoints
 
+from ..adapters.utils import IndexersMixin, tree_repr
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..trees.utils import UNCHANGED, IndexersMixin, tree_repr
-from ..utils import OneShotCachedMap, Sentinel
+from ..utils import UNCHANGED, OneShotCachedMap, Sentinel
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
 
@@ -28,22 +28,16 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "array": lambda: importlib.import_module(
                     "..array", Node.__module__
                 ).ArrayClient,
-                "structured_array_generic": lambda: importlib.import_module(
-                    "..array", Node.__module__
-                ).ArrayClient,
-                "structured_array_tabular": lambda: importlib.import_module(
-                    "..array", Node.__module__
-                ).ArrayClient,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Node.__module__
                 ).DataFrameClient,
                 "variable": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).VariableClient,
-                "data_array": lambda: importlib.import_module(
+                "xarray_data_array": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DataArrayClient,
-                "dataset": lambda: importlib.import_module(
+                "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DatasetClient,
             }
@@ -54,31 +48,24 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "array": lambda: importlib.import_module(
                     "..array", Node.__module__
                 ).DaskArrayClient,
-                "structured_array_generic": lambda: importlib.import_module(
-                    "..array", Node.__module__
-                ).DaskArrayClient,
-                "structured_array_tabular": lambda: importlib.import_module(
-                    "..array", Node.__module__
-                ).DaskArrayClient,
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Node.__module__
                 ).DaskDataFrameClient,
                 "variable": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskVariableClient,
-                "data_array": lambda: importlib.import_module(
+                "xarray_data_array": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskDataArrayClient,
-                "dataset": lambda: importlib.import_module(
+                "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskDatasetClient,
             }
         ),
     }
 
-    # This is populated when the first instance is created. To populate or
-    # refresh it manually, call classmethod discover_special_clients().
-    DEFAULT_SPECIAL_CLIENT_DISPATCH = None
+    # This is populated when the first instance is created.
+    STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
     @classmethod
     def _discover_entrypoints(cls, entrypoint_name):
@@ -92,22 +79,29 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
     @classmethod
-    def discover_special_clients(cls):
+    def discover_clients_from_entrypoints(cls):
         """
-        Search the software environment for libraries that register special clients.
+        Search the software environment for libraries that register structure clients.
 
         This is called once automatically the first time Node.from_uri
-        is called. You may call it again manually to refresh, and it will
-        reflect any changes to the environment since it was first populated.
+        is called. It is idempotent.
         """
+        if cls.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is not None:
+            # short-circuit
+            return
         # The modules associated with these entrypoints will be imported
         # lazily, only when the item is first accessed.
-        cls.DEFAULT_SPECIAL_CLIENT_DISPATCH = cls._discover_entrypoints(
-            "tiled.special_client"
-        )
-        # Note: We could use entrypoints to discover custom structure_family types as
-        # well, and in fact we did do this in an early draft. It was removed
-        # for simplicity, at least for now.
+        cls.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = OneShotCachedMap()
+        # Check old name (special_client) and new name (structure_client).
+        for entrypoint_name in ["tiled.special_client", "tiled.structure_client"]:
+            for name, entrypoint in entrypoints.get_group_named(
+                entrypoint_name
+            ).items():
+                cls.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS.set(name, entrypoint.load)
+                cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH["numpy"].set(
+                    name, entrypoint.load
+                )
+                cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH["dask"].set(name, entrypoint.load)
 
     def __init__(
         self,
@@ -116,7 +110,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         path,
         item,
         structure_clients,
-        special_clients,
         params=None,
         queries=None,
         sorting=None,
@@ -124,10 +117,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         "This is not user-facing. Use Node.from_uri."
 
         self.structure_clients = structure_clients
-        self.special_clients = special_clients
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
-        sorting = item["attributes"].get("sorting")
+        # If the user has not specified a sorting, give the server the opportunity
+        # to tell us the default sorting.
+        sorting = sorting or item["attributes"].get("sorting")
         self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
         self._sorting_params = {
             "sort": ",".join(
@@ -139,7 +133,13 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
             )
         }
-        super().__init__(context=context, item=item, path=path, params=params)
+        super().__init__(
+            context=context,
+            item=item,
+            path=path,
+            params=params,
+            structure_clients=structure_clients,
+        )
 
     def __repr__(self):
         # Display up to the first N keys to avoid making a giant service
@@ -187,58 +187,41 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         with self.context.revalidation(revalidate):
             self.download()
 
-    def _get_class(self, item):
-        # The server can use specs to tell us that this is not just *any*
-        # node/array/dataframe/etc. but that is matches a certain specification
-        # for which there may be a special client available.
-        # Check each spec in order for a matching special client. Use the first
-        # one we find. If we find no special client for any spec, fall back on
-        # the defaults.
-        specs = item["attributes"].get("specs", []) or []
-        for spec in specs:
-            class_ = self.special_clients.get(spec)
-            if class_ is None:
-                continue
-            return class_
-        if item["type"] == "reader":
-            structure_family = item["attributes"]["structure_family"]
-            try:
-                return self.structure_clients[structure_family]
-            except KeyError:
-                raise UnknownStructureFamily(structure_family) from None
-        return self.structure_clients["node"]
-
     def client_for_item(self, item, path):
         """
         Create an instance of the appropriate client class for an item.
 
         This is intended primarily for internal use and use by subclasses.
         """
-        class_ = self._get_class(item)
-        if item["type"] == "tree":
-            return class_(
-                context=self.context,
-                item=item,
-                path=path,
-                structure_clients=self.structure_clients,
-                special_clients=self.special_clients,
-                params=self._params,
-                queries=None,  # This is the only difference.
-            )
-        elif item["type"] == "reader":
-            return class_(
-                context=self.context, item=item, path=path, params=self._params
-            )
+        # The server can use specs to tell us that this is not just *any*
+        # node/array/dataframe/etc. but that is matches a certain specification
+        # for which there may be a special client available.
+        # Check each spec in order for a matching structure client. Use the first
+        # one we find. If we find no structure client for any spec, fall back on
+        # the default for this structure family.
+        specs = item["attributes"].get("specs", []) or []
+        for spec in specs:
+            class_ = self.structure_clients.get(spec)
+            if class_ is not None:
+                break
         else:
-            raise NotImplementedError(
-                f"Server sent item of unrecognized type {item['type']}"
-            )
+            structure_family = item["attributes"]["structure_family"]
+            try:
+                class_ = self.structure_clients[structure_family]
+            except KeyError:
+                raise UnknownStructureFamily(structure_family) from None
+        return class_(
+            context=self.context,
+            item=item,
+            path=path,
+            structure_clients=self.structure_clients,
+            params=self._params,
+        )
 
     def new_variation(
         self,
         *,
         structure_clients=UNCHANGED,
-        special_clients=UNCHANGED,
         queries=UNCHANGED,
         sorting=UNCHANGED,
         **kwargs,
@@ -254,8 +237,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             ]
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
-        if special_clients is UNCHANGED:
-            special_clients = self.special_clients
         if queries is UNCHANGED:
             queries = self._queries
         if sorting is UNCHANGED:
@@ -263,7 +244,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         return super().new_variation(
             context=self.context,
             structure_clients=structure_clients,
-            special_clients=special_clients,
             queries=queries,
             sorting=sorting,
             **kwargs,
@@ -376,7 +356,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             sorting_params = self._reversed_sorting_params
         assert start >= 0
-        assert stop >= 0
+        assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
@@ -405,7 +385,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             sorting_params = self._reversed_sorting_params
         assert start >= 0
-        assert stop >= 0
+        assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
@@ -459,7 +439,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(queries=self._queries + [query])
 
-    def sort(self, sorting):
+    def sort(self, *sorting):
         """
         Make a Node with the same entries but sorted according to `sorting`.
 
@@ -469,7 +449,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         Sort by "color" in ascending order, and then by "height" in descending order.
 
         >>> from tiled.client import ASCENDING, DESCENDING
-        >>> tree.sort([("color", ASCENDING), ("height", DESCENDING)])
+        >>> tree.sort(("color", ASCENDING), ("height", DESCENDING))
 
         Note that ``1`` may be used as a synonym for ``ASCENDING``, and ``-1``
         may be used as a synonym for ``DESCENDING``.

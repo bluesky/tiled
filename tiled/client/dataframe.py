@@ -2,12 +2,8 @@ import dask
 import dask.dataframe
 
 from ..media_type_registration import deserialization_registry
-from ..structures.dataframe import (
-    APACHE_ARROW_FILE_MIME_TYPE,
-    DataFrameMacroStructure,
-    DataFrameMicroStructure,
-    DataFrameStructure,
-)
+from ..structures.dataframe import APACHE_ARROW_FILE_MIME_TYPE
+from ..utils import UNCHANGED
 from .base import BaseStructureClient
 from .utils import export_util
 
@@ -15,8 +11,10 @@ from .utils import export_util
 class DaskDataFrameClient(BaseStructureClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def new_variation(self, structure=UNCHANGED, **kwargs):
+        if structure is UNCHANGED:
+            structure = self._structure
+        return super().new_variation(structure=structure, **kwargs)
 
     def _repr_pretty_(self, p, cycle):
         """
@@ -24,30 +22,38 @@ class DaskDataFrameClient(BaseStructureClient):
 
         See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
         """
-        # Try to get the column names, but give up quickly to avoid blocking
-        # for long.
-        TIMEOUT = 0.2  # seconds
-        try:
-            content = self.context.get_json(
-                self.uri,
-                params={"fields": "structure.macro", **self._params},
-                timeout=TIMEOUT,
-            )
-        except TimeoutError:
-            p.text(
-                f"<{type(self).__name__} Loading column names took too long; use list(...) >"
-            )
-        except Exception as err:
-            p.text(f"<{type(self).__name__} Loading column names raised error {err!r}>")
+        structure = self.structure()
+        if not structure.macro.resizable:
+            p.text(f"<{type(self).__name__} {structure.macro.columns}>")
         else:
+            # Try to get the column names, but give up quickly to avoid blocking
+            # for long.
+            TIMEOUT = 0.2  # seconds
             try:
-                columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
+                content = self.context.get_json(
+                    self.uri,
+                    params={"fields": "structure.macro", **self._params},
+                    timeout=TIMEOUT,
+                )
+            except TimeoutError:
+                p.text(
+                    f"<{type(self).__name__} Loading column names took too long; use list(...) >"
+                )
             except Exception as err:
                 p.text(
                     f"<{type(self).__name__} Loading column names raised error {err!r}>"
                 )
             else:
-                p.text(f"<{type(self).__name__} {columns}>")
+                try:
+                    columns = content["data"]["attributes"]["structure"]["macro"][
+                        "columns"
+                    ]
+                except Exception as err:
+                    p.text(
+                        f"<{type(self).__name__} Loading column names raised error {err!r}>"
+                    )
+                else:
+                    p.text(f"<{type(self).__name__} {columns}>")
 
     def _ipython_key_completions_(self):
         """
@@ -55,6 +61,10 @@ class DaskDataFrameClient(BaseStructureClient):
 
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
+        structure = self.structure()
+        if not structure.macro.resizable:
+            # Use cached structure.
+            return structure.macro.columns
         try:
             content = self.context.get_json(
                 self.uri, params={"fields": "structure.macro", **self._params}
@@ -70,32 +80,6 @@ class DaskDataFrameClient(BaseStructureClient):
         self._ipython_key_completions_()
         self.read().compute()
 
-    def structure(self):
-        meta_content = self.context.get_content(
-            f"/dataframe/meta/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
-            params=self._params,
-        )
-        meta = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta_content
-        )
-        divisions_content = self.context.get_content(
-            f"/dataframe/divisions/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
-            params=self._params,
-        )
-        divisions_wrapped_in_df = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_content
-        )
-        divisions = tuple(divisions_wrapped_in_df["divisions"].values)
-        return DataFrameStructure(
-            micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
-            # We could get the macrostructure by making another HTTP request
-            # but it's knowable from the microstructure, so we'll just recreate it
-            # that way.
-            macro=DataFrameMacroStructure(
-                npartitions=len(divisions) - 1, columns=meta.columns
-            ),
-        )
-
     def _get_partition(self, partition, columns):
         """
         Fetch the actual data for one partition in a partitioned (dask) dataframe.
@@ -105,10 +89,15 @@ class DaskDataFrameClient(BaseStructureClient):
         params = {"partition": partition}
         if columns:
             # Note: The singular/plural inconsistency here is due to the fact that
-            # ["A", "B"] will be encoded in the URL as column=A&column=B
-            params["column"] = columns
+            # ["A", "B"] will be encoded in the URL as field=A&field=B
+            params["field"] = columns
+        full_path = (
+            "/dataframe/partition"
+            + "".join(f"/{path}" for path in self.context.path_parts)
+            + "".join(f"/{path}" for path in self._path)
+        )
         content = self.context.get_content(
-            f"/dataframe/partition/{'/'.join(self.context.path_parts)}/{'/'.join(self._path)}",
+            full_path,
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params={**params, **self._params},
         )

@@ -1,5 +1,6 @@
 # These are the requirements needed for basic server functionality.
 cachey
+cached-property; python_version < '3.8'
 cachetools
 dask
 fastapi

@@ -11,7 +11,7 @@ import re
 import dask
 import pandas as pd
 
-from tiled.readers.dataframe import DataFrameAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
 
 
 def read_xdi(file):

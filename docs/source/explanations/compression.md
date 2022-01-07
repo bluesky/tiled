@@ -118,8 +118,8 @@ the client lists it as one that it supports. Here, the client lists `zstd` and
 `gzip`.
 
 ```
-$ http -p Hh :8000/dataframe/full/C accept-encoding:zstd,gzip
-GET /dataframe/full/C HTTP/1.1
+$ http -p Hh :8000/node/full/C accept-encoding:zstd,gzip
+GET /node/full/C HTTP/1.1
 Accept: */*
 Connection: keep-alive
 Host: localhost:8000
@@ -129,7 +129,7 @@ accept-encoding: zstd
 HTTP/1.1 200 OK
 content-encoding: zstd
 content-length: 558
-content-type: vnd.apache.arrow.file
+content-type: application/vnd.apache.arrow.file
 date: Mon, 26 Jul 2021 01:19:05 GMT
 etag: 6389586cf110bbbc5e69a329ee07e763
 server: uvicorn
@@ -142,8 +142,8 @@ Finally, in this example. the server decides that the raw, compressed content is
 so small (304 bytes) that is isn't not worth compressing.
 
 ```
-$ http -p Hh :8000/metadata/
-GET /metadata/ HTTP/1.1
+$ http -p Hh :8000/node/metadata/
+GET /node/metadata/ HTTP/1.1
 Accept: */*
 Accept-Encoding: gzip, deflate
 Connection: keep-alive

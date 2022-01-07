@@ -1,4 +1,4 @@
-# Serve Trees using Configuration Files
+# Serve Data using Configuration Files
 
 For all but the simplest deployments, a configuration file is needed to spell
 out all the options.
@@ -27,11 +27,11 @@ TILED_CONFIG=my_config_directory/ tiled serve config
 ```
 
 Finally, if the environment variable is not yet, a default location
-`config.yml` is set. But explicitly specifying the configuration location is
+`./config.yml` is set. But explicitly specifying the configuration location is
 recommended for any important use.
 
 ```
-tiled serve config  # uses config.yml if environment variable TILED_CONFIG is unset
+tiled serve config  # uses ./config.yml if environment variable TILED_CONFIG is unset
 ```
 
 For use with containers, this:
@@ -59,7 +59,7 @@ is equivalent to
 ```yaml
 trees:
     - path: /
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: "path/to/files"
 ```
@@ -72,7 +72,7 @@ The alias
 
 may be used in place of the full import path
 
-    tree: tiled.trees.files:Tree.from_directory
+    tree: tiled.adapters.files:DirectoryAdapter.from_directory
 
 ```
 
@@ -96,7 +96,7 @@ Finally, any environment variables in the YAML file, given as `$VAR` or
 ```yaml
 trees:
     - path: /
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: ${DIRECTORY}  # expanded value of environment variable $DIRECTORY
 ```
@@ -108,11 +108,11 @@ trees:
 ```yaml
 trees:
     - path: /a
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: "path/to/files"
     - path: /b
-      tree: tiled.trees.files:Tree.from_directory
+      tree: tiled.adapters.files:DirectoryAdapter.from_directory
       args:
           directory: "path/to/other/files"
 ```

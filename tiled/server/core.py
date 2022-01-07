@@ -1,4 +1,4 @@
-import abc
+import base64
 import collections.abc
 import contextlib
 import dataclasses
@@ -22,14 +22,16 @@ import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
 
-# These modules are not directly used, but they register things on import.
+# Some are not directly used, but they register things on import.
 from .. import queries
+from ..adapters.mapping import MapAdapter
 from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
 from ..queries import KeyLookup, QueryValueError
 from ..query_registration import query_registry as default_query_registry
-from ..trees.in_memory import Tree as TreeInMemory
+from ..structures import node  # noqa: F401
+from ..structures.dataframe import serialize_arrow
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
@@ -90,12 +92,10 @@ def entry(
         # Traverse into sub-tree(s).
         for segment in path_parts:
             try:
-                with record_timing(request.state.metrics, "acl"):
-                    unauthenticated_entry = entry[segment]
+                unauthenticated_entry = entry[segment]
             except (KeyError, TypeError):
                 raise NoEntry(path_parts)
-            # TODO Update this when Tree has structure_family == "tree".
-            if not hasattr(unauthenticated_entry, "structure_family"):
+            if hasattr(unauthenticated_entry, "authenticated_as"):
                 with record_timing(request.state.metrics, "acl"):
                     entry = unauthenticated_entry.authenticated_as(current_user)
             else:
@@ -103,15 +103,6 @@ def entry(
         return entry
     except NoEntry:
         raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
-
-
-def reader(
-    entry: Any = Depends(entry),
-):
-    "Specify a path parameter and use it to look up a reader."
-    if not isinstance(entry, DuckReader):
-        raise HTTPException(status_code=404, detail="This is not a Reader.")
-    return entry
 
 
 def block(
@@ -195,32 +186,6 @@ def pagination_links(route, path_parts, offset, limit, length_hint):
     return links
 
 
-class DuckReader(metaclass=abc.ABCMeta):
-    """
-    Used for isinstance(obj, DuckReader):
-    """
-
-    @classmethod
-    def __subclasshook__(cls, candidate):
-        # If the following condition is True, candidate is recognized
-        # to "quack" like a Reader.
-        EXPECTED_ATTRS = ("read", "macrostructure", "microstructure")
-        return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
-
-
-class DuckTree(metaclass=abc.ABCMeta):
-    """
-    Used for isinstance(obj, DuckTree):
-    """
-
-    @classmethod
-    def __subclasshook__(cls, candidate):
-        # If the following condition is True, candidate is recognized
-        # to "quack" like a Tree.
-        EXPECTED_ATTRS = ("__getitem__", "__iter__")
-        return all(hasattr(candidate, attr) for attr in EXPECTED_ATTRS)
-
-
 def construct_entries_response(
     query_registry,
     tree,
@@ -234,10 +199,11 @@ def construct_entries_response(
     filters,
     sort,
     base_url,
+    media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    if not isinstance(tree, DuckTree):
-        raise WrongTypeForRoute("This is not a Tree.")
+    if tree.structure_family != "node":
+        raise WrongTypeForRoute("This is not a Node; it does not have entries.")
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
@@ -299,14 +265,12 @@ def construct_entries_response(
         (key_lookup), *others = unique_key_lookups
         if others:
             # Two non-equal KeyLookup queries must return no results.
-            tree = TreeInMemory({})
+            tree = MapAdapter({})
         else:
             try:
-                tree = TreeInMemory(
-                    {key_lookup: tree[key_lookup]}, must_revalidate=False
-                )
+                tree = MapAdapter({key_lookup: tree[key_lookup]}, must_revalidate=False)
             except KeyError:
-                tree = TreeInMemory({})
+                tree = MapAdapter({})
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []
@@ -324,7 +288,13 @@ def construct_entries_response(
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
         resource = construct_resource(
-            base_url, path_parts + [key], entry, fields, select_metadata, omit_links
+            base_url,
+            path_parts + [key],
+            entry,
+            fields,
+            select_metadata,
+            omit_links,
+            media_type,
         )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
@@ -345,11 +315,10 @@ def construct_entries_response(
 DEFAULT_MEDIA_TYPES = {
     "array": "application/octet-stream",
     "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
-    "structured_array_tabular": "application/octet-stream",
-    "structured_array_generic": "application/octet-stream",
+    "node": "application/x-hdf5",
     "variable": "application/octet-stream",
-    "data_array": "application/octet-stream",
-    "dataset": "application/netcdf",
+    "xarray_data_array": "application/octet-stream",
+    "xarray_dataset": "application/netcdf",
 }
 
 
@@ -442,7 +411,13 @@ def construct_data_response(
 
 
 def construct_resource(
-    base_url, path_parts, entry, fields, select_metadata, omit_links
+    base_url,
+    path_parts,
+    entry,
+    fields,
+    select_metadata,
+    omit_links,
+    media_type,
 ):
     path_str = "/".join(path_parts)
     attributes = {}
@@ -455,24 +430,24 @@ def construct_resource(
             attributes["metadata"] = entry.metadata
     if models.EntryFields.specs in fields:
         attributes["specs"] = getattr(entry, "specs", None)
-    if isinstance(entry, DuckTree):
+    if (entry is not None) and entry.structure_family == "node":
+        attributes["structure_family"] = "node"
         if models.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
             if hasattr(entry, "sorting"):
                 attributes["sorting"] = entry.sorting
         d = {
             "id": path_parts[-1] if path_parts else "",
-            "attributes": models.TreeAttributes(**attributes),
-            "type": models.EntryType.tree,
+            "attributes": models.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = {
-                "self": f"{base_url}metadata/{path_str}",
-                "search": f"{base_url}search/{path_str}",
+                "self": f"{base_url}node/metadata/{path_str}",
+                "search": f"{base_url}node/search/{path_str}",
             }
-        resource = models.TreeResource(**d)
+        resource = models.Resource(**d)
     else:
-        links = {"self": f"{base_url}metadata/{path_str}"}
+        links = {"self": f"{base_url}node/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
@@ -490,15 +465,37 @@ def construct_resource(
                 if macrostructure is not None:
                     structure["macro"] = dataclasses.asdict(macrostructure)
             if models.EntryFields.microstructure in fields:
-                if entry.structure_family == "dataframe":
-                    # Special case: its microstructure is cannot be JSON-serialized
-                    # and is therefore available from separate routes. Sends links
-                    # instead of the actual payload.
+                if entry.structure_family == "node":
+                    assert False  # not sure if this ever happens
+                    pass
+                elif entry.structure_family == "dataframe":
+                    import pandas
+
+                    microstructure = entry.microstructure()
+                    arrow_encoded_meta = bytes(serialize_arrow(microstructure.meta, {}))
+                    divisions_wrapped_in_df = pandas.DataFrame(
+                        {"divisions": list(microstructure.divisions)}
+                    )
+                    arrow_encoded_divisions = bytes(
+                        serialize_arrow(divisions_wrapped_in_df, {})
+                    )
+                    if media_type == "application/json":
+                        # For JSON, base64-encode the binary Arrow-encoded data,
+                        # and indicate that this has been done in the data URI.
+                        data_uri = f"data:{APACHE_ARROW_FILE_MIME_TYPE};base64,"
+                        arrow_encoded_meta = (
+                            data_uri + base64.b64encode(arrow_encoded_meta).decode()
+                        )
+                        arrow_encoded_divisions = (
+                            data_uri
+                            + base64.b64encode(arrow_encoded_divisions).decode()
+                        )
+                    else:
+                        # In msgpack, we can encode the binary Arrow-encoded data directly.
+                        assert media_type == "application/x-msgpack"
                     structure["micro"] = {
-                        "links": {
-                            "meta": f"{base_url}dataframe/meta/{path_str}",
-                            "divisions": f"{base_url}dataframe/divisions/{path_str}",
-                        }
+                        "meta": arrow_encoded_meta,
+                        "divisions": arrow_encoded_divisions,
                     }
                 else:
                     microstructure = entry.microstructure()
@@ -516,40 +513,14 @@ def construct_resource(
                     links[
                         "partition"
                     ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
-                elif entry.structure_family == "variable":
-                    block_template = ",".join(
-                        f"{{index_{index}}}"
-                        for index in range(
-                            len(structure["macro"]["data"]["macro"]["shape"])
-                        )
-                    )
-                    links[
-                        "block"
-                    ] = f"{base_url}variable/block/{path_str}?block={block_template}"
-                elif entry.structure_family == "data_array":
-                    block_template = ",".join(
-                        f"{{index_{index}}}"
-                        for index in range(
-                            len(structure["macro"]["variable"]["macro"]["data"])
-                        )
-                    )
-                    links[
-                        "block"
-                    ] = f"{base_url}data_array/block/{path_str}?block={block_template}"
-                elif entry.structure_family == "dataset":
-                    links[
-                        "block"
-                    ] = f"{base_url}dataset/block/{path_str}?variable={{variable}}&block={{block_indexes}}"
-                    microstructure = entry.microstructure()
             attributes["structure"] = structure
         d = {
             "id": path_parts[-1],
-            "attributes": models.ReaderAttributes(**attributes),
-            "type": models.EntryType.reader,
+            "attributes": models.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = links
-        resource = models.ReaderResource(**d)
+        resource = models.Resource(**d)
     return resource
 
 
@@ -593,7 +564,7 @@ class NumpySafeJSONResponse(JSONResponse):
             return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY)
 
 
-def _numpy_safe_msgpack_encoder(obj):
+def _fallback_msgpack_encoder(obj):
     # If numpy has not been imported yet, then we can be sure that obj
     # is not a numpy object, and we want to avoid triggering a numpy
     # import. (The server does not have a hard numpy dependency.)
@@ -639,7 +610,7 @@ class MsgpackResponse(Response):
         try:
             with record_timing(self.__metrics, "pack"):
                 return msgpack.packb(
-                    content, default=_numpy_safe_msgpack_encoder, datetime=True
+                    content, default=_fallback_msgpack_encoder, datetime=True
                 )
         except (ValueError, TypeError) as err:
             # msgpack tries to handle all datetimes, but if it
@@ -660,7 +631,7 @@ MSGPACK_MIME_TYPE = "application/x-msgpack"
 HTTP_EXPIRES_HEADER_FORMAT = "%a, %d %b %Y %H:%M:%S GMT"
 
 
-def json_or_msgpack(request, content, expires=None, headers=None):
+def resolve_media_type(request):
     media_types = request.headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
@@ -677,6 +648,10 @@ def json_or_msgpack(request, content, expires=None, headers=None):
         # messages.
         media_type = JSON_MIME_TYPE
     assert media_type in {JSON_MIME_TYPE, MSGPACK_MIME_TYPE}
+    return media_type
+
+
+def json_or_msgpack(request, content, media_type, expires=None, headers=None):
     content_as_dict = content.dict()
     with record_timing(request.state.metrics, "tok"):
         etag = md5(str(content_as_dict).encode()).hexdigest()
@@ -710,19 +685,14 @@ class WrongTypeForRoute(Exception):
 
 FULL_LINKS = {
     "array": {"full": "{base_url}array/full/{path}"},
-    "structured_array_generic": {
-        "full": "{base_url}structured_array_generic/full/{path}"
+    "dataframe": {"full": "{base_url}node/full/{path}"},
+    "xarray_data_array": {
+        "full_variable": "{base_url}array/full/{path}/variable",
     },
-    "structured_array_tabular": {
-        "full": "{base_url}structured_array_tabular/full/{path}"
-    },
-    "dataframe": {"full": "{base_url}dataframe/full/{path}"},
-    "variable": {"full": "{base_url}variable/full/{path}"},
-    "data_array": {"full_variable": "{base_url}data_array/variable/full/{path}"},
-    "dataset": {
-        "full_variable": "{base_url}dataset/data_var/full/{path}?variable={{variable}}",
-        "full_coordinate": "{base_url}dataset/coord/full/{path}?variable={{variable}}",
-        "full_dataset": "{base_url}dataset/full/{path}",
+    "xarray_dataset": {
+        "full_variable": "{base_url}array/full/{path}/data_vars/{{variable}}/variable",
+        "full_coord": "{base_url}array/full/{path}/coords/{{coord}}/variable",
+        "full_dataset": "{base_url}node/full/{path}",
     },
 }
 

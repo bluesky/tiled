@@ -125,13 +125,15 @@ Tiled currently includes two clients for each structure family:
    :toctree: generated
 
    tiled.client.base.BaseClient
-   tiled.client.base.BaseClient.metadata tiled.client.base.BaseClient.path tiled.client.base.BaseClient.uri tiled.client.base.BaseClient.username
+   tiled.client.base.BaseClient.metadata
+   tiled.client.base.BaseClient.path
+   tiled.client.base.BaseClient.uri
+   tiled.client.base.BaseClient.username
    tiled.client.base.BaseClient.item
    tiled.client.base.BaseClient.new_variation
    tiled.client.base.BaseStructureClient.download
    tiled.client.base.BaseStructureClient.refresh
    tiled.client.base.BaseStructureClient.structure
-   tiled.client.base.BaseArrayClient.structure
 ```
 
 

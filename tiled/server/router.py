@@ -2,7 +2,6 @@ import dataclasses
 import inspect
 from datetime import datetime, timedelta
 from functools import lru_cache
-from hashlib import md5
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -17,9 +16,7 @@ from .authentication import (
     get_authenticator,
 )
 from .core import (
-    APACHE_ARROW_FILE_MIME_TYPE,
     NoEntry,
-    PatchedResponse,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
     block,
@@ -31,8 +28,8 @@ from .core import (
     get_query_registry,
     get_serialization_registry,
     json_or_msgpack,
-    reader,
     record_timing,
+    resolve_media_type,
     slice_,
 )
 from .settings import get_settings
@@ -52,7 +49,7 @@ async def about(
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
 ):
-    # TODO The lazy import of reader modules and serializers means that the
+    # TODO The lazy import of entry modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
     # helpful for discovery! The registration can be made non-lazy, while the
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
@@ -101,6 +98,7 @@ async def about(
                 ),
             },
         ),
+        resolve_media_type(request),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
 
@@ -143,7 +141,7 @@ def declare_search_router(query_registry):
     this route.
     """
 
-    async def search(
+    async def node_search(
         request: Request,
         path: str,
         fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
@@ -161,7 +159,7 @@ def declare_search_router(query_registry):
             resource, metadata_stale_at, must_revalidate = construct_entries_response(
                 query_registry,
                 entry,
-                "/search",
+                "/node/search",
                 path,
                 offset,
                 limit,
@@ -171,6 +169,7 @@ def declare_search_router(query_registry):
                 filters,
                 sort,
                 _get_base_url(request),
+                resolve_media_type(request),
             )
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
@@ -186,6 +185,7 @@ def declare_search_router(query_registry):
             return json_or_msgpack(
                 request,
                 resource,
+                resolve_media_type(request),
                 expires=expires,
                 headers=headers,
             )
@@ -210,7 +210,7 @@ def declare_search_router(query_registry):
     # accepted via **filters.
 
     # Make a copy of the original parameters.
-    signature = inspect.signature(search)
+    signature = inspect.signature(node_search)
     parameters = list(signature.parameters.values())
     # Drop the **filters parameter from the signature.
     del parameters[-1]
@@ -230,20 +230,20 @@ def declare_search_router(query_registry):
                 annotation=Optional[List[field_type]],
             )
             parameters.append(injected_parameter)
-    search.__signature__ = signature.replace(parameters=parameters)
+    node_search.__signature__ = signature.replace(parameters=parameters)
     # End black magic
 
     # Register the search route.
     router = APIRouter()
-    router.get("/search", response_model=models.Response, include_in_schema=False)(
-        search
+    router.get("/node/search", response_model=models.Response, include_in_schema=False)(
+        node_search
     )
-    router.get("/search/{path:path}", response_model=models.Response)(search)
+    router.get("/node/search/{path:path}", response_model=models.Response)(node_search)
     return router
 
 
-@router.get("/metadata/{path:path}", response_model=models.Response)
-async def metadata(
+@router.get("/node/metadata/{path:path}", response_model=models.Response)
+async def node_metadata(
     request: Request,
     path: str,
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
@@ -251,16 +251,21 @@ async def metadata(
     omit_links: bool = Query(False),
     entry: Any = Depends(entry),
     root_path: str = Query(None),
-    settings: BaseSettings = Depends(get_settings),
 ):
-    "Fetch the metadata for one Tree or Reader."
+    "Fetch the metadata and structure information for one entry."
 
     request.state.endpoint = "metadata"
     base_url = _get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
     try:
         resource = construct_resource(
-            base_url, path_parts, entry, fields, select_metadata, omit_links
+            base_url,
+            path_parts,
+            entry,
+            fields,
+            select_metadata,
+            omit_links,
+            resolve_media_type(request),
         )
     except JMESPathError as err:
         raise HTTPException(
@@ -275,62 +280,9 @@ async def metadata(
     return json_or_msgpack(
         request,
         models.Response(data=resource, meta=meta),
+        resolve_media_type(request),
         expires=getattr(entry, "metadata_stale_at", None),
     )
-
-
-@router.get("/entries/{path:path}", response_model=models.Response)
-async def entries(
-    request: Request,
-    path: Optional[str],
-    offset: Optional[int] = Query(0, alias="page[offset]"),
-    limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
-    sort: Optional[str] = Query(None),
-    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
-    select_metadata: Optional[str] = Query(None),
-    omit_links: bool = Query(False),
-    entry: Any = Depends(entry),
-    query_registry=Depends(get_query_registry),
-):
-    "List the entries in a Tree, which may be sub-Trees or Readers."
-
-    request.state.endpoint = "entries"
-    try:
-        resource, metadata_stale_at, must_revalidate = construct_entries_response(
-            query_registry,
-            entry,
-            "/entries",
-            path,
-            offset,
-            limit,
-            fields,
-            select_metadata,
-            omit_links,
-            {},
-            sort,
-            _get_base_url(request),
-        )
-        # We only get one Expires header, so if different parts
-        # of this response become stale at different times, we
-        # cite the earliest one.
-        entries_stale_at = getattr(entry, "entries_stale_at", None)
-        if (metadata_stale_at is None) or (entries_stale_at is None):
-            expires = None
-        else:
-            expires = min(metadata_stale_at, entries_stale_at)
-        headers = {}
-        if must_revalidate:
-            headers["Cache-Control"] = "must-revalidate"
-        return json_or_msgpack(request, resource, expires=expires, headers=headers)
-    except NoEntry:
-        raise HTTPException(status_code=404, detail="No such entry.")
-    except WrongTypeForRoute as err:
-        raise HTTPException(status_code=404, detail=err.args[0])
-    except JMESPathError as err:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
-        )
 
 
 @router.get(
@@ -338,7 +290,7 @@ async def entries(
 )
 def array_block(
     request: Request,
-    reader=Depends(reader),
+    entry=Depends(entry),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -348,24 +300,19 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if reader.structure_family != "array":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /array/block route.",
-        )
     if block == ():
         # Handle special case of numpy scalar.
-        if reader.macrostructure().shape != ():
+        if entry.macrostructure().shape != ():
             raise HTTPException(
                 status_code=400,
-                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
+                detail=f"Requested scalar but shape is {entry.macrostructure().shape}",
             )
         with record_timing(request.state.metrics, "read"):
-            array = reader.read()
+            array = entry.read()
     else:
         try:
             with record_timing(request.state.metrics, "read"):
-                array = reader.read_block(block, slice=slice)
+                array = entry.read_block(block, slice=slice)
         except IndexError:
             raise HTTPException(status_code=400, detail="Block index out of range")
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -379,10 +326,10 @@ def array_block(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                entry.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(entry, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         # raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -394,7 +341,7 @@ def array_block(
 )
 def array_full(
     request: Request,
-    reader=Depends(reader),
+    entry=Depends(entry),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -403,18 +350,13 @@ def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if reader.structure_family != "array":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /array/full route.",
-        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
 
     try:
         with record_timing(request.state.metrics, "read"):
-            array = reader.read(slice)
+            array = entry.read(slice)
         array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
@@ -429,288 +371,13 @@ def array_full(
                 "array",
                 serialization_registry,
                 array,
-                reader.metadata,
+                entry.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(entry, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/structured_array_generic/block/{path:path}",
-    response_model=models.Response,
-    name="structured array (generic) block",
-)
-def structured_array_generic_block(
-    request: Request,
-    reader=Depends(reader),
-    block=Depends(block),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a chunk of array-like data.
-    """
-    if reader.structure_family != "structured_array_generic":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_generic/block route.",
-        )
-    if block == ():
-        # Handle special case of numpy scalar.
-        if reader.macrostructure().shape != ():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
-            )
-        array = reader.read()
-    else:
-        try:
-            array = reader.read_block(block, slice=slice)
-        except IndexError:
-            raise HTTPException(status_code=400, detail="Block index out of range")
-        if (expected_shape is not None) and (expected_shape != array.shape):
-            raise HTTPException(
-                status_code=400,
-                detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-            )
-    try:
-        return construct_data_response(
-            "structured_array_generic",
-            serialization_registry,
-            array,
-            reader.metadata,
-            request,
-            format,
-            expires=getattr(reader, "content_stale_at", None),
-        )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/structured_array_tabular/block/{path:path}",
-    response_model=models.Response,
-    name="structured array (tabular) block",
-)
-def structured_array_tabular_block(
-    request: Request,
-    reader=Depends(reader),
-    block=Depends(block),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a chunk of array-like data.
-    """
-    if reader.structure_family != "structured_array_tabular":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_tabular/block route.",
-        )
-    if block == ():
-        # Handle special case of numpy scalar.
-        if reader.macrostructure().shape != ():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Requested scalar but shape is {reader.macrostructure().shape}",
-            )
-        array = reader.read()
-    else:
-        try:
-            array = reader.read_block(block, slice=slice)
-        except IndexError:
-            raise HTTPException(status_code=400, detail="Block index out of range")
-        if (expected_shape is not None) and (expected_shape != array.shape):
-            raise HTTPException(
-                status_code=400,
-                detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-            )
-    try:
-        return construct_data_response(
-            "structured_array_tabular",
-            serialization_registry,
-            array,
-            reader.metadata,
-            request,
-            format,
-            expires=getattr(reader, "content_stale_at", None),
-        )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/structured_array_tabular/full/{path:path}",
-    response_model=models.Response,
-    name="structure array (tabular) full array",
-)
-def structured_array_tabular_full(
-    request: Request,
-    reader=Depends(reader),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a slice of array-like data.
-    """
-    if reader.structure_family != "structured_array_tabular":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_tabular/full route.",
-        )
-    # Deferred import because this is not a required dependency of the server
-    # for some use cases.
-    import numpy
-
-    try:
-        array = reader.read()
-        if slice:
-            array = array[slice]
-        array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
-    except IndexError:
-        raise HTTPException(status_code=400, detail="Block index out of range")
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        return construct_data_response(
-            "structured_array_tabular",
-            serialization_registry,
-            array,
-            reader.metadata,
-            request,
-            format,
-            expires=getattr(reader, "content_stale_at", None),
-        )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/structured_array_generic/full/{path:path}",
-    response_model=models.Response,
-    name="structured array (generic) full array",
-)
-def structured_array_generic_full(
-    request: Request,
-    reader=Depends(reader),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a slice of array-like data.
-    """
-    if reader.structure_family != "structured_array_generic":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /structured_array_generic/full route.",
-        )
-    # Deferred import because this is not a required dependency of the server
-    # for some use cases.
-    import numpy
-
-    try:
-        array = reader.read()
-        if slice:
-            array = array[slice]
-        array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
-    except IndexError:
-        raise HTTPException(status_code=400, detail="Block index out of range")
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        return construct_data_response(
-            "structured_array_generic",
-            serialization_registry,
-            array,
-            reader.metadata,
-            request,
-            format,
-            expires=getattr(reader, "content_stale_at", None),
-        )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/dataframe/meta/{path:path}", response_model=models.Response, name="dataframe meta"
-)
-def dataframe_meta(
-    request: Request,
-    reader=Depends(reader),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch the Apache Arrow serialization of (an empty) DataFrame with this structure.
-    """
-    request.state.endpoint = "data"
-    if reader.structure_family != "dataframe":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/meta route.",
-        )
-    meta = reader.microstructure().meta
-    with record_timing(request.state.metrics, "pack"):
-        content = serialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, meta, {}
-        )
-    headers = {"ETag": md5(content).hexdigest()}
-    return PatchedResponse(
-        content, media_type=APACHE_ARROW_FILE_MIME_TYPE, headers=headers
-    )
-
-
-@router.get(
-    "/dataframe/divisions/{path:path}",
-    response_model=models.Response,
-    name="dataframe divisions",
-)
-def dataframe_divisions(
-    request: Request,
-    reader=Depends(reader),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch the Apache Arrow serialization of the index values at the partition edges.
-    """
-    request.state.endpoint = "data"
-    if reader.structure_family != "dataframe":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/division route.",
-        )
-    import pandas
-
-    divisions = reader.microstructure().divisions
-    # divisions is a tuple. Wrap it in a DataFrame so
-    # that we can easily serialize it with Arrow in the normal way.
-    divisions_wrapped_in_df = pandas.DataFrame({"divisions": list(divisions)})
-    with record_timing(request.state.metrics, "pack"):
-        content = serialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, divisions_wrapped_in_df, {}
-        )
-    headers = {"ETag": md5(content).hexdigest()}
-    return PatchedResponse(
-        content, media_type=APACHE_ARROW_FILE_MIME_TYPE, headers=headers
-    )
 
 
 @router.get(
@@ -721,485 +388,77 @@ def dataframe_divisions(
 def dataframe_partition(
     request: Request,
     partition: int,
-    reader=Depends(reader),
-    column: Optional[List[str]] = Query(None, min_length=1),
+    entry=Depends(entry),
+    field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
     """
-    if reader.structure_family != "dataframe":
+    if entry.structure_family != "dataframe":
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/parition route.",
+            detail=f"Cannot read {entry.structure_family} structure with /dataframe/partition route.",
         )
     try:
-        # The singular/plural mismatch here of "columns" and "column" is
-        # due to the ?column=A&column=B&column=C... encodes in a URL.
+        # The singular/plural mismatch here of "fields" and "field" is
+        # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = reader.read_partition(partition, columns=column)
+            df = entry.read_partition(partition, fields=field)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such column {key}.")
+        raise HTTPException(status_code=400, detail=f"No such field {key}.")
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
                 "dataframe",
                 serialization_registry,
                 df,
-                reader.metadata,
+                entry.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(entry, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.get(
-    "/dataframe/full/{path:path}", response_model=models.Response, name="full dataframe"
-)
-def dataframe_full(
-    request: Request,
-    reader=Depends(reader),
-    column: Optional[List[str]] = Query(None, min_length=1),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch all the rows of DataFrame.
-    """
-    if reader.structure_family != "dataframe":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataframe/full route.",
-        )
-
-    specs = getattr(reader, "specs", [])
-
-    try:
-        # The singular/plural mismatch here of "columns" and "column" is
-        # due to the ?column=A&column=B&column=C... encodes in a URL.
-        with record_timing(request.state.metrics, "read"):
-            df = reader.read(columns=column)
-    except KeyError as err:
-        (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such column {key}.")
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "dataframe",
-                serialization_registry,
-                df,
-                reader.metadata,
-                request,
-                format,
-                specs,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/variable/block/{path:path}",
-    response_model=models.Response,
-    name="xarray.Variable block",
-)
-def variable_block(
-    request: Request,
-    reader=Depends(reader),
-    block=Depends(block),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a chunk of array-like data from an xarray.Variable.
-    """
-    if reader.structure_family != "variable":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /variable/block route.",
-        )
-    try:
-        # Lookup block on the `data` attribute of the Variable.
-        with record_timing(request.state.metrics, "read"):
-            array = reader.read_block(block, slice=slice)
-        if slice:
-            array = array[slice]
-    except IndexError:
-        raise HTTPException(status_code=400, detail="Block index out of range")
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/variable/full/{path:path}",
-    response_model=models.Response,
-    name="full xarray.Variable",
-)
-def variable_full(
-    request: Request,
-    reader=Depends(reader),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a full xarray.Variable.
-    """
-    if reader.structure_family != "variable":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /variable/full route.",
-        )
-    with record_timing(request.state.metrics, "read"):
-        array = reader.read()
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/data_array/variable/full/{path:path}",
-    response_model=models.Response,
-    name="full xarray.Variable from within an xarray.DataArray",
-)
-def data_array_variable_full(
-    request: Request,
-    reader=Depends(reader),
-    coord: Optional[str] = Query(None, min_length=1),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a chunk from an xarray.DataArray.
-    """
-    if reader.structure_family != "data_array":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /data_array/variable/full route.",
-        )
-    # TODO Should read() accept a `coord` argument?
-    with record_timing(request.state.metrics, "read"):
-        array = reader.read()
-    if coord is not None:
-        try:
-            array = array.coords[coord]
-        except KeyError:
-            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/data_array/block/{path:path}",
-    response_model=models.Response,
-    name="xarray.DataArray block",
-)
-def data_array_block(
-    request: Request,
-    reader=Depends(reader),
-    block=Depends(block),
-    coord: Optional[str] = Query(None, min_length=1),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a chunk from an xarray.DataArray.
-    """
-    if reader.structure_family != "data_array":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /data_array/block route.",
-        )
-    try:
-        with record_timing(request.state.metrics, "read"):
-            array = reader.read_block(block, coord, slice=slice)
-    except IndexError:
-        raise HTTPException(status_code=400, detail="Block index out of range")
-    except KeyError:
-        if coord is not None:
-            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
-        else:
-            raise
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/dataset/block/{path:path}",
-    response_model=models.Response,
-    name="xarray.Dataset block",
-)
-def dataset_block(
-    request: Request,
-    reader=Depends(reader),
-    block=Depends(block),
-    variable: Optional[str] = Query(None, min_length=1),
-    coord: Optional[str] = Query(None, min_length=1),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a chunk from an xarray.Dataset.
-    """
-    if reader.structure_family != "dataset":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/block route.",
-        )
-    try:
-        with record_timing(request.state.metrics, "read"):
-            array = reader.read_block(variable, block, coord, slice=slice)
-    except IndexError:
-        raise HTTPException(status_code=400, detail="Block index out of range")
-    except KeyError:
-        if coord is None:
-            raise HTTPException(status_code=400, detail=f"No such variable {variable}.")
-        if variable is None:
-            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
-        raise HTTPException(
-            status_code=400,
-            detail=f"No such coordinate {coord} and/or variable {variable}.",
-        )
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/dataset/data_var/full/{path:path}",
-    response_model=models.Response,
-    name="full xarray.Dataset data variable",
-)
-def dataset_data_var_full(
-    request: Request,
-    reader=Depends(reader),
-    variable: str = Query(..., min_length=1),
-    coord: Optional[str] = Query(None, min_length=1),
-    slice: str = Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a full xarray.Variable from within an xarray.Dataset.
-    """
-    # Deferred import because this is not a required dependency of the server
-    # for some use cases.
-    import numpy
-
-    if reader.structure_family != "dataset":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/data_var/full route.",
-        )
-    try:
-        with record_timing(request.state.metrics, "read"):
-            array = reader.read_variable(variable).data
-    except KeyError:
-        raise HTTPException(status_code=400, detail=f"No such variable {variable}.")
-    if coord is not None:
-        try:
-            array = array.coords[coord].data
-        except KeyError:
-            raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    if slice:
-        array = array[slice]
-    array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/dataset/coord/full/{path:path}",
-    response_model=models.Response,
-    name="full xarray.Dataset coordinate",
-)
-def dataset_coord_full(
-    request: Request,
-    reader=Depends(reader),
-    coord: str = Query(..., min_length=1),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-):
-    """
-    Fetch a full coordinate from within an xarray.Dataset.
-    """
-    if reader.structure_family != "dataset":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/coord/full route.",
-        )
-    try:
-        with record_timing(request.state.metrics, "read"):
-            array = reader.read_variable(coord).data
-    except KeyError:
-        raise HTTPException(status_code=400, detail=f"No such coordinate {coord}.")
-    if (expected_shape is not None) and (expected_shape != array.shape):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        )
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
-                "array",
-                serialization_registry,
-                array,
-                reader.metadata,
-                request,
-                format,
-                expires=getattr(reader, "content_stale_at", None),
-            )
-    except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
-
-
-@router.get(
-    "/dataset/full/{path:path}",
+    "/node/full/{path:path}",
     response_model=models.Response,
     name="full xarray.Dataset",
 )
-def dataset_full(
+def node_full(
     request: Request,
-    reader=Depends(reader),
-    variable: Optional[List[str]] = Query(None, min_length=1),
+    entry=Depends(entry),
+    field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
-    Fetch a full coordinate from within an xarray.Dataset.
+    Fetch the data below the given node.
     """
-    if reader.structure_family != "dataset":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {reader.structure_family} structure with /dataset/full route.",
-        )
     try:
-        # The singular/plural mismatch here of "variables" and "variable" is
-        # due to the ?variable=A&variable=B&variable=C... encodes in a URL.
+        # The singular/plural mismatch here of "fields" and "field" is
+        # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            dataset = reader.read(variables=variable)
+            data = entry.read(fields=field)
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such variable {key}.")
+        raise HTTPException(status_code=400, detail=f"No such field {key}.")
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "dataset",
+                entry.structure_family,
                 serialization_registry,
-                dataset,
-                reader.metadata,
+                data,
+                entry.metadata,
                 request,
                 format,
-                expires=getattr(reader, "content_stale_at", None),
+                expires=getattr(entry, "content_stale_at", None),
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])

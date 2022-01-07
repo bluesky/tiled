@@ -14,7 +14,7 @@ from watchgod.watcher import Change, RegExpWatcher
 
 from ..structures.dataframe import XLSX_MIME_TYPE
 from ..utils import CachingMap, OneShotCachedMap, import_object
-from .in_memory import Tree as TreeInMemory
+from .mapping import MapAdapter
 
 # The Adapter objects are light because any large data they stash should be
 # placed in the global internal cache, not in the Adapter state itself.
@@ -53,14 +53,14 @@ def identity(filename):
     return filename
 
 
-class Tree(TreeInMemory):
+class DirectoryAdapter(MapAdapter):
     """
-    A Tree constructed by walking a directory and watching it for changes.
+    An Adapter constructed by walking a directory and watching it for changes.
 
     Examples
     --------
 
-    >>> Tree.from_directory("path/to/directory")
+    >>> DirecotryAdapter.from_directory("path/to/directory")
     """
 
     __slots__ = (
@@ -78,17 +78,17 @@ class Tree(TreeInMemory):
     DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         {
             "image/tiff": lambda: importlib.import_module(
-                "...readers.tiff", Tree.__module__
-            ).TiffReader,
+                "...adapters.tiff", DirectoryAdapter.__module__
+            ).TiffAdapter,
             "text/csv": lambda: importlib.import_module(
-                "...readers.dataframe", Tree.__module__
+                "...adapters.dataframe", DirectoryAdapter.__module__
             ).DataFrameAdapter.read_csv,
             XLSX_MIME_TYPE: lambda: importlib.import_module(
-                "...readers.excel", Tree.__module__
-            ).ExcelReader.from_file,
+                "...adapters.excel", DirectoryAdapter.__module__
+            ).ExcelAdapter.from_file,
             "application/x-hdf5": lambda: importlib.import_module(
-                "...readers.hdf5", Tree.__module__
-            ).HDF5Reader.from_file,
+                "...adapters.hdf5", DirectoryAdapter.__module__
+            ).HDF5Adapter.from_file,
         }
     )
 
@@ -130,7 +130,7 @@ class Tree(TreeInMemory):
         **kwargs,
     ):
         """
-        Construct a Tree from a directory of files.
+        Construct a Adapter from a directory of files.
 
         Parameters
         ----------
@@ -197,7 +197,7 @@ class Tree(TreeInMemory):
         )
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
         # This single index represents the entire nested directory structure. (We
-        # could have done this recursively, with each sub-Tree watching its own
+        # could have done this recursively, with each sub-Adapter watching its own
         # subdirectory, but there are efficiencies to be gained by doing a single
         # walk of the nested directory structure and having a single thread watching
         # for changes within that structure.)
@@ -651,9 +651,9 @@ def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
             f"The file at {path} has a file extension {ext} this is not "
             "recognized. The file will be skipped, pass in a mimetype "
             "for this file extension via the parameter "
-            "Tree.from_directory(..., mimetypes_by_file_ext={...}) and "
+            "DirectoryAdapter.from_directory(..., mimetypes_by_file_ext={...}) and "
             "pass in a Reader than handles this mimetype via "
-            "the parameter Tree.from_directory(..., readers_by_mimetype={...})."
+            "the parameter DirectoryAdapter.from_directory(..., readers_by_mimetype={...})."
         )
         warnings.warn(msg)
         raise NoReaderAvailable
@@ -664,7 +664,7 @@ def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
             f"The file at {path} was recognized as mimetype {mimetype} "
             "but there is no reader for that mimetype. The file will be skipped. "
             "To fix this, pass in a Reader than handles this mimetype via "
-            "the parameter Tree.from_directory(..., readers_by_mimetype={...})."
+            "the parameter DirectoryAdapter.from_directory(..., readers_by_mimetype={...})."
         )
         warnings.warn(msg)
         raise NoReaderAvailable
@@ -697,7 +697,7 @@ def _new_subdir(
             {}, cache=cachetools.LRUCache(maxsize=MAX_ADAPTER_CACHE_SIZE)
         )
         index[parent_parts + (subdirectory,)] = mapping
-        index[parent_parts].set(subdirectory, functools.partial(TreeInMemory, mapping))
+        index[parent_parts].set(subdirectory, functools.partial(MapAdapter, mapping))
         if greedy:
             index[parent_parts][subdirectory]
     else:
@@ -721,7 +721,7 @@ COLLISION_WARNING = (
     "(1) Use the full, unique filename as the key, "
     "via the commandline flag --keep-ext "
     "or the configurable argument "
-    "key_from_filename: 'tiled.trees.files:identity'  # Use full filename as key "
+    "key_from_filename: 'tiled.adapters.files:identity'  # Use full filename as key "
     "(2) Remove or rename one of the files. "
     "(3) Use a custom key_from_filename that "
     "generates unique keys for this case."

@@ -103,7 +103,7 @@ Now take the following simple server configuration:
 # config.yml
 trees:
   - path: /
-    tree: tiled.trees.files:Tree.from_directory
+    tree: tiled.adapters.files:DirectoryAdapter.from_directory
     args:
       directory: "data"
       mimetypes_by_file_ext:
@@ -121,7 +121,7 @@ tiled serve config --public config.yml
 As is, we can access the data as CSV, for example.
 
 ```
-$ curl -H 'Accept: text/csv' 'http://localhost:8000/dataframe/full/example'
+$ curl -H 'Accept: text/csv' 'http://localhost:8000/node/full/example'
 ,energy,i0,itrans,mutrans
 0,8779.0,149013.7,550643.089065,-1.3070486
 1,8789.0,144864.7,531876.119084,-1.3006104
@@ -143,20 +143,20 @@ There are three equivalent ways to request a format, more formally called a "med
     1. Use the standard [HTTP `Accept` Header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept).
 
     ```
-    $ curl -H 'Accept: text/csv' 'http://localhost:8000/dataframe/full/example'
+    $ curl -H 'Accept: text/csv' 'http://localhost:8000/node/full/example'
     ```
 
     2. Place the media type in a `format` query parameter.
 
     ```
-    $ curl 'http://localhost:8000/dataframe/full/example?format=text/csv'
+    $ curl 'http://localhost:8000/node/full/example?format=text/csv'
     ```
 
     3. Provide just a file extension. This is user friendly for people who do not know or care what
     a "media type" is. The server looks up `csv` in a registry mapping file extensions to media types.
 
     ```
-    $ curl 'http://localhost:8000/dataframe/full/example?format=csv'
+    $ curl 'http://localhost:8000/node/full/example?format=csv'
     ```
 ```
 
@@ -213,7 +213,7 @@ Add new sections to the configuration as follows.
 ```yaml
 trees:
   - path: /
-    tree: tiled.trees.files:Tree.from_directory
+    tree: tiled.adapters.files:DirectoryAdapter.from_directory
     args:
       directory: "data"
       mimetypes_by_file_ext:
@@ -282,7 +282,7 @@ tiled serve config --public config.yml
 we can request the content as XDI in any of these ways:
 
 ```
-$ curl -H 'Accept: application/x-xdi' 'http://localhost:8000/dataframe/full/example.xdi'
-$ curl 'http://localhost:8000/dataframe/full/example?format=application/x-xdi'
-$ curl 'http://localhost:8000/dataframe/full/example?format=xdi'
+$ curl -H 'Accept: application/x-xdi' 'http://localhost:8000/node/full/example.xdi'
+$ curl 'http://localhost:8000/node/full/example?format=application/x-xdi'
+$ curl 'http://localhost:8000/node/full/example?format=xdi'
 ```

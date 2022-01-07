@@ -1,7 +1,7 @@
 import io
 import mimetypes
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, List, Tuple, Union
 
 from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
@@ -27,6 +27,7 @@ class DataFrameMicroStructure:
 class DataFrameMacroStructure:
     npartitions: int
     columns: List[str]
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_dask_dataframe(cls, ddf):
@@ -37,6 +38,20 @@ class DataFrameMacroStructure:
 class DataFrameStructure:
     micro: DataFrameMicroStructure
     macro: DataFrameMacroStructure
+
+    @classmethod
+    def from_json(cls, content):
+        divisions_wrapped_in_df = deserialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content["micro"]["divisions"]
+        )
+        divisions = tuple(divisions_wrapped_in_df["divisions"].values)
+        meta = deserialization_registry(
+            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content["micro"]["meta"]
+        )
+        return cls(
+            micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
+            macro=DataFrameMacroStructure(**content["macro"]),
+        )
 
 
 def serialize_arrow(df, metadata):

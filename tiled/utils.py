@@ -49,6 +49,9 @@ class ListView(collections.abc.Sequence):
     def __delitem__(self, index):
         raise TypeError("Deleting values is not allowed.")
 
+    def __add__(self, other):
+        return type(self)(self._internal_list + other)
+
 
 class DictView(collections.abc.Mapping):
     "An immutable view of a dict."
@@ -125,7 +128,7 @@ class OneShotCachedMap(collections.abc.Mapping):
             raise ValueError(
                 "This requires a callable that return a value, not the value itself."
             )
-        self.__mapping[key] = value_factory
+        self.__mapping[key] = _OneShotCachedMapWrapper(value_factory)
 
     def discard(self, key):
         """
@@ -381,6 +384,9 @@ class Sentinel:
         return f"<{self.name}>"
 
 
+UNCHANGED = Sentinel("UNCHANGED")
+
+
 def import_object(colon_separated_string, accept_live_object=False):
     if not isinstance(colon_separated_string, str):
         # We have been handed the live object itself.
@@ -501,9 +507,7 @@ class UnsupportedShape(SerializationError):
     pass
 
 
-# The MIME type vnd.apache.arrow.file is provisional. See:
-# https://lists.apache.org/thread.html/r9b462400a15296576858b52ae22e73f13c3e66f031757b2c9522f247%40%3Cdev.arrow.apache.org%3E  # noqa
-# TODO Should we actually use vnd.apache.arrow.stream? I think 'file' is right
-# for this use case but I have not read deeply into the details yet.
-APACHE_ARROW_FILE_MIME_TYPE = "vnd.apache.arrow.file"
+# Arrow obtained an official MIME type 2021-06-23.
+# https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
+APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"
 XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

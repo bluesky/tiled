@@ -7,9 +7,9 @@ import dask.array
 import numpy
 import pytest
 
+from ..adapters.array import ArrayAdapter
+from ..adapters.mapping import MapAdapter
 from ..client import from_tree
-from ..readers.array import ArrayAdapter
-from ..trees.in_memory import Tree
 
 array_cases = {
     "b": (numpy.arange(10) % 2).astype("b"),
@@ -31,8 +31,10 @@ array_cases = {
 scalar_cases = {k: numpy.array(v[0], dtype=v.dtype) for k, v in array_cases.items()}
 for v in scalar_cases.values():
     assert v.shape == ()
-array_tree = Tree({k: ArrayAdapter.from_array(v) for k, v in array_cases.items()})
-scalar_tree = Tree({k: ArrayAdapter.from_array(v) for k, v in scalar_cases.items()})
+array_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in array_cases.items()})
+scalar_tree = MapAdapter(
+    {k: ArrayAdapter.from_array(v) for k, v in scalar_cases.items()}
+)
 
 
 @pytest.mark.parametrize("kind", list(array_cases))
@@ -58,7 +60,7 @@ def test_shape_with_zero():
     # Suppress RuntimeWarning: divide by zero encountered in true_divide
     # from dask.array.core.
     with warnings.catch_warnings():
-        tree = Tree(
+        tree = MapAdapter(
             {
                 "test": ArrayAdapter(
                     dask.array.from_array(expected, chunks=expected.shape)
@@ -73,7 +75,7 @@ def test_shape_with_zero():
 def test_nan_infinity_handler(tmpdir):
     data = numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf])
     metadata = {"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
-    inf_tree = Tree(
+    inf_tree = MapAdapter(
         {"example": ArrayAdapter.from_array(data, metadata=metadata)}, metadata=metadata
     )
 
