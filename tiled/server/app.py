@@ -401,7 +401,10 @@ def __getattr__(name):
     This supports tiled.server.app.app by creating app on demand.
     """
     if name == "app":
-        return app_factory()
+        try:
+            return app_factory()
+        except Exception as err:
+            raise Exception("Failed to create app.") from err
     raise AttributeError(name)
 
 
