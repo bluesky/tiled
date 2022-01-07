@@ -129,7 +129,7 @@ accept-encoding: zstd
 HTTP/1.1 200 OK
 content-encoding: zstd
 content-length: 558
-content-type: vnd.apache.arrow.file
+content-type: application/vnd.apache.arrow.file
 date: Mon, 26 Jul 2021 01:19:05 GMT
 etag: 6389586cf110bbbc5e69a329ee07e763
 server: uvicorn

@@ -80,7 +80,7 @@ Array:
 * HTML `text/html`
 
 DataFrame:
-* Apache Arrow `vnd.apache.arrow.file`
+* Apache Arrow `application/vnd.apache.arrow.file`
 * CSV `text/csv`
 * HTML `text/html`
 * Excel (xlsx) `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`

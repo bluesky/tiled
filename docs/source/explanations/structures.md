@@ -231,8 +231,8 @@ $ http :8000/node/metadata/long_table | jq .data.attributes.structure
     "resizable": false
   },
   "micro": {
-    "meta": "data:vnd.apache.arrow.file;base64,...",
-    "divisions": "data:vnd.apache.arrow.file;base64,...",
+    "meta": "data:application/vnd.apache.arrow.file;base64,...",
+    "divisions": "data:application/vnd.apache.arrow.file;base64,...",
   }
 }
 ```
