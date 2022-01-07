@@ -1,5 +1,5 @@
 import enum
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
 
 import pydantic
 import pydantic.dataclasses
@@ -34,6 +34,7 @@ class EntryFields(str, enum.Enum):
     microstructure = "structure.micro"
     macrostructure = "structure.macro"
     count = "count"
+    sorting = "sorting"
     specs = "specs"
     none = ""
 
@@ -53,6 +54,7 @@ class NodeAttributes(pydantic.BaseModel):
     metadata: Optional[dict]  # free-form, user-specified dict
     structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
     count: Optional[int]
+    sorting: Optional[List[Tuple[str, int]]]
 
 
 class Resource(pydantic.BaseModel):
