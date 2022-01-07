@@ -4,8 +4,7 @@
 
 Tiled's HTTP API follows the
 [OpenAPI v3 specification](https://swagger.io/specification/).
-Additionally, it follows the conventions of the
-[JSON API standard](https://jsonapi.org/).
+Additionally, it follows the [JSON API standard](https://jsonapi.org/).
 
 When Tiled is configured to use an Authenticator, it adds routes that
 comply with the [OAuth2 protocol](https://oauth.net/2/). Specifically,
