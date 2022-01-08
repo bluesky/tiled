@@ -7,32 +7,25 @@ potentially any language.
 
 ## Supported structure families
 
-Seven structure families are currently supported. The most widespread are:
+The most commonly-used structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
-
-The "array" strucuture family handles both built-in data types and
-[strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html).
+* node --- a grouping of other structures, akin to a directory
 
 Additional structures come from
 [xarray](https://xarray.pydata.org/en/stable/). They may be considered
-*containers* for one or more strided arrays, grouped together and marked up with
-some additional metadata, such as labeled dimensions.
+*containers* for one or more strided arrays.
 
-* data_array --- one or more strided arrays (the extras are "coordinates")
-* dataset --- a group of strided arrays with shared coordinates
+* xarray_data_array
+* xarray_dataset
 
 Support for [Awkward Array](https://awkward-array.org/) is planned.
 
-Adding support for a new structure is one of the few things in Tiled that is
-*not* "pluggable" or extensible by downstream code. It requires a change deep in
-the server and touches several aspects of the library.
-
 ## How structure is encoded
 
-Tiled can describe a structure---its shape, chunking, labels, and so on--- for
+Tiled can describe a structure---its shape, chunking, labels, and so on---for
 the client so that the  client can intelligently request the pieces that it
 wants.
 
@@ -66,8 +59,10 @@ and then extracting the portion of interest with
 
 An array is described with a shape, chunk sizes, and a data type.
 The parameterization and spelling of the data type follows the
-[numpy `__array_interface__`](https://numpy.org/doc/stable/reference/arrays.interface.html#object.__array_interface__)
-protocol.
+[numpy `__array_interface__` protocol](https://numpy.org/doc/stable/reference/arrays.interface.html#object.__array_interface__).
+Both built-in data types and
+[strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html) are supported.
+
 
 An optional field, `dims` ("dimensions") may contain a list with
 a string label for each dimension.
