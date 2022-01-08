@@ -316,7 +316,6 @@ DEFAULT_MEDIA_TYPES = {
     "array": "application/octet-stream",
     "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
     "node": "application/x-hdf5",
-    "variable": "application/octet-stream",
     "xarray_data_array": "application/octet-stream",
     "xarray_dataset": "application/netcdf",
 }

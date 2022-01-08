@@ -43,7 +43,6 @@ class StructureFamilies(str, enum.Enum):
     node = "node"
     array = "array"
     dataframe = "dataframe"
-    variable = "variable"
     xarray_data_array = "xarray_data_array"
     xarray_dataset = "xarray_dataset"
 
