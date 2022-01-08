@@ -1,3 +1,9 @@
+map $http_host $port_if_not_default {
+    # Set to ":<request_port>" or to empty string if default port is used.
+    default "";
+    "~^[^\:]+:(?<p>\d+)$" :$p;
+}
+
 server {
     listen       443 ssl;
     server_name         {{ server_name }};
@@ -8,6 +14,11 @@ server {
 
     location / {
         proxy_pass http://localhost:8000;
+        proxy_set_header X-Forwarded-Scheme $scheme;
+        # We handle the possibility of a non-standard request port
+        # to cover the niche use case of connecting over SSH
+        # port-forwarding.
+        proxy_set_header X-Forwarded-Host $host$port_if_not_default;
     }
 }
 
