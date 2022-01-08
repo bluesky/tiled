@@ -123,29 +123,33 @@ def construct_serve_tree_kwargs(
             trees[segments] = tree
         if not len(trees):
             raise ValueError("Configuration contains no trees")
-        if (len(trees) == 1) and () in trees:
-            # There is one tree to be deployed at '/'.
+
+        if list(trees) == [()]:
+            # Simple case: there is one tree, served at the root path /.
             root_tree = tree
         else:
             # There are one or more tree(s) to be served at
             # sub-paths. Merged them into one root MapAdapter.
             from .adapters.mapping import MapAdapter
 
-            mapping = {}
+            # Map path segments to dicts containing Adapters at that path.
+            root_mapping = {}
+            index = {(): root_mapping}
             include_routers = []
             for segments, tree in trees.items():
-                inner_mapping = mapping
-                for segment in segments[:-1]:
-                    if segment in inner_mapping:
-                        inner_mapping = inner_mapping[segment]
-                    else:
-                        inner_mapping = inner_mapping[segment] = {}
-                inner_mapping[segments[-1]] = tree
+                for i in range(len(segments)):
+                    if segments[:i] not in index:
+                        mapping = {}
+                        index[segments[:i]] = mapping
+                        parent = index[segments[: i - 1]]
+                        parent[segments[i - 1]] = MapAdapter(mapping)
+                index[segments[:-1]][segments[-1]] = tree
+                # Collect any custom routers.
                 routers = getattr(tree, "include_routers", [])
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
-            root_tree = MapAdapter(mapping, access_policy=root_access_policy)
+            root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
