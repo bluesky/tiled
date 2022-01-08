@@ -465,19 +465,26 @@ def node_full(
 
 
 def _get_base_url(request):
-    # Confusing thing:
-    # An httpx.URL treats netloc as bytes (in 0.18.2)
-    # but starlette.datastructures.URL treats netloc as str.
-    # It seems possible starlette could change their minds in
-    # the future to align with httpx, so we will accept either
-    # str or bytes here.
-    client_specified_base_url = request.headers.get("x-base-url")
-    if client_specified_base_url is not None:
-        return client_specified_base_url
-    url = request.url
+    # We want to get the scheme, host, and root_path (if any)
+    # *as it appears to the client* for use in assembling links to
+    # include in our responses.
+    #
+    # We need to consider:
+    #
+    # * FastAPI may be behind a load balancer, such that for a client request
+    #   like "https://example.com/..." the Host header is set to something
+    #   like "localhost:8000" and the request.url.scheme is "http".
+    #   We consult X-Forwarded-* headers to get the original Host and scheme.
+    #   Note that, although these are a de facto standard, they may not be
+    #   set by default. With nginx, for example, they need to be configured.
+    #
+    # * The client may be connecting through SSH port-forwarding. (This
+    #   is a niche use case but one that we nonetheless care about.)
+    #   The Host or X-Forwarded-Host header may include a non-default port.
+    #   The HTTP spec specifies that the Host header may include a port
+    #   to specify a non-default port.
+    #   https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.23
+    host = request.headers.get("x-forwarded-host", request.headers["host"])
+    scheme = request.headers.get("x-forwarded-scheme", request.url.scheme)
     root_path = request.scope.get("root_path") or "/"
-    if isinstance(url.netloc, bytes):
-        netloc_str = url.netloc.decode()
-    else:
-        netloc_str = url.netloc
-    return f"{url.scheme}://{netloc_str}{root_path}"
+    return f"{scheme}://{host}{root_path}"

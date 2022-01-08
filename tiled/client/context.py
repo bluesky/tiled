@@ -229,7 +229,6 @@ class Context:
             (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
         )
         client.base_url = base_url
-        client.headers["x-base-url"] = base_url
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
         if path_parts:
             # Strip "/node/metadata"
