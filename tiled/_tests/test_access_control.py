@@ -24,8 +24,14 @@ def test_top_level_access_control():
     config = {
         "authentication": {
             "secret_keys": [SECRET_KEY],
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-            "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
+            "authenticators": [
+                {
+                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                    "args": {
+                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
+                    },
+                }
+            ],
         },
         "access_control": {
             "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",

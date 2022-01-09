@@ -66,7 +66,7 @@ def construct_serve_tree_kwargs(
         auth_spec = config.get("authentication", {}) or {}
         root_access_control = config.get("access_control", {}) or {}
         auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
-        authenticators = {}
+        authenticators = []
         for authenticator in auth_spec.get("authenticators", []):
             import_path = auth_aliases.get(
                 authenticator["authenticator"], authenticator["authenticator"]

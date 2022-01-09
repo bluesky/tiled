@@ -10,14 +10,12 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from ..media_type_registration import (
-    compression_registry as default_compression_registry,
-)
 from .authentication import (
     ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     REFRESH_TOKEN_COOKIE_NAME,
+    build_authentication_router,
     get_authenticators,
 )
 from .compression import CompressionMiddleware
@@ -57,11 +55,114 @@ def get_app(
     background_tasks: list, optional
         List of async functions to be run on the event loop.
     """
+
+
+def custom_openapi(app):
+    """
+    The app's openapi method will be monkey-patched with this.
+
+    This is the approach the documentation recommends.
+
+    https://fastapi.tiangolo.com/advanced/extending-openapi/
+    """
+    from .. import __version__
+
+    if app.openapi_schema:
+        return app.openapi_schema
+    # Customize heading.
+    openapi_schema = get_openapi(
+        title="Tiled",
+        version=__version__,
+        description="Structured data access service",
+        routes=app.routes,
+    )
+    # Insert refreshUrl.
+    openapi_schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]["flows"][
+        "password"
+    ]["refreshUrl"] = "token/refresh"
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+def serve_tree(
+    tree,
+    authentication=None,
+    authenticators=None,
+    server_settings=None,
+    query_registry=None,
+    serialization_registry=None,
+    compression_registry=None,
+):
+    """
+    Serve a Tree
+
+    Parameters
+    ----------
+    tree : Tree
+    authentication: dict, optional
+        Dict of authentication configuration.
+    authenticators: list, optional
+        List of authenticator classes (one per support identity provider)
+    server_settings: dict, optional
+        Dict of other server configuration.
+    """
+    authentication = authentication or {}
+    authenticators = authenticators or []
+    server_settings = server_settings or {}
+
     app = FastAPI()
     app.state.allow_origins = []
     app.include_router(router)
-    for user_router in include_routers or []:
-        app.include_router(user_router)
+
+    # The Tree and Authenticator have the opportunity to add custom routes to
+    # the server here. (Just for example, a Tree of BlueskyRuns uses this
+    # hook to add a /documents route.) This has to be done before dependency_overrides
+    # are processed, so we cannot just inject this configuration via Depends.
+    for custom_router in getattr(tree, "include_routers", []):
+        app.include_router(custom_router)
+
+    if authenticators:
+        # Authenticators provide Router(s) for their particular flow.
+        # Collect them in the authentication_router.
+        authentication_router = build_authentication_router()
+        for authenticator in authenticators:
+            for custom_router in getattr(authenticator, "include_routers", []):
+                authentication_router.include_router(custom_router)
+        # And add this authentication_router itself to the app.
+        app.include_router(authentication_router, prefix="/auth")
+
+    @lru_cache(1)
+    def override_get_authenticators():
+        return authenticators
+
+    @lru_cache(1)
+    def override_get_root_tree():
+        return tree
+
+    @lru_cache(1)
+    def override_get_settings():
+        settings = get_settings()
+        for item in [
+            "allow_anonymous_access",
+            "secret_keys",
+            "single_user_api_key",
+            "access_token_max_age",
+            "refresh_token_max_age",
+            "session_max_age",
+        ]:
+            if authentication.get(item) is not None:
+                setattr(settings, item, authentication[item])
+        for item in ["allow_origins"]:
+            if server_settings.get(item) is not None:
+                setattr(settings, item, server_settings[item])
+        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
+            "available_bytes"
+        )
+        if object_cache_available_bytes is not None:
+            setattr(
+                settings, "object_cache_available_bytes", object_cache_available_bytes
+            )
+        return settings
 
     @app.on_event("startup")
     async def startup_event():
@@ -87,6 +188,11 @@ def get_app(
     """
                 )
 
+        # Trees and Authenticators can run tasks in the background.
+        background_tasks = []
+        background_tasks.extend(getattr(tree, "background_tasks", []))
+        for authenticator in authenticators:
+            background_tasks.extend(getattr(authenticator, "background_tasks", []))
         for task in background_tasks or []:
             asyncio.create_task(task())
 
@@ -230,115 +336,6 @@ def get_app(
         return response
 
     app.openapi = partial(custom_openapi, app)
-    return app
-
-
-def custom_openapi(app):
-    """
-    The app's openapi method will be monkey-patched with this.
-
-    This is the approach the documentation recommends.
-
-    https://fastapi.tiangolo.com/advanced/extending-openapi/
-    """
-    from .. import __version__
-
-    if app.openapi_schema:
-        return app.openapi_schema
-    # Customize heading.
-    openapi_schema = get_openapi(
-        title="Tiled",
-        version=__version__,
-        description="Structured data access service",
-        routes=app.routes,
-    )
-    # Insert refreshUrl.
-    openapi_schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]["flows"][
-        "password"
-    ]["refreshUrl"] = "token/refresh"
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-
-def serve_tree(
-    tree,
-    authentication=None,
-    authenticators=None,
-    server_settings=None,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-):
-    """
-    Serve a Tree
-
-    Parameters
-    ----------
-    tree : Tree
-    authentication: dict, optional
-        Dict of authentication configuration.
-    authenticators: list, optional
-        List of authenticator classes (one per support identity provider)
-    server_settings: dict, optional
-        Dict of other server configuration.
-    """
-    authentication = authentication or {}
-    authenticators = authenticators or []
-    server_settings = server_settings or {}
-
-    @lru_cache(1)
-    def override_get_authenticators():
-        return authenticators
-
-    @lru_cache(1)
-    def override_get_root_tree():
-        return tree
-
-    @lru_cache(1)
-    def override_get_settings():
-        settings = get_settings()
-        for item in [
-            "allow_anonymous_access",
-            "secret_keys",
-            "single_user_api_key",
-            "access_token_max_age",
-            "refresh_token_max_age",
-            "session_max_age",
-        ]:
-            if authentication.get(item) is not None:
-                setattr(settings, item, authentication[item])
-        for item in ["allow_origins"]:
-            if server_settings.get(item) is not None:
-                setattr(settings, item, server_settings[item])
-        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
-            "available_bytes"
-        )
-        if object_cache_available_bytes is not None:
-            setattr(
-                settings, "object_cache_available_bytes", object_cache_available_bytes
-            )
-        return settings
-
-    # The Tree and Authenticator have the opportunity to add custom routes to
-    # the server here. (Just for example, a Tree of BlueskyRuns uses this
-    # hook to add a /documents route.) This has to be done before dependency_overrides
-    # are processed, so we cannot just inject this configuration via Depends.
-    include_routers = []
-    include_routers.extend(getattr(tree, "include_routers", []))
-    for authenticator in authenticators:
-        include_routers.extend(getattr(authenticator, "include_routers", []))
-    # Likewise, the Tree and Authenticator can run tasks in the background.
-    # These typically contain a periodic loop.
-    background_tasks = []
-    background_tasks.extend(getattr(tree, "background_tasks", []))
-    for authenticator in authenticators:
-        background_tasks.extend(getattr(authenticator, "background_tasks", []))
-    app = get_app(
-        query_registry or get_query_registry(),
-        compression_registry or default_compression_registry,
-        include_routers=include_routers,
-        background_tasks=background_tasks,
-    )
     app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings

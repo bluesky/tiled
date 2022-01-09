@@ -51,8 +51,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
 api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
 api_key_cookie = APIKeyCookie(name="tiled_api_key", auto_error=False)
-password_authentication_router = APIRouter()
-external_authentication_router = APIRouter()
 
 
 def create_access_token(data: dict, expires_delta, secret_key):
@@ -169,79 +167,64 @@ async def get_current_user(
     return username
 
 
-@external_authentication_router.get("/auth/code")
-async def auth_code(
-    request: Request,
-    authenticator: Any = Depends(get_authenticator),
-    settings: BaseSettings = Depends(get_settings),
-):
-    request.state.endpoint = "auth"
-    username = await authenticator.authenticate(request)
-    if not username:
-        raise HTTPException(status_code=401, detail="Authentication failure")
-    refresh_token = create_refresh_token(
-        data={"sub": username},
-        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-    )
-    return refresh_token
+def build_auth_code_route(authenticator):
+    "Build an auth_code route function for this Authenticator."
 
-
-@password_authentication_router.post(
-    "/token", response_model=AccessAndRefreshTokens, include_in_schema=False
-)  # back-compat alias
-@password_authentication_router.post(
-    "/auth/token", response_model=AccessAndRefreshTokens
-)
-async def login_for_access_token(
-    authenticator,
-    request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    settings: BaseSettings = Depends(get_settings),
-):
-    request.state.endpoint = "auth"
-    username = await authenticator.authenticate(
-        username=form_data.username, password=form_data.password
-    )
-    if not username:
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    async def auth_code(
+        request: Request,
+        settings: BaseSettings = Depends(get_settings),
+    ):
+        request.state.endpoint = "auth"
+        username = await authenticator.authenticate(request)
+        if not username:
+            raise HTTPException(status_code=401, detail="Authentication failure")
+        refresh_token = create_refresh_token(
+            data={"sub": username},
+            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
         )
-    access_token = create_access_token(
-        data={"sub": username},
-        expires_delta=settings.access_token_max_age,
-        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-    )
-    refresh_token = create_refresh_token(
-        data={"sub": username},
-        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-    )
-    return {
-        "access_token": access_token,
-        "expires_in": settings.access_token_max_age / UNIT_SECOND,
-        "refresh_token": refresh_token,
-        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
-        "token_type": "bearer",
-    }
+        return refresh_token
+
+    return auth_code
 
 
-@password_authentication_router.post(
-    "/token/refresh", response_model=AccessAndRefreshTokens
-)
-@external_authentication_router.post(
-    "/token/refresh", response_model=AccessAndRefreshTokens
-)
-@password_authentication_router.post(
-    "/auth/token/refresh",
-    response_model=AccessAndRefreshTokens,
-    include_in_schema=False,
-)  # back-compat alias
-@external_authentication_router.post(
-    "/auth/token/refresh",
-    response_model=AccessAndRefreshTokens,
-    include_in_schema=False,
-)  # back-compat alias
+def build_handle_credentials_route(authenticator):
+    "Register a handle_credentials route function for this Authenticator."
+
+    async def handle_credentials(
+        request: Request,
+        form_data: OAuth2PasswordRequestForm = Depends(),
+        settings: BaseSettings = Depends(get_settings),
+    ):
+        request.state.endpoint = "auth"
+        username = await authenticator.authenticate(
+            username=form_data.username, password=form_data.password
+        )
+        if not username:
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        access_token = create_access_token(
+            data={"sub": username},
+            expires_delta=settings.access_token_max_age,
+            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+        )
+        refresh_token = create_refresh_token(
+            data={"sub": username},
+            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+        )
+        return {
+            "access_token": access_token,
+            "expires_in": settings.access_token_max_age / UNIT_SECOND,
+            "refresh_token": refresh_token,
+            "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+            "token_type": "bearer",
+        }
+
+    return handle_credentials
+
+
 async def post_token_refresh(
     request: Request,
     refresh_token: RefreshToken,
@@ -294,23 +277,24 @@ def slide_session(refresh_token, settings):
     }
 
 
-@external_authentication_router.get("/auth/whoami")
-@password_authentication_router.get("/auth/whoami")
 async def whoami(request: Request, current_user: str = Depends(get_current_user)):
     request.state.endpoint = "auth"
     return {"username": current_user}
 
 
-@external_authentication_router.post("/auth/logout")
-@password_authentication_router.post("/auth/logout")
-@external_authentication_router.post(
-    "/logout", include_in_schema=False
-)  # back-compat alias
-@password_authentication_router.post(
-    "/logout", include_in_schema=False
-)  # back-compat alias
 async def logout(request: Request, response: Response):
     request.state.endpoint = "auth"
     response.delete_cookie(API_KEY_COOKIE_NAME)
     response.delete_cookie(CSRF_COOKIE_NAME)
     return {}
+
+
+def build_authentication_router():
+    router = APIRouter()
+    router.post(
+        "/token/refresh",
+        response_model=AccessAndRefreshTokens,
+    )(post_token_refresh)
+    router.get("/whoami")(whoami)
+    router.post("/logout")(logout)
+    return router

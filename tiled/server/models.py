@@ -80,11 +80,27 @@ class TokenData(pydantic.BaseModel):
     username: Optional[str] = None
 
 
+class AuthenticationHow(enum.Enum):
+    password = "password"
+    external = "external"
+
+
+class AboutAuthenticationMethod(pydantic.BaseModel):
+    how: AuthenticationHow
+    endpoint: str
+    confirmation_message: Optional[str]
+
+
+class AboutAuthentication(pydantic.BaseModel):
+    required: bool
+    methods: List[AboutAuthenticationMethod]
+
+
 class About(pydantic.BaseModel):
     api_version: int
     library_version: str
     formats: Dict[str, List[str]]
     aliases: Dict[str, Dict[str, List[str]]]
     queries: List[str]
-    authentication: dict
+    authentication: AboutAuthentication
     meta: dict

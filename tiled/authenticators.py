@@ -4,7 +4,7 @@ import secrets
 from fastapi import APIRouter
 from jose import JWTError, jwk, jwt
 
-from .server.authenticators import auth_code, password_authentication_router
+from .server.authentication import build_auth_code_route, build_handle_credentials_route
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
@@ -18,8 +18,12 @@ class DummyAuthenticator:
 
     """
 
-    handles_credentials = True
-    include_routers = [password_authentication_router]
+    how = "password"
+
+    def __init__(self):
+        router = APIRouter()
+        router.post("/dummy/token")(build_handle_credentials_route(self))
+        self.include_routers = [router]
 
     async def authenticate(self, username: str, password: str):
         return username
@@ -32,11 +36,14 @@ class DictionaryAuthenticator:
     Check passwords from a dictionary of usernames mapped to passwords.
     """
 
-    handles_credentials = True
-    include_routers = [password_authentication_router]
+    how = "password"
 
     def __init__(self, users_to_passwords):
         self._users_to_passwords = users_to_passwords
+        router = APIRouter()
+        router.post("/dict/token")(build_handle_credentials_route(self))
+        self.include_routers = [router]
+        self.endpoint = "/dict/token"
 
     async def authenticate(self, username: str, password: str):
         true_password = self._users_to_passwords.get(username)
@@ -49,15 +56,16 @@ class DictionaryAuthenticator:
 
 class PAMAuthenticator:
     handles_credentials = True
-    include_routers = [password_authentication_router]
 
-    def __init__(self, service="login"):
+    def __init__(self, service="login", stub_name="pam"):
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
             )
-        # TODO Try to open a PAM session.
+        self.stub_name = stub_name
+        self.include_routers = [build_handle_credentials_route(self)]
         self.service = service
+        # TODO Try to open a PAM session.
 
     async def authenticate(self, username: str, password: str):
         import pamela
@@ -128,8 +136,7 @@ public_keys:
             client_id=client_id, redirect_uri=redirect_uri
         )
 
-        router = APIRouter()
-        self.include_routers = [router.get("/auth/{stub_name}/code")(auth_code)]
+        self.include_routers = [build_auth_code_route(self)]
 
     async def authenticate(self, request):
         code = request.query_params["code"]

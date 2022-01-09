@@ -209,20 +209,16 @@ class Context:
         if (not offline) and (
             self._handshake_data["authentication"]["required"] or (username is not None)
         ):
-            if self._handshake_data["authentication"]["type"] in (
-                "password",
-                "external",
-            ):
-                # Authenticate. If a valid refresh_token is available in the token_cache,
-                # it will be used. Otherwise, this will prompt for input from the stdin
-                # or raise CannotRefreshAuthentication.
-                prompt = (
-                    prompt_for_reauthentication == PromptForReauthentication.AT_INIT
-                    or prompt_for_reauthentication == PromptForReauthentication.ALWAYS
-                )
-                tokens = self.reauthenticate(prompt=prompt)
-                access_token = tokens["access_token"]
-                client.headers["Authorization"] = f"Bearer {access_token}"
+            # Authenticate. If a valid refresh_token is available in the token_cache,
+            # it will be used. Otherwise, this will prompt for input from the stdin
+            # or raise CannotRefreshAuthentication.
+            prompt = (
+                prompt_for_reauthentication == PromptForReauthentication.AT_INIT
+                or prompt_for_reauthentication == PromptForReauthentication.ALWAYS
+            )
+            tokens = self.reauthenticate(prompt=prompt)
+            access_token = tokens["access_token"]
+            client.headers["Authorization"] = f"Bearer {access_token}"
         base_path = self._handshake_data["meta"]["root_path"]
         url = httpx.URL(self._client.base_url)
         base_url = urllib.parse.urlunsplit(
@@ -442,10 +438,44 @@ class Context:
             return self._send(request, stream=stream, attempts=1)
         return response
 
-    def authenticate(self):
+    def authenticate(self, method=None):
         "Authenticate. Prompt for password or access code (refresh token)."
-        auth_type = self._handshake_data["authentication"]["type"]
-        if auth_type == "password":
+        methods = self._handshake_data["authentication"]["methods"]
+        if len(methods) == 0:
+            raise Exception("This server does not support any authentication methods.")
+        if method is not None:
+            for method_info in methods:
+                if method_info["label"] == method:
+                    break
+            else:
+                raise ValueError(
+                    f"No such method {method}. Choices are {[m['label'] for m in methods]}"
+                )
+        else:
+            if len(methods) == 1:
+                (method_info,) = methods
+            else:
+                while True:
+                    print("Authenticaiton methods:")
+                    for i, method_info in enumerate(methods, start=1):
+                        print(f"{i} - {method_info['label']}")
+                    raw_choice = input(
+                        "Choose an authenticaiton method (or press Enter to escape): "
+                    )
+                    try:
+                        choice = int(raw_choice)
+                    except TypeError:
+                        print("Choice must be a number.")
+                        continue
+                    try:
+                        method_info = methods[1 + choice]
+                    except IndexError:
+                        print("Choice must be a number from the list above.")
+                        continue
+                    break
+        how = method_info["how"]
+        endpoint = method_info["endpoint"]
+        if how == "password":
             username = self._username or input("Username: ")
             password = getpass.getpass()
             form_data = {
@@ -455,7 +485,7 @@ class Context:
             }
             token_request = self._client.build_request(
                 "POST",
-                f"{self._authentication_uri}auth/token",
+                endpoint,
                 data=form_data,
                 headers={},
             )
@@ -464,8 +494,7 @@ class Context:
             handle_error(token_response)
             tokens = token_response.json()
             refresh_token = tokens["refresh_token"]
-        elif auth_type == "external":
-            endpoint = self._handshake_data["authentication"]["endpoint"]
+        elif how == "external":
             print(
                 f"""
 Navigate web browser to this address to obtain access code:
@@ -499,12 +528,8 @@ Navigate web browser to this address to obtain access code:
             if confirmation_message:
                 username = username = self.whoami()
                 print(confirmation_message.format(username=username))
-        elif auth_type == "api_key":
-            raise ValueError(
-                "authenticate() method is not applicable to API key authentication"
-            )
         else:
-            raise ValueError(f"Server has unknown authentication type {auth_type!r}")
+            raise ValueError(f"Server has unknown authentication mechanism {how!r}")
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
             self._token_cache["refresh_token"] = refresh_token

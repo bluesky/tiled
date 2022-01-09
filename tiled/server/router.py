@@ -12,7 +12,7 @@ from . import models
 from .authentication import (
     API_KEY_COOKIE_NAME,
     check_single_user_api_key,
-    get_authenticator,
+    get_authenticators,
 )
 from .core import (
     NoEntry,
@@ -44,7 +44,7 @@ async def about(
     request: Request,
     has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
-    authenticator=Depends(get_authenticator),
+    authenticators=Depends(get_authenticators),
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
 ):
@@ -54,21 +54,27 @@ async def about(
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
     # etc.) can remain lazy.
     request.state.endpoint = "about"
-    if (authenticator is None) and has_single_user_api_key:
+    if (not authenticators) and has_single_user_api_key:
         if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
             request.state.cookies_to_set.append(
                 {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
             )
-    if authenticator is None:
-        auth_type = "api_key"
-        auth_endpoint = None
-    else:
-        if authenticator.handles_credentials:
-            auth_type = "password"
-            auth_endpoint = None
-        else:
-            auth_type = "external"
-            auth_endpoint = authenticator.authorization_endpoint
+    authentication = {
+        "required": not settings.allow_anonymous_access,
+    }
+    methods = []
+    base_url = _get_base_url(request)
+    for authenticator in authenticators:
+        method = {
+            "how": authenticator.how,
+            # TODO Extract 'auth' string from authentication_router instead of hard-coding?
+            "endpoint": f"{base_url}auth/{authenticator.endpoint}",
+            "confirmation_message": getattr(
+                authenticator, "confirmation_message", None
+            ),
+        }
+        methods.append(method)
+    authentication["methods"] = methods
 
     return json_or_msgpack(
         request,
@@ -86,16 +92,9 @@ async def about(
                 for structure_family in serialization_registry.structure_families
             },
             queries=list(query_registry.name_to_query_type),
+            authentication=authentication,
             # documentation_url=".../docs",  # TODO How to get the base URL?
             meta={"root_path": request.scope.get("root_path") or "/"},
-            authentication={
-                "type": auth_type,
-                "required": not settings.allow_anonymous_access,
-                "endpoint": auth_endpoint,
-                "confirmation_message": getattr(
-                    authenticator, "confirmation_message", None
-                ),
-            },
         ),
         resolve_media_type(request),
         expires=datetime.utcnow() + timedelta(seconds=600),
