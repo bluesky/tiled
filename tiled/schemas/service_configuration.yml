@@ -158,35 +158,43 @@ properties:
     type: [object, "null"]
     additionalProperties: false
     properties:
-      authenticator:
-        type: string
-        description: |
-          Type of Authenticator to use.
+      authenticators:
+        type: array
+        item:
+          type: object
+          additionalProperties: false
+          required:
+            - authenticator
+          properties:
+            authenticator:
+              type: string
+              description: |
+                Type of Authenticator to use.
 
-          These are typically from the tiled.authenticators module,
-          though user-defined ones may be used as well.
+                These are typically from the tiled.authenticators module,
+                though user-defined ones may be used as well.
 
-          This is given as an import path. In an import path, packages/modules
-          are separated by dots, and the object itself it separated by a colon.
+                This is given as an import path. In an import path, packages/modules
+                are separated by dots, and the object itself it separated by a colon.
 
-          Example:
+                Example:
 
-          ```yaml
-          authenticator: tiled.examples.DummyAuthenticator
-          ```
-      args:
-        type: [object, "null"]
-        description: |
-          Named arguments to pass to Authenticator. If there are none,
-          `args` may be omitted or empty.
+                ```yaml
+                authenticator: tiled.examples.DummyAuthenticator
+                ```
+                args:
+                  type: [object, "null"]
+                  description: |
+                    Named arguments to pass to Authenticator. If there are none,
+                    `args` may be omitted or empty.
 
-          Example:
+                    Example:
 
-          ```yaml
-          authenticator: tiled.examples.PAMAuthenticator
-          args:
-            service: "custom_service"
-          ```
+                    ```yaml
+                    authenticator: tiled.examples.PAMAuthenticator
+                    args:
+                      service: "custom_service"
+                    ```
       secret_keys:
         type: array
         items:

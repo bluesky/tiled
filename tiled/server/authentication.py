@@ -2,7 +2,7 @@ import secrets
 import uuid
 import warnings
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -31,7 +31,7 @@ API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
 
-def get_authenticator():
+def get_authenticators():
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
         "See tiled.server.app.serve_tree()."
@@ -134,9 +134,9 @@ async def get_current_user(
     access_token: str = Depends(oauth2_scheme),
     has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
-    authenticator=Depends(get_authenticator),
+    authenticators=Depends(get_authenticators),
 ):
-    if (authenticator is None) and has_single_user_api_key:
+    if (not authenticators) and has_single_user_api_key:
         if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
             request.state.cookies_to_set.append(
                 {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
@@ -193,21 +193,12 @@ async def auth_code(
     "/auth/token", response_model=AccessAndRefreshTokens
 )
 async def login_for_access_token(
+    authenticator,
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    authenticator: Any = Depends(get_authenticator),
     settings: BaseSettings = Depends(get_settings),
 ):
     request.state.endpoint = "auth"
-    if authenticator is None:
-        if settings.allow_anonymous_access:
-            msg = "This is a public Tiled server with no login."
-        else:
-            msg = (
-                "This is a single-user Tiled server. "
-                "To authenticate, use the API key logged at server startup."
-            )
-        raise HTTPException(status_code=404, detail=msg)
     username = await authenticator.authenticate(
         username=form_data.username, password=form_data.password
     )

@@ -18,9 +18,7 @@ from .authentication import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     REFRESH_TOKEN_COOKIE_NAME,
-    external_authentication_router,
-    get_authenticator,
-    password_authentication_router,
+    get_authenticators,
 )
 from .compression import CompressionMiddleware
 from .core import (
@@ -88,13 +86,6 @@ def get_app(
     python -c "import secrets; print(secrets.token_hex(32))"
     """
                 )
-
-        authenticator = app.dependency_overrides[get_authenticator]()
-        if authenticator is not None:
-            if authenticator.handles_credentials:
-                app.include_router(password_authentication_router)
-            else:
-                app.include_router(external_authentication_router)
 
         for task in background_tasks or []:
             asyncio.create_task(task())
@@ -272,6 +263,7 @@ def custom_openapi(app):
 def serve_tree(
     tree,
     authentication=None,
+    authenticators=None,
     server_settings=None,
     query_registry=None,
     serialization_registry=None,
@@ -285,16 +277,18 @@ def serve_tree(
     tree : Tree
     authentication: dict, optional
         Dict of authentication configuration.
+    authenticators: list, optional
+        List of authenticator classes (one per support identity provider)
     server_settings: dict, optional
         Dict of other server configuration.
     """
     authentication = authentication or {}
+    authenticators = authenticators or []
     server_settings = server_settings or {}
-    authenticator = authentication.get("authenticator")
 
     @lru_cache(1)
-    def override_get_authenticator():
-        return authenticator
+    def override_get_authenticators():
+        return authenticators
 
     @lru_cache(1)
     def override_get_root_tree():
@@ -331,20 +325,21 @@ def serve_tree(
     # are processed, so we cannot just inject this configuration via Depends.
     include_routers = []
     include_routers.extend(getattr(tree, "include_routers", []))
-    include_routers.extend(getattr(authenticator, "include_routers", []))
-
+    for authenticator in authenticators:
+        include_routers.extend(getattr(authenticator, "include_routers", []))
     # Likewise, the Tree and Authenticator can run tasks in the background.
     # These typically contain a periodic loop.
     background_tasks = []
     background_tasks.extend(getattr(tree, "background_tasks", []))
-    background_tasks.extend(getattr(authenticator, "background_tasks", []))
+    for authenticator in authenticators:
+        background_tasks.extend(getattr(authenticator, "background_tasks", []))
     app = get_app(
         query_registry or get_query_registry(),
         compression_registry or default_compression_registry,
         include_routers=include_routers,
         background_tasks=background_tasks,
     )
-    app.dependency_overrides[get_authenticator] = override_get_authenticator
+    app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
     if query_registry is not None:
@@ -421,8 +416,8 @@ def print_admin_api_key_if_generated(web_app, host, port):
     host = host or "127.0.0.1"
     port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
-    authenticator = web_app.dependency_overrides.get(
-        get_authenticator, get_authenticator
+    authenticators = web_app.dependency_overrides.get(
+        get_authenticators, get_authenticators
     )()
     if settings.allow_anonymous_access:
         print(
@@ -433,7 +428,7 @@ def print_admin_api_key_if_generated(web_app, host, port):
 """,
             file=sys.stderr,
         )
-    elif (authenticator is None) and settings.single_user_api_key_generated:
+    elif (not authenticators) and settings.single_user_api_key_generated:
         print(
             f"""
     Use the following URL to connect to Tiled:

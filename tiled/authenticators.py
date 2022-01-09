@@ -1,8 +1,10 @@
 import logging
 import secrets
 
+from fastapi import APIRouter
 from jose import JWTError, jwk, jwt
 
+from .server.authenticators import auth_code, password_authentication_router
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,7 @@ class DummyAuthenticator:
     """
 
     handles_credentials = True
+    include_routers = [password_authentication_router]
 
     async def authenticate(self, username: str, password: str):
         return username
@@ -30,6 +33,7 @@ class DictionaryAuthenticator:
     """
 
     handles_credentials = True
+    include_routers = [password_authentication_router]
 
     def __init__(self, users_to_passwords):
         self._users_to_passwords = users_to_passwords
@@ -45,6 +49,7 @@ class DictionaryAuthenticator:
 
 class PAMAuthenticator:
     handles_credentials = True
+    include_routers = [password_authentication_router]
 
     def __init__(self, service="login"):
         if not modules_available("pamela"):
@@ -109,10 +114,12 @@ public_keys:
         public_keys,
         token_uri,
         authorization_endpoint,
+        stub_name,
         confirmation_message,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
+        self.stub_name = stub_name
         self.confirmation_message = confirmation_message
         self.redirect_uri = redirect_uri
         self.public_keys = public_keys
@@ -120,6 +127,9 @@ public_keys:
         self.authorization_endpoint = authorization_endpoint.format(
             client_id=client_id, redirect_uri=redirect_uri
         )
+
+        router = APIRouter()
+        self.include_routers = [router.get("/auth/{stub_name}/code")(auth_code)]
 
     async def authenticate(self, request):
         code = request.query_params["code"]
