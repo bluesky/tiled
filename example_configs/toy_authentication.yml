@@ -1,12 +1,12 @@
 authentication:
-  authenticators:
-  - name: toy
+  providers:
+  - provider: toy
     authenticator: tiled.authenticators:DictionaryAuthenticator
     args:
-        users_to_passwords:
-            alice: ${ALICE_PASSWORD}
-            bob: ${BOB_PASSWORD}
-            cara: ${CARA_PASSWORD}
+      users_to_passwords:
+        alice: ${ALICE_PASSWORD}
+        bob: ${BOB_PASSWORD}
+        cara: ${CARA_PASSWORD}
 access_control:
   access_policy: tiled.adapters.mapping:SimpleAccessPolicy
   args:

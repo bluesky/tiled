@@ -94,9 +94,9 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = [
-        spec["authenticator"] for spec in authentication["authenticators"]
-    ]
+    authenticators = {
+        spec["provider"]: spec["authenticator"] for spec in authentication["providers"]
+    }
     server_settings = server_settings or {}
 
     app = FastAPI()
@@ -110,26 +110,28 @@ def build_app(
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router)
 
-    if authentication["authenticators"]:
+    if authentication["providers"]:
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
         authentication_router = build_authentication_router()
-        for spec in authentication["authenticators"]:
-            name = spec["name"]
+        for spec in authentication["providers"]:
+            provider = spec["provider"]
             authenticator = spec["authenticator"]
             mode = authenticator.mode
             if mode == Mode.password:
-                authentication_router.post(f"/{name}/token")(
+                authentication_router.post(f"/{provider}/token")(
                     build_handle_credentials_route(authenticator)
                 )
             elif mode == Mode.external:
-                authentication_router.post(f"/{name}/code")(
+                authentication_router.post(f"/{provider}/code")(
                     build_auth_code_route(authenticator)
                 )
             else:
                 raise ValueError(f"unknown authentication mode {mode}")
             for custom_router in getattr(authenticator, "include_routers", []):
-                authentication_router.include_router(custom_router)
+                authentication_router.include_router(
+                    custom_router, prefix=f"/{provider}"
+                )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/auth")
 

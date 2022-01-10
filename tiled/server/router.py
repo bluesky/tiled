@@ -11,6 +11,7 @@ from .. import __version__
 from . import models
 from .authentication import (
     API_KEY_COOKIE_NAME,
+    Mode,
     check_single_user_api_key,
     get_authenticators,
 )
@@ -62,19 +63,31 @@ async def about(
     authentication = {
         "required": not settings.allow_anonymous_access,
     }
-    methods = []
+    providers = []
     base_url = _get_base_url(request)
-    for authenticator in authenticators:
-        method = {
-            "how": authenticator.how,
-            # TODO Extract 'auth' string from authentication_router instead of hard-coding?
-            "endpoint": f"{base_url}auth/{authenticator.endpoint}",
-            "confirmation_message": getattr(
-                authenticator, "confirmation_message", None
-            ),
-        }
-        methods.append(method)
-    authentication["methods"] = methods
+    for provider, authenticator in authenticators.items():
+        if authenticator.mode == Mode.password:
+            provider = {
+                "provider": provider,
+                "mode": authenticator.mode.value,
+                "links": {"auth_endpoint": f"{base_url}auth/{provider}/token"},
+                "confirmation_message": getattr(
+                    authenticator, "confirmation_message", None
+                ),
+            }
+        elif authenticator.mode == Mode.external:
+            provider = {
+                "mode": authenticator.mode.value,
+                "links": {"auth_endpoint": authenticator.authorization_endpoint},
+                "confirmation_message": getattr(
+                    authenticator, "confirmation_message", None
+                ),
+            }
+        else:
+            # It should be impossible to reach here.
+            assert False
+        providers.append(provider)
+    authentication["providers"] = providers
 
     return json_or_msgpack(
         request,

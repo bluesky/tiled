@@ -1,3 +1,4 @@
+import enum
 import secrets
 import uuid
 import warnings
@@ -36,6 +37,11 @@ def get_authenticators():
         "This should be overridden via dependency_overrides. "
         "See tiled.server.app.build_app()."
     )
+
+
+class Mode(enum.Enum):
+    password = "password"
+    external = "external"
 
 
 class Token(BaseModel):

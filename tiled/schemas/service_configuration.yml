@@ -5,8 +5,8 @@
 # service configuration reference section based on the description fields. See
 # doc/source/conf.py for that logic!
 #
-# We look to document everything we have default values for in values.yaml, but
-# we don't look to enforce the perfect validation logic within this file.
+# We look to document all the options, but we don't look to enforce the perfect
+# validation logic within this file.
 #
 # ref: https://json-schema.org/learn/getting-started-step-by-step.html
 #
@@ -158,7 +158,7 @@ properties:
     type: [object, "null"]
     additionalProperties: false
     properties:
-      authenticators:
+      providers:
         type: array
         item:
           type: object
@@ -167,7 +167,7 @@ properties:
             - authenticator
             - name
           properties:
-            name:
+            provider:
               type: string
               pattern: "^[a-zA-Z0-9_-]*$"
               description: |
