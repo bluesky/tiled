@@ -315,7 +315,7 @@ class SimpleAccessPolicy:
 
     def filter_results(self, tree, authenticated_identity):
         # either list of paths or ALL
-        access_list = self.access_lists.get(authenticated_identity, [])
+        access_list = self.access_lists.get(authenticated_identity.id, [])
 
         if (authenticated_identity is SpecialUsers.admin) or (access_list is self.ALL):
             mapping = tree._mapping

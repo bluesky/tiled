@@ -24,8 +24,9 @@ def test_top_level_access_control():
     config = {
         "authentication": {
             "secret_keys": [SECRET_KEY],
-            "authenticators": [
+            "providers": [
                 {
+                    "provider": "toy",
                     "authenticator": "tiled.authenticators:DictionaryAuthenticator",
                     "args": {
                         "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
@@ -58,13 +59,13 @@ def test_top_level_access_control():
     }
     # Directly generate a refresh token.
     alice_refresh_token = create_refresh_token(
-        data={"sub": "alice"},
+        data={"sub": "alice", "idp": "toy"},
         session_id=0,
         session_creation_time=datetime.now(),
         secret_key=SECRET_KEY,
     )
     bob_refresh_token = create_refresh_token(
-        data={"sub": "bob"},
+        data={"sub": "bob", "idp": "toy"},
         session_id=0,
         session_creation_time=datetime.now(),
         secret_key=SECRET_KEY,

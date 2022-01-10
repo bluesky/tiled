@@ -22,9 +22,9 @@ def from_uri(
     cache=None,
     offline=False,
     username=None,
+    auth_provider=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     verify=True,
-    authentication_uri=None,
     prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     headers=None,
 ):
@@ -45,13 +45,15 @@ def from_uri(
         False by default. If True, rely on cache only.
     username : str, optional
         Username for authenticated access.
+    auth_provider : str, optional
+        Name of an authentication provider. If None and the server supports
+        multiple provides, the user will be interactively prompted to
+        choose from a list.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     verify : bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
-    authentication_uri : str, optional
-        URL of authentication server
     prompt_for_reauthentication : {"at_init", "always", "never"}
     headers : dict, optional
         Extra HTTP headers.
@@ -89,7 +91,7 @@ def from_uri(
     context = Context(
         client,
         username=username,
-        authentication_uri=authentication_uri,
+        auth_provider=auth_provider,
         cache=cache,
         offline=offline,
         token_cache=token_cache,
@@ -100,16 +102,17 @@ def from_uri(
 
 def from_tree(
     tree,
+    structure_clients="numpy",
     *,
     authentication=None,
     server_settings=None,
     query_registry=None,
     serialization_registry=None,
     compression_registry=None,
-    structure_clients="numpy",
     cache=None,
     offline=False,
     username=None,
+    auth_provider=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     headers=None,
 ):
@@ -128,15 +131,19 @@ def from_tree(
     Parameters
     ----------
     tree : Node
-    authentication : dict, optional
-        Dict of authentication configuration.
-    username : str, optional
-        Username for authenticated access.
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
+    authentication : dict, optional
+        Dict of authentication configuration.
+    username : str, optional
+        Username for authenticated access.
+    auth_provider : str, optional
+        Name of an authentication provider. If None and the server supports
+        multiple provides, the user will be interactively prompted to
+        choose from a list.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
@@ -158,6 +165,7 @@ def from_tree(
         offline=offline,
         token_cache=token_cache,
         username=username,
+        auth_provider=auth_provider,
         headers=headers,
     )
     return from_context(context, structure_clients=structure_clients)
@@ -175,15 +183,6 @@ def from_context(context, structure_clients="numpy", *, path=None):
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
-    username : str, optional
-        Username for authenticated access.
-    cache : Cache, optional
-    offline : bool, optional
-        False by default. If True, rely on cache only.
-    token_cache : str, optional
-        Path to directory for storing refresh tokens.
-    authentication_uri : str, optional
-        URL of authentication server
     """
     # Do entrypoint discovery if it hasn't yet been done.
     if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
@@ -309,6 +308,7 @@ def from_config(
     config,
     *,
     username=None,
+    auth_provider=None,
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
@@ -358,8 +358,8 @@ def from_config(
 
     build_app_kwargs = construct_build_app_kwargs(config)
     context = context_from_tree(
-        # authentication_uri=authentication_uri,
         username=username,
+        auth_provider=auth_provider,
         cache=cache,
         offline=offline,
         token_cache=token_cache,

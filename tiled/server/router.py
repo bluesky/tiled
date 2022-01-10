@@ -28,11 +28,11 @@ from .core import (
     get_query_registry,
     get_serialization_registry,
     json_or_msgpack,
-    record_timing,
     resolve_media_type,
     slice_,
 )
 from .settings import get_settings
+from .utils import get_base_url, record_timing
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -60,14 +60,14 @@ async def about(
             request.state.cookies_to_set.append(
                 {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
             )
+    base_url = get_base_url(request)
     authentication = {
         "required": not settings.allow_anonymous_access,
     }
-    providers = []
-    base_url = _get_base_url(request)
+    provider_specs = []
     for provider, authenticator in authenticators.items():
         if authenticator.mode == Mode.password:
-            provider = {
+            spec = {
                 "provider": provider,
                 "mode": authenticator.mode.value,
                 "links": {"auth_endpoint": f"{base_url}auth/{provider}/token"},
@@ -76,7 +76,7 @@ async def about(
                 ),
             }
         elif authenticator.mode == Mode.external:
-            provider = {
+            spec = {
                 "mode": authenticator.mode.value,
                 "links": {"auth_endpoint": authenticator.authorization_endpoint},
                 "confirmation_message": getattr(
@@ -86,8 +86,16 @@ async def about(
         else:
             # It should be impossible to reach here.
             assert False
-        providers.append(provider)
-    authentication["providers"] = providers
+        provider_specs.append(spec)
+    if provider_specs:
+        # If there are *any* authenticaiton providers, these
+        # endpoints will be added.
+        authentication["links"] = {
+            "whoami": f"{base_url}auth/whoami",
+            "refresh": f"{base_url}auth/token/refresh",
+            "logout": f"{base_url}auth/logout",
+        }
+    authentication["providers"] = provider_specs
 
     return json_or_msgpack(
         request,
@@ -106,7 +114,10 @@ async def about(
             },
             queries=list(query_registry.name_to_query_type),
             authentication=authentication,
-            # documentation_url=".../docs",  # TODO How to get the base URL?
+            links={
+                "self": base_url,
+                "documentation": f"{base_url}docs",
+            },
             meta={"root_path": request.scope.get("root_path") or "/"},
         ),
         resolve_media_type(request),
@@ -150,7 +161,7 @@ def declare_search_router(query_registry):
                 omit_links,
                 filters,
                 sort,
-                _get_base_url(request),
+                get_base_url(request),
                 resolve_media_type(request),
             )
             # We only get one Expires header, so if different parts
@@ -232,12 +243,12 @@ async def node_metadata(
     select_metadata: Optional[str] = Query(None),
     omit_links: bool = Query(False),
     entry: Any = Depends(entry),
-    root_path: str = Query(None),
+    root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
 
     request.state.endpoint = "metadata"
-    base_url = _get_base_url(request)
+    base_url = get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
     try:
         resource = construct_resource(
@@ -254,11 +265,7 @@ async def node_metadata(
             status_code=400,
             detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
-    meta = (
-        {"root_path": request.scope.get("root_path") or "/"}
-        if (root_path is not None)
-        else {}
-    )
+    meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
     return json_or_msgpack(
         request,
         models.Response(data=resource, meta=meta),
@@ -444,31 +451,3 @@ def node_full(
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
-
-
-def _get_base_url(request):
-    # We want to get the scheme, host, and root_path (if any)
-    # *as it appears to the client* for use in assembling links to
-    # include in our responses.
-    #
-    # We need to consider:
-    #
-    # * FastAPI may be behind a load balancer, such that for a client request
-    #   like "https://example.com/..." the Host header is set to something
-    #   like "localhost:8000" and the request.url.scheme is "http".
-    #   We consult X-Forwarded-* headers to get the original Host and scheme.
-    #   Note that, although these are a de facto standard, they may not be
-    #   set by default. With nginx, for example, they need to be configured.
-    #
-    # * The client may be connecting through SSH port-forwarding. (This
-    #   is a niche use case but one that we nonetheless care about.)
-    #   The Host or X-Forwarded-Host header may include a non-default port.
-    #   The HTTP spec specifies that the Host header may include a port
-    #   to specify a non-default port.
-    #   https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.23
-    host = request.headers.get("x-forwarded-host", request.headers["host"])
-    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    root_path = request.scope.get("root_path") or "/"
-    if not root_path.endswith("/"):
-        root_path = f"{root_path}/"
-    return f"{scheme}://{host}{root_path}"

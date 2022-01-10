@@ -164,22 +164,19 @@ class Context:
         self,
         client,
         *,
-        authentication_uri=None,
         username=None,
+        auth_provider=None,
         cache=None,
         offline=False,
         token_cache=DEFAULT_TOKEN_CACHE,
         prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
-        authentication_uri = authentication_uri or "/"
-        if not authentication_uri.endswith("/"):
-            authentication_uri += "/"
         self._client = client
-        self._authentication_uri = authentication_uri
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._username = username
+        self._auth_provider = auth_provider
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
         self._prompt_for_reauthentication = PromptForReauthentication(
@@ -198,14 +195,29 @@ class Context:
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+        # And, at the same time, obtain the 'root_path', the path to the root route
+        # of the Tiled application, which may or may not be the same as the URL that
+        # the user provided.
         if offline:
-            self._handshake_data = self.get_json(self._authentication_uri)
+            self._handshake_data = self.get_json("/", params={"root_path": True})
         else:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self._handshake_data = self.get_json(self._authentication_uri)
+                # Make this request manually to inject custom error handling.
+                request = self._client.build_request(
+                    "GET", "/", params={"root_path": True}
+                )
+                response = self._client.send(request)
+                # Handle case where user pastes in a link like
+                # https://example.com/some/subpath/node/metadata/a/b/c
+                # and it requires authentication. The 401 response includes a header
+                # that points us to https://examples.com/some/subpath where we
+                # can see the authentication providers and their endpoints.
+                if response.status_code == 401:
+                    self.client.base_url = response.headers["x-tiled-root"]
+                # Now try again.
+                self._handshake_data = self.get_json("/", params={"root_path": True})
 
-        # Ask the server what its root_path is.
         if (not offline) and (
             self._handshake_data["authentication"]["required"] or (username is not None)
         ):
@@ -250,7 +262,7 @@ class Context:
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self._handshake_data = self.get_json(self._authentication_uri)
+                self._handshake_data = self.get_json()
 
     @property
     def app(self):
@@ -438,44 +450,51 @@ class Context:
             return self._send(request, stream=stream, attempts=1)
         return response
 
-    def authenticate(self, method=None):
+    def authenticate(self, provider=None):
         "Authenticate. Prompt for password or access code (refresh token)."
-        methods = self._handshake_data["authentication"]["methods"]
-        if len(methods) == 0:
-            raise Exception("This server does not support any authentication methods.")
-        if method is not None:
-            for method_info in methods:
-                if method_info["label"] == method:
+        providers = self._handshake_data["authentication"]["providers"]
+        if len(providers) == 0:
+            raise Exception(
+                "This server does not support any authentication providers."
+            )
+        if provider is not None:
+            for spec in providers:
+                if spec["provider"] == provider:
                     break
             else:
                 raise ValueError(
-                    f"No such method {method}. Choices are {[m['label'] for m in methods]}"
+                    f"No such provider {provider}. Choices are {[spec['provider'] for spec in providers]}"
                 )
         else:
-            if len(methods) == 1:
-                (method_info,) = methods
+            if len(providers) == 1:
+                # There is only one choice, so no need to prompt the user.
+                (spec,) = providers
             else:
                 while True:
-                    print("Authenticaiton methods:")
-                    for i, method_info in enumerate(methods, start=1):
-                        print(f"{i} - {method_info['label']}")
+                    print("Authenticaiton providers:")
+                    for i, spec in enumerate(providers, start=1):
+                        print(f"{i} - {spec['provider']}")
                     raw_choice = input(
-                        "Choose an authenticaiton method (or press Enter to escape): "
+                        "Choose an authenticaiton provider (or press Enter to escape): "
                     )
+                    if not raw_choice:
+                        print("No authentication provider chosen. Failed.")
+                        break
                     try:
                         choice = int(raw_choice)
                     except TypeError:
                         print("Choice must be a number.")
                         continue
                     try:
-                        method_info = methods[1 + choice]
+                        spec = providers[1 + choice]
                     except IndexError:
-                        print("Choice must be a number from the list above.")
+                        print(f"Choice must be a number 1 through {len(providers)}.")
                         continue
                     break
-        how = method_info["how"]
-        endpoint = method_info["endpoint"]
-        if how == "password":
+        mode = spec["mode"]
+        auth_endpoint = spec["auth_endpoint"]
+        confirmation_message = spec["confirmation_message"]
+        if mode == "password":
             username = self._username or input("Username: ")
             password = getpass.getpass()
             form_data = {
@@ -485,7 +504,7 @@ class Context:
             }
             token_request = self._client.build_request(
                 "POST",
-                endpoint,
+                auth_endpoint,
                 data=form_data,
                 headers={},
             )
@@ -494,12 +513,12 @@ class Context:
             handle_error(token_response)
             tokens = token_response.json()
             refresh_token = tokens["refresh_token"]
-        elif how == "external":
+        elif mode == "external":
             print(
                 f"""
 Navigate web browser to this address to obtain access code:
 
-{endpoint}
+{auth_endpoint}
 
 """
             )
@@ -522,20 +541,16 @@ Navigate web browser to this address to obtain access code:
                     )
                 else:
                     break
-            confirmation_message = self._handshake_data["authentication"][
-                "confirmation_message"
-            ]
-            if confirmation_message:
-                username = username = self.whoami()
-                print(confirmation_message.format(username=username))
         else:
-            raise ValueError(f"Server has unknown authentication mechanism {how!r}")
+            raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
             self._token_cache["refresh_token"] = refresh_token
         self._tokens.update(
             refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
         )
+        if confirmation_message:
+            print(confirmation_message.format(**self.whoami()))
         return tokens
 
     def reauthenticate(self, prompt=None):
@@ -560,12 +575,7 @@ Navigate web browser to this address to obtain access code:
 
     def whoami(self):
         "Return username."
-        request = self._client.build_request(
-            "GET", f"{self._authentication_uri}auth/whoami"
-        )
-        response = self._client.send(request)
-        handle_error(response)
-        return response.json()["username"]
+        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])
 
     def logout(self):
         """
@@ -599,7 +609,7 @@ Navigate web browser to this address to obtain access code:
                     )
             token_request = self._client.build_request(
                 "POST",
-                f"{self._authentication_uri}auth/token/refresh",
+                self._handshake_data["authentication"]["links"]["refresh"],
                 json={"refresh_token": refresh_token},
                 # Submit CSRF token in both header and cookie.
                 # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
@@ -645,6 +655,7 @@ def context_from_tree(
     token_cache=DEFAULT_TOKEN_CACHE,
     prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     username=None,
+    auth_provider=None,
     headers=None,
 ):
     from ..server.app import build_app
@@ -660,7 +671,7 @@ def context_from_tree(
     # letting build_app do it for us, so that we can give it to the client
     # below.
     if (
-        (authentication.get("authenticator") is None)
+        (not authentication.get("providers"))
         and (not authentication.get("allow_anonymous_access", False))
         and (authentication.get("single_user_api_key") is None)
     ):
@@ -712,6 +723,7 @@ def context_from_tree(
         offline=offline,
         token_cache=token_cache,
         username=username,
+        auth_provider=auth_provider,
         prompt_for_reauthentication=prompt_for_reauthentication,
         app=app,
     )

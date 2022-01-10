@@ -11,6 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from ..authenticators import Mode
+from ..media_type_registration import (
+    compression_registry as default_compression_registry,
+)
 from .authentication import (
     ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,
@@ -27,13 +30,13 @@ from .core import (
     get_query_registry,
     get_root_tree,
     get_serialization_registry,
-    record_timing,
 )
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
 from .settings import get_settings
+from .utils import record_timing
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -95,9 +98,12 @@ def build_app(
     """
     authentication = authentication or {}
     authenticators = {
-        spec["provider"]: spec["authenticator"] for spec in authentication["providers"]
+        spec["provider"]: spec["authenticator"]
+        for spec in authentication.get("providers", [])
     }
     server_settings = server_settings or {}
+    query_registry = query_registry or get_query_registry()
+    compression_registry = compression_registry or default_compression_registry
 
     app = FastAPI()
     app.state.allow_origins = []
@@ -110,7 +116,7 @@ def build_app(
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router)
 
-    if authentication["providers"]:
+    if authentication.get("providers", []):
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
         authentication_router = build_authentication_router()
@@ -120,11 +126,11 @@ def build_app(
             mode = authenticator.mode
             if mode == Mode.password:
                 authentication_router.post(f"/{provider}/token")(
-                    build_handle_credentials_route(authenticator)
+                    build_handle_credentials_route(authenticator, provider)
                 )
             elif mode == Mode.external:
                 authentication_router.post(f"/{provider}/code")(
-                    build_auth_code_route(authenticator)
+                    build_auth_code_route(authenticator, provider)
                 )
             else:
                 raise ValueError(f"unknown authentication mode {mode}")

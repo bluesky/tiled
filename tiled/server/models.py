@@ -80,7 +80,7 @@ class TokenData(pydantic.BaseModel):
     username: Optional[str] = None
 
 
-class AuthenticationMode(enum.Enum):
+class AuthenticationMode(str, enum.Enum):
     password = "password"
     external = "external"
 
@@ -92,9 +92,16 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
     confirmation_message: Optional[str]
 
 
+class AboutAuthenticationLinks(pydantic.BaseModel):
+    whoami: str
+    refresh: str
+    logout: str
+
+
 class AboutAuthentication(pydantic.BaseModel):
     required: bool
     providers: List[AboutAuthenticationProvider]
+    links: Optional[AboutAuthenticationLinks] = None
 
 
 class About(pydantic.BaseModel):
@@ -104,4 +111,11 @@ class About(pydantic.BaseModel):
     aliases: Dict[str, Dict[str, List[str]]]
     queries: List[str]
     authentication: AboutAuthentication
+    links: Dict[str, str]
     meta: dict
+
+
+class Principal(pydantic.BaseModel):
+    "Represents a User or Service"
+    id: str
+    provider: str

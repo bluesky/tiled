@@ -19,8 +19,9 @@ with warnings.catch_warnings():
 from pydantic import BaseModel, BaseSettings
 
 from ..utils import SpecialUsers
-from .models import AccessAndRefreshTokens, RefreshToken
+from .models import AccessAndRefreshTokens, Principal, RefreshToken
 from .settings import get_settings
+from .utils import get_base_url
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -160,20 +161,33 @@ async def get_current_user(
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
-            raise HTTPException(status_code=401, detail="Not authenticated")
+
+            # Include a link to the root page which provides a list of
+            # authenticators. The use case here is:
+            # 1. User is emailed a link like https://example.com/subpath/node/metadata/a/b/c
+            # 2. Tiled Client tries to connect to that and gets 401.
+            # 3. Client can use this header to find its way to
+            #    https://examples.com/subpath/ and obtain a list of
+            #    authentication providers and endpoints.
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"X-Tiled-Root": get_base_url(request)},
+            )
     try:
         payload = decode_token(
             access_token_from_either_location, settings.secret_keys, "access"
         )
     except ExpiredSignatureError:
         raise HTTPException(
-            status_code=401, detail="Access token has expired. Refresh token."
+            status_code=401,
+            detail="Access token has expired. Refresh token.",
         )
-    username: str = payload.get("sub")
-    return username
+    user = Principal(id=payload["sub"], provider=payload["idp"])
+    return user
 
 
-def build_auth_code_route(authenticator):
+def build_auth_code_route(authenticator, provider):
     "Build an auth_code route function for this Authenticator."
 
     async def auth_code(
@@ -185,7 +199,7 @@ def build_auth_code_route(authenticator):
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
         refresh_token = create_refresh_token(
-            data={"sub": username},
+            data={"sub": username, "idp": provider},
             secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
         )
         return refresh_token
@@ -193,7 +207,7 @@ def build_auth_code_route(authenticator):
     return auth_code
 
 
-def build_handle_credentials_route(authenticator):
+def build_handle_credentials_route(authenticator, provider):
     "Register a handle_credentials route function for this Authenticator."
 
     async def handle_credentials(
@@ -212,12 +226,12 @@ def build_handle_credentials_route(authenticator):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         access_token = create_access_token(
-            data={"sub": username},
+            data={"sub": username, "idp": provider},
             expires_delta=settings.access_token_max_age,
             secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
         )
         refresh_token = create_refresh_token(
-            data={"sub": username},
+            data={"sub": username, "idp": provider},
             secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
         )
         return {
@@ -264,13 +278,13 @@ def slide_session(refresh_token, settings):
                 status_code=401, detail="Session has expired. Please re-authenticate."
             )
     new_refresh_token = create_refresh_token(
-        data={"sub": payload["sub"]},
+        data={"sub": payload["sub"], "idp": payload["idp"]},
         session_id=payload["sid"],
         session_creation_time=datetime.fromtimestamp(payload["sct"]),
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
     access_token = create_access_token(
-        data={"sub": payload["sub"]},
+        data={"sub": payload["sub"], "idp": payload["idp"]},
         expires_delta=settings.access_token_max_age,
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
@@ -283,9 +297,12 @@ def slide_session(refresh_token, settings):
     }
 
 
-async def whoami(request: Request, current_user: str = Depends(get_current_user)):
+async def whoami(
+    request: Request,
+    current_user: str = Depends(get_current_user),
+):
     request.state.endpoint = "auth"
-    return {"username": current_user}
+    return current_user
 
 
 async def logout(request: Request, response: Response):

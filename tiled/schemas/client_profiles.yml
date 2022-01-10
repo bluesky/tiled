@@ -32,19 +32,15 @@ properties:
       URI of a Tiled server, such as
 
           http://localhost:8000
-  authentication_uri:
-    type: [string, "null"]
-    description: |
-      URI of a Tiled OAuth2 authentication server. If this is unset, `uri` will
-      be used for authentication as well, which is typically correct for simple
-      deployments of Tiled.
-
-      By default, `tiled serve ...` acts is both a Resource server and an
-      Authentication server.
   username:
     type: string
     description: |
       For authenticated Trees. Optional unless the Tree requires authentication.
+  auth_provider:
+    type: string
+    description: |
+      Authentication provider. If unspecified and there are multiple providers
+      supported by the server, the client will prompt the user to choose one.
   headers:
     type: object
     additionalProperties: true

@@ -1,13 +1,11 @@
 import base64
 import collections.abc
-import contextlib
 import dataclasses
 import itertools
 import math
 import operator
 import re
 import sys
-import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -41,6 +39,7 @@ from ..utils import (
 from . import models
 from .authentication import get_current_user
 from .etag import tokenize
+from .utils import record_timing
 
 del queries
 if modules_available("numpy", "dask.array"):
@@ -696,13 +695,3 @@ FULL_LINKS = {
         "full_dataset": "{base_url}node/full/{path}",
     },
 }
-
-
-@contextlib.contextmanager
-def record_timing(metrics, key):
-    """
-    Set timings[key] equal to the run time (in milliseconds) of the context body.
-    """
-    t0 = time.perf_counter()
-    yield
-    metrics[key]["dur"] += time.perf_counter() - t0  # Units: seconds
