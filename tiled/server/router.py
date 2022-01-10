@@ -485,6 +485,8 @@ def _get_base_url(request):
     #   to specify a non-default port.
     #   https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.23
     host = request.headers.get("x-forwarded-host", request.headers["host"])
-    scheme = request.headers.get("x-forwarded-scheme", request.url.scheme)
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     root_path = request.scope.get("root_path") or "/"
+    if not root_path.endswith("/"):
+        root_path = f"{root_path}/"
     return f"{scheme}://{host}{root_path}"
