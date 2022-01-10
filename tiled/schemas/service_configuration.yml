@@ -344,6 +344,19 @@ properties:
         description: |
           Configure the application with a root_path when it is behind a proxy
           serving it on some path prefix.
+      proxy_headers:
+        type: boolean
+        description: |
+          Enable/Disable X-Forwarded-Proto, X-Forwarded-For,
+          X-Forwarded-Port to populate remote address info. Defaults to enabled,
+          but is restricted to only trusting connecting IPs in the
+          forwarded-allow-ips configuration.
+      forwarded_allow_ips:
+        type: string
+        description: |
+          Comma separated list of IPs to trust with proxy headers. Defaults to
+          the `$FORWARDED_ALLOW_IPS` environment variable if available, or
+          '127.0.0.1'. A wildcard '*' means always trust.
       ssl_keyfile:
         type: string
         description: SSL key file
