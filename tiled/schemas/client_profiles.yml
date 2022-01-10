@@ -162,7 +162,7 @@ properties:
       Filepath to directory of access tokens.
       Default location is usually suitable.
       The default is system-dependent and can be inspected at
-      `tiled.client.authentication.DEFAULT_TILED_TOKEN_CACHE`.
+      `tiled.client.context.DEFAULT_TOKEN_CACHE`.
   verify:
     type: boolean
     description: |
