@@ -42,21 +42,6 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 
-def get_app(
-    query_registry, compression_registry, include_routers=None, background_tasks=None
-):
-    """
-    Construct an instance of the FastAPI application.
-
-    Parameters
-    ----------
-    include_routers : list, optional
-        List of additional FastAPI.Router objects to be included (merged) into the app
-    background_tasks: list, optional
-        List of async functions to be run on the event loop.
-    """
-
-
 def custom_openapi(app):
     """
     The app's openapi method will be monkey-patched with this.
@@ -84,7 +69,7 @@ def custom_openapi(app):
     return app.openapi_schema
 
 
-def serve_tree(
+def build_app(
     tree,
     authentication=None,
     authenticators=None,
@@ -383,13 +368,13 @@ def app_factory():
     """
     config_path = os.getenv("TILED_CONFIG", "config.yml")
 
-    from ..config import construct_serve_tree_kwargs, parse_configs
+    from ..config import construct_build_app_kwargs, parse_configs
 
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_tree_kwargs(parsed_config, source_filepath=config_path)
-    web_app = serve_tree(**kwargs)
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
+    web_app = build_app(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")

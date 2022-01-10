@@ -295,12 +295,12 @@ def from_profile(name, structure_clients=None, **kwargs):
     if "direct" in merged:
         # The profiles specifies that there is no server. We should create
         # an app ourselves and use it directly via ASGI.
-        from ..config import construct_serve_tree_kwargs
+        from ..config import construct_build_app_kwargs
 
-        serve_tree_kwargs = construct_serve_tree_kwargs(
+        build_app_kwargs = construct_build_app_kwargs(
             merged.pop("direct", None), source_filepath=filepath
         )
-        return from_tree(**serve_tree_kwargs, **merged)
+        return from_tree(**build_app_kwargs, **merged)
     else:
         return from_uri(**merged)
 
@@ -354,9 +354,9 @@ def from_config(
         )
     """
 
-    from ..config import construct_serve_tree_kwargs
+    from ..config import construct_build_app_kwargs
 
-    serve_tree_kwargs = construct_serve_tree_kwargs(config)
+    build_app_kwargs = construct_build_app_kwargs(config)
     context = context_from_tree(
         # authentication_uri=authentication_uri,
         username=username,
@@ -364,6 +364,6 @@ def from_config(
         offline=offline,
         token_cache=token_cache,
         prompt_for_reauthentication=prompt_for_reauthentication,
-        **serve_tree_kwargs,
+        **build_app_kwargs,
     )
     return from_context(context, **kwargs)

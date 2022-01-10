@@ -32,7 +32,7 @@ def schema():
         return yaml.safe_load(file)
 
 
-def construct_serve_tree_kwargs(
+def construct_build_app_kwargs(
     config,
     *,
     source_filepath=None,
@@ -41,7 +41,7 @@ def construct_serve_tree_kwargs(
     serialization_registry=None,
 ):
     """
-    Given parsed configuration, construct arguments for serve_tree(...).
+    Given parsed configuration, construct arguments for build_app(...).
 
     The parameters query_registry, compression_registry, and
     serialization_registry are used by the tests to inject separate registry
@@ -366,7 +366,7 @@ def direct_access(config, source_filepath=None):
         parsed_config = parse_configs(config)
     else:
         parsed_config = config
-    kwargs = construct_serve_tree_kwargs(parsed_config, source_filepath=source_filepath)
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=source_filepath)
     return kwargs["tree"]
 
 

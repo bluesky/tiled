@@ -76,7 +76,7 @@ def get_serialization_registry():
 def get_root_tree():
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.serve_tree()."
+        "See tiled.server.app.build_app()."
     )
 
 

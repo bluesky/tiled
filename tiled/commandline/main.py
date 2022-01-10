@@ -237,7 +237,7 @@ def serve_directory(
 ):
     "Serve a Tree instance from a directory of files."
     from ..adapters.files import DirectoryAdapter
-    from ..server.app import print_admin_api_key_if_generated, serve_tree
+    from ..server.app import build_app, print_admin_api_key_if_generated
 
     tree_kwargs = {}
     server_settings = {}
@@ -253,7 +253,7 @@ def serve_directory(
             "available_bytes"
         ] = object_cache_available_bytes
     tree = DirectoryAdapter.from_directory(directory, **tree_kwargs)
-    web_app = serve_tree(tree, {"allow_anonymous_access": public}, server_settings)
+    web_app = build_app(tree, {"allow_anonymous_access": public}, server_settings)
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -288,7 +288,7 @@ def serve_pyobject(
     ),
 ):
     "Serve a Tree instance from a Python module."
-    from ..server.app import print_admin_api_key_if_generated, serve_tree
+    from ..server.app import build_app, print_admin_api_key_if_generated
     from ..utils import import_object
 
     tree = import_object(object_path)
@@ -298,7 +298,7 @@ def serve_pyobject(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    web_app = serve_tree(tree, {"allow_anonymous_access": public}, server_settings)
+    web_app = build_app(tree, {"allow_anonymous_access": public}, server_settings)
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -332,7 +332,7 @@ def serve_config(
     "Serve a Tree as specified in configuration file(s)."
     import os
 
-    from ..config import construct_serve_tree_kwargs, parse_configs
+    from ..config import construct_build_app_kwargs, parse_configs
 
     config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
     try:
@@ -349,7 +349,7 @@ def serve_config(
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
-    from ..server.app import print_admin_api_key_if_generated, serve_tree
+    from ..server.app import build_app, print_admin_api_key_if_generated
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
@@ -358,8 +358,8 @@ def serve_config(
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_tree_kwargs(parsed_config, source_filepath=config_path)
-    web_app = serve_tree(**kwargs)
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
+    web_app = build_app(**kwargs)
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
     )

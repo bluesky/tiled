@@ -647,7 +647,7 @@ def context_from_tree(
     username=None,
     headers=None,
 ):
-    from ..server.app import serve_tree
+    from ..server.app import build_app
 
     # By default make it "public" because there is no way to
     # secure access from inside the same process anyway.
@@ -657,7 +657,7 @@ def context_from_tree(
     headers = headers or {}
     headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
     # If a single-user API key will be used, generate the key here instead of
-    # letting serve_tree do it for us, so that we can give it to the client
+    # letting build_app do it for us, so that we can give it to the client
     # below.
     if (
         (authentication.get("authenticator") is None)
@@ -669,7 +669,7 @@ def context_from_tree(
         )
         authentication["single_user_api_key"] = single_user_api_key
         params["api_key"] = single_user_api_key
-    app = serve_tree(
+    app = build_app(
         tree,
         authentication,
         server_settings,

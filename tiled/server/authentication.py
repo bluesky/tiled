@@ -34,7 +34,7 @@ CSRF_COOKIE_NAME = "tiled_csrf"
 def get_authenticators():
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.serve_tree()."
+        "See tiled.server.app.build_app()."
     )
 
 
