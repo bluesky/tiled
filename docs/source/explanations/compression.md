@@ -38,7 +38,7 @@ Tiled supports both common and specialized high-performance compression methods.
 For broad compatibility, it supports `gzip` compression, which is
 [the most common one](https://developer.mozilla.org/en-US/docs/Web/HTTP/Compression)
 used in HTTP clients---supported by web browsers, command-line tools like
-[curl](https://curl.se/) or [https://httpie.io/](https://httpie.io/), and
+[curl](https://curl.se/) or [HTTPie](https://httpie.io/), and
 frameworks like [requests](https://docs.python-requests.org/),
 [httpx](https://www.python-httpx.org/), and likely any other framework currently
 maintained.
@@ -61,7 +61,7 @@ package `blosc` is installed).
 ## Example Requests and Responses
 
 In these examples we'll use the command-line HTTP client
-[httpie](https://httie.io/) to show just the *headers* of HTTP
+[HTTPie](https://httie.io/) to show just the *headers* of HTTP
 requests and responses.
 
 By default, it requests one of the standard encodings `gzip` or `deflate`. Of

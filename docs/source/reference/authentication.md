@@ -10,7 +10,7 @@ This page addresses technical details relevant to:
 ## Client authentication flow
 
 In this section we'll use the command-line HTTP client
-[httpie](https://httie.io/) and [jq](https://stedolan.github.io/jq/) to parse
+[HTTPie](https://httie.io/) and [jq](https://stedolan.github.io/jq/) to parse
 the JSON responses.
 
 Some Tiled servers are configured handle credentials directly. Others are
