@@ -165,7 +165,14 @@ properties:
           additionalProperties: false
           required:
             - authenticator
+            - name
           properties:
+            name:
+              type: string
+              pattern: "^[a-zA-Z0-9_-]*$"
+              description: |
+                Unique URL-friendly string used to identify this identity provider
+                in Tiled URLs and in internal book-keeping.
             authenticator:
               type: string
               description: |

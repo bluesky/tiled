@@ -10,12 +10,15 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from ..authenticators import Mode
 from .authentication import (
     ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     REFRESH_TOKEN_COOKIE_NAME,
+    build_auth_code_route,
     build_authentication_router,
+    build_handle_credentials_route,
     get_authenticators,
 )
 from .compression import CompressionMiddleware
@@ -72,7 +75,6 @@ def custom_openapi(app):
 def build_app(
     tree,
     authentication=None,
-    authenticators=None,
     server_settings=None,
     query_registry=None,
     serialization_registry=None,
@@ -92,7 +94,9 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = authenticators or []
+    authenticators = [
+        spec["authenticator"] for spec in authentication["authenticators"]
+    ]
     server_settings = server_settings or {}
 
     app = FastAPI()
@@ -106,11 +110,24 @@ def build_app(
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router)
 
-    if authenticators:
+    if authentication["authenticators"]:
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
         authentication_router = build_authentication_router()
-        for authenticator in authenticators:
+        for spec in authentication["authenticators"]:
+            name = spec["name"]
+            authenticator = spec["authenticator"]
+            mode = authenticator.mode
+            if mode == Mode.password:
+                authentication_router.post(f"/{name}/token")(
+                    build_handle_credentials_route(authenticator)
+                )
+            elif mode == Mode.external:
+                authentication_router.post(f"/{name}/code")(
+                    build_auth_code_route(authenticator)
+                )
+            else:
+                raise ValueError(f"unknown authentication mode {mode}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(custom_router)
         # And add this authentication_router itself to the app.

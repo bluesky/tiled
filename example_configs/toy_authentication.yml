@@ -1,6 +1,7 @@
 authentication:
   authenticators:
-  - authenticator: tiled.authenticators:DictionaryAuthenticator
+  - name: toy
+    authenticator: tiled.authenticators:DictionaryAuthenticator
     args:
         users_to_passwords:
             alice: ${ALICE_PASSWORD}

@@ -1,13 +1,17 @@
+import enum
 import logging
 import secrets
 
-from fastapi import APIRouter
 from jose import JWTError, jwk, jwt
 
-from .server.authentication import build_auth_code_route, build_handle_credentials_route
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
+
+
+class Mode(enum.Enum):
+    password = "password"
+    external = "external"
 
 
 class DummyAuthenticator:
@@ -18,12 +22,7 @@ class DummyAuthenticator:
 
     """
 
-    how = "password"
-
-    def __init__(self):
-        router = APIRouter()
-        router.post("/dummy/token")(build_handle_credentials_route(self))
-        self.include_routers = [router]
+    mode = Mode.password
 
     async def authenticate(self, username: str, password: str):
         return username
@@ -36,14 +35,10 @@ class DictionaryAuthenticator:
     Check passwords from a dictionary of usernames mapped to passwords.
     """
 
-    how = "password"
+    mode = Mode.password
 
     def __init__(self, users_to_passwords):
         self._users_to_passwords = users_to_passwords
-        router = APIRouter()
-        router.post("/dict/token")(build_handle_credentials_route(self))
-        self.include_routers = [router]
-        self.endpoint = "/dict/token"
 
     async def authenticate(self, username: str, password: str):
         true_password = self._users_to_passwords.get(username)
@@ -55,15 +50,14 @@ class DictionaryAuthenticator:
 
 
 class PAMAuthenticator:
-    handles_credentials = True
 
-    def __init__(self, service="login", stub_name="pam"):
+    mode = Mode.password
+
+    def __init__(self, service="login"):
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
             )
-        self.stub_name = stub_name
-        self.include_routers = [build_handle_credentials_route(self)]
         self.service = service
         # TODO Try to open a PAM session.
 
@@ -80,7 +74,8 @@ class PAMAuthenticator:
 
 
 class OIDCAuthenticator:
-    handles_credentials = False
+
+    mode = Mode.external
     configuration_schema = """
 client_id:
   type: string
@@ -122,12 +117,10 @@ public_keys:
         public_keys,
         token_uri,
         authorization_endpoint,
-        stub_name,
         confirmation_message,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.stub_name = stub_name
         self.confirmation_message = confirmation_message
         self.redirect_uri = redirect_uri
         self.public_keys = public_keys
@@ -135,8 +128,6 @@ public_keys:
         self.authorization_endpoint = authorization_endpoint.format(
             client_id=client_id, redirect_uri=redirect_uri
         )
-
-        self.include_routers = [build_auth_code_route(self)]
 
     async def authenticate(self, request):
         code = request.query_params["code"]

@@ -66,14 +66,14 @@ def construct_build_app_kwargs(
         auth_spec = config.get("authentication", {}) or {}
         root_access_control = config.get("access_control", {}) or {}
         auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
-        authenticators = []
-        for authenticator in auth_spec.get("authenticators", []):
+        for i, authenticator in enumerate(list(auth_spec.get("authenticators", []))):
             import_path = auth_aliases.get(
                 authenticator["authenticator"], authenticator["authenticator"]
             )
             authenticator_class = import_object(import_path, accept_live_object=True)
             authenticator = authenticator_class(**authenticator.get("args", {}))
-            authenticators.append(authenticator)
+            # Replace "package.module:Object" with live instance.
+            auth_spec["authenticators"][i]["authenticator"] = authenticator
         if root_access_control.get("access_policy") is not None:
             root_policy_import_path = root_access_control["access_policy"]
             root_policy_class = import_object(
@@ -187,7 +187,6 @@ def construct_build_app_kwargs(
     return {
         "tree": root_tree,
         "authentication": auth_spec,
-        "authenticators": authenticators,
         "server_settings": server_settings,
         "query_registry": query_registry,
         "serialization_registry": serialization_registry,
