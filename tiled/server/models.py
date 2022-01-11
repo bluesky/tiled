@@ -101,7 +101,7 @@ class AboutAuthenticationLinks(pydantic.BaseModel):
 class AboutAuthentication(pydantic.BaseModel):
     required: bool
     providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks] = None
+    links: Optional[AboutAuthenticationLinks]
 
 
 class About(pydantic.BaseModel):
