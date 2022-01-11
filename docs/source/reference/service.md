@@ -159,7 +159,6 @@ structures.
    :toctree: generated
 
    tiled.server.app.build_app
-   tiled.server.app.get_app
 ```
 
 ## Object Cache
