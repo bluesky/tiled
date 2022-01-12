@@ -40,9 +40,11 @@ def smiley_separated_variables(array, metadata):
 ```
 
 In real-world cases, there is often already a library that writes the format
-of interest. For example, numpy can be made to write smiley-separated variables.
-The trick is to make the library write to a _buffer in memory_ rather than to a
-file on disk, and then return a string. Most libraries support this.
+of interest. Then, our goal isn't to write an exporter from "scratch"; it's to
+integrate some existing exporter with Tiled. For example, numpy can be made to
+write smiley-separated variables. The trick is to make the library write to a
+_buffer in memory_ rather than to a file on disk, and then return a string. Most
+libraries support the following approach.
 
 ```py
 import io
@@ -55,9 +57,9 @@ def smiley_separated_variables(array, metadata):
     return file.getvalue()
 ```
 
-Either approach will work in our case. Notice that we also get a dictionary of
-metadata. Some formats give us nowhere to put this, and we can just drop it in
-that case. Alternatively, we could place it in a header.
+Either approach---from scracth or using numpy----will work in our case. Notice
+that we also get a dictionary of metadata. Some formats give us nowhere to put
+this extra information, and we can just drop it in that case.
 
 To integrate this with Tiled, we invoke it in a configuration file.
 
@@ -74,7 +76,7 @@ trees:
     tree: tiled.examples.generated_minimal:tree
 ```
 
-The key, `application/x-smileys` is a "MIME type", also known as "media type".
+The term `application/x-smileys` is a "MIME type", also known as "media type".
 In our case, there is no registered
 [IANA Media Type](https://www.iana.org/assignments/media-types/media-types.xhtml)
 for our format. Therefore, the standard tells us to invent one of the form
