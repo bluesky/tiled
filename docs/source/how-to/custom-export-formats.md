@@ -76,10 +76,10 @@ trees:
     tree: tiled.examples.generated_minimal:tree
 ```
 
-The term `application/x-smileys` is a "MIME type", also known as "media type".
+The term `application/x-smileys` is a "media type", also known as "MIME type".
 In our case, there is no registered
 [IANA Media Type](https://www.iana.org/assignments/media-types/media-types.xhtml)
-for our format. Therefore, the standard tells us to invent one of the form
+for our exotic format. Therefore, the standard tells us to invent one of the form
 `application/x-*`. There is, of course, some risk of name
 collisions when we invent names outside of the official list, so be specific.
 
@@ -94,8 +94,8 @@ tiled serve config --public config.yml
 
 If `custom_exporters.py` is placed in the same directory as `config.yml`,
 the Tiled server will be able to find and import the `custom_exporters`
-module even if it isn't installed or placed in the normal Python module search
-path or the current working directory.
+module even if it isn't installed in the normal Python module search
+path or placed in the current working directory.
 
 When it loads the configuration, Tiled temporarily adds the directory containing
 `config.yml` to the Python module search path (`sys.path`). This makes it easy
@@ -103,7 +103,8 @@ to prototype and integrate custom code. Of course, the configuration can also
 load module that are installed in the normal fashion.
 ```
 
-We can request data as smiley-separated variables from the command line:
+We can request data as smiley-separated variables from the command line
+using [HTTPie](https://httpie.io/):
 
 ```
 $ http :8000/array/full/A?slice=:5,:5 Accept:application/x-smileys
@@ -123,7 +124,7 @@ set-cookie: tiled_csrf=JDHYkMUIBWECLqIJJvTaEcinv_Vd3kTxS08XCw3N4Yg; HttpOnly; Pa
 1.0🙂1.0🙂1.0🙂1.0🙂1.0
 ```
 
-or from the Python client.
+or using the Tiled Python client.
 
 ```py
 from tiled.client import from_uri
@@ -156,9 +157,10 @@ def to_jpeg(array, metadata):
     return file.getbuffer()
 ```
 
-This covers the basic functionality. See the built-in exporters for a couple
-more polished details, like providing a clear error message if someone tries to
-give a many-dimensional array as an image.
+This covers the basic functionality. See the built-in exporters in
+`tiled/strucures/array.py` for details that add polish, like scaling the
+image's dynamic range and failing gracefully when given arrays that have the
+wrong dimensionality to be exported as an image.
 
 We'll add it to our configuration.
 
