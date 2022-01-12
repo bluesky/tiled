@@ -44,6 +44,8 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
 
     """
 
+    structure_family = "node"
+
     def __init__(self, node, access_policy=None, authenticated_identity=None):
         self._node = node
         if (access_policy is not None) and (
