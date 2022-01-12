@@ -1,15 +1,6 @@
-# Add Support for a Custom Format
+# Reading and Exporting Specialized Formats
 
-For a given "structure family" (e.g. `array`, `dataframe`) the Tiled server
-can provide the data---in whole or in part---in a variety of formats.
-See {doc}`../tutorials/export` for a list of the formats supported out of the
-box.
 
-To teach Tiled to serve another format, first decide which structure family or
-families are appropriate for this format. For example, it makes sense to export
-a table an Excel spreadsheet, but it does not generally make sense to export an
-N-dimensional array as an Excel spreadsheet. (If you do, you making specific
-assumptions about the array.)
 
 For this guide, we'll take the example of
 [XDI](https://github.com/XraySpectroscopy/XAS-Data-Interchange/blob/master/specification/spec.md#example-xdi-file),

@@ -81,7 +81,9 @@ Array:
 
 DataFrame:
 * Apache Arrow `application/vnd.apache.arrow.file`
+* Parquet `application/x-parqet`
 * CSV `text/csv`
+* JSON `application/json`
 * HTML `text/html`
 * Excel (xlsx) `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
 

@@ -1,0 +1,10 @@
+media_types:
+  array:
+    application/x-smileys: custom_exporters:smiley_separated_variables
+    image/jpeg: custom_exporters:to_jpeg
+file_extensions:
+  jpg: image/jpeg
+  jpeg: image/jpeg
+trees:
+  - path: /
+    tree: tiled.examples.generated_minimal:tree

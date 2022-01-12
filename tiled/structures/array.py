@@ -289,7 +289,7 @@ if modules_available("PIL"):
     def save_to_buffer_PIL(array, format):
         from PIL import Image
 
-        from ._image_serializer_helpers import img_as_ubyte
+        from .image_serializer_helpers import img_as_ubyte
 
         # Handle too *few* dimensions here, and let PIL raise if there are too
         # *many* because it depends on the shape (RGB, RGBA, etc.)

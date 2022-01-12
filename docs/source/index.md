@@ -19,7 +19,7 @@ tutorials/plotly-integration
 :caption: How To Guides
 
 how-to/configuration
-how-to/custom-formats
+how-to/custom-export-formats
 how-to/profiles
 how-to/direct-client
 how-to/tune-caches
@@ -32,6 +32,7 @@ how-to/docker
 explanations/structures
 explanations/security
 explanations/compression
+explanations/specialized-formats
 explanations/caching
 explanations/access-control
 explanations/scaling-down
