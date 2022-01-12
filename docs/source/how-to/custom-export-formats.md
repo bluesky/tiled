@@ -100,7 +100,7 @@ path or placed in the current working directory.
 When it loads the configuration, Tiled temporarily adds the directory containing
 `config.yml` to the Python module search path (`sys.path`). This makes it easy
 to prototype and integrate custom code. Of course, the configuration can also
-load module that are installed in the normal fashion.
+load modules that are installed in the normal fashion.
 ```
 
 We can request data as smiley-separated variables from the command line
@@ -185,7 +185,7 @@ tiled serve config --public config.yml
 and navigate a web browser to `http://localhost:8000/array/full/A?format=image/jpeg`.
 Since the example data is just an array of ones, this will appear as a white square image.
 
-## File extension as convenience aliases
+## File extensions as convenience aliases
 
 Now, `image/jpeg` is unwieldy for users unfamiliar with MIME types. Adding
 
