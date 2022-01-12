@@ -26,7 +26,7 @@ We will apply this format to arrays. Tiled expects a function with the interface
 def f(
     array: numpy.ndarray,
     metadata: Optional[dict]
-) -> str | bytes:
+): -> str | bytes
     ...
 ```
 
