@@ -443,6 +443,7 @@ def construct_resource(
             d["links"] = {
                 "self": f"{base_url}node/metadata/{path_str}",
                 "search": f"{base_url}node/search/{path_str}",
+                "full": f"{base_url}node/full/{path_str}",
             }
         resource = models.Resource(**d)
     else:
@@ -683,6 +684,7 @@ class WrongTypeForRoute(Exception):
 
 
 FULL_LINKS = {
+    "node": {"full": "{base_url}node/full/{path}"},
     "array": {"full": "{base_url}array/full/{path}"},
     "dataframe": {"full": "{base_url}node/full/{path}"},
     "xarray_data_array": {

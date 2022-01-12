@@ -14,6 +14,7 @@ from ..query_registration import query_registry
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
+from .utils import export_util
 
 
 class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -455,6 +456,35 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         may be used as a synonym for ``DESCENDING``.
         """
         return self.new_variation(sorting=sorting)
+
+    def export(self, filepath, format=None):
+        """
+        Download all metadata and data below this node in some format and write to a file.
+
+        Parameters
+        ----------
+        file: str or buffer
+            Filepath or writeable buffer.
+        format : str, optional
+            If format is None and `file` is a filepath, the format is inferred
+            from the name, like 'table.h5' implies format="application/x-hdf5". The format
+            may be given as a file extension ("h5") or a media type ("application/x-hdf5").
+
+        Examples
+        --------
+
+        Export all.
+
+        >>> a.export("everything.h5")
+
+        """
+        return export_util(
+            filepath,
+            format,
+            self.context.get_content,
+            self.item["links"]["full"],
+            params={},
+        )
 
     def _ipython_key_completions_(self):
         """

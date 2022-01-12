@@ -47,13 +47,13 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     structure_family = "node"
 
     def __init__(self, node, access_policy=None, authenticated_identity=None):
-        self._node = node
         if (access_policy is not None) and (
             not access_policy.check_compatibility(self)
         ):
             raise ValueError(
                 f"Access policy {access_policy} is not compatible with this Tree."
             )
+        self._node = node
         self._access_policy = access_policy
         self._authenticated_identity = authenticated_identity
         super().__init__()
@@ -82,12 +82,11 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
             )
         if self._access_policy is not None:
             raise NotImplementedError
-        else:
-            tree = type(self)(
-                self._node,
-                access_policy=self._access_policy,
-                authenticated_identity=identity,
-            )
+        tree = type(self)(
+            self._node,
+            access_policy=self._access_policy,
+            authenticated_identity=identity,
+        )
         return tree
 
     @property
@@ -127,6 +126,11 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         Return a Tree with a subset of the mapping.
         """
         raise NotImplementedError
+
+    def read(self, fields=None):
+        if fields is not None:
+            raise NotImplementedError
+        return self
 
     # The following three methods are used by IndexersMixin
     # to define keys_indexer, items_indexer, and values_indexer.
