@@ -9,7 +9,12 @@ from typing import List, Optional, Tuple, Union
 import numpy
 
 from ..media_type_registration import deserialization_registry, serialization_registry
-from ..utils import UnsupportedShape, modules_available, safe_json_dump_array
+from ..utils import (
+    SerializationError,
+    UnsupportedShape,
+    modules_available,
+    safe_json_dump_array,
+)
 
 
 class Endianness(str, enum.Enum):
@@ -299,8 +304,16 @@ if modules_available("PIL"):
         high = numpy.percentile(array.ravel(), 99)
         scaled_array = numpy.clip((array - low) / (high - low), 0, 1)
         file = io.BytesIO()
-        image = Image.fromarray(img_as_ubyte(scaled_array))
-        image.save(file, format=format)
+
+        try:
+            image = Image.fromarray(img_as_ubyte(scaled_array))
+            image.save(file, format=format)
+        except (TypeError, ValueError):
+            raise SerializationError(
+                f"The shape of the data ({scaled_array.shape}) is incompatible "
+                f"with the requested format ({format})"
+            )
+
         return file.getbuffer()
 
     def array_from_buffer_PIL(buffer, format, dtype, shape):

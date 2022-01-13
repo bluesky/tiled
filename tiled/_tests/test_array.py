@@ -4,6 +4,7 @@ import warnings
 from pathlib import Path
 
 import dask.array
+import httpx
 import numpy
 import pytest
 
@@ -35,6 +36,12 @@ array_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in array_cases.i
 scalar_tree = MapAdapter(
     {k: ArrayAdapter.from_array(v) for k, v in scalar_cases.items()}
 )
+
+cube_cases = {
+    "tiny_cube": numpy.random.random((10, 10, 10)),
+    "tiny_hypercube": numpy.random.random((10, 10, 10, 10, 10)),
+}
+cube_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in cube_cases.items()})
 
 
 @pytest.mark.parametrize("kind", list(array_cases))
@@ -97,3 +104,13 @@ def test_nan_infinity_handler(tmpdir):
 
     expected_list = [0.0, 1.0, None, None, None]
     assert open_json == expected_list
+
+
+def test_array_format_shape_from_cube():
+    client = from_tree(cube_tree)
+
+    with pytest.raises(httpx.HTTPStatusError) as err:
+        # export...
+        hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
+    # Check that the error is 406 (Not Acceptable).
+    assert err.match("406")
