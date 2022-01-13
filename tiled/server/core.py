@@ -400,7 +400,7 @@ def construct_data_response(
         )
     except SerializationError as err:
         raise UnsupportedMediaTypes(
-            f"This type is supported in general but there was an error packing this specific data; {err.args}",
+            f"This type is supported in general but there was an error packing this specific data: {err.args}",
         )
     return PatchedResponse(
         content=content,
