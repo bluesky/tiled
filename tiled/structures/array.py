@@ -310,8 +310,8 @@ if modules_available("PIL"):
             image.save(file, format=format)
         except (TypeError, ValueError):
             raise SerializationError(
-                f"""The shape of the data ({scaled_array.shape}) is incompatible
-                with the requested format ({format})"""
+                f"The shape of the data ({scaled_array.shape}) is incompatible "
+                f"with the requested format ({format})"
             )
 
         return file.getbuffer()
