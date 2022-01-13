@@ -42,7 +42,11 @@ def upgrade():
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
         Column("scopes", JSONList(255)),
     )
-
+    op.create_table(
+        "principal_role_association",
+        Column("principal_id", Integer, ForeignKey("principals.id"), primary_key=True),
+        Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
+    )
     op.create_table(
         "api_keys",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),

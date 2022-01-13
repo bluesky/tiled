@@ -1,7 +1,7 @@
 import enum
 import json
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Unicode
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Table, Unicode
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import Text, TypeDecorator
@@ -51,6 +51,14 @@ class PrincipalType(str, enum.Enum):
     service = "service"
 
 
+principal_role_association_table = Table(
+    "principal_role_association",
+    Base.metadata,
+    Column("principal_id", Integer, ForeignKey("principals.id"), primary_key=True),
+    Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
+)
+
+
 class Principal(Timestamped, Base):
     __tablename__ = "principals"
 
@@ -61,6 +69,9 @@ class Principal(Timestamped, Base):
 
     identities = relationship("Identity", back_populates="principal")
     api_keys = relationship("APIKey", back_populates="principal")
+    roles = relationship(
+        "Role", secondary=principal_role_association_table, back_populates="principals"
+    )
 
 
 class Identity(Timestamped, Base):
@@ -80,6 +91,9 @@ class Role(Timestamped, Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     scopes = Column(JSONList(255))
+    principals = relationship(
+        "Principal", secondary=principal_role_association_table, back_populates="roles"
+    )
 
 
 class APIKey(Timestamped, Base):
