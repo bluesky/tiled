@@ -398,9 +398,9 @@ def construct_data_response(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
             f"Slice it or choose a different format.",
         )
-    except SerializationError:
+    except SerializationError as err:
         raise UnsupportedMediaTypes(
-            "This type is supported in general but there was an unknown error packing this specific data.",
+            f"This type is supported in general but there was an error packing this specific data; {err.args}",
         )
     return PatchedResponse(
         content=content,
