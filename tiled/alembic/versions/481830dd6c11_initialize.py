@@ -6,7 +6,7 @@ Create Date: 2022-01-13 11:26:35.432786
 
 """
 from alembic import op
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Unicode
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Unicode
 from sqlalchemy.sql import func
 
 from tiled.server.orm import JSONList, PrincipalType
@@ -24,23 +24,23 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
-        Column("type", Enum(PrincipalType)),
-        Column("display_name", Unicode(255)),
+        Column("type", Enum(PrincipalType), nullable=False),
+        Column("display_name", Unicode(255), nullable=False),
     )
     op.create_table(
         "identities",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
-        Column("external_id", Unicode(255), primary_key=True),
-        Column("provider", Unicode(255), primary_key=True),
-        Column("provider_id", Integer, ForeignKey("principals.id")),
+        Column("external_id", Unicode(255), primary_key=True, nullable=False),
+        Column("provider", Unicode(255), primary_key=True, nullable=False),
+        Column("principal_id", Integer, ForeignKey("principals.id")),
     )
     op.create_table(
         "roles",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
-        Column("scopes", JSONList(255)),
+        Column("scopes", JSONList, nullable=False),
     )
     op.create_table(
         "principal_role_association",
@@ -51,17 +51,24 @@ def upgrade():
         "api_keys",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
-        Column("hashed_api_key", Unicode(255), primary_key=True, index=True),
-        Column("expiration_time", DateTime(timezone=True)),
-        Column("principal_id", Integer, ForeignKey("principals.id")),
-        Column("scopes", JSONList(255)),
+        Column(
+            "hashed_api_key", Unicode(255), primary_key=True, index=True, nullable=False
+        ),
+        Column("expiration_time", DateTime(timezone=True), nullable=True),
+        Column("note", Unicode(1023), nullable=True),
+        Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
+        Column("scopes", JSONList, nullable=False),
     )
     op.create_table(
-        "revoked_sessions",
+        "sessions",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
-        Column("session_id", Unicode(255), primary_key=True, index=True),
-        Column("expiration_time", DateTime(timezone=True)),
+        Column(
+            "session_id", Unicode(255), primary_key=True, index=True, nullable=False
+        ),
+        Column("expiration_time", DateTime(timezone=True), nullable=False),
+        Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
+        Column("revoked", Boolean, default=False, nullable=False),
     )
 
 
