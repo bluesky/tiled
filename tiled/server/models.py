@@ -1,4 +1,5 @@
 import enum
+from datetime import datetime
 from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
 
 import pydantic
@@ -115,7 +116,49 @@ class About(pydantic.BaseModel):
     meta: dict
 
 
-class Principal(pydantic.BaseModel):
+class PrincipalType(str, enum.Enum):
+    user = "user"
+    service = "service"
+
+
+class Identity(pydantic.BaseModel, orm_mode=True):
+    external_id: pydantic.constr(max_length=255)
+    provider: pydantic.constr(max_length=255)
+
+
+class Role(pydantic.BaseModel, orm_mode=True):
+    id: int
+    scopes: List[str]
+    # principals
+
+
+class APIKey(pydantic.BaseModel, orm_mode=True):
+    hashed_api_key: pydantic.constr(max_length=255)
+    expiration_time: datetime
+    note: pydantic.constr(max_length=255)
+    scopes: List[str]
+
+
+class Session(pydantic.BaseModel, orm_mode=True):
+    """
+    This related to refresh tokens, which have a session_id.
+
+    When the client attempts to use a refresh token, we first check
+    here to ensure that the "session", which is associated with a chain
+    of refresh tokens that came from a single authentication, are still valid.
+    """
+
+    session_id: pydantic.constr(max_length=255)
+    expiration_time: datetime
+    revoked: bool
+
+
+class Principal(pydantic.BaseModel, orm_mode=True):
     "Represents a User or Service"
-    id: str
-    provider: str
+    id: int
+    type: PrincipalType
+    display_name: pydantic.constr(max_length=255)
+    identities: List[Identity] = []
+    roles: List[Role] = []
+    api_keys: List[APIKey] = []
+    sessions: List[Session] = []

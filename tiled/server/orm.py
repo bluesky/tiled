@@ -1,4 +1,3 @@
-import enum
 import json
 
 from sqlalchemy import (
@@ -16,6 +15,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.types import Text, TypeDecorator
 
 from .database import Base
+from .models import PrincipalType
 
 
 class JSONList(TypeDecorator):
@@ -66,11 +66,6 @@ class Timestamped:
             )
             + ")"
         )
-
-
-class PrincipalType(str, enum.Enum):
-    user = "user"
-    service = "service"
 
 
 principal_role_association_table = Table(
