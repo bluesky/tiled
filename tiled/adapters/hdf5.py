@@ -1,4 +1,5 @@
 import collections.abc
+from logging import warning
 import warnings
 
 import dask.array
@@ -63,7 +64,10 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_file(cls, file, swmr=SWMR_DEFAULT, libver="latest"):
         if not isinstance(file, h5py.File):
-            file = h5py.File(file, "r", swmr=swmr, libver=libver)
+            try:
+                file = h5py.File(file, "r", swmr=swmr, libver=libver)
+            except:
+                warnings.warn(f"File {file} can not be opened yet.")
         return cls(file)
 
     def __repr__(self):
