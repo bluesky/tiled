@@ -37,7 +37,7 @@ from ..utils import (
     modules_available,
 )
 from . import models
-from .authentication import get_current_user
+from .authentication import get_current_principal
 from .etag import tokenize
 from .utils import record_timing
 
@@ -82,11 +82,11 @@ def get_root_tree():
 def entry(
     path: str,
     request: Request,
-    current_user: str = Depends(get_current_user),
+    principal: str = Depends(get_current_principal),
     root_tree: pydantic.BaseSettings = Depends(get_root_tree),
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    entry = root_tree.authenticated_as(current_user)
+    entry = root_tree.authenticated_as(principal)
     try:
         # Traverse into sub-tree(s).
         for segment in path_parts:
@@ -96,7 +96,7 @@ def entry(
                 raise NoEntry(path_parts)
             if hasattr(unauthenticated_entry, "authenticated_as"):
                 with record_timing(request.state.metrics, "acl"):
-                    entry = unauthenticated_entry.authenticated_as(current_user)
+                    entry = unauthenticated_entry.authenticated_as(principal)
             else:
                 entry = unauthenticated_entry
         return entry

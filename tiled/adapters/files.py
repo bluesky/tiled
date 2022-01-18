@@ -123,7 +123,7 @@ class DirectoryAdapter(MapAdapter):
         key_from_filename=strip_suffixes,
         metadata=None,
         access_policy=None,
-        authenticated_identity=None,
+        principal=None,
         error_if_missing=True,
         greedy=False,
         poll_interval=DEFAULT_POLL_INTERVAL,
@@ -152,7 +152,7 @@ class DirectoryAdapter(MapAdapter):
         metadata : dict, optional,
             Metadata for the top-level node of this tree.
         access_policy : AccessPolicy, optional
-        authenticated_identity : str, optional
+        principal : str, optional
         error_if_missing : boolean, optional
             If True (default) raise an error if the directory does not exist.
             If False, wait and poll for the directory to be created later.
@@ -341,7 +341,7 @@ class DirectoryAdapter(MapAdapter):
             watcher_thread_kill_switch=watcher_thread_kill_switch,
             manual_trigger=manual_trigger,
             metadata=metadata,
-            authenticated_identity=authenticated_identity,
+            principal=principal,
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
@@ -362,7 +362,7 @@ class DirectoryAdapter(MapAdapter):
         manual_trigger,
         metadata,
         access_policy,
-        authenticated_identity,
+        principal,
         entries_stale_after=None,
         metadata_stale_after=None,
         must_revalidate=True,
@@ -371,7 +371,7 @@ class DirectoryAdapter(MapAdapter):
             mapping,
             metadata=metadata,
             access_policy=access_policy,
-            authenticated_identity=authenticated_identity,
+            principal=principal,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
             must_revalidate=must_revalidate,

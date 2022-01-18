@@ -172,6 +172,10 @@ def build_app(
             setattr(
                 settings, "object_cache_available_bytes", object_cache_available_bytes
             )
+        if authentication.get("providers"):
+            # If we support authentication providers, we need a database, so if one is
+            # not set, use a SQLite database in the current working directory.
+            settings.database_uri = settings.database_uri or "sqlite:///./tiled.sqlite"
         return settings
 
     @app.on_event("startup")

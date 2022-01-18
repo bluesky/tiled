@@ -46,6 +46,17 @@ class Settings(BaseSettings):
         )  # 7 days
     )
     session_max_age: Optional[timedelta] = DEFAULT_SESSION_MAX_AGE  # None
+    database_uri: Optional[str] = None
+
+    @property
+    def SessionLocal(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        engine = create_engine(
+            self.database_uri, connect_args={"check_same_thread": False}
+        )
+        return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @lru_cache()
