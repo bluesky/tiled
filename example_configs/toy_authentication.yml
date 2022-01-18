@@ -10,6 +10,7 @@ authentication:
 access_control:
   access_policy: tiled.adapters.mapping:SimpleAccessPolicy
   args:
+    provider: toy  # matches provider above
     access_lists:
       alice: ["A", "B"]
       bob: ["A", "C"]

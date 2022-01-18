@@ -128,7 +128,7 @@ class Identity(pydantic.BaseModel, orm_mode=True):
 
 
 class Role(pydantic.BaseModel, orm_mode=True):
-    id: int
+    name: str
     scopes: List[str]
     # principals
 
@@ -142,21 +142,25 @@ class APIKey(pydantic.BaseModel, orm_mode=True):
 
 class Session(pydantic.BaseModel, orm_mode=True):
     """
-    This related to refresh tokens, which have a session_id.
+    This related to refresh tokens, which have a session uuid ("sid") claim.
 
     When the client attempts to use a refresh token, we first check
     here to ensure that the "session", which is associated with a chain
     of refresh tokens that came from a single authentication, are still valid.
     """
 
-    id: uuid.UUID
+    # The id field (primary key) is intentionally not exposed to the application.
+    # It is left as an internal database concern.
+    uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
 
 
 class Principal(pydantic.BaseModel, orm_mode=True):
     "Represents a User or Service"
-    id: int
+    # The id field (primary key) is intentionally not exposed to the application.
+    # It is left as an internal database concern.
+    uuid: uuid.UUID
     type: PrincipalType
     display_name: pydantic.constr(max_length=255)
     identities: List[Identity] = []

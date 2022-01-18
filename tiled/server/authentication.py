@@ -70,30 +70,18 @@ def create_access_token(data, secret_key, expires_delta):
     return encoded_jwt
 
 
-def create_refresh_token(data, session_id, session_creation_time, secret_key):
-    to_encode = data.copy()
-    issued_at_time = datetime.utcnow()
-    session_creation_time = session_creation_time or issued_at_time
-    to_encode.update(
-        {
-            "type": "refresh",
-            # This is used to compute expiry.
-            # We do not use "exp" in refresh tokens because we want the freedom
-            # to adjust the max age and have that respected immediately.
-            "iat": issued_at_time.timestamp(),
-            # The session ID is the same for a whole chain of refresh tokens,
-            # and it can be potentially used to revoke all of them if
-            # we believe the session is compromised.
-            "sid": session_id,
-            # This is used to enforce a maximum session age.
-            "sct": session_creation_time.timestamp(),  # nonstandard claim
-        }
-    )
+def create_refresh_token(session_id, secret_key, expires_delta):
+    expire = datetime.utcnow() + expires_delta
+    to_encode = {
+        "type": "refresh",
+        "sid": session_id,
+        "exp": expire,
+    }
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
     return encoded_jwt
 
 
-def decode_token(token, secret_keys, expected_type):
+def decode_token(token, secret_keys):
     credentials_exception = HTTPException(
         status_code=401,
         detail="Could not validate credentials",
@@ -113,8 +101,6 @@ def decode_token(token, secret_keys, expected_type):
             # Try the next key in the key rotation.
             continue
     else:
-        raise credentials_exception
-    if payload.get("type") != expected_type:
         raise credentials_exception
     return payload
 
@@ -174,22 +160,87 @@ async def get_current_principal(
                 headers={"X-Tiled-Root": get_base_url(request)},
             )
     try:
-        payload = decode_token(
-            access_token_from_either_location, settings.secret_keys, "access"
-        )
+        payload = decode_token(access_token_from_either_location, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=401,
             detail="Access token has expired. Refresh token.",
         )
     return Principal(
-        id=payload["sub"],
+        uuid=uuid.UUID(hex=payload["sub"]),
         display_name=payload["dis"],
+        type=payload["typ"],
         identities=[
             Identity(external_id=identity["eid"], provider=identity["idp"])
             for identity in payload["ids"]
         ],
     )
+
+
+def create_session(db, settings, identity_provider, external_id):
+    # Have we seen this Identity before?
+    identity = (
+        db.query(orm.Identity)
+        .filter(orm.Identity.external_id == external_id)
+        .filter(orm.Identity.provider == identity_provider)
+        .first()
+    )
+    if identity is None:
+        # We have not. Make a new Principal and link this new Identity to it.
+        # TODO Confirm that the user intends to create a new Principal here.
+        # Give them the opportunity to link an existing Principal instead.
+        # Use external_id as initial display_name. This can be changed later.
+        principal = orm.Principal(type="user", display_name=external_id)
+        db.add(principal)
+        db.commit()
+        db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
+        identity = orm.Identity(
+            provider=identity_provider,
+            external_id=external_id,
+            principal_id=principal.id,
+        )
+        db.add(identity)
+        db.commit()
+    else:
+        principal = identity.principal
+    session = orm.Session(
+        principal_id=principal.id,
+        expiration_time=datetime.now() + settings.session_max_age,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
+    session_model = Session.from_orm(session)
+    principal_model = Principal.from_orm(principal)
+    # Provide enough information in the access token to reconstruct Principal
+    # and its Identities sufficient for access policy enforcement without a
+    # database hit.
+    data = {
+        "sub": principal_model.uuid.hex,
+        "dis": principal_model.display_name,
+        "typ": principal_model.type.value,
+        "ids": [
+            {"eid": identity.external_id, "idp": identity.provider}
+            for identity in principal_model.identities
+        ],
+    }
+    access_token = create_access_token(
+        data=data,
+        expires_delta=settings.access_token_max_age,
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    refresh_token = create_refresh_token(
+        session_id=session_model.uuid.hex,
+        expires_delta=settings.refresh_token_max_age,
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    return {
+        "access_token": access_token,
+        "expires_in": settings.access_token_max_age / UNIT_SECOND,
+        "refresh_token": refresh_token,
+        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+        "token_type": "bearer",
+    }
 
 
 def build_auth_code_route(authenticator, provider):
@@ -198,16 +249,13 @@ def build_auth_code_route(authenticator, provider):
     async def auth_code(
         request: Request,
         settings: BaseSettings = Depends(get_settings),
+        db=Depends(get_db),
     ):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        refresh_token = create_refresh_token(
-            data={"sub": username},
-            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-        )
-        return refresh_token
+        return create_session(db, settings, provider, username)
 
     return auth_code
 
@@ -231,68 +279,7 @@ def build_handle_credentials_route(authenticator, provider):
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        # Have we seen this Identity before?
-        identity = (
-            db.query(orm.Identity)
-            .filter(orm.Identity.external_id == username)
-            .filter(orm.Identity.provider == provider)
-            .first()
-        )
-        if identity is None:
-            # We have not. Make a new Principal and link this new Identity to it.
-            # TODO Confirm that the user intends to create a new Principal here.
-            # Give them the opportunity to link an existing Principal instead.
-            principal = orm.Principal(type="user", display_name=username)
-            db.add(principal)
-            db.commit()
-            db.refresh(
-                principal
-            )  # Refresh to sync back the auto-generated principal.id.
-            identity = orm.Identity(
-                provider=provider, external_id=username, principal_id=principal.id
-            )
-            db.add(identity)
-            db.commit()
-        else:
-            principal = identity.principal
-        session = orm.Session(
-            principal_id=principal.id,
-            expiration_time=datetime.now() + settings.session_max_age,
-        )
-        db.add(session)
-        db.commit()
-        db.refresh(session)  # Refresh to sync back the auto-generated session.id.
-        session_model = Session.from_orm(session)
-        # Provide enough information to reconstruct Principal and its
-        # Identities sufficient for access policy enforcement without a
-        # database hit.
-        data = {
-            "sub": principal.id,
-            "dis": principal.display_name,
-            "typ": principal.type.value,
-            "ids": [
-                {"eid": identity.external_id, "idp": identity.provider}
-                for identity in principal.identities
-            ],
-        }
-        access_token = create_access_token(
-            data=data,
-            expires_delta=settings.access_token_max_age,
-            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-        )
-        refresh_token = create_refresh_token(
-            data=data,
-            session_id=session_model.id.hex,
-            session_creation_time=datetime.now(),
-            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-        )
-        return {
-            "access_token": access_token,
-            "expires_in": settings.access_token_max_age / UNIT_SECOND,
-            "refresh_token": refresh_token,
-            "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
-            "token_type": "bearer",
-        }
+        return create_session(db, settings, provider, username)
 
     return handle_credentials
 
@@ -311,44 +298,37 @@ async def post_token_refresh(
 
 def slide_session(refresh_token, settings, db):
     try:
-        payload = decode_token(refresh_token, settings.secret_keys, "refresh")
+        payload = decode_token(refresh_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=401, detail="Session has expired. Please re-authenticate."
         )
-    now = datetime.utcnow().timestamp()
-    # Enforce refresh token max age.
-    # We do this here as well as with an "exp" claim in the token so that we can
-    # change the configuration to *decrease* the lifetime and have that change
-    # respected on existing sessions.
-    if timedelta(seconds=(now - payload["iat"])) > settings.refresh_token_max_age:
+    session_uuid = uuid.UUID(hex=payload["sid"])
+    # Find this session in the database.
+    session = (
+        db.query(orm.Session).filter(orm.Session.uuid == session_uuid.bytes).first()
+    )
+    # This token is *signed* so we know that the information came from us.
+    # If the Session is forgotten or revoked or expired, do not allow refresh.
+    if (
+        (session is None)
+        or session.revoked
+        or (session.expiration_time < datetime.now())
+    ):
+        # Do not leak (to a potential attacker) whether this has been *revoked*
+        # specifically. Give the same error as if it had expired.
         raise HTTPException(
             status_code=401, detail="Session has expired. Please re-authenticate."
         )
-    # Enforce maximum session age, if set.
-    if settings.session_max_age is not None:
-        if timedelta(seconds=(now - payload["sct"])) > settings.session_max_age:
-            raise HTTPException(
-                status_code=401, detail="Session has expired. Please re-authenticate."
-            )
-    session_id_hex = payload["sid"]
-    session_id = uuid.UUID(bytearray.fromhex(session_id_hex))
-    session = db.query(orm.Session).filter(orm.Session.id == session_id).first()
-    if (session is None) or session.revoked:
-        # Do not leak (to a potential attacker) that this has been *revoked* specifically.
-        # Give the same error as if it had expired.
-        raise HTTPException(
-            status_code=401, detail="Session has expired. Please re-authenticate."
-        )
-    # Provide enough information to reconstruct Principal and its
-    # Identities sufficient for access policy enforcement without a
+    # Provide enough information in the access token to reconstruct Principal
+    # and its Identities sufficient for access policy enforcement without a
     # database hit.
     principal = Principal.from_orm(session.principal)
     data = {
-        "sub": principal.id,
+        "sub": principal.uuid.hex,
         "dis": principal.display_name,
         "typ": principal.type.value,
-        "identities": [
+        "ids": [
             {"eid": identity.external_id, "idp": identity.provider}
             for identity in principal.identities
         ],
@@ -359,9 +339,8 @@ def slide_session(refresh_token, settings, db):
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
     new_refresh_token = create_refresh_token(
-        data=data,
         session_id=payload["sid"],
-        session_creation_time=datetime.fromtimestamp(payload["sct"]),
+        expires_delta=settings.refresh_token_max_age,
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
     return {

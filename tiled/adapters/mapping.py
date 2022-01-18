@@ -291,13 +291,14 @@ class SimpleAccessPolicy:
     """
     A mapping of user names to lists of entries they can access.
 
-    >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]})
+    >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]}, provider="toy")
     """
 
     ALL = object()  # sentinel
 
-    def __init__(self, access_lists, public=None):
+    def __init__(self, access_lists, *, provider, public=None):
         self.access_lists = {}
+        self.provider = provider
         self.public = set(public or [])
         for key, value in access_lists.items():
             if isinstance(value, str):
@@ -312,17 +313,17 @@ class SimpleAccessPolicy:
         return queries
 
     def filter_results(self, tree, principal):
-        # either list of paths or ALL
-        if len(principal.identities) > 1:
+        # Get the external_id (i.e. username) of this Principal for the
+        # associated authentication provider.
+        for identity in principal.identities:
+            if identity.provider == self.provider:
+                external_id = identity.external_id
+                break
+        else:
             raise ValueError(
-                f"{type(self).__name__} only works on deployments with one "
-                "authentication provider."
+                f"Principcal {principal} has no identity from provider {self.provider}. "
+                f"Its identities are: {principal.identities}"
             )
-        elif len(principal.identities) == 0:
-            raise ValueError(f"{principal} has no associated identity.")
-        # Get the external_id (i.e. username) of this Principal the associated
-        # authentication provider.
-        external_id = principal.identities[0].external_id
         access_list = self.access_lists.get(external_id, [])
 
         if (principal is SpecialUsers.admin) or (access_list is self.ALL):

@@ -5,6 +5,8 @@ Revises:
 Create Date: 2022-01-13 11:26:35.432786
 
 """
+import uuid
+
 from alembic import op
 from sqlalchemy import (
     Binary,
@@ -33,6 +35,14 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
+        # SQLite does not support UUID4 type, so we use generic binary.
+        Column(
+            "uuid",
+            Binary(16),
+            index=True,
+            nullable=False,
+            default=lambda: uuid.uuid4().bytes,
+        ),
         Column("type", Enum(PrincipalType), nullable=False),
         Column("display_name", Unicode(255), nullable=False),
     )
@@ -49,6 +59,7 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
+        Column("name", Unicode(255), index=True, unique=True),
         Column("scopes", JSONList, nullable=False),
     )
     op.create_table(
@@ -72,8 +83,15 @@ def upgrade():
         "sessions",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
+        Column("id", Integer, primary_key=True, index=True, autoincrement=True),
         # SQLite does not support UUID4 type, so we use generic binary.
-        Column("id", Binary(16), primary_key=True, index=True, nullable=False),
+        Column(
+            "uuid",
+            Binary(16),
+            index=True,
+            nullable=False,
+            default=lambda: uuid.uuid4().bytes,
+        ),
         Column("expiration_time", DateTime(timezone=True), nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
         Column("revoked", Boolean, default=False, nullable=False),

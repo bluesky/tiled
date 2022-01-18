@@ -1,5 +1,5 @@
 import json
-import uuid
+import uuid as uuid_module
 
 from sqlalchemy import (
     Binary,
@@ -81,7 +81,16 @@ principal_role_association_table = Table(
 class Principal(Timestamped, Base):
     __tablename__ = "principals"
 
+    # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    # This uuid is public.
+    # SQLite does not support UUID4 type, so we use generic binary.
+    uuid = Column(
+        Binary(16),
+        index=True,
+        nullable=False,
+        default=lambda: uuid_module.uuid4().bytes,
+    )
     type = Column(Enum(PrincipalType), nullable=False)
     display_name = Column(Unicode(255), nullable=False)
     # In the future we may add other information.
@@ -110,6 +119,7 @@ class Role(Timestamped, Base):
     __tablename__ = "roles"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(Unicode(255), index=True, unique=True)
     scopes = Column(JSONList, nullable=False)
     principals = relationship(
         "Principal", secondary=principal_role_association_table, back_populates="roles"
@@ -133,7 +143,7 @@ class APIKey(Timestamped, Base):
 
 class Session(Timestamped, Base):
     """
-    This related to refresh tokens, which have a session_id.
+    This related to refresh tokens, which have a session uuid ("sid") claim.
 
     When the client attempts to use a refresh token, we first check
     here to ensure that the "session", which is associated with a chain
@@ -142,13 +152,15 @@ class Session(Timestamped, Base):
 
     __tablename__ = "sessions"
 
+    # This id is internal, never exposed to the user.
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    # This uuid is public.
     # SQLite does not support UUID4 type, so we use generic binary.
-    id = Column(
+    uuid = Column(
         Binary(16),
-        primary_key=True,
         index=True,
         nullable=False,
-        default=lambda: uuid.uuid4().bytes,
+        default=lambda: uuid_module.uuid4().bytes,
     )
     expiration_time = Column(DateTime(timezone=True), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
