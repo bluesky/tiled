@@ -1,4 +1,5 @@
 import enum
+import uuid
 from datetime import datetime
 from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
 
@@ -148,7 +149,7 @@ class Session(pydantic.BaseModel, orm_mode=True):
     of refresh tokens that came from a single authentication, are still valid.
     """
 
-    session_id: pydantic.constr(max_length=255)
+    id: uuid.UUID
     expiration_time: datetime
     revoked: bool
 

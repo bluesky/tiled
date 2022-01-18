@@ -1,6 +1,8 @@
 import json
+import uuid
 
 from sqlalchemy import (
+    Binary,
     Boolean,
     Column,
     DateTime,
@@ -140,7 +142,14 @@ class Session(Timestamped, Base):
 
     __tablename__ = "sessions"
 
-    session_id = Column(Unicode(255), primary_key=True, index=True, nullable=False)
+    # SQLite does not support UUID4 type, so we use generic binary.
+    id = Column(
+        Binary(16),
+        primary_key=True,
+        index=True,
+        nullable=False,
+        default=lambda: uuid.uuid4().bytes,
+    )
     expiration_time = Column(DateTime(timezone=True), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)

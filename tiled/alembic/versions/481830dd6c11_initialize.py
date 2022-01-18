@@ -6,7 +6,16 @@ Create Date: 2022-01-13 11:26:35.432786
 
 """
 from alembic import op
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Unicode
+from sqlalchemy import (
+    Binary,
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Unicode,
+)
 from sqlalchemy.sql import func
 
 from tiled.server.orm import JSONList, PrincipalType
@@ -63,9 +72,8 @@ def upgrade():
         "sessions",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
-        Column(
-            "session_id", Unicode(255), primary_key=True, index=True, nullable=False
-        ),
+        # SQLite does not support UUID4 type, so we use generic binary.
+        Column("id", Binary(16), primary_key=True, index=True, nullable=False),
         Column("expiration_time", DateTime(timezone=True), nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
         Column("revoked", Boolean, default=False, nullable=False),

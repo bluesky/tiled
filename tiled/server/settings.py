@@ -6,13 +6,6 @@ from typing import Any, List, Optional
 
 from pydantic import BaseSettings
 
-if os.getenv("TILED_SESSION_MAX_AGE"):
-    DEFAULT_SESSION_MAX_AGE = timedelta(
-        sections=int(os.getenv("TILED_SESSION_MAX_AGE"))
-    )
-else:
-    DEFAULT_SESSION_MAX_AGE = None
-
 
 class Settings(BaseSettings):
 
@@ -45,7 +38,9 @@ class Settings(BaseSettings):
             os.getenv("TILED_REFRESH_TOKEN_MAX_AGE", 7 * 24 * 60 * 60)
         )  # 7 days
     )
-    session_max_age: Optional[timedelta] = DEFAULT_SESSION_MAX_AGE  # None
+    session_max_age: Optional[timedelta] = timedelta(
+        seconds=int(os.getenv("TILED_SESSION_MAX_AGE", 365 * 24 * 60 * 60))  # 365 days
+    )
     database_uri: Optional[str] = None
 
     @property

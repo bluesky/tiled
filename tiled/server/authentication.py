@@ -21,7 +21,7 @@ from pydantic import BaseModel, BaseSettings
 from ..utils import SpecialUsers
 from . import orm
 from .database import get_db
-from .models import AccessAndRefreshTokens, Identity, Principal, RefreshToken
+from .models import AccessAndRefreshTokens, Identity, Principal, RefreshToken, Session
 from .settings import get_settings
 from .utils import get_base_url
 
@@ -73,7 +73,6 @@ def create_access_token(data, secret_key, expires_delta):
 def create_refresh_token(data, session_id, session_creation_time, secret_key):
     to_encode = data.copy()
     issued_at_time = datetime.utcnow()
-    session_id = session_id or uuid.uuid4().int
     session_creation_time = session_creation_time or issued_at_time
     to_encode.update(
         {
@@ -256,15 +255,19 @@ def build_handle_credentials_route(authenticator, provider):
             db.commit()
         else:
             principal = identity.principal
-        session = orm.Session(principal_id=principal.id)
+        session = orm.Session(
+            principal_id=principal.id,
+            expiration_time=datetime.now() + settings.session_max_age,
+        )
         db.add(session)
         db.commit()
         db.refresh(session)  # Refresh to sync back the auto-generated session.id.
+        session_model = Session.from_orm(session)
         # Provide enough information to reconstruct Principal and its
         # Identities sufficient for access policy enforcement without a
         # database hit.
         data = {
-            "sub": principal.principal_id,
+            "sub": principal.id,
             "dis": principal.display_name,
             "typ": principal.type.value,
             "ids": [
@@ -279,7 +282,7 @@ def build_handle_credentials_route(authenticator, provider):
         )
         refresh_token = create_refresh_token(
             data=data,
-            session_id=session.id,
+            session_id=session_model.id.hex,
             session_creation_time=datetime.now(),
             secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
         )
@@ -328,7 +331,9 @@ def slide_session(refresh_token, settings, db):
             raise HTTPException(
                 status_code=401, detail="Session has expired. Please re-authenticate."
             )
-    session = db.query(orm.Session).filter(orm.Session.id == payload["sid"]).first()
+    session_id_hex = payload["sid"]
+    session_id = uuid.UUID(bytearray.fromhex(session_id_hex))
+    session = db.query(orm.Session).filter(orm.Session.id == session_id).first()
     if (session is None) or session.revoked:
         # Do not leak (to a potential attacker) that this has been *revoked* specifically.
         # Give the same error as if it had expired.
@@ -340,7 +345,7 @@ def slide_session(refresh_token, settings, db):
     # database hit.
     principal = Principal.from_orm(session.principal)
     data = {
-        "sub": principal.principal_id,
+        "sub": principal.id,
         "dis": principal.display_name,
         "typ": principal.type.value,
         "identities": [

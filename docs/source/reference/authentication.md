@@ -163,8 +163,7 @@ The server implements "sliding sessions". The following are tunable:
 * Maximum inactive session age --- Time after which inactive sessions
   (sessions that have not refreshed tokens) will time out.
 * Maximum session age --- Even *active* sessions are timed out after this
-  limit, and the user is required to resubmit credentials. By default,
-  this is unset and active session are never shut down.
+  limit, and the user is required to resubmit credentials.
 * Access token max age --- This controls how often fresh access token have to be
   re-issued. The process is transparent to the user and just affects performance.
   An *access* token cannot be revoked, so its lifetime should be short. The
@@ -176,7 +175,7 @@ given in units of seconds. The default values are shown.
 ```yaml
 authentication:
     refresh_token_max_age: 604800  # one week
-    session_max_age: None  # unlimited
+    session_max_age: 31536000  # 365 days
     access_token_max_age: 900  # 15 minutes
 ```
 
