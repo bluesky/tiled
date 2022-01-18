@@ -14,6 +14,9 @@ from ..authenticators import Mode
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
+
+# TODO Move the cookie names into utils and conditionally import authetication
+# to avoid letting all the crypo and sql imports slow down server startup if unused.
 from .authentication import (
     ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,

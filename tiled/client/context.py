@@ -492,7 +492,7 @@ class Context:
                         continue
                     break
         mode = spec["mode"]
-        auth_endpoint = spec["auth_endpoint"]
+        auth_endpoint = spec["links"]["auth_endpoint"]
         confirmation_message = spec["confirmation_message"]
         if mode == "password":
             username = self._username or input("Username: ")

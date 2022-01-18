@@ -171,7 +171,7 @@ async def get_current_principal(
         display_name=payload["dis"],
         type=payload["typ"],
         identities=[
-            Identity(external_id=identity["eid"], provider=identity["idp"])
+            Identity(external_id=identity["id"], provider=identity["idp"])
             for identity in payload["ids"]
         ],
     )
@@ -220,7 +220,7 @@ def create_session(db, settings, identity_provider, external_id):
         "dis": principal_model.display_name,
         "typ": principal_model.type.value,
         "ids": [
-            {"eid": identity.external_id, "idp": identity.provider}
+            {"id": identity.external_id, "idp": identity.provider}
             for identity in principal_model.identities
         ],
     }
@@ -329,7 +329,7 @@ def slide_session(refresh_token, settings, db):
         "dis": principal.display_name,
         "typ": principal.type.value,
         "ids": [
-            {"eid": identity.external_id, "idp": identity.provider}
+            {"id": identity.external_id, "idp": identity.provider}
             for identity in principal.identities
         ],
     }
@@ -355,9 +355,21 @@ def slide_session(refresh_token, settings, db):
 async def whoami(
     request: Request,
     principal: str = Depends(get_current_principal),
+    db=Depends(get_db),
 ):
+    # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
-    return principal.dict()
+    if principal is None:
+        return None
+    # The principal from get_current_principal tells us everything that the
+    # access_token carries around, but the database knows more than that.
+    principal_orm = (
+        db.query(orm.Principal)
+        .filter(orm.Principal.uuid == principal.uuid.bytes)
+        .first()
+    )
+    principal_model = Principal.from_orm(principal_orm)
+    return {"data": principal_model.dict()}
 
 
 async def logout(request: Request, response: Response):

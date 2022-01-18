@@ -36,7 +36,7 @@ def test_top_level_access_control():
         },
         "access_control": {
             "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
-            "args": {"access_lists": {"alice": ["a"]}},
+            "args": {"access_lists": {"alice": ["a"]}, "provider": "toy"},
         },
         "trees": [
             {
@@ -45,12 +45,13 @@ def test_top_level_access_control():
                 "access_control": {
                     "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
                     "args": {
+                        "provider": "toy",
                         "access_lists": {
                             "alice": ["A2"],
                             # This should have no effect because bob
                             # cannot access the parent node.
                             "bob": ["A1", "A2"],
-                        }
+                        },
                     },
                 },
             },
