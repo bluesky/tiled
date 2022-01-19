@@ -106,6 +106,8 @@ class DirectoryAdapter(MapAdapter):
         # These are unofficial but common file extensions.
         ".hdf": "application/x-hdf5",
         ".hdf5": "application/x-hdf5",
+        # on opensuse csv -> text/x-comma-separated-values
+        ".csv": "text/csv",
     }
 
     @classmethod
