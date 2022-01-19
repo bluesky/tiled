@@ -47,7 +47,7 @@ $ http :8000/ | jq .authentication.type
 Exchange username/password credentials for "access" and "refresh" tokens.
 
 ```
-$ http --form POST :8000/auth/token username=alice password=secret1 > tokens.json
+$ http --form POST :8000/auth/provider/toy/token username=alice password=secret1 > tokens.json
 ```
 
 The content of `tokens.json` looks like
@@ -151,7 +151,7 @@ a valid refresh token from Tiled that encodes your ORCID username. Exchange the
 refresh token for an access token and a fresh refresh token like so.
 
 ```
-$ http POST https://tiled-demo.blueskyproject.io/token/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
+$ http POST https://tiled-demo.blueskyproject.io/auth/token/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
 ```
 
 From here, everything follows the same as in Scenario 1, above.

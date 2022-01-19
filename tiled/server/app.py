@@ -128,7 +128,7 @@ def build_app(
             authenticator = spec["authenticator"]
             mode = authenticator.mode
             if mode == Mode.password:
-                authentication_router.post(f"/{provider}/token")(
+                authentication_router.post(f"/provider/{provider}/token")(
                     build_handle_credentials_route(authenticator, provider)
                 )
             elif mode == Mode.external:
