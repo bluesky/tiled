@@ -4,7 +4,12 @@ conventions for metrics & labels. We generally prefer naming them
 `tiled_<noun>_<verb>_<type_suffix>`.
 """
 
+from functools import lru_cache
+
+from fastapi import APIRouter, Request, Response
 from prometheus_client import Histogram
+
+router = APIRouter()
 
 REQUEST_DURATION = Histogram(
     "tiled_request_duration_seconds",
@@ -124,3 +129,32 @@ def capture_request_metrics(request, response):
         COMPRESSION_RATIO.labels(
             method=method, code=code, endpoint=endpoint, encoding=encoding
         ).observe(metrics["compress"]["ratio"])
+
+
+@lru_cache()
+def prometheus_registry():
+    """
+    Configure prometheus_client.
+
+    This is run the first time the /metrics endpoint is used.
+    """
+    # The multiprocess configuration makes it compatible with gunicorn.
+    # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
+    from prometheus_client import CollectorRegistry
+    from prometheus_client.multiprocess import MultiProcessCollector
+
+    registry = CollectorRegistry()
+    MultiProcessCollector(registry)  # This has a side effect, apparently.
+    return registry
+
+
+@router.get("/metrics")
+async def metrics(request: Request):
+    """
+    Prometheus metrics
+    """
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    request.state.endpoint = "metrics"
+    data = generate_latest(prometheus_registry())
+    return Response(data, headers={"Content-Type": CONTENT_TYPE_LATEST})

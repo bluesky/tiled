@@ -30,7 +30,6 @@ from .core import (
     get_serialization_registry,
     record_timing,
 )
-from .metrics import capture_request_metrics
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
@@ -155,10 +154,7 @@ def get_app(
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):
         """
-        This does two things:
-
-        - Place metrics in Server-Timing header, in accordance with HTTP spec.
-        - Capture metrics in prometheus. The proemetheus metrics are availabe from /metrics.
+        Place metrics in Server-Timing header, in accordance with HTTP spec.
         """
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
         # https://w3c.github.io/server-timing/#the-server-timing-header-field
@@ -189,7 +185,6 @@ def get_app(
             for key, metrics_ in metrics.items()
         )
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        capture_request_metrics(request, response)
         return response
 
     @app.middleware("http")
@@ -337,6 +332,7 @@ def serve_tree(
     include_routers = []
     include_routers.extend(getattr(tree, "include_routers", []))
     include_routers.extend(getattr(authenticator, "include_routers", []))
+
     # Likewise, the Tree and Authenticator can run tasks in the background.
     # These typically contain a periodic loop.
     background_tasks = []
@@ -367,6 +363,19 @@ def serve_tree(
         app.dependency_overrides[
             get_serialization_registry
         ] = override_get_serialization_registry
+
+    metrics_config = server_settings.get("metrics", {})
+    if metrics_config.get("prometheus", False):
+        from . import metrics
+
+        app.include_router(metrics.router)
+
+        @app.middleware("http")
+        async def capture_metrics_prometheus(request: Request, call_next):
+            response = await call_next(request)
+            metrics.capture_request_metrics(request, response)
+            return response
+
     return app
 
 
