@@ -20,7 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func
 
-from tiled.server.orm import JSONList, PrincipalType
+from tiled.server.orm import UUID, JSONList, PrincipalType
 
 # revision identifiers, used by Alembic.
 revision = "481830dd6c11"
@@ -38,10 +38,10 @@ def upgrade():
         # SQLite does not support UUID4 type, so we use generic binary.
         Column(
             "uuid",
-            Binary(16),
+            UUID,
             index=True,
             nullable=False,
-            default=lambda: uuid.uuid4().bytes,
+            default=lambda: uuid.uuid4(),
         ),
         Column("type", Enum(PrincipalType), nullable=False),
         Column("display_name", Unicode(255), nullable=False),
@@ -50,7 +50,7 @@ def upgrade():
         "identities",
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
-        Column("external_id", Unicode(255), primary_key=True, nullable=False),
+        Column("id", Unicode(255), primary_key=True, nullable=False),
         Column("provider", Unicode(255), primary_key=True, nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id")),
     )
@@ -60,6 +60,7 @@ def upgrade():
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
         Column("name", Unicode(255), index=True, unique=True),
+        Column("description", Unicode(1023), nullable=True),
         Column("scopes", JSONList, nullable=False),
     )
     op.create_table(
@@ -72,7 +73,7 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column(
-            "hashed_api_key", Unicode(255), primary_key=True, index=True, nullable=False
+            "hashed_api_key", Binary(32), primary_key=True, index=True, nullable=False
         ),
         Column("expiration_time", DateTime(timezone=True), nullable=True),
         Column("note", Unicode(1023), nullable=True),
@@ -87,10 +88,10 @@ def upgrade():
         # SQLite does not support UUID4 type, so we use generic binary.
         Column(
             "uuid",
-            Binary(16),
+            UUID,
             index=True,
             nullable=False,
-            default=lambda: uuid.uuid4().bytes,
+            default=lambda: uuid.uuid4(),
         ),
         Column("expiration_time", DateTime(timezone=True), nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),

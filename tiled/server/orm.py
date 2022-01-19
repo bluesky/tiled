@@ -45,6 +45,26 @@ class JSONList(TypeDecorator):
         return value
 
 
+class UUID(TypeDecorator):
+    """Represents a UUID in a dialect-agnostic way
+
+    Postgres has built-in support but SQLite does not, so we
+    just use a generic binary column.
+    """
+
+    impl = Binary(16)
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if not isinstance(value, uuid_module.UUID):
+                raise ValueError(f"Expected uuid.UUID, got {type(value)}")
+            return value.bytes
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return uuid_module.UUID(bytes=value)
+
+
 class Timestamped:
     """
     Mixin for providing timestamps of creation and update time.
@@ -86,10 +106,10 @@ class Principal(Timestamped, Base):
     # This uuid is public.
     # SQLite does not support UUID4 type, so we use generic binary.
     uuid = Column(
-        Binary(16),
+        UUID,
         index=True,
         nullable=False,
-        default=lambda: uuid_module.uuid4().bytes,
+        default=lambda: uuid_module.uuid4(),
     )
     type = Column(Enum(PrincipalType), nullable=False)
     display_name = Column(Unicode(255), nullable=False)
@@ -106,8 +126,8 @@ class Principal(Timestamped, Base):
 class Identity(Timestamped, Base):
     __tablename__ = "identities"
 
-    # An (external_id, provider) pair must be unique.
-    external_id = Column(Unicode(255), primary_key=True, nullable=False)
+    # An (id, provider) pair must be unique.
+    id = Column(Unicode(255), primary_key=True, nullable=False)
     provider = Column(Unicode(255), primary_key=True, nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     # In the future we may add a notion of "primary" identity.
@@ -120,6 +140,7 @@ class Role(Timestamped, Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(Unicode(255), index=True, unique=True)
+    description = Column(Unicode(1023), nullable=True)
     scopes = Column(JSONList, nullable=False)
     principals = relationship(
         "Principal", secondary=principal_role_association_table, back_populates="roles"
@@ -129,7 +150,7 @@ class Role(Timestamped, Base):
 class APIKey(Timestamped, Base):
     __tablename__ = "api_keys"
 
-    hashed_api_key = Column(Unicode(255), primary_key=True, index=True, nullable=False)
+    hashed_api_key = Column(Binary(32), primary_key=True, index=True, nullable=False)
     expiration_time = Column(DateTime(timezone=True), nullable=True)
     note = Column(Unicode(1023), nullable=True)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
@@ -157,10 +178,10 @@ class Session(Timestamped, Base):
     # This uuid is public.
     # SQLite does not support UUID4 type, so we use generic binary.
     uuid = Column(
-        Binary(16),
+        UUID,
         index=True,
         nullable=False,
-        default=lambda: uuid_module.uuid4().bytes,
+        default=lambda: uuid_module.uuid4(),
     )
     expiration_time = Column(DateTime(timezone=True), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)

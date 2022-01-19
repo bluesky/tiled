@@ -313,18 +313,18 @@ class SimpleAccessPolicy:
         return queries
 
     def filter_results(self, tree, principal):
-        # Get the external_id (i.e. username) of this Principal for the
+        # Get the id (i.e. username) of this Principal for the
         # associated authentication provider.
         for identity in principal.identities:
             if identity.provider == self.provider:
-                external_id = identity.external_id
+                id = identity.id
                 break
         else:
             raise ValueError(
                 f"Principcal {principal} has no identity from provider {self.provider}. "
                 f"Its identities are: {principal.identities}"
             )
-        access_list = self.access_lists.get(external_id, [])
+        access_list = self.access_lists.get(id, [])
 
         if (principal is SpecialUsers.admin) or (access_list is self.ALL):
             mapping = tree._mapping

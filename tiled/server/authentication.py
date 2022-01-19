@@ -171,17 +171,17 @@ async def get_current_principal(
         display_name=payload["dis"],
         type=payload["typ"],
         identities=[
-            Identity(external_id=identity["id"], provider=identity["idp"])
+            Identity(id=identity["id"], provider=identity["idp"])
             for identity in payload["ids"]
         ],
     )
 
 
-def create_session(db, settings, identity_provider, external_id):
+def create_session(db, settings, identity_provider, id):
     # Have we seen this Identity before?
     identity = (
         db.query(orm.Identity)
-        .filter(orm.Identity.external_id == external_id)
+        .filter(orm.Identity.id == id)
         .filter(orm.Identity.provider == identity_provider)
         .first()
     )
@@ -189,14 +189,14 @@ def create_session(db, settings, identity_provider, external_id):
         # We have not. Make a new Principal and link this new Identity to it.
         # TODO Confirm that the user intends to create a new Principal here.
         # Give them the opportunity to link an existing Principal instead.
-        # Use external_id as initial display_name. This can be changed later.
-        principal = orm.Principal(type="user", display_name=external_id)
+        # Use id as initial display_name. This can be changed later.
+        principal = orm.Principal(type="user", display_name=id)
         db.add(principal)
         db.commit()
         db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
         identity = orm.Identity(
             provider=identity_provider,
-            external_id=external_id,
+            id=id,
             principal_id=principal.id,
         )
         db.add(identity)
@@ -220,7 +220,7 @@ def create_session(db, settings, identity_provider, external_id):
         "dis": principal_model.display_name,
         "typ": principal_model.type.value,
         "ids": [
-            {"id": identity.external_id, "idp": identity.provider}
+            {"id": identity.id, "idp": identity.provider}
             for identity in principal_model.identities
         ],
     }
@@ -303,10 +303,11 @@ def slide_session(refresh_token, settings, db):
         raise HTTPException(
             status_code=401, detail="Session has expired. Please re-authenticate."
         )
-    session_uuid = uuid.UUID(hex=payload["sid"])
     # Find this session in the database.
     session = (
-        db.query(orm.Session).filter(orm.Session.uuid == session_uuid.bytes).first()
+        db.query(orm.Session)
+        .filter(orm.Session.uuid == uuid.UUID(hex=payload["sid"]))
+        .first()
     )
     # This token is *signed* so we know that the information came from us.
     # If the Session is forgotten or revoked or expired, do not allow refresh.
@@ -329,7 +330,7 @@ def slide_session(refresh_token, settings, db):
         "dis": principal.display_name,
         "typ": principal.type.value,
         "ids": [
-            {"id": identity.external_id, "idp": identity.provider}
+            {"id": identity.id, "idp": identity.provider}
             for identity in principal.identities
         ],
     }
@@ -364,9 +365,7 @@ async def whoami(
     # The principal from get_current_principal tells us everything that the
     # access_token carries around, but the database knows more than that.
     principal_orm = (
-        db.query(orm.Principal)
-        .filter(orm.Principal.uuid == principal.uuid.bytes)
-        .first()
+        db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
     )
     principal_model = Principal.from_orm(principal_orm)
     return {"data": principal_model.dict()}

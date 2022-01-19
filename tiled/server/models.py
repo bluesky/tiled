@@ -123,7 +123,7 @@ class PrincipalType(str, enum.Enum):
 
 
 class Identity(pydantic.BaseModel, orm_mode=True):
-    external_id: pydantic.constr(max_length=255)
+    id: pydantic.constr(max_length=255)
     provider: pydantic.constr(max_length=255)
 
 
