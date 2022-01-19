@@ -1,12 +1,9 @@
-from datetime import datetime
-
 import numpy
 import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_config
-from ..server.authentication import create_refresh_token
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
@@ -19,7 +16,7 @@ def tree_b(access_policy):
     return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
 
 
-def test_top_level_access_control():
+def test_top_level_access_control(monkeypatch):
     SECRET_KEY = "secret"
     config = {
         "authentication": {
@@ -58,27 +55,11 @@ def test_top_level_access_control():
             {"tree": f"{__name__}:tree_b", "path": "/b"},
         ],
     }
-    # Directly generate a refresh token.
-    alice_refresh_token = create_refresh_token(
-        data={"sub": "alice", "idp": "toy"},
-        session_id=0,
-        session_creation_time=datetime.now(),
-        secret_key=SECRET_KEY,
-    )
-    bob_refresh_token = create_refresh_token(
-        data={"sub": "bob", "idp": "toy"},
-        session_id=0,
-        session_creation_time=datetime.now(),
-        secret_key=SECRET_KEY,
-    )
-    # Provide the refresh token in a token cache. The client
-    # will use this to "refresh" and obtain an access token.
-    alice_client = from_config(
-        config, username="alice", token_cache={"refresh_token": alice_refresh_token}
-    )
-    bob_client = from_config(
-        config, username="bob", token_cache={"refresh_token": bob_refresh_token}
-    )
+
+    monkeypatch.setattr("getpass.getpass", lambda: "secret1")
+    alice_client = from_config(config, username="alice", token_cache={})
+    monkeypatch.setattr("getpass.getpass", lambda: "secret2")
+    bob_client = from_config(config, username="bob", token_cache={})
     assert "a" in alice_client
     assert "A2" in alice_client["a"]
     assert "A1" not in alice_client["a"]

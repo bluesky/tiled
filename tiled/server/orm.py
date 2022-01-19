@@ -2,13 +2,13 @@ import json
 import uuid as uuid_module
 
 from sqlalchemy import (
-    Binary,
     Boolean,
     Column,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
+    LargeBinary,
     Table,
     Unicode,
 )
@@ -52,7 +52,7 @@ class UUID(TypeDecorator):
     just use a generic binary column.
     """
 
-    impl = Binary(16)
+    impl = LargeBinary(16)
 
     def process_bind_param(self, value, dialect):
         if value is not None:
@@ -150,7 +150,9 @@ class Role(Timestamped, Base):
 class APIKey(Timestamped, Base):
     __tablename__ = "api_keys"
 
-    hashed_api_key = Column(Binary(32), primary_key=True, index=True, nullable=False)
+    hashed_api_key = Column(
+        LargeBinary(32), primary_key=True, index=True, nullable=False
+    )
     expiration_time = Column(DateTime(timezone=True), nullable=True)
     last_activity = Column(DateTime(timezone=True), nullable=True)
     note = Column(Unicode(1023), nullable=True)

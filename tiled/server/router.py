@@ -70,7 +70,7 @@ async def about(
             spec = {
                 "provider": provider,
                 "mode": authenticator.mode.value,
-                "links": {"auth_endpoint": f"{base_url}auth/{provider}/token"},
+                "links": {"auth_endpoint": f"{base_url}auth/provider/{provider}/token"},
                 "confirmation_message": getattr(
                     authenticator, "confirmation_message", None
                 ),
