@@ -169,7 +169,7 @@ async def get_current_principal(
     return Principal(
         uuid=uuid.UUID(hex=payload["sub"]),
         display_name=payload["dis"],
-        type=payload["typ"],
+        type=payload["sub_typ"],
         identities=[
             Identity(id=identity["id"], provider=identity["idp"])
             for identity in payload["ids"]
@@ -218,7 +218,7 @@ def create_session(db, settings, identity_provider, id):
     data = {
         "sub": principal_model.uuid.hex,
         "dis": principal_model.display_name,
-        "typ": principal_model.type.value,
+        "sub_typ": principal_model.type.value,
         "ids": [
             {"id": identity.id, "idp": identity.provider}
             for identity in principal_model.identities
@@ -309,18 +309,19 @@ def slide_session(refresh_token, settings, db):
         .filter(orm.Session.uuid == uuid.UUID(hex=payload["sid"]))
         .first()
     )
+    now = datetime.now()
     # This token is *signed* so we know that the information came from us.
     # If the Session is forgotten or revoked or expired, do not allow refresh.
-    if (
-        (session is None)
-        or session.revoked
-        or (session.expiration_time < datetime.now())
-    ):
+    if (session is None) or session.revoked or (session.expiration_time < now):
         # Do not leak (to a potential attacker) whether this has been *revoked*
         # specifically. Give the same error as if it had expired.
         raise HTTPException(
             status_code=401, detail="Session has expired. Please re-authenticate."
         )
+    # Update Session info.
+    session.time_last_refreshed = now
+    # This increments in a way that avoids a race condition.
+    session.refresh_count = orm.Session.refresh_count + 1
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -328,7 +329,7 @@ def slide_session(refresh_token, settings, db):
     data = {
         "sub": principal.uuid.hex,
         "dis": principal.display_name,
-        "typ": principal.type.value,
+        "sub_typ": principal.type.value,
         "ids": [
             {"id": identity.id, "idp": identity.provider}
             for identity in principal.identities

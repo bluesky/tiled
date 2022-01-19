@@ -152,6 +152,7 @@ class APIKey(Timestamped, Base):
 
     hashed_api_key = Column(Binary(32), primary_key=True, index=True, nullable=False)
     expiration_time = Column(DateTime(timezone=True), nullable=True)
+    last_activity = Column(DateTime(timezone=True), nullable=True)
     note = Column(Unicode(1023), nullable=True)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     scopes = Column(JSONList, nullable=False)
@@ -183,6 +184,8 @@ class Session(Timestamped, Base):
         nullable=False,
         default=lambda: uuid_module.uuid4(),
     )
+    time_last_refreshed = Column(DateTime(timezone=True), nullable=True)
+    refresh_count = Column(Integer, nullable=False, default=0)
     expiration_time = Column(DateTime(timezone=True), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)

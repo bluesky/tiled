@@ -75,6 +75,7 @@ def upgrade():
         Column(
             "hashed_api_key", Binary(32), primary_key=True, index=True, nullable=False
         ),
+        Column("last_activity", DateTime(timezone=True), nullable=True),
         Column("expiration_time", DateTime(timezone=True), nullable=True),
         Column("note", Unicode(1023), nullable=True),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
@@ -93,6 +94,8 @@ def upgrade():
             nullable=False,
             default=lambda: uuid.uuid4(),
         ),
+        Column("time_last_refreshed", DateTime(timezone=True), nullable=True),
+        Column("refresh_count", Integer, nullable=False, default=0),
         Column("expiration_time", DateTime(timezone=True), nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
         Column("revoked", Boolean, default=False, nullable=False),
