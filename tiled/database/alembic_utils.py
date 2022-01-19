@@ -7,7 +7,7 @@ import tempfile
 _here = os.path.abspath(os.path.dirname(__file__))
 
 ALEMBIC_INI_TEMPLATE_PATH = os.path.join(_here, "alembic.ini.template")
-ALEMBIC_DIR = os.path.join(_here, "alembic")
+ALEMBIC_DIR = os.path.join(_here, "migrations")
 
 
 def write_alembic_ini(path, database_uri):
@@ -37,7 +37,7 @@ def write_alembic_ini(path, database_uri):
 
 
 @contextlib.contextmanager
-def _temp_alembic_ini(database_uri):
+def temp_alembic_ini(database_uri):
     """
     Context manager for temporary JupyterHub tiled directory
 
@@ -71,7 +71,7 @@ def run_alembic(args=None):
     if args is None:
         args = sys.argv[1:]
     database_uri = "sqlite:///tiled.sqlite"  # TEMP
-    with _temp_alembic_ini(database_uri) as alembic_ini:
+    with temp_alembic_ini(database_uri) as alembic_ini:
         subprocess.check_call(["alembic", "-c", alembic_ini] + args)
 
 

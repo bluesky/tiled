@@ -16,8 +16,8 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import Text, TypeDecorator
 
-from .database import Base
-from .models import PrincipalType
+from ..server.models import PrincipalType
+from .core import Base
 
 
 class JSONList(TypeDecorator):

@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import logging
 import os
 import secrets
 import sys
@@ -9,8 +10,15 @@ from functools import lru_cache, partial
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy import create_engine
 
 from ..authenticators import Mode
+from ..database.core import (
+    REQUIRED_REVISION,
+    UninitializedDatabase,
+    check_database,
+    initialize_database,
+)
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
@@ -49,6 +57,13 @@ SENSITIVE_COOKIES = {
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
+
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
+handler = logging.StreamHandler()
+handler.setLevel("DEBUG")
+handler.setFormatter(logging.Formatter("%(message)s"))
+logger.addHandler(handler)
 
 
 def custom_openapi(app):
@@ -258,6 +273,17 @@ def build_app(
         # in usages like:
         # client.context.app.state.root_tree
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
+
+        if settings.database_uri is not None:
+            engine = create_engine(settings.database_uri)
+            try:
+                check_database(engine)
+            except UninitializedDatabase:
+                # Create tables and stamp (alembic) revision.
+                logger.info(
+                    f"Database {engine.url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
+                )
+                initialize_database(engine)
 
     app.add_middleware(
         CompressionMiddleware,

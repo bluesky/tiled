@@ -18,12 +18,11 @@ with warnings.catch_warnings():
 
 from pydantic import BaseModel, BaseSettings
 
+from ..database import orm
 from ..utils import SpecialUsers
-from . import orm
-from .database import get_db
 from .models import AccessAndRefreshTokens, Identity, Principal, RefreshToken, Session
 from .settings import get_settings
-from .utils import get_base_url
+from .utils import get_base_url, get_db
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
