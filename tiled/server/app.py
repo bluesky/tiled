@@ -180,7 +180,7 @@ def build_app(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        for item in ["allow_origins"]:
+        for item in ["allow_origins", "database_uri"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         object_cache_available_bytes = server_settings.get("object_cache", {}).get(

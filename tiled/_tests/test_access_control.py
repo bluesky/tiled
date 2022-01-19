@@ -16,7 +16,7 @@ def tree_b(access_policy):
     return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
 
 
-def test_top_level_access_control(monkeypatch):
+def test_top_level_access_control(monkeypatch, tmpdir):
     SECRET_KEY = "secret"
     config = {
         "authentication": {
@@ -31,6 +31,7 @@ def test_top_level_access_control(monkeypatch):
                 }
             ],
         },
+        "database_uri": f"sqlite:///{tmpdir}/tiled.sqlite",
         "access_control": {
             "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
             "args": {"access_lists": {"alice": ["a"]}, "provider": "toy"},

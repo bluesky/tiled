@@ -154,7 +154,6 @@ def construct_build_app_kwargs(
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["object_cache"] = config.get("object_cache", {})
-
         metrics = config.get("metrics", {})
         if metrics.get("prometheus", False):
             prometheus_multiproc_dir = os.getenv("PROMETHEUS_MULTIPROC_DIR", None)
@@ -172,9 +171,8 @@ def construct_build_app_kwargs(
                     "prometheus enabled but PROMETHEUS_MULTIPROC_DIR "
                     f"({prometheus_multiproc_dir}) is not writable"
                 )
-
         server_settings["metrics"] = metrics
-
+        server_settings["database_uri"] = config.get("database_uri")
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)
