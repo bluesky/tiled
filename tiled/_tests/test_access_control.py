@@ -16,11 +16,11 @@ def tree_b(access_policy):
     return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
 
 
-def test_top_level_access_control(monkeypatch, tmpdir):
-    SECRET_KEY = "secret"
-    config = {
+@pytest.fixture
+def config(tmpdir):
+    return {
         "authentication": {
-            "secret_keys": [SECRET_KEY],
+            "secret_keys": ["SECRET"],
             "providers": [
                 {
                     "provider": "toy",
@@ -57,10 +57,12 @@ def test_top_level_access_control(monkeypatch, tmpdir):
         ],
     }
 
-    monkeypatch.setattr("getpass.getpass", lambda: "secret1")
-    alice_client = from_config(config, username="alice", token_cache={})
-    monkeypatch.setattr("getpass.getpass", lambda: "secret2")
-    bob_client = from_config(config, username="bob", token_cache={})
+
+def test_top_level_access_control(enter_password, config):
+    with enter_password("secret1"):
+        alice_client = from_config(config, username="alice", token_cache={})
+    with enter_password("secret2"):
+        bob_client = from_config(config, username="bob", token_cache={})
     assert "a" in alice_client
     assert "A2" in alice_client["a"]
     assert "A1" not in alice_client["a"]
