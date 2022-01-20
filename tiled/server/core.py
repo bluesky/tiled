@@ -576,7 +576,7 @@ def _fallback_msgpack_encoder(obj):
                 return obj.item()
             return obj.tolist()
     if isinstance(obj, uuid.UUID):
-        return obj.hex
+        return str(obj)  # hyphen-separated hex per RFC4122
     return obj
 
 
