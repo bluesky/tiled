@@ -164,12 +164,12 @@ def construct_serve_tree_kwargs(
                 )
             elif not Path(prometheus_multiproc_dir).is_dir():
                 raise ValueError(
-                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR"
+                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR "
                     f"({prometheus_multiproc_dir}) is not a directory"
                 )
             elif not os.access(prometheus_multiproc_dir, os.W_OK):
                 raise ValueError(
-                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR"
+                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR "
                     f"({prometheus_multiproc_dir}) is not writable"
                 )
 
