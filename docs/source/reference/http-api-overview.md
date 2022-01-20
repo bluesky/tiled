@@ -30,12 +30,11 @@ should use the "full" routes, which send the entire (sliced) result in one
 response. More sophisticated clients with some knowledge of Tiled may use the
 other routes, which enable parallel chunk-based access.
 
-The ``POST /session`` route accepts form-encoded credentials and responds with
-an access token and a refresh token. The ``POST /session/refresh`` route accepts a
-refresh token and responds with a new set of tokens.
-
 The root route, `GET /` provides general information about the server and the formats
-it supports.
+and authentication providers it supports.
+
+Depending on the server configuration, there may be authentication-related routes
+nested under `/auth/`.
 
 ## Reference
 
