@@ -60,7 +60,7 @@ def upgrade():
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
         Column("name", Unicode(255), index=True, unique=True),
         Column("description", Unicode(1023), nullable=True),
-        Column("scopes", JSONList, nullable=False),
+        Column("scopes", JSONList(511), nullable=False),
     )
     op.create_table(
         "principal_role_association",
@@ -78,7 +78,7 @@ def upgrade():
         Column("expiration_time", DateTime(timezone=True), nullable=True),
         Column("note", Unicode(1023), nullable=True),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
-        Column("scopes", JSONList, nullable=False),
+        Column("scopes", JSONList(511), nullable=False),
     )
     op.create_table(
         "sessions",

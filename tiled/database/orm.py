@@ -140,7 +140,7 @@ class Role(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(Unicode(255), index=True, unique=True)
     description = Column(Unicode(1023), nullable=True)
-    scopes = Column(JSONList, nullable=False)
+    scopes = Column(JSONList(511), nullable=False)
     principals = relationship(
         "Principal", secondary=principal_role_association_table, back_populates="roles"
     )
@@ -156,7 +156,7 @@ class APIKey(Timestamped, Base):
     last_activity = Column(DateTime(timezone=True), nullable=True)
     note = Column(Unicode(1023), nullable=True)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
-    scopes = Column(JSONList, nullable=False)
+    scopes = Column(JSONList(511), nullable=False)
     # In the future we could make it possible to disable API keys
     # without deleting them from the database, for forensics and
     # record-keeping.
