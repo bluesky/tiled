@@ -280,7 +280,7 @@ def build_handle_credentials_route(authenticator, provider):
     return handle_credentials
 
 
-async def post_token_refresh(
+async def refresh_session(
     request: Request,
     refresh_token: RefreshToken,
     settings: BaseSettings = Depends(get_settings),
@@ -297,6 +297,7 @@ def revoke_session(
     request: Request,
     db=Depends(get_db),
 ):
+    "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
     # Find this session in the database.
     session = (
@@ -396,10 +397,10 @@ def build_authentication_router():
     router.post(
         "/session/refresh",
         response_model=AccessAndRefreshTokens,
-    )(post_token_refresh)
+    )(refresh_session)
     router.delete(
         "/session/revoke/{session_id}",
-    )(post_token_refresh)
+    )(revoke_session)
     router.get("/whoami")(whoami)
     router.post("/logout")(logout)
     return router
