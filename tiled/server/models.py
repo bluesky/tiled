@@ -162,7 +162,6 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     # It is left as an internal database concern.
     uuid: uuid.UUID
     type: PrincipalType
-    display_name: pydantic.constr(max_length=255)
     identities: List[Identity] = []
     roles: List[Role] = []
     api_keys: List[APIKey] = []

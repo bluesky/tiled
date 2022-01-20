@@ -112,7 +112,6 @@ class Principal(Timestamped, Base):
         default=lambda: uuid_module.uuid4(),
     )
     type = Column(Enum(PrincipalType), nullable=False)
-    display_name = Column(Unicode(255), nullable=False)
     # In the future we may add other information.
 
     identities = relationship("Identity", back_populates="principal")

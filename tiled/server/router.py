@@ -92,7 +92,7 @@ async def about(
         # endpoints will be added.
         authentication["links"] = {
             "whoami": f"{base_url}auth/whoami",
-            "refresh": f"{base_url}auth/token/refresh",
+            "refresh": f"{base_url}auth/session/refresh",
             "logout": f"{base_url}auth/logout",
         }
     authentication["providers"] = provider_specs

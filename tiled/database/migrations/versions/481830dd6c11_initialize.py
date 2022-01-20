@@ -44,7 +44,6 @@ def upgrade():
             default=lambda: uuid.uuid4(),
         ),
         Column("type", Enum(PrincipalType), nullable=False),
-        Column("display_name", Unicode(255), nullable=False),
     )
     op.create_table(
         "identities",

@@ -167,7 +167,6 @@ async def get_current_principal(
         )
     return Principal(
         uuid=uuid.UUID(hex=payload["sub"]),
-        display_name=payload["dis"],
         type=payload["sub_typ"],
         identities=[
             Identity(id=identity["id"], provider=identity["idp"])
@@ -188,8 +187,7 @@ def create_session(db, settings, identity_provider, id):
         # We have not. Make a new Principal and link this new Identity to it.
         # TODO Confirm that the user intends to create a new Principal here.
         # Give them the opportunity to link an existing Principal instead.
-        # Use id as initial display_name. This can be changed later.
-        principal = orm.Principal(type="user", display_name=id)
+        principal = orm.Principal(type="user")
         db.add(principal)
         db.commit()
         db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
@@ -216,7 +214,6 @@ def create_session(db, settings, identity_provider, id):
     # database hit.
     data = {
         "sub": principal_model.uuid.hex,
-        "dis": principal_model.display_name,
         "sub_typ": principal_model.type.value,
         "ids": [
             {"id": identity.id, "idp": identity.provider}
@@ -295,6 +292,23 @@ async def post_token_refresh(
     return new_tokens
 
 
+def revoke_session(
+    session_id: str,  # from path parameter
+    request: Request,
+    db=Depends(get_db),
+):
+    request.state.endpoint = "auth"
+    # Find this session in the database.
+    session = (
+        db.query(orm.Session)
+        .filter(orm.Session.uuid == uuid.UUID(hex=session_id))
+        .first()
+    )
+    session.revoked = True
+    db.commit()
+    return Response(status_code=204)
+
+
 def slide_session(refresh_token, settings, db):
     try:
         payload = decode_token(refresh_token, settings.secret_keys)
@@ -327,7 +341,6 @@ def slide_session(refresh_token, settings, db):
     principal = Principal.from_orm(session.principal)
     data = {
         "sub": principal.uuid.hex,
-        "dis": principal.display_name,
         "sub_typ": principal.type.value,
         "ids": [
             {"id": identity.id, "idp": identity.provider}
@@ -381,8 +394,11 @@ async def logout(request: Request, response: Response):
 def build_authentication_router():
     router = APIRouter()
     router.post(
-        "/token/refresh",
+        "/session/refresh",
         response_model=AccessAndRefreshTokens,
+    )(post_token_refresh)
+    router.delete(
+        "/session/revoke/{session_id}",
     )(post_token_refresh)
     router.get("/whoami")(whoami)
     router.post("/logout")(logout)
