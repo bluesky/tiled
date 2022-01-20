@@ -6,6 +6,7 @@ import math
 import operator
 import re
 import sys
+import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -574,6 +575,8 @@ def _fallback_msgpack_encoder(obj):
             if numpy.isscalar(obj):
                 return obj.item()
             return obj.tolist()
+    if isinstance(obj, uuid.UUID):
+        return obj.hex
     return obj
 
 

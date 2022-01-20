@@ -93,6 +93,7 @@ async def about(
         authentication["links"] = {
             "whoami": f"{base_url}auth/whoami",
             "refresh": f"{base_url}auth/session/refresh",
+            "revoke": f"{base_url}auth/session/revoke/{{session_id}}",
             "logout": f"{base_url}auth/logout",
         }
     authentication["providers"] = provider_specs

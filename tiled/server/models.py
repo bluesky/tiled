@@ -97,6 +97,7 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
 class AboutAuthenticationLinks(pydantic.BaseModel):
     whoami: str
     refresh: str
+    revoke: str
     logout: str
 
 
@@ -166,3 +167,7 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     roles: List[Role] = []
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
+
+
+class WhoAmI(pydantic.BaseModel):
+    data: Principal

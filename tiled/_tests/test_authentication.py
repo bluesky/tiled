@@ -138,3 +138,22 @@ def test_refresh_flow(enter_password, config):
     with pytest.raises(CannotRefreshAuthentication):
         # Set prompt=False so that this raises instead of interactively prompting.
         client.context.reauthenticate(prompt=False)
+
+
+def test_revoke_session(enter_password, config):
+    with enter_password("secret1"):
+        client = from_config(config, username="alice", token_cache={})
+    # Get the current session ID.
+    info = client.context.whoami()
+    (session,) = info["data"]["sessions"]
+    assert not session["revoked"]
+    # Revoke it.
+    client.context.revoke_session(session["uuid"])
+    # Update info and confirm it is listed as revoked.
+    updated_info = client.context.whoami()
+    (updated_session,) = updated_info["data"]["sessions"]
+    assert updated_session["revoked"]
+    # Confirm it cannot be refreshed.
+    with pytest.raises(CannotRefreshAuthentication):
+        # Set prompt=False so that this raises instead of interactively prompting.
+        client.context.reauthenticate(prompt=False)

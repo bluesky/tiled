@@ -588,6 +588,22 @@ Navigate web browser to this address to obtain access code:
             self._token_cache.pop("refresh_token", None)
         self._tokens.clear()
 
+    def revoke_session(self, session_id):
+        """
+        Revoke a Session so it cannot be refreshed.
+
+        This may be done to ensure that a possibly-leaked refresh token cannot be used.
+        """
+        request = self._client.build_request(
+            "DELETE",
+            self._handshake_data["authentication"]["links"]["revoke"].format(
+                session_id=session_id
+            ),
+            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+        )
+        response = self._client.send(request)
+        handle_error(response)
+
     def _refresh(self, refresh_token=None):
         with self._refresh_lock:
             if refresh_token is None:

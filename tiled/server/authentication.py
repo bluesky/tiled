@@ -20,7 +20,14 @@ from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
 from ..utils import SpecialUsers
-from .models import AccessAndRefreshTokens, Identity, Principal, RefreshToken, Session
+from .models import (
+    AccessAndRefreshTokens,
+    Identity,
+    Principal,
+    RefreshToken,
+    Session,
+    WhoAmI,
+)
 from .settings import get_settings
 from .utils import get_base_url, get_db
 
@@ -295,6 +302,7 @@ async def refresh_session(
 def revoke_session(
     session_id: str,  # from path parameter
     request: Request,
+    principal: Principal = Depends(get_current_principal),
     db=Depends(get_db),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
@@ -305,6 +313,12 @@ def revoke_session(
         .filter(orm.Session.uuid == uuid.UUID(hex=session_id))
         .first()
     )
+    if principal.uuid != session.principal.uuid:
+        # TODO Add a scope for doing this for other users.
+        raise HTTPException(
+            404,
+            detail="Sessions does not exist or requester has insufficient permissions",
+        )
     session.revoked = True
     db.commit()
     return Response(status_code=204)
@@ -372,6 +386,9 @@ async def whoami(
     principal: str = Depends(get_current_principal),
     db=Depends(get_db),
 ):
+    # This is here to avoid circular import. TODO Reorganize modules.
+    from .core import json_or_msgpack, resolve_media_type
+
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
     if principal is None:
@@ -382,7 +399,11 @@ async def whoami(
         db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
     )
     principal_model = Principal.from_orm(principal_orm)
-    return {"data": principal_model.dict()}
+    return json_or_msgpack(
+        request,
+        WhoAmI(data=principal_model),
+        resolve_media_type(request),
+    )
 
 
 async def logout(request: Request, response: Response):
