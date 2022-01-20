@@ -1,7 +1,5 @@
 import contextlib
 import os.path
-import subprocess
-import sys
 import tempfile
 
 _here = os.path.abspath(os.path.dirname(__file__))
@@ -39,7 +37,7 @@ def write_alembic_ini(path, database_uri):
 @contextlib.contextmanager
 def temp_alembic_ini(database_uri):
     """
-    Context manager for temporary JupyterHub tiled directory
+    Context manager for temporary alembic configuration file
 
     Temporarily write an alembic.ini file for use with alembic migration scripts.
     Context manager yields alembic.ini path.
@@ -59,21 +57,3 @@ def temp_alembic_ini(database_uri):
         alembic_ini = os.path.join(td, "alembic.ini")
         write_alembic_ini(alembic_ini, database_uri)
         yield alembic_ini
-
-
-def run_alembic(args=None):
-    """
-    Run the alembic command against a temporary alembic.ini file.
-
-    The file will is generated from a template to include the database URI and
-    the location of the alembic migration scripts.
-    """
-    if args is None:
-        args = sys.argv[1:]
-    database_uri = "sqlite:///tiled.sqlite"  # TEMP
-    with temp_alembic_ini(database_uri) as alembic_ini:
-        subprocess.check_call(["alembic", "-c", alembic_ini] + args)
-
-
-if __name__ == "__main__":
-    sys.exit(run_alembic())
