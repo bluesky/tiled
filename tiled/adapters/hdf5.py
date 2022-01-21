@@ -44,14 +44,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
 
     """
 
-<<<<<<< HEAD
     structure_family = "node"
 
-    def __init__(self, node, access_policy=None, authenticated_identity=None):
-=======
     def __init__(self, node, access_policy=None, principal=None):
-        self._node = node
->>>>>>> WIP: Work database through authentication routes.
         if (access_policy is not None) and (
             not access_policy.check_compatibility(self)
         ):
