@@ -34,7 +34,6 @@ from .object_cache import set_object_cache
 from .router import declare_search_router, router
 from .settings import get_settings
 from .utils import (
-    ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     get_authenticators,
@@ -44,7 +43,6 @@ from .utils import (
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
     API_KEY_COOKIE_NAME,
-    ACCESS_TOKEN_COOKIE_NAME,
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
