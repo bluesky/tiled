@@ -2,7 +2,6 @@ import contextlib
 import time
 
 API_KEY_COOKIE_NAME = "tiled_api_key"
-API_KEY_HEADER_NAME = "x-tiled-api-key"
 API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 

@@ -9,7 +9,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
+from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
+from fastapi.security.utils import get_authorization_scheme_param
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -36,7 +37,6 @@ from .models import (
 from .settings import get_sessionmaker, get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
-    API_KEY_HEADER_NAME,
     CSRF_COOKIE_NAME,
     get_authenticators,
     get_base_url,
@@ -60,9 +60,26 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
+class APIKeyAuthorizationHeader(APIKeyBase):
+    """
+    Expect a header like
+
+    Authorization: Apikey SECRET
+
+    where Apikey is case-insensitive.
+    """
+
+    async def __call__(self, request: Request) -> Optional[str]:
+        authorization: str = request.headers.get("Authorization")
+        scheme, param = get_authorization_scheme_param(authorization)
+        if not authorization or scheme.lower() != "apikey":
+            return None
+        return param
+
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
-api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
+api_key_header = APIKeyAuthorizationHeader()
 api_key_cookie = APIKeyCookie(name="tiled_api_key", auto_error=False)
 
 
@@ -109,40 +126,97 @@ def decode_token(token, secret_keys):
     return payload
 
 
-async def check_single_user_api_key(
+async def get_api_key(
     api_key_query: str = Security(api_key_query),
     api_key_header: str = Security(api_key_header),
     api_key_cookie: str = Security(api_key_cookie),
-    settings: BaseSettings = Depends(get_settings),
 ):
     for api_key in [api_key_query, api_key_header, api_key_cookie]:
         if api_key is not None:
-            if secrets.compare_digest(api_key, settings.single_user_api_key):
-                return True
-            raise HTTPException(status_code=401, detail="Invalid API key")
-    return False
+            return api_key
+    return None
 
 
 def get_current_principal(
     request: Request,
     access_token: str = Depends(oauth2_scheme),
-    has_single_user_api_key: str = Depends(check_single_user_api_key),
+    api_key: str = Depends(get_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
 ):
-    if (not authenticators) and has_single_user_api_key:
-        if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
+    """
+    Get current Principal from:
+    - API key in 'api_key' query parameter
+    - API key in header 'Authorization: Apikey ...'
+    - API key in cookie 'tiled_api_key'
+    - OAuth2 JWT access token in header 'Authorization: Bearer ...'
+
+    Fall back to SpecialUsers.public, if anonymous access is allowed
+    If this server is configured with a "single-user API key", then
+    the Principal will be SpecialUsers.admin always.
+    """
+    if api_key is not None:
+        if authenticators:
+            # Tiled is in a multi-user configuration with authentication providers.
+            db = get_sessionmaker(settings.database_uri)()
+            # We store the hashed value of the API key secret.
+            # By comparing hashes we protect against timing attacks.
+            # By storing only the hash of the (high-entropy) secret
+            # we reduce the value of that an attacker can extracted from a
+            # stolen database backup.
+            try:
+                secret = bytes.fromhex(api_key)
+            except Exception:
+                # Not valid hex, therefore not a valid API key
+                raise HTTPException(status_code=401, detail="Invalid API key")
+            hashed_secret = hashlib.sha256(secret).digest()
+            # TODO Check expiry.
+            result = (
+                db.query(orm.APIKey)
+                .filter(orm.APIKey.hashed_secret == hashed_secret)
+                .first()
+            )
+            if result is not None:
+                principal = Principal.from_orm(result.principal)
+            else:
+                raise HTTPException(status_code=401, detail="Invalid API key")
+        else:
+            # Tiled is in a "single user" mode with only one API key.
+            if secrets.compare_digest(api_key, settings.single_user_api_key):
+                principal = SpecialUsers.admin
+            else:
+                raise HTTPException(status_code=401, detail="Invalid API key")
+        # If the API key was given in query param, move to cookie.
+        # This is convenient for browser-based access.
+        if (
+            request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key
+        ) and ("api_key" in request.query_params):
             request.state.cookies_to_set.append(
                 {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
             )
-        return SpecialUsers.admin
-    if access_token is None:
-        # Is anonymous public access permitted?
+    elif access_token is not None:
+        try:
+            payload = decode_token(access_token, settings.secret_keys)
+        except ExpiredSignatureError:
+            raise HTTPException(
+                status_code=401,
+                detail="Access token has expired. Refresh token.",
+            )
+        principal = Principal(
+            uuid=uuid_module.UUID(hex=payload["sub"]),
+            type=payload["sub_typ"],
+            identities=[
+                Identity(id=identity["id"], provider=identity["idp"])
+                for identity in payload["ids"]
+            ],
+        )
+    else:
+        # No form of authentication is present. Is anonymous public access permitted?
         if settings.allow_anonymous_access:
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
-            return SpecialUsers.public
+            principal = SpecialUsers.public
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
@@ -159,21 +233,7 @@ def get_current_principal(
                 detail="Not authenticated",
                 headers={"X-Tiled-Root": get_base_url(request)},
             )
-    try:
-        payload = decode_token(access_token, settings.secret_keys)
-    except ExpiredSignatureError:
-        raise HTTPException(
-            status_code=401,
-            detail="Access token has expired. Refresh token.",
-        )
-    return Principal(
-        uuid=uuid_module.UUID(hex=payload["sub"]),
-        type=payload["sub_typ"],
-        identities=[
-            Identity(id=identity["id"], provider=identity["idp"])
-            for identity in payload["ids"]
-        ],
-    )
+    return principal
 
 
 def create_session(db, settings, identity_provider, id):

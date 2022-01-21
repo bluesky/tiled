@@ -9,12 +9,7 @@ from pydantic import BaseSettings
 
 from .. import __version__
 from . import models
-from .authentication import (
-    API_KEY_COOKIE_NAME,
-    Mode,
-    check_single_user_api_key,
-    get_authenticators,
-)
+from .authentication import Mode, get_authenticators
 from .core import (
     NoEntry,
     UnsupportedMediaTypes,
@@ -43,7 +38,6 @@ router = APIRouter()
 @router.get("/", response_model=models.About)
 async def about(
     request: Request,
-    has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
     serialization_registry=Depends(get_serialization_registry),
@@ -55,11 +49,6 @@ async def about(
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
     # etc.) can remain lazy.
     request.state.endpoint = "about"
-    if (not authenticators) and has_single_user_api_key:
-        if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
-            request.state.cookies_to_set.append(
-                {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
-            )
     base_url = get_base_url(request)
     authentication = {
         "required": not settings.allow_anonymous_access,
