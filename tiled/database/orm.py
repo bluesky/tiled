@@ -30,6 +30,7 @@ class JSONList(TypeDecorator):
     """
 
     impl = Text
+    cache_ok = True
 
     def process_bind_param(self, value, dialect):
         # Make sure we don't get passed some iterable like a dict.
@@ -53,6 +54,7 @@ class UUID(TypeDecorator):
     """
 
     impl = LargeBinary(16)
+    cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is not None:

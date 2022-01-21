@@ -9,13 +9,13 @@ import uuid
 
 from alembic import op
 from sqlalchemy import (
-    Binary,
     Boolean,
     Column,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
+    LargeBinary,
     Unicode,
 )
 from sqlalchemy.sql import func
@@ -72,7 +72,11 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column(
-            "hashed_api_key", Binary(32), primary_key=True, index=True, nullable=False
+            "hashed_api_key",
+            LargeBinary(32),
+            primary_key=True,
+            index=True,
+            nullable=False,
         ),
         Column("last_activity", DateTime(timezone=True), nullable=True),
         Column("expiration_time", DateTime(timezone=True), nullable=True),

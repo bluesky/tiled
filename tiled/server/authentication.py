@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import secrets
 import uuid
@@ -28,8 +29,8 @@ from .models import (
     Session,
     WhoAmI,
 )
-from .settings import get_settings
-from .utils import get_base_url, get_db
+from .settings import get_sessionmaker, get_settings
+from .utils import get_base_url
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -125,7 +126,7 @@ async def check_single_user_api_key(
     return False
 
 
-async def get_current_principal(
+def get_current_principal(
     request: Request,
     access_token: str = Depends(oauth2_scheme),
     has_single_user_api_key: str = Depends(check_single_user_api_key),
@@ -252,13 +253,15 @@ def build_auth_code_route(authenticator, provider):
     async def auth_code(
         request: Request,
         settings: BaseSettings = Depends(get_settings),
-        db=Depends(get_db),
     ):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        return create_session(db, settings, provider, username)
+        db = get_sessionmaker(settings.database_uri)()
+        return await asyncio.get_running_loop().run_in_executor(
+            None, create_session, db, settings, provider, username
+        )
 
     return auth_code
 
@@ -270,7 +273,6 @@ def build_handle_credentials_route(authenticator, provider):
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: BaseSettings = Depends(get_settings),
-        db=Depends(get_db),
     ):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(
@@ -282,19 +284,22 @@ def build_handle_credentials_route(authenticator, provider):
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return create_session(db, settings, provider, username)
+        db = get_sessionmaker(settings.database_uri)()
+        return await asyncio.get_running_loop().run_in_executor(
+            None, create_session, db, settings, provider, username
+        )
 
     return handle_credentials
 
 
-async def refresh_session(
+def refresh_session(
     request: Request,
     refresh_token: RefreshToken,
     settings: BaseSettings = Depends(get_settings),
-    db=Depends(get_db),
 ):
     "Obtain a new access token and refresh token."
     request.state.endpoint = "auth"
+    db = get_sessionmaker(settings.database_uri)()
     new_tokens = slide_session(refresh_token.refresh_token, settings, db)
     return new_tokens
 
@@ -303,10 +308,11 @@ def revoke_session(
     session_id: str,  # from path parameter
     request: Request,
     principal: Principal = Depends(get_current_principal),
-    db=Depends(get_db),
+    settings: BaseSettings = Depends(get_settings),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
+    db = get_sessionmaker(settings.database_uri)()
     # Find this session in the database.
     session = (
         db.query(orm.Session)
@@ -381,10 +387,10 @@ def slide_session(refresh_token, settings, db):
     }
 
 
-async def whoami(
+def whoami(
     request: Request,
     principal: str = Depends(get_current_principal),
-    db=Depends(get_db),
+    settings: BaseSettings = Depends(get_settings),
 ):
     # This is here to avoid circular import. TODO Reorganize modules.
     from .core import json_or_msgpack, resolve_media_type
@@ -393,6 +399,7 @@ async def whoami(
     request.state.endpoint = "auth"
     if principal is None:
         return None
+    db = get_sessionmaker(settings.database_uri)()
     # The principal from get_current_principal tells us everything that the
     # access_token carries around, but the database knows more than that.
     principal_orm = (

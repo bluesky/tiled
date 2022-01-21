@@ -43,17 +43,16 @@ class Settings(BaseSettings):
     )
     database_uri: Optional[str] = None
 
-    @property
-    def SessionLocal(self):
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        engine = create_engine(
-            self.database_uri, connect_args={"check_same_thread": False}
-        )
-        return sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 
 @lru_cache()
 def get_settings():
     return Settings()
+
+
+@lru_cache(1)
+def get_sessionmaker(database_uri):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_engine(database_uri, connect_args={"check_same_thread": False})
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)

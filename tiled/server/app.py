@@ -10,7 +10,6 @@ from functools import lru_cache, partial
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from sqlalchemy import create_engine
 
 from ..authenticators import Mode
 from ..database.core import (
@@ -275,6 +274,8 @@ def build_app(
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_uri is not None:
+            from sqlalchemy import create_engine
+
             engine = create_engine(settings.database_uri)
             try:
                 check_database(engine)

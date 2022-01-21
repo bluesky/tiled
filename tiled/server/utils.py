@@ -1,10 +1,6 @@
 import contextlib
 import time
 
-from fastapi import Depends
-
-from .settings import get_settings
-
 
 @contextlib.contextmanager
 def record_timing(metrics, key):
@@ -42,11 +38,3 @@ def get_base_url(request):
     if not root_path.endswith("/"):
         root_path = f"{root_path}/"
     return f"{scheme}://{host}{root_path}"
-
-
-def get_db(settings=Depends(get_settings)):
-    db = settings.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
