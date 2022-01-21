@@ -58,9 +58,9 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+# logger.setLevel("INFO")
 handler = logging.StreamHandler()
-handler.setLevel("DEBUG")
+# handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("%(message)s"))
 logger.addHandler(handler)
 
