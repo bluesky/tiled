@@ -378,3 +378,12 @@ properties:
       ssl_ciphers:
         type: string
         description: Ciphers to use (see stdlib ssl module's). Default TLSv1.
+  metrics:
+    type: object
+    properties:
+      prometheus:
+        type: boolean
+        description: |
+          Enable/Disable prometheus metrics. Default is false.
+          If enabled `PROMETHEUS_MULTIPROC_DIR` environment variable
+          must be set to the path of a writable directory.
