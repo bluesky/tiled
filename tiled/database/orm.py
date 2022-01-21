@@ -106,7 +106,6 @@ class Principal(Timestamped, Base):
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     # This uuid is public.
-    # SQLite does not support UUID4 type, so we use generic binary.
     uuid = Column(
         UUID,
         index=True,
@@ -151,8 +150,15 @@ class Role(Timestamped, Base):
 class APIKey(Timestamped, Base):
     __tablename__ = "api_keys"
 
-    hashed_api_key = Column(
+    hashed_secret = Column(
         LargeBinary(32), primary_key=True, index=True, nullable=False
+    )
+    # The UUID is *not* a secret; it is a public identifier.
+    uuid = Column(
+        UUID,
+        index=True,
+        nullable=False,
+        default=lambda: uuid_module.uuid4(),
     )
     expiration_time = Column(DateTime(timezone=True), nullable=True)
     last_activity = Column(DateTime(timezone=True), nullable=True)
@@ -180,7 +186,6 @@ class Session(Timestamped, Base):
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     # This uuid is public.
-    # SQLite does not support UUID4 type, so we use generic binary.
     uuid = Column(
         UUID,
         index=True,

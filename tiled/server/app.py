@@ -7,7 +7,7 @@ import sys
 import urllib.parse
 from functools import lru_cache, partial
 
-from fastapi import FastAPI, Request, Response
+from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
@@ -29,8 +29,8 @@ from .authentication import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     REFRESH_TOKEN_COOKIE_NAME,
+    base_authentication_router,
     build_auth_code_route,
-    build_authentication_router,
     build_handle_credentials_route,
     get_authenticators,
 )
@@ -136,7 +136,10 @@ def build_app(
     if authentication.get("providers", []):
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
-        authentication_router = build_authentication_router()
+        authentication_router = APIRouter()
+        # This adds the universal routes like /session/refresh and /session/revoke.
+        # Below we will addd routes specific to our authentication rpoviders.
+        authentication_router.include_router(base_authentication_router)
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
@@ -285,6 +288,7 @@ def build_app(
                     f"Database {engine.url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
                 )
                 initialize_database(engine)
+                logger.info("Database initialized.")
 
     app.add_middleware(
         CompressionMiddleware,

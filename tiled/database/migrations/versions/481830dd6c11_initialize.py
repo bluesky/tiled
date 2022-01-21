@@ -35,7 +35,6 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
-        # SQLite does not support UUID4 type, so we use generic binary.
         Column(
             "uuid",
             UUID,
@@ -72,7 +71,14 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column(
-            "hashed_api_key",
+            "uuid",
+            UUID,
+            index=True,
+            nullable=False,
+            default=lambda: uuid.uuid4(),
+        ),
+        Column(
+            "hashed_secret",
             LargeBinary(32),
             primary_key=True,
             index=True,
@@ -89,7 +95,6 @@ def upgrade():
         Column("time_created", DateTime(timezone=True), server_default=func.now()),
         Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
-        # SQLite does not support UUID4 type, so we use generic binary.
         Column(
             "uuid",
             UUID,

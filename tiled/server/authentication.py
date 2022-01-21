@@ -1,7 +1,8 @@
 import asyncio
 import enum
+import hashlib
 import secrets
-import uuid
+import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
 from typing import Optional
@@ -23,6 +24,9 @@ from ..database import orm
 from ..utils import SpecialUsers
 from .models import (
     AccessAndRefreshTokens,
+    APIKey,
+    APIKeyParams,
+    APIKeyWithSecret,
     Identity,
     Principal,
     RefreshToken,
@@ -174,7 +178,7 @@ def get_current_principal(
             detail="Access token has expired. Refresh token.",
         )
     return Principal(
-        uuid=uuid.UUID(hex=payload["sub"]),
+        uuid=uuid_module.UUID(hex=payload["sub"]),
         type=payload["sub_typ"],
         identities=[
             Identity(id=identity["id"], provider=identity["idp"])
@@ -292,6 +296,95 @@ def build_handle_credentials_route(authenticator, provider):
     return handle_credentials
 
 
+base_authentication_router = APIRouter()
+
+
+@base_authentication_router.get("/principals")
+def principals(
+    request: Request,
+    settings: BaseSettings = Depends(get_settings),
+):
+    "List Principals (users and services)."
+    # TODO Pagination
+    request.state.endpoint = "auth"
+    db = get_sessionmaker(settings.database_uri)()
+    principals = db.query(orm.Principal).all()
+    models = []
+    for principal in principals:
+        principal_model = Principal.from_orm(principal)
+        models.append(principal_model)
+    return {"data": [models]}
+
+
+@base_authentication_router.get("/principal/{uuid}")
+def principal(
+    request: Request,
+    uuid: str,
+    settings: BaseSettings = Depends(get_settings),
+):
+    "Get information about one Principal (user or service)."
+    request.state.endpoint = "auth"
+    db = get_sessionmaker(settings.database_uri)()
+    try:
+        parsed_uuid = uuid_module.UUID(hex=uuid)
+    except Exception:
+        raise HTTPException(400, f"Malformed UUID {uuid}")
+    principal = (
+        db.query(orm.Principal).filter(orm.Principal.uuid == parsed_uuid).first()
+    )
+    if principal is None:
+        raise HTTPException(
+            404, f"Principal {uuid} does not exist or insufficient permissions."
+        )
+    principal_model = Principal.from_orm(principal)
+    return {"data": principal_model.dict()}
+
+
+@base_authentication_router.post("/principal/{uuid}/apikey")
+def apikey_for_principal(
+    request: Request,
+    uuid: str,
+    apikey_params: APIKeyParams,
+    settings: BaseSettings = Depends(get_settings),
+):
+    "Generate an API key for a Principal."
+    request.state.endpoint = "auth"
+    db = get_sessionmaker(settings.database_uri)()
+    try:
+        parsed_uuid = uuid_module.UUID(hex=uuid)
+    except Exception:
+        raise HTTPException(400, f"Malformed UUID {uuid}")
+    principal = (
+        db.query(orm.Principal).filter(orm.Principal.uuid == parsed_uuid).first()
+    )
+    if principal is None:
+        raise HTTPException(
+            404, f"Principal {uuid} does not exist or insufficient permissions."
+        )
+    if apikey_params.lifetime is not None:
+        expiration_time = datetime.now() + timedelta(seconds=apikey_params.lifetime)
+    else:
+        expiration_time = None
+    secret = secrets.token_bytes(32)
+    hashed_secret = hashlib.sha256(secret).digest()
+    new_key = orm.APIKey(
+        principal_id=principal.id,
+        expiration_time=expiration_time,
+        note=apikey_params.note,
+        scopes=apikey_params.scopes,
+        hashed_secret=hashed_secret,
+    )
+    db.add(new_key)
+    db.commit()
+    db.refresh(new_key)
+    return {
+        "data": APIKeyWithSecret(secret=secret.hex(), **APIKey.from_orm(new_key).dict())
+    }
+
+
+@base_authentication_router.post(
+    "/session/refresh", response_model=AccessAndRefreshTokens
+)
 def refresh_session(
     request: Request,
     refresh_token: RefreshToken,
@@ -304,6 +397,7 @@ def refresh_session(
     return new_tokens
 
 
+@base_authentication_router.delete("/session/revoke/{session_id}")
 def revoke_session(
     session_id: str,  # from path parameter
     request: Request,
@@ -316,7 +410,7 @@ def revoke_session(
     # Find this session in the database.
     session = (
         db.query(orm.Session)
-        .filter(orm.Session.uuid == uuid.UUID(hex=session_id))
+        .filter(orm.Session.uuid == uuid_module.UUID(hex=session_id))
         .first()
     )
     if principal.uuid != session.principal.uuid:
@@ -340,7 +434,7 @@ def slide_session(refresh_token, settings, db):
     # Find this session in the database.
     session = (
         db.query(orm.Session)
-        .filter(orm.Session.uuid == uuid.UUID(hex=payload["sid"]))
+        .filter(orm.Session.uuid == uuid_module.UUID(hex=payload["sid"]))
         .first()
     )
     now = datetime.now()
@@ -387,6 +481,7 @@ def slide_session(refresh_token, settings, db):
     }
 
 
+@base_authentication_router.get("/whoami")
 def whoami(
     request: Request,
     principal: str = Depends(get_current_principal),
@@ -413,22 +508,9 @@ def whoami(
     )
 
 
+@base_authentication_router.post("/logout")
 async def logout(request: Request, response: Response):
     request.state.endpoint = "auth"
     response.delete_cookie(API_KEY_COOKIE_NAME)
     response.delete_cookie(CSRF_COOKIE_NAME)
     return {}
-
-
-def build_authentication_router():
-    router = APIRouter()
-    router.post(
-        "/session/refresh",
-        response_model=AccessAndRefreshTokens,
-    )(refresh_session)
-    router.delete(
-        "/session/revoke/{session_id}",
-    )(revoke_session)
-    router.get("/whoami")(whoami)
-    router.post("/logout")(logout)
-    return router

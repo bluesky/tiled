@@ -135,10 +135,18 @@ class Role(pydantic.BaseModel, orm_mode=True):
 
 
 class APIKey(pydantic.BaseModel, orm_mode=True):
-    hashed_api_key: pydantic.constr(max_length=255)
+    uuid: uuid.UUID
     expiration_time: datetime
     note: pydantic.constr(max_length=255)
     scopes: List[str]
+
+
+class APIKeyWithSecret(pydantic.BaseModel):
+    uuid: uuid.UUID
+    expiration_time: datetime
+    note: pydantic.constr(max_length=255)
+    scopes: List[str]
+    secret: str  # hex-encoded bytes
 
 
 class Session(pydantic.BaseModel, orm_mode=True):
@@ -171,3 +179,9 @@ class Principal(pydantic.BaseModel, orm_mode=True):
 
 class WhoAmI(pydantic.BaseModel):
     data: Principal
+
+
+class APIKeyParams(pydantic.BaseModel):
+    lifetime: int  # seconds
+    scopes: List[str]
+    note: Optional[str]
