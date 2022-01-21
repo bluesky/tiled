@@ -35,7 +35,6 @@ from .models import (
 )
 from .settings import get_sessionmaker, get_settings
 from .utils import (
-    ACCESS_TOKEN_COOKIE_NAME,
     API_KEY_COOKIE_NAME,
     API_KEY_HEADER_NAME,
     CSRF_COOKIE_NAME,
@@ -137,12 +136,8 @@ def get_current_principal(
                 {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
             )
         return SpecialUsers.admin
-    # Check cookies and then the Authorization header.
-    access_token_from_either_location = request.cookies.get(
-        ACCESS_TOKEN_COOKIE_NAME, access_token
-    )
-    if access_token_from_either_location is None:
-        # No access token anywhere. Is anonymous public access permitted?
+    if access_token is None:
+        # Is anonymous public access permitted?
         if settings.allow_anonymous_access:
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
@@ -165,7 +160,7 @@ def get_current_principal(
                 headers={"X-Tiled-Root": get_base_url(request)},
             )
     try:
-        payload = decode_token(access_token_from_either_location, settings.secret_keys)
+        payload = decode_token(access_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=401,

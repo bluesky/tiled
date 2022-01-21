@@ -1,8 +1,6 @@
 import contextlib
 import time
 
-ACCESS_TOKEN_COOKIE_NAME = "tiled_access_token"
-REFRESH_TOKEN_COOKIE_NAME = "tiled_refresh_token"
 API_KEY_COOKIE_NAME = "tiled_api_key"
 API_KEY_HEADER_NAME = "x-tiled-api-key"
 API_KEY_QUERY_PARAMETER = "api_key"
