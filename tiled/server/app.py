@@ -21,19 +21,6 @@ from ..database.core import (
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
-
-# TODO Move the cookie names into utils and conditionally import authetication
-# to avoid letting all the crypo and sql imports slow down server startup if unused.
-from .authentication import (
-    ACCESS_TOKEN_COOKIE_NAME,
-    API_KEY_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    REFRESH_TOKEN_COOKIE_NAME,
-    base_authentication_router,
-    build_auth_code_route,
-    build_handle_credentials_route,
-    get_authenticators,
-)
 from .compression import CompressionMiddleware
 from .core import (
     PatchedStreamingResponse,
@@ -46,7 +33,14 @@ from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
 from .settings import get_settings
-from .utils import record_timing
+from .utils import (
+    ACCESS_TOKEN_COOKIE_NAME,
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    REFRESH_TOKEN_COOKIE_NAME,
+    get_authenticators,
+    record_timing,
+)
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -134,6 +128,14 @@ def build_app(
         app.include_router(custom_router)
 
     if authentication.get("providers", []):
+        # Delay this imports to avoid delaying startup with the SQL and cryptography
+        # imports if they are not needed.
+        from .authentication import (
+            base_authentication_router,
+            build_auth_code_route,
+            build_handle_credentials_route,
+        )
+
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
         authentication_router = APIRouter()

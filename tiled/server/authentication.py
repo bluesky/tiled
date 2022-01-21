@@ -34,23 +34,17 @@ from .models import (
     WhoAmI,
 )
 from .settings import get_sessionmaker, get_settings
-from .utils import get_base_url
+from .utils import (
+    ACCESS_TOKEN_COOKIE_NAME,
+    API_KEY_COOKIE_NAME,
+    API_KEY_HEADER_NAME,
+    CSRF_COOKIE_NAME,
+    get_authenticators,
+    get_base_url,
+)
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
-ACCESS_TOKEN_COOKIE_NAME = "tiled_access_token"
-REFRESH_TOKEN_COOKIE_NAME = "tiled_refresh_token"
-API_KEY_COOKIE_NAME = "tiled_api_key"
-API_KEY_HEADER_NAME = "x-tiled-api-key"
-API_KEY_QUERY_PARAMETER = "api_key"
-CSRF_COOKIE_NAME = "tiled_csrf"
-
-
-def get_authenticators():
-    raise NotImplementedError(
-        "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.build_app()."
-    )
 
 
 class Mode(enum.Enum):
