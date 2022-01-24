@@ -22,12 +22,8 @@ from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
 from .compression import CompressionMiddleware
-from .core import (
-    PatchedStreamingResponse,
-    get_query_registry,
-    get_root_tree,
-    get_serialization_registry,
-)
+from .core import PatchedStreamingResponse
+from .dependencies import get_query_registry, get_root_tree, get_serialization_registry
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache

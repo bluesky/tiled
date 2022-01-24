@@ -23,6 +23,7 @@ from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
 from ..utils import SpecialUsers
+from .core import json_or_msgpack
 from .models import (
     AccessAndRefreshTokens,
     APIKey,
@@ -345,6 +346,42 @@ def build_handle_credentials_route(authenticator, provider):
     return handle_credentials
 
 
+def generate_apikey(db, principal, apikey_params, request):
+    principal_scopes = set([*role.scopes] for role in principal.roles)
+    if not set(apikey_params.scopes).issubset(principal_scopes):
+        raise HTTPException(
+            400,
+            (
+                f"Requested scopes {apikey_params.scopes} must be a subset of the "
+                f"principal's scopes {principal.scopes}."
+            ),
+        )
+    if apikey_params.lifetime is not None:
+        expiration_time = datetime.now() + timedelta(seconds=apikey_params.lifetime)
+    else:
+        expiration_time = None
+    secret = secrets.token_bytes(32)
+    hashed_secret = hashlib.sha256(secret).digest()
+    new_key = orm.APIKey(
+        principal_id=principal.id,
+        expiration_time=expiration_time,
+        note=apikey_params.note,
+        scopes=apikey_params.scopes,
+        hashed_secret=hashed_secret,
+    )
+    db.add(new_key)
+    db.commit()
+    db.refresh(new_key)
+    return json_or_msgpack(
+        {
+            "data": APIKeyWithSecret(
+                secret=secret.hex(), **APIKey.from_orm(new_key).dict()
+            )
+        },
+        request,
+    )
+
+
 base_authentication_router = APIRouter()
 
 
@@ -362,7 +399,10 @@ def principals(
     for principal in principals:
         principal_model = Principal.from_orm(principal)
         models.append(principal_model)
-    return {"data": [models]}
+    return json_or_msgpack(
+        {"data": [models]},
+        request,
+    )
 
 
 @base_authentication_router.get("/principal/{uuid}")
@@ -386,7 +426,10 @@ def principal(
             404, f"Principal {uuid} does not exist or insufficient permissions."
         )
     principal_model = Principal.from_orm(principal)
-    return {"data": principal_model.dict()}
+    return json_or_msgpack(
+        {"data": principal_model.dict()},
+        request,
+    )
 
 
 @base_authentication_router.post("/principal/{uuid}/apikey")
@@ -410,25 +453,7 @@ def apikey_for_principal(
         raise HTTPException(
             404, f"Principal {uuid} does not exist or insufficient permissions."
         )
-    if apikey_params.lifetime is not None:
-        expiration_time = datetime.now() + timedelta(seconds=apikey_params.lifetime)
-    else:
-        expiration_time = None
-    secret = secrets.token_bytes(32)
-    hashed_secret = hashlib.sha256(secret).digest()
-    new_key = orm.APIKey(
-        principal_id=principal.id,
-        expiration_time=expiration_time,
-        note=apikey_params.note,
-        scopes=apikey_params.scopes,
-        hashed_secret=hashed_secret,
-    )
-    db.add(new_key)
-    db.commit()
-    db.refresh(new_key)
-    return {
-        "data": APIKeyWithSecret(secret=secret.hex(), **APIKey.from_orm(new_key).dict())
-    }
+    return generate_apikey(db, principal, apikey_params, request)
 
 
 @base_authentication_router.post(
@@ -530,14 +555,34 @@ def slide_session(refresh_token, settings, db):
     }
 
 
+@base_authentication_router.get("/apikey")
+def apikey(
+    request: Request,
+    apikey_params: APIKeyParams,
+    principal: str = Depends(get_current_principal),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Generate an API for the currently-authenticated user or service."""
+    # TODO Permit filtering the fields of the response.
+    request.state.endpoint = "auth"
+    if principal is None:
+        return None
+    db = get_sessionmaker(settings.database_uri)()
+    # The principal from get_current_principal tells us everything that the
+    # access_token carries around, but the database knows more than that.
+    principal_orm = (
+        db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
+    )
+    return generate_apikey(db, principal_orm, apikey_params, request)
+
+
 @base_authentication_router.get("/whoami")
 def whoami(
     request: Request,
     principal: str = Depends(get_current_principal),
     settings: BaseSettings = Depends(get_settings),
 ):
-    # This is here to avoid circular import. TODO Reorganize modules.
-    from .core import json_or_msgpack, resolve_media_type
 
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
@@ -553,7 +598,6 @@ def whoami(
     return json_or_msgpack(
         request,
         WhoAmI(data=principal_model),
-        resolve_media_type(request),
     )
 
 

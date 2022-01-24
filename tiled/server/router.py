@@ -14,16 +14,18 @@ from .core import (
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
-    block,
     construct_data_response,
     construct_entries_response,
     construct_resource,
+    json_or_msgpack,
+    resolve_media_type,
+)
+from .dependencies import (
+    block,
     entry,
     expected_shape,
     get_query_registry,
     get_serialization_registry,
-    json_or_msgpack,
-    resolve_media_type,
     slice_,
 )
 from .settings import get_settings
@@ -110,7 +112,6 @@ async def about(
             },
             meta={"root_path": request.scope.get("root_path") or "/"},
         ),
-        resolve_media_type(request),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
 
@@ -168,7 +169,6 @@ def declare_search_router(query_registry):
             return json_or_msgpack(
                 request,
                 resource,
-                resolve_media_type(request),
                 expires=expires,
                 headers=headers,
             )
@@ -259,7 +259,6 @@ async def node_metadata(
     return json_or_msgpack(
         request,
         models.Response(data=resource, meta=meta),
-        resolve_media_type(request),
         expires=getattr(entry, "metadata_stale_at", None),
     )
 
