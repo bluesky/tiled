@@ -10,6 +10,30 @@ from ..utils import DictView
 from .array import ArrayAdapter
 
 
+# https://stackoverflow.com/a/51695181
+class ArrayWithAttrs(numpy.ndarray):
+    def __new__(cls, input_array):
+        return numpy.asarray(input_array).view(cls)
+
+    def __array_finalize__(self, obj) -> None:
+        if obj is None: return
+        # This attribute should be maintained!
+        default_attributes = {"attrs": {}}
+        self.__dict__.update(default_attributes)  # another way to set attributes
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):  # this method is called whenever you use a ufunc
+        f = {
+            "reduce": ufunc.reduce,
+            "accumulate": ufunc.accumulate,
+            "reduceat": ufunc.reduceat,
+            "outer": ufunc.outer,
+            "at": ufunc.at,
+            "__call__": ufunc,
+        }
+        output = ArrayWithAttrs(f[method](*(i.view(numpy.ndarray) for i in inputs), **kwargs))  # convert the inputs to np.ndarray to prevent recursion, call the function, then cast it back as ExampleTensor
+        output.__dict__ = self.__dict__  # carry forward attributes
+        return output
+
 class HDF5DatasetAdapter(ArrayAdapter):
     # TODO Just wrap h5py.Dataset directly, not via dask.array.
     def __init__(self, dataset):
@@ -115,7 +139,17 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                     "Consider using a fixed-length field instead. "
                     "Tiled will serve an empty placeholder."
                 )
-                return HDF5DatasetAdapter(numpy.array([]))
+
+                check_str_dtype = h5py.check_string_dtype(value.dtype)
+                if check_str_dtype.length is None:
+                    if value.size == 1:
+                        dataset_name = value.file["/entry/experiment_identifier"][...][()]
+                        arr = ArrayWithAttrs(numpy.array(dataset_name))
+                        return HDF5DatasetAdapter(arr)
+                    else:
+                        #for each data point, add to array
+                        pass
+                    #return HDF5DatasetAdapter(value)
             return HDF5DatasetAdapter(value)
 
     def __len__(self):
