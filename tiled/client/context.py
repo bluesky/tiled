@@ -11,6 +11,7 @@ import appdirs
 import httpx
 import msgpack
 
+from .._version import get_versions
 from ..utils import DictView
 from .cache import Revalidate
 from .utils import (
@@ -166,17 +167,23 @@ class Context:
         *,
         username=None,
         auth_provider=None,
+        api_key=None,
         cache=None,
         offline=False,
         token_cache=DEFAULT_TOKEN_CACHE,
         prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
+        if (api_key is not None) and (
+            (username is not None) or (auth_provider is not None)
+        ):
+            raise ValueError("Use api_key or username/auth_provider, not both.")
         self._client = client
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._username = username
         self._auth_provider = auth_provider
+        self.api_key = api_key  # property setter sets Authorization header
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
         self._prompt_for_reauthentication = PromptForReauthentication(
@@ -192,6 +199,10 @@ class Context:
         # of the current tokens.
         self._tokens = {}
         self._app = app
+
+        # Set the User Agent to help the server fail informatively if the client
+        # version is too old.
+        self._client.headers["user-agent"] = f"python-tiled/{get_versions()['version']}"
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
@@ -218,8 +229,13 @@ class Context:
                 # Now try again.
                 self._handshake_data = self.get_json("/", params={"root_path": True})
 
-        if (not offline) and (
-            self._handshake_data["authentication"]["required"] or (username is not None)
+        if (
+            (not offline)
+            and (api_key is None)
+            and (
+                self._handshake_data["authentication"]["required"]
+                or (username is not None)
+            )
         ):
             # Authenticate. If a valid refresh_token is available in the token_cache,
             # it will be used. Otherwise, this will prompt for input from the stdin
@@ -249,6 +265,19 @@ class Context:
         return DictView(self._tokens)
 
     @property
+    def api_key(self):
+        return self._api_key
+
+    @api_key.setter
+    def api_key(self, api_key):
+        if api_key is None:
+            if self._client.headers.get("Authorization", "").startswith("Apikey"):
+                self._client.headers.pop("Authorization")
+        else:
+            self._client.headers["Authorization"] = f"Apikey {api_key}"
+        self._api_key = api_key
+
+    @property
     def cache(self):
         return self._cache
 
@@ -263,6 +292,37 @@ class Context:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
                 self._handshake_data = self.get_json()
+
+    def new_api_key(self, scopes=None, lifetime=None, note=None):
+        """
+        Generate a new API for the currently-authenticated user.
+
+        Parameters
+        ----------
+        scopes : Optional[List[str]]
+            If None, this will have the same access as the user.
+        lifetime : Optional[int]
+            Number of seconds until API key expires. If None,
+            it will never expire or it will have the maximum lifetime
+            allowed by the server.
+        note : Optional[str]
+            Description (for humans).
+        """
+        return self.post_json(
+            self._handshake_data["authentication"]["links"]["new_apikey"],
+            {"scopes": scopes, "lifetime": lifetime, "note": note},
+        )
+
+    def revoke_api_key(self, uuid):
+        request = self._client.build_request(
+            "DELETE",
+            self._handshake_data["authentication"]["links"]["revoke_apikey"].format(
+                uuid=uuid
+            ),
+            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+        )
+        response = self._client.send(request)
+        handle_error(response)
 
     @property
     def app(self):
@@ -432,12 +492,31 @@ class Context:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
+    def post_json(self, path, content):
+        request = self._client.build_request(
+            "POST",
+            path,
+            json=content,
+            # Submit CSRF token in both header and cookie.
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+            headers={
+                "x-csrf": self._client.cookies["tiled_csrf"],
+                "accept": "application/x-msgpack",
+            },
+        )
+        response = self._client.send(request)
+        handle_error(response)
+        return msgpack.unpackb(
+            response.content,
+            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
+        )["data"]
+
     def _send(self, request, stream=False, attempts=0):
         """
         If sending results in an authentication error, reauthenticate.
         """
         response = self._client.send(request, stream=stream)
-        if (response.status_code == 401) and (attempts == 0):
+        if (self.api_key is None) and (response.status_code == 401) and (attempts == 0):
             # Try refreshing the token.
             tokens = self.reauthenticate()
             # The line above updated self._client.headers["authorization"]
@@ -452,6 +531,8 @@ class Context:
 
     def authenticate(self, provider=None):
         "Authenticate. Prompt for password or access code (refresh token)."
+        if self.api_key is not None:
+            raise RuntimeError("API key authentication is being used.")
         providers = self._handshake_data["authentication"]["providers"]
         if len(providers) == 0:
             raise Exception(
@@ -564,6 +645,8 @@ Navigate web browser to this address to obtain access code:
             tokens fails. If False raise an error. If None, fall back
             to default `prompt_for_reauthentication` set in Context.__init__.
         """
+        if self.api_key is not None:
+            raise RuntimeError("API key authentication is being used.")
         try:
             return self._refresh()
         except CannotRefreshAuthentication:
@@ -596,7 +679,7 @@ Navigate web browser to this address to obtain access code:
         """
         request = self._client.build_request(
             "DELETE",
-            self._handshake_data["authentication"]["links"]["revoke"].format(
+            self._handshake_data["authentication"]["links"]["revoke_session"].format(
                 session_id=session_id
             ),
             headers={"x-csrf": self._client.cookies["tiled_csrf"]},
@@ -625,7 +708,7 @@ Navigate web browser to this address to obtain access code:
                     )
             token_request = self._client.build_request(
                 "POST",
-                self._handshake_data["authentication"]["links"]["refresh"],
+                self._handshake_data["authentication"]["links"]["refresh_session"],
                 json={"refresh_token": refresh_token},
                 # Submit CSRF token in both header and cookie.
                 # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie

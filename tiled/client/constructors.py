@@ -23,6 +23,7 @@ def from_uri(
     offline=False,
     username=None,
     auth_provider=None,
+    api_key=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     verify=True,
     prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
@@ -49,6 +50,8 @@ def from_uri(
         Name of an authentication provider. If None and the server supports
         multiple provides, the user will be interactively prompted to
         choose from a list.
+    api_key : str, optional
+        API key based authentication. Cannot mix with username/auth_provider.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     verify : bool, optional
@@ -92,6 +95,7 @@ def from_uri(
         client,
         username=username,
         auth_provider=auth_provider,
+        api_key=api_key,
         cache=cache,
         offline=offline,
         token_cache=token_cache,
@@ -113,6 +117,7 @@ def from_tree(
     offline=False,
     username=None,
     auth_provider=None,
+    api_key=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     headers=None,
 ):
@@ -144,6 +149,8 @@ def from_tree(
         Name of an authentication provider. If None and the server supports
         multiple provides, the user will be interactively prompted to
         choose from a list.
+    api_key : str, optional
+        API key based authentication. Cannot mix with username/auth_provider.
     cache : Cache, optional
     offline : bool, optional
         False by default. If True, rely on cache only.
@@ -166,6 +173,7 @@ def from_tree(
         token_cache=token_cache,
         username=username,
         auth_provider=auth_provider,
+        api_key=api_key,
         headers=headers,
     )
     return from_context(context, structure_clients=structure_clients)
@@ -309,6 +317,7 @@ def from_config(
     *,
     username=None,
     auth_provider=None,
+    api_key=None,
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
@@ -360,6 +369,7 @@ def from_config(
     context = context_from_tree(
         username=username,
         auth_provider=auth_provider,
+        api_key=api_key,
         cache=cache,
         offline=offline,
         token_cache=token_cache,

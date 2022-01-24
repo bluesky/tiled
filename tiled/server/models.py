@@ -96,8 +96,10 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
 
 class AboutAuthenticationLinks(pydantic.BaseModel):
     whoami: str
-    refresh: str
-    revoke: str
+    new_apikey: str
+    revoke_apikey: str
+    refresh_session: str
+    revoke_session: str
     logout: str
 
 
@@ -136,17 +138,26 @@ class Role(pydantic.BaseModel, orm_mode=True):
 
 class APIKey(pydantic.BaseModel, orm_mode=True):
     uuid: uuid.UUID
-    expiration_time: datetime
-    note: pydantic.constr(max_length=255)
+    expiration_time: Optional[datetime]
+    note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]
 
 
 class APIKeyWithSecret(pydantic.BaseModel):
     uuid: uuid.UUID
-    expiration_time: datetime
-    note: pydantic.constr(max_length=255)
+    principal: uuid.UUID
+    expiration_time: Optional[datetime]
+    note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]
     secret: str  # hex-encoded bytes
+
+
+class APIKeyResponse(pydantic.BaseModel):
+    data: APIKey
+
+
+class APIKeyWithSecretResponse(pydantic.BaseModel):
+    data: APIKeyWithSecret
 
 
 class Session(pydantic.BaseModel, orm_mode=True):
@@ -182,6 +193,6 @@ class WhoAmI(pydantic.BaseModel):
 
 
 class APIKeyParams(pydantic.BaseModel):
-    lifetime: int  # seconds
-    scopes: List[str]
+    lifetime: Optional[int]  # seconds
+    scopes: Optional[List[str]]
     note: Optional[str]
