@@ -143,7 +143,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                 check_str_dtype = h5py.check_string_dtype(value.dtype)
                 if check_str_dtype.length is None:
                     if value.size == 1:
-                        dataset_name = value.file["/entry/experiment_identifier"][...][()]
+                        dataset_name = value.file[self._node.name + "/" + key][...][()]
                         arr = ArrayWithAttrs(numpy.array(dataset_name))
                         return HDF5DatasetAdapter(arr)
                     else:
