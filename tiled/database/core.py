@@ -78,25 +78,26 @@ class DatabaseUpgradeNeeded(Exception):
 
 
 def get_current_revision(engine):
+
     with engine.begin() as conn:
         context = migration.MigrationContext.configure(conn)
         heads = context.get_current_heads()
-        if heads == ():
-            return None
-        elif len(heads) != 1:
-            raise UnrecognizedDatabase(
-                f"This database {engine.url} is stamped with an alembic revisions {heads}. "
-                "It looks like Tiled has been configured to connect to a database "
-                "already populated by some other application (not Tiled) or else "
-                "its database is in a corrupted state."
-            )
-        (revision,) = heads
-        if revision not in ALL_REVISIONS:
-            raise UnrecognizedDatabase(
-                f"The datbase {engine.url} has an unrecognized revision {revision}. "
-                "It may have been created by a newer version of Tiled."
-            )
-        return revision
+    if heads == ():
+        return None
+    elif len(heads) != 1:
+        raise UnrecognizedDatabase(
+            f"This database {engine.url} is stamped with an alembic revisions {heads}. "
+            "It looks like Tiled has been configured to connect to a database "
+            "already populated by some other application (not Tiled) or else "
+            "its database is in a corrupted state."
+        )
+    (revision,) = heads
+    if revision not in ALL_REVISIONS:
+        raise UnrecognizedDatabase(
+            f"The datbase {engine.url} has an unrecognized revision {revision}. "
+            "It may have been created by a newer version of Tiled."
+        )
+    return revision
 
 
 def check_database(engine):
