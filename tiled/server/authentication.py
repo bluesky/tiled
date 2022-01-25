@@ -98,7 +98,8 @@ class APIKeyAuthorizationHeader(APIKeyBase):
         return param
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+# The tokenUrl below is patched at app startup when we know it.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="PLACEHOLDER", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
 api_key_header = APIKeyAuthorizationHeader(
     name="api_key", description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'"

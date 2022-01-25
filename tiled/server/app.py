@@ -126,13 +126,19 @@ def build_app(
             base_authentication_router,
             build_auth_code_route,
             build_handle_credentials_route,
+            oauth2_scheme,
         )
 
+        # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
+        first_provider = authentication["providers"][0]["provider"]
+        oauth2_scheme.model.flows.password.tokenUrl = (
+            f"/auth/provider/{first_provider}/token"
+        )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
         authentication_router = APIRouter()
         # This adds the universal routes like /session/refresh and /session/revoke.
-        # Below we will addd routes specific to our authentication rpoviders.
+        # Below we will add routes specific to our authentication providers.
         authentication_router.include_router(base_authentication_router)
         for spec in authentication["providers"]:
             provider = spec["provider"]
