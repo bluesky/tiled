@@ -68,6 +68,7 @@ async def about(
             }
         elif authenticator.mode == Mode.external:
             spec = {
+                "provider": provider,
                 "mode": authenticator.mode.value,
                 "links": {"auth_endpoint": authenticator.authorization_endpoint},
                 "confirmation_message": getattr(
