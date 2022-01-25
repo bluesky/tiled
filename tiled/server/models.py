@@ -136,8 +136,9 @@ class Role(pydantic.BaseModel, orm_mode=True):
     # principals
 
 
-class APIKey(pydantic.BaseModel, orm_mode=True):
+class APIKey(pydantic.BaseModel):
     uuid: uuid.UUID
+    principal: uuid.UUID
     expiration_time: Optional[datetime]
     note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]

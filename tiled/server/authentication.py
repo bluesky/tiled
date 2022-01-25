@@ -32,6 +32,7 @@ from .models import (
     AccessAndRefreshTokens,
     APIKey,
     APIKeyParams,
+    APIKeyResponse,
     APIKeyWithSecret,
     APIKeyWithSecretResponse,
     Identity,
@@ -145,7 +146,7 @@ async def get_api_key(
 
 def get_current_principal(
     request: Request,
-    scopes: SecurityScopes,
+    security_scopes: SecurityScopes,
     access_token: str = Depends(oauth2_scheme),
     api_key: str = Depends(get_api_key),
     settings: BaseSettings = Depends(get_settings),
@@ -178,19 +179,28 @@ def get_current_principal(
                 raise HTTPException(status_code=401, detail="Invalid API key")
             hashed_secret = hashlib.sha256(secret).digest()
             # TODO Check expiry.
-            result = (
+            api_key_orm = (
                 db.query(orm.APIKey)
                 .filter(orm.APIKey.hashed_secret == hashed_secret)
                 .first()
             )
-            if result is not None:
-                principal = Principal.from_orm(result.principal)
+            if api_key_orm is not None:
+                principal = Principal.from_orm(api_key_orm.principal)
+                scopes = api_key_orm.scopes
+                if "inherit" in scopes:
+                    # The scope "inherit" is a metascope that confers all the
+                    # scopes for the Principal associated with this API,
+                    # resolved at access time.
+                    scopes.extend(
+                        set().union(*[role.scopes for role in principal.roles])
+                    )
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
         else:
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 principal = SpecialUsers.admin
+                scopes = ["read:metadata", "read:data"]
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
         # If the API key was given in query param, move to cookie.
@@ -217,6 +227,7 @@ def get_current_principal(
                 for identity in payload["ids"]
             ],
         )
+        scopes = payload["scp"]
     else:
         # No form of authentication is present. Is anonymous public access permitted?
         if settings.allow_anonymous_access:
@@ -224,6 +235,7 @@ def get_current_principal(
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
             principal = SpecialUsers.public
+            scopes = ["read:metadata", "read:data"]
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
@@ -240,6 +252,22 @@ def get_current_principal(
                 detail="Not authenticated",
                 headers={"X-Tiled-Root": get_base_url(request)},
             )
+    # Scope enforcement happens here.
+    # https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/
+    if security_scopes.scopes:
+        authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
+    else:
+        authenticate_value = "Bearer"
+    if not set(security_scopes.scopes).issubset(scopes):
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Not enough permissions. "
+                f"Requires scopes {security_scopes.scopes}. "
+                f"Request had scopes {list(scopes)}"
+            ),
+            headers={"WWW-Authenticate": authenticate_value},
+        )
     return principal
 
 
@@ -255,7 +283,9 @@ def create_session(db, settings, identity_provider, id):
         # We have not. Make a new Principal and link this new Identity to it.
         # TODO Confirm that the user intends to create a new Principal here.
         # Give them the opportunity to link an existing Principal instead.
+        user_role = db.query(orm.Role).filter(orm.Role.name == "user").first()
         principal = orm.Principal(type="user")
+        principal.roles.append(user_role)
         db.add(principal)
         db.commit()
         db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
@@ -283,6 +313,7 @@ def create_session(db, settings, identity_provider, id):
     data = {
         "sub": principal_model.uuid.hex,
         "sub_typ": principal_model.type.value,
+        "scp": list(set().union(*[role.scopes for role in principal.roles])),
         "ids": [
             {"id": identity.id, "idp": identity.provider}
             for identity in principal_model.identities
@@ -357,7 +388,7 @@ def generate_apikey(db, principal, apikey_params, request):
         scopes = ["inherit"]
     else:
         scopes = apikey_params.scopes
-    principal_scopes = set([*role.scopes] for role in principal.roles)
+    principal_scopes = set().union(*[role.scopes for role in principal.roles])
     if not set(scopes).issubset(principal_scopes | {"inherit"}):
         raise HTTPException(
             400,
@@ -388,7 +419,10 @@ def generate_apikey(db, principal, apikey_params, request):
             data=APIKeyWithSecret(
                 secret=secret.hex(),
                 principal=new_key.principal.uuid,
-                **APIKey.from_orm(new_key).dict(),
+                expiration_time=new_key.expiration_time,
+                note=new_key.note,
+                scopes=new_key.scopes,
+                uuid=new_key.uuid,
             )
         ),
     )
@@ -534,6 +568,7 @@ def slide_session(refresh_token, settings, db):
     data = {
         "sub": principal.uuid.hex,
         "sub_typ": principal.type.value,
+        "scp": list(set([*role.scopes] for role in principal.roles)),
         "ids": [
             {"id": identity.id, "idp": identity.provider}
             for identity in principal.identities
@@ -578,6 +613,43 @@ def new_apikey(
         db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
     )
     return generate_apikey(db, principal_orm, apikey_params, request)
+
+
+@base_authentication_router.get("/apikey")
+def current_apikey_info(
+    request: Request,
+    api_key: str = Depends(get_api_key),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Give info about the API key used to authentication the current request.
+
+    This provides a way to look up the API uuid, given the API secret.
+    """
+    # TODO Permit filtering the fields of the response.
+    request.state.endpoint = "auth"
+    try:
+        secret = bytes.fromhex(api_key)
+    except Exception:
+        # Not valid hex, therefore not a valid API key
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    hashed_secret = hashlib.sha256(secret).digest()
+    db = get_sessionmaker(settings.database_uri)()
+    api_key_orm = (
+        db.query(orm.APIKey).filter(orm.APIKey.hashed_secret == hashed_secret).first()
+    )
+    return json_or_msgpack(
+        request,
+        APIKeyResponse(
+            data=APIKey(
+                principal=api_key_orm.principal.uuid,
+                expiration_time=api_key_orm.expiration_time,
+                note=api_key_orm.note,
+                scopes=api_key_orm.scopes,
+                uuid=api_key_orm.uuid,
+            )
+        ),
+    )
 
 
 @base_authentication_router.delete("/apikey/{uuid}")

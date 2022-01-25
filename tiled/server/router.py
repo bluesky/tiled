@@ -3,7 +3,7 @@ import inspect
 from datetime import datetime, timedelta
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 
@@ -136,7 +136,7 @@ def declare_search_router(query_registry):
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
         omit_links: bool = Query(False),
-        entry: Any = Depends(entry),
+        entry: Any = Security(entry, scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
         **filters,
     ):
@@ -234,7 +234,7 @@ async def node_metadata(
     fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
     select_metadata: Optional[str] = Query(None),
     omit_links: bool = Query(False),
-    entry: Any = Depends(entry),
+    entry: Any = Security(entry, scopes=["read:metadata"]),
     root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
@@ -270,7 +270,7 @@ async def node_metadata(
 )
 def array_block(
     request: Request,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -321,7 +321,7 @@ def array_block(
 )
 def array_full(
     request: Request,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -368,7 +368,7 @@ def array_full(
 def dataframe_partition(
     request: Request,
     partition: int,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -413,7 +413,7 @@ def dataframe_partition(
 )
 def node_full(
     request: Request,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),

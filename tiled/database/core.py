@@ -2,6 +2,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 from .alembic_utils import temp_alembic_ini
 
@@ -14,6 +15,37 @@ REQUIRED_REVISION = "481830dd6c11"
 ALL_REVISIONS = {"481830dd6c11"}
 
 
+def create_default_roles(engine):
+    # Avoid circular import.
+
+    from .orm import Role
+
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = SessionLocal()
+
+    db.add(
+        Role(
+            name="user",
+            description="Default Role for users.",
+            scopes=["read:metadata", "read:data", "apikeys"],
+        ),
+    )
+    db.add(
+        Role(
+            name="admin",
+            description="Default Role for services.",
+            scopes=[
+                "read:metadata",
+                "read:data",
+                "admin:apikeys",
+                "read:principals",
+                "metrics",
+            ],
+        ),
+    )
+    db.commit()
+
+
 def initialize_database(engine):
 
     # The definitions in .orm alter Base.metadata.
@@ -21,6 +53,9 @@ def initialize_database(engine):
 
     # Create all tables.
     Base.metadata.create_all(engine)
+
+    # Initialize Roles table.
+    create_default_roles(engine)
 
     # Mark current revision.
     with temp_alembic_ini(engine.url) as alembic_ini:

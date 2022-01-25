@@ -139,7 +139,7 @@ class Role(Timestamped, Base):
     __tablename__ = "roles"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    name = Column(Unicode(255), index=True, unique=True)
+    name = Column(Unicode(255), index=True, unique=True, nullable=False)
     description = Column(Unicode(1023), nullable=True)
     scopes = Column(JSONList(511), nullable=False)
     principals = relationship(
