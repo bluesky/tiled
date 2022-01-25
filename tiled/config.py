@@ -154,6 +154,7 @@ def construct_build_app_kwargs(
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["object_cache"] = config.get("object_cache", {})
+        server_settings["database_uri"] = config.get("database_uri")
         metrics = config.get("metrics", {})
         if metrics.get("prometheus", False):
             prometheus_multiproc_dir = os.getenv("PROMETHEUS_MULTIPROC_DIR", None)
@@ -172,7 +173,6 @@ def construct_build_app_kwargs(
                     f"({prometheus_multiproc_dir}) is not writable"
                 )
         server_settings["metrics"] = metrics
-        server_settings["database_uri"] = config.get("database_uri")
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)
@@ -202,6 +202,7 @@ def merge(configs):
     uvicorn_config_source = None
     object_cache_config_source = None
     metrics_config_source = None
+    database_uri_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
     file_extensions = {}
@@ -257,6 +258,15 @@ def merge(configs):
                 )
             metrics_config_source = filepath
             merged["metrics"] = config["metrics"]
+        if "database_uri" in config:
+            if "database_uri" in merged:
+                raise ConfigError(
+                    "database_uri can only be specified in one file. "
+                    f"It was found in both {database_uri_config_source} and "
+                    f"{filepath}"
+                )
+            database_uri_config_source = filepath
+            merged["database_uri"] = config["database_uri"]
         for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
