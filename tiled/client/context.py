@@ -631,7 +631,13 @@ Navigate web browser to this address to obtain access code:
             refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
         )
         if confirmation_message:
-            print(confirmation_message.format(**self.whoami()))
+            identities = self.whoami()["identities"]
+            identities_by_provider = {
+                identity["provider"]: identity["id"] for identity in identities
+            }
+            identities = confirmation_message.format(
+                username=identities_by_provider[spec["provider"]]
+            )
         return tokens
 
     def reauthenticate(self, prompt=None):
@@ -658,7 +664,9 @@ Navigate web browser to this address to obtain access code:
 
     def whoami(self):
         "Return username."
-        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])
+        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])[
+            "data"
+        ]
 
     def logout(self):
         """
