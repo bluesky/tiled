@@ -149,7 +149,6 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                         arr = ArrayWithAttrs(numpy.array(dataset_names))
                         return HDF5DatasetAdapter(arr)
                 return HDF5DatasetAdapter(ArrayWithAttrs(numpy.array([])))
-                    #return HDF5DatasetAdapter(value)
             return HDF5DatasetAdapter(value)
 
     def __len__(self):
