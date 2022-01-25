@@ -22,7 +22,9 @@ class ArrayWithAttrs(numpy.ndarray):
         default_attributes = {"attrs": {}}
         self.__dict__.update(default_attributes)  # another way to set attributes
 
-    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):  # this method is called whenever you use a ufunc
+    def __array_ufunc__(
+        self, ufunc, method, *inputs, **kwargs
+    ):  # this method is called whenever you use a ufunc
         f = {
             "reduce": ufunc.reduce,
             "accumulate": ufunc.accumulate,
