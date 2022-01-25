@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
+from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.security import (
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
@@ -77,6 +78,18 @@ class APIKeyAuthorizationHeader(APIKeyBase):
     where Apikey is case-insensitive.
     """
 
+    def __init__(
+        self,
+        *,
+        name: str,
+        scheme_name: Optional[str] = None,
+        description: Optional[str] = None,
+    ):
+        self.model: APIKey = APIKey(
+            **{"in": APIKeyIn.header}, name=name, description=description
+        )
+        self.scheme_name = scheme_name or self.__class__.__name__
+
     async def __call__(self, request: Request) -> Optional[str]:
         authorization: str = request.headers.get("Authorization")
         scheme, param = get_authorization_scheme_param(authorization)
@@ -87,7 +100,9 @@ class APIKeyAuthorizationHeader(APIKeyBase):
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
-api_key_header = APIKeyAuthorizationHeader()
+api_key_header = APIKeyAuthorizationHeader(
+    name="api_key", description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'"
+)
 api_key_cookie = APIKeyCookie(name="tiled_api_key", auto_error=False)
 
 
