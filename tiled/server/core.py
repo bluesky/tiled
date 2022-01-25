@@ -17,6 +17,7 @@ from typing import Any, Optional
 import dateutil.tz
 import jmespath
 import msgpack
+import numpy
 import orjson
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Response
@@ -554,6 +555,10 @@ class PatchedStreamingResponse(StreamingResponse):
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
+def default(content):
+    if isinstance(content[0], (numpy.str_, numpy.bytes_)):
+        return content.tolist()
+
 class NumpySafeJSONResponse(JSONResponse):
     def __init__(self, *args, metrics, **kwargs):
         self.__metrics = metrics
@@ -561,7 +566,12 @@ class NumpySafeJSONResponse(JSONResponse):
 
     def render(self, content: Any) -> bytes:
         with record_timing(self.__metrics, "pack"):
-            return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY)
+            try:
+                return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY)
+            except TypeError:
+                # Not all numpy dtypes are supported by orjson.
+                # Fall back to converting to a (possibly nested) Python list.
+                return orjson.dumps(content, default=default)
 
 
 def _fallback_msgpack_encoder(obj):
