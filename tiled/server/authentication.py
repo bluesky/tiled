@@ -447,8 +447,8 @@ def generate_apikey(db, principal, apikey_params, request):
 base_authentication_router = APIRouter()
 
 
-@base_authentication_router.get("/principals")
-def principals(
+@base_authentication_router.get("/principal")
+def principal_list(
     request: Request,
     settings: BaseSettings = Depends(get_settings),
     principal=Security(get_current_principal, scopes=["read:principals"]),
