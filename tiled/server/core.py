@@ -559,6 +559,7 @@ def default(content):
     if isinstance(content[0], (numpy.str_, numpy.bytes_)):
         return content.tolist()
 
+
 class NumpySafeJSONResponse(JSONResponse):
     def __init__(self, *args, metrics, **kwargs):
         self.__metrics = metrics

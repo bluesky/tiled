@@ -16,7 +16,8 @@ class ArrayWithAttrs(numpy.ndarray):
         return numpy.asarray(input_array).view(cls)
 
     def __array_finalize__(self, obj) -> None:
-        if obj is None: return
+        if obj is None:
+            return
         # This attribute should be maintained!
         default_attributes = {"attrs": {}}
         self.__dict__.update(default_attributes)  # another way to set attributes
@@ -30,9 +31,11 @@ class ArrayWithAttrs(numpy.ndarray):
             "at": ufunc.at,
             "__call__": ufunc,
         }
-        output = ArrayWithAttrs(f[method](*(i.view(numpy.ndarray) for i in inputs), **kwargs))  # convert the inputs to np.ndarray to prevent recursion, call the function, then cast it back as ExampleTensor
+        # convert the inputs to np.ndarray to prevent recursion, call the function, then cast it back
+        output = ArrayWithAttrs(f[method](*(i.view(numpy.ndarray) for i in inputs), **kwargs))
         output.__dict__ = self.__dict__  # carry forward attributes
         return output
+
 
 class HDF5DatasetAdapter(ArrayAdapter):
     # TODO Just wrap h5py.Dataset directly, not via dask.array.
