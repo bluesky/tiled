@@ -165,7 +165,7 @@ properties:
           additionalProperties: false
           required:
             - authenticator
-            - name
+            - provider
           properties:
             provider:
               type: string
