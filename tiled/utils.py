@@ -8,6 +8,7 @@ import operator
 import os
 import sys
 import threading
+import numpy
 
 
 class ListView(collections.abc.Sequence):
@@ -483,12 +484,18 @@ def safe_json_dump_array(array):
     """
     import orjson
 
+
+    def default(content):
+        if isinstance(content[0], (numpy.str_, numpy.bytes_)):
+            return content.tolist()
+
+
     try:
         return orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY)
     except TypeError:
         # Not all numpy dtypes are supported by orjson.
         # Fall back to converting to a (possibly nested) Python list.
-        return orjson.dumps(array.tolist())
+        return orjson.dumps(array, default=default)
 
 
 class MissingDependency(ModuleNotFoundError):

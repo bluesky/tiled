@@ -17,8 +17,6 @@ from typing import Any, Optional
 import dateutil.tz
 import jmespath
 import msgpack
-import numpy
-import orjson
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
@@ -38,6 +36,7 @@ from ..utils import (
     SerializationError,
     UnsupportedShape,
     modules_available,
+    safe_json_dump_array,
 )
 from . import models
 from .authentication import get_current_user
@@ -555,11 +554,6 @@ class PatchedStreamingResponse(StreamingResponse):
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-def default(content):
-    if isinstance(content[0], (numpy.str_, numpy.bytes_)):
-        return content.tolist()
-
-
 class NumpySafeJSONResponse(JSONResponse):
     def __init__(self, *args, metrics, **kwargs):
         self.__metrics = metrics
@@ -567,12 +561,7 @@ class NumpySafeJSONResponse(JSONResponse):
 
     def render(self, content: Any) -> bytes:
         with record_timing(self.__metrics, "pack"):
-            try:
-                return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY)
-            except TypeError:
-                # Not all numpy dtypes are supported by orjson.
-                # Fall back to converting to a (possibly nested) Python list.
-                return orjson.dumps(content, default=default)
+            return safe_json_dump_array(content)
 
 
 def _fallback_msgpack_encoder(obj):
