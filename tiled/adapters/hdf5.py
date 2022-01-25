@@ -137,18 +137,18 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                     "HDF5 in general. Read more about that feature at "
                     "https://docs.h5py.org/en/stable/special.html. "
                     "Consider using a fixed-length field instead. "
-                    "Tiled will serve an empty placeholder."
+                    "Tiled will serve an empty placeholder, unless the "
+                    "object is of size 1, where it will attempt to repackage "
+                    "the data into a numpy array."
                 )
 
                 check_str_dtype = h5py.check_string_dtype(value.dtype)
                 if check_str_dtype.length is None:
+                    dataset_names = value.file[self._node.name + "/" + key][...][()]
                     if value.size == 1:
-                        dataset_name = value.file[self._node.name + "/" + key][...][()]
-                        arr = ArrayWithAttrs(numpy.array(dataset_name))
+                        arr = ArrayWithAttrs(numpy.array(dataset_names))
                         return HDF5DatasetAdapter(arr)
-                    else:
-                        #for each data point, add to array
-                        pass
+                return HDF5DatasetAdapter(ArrayWithAttrs(numpy.array([])))
                     #return HDF5DatasetAdapter(value)
             return HDF5DatasetAdapter(value)
 
