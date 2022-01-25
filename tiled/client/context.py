@@ -755,6 +755,7 @@ def context_from_tree(
     prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     username=None,
     auth_provider=None,
+    api_key=None,
     headers=None,
 ):
     from ..server.app import build_app
@@ -823,6 +824,7 @@ def context_from_tree(
         token_cache=token_cache,
         username=username,
         auth_provider=auth_provider,
+        api_key=api_key,
         prompt_for_reauthentication=prompt_for_reauthentication,
         app=app,
     )

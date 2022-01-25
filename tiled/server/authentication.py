@@ -26,13 +26,14 @@ with warnings.catch_warnings():
 from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
+from ..database.core import purge_expired
 from ..utils import SpecialUsers
 from .core import json_or_msgpack
 from .models import (
     AccessAndRefreshTokens,
-    APIKey,
     APIKeyParams,
     APIKeyResponse,
+    APIKeyWithPrincipal,
     APIKeyWithSecret,
     APIKeyWithSecretResponse,
     Identity,
@@ -180,7 +181,7 @@ def get_current_principal(
             hashed_secret = hashlib.sha256(secret).digest()
             # TODO Check expiry.
             api_key_orm = (
-                db.query(orm.APIKey)
+                db.query(purge_expired(orm.APIKey, db))
                 .filter(orm.APIKey.hashed_secret == hashed_secret)
                 .first()
             )
@@ -520,7 +521,7 @@ def revoke_session(
     db = get_sessionmaker(settings.database_uri)()
     # Find this session in the database.
     session = (
-        db.query(orm.Session)
+        db.query(purge_expired(orm.Session, db))
         .filter(orm.Session.uuid == uuid_module.UUID(hex=session_id))
         .first()
     )
@@ -544,7 +545,7 @@ def slide_session(refresh_token, settings, db):
         )
     # Find this session in the database.
     session = (
-        db.query(orm.Session)
+        db.query(purge_expired(orm.Session, db))
         .filter(orm.Session.uuid == uuid_module.UUID(hex=payload["sid"]))
         .first()
     )
@@ -568,7 +569,7 @@ def slide_session(refresh_token, settings, db):
     data = {
         "sub": principal.uuid.hex,
         "sub_typ": principal.type.value,
-        "scp": list(set([*role.scopes] for role in principal.roles)),
+        "scp": list(set().union(*[role.scopes for role in principal.roles])),
         "ids": [
             {"id": identity.id, "idp": identity.provider}
             for identity in principal.identities
@@ -636,12 +637,14 @@ def current_apikey_info(
     hashed_secret = hashlib.sha256(secret).digest()
     db = get_sessionmaker(settings.database_uri)()
     api_key_orm = (
-        db.query(orm.APIKey).filter(orm.APIKey.hashed_secret == hashed_secret).first()
+        db.query(purge_expired(orm.APIKey, db))
+        .filter(orm.APIKey.hashed_secret == hashed_secret)
+        .first()
     )
     return json_or_msgpack(
         request,
         APIKeyResponse(
-            data=APIKey(
+            data=APIKeyWithPrincipal(
                 principal=api_key_orm.principal.uuid,
                 expiration_time=api_key_orm.expiration_time,
                 note=api_key_orm.note,
@@ -666,7 +669,9 @@ def revoke_apikey(
     if principal is None:
         return None
     db = get_sessionmaker(settings.database_uri)()
-    api_key_orm = db.query(orm.APIKey).filter(orm.APIKey.uuid == uuid).first()
+    api_key_orm = (
+        db.query(purge_expired(orm.APIKey, db)).filter(orm.APIKey.uuid == uuid).first()
+    )
     if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
         raise HTTPException(
             404, f"The currently-authenticated {principal.type} has no such API key."

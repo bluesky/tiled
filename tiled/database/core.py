@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
@@ -109,3 +111,25 @@ def check_database(engine):
             f"The database {engine.url} has revision {revision} and "
             f"needs to be upgraded to revision {REQUIRED_REVISION}."
         )
+
+
+def purge_expired(cls, db):
+    """
+    Remove expired entries.
+
+    Return reference to cls, supporting usage like
+
+    >>> db.query(purge_expired(orm.APIKey, db))
+    """
+    now = datetime.now()
+    deleted = False
+    for obj in (
+        db.query(cls)
+        .filter(cls.expiration_time is not None)
+        .filter(cls.expiration_time < now)
+    ):
+        deleted = True
+        db.delete(obj)
+    if deleted:
+        db.commit()
+    return cls
