@@ -6,6 +6,7 @@ import sys
 import urllib.parse
 from functools import lru_cache, partial
 
+from ariadne.asgi import GraphQL
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -33,6 +34,7 @@ from .core import (
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
+from .graphql import schema as graphql_schema
 from .router import declare_search_router, router
 from .settings import get_settings
 
@@ -44,7 +46,7 @@ SENSITIVE_COOKIES = {
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
-
+GRAPHQL_URL = "graphql"
 
 def get_app(
     query_registry, compression_registry, include_routers=None, background_tasks=None
@@ -64,6 +66,8 @@ def get_app(
     app.include_router(router)
     for user_router in include_routers or []:
         app.include_router(user_router)
+
+    # app.add_route(GRAPHQL_URL, GraphQL(schema=schema, debug=True))
 
     @app.on_event("startup")
     async def startup_event():
