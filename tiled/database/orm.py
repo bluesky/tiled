@@ -29,7 +29,7 @@ class JSONList(TypeDecorator):
 
     """
 
-    impl = Text
+    impl = Unicode
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
