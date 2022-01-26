@@ -149,7 +149,7 @@ def build_app(
                     build_handle_credentials_route(authenticator, provider)
                 )
             elif mode == Mode.external:
-                authentication_router.post(f"/{provider}/code")(
+                authentication_router.get(f"/provider/{provider}/code")(
                     build_auth_code_route(authenticator, provider)
                 )
             else:
