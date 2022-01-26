@@ -6,6 +6,7 @@ import secrets
 import sys
 import urllib.parse
 from functools import lru_cache, partial
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,9 +45,9 @@ CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
 logger = logging.getLogger(__name__)
-# logger.setLevel("INFO")
+logger.setLevel("INFO")
 handler = logging.StreamHandler()
-# handler.setLevel("DEBUG")
+handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("%(message)s"))
 logger.addHandler(handler)
 
@@ -430,6 +431,7 @@ def app_factory():
     example) where only a module and instance or factory can be specified.
     """
     config_path = os.getenv("TILED_CONFIG", "config.yml")
+    logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
     from ..config import construct_build_app_kwargs, parse_configs
 
