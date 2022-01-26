@@ -102,7 +102,8 @@ class APIKeyAuthorizationHeader(APIKeyBase):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="PLACEHOLDER", auto_error=False)
 api_key_query = APIKeyQuery(name="api_key", auto_error=False)
 api_key_header = APIKeyAuthorizationHeader(
-    name="Authorization", description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'"
+    name="Authorization",
+    description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'",
 )
 api_key_cookie = APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
 

@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.types import Text, TypeDecorator
+from sqlalchemy.types import TypeDecorator
 
 from ..server.models import PrincipalType
 from .core import Base
