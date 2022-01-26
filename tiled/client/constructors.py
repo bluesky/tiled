@@ -209,7 +209,7 @@ def from_profile(name, structure_clients=None, **kwargs):
 
     List available profiles and the source filepaths from Python like:
 
-    >>> from tiled.client.profiles import list_profiles
+    >>> from tiled.profiles import list_profiles
     >>> list_profiles()
 
     or from a CLI like:
@@ -218,7 +218,7 @@ def from_profile(name, structure_clients=None, **kwargs):
 
     Or show the file contents like:
 
-    >>> from tiled.client.profiles import load_profiles
+    >>> from tiled.profiles import load_profiles
     >>> load_profiles()
 
     or from a CLI like:
