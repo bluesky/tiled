@@ -3,12 +3,11 @@ from datetime import datetime
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from .alembic_utils import temp_alembic_ini
-
-Base = declarative_base()
+from .base import Base
+from .orm import Identity, Principal, Role
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
@@ -18,9 +17,6 @@ ALL_REVISIONS = {"481830dd6c11"}
 
 
 def create_default_roles(engine):
-    # Avoid circular import.
-
-    from .orm import Role
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
@@ -134,3 +130,37 @@ def purge_expired(cls, db):
     if deleted:
         db.commit()
     return cls
+
+
+def create_user(db, identity_provider, id):
+    principal = Principal(type="user")
+    user_role = db.query(Role).filter(Role.name == "user").first()
+    principal.roles.append(user_role)
+    db.add(principal)
+    db.commit()
+    db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
+    identity = Identity(
+        provider=identity_provider,
+        id=id,
+        principal_id=principal.id,
+    )
+    db.add(identity)
+    db.commit()
+    return principal
+
+
+def make_admin_by_identity(db, identity_provider, id):
+    identity = (
+        db.query(Identity)
+        .filter(Identity.id == id)
+        .filter(Identity.provider == identity_provider)
+        .first()
+    )
+    if identity is None:
+        principal = create_user(db, identity_provider, id)
+    else:
+        principal = identity.principal
+    admin_role = db.query(Role).filter(Role.name == "admin").first()
+    principal.roles.append(admin_role)
+    db.commit()
+    return principal

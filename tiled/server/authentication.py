@@ -27,7 +27,7 @@ with warnings.catch_warnings():
 from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
-from ..database.core import purge_expired
+from ..database.core import create_user, purge_expired
 from ..utils import SpecialUsers
 from .core import json_or_msgpack
 from .models import (
@@ -301,19 +301,7 @@ def create_session(db, settings, identity_provider, id):
         # We have not. Make a new Principal and link this new Identity to it.
         # TODO Confirm that the user intends to create a new Principal here.
         # Give them the opportunity to link an existing Principal instead.
-        user_role = db.query(orm.Role).filter(orm.Role.name == "user").first()
-        principal = orm.Principal(type="user")
-        principal.roles.append(user_role)
-        db.add(principal)
-        db.commit()
-        db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
-        identity = orm.Identity(
-            provider=identity_provider,
-            id=id,
-            principal_id=principal.id,
-        )
-        db.add(identity)
-        db.commit()
+        principal = create_user(db, identity_provider, id)
     else:
         principal = identity.principal
     session = orm.Session(

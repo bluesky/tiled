@@ -13,12 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from ..authenticators import Mode
-from ..database.core import (
-    REQUIRED_REVISION,
-    UninitializedDatabase,
-    check_database,
-    initialize_database,
-)
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
@@ -279,17 +273,38 @@ def build_app(
 
         if settings.database_uri is not None:
             from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+
+            from ..database.core import (
+                REQUIRED_REVISION,
+                UninitializedDatabase,
+                check_database,
+                initialize_database,
+                make_admin_by_identity,
+            )
 
             engine = create_engine(settings.database_uri)
+            redacted_url = engine.url._replace(password="[redacted]")
             try:
                 check_database(engine)
             except UninitializedDatabase:
                 # Create tables and stamp (alembic) revision.
                 logger.info(
-                    f"Database {engine.url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
+                    f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
                 )
                 initialize_database(engine)
                 logger.info("Database initialized.")
+            else:
+                logger.info(f"Connected to existing database at {redacted_url}.")
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            db = SessionLocal()
+            for admin in authentication.get("admins", []):
+                logger.info(f"Ensuring that {admin} has role 'admin'")
+                make_admin_by_identity(
+                    db,
+                    identity_provider=admin["provider"],
+                    id=admin["id"],
+                )
 
     app.add_middleware(
         CompressionMiddleware,

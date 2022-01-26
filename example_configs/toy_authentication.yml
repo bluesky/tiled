@@ -7,6 +7,9 @@ authentication:
         alice: ${ALICE_PASSWORD}
         bob: ${BOB_PASSWORD}
         cara: ${CARA_PASSWORD}
+  admins:
+    - provider: toy
+      id: alice
 access_control:
   access_policy: tiled.adapters.mapping:SimpleAccessPolicy
   args:

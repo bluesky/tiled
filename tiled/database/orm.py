@@ -17,7 +17,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
 
 from ..server.models import PrincipalType
-from .core import Base
+from .base import Base
 
 
 class JSONList(TypeDecorator):

@@ -202,6 +202,21 @@ properties:
                     args:
                       service: "custom_service"
                     ```
+      admins:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - provider
+            - id
+          properties:
+            provider:
+              type: string
+            id:
+              type: string
+        description: |
+          Give users with these identities 'admin' Role.
       secret_keys:
         type: array
         items:
