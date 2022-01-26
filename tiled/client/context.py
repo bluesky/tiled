@@ -636,9 +636,7 @@ Navigate web browser to this address to obtain access code:
                 identity["provider"]: identity["id"] for identity in identities
             }
             print(
-                confirmation_message.format(
-                    username=identities_by_provider[spec["provider"]]
-                )
+                confirmation_message.format(id=identities_by_provider[spec["provider"]])
             )
         return tokens
 
@@ -665,7 +663,7 @@ Navigate web browser to this address to obtain access code:
             raise
 
     def whoami(self):
-        "Return username."
+        "Return information about the currently-authenticated user or service."
         return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])[
             "data"
         ]

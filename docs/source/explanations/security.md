@@ -255,7 +255,7 @@ authentication:
       client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
       token_uri: ...
       authorization_endpoint: ...
-      redirect_uri: ...  # https://{YOUR_TILED_SERVER_ADDRESS}/auth/code
+      redirect_uri: ...  # https://{YOUR_TILED_SERVER_ADDRESS}/provider/{some-oidc-service}/auth/code
       # These come from the OIDC provider as described above.
       public_keys:
         - kty: ...
@@ -264,7 +264,7 @@ authentication:
           kid: ...
           n: ...
           alg: ...
-      confirmation_message: "You have logged with ... as {username}."
+      confirmation_message: "You have logged with ... as {id}."
 ```
 
 Here is an example for ORCID authentication running at
@@ -278,7 +278,7 @@ authentication:
     args:
       client_id: APP-0ROS9DU5F717F7XN  # obtained from ORCID for tiled-demo.blueskyproject.io; not secret
       client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
-      redirect_uri: https://tiled-demo.blueskyproject.io/auth/code
+      redirect_uri: https://tiled-demo.blueskyproject.io/auth/provider/orcid/code
       token_uri: "https://orcid.org/oauth/token"
       authorization_endpoint: "https://orcid.org/oauth/authorize?client_id={client_id}&response_type=code&scope=openid&redirect_uri={redirect_uri}"
       # These values come from https://orcid.org/.well-known/openid-configuration.
@@ -290,7 +290,7 @@ authentication:
           kid: ...
           n: ...
           alg: RS256
-      confirmation_message: "You have logged with ORCID as {username}."
+      confirmation_message: "You have logged with ORCID as {id}."
 ```
 
 ### Toy examples for testing and development
