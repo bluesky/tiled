@@ -31,7 +31,7 @@ def create_default_roles(engine):
     db.add(
         Role(
             name="admin",
-            description="Default Role for services.",
+            description="Role with elevated privileges.",
             scopes=[
                 "read:metadata",
                 "read:data",
