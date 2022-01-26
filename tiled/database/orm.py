@@ -75,9 +75,9 @@ class Timestamped:
     forensics.
     """
 
-    time_created = Column(DateTime(timezone=True), server_default=func.now())
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
     time_updated = Column(
-        DateTime(timezone=True), onupdate=func.now()
+        DateTime(timezone=False), onupdate=func.now()
     )  # null until first update
 
     def __repr__(self):
@@ -160,8 +160,8 @@ class APIKey(Timestamped, Base):
         nullable=False,
         default=lambda: uuid_module.uuid4(),
     )
-    expiration_time = Column(DateTime(timezone=True), nullable=True)
-    last_activity = Column(DateTime(timezone=True), nullable=True)
+    expiration_time = Column(DateTime(timezone=False), nullable=True)
+    last_activity = Column(DateTime(timezone=False), nullable=True)
     note = Column(Unicode(1023), nullable=True)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     scopes = Column(JSONList(511), nullable=False)
@@ -192,9 +192,9 @@ class Session(Timestamped, Base):
         nullable=False,
         default=lambda: uuid_module.uuid4(),
     )
-    time_last_refreshed = Column(DateTime(timezone=True), nullable=True)
+    time_last_refreshed = Column(DateTime(timezone=False), nullable=True)
     refresh_count = Column(Integer, nullable=False, default=0)
-    expiration_time = Column(DateTime(timezone=True), nullable=False)
+    expiration_time = Column(DateTime(timezone=False), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
 

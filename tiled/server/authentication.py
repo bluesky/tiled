@@ -317,7 +317,7 @@ def create_session(db, settings, identity_provider, id):
         principal = identity.principal
     session = orm.Session(
         principal_id=principal.id,
-        expiration_time=datetime.now() + settings.session_max_age,
+        expiration_time=datetime.utcnow() + settings.session_max_age,
     )
     db.add(session)
     db.commit()
@@ -415,7 +415,7 @@ def generate_apikey(db, principal, apikey_params, request):
             ),
         )
     if apikey_params.lifetime is not None:
-        expiration_time = datetime.now() + timedelta(seconds=apikey_params.lifetime)
+        expiration_time = datetime.utcnow() + timedelta(seconds=apikey_params.lifetime)
     else:
         expiration_time = None
     secret = secrets.token_bytes(32)
@@ -565,7 +565,7 @@ def slide_session(refresh_token, settings, db):
         .filter(orm.Session.uuid == uuid_module.UUID(hex=payload["sid"]))
         .first()
     )
-    now = datetime.now()
+    now = datetime.utcnow()
     # This token is *signed* so we know that the information came from us.
     # If the Session is forgotten or revoked or expired, do not allow refresh.
     if (session is None) or session.revoked or (session.expiration_time < now):

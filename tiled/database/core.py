@@ -122,7 +122,7 @@ def purge_expired(cls, db):
 
     >>> db.query(purge_expired(orm.APIKey, db))
     """
-    now = datetime.now()
+    now = datetime.utcnow()
     deleted = False
     for obj in (
         db.query(cls)

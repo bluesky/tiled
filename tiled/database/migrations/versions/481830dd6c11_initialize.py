@@ -32,8 +32,8 @@ depends_on = None
 def upgrade():
     op.create_table(
         "principals",
-        Column("time_created", DateTime(timezone=True), server_default=func.now()),
-        Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
+        Column("time_created", DateTime(timezone=False), server_default=func.now()),
+        Column("time_updated", DateTime(timezone=False), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
         Column(
             "uuid",
@@ -46,16 +46,16 @@ def upgrade():
     )
     op.create_table(
         "identities",
-        Column("time_created", DateTime(timezone=True), server_default=func.now()),
-        Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
+        Column("time_created", DateTime(timezone=False), server_default=func.now()),
+        Column("time_updated", DateTime(timezone=False), onupdate=func.now()),
         Column("id", Unicode(255), primary_key=True, nullable=False),
         Column("provider", Unicode(255), primary_key=True, nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id")),
     )
     op.create_table(
         "roles",
-        Column("time_created", DateTime(timezone=True), server_default=func.now()),
-        Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
+        Column("time_created", DateTime(timezone=False), server_default=func.now()),
+        Column("time_updated", DateTime(timezone=False), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
         Column("name", Unicode(255), index=True, unique=True),
         Column("description", Unicode(1023), nullable=True),
@@ -68,8 +68,8 @@ def upgrade():
     )
     op.create_table(
         "api_keys",
-        Column("time_created", DateTime(timezone=True), server_default=func.now()),
-        Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
+        Column("time_created", DateTime(timezone=False), server_default=func.now()),
+        Column("time_updated", DateTime(timezone=False), onupdate=func.now()),
         Column(
             "uuid",
             UUID,
@@ -84,16 +84,16 @@ def upgrade():
             index=True,
             nullable=False,
         ),
-        Column("last_activity", DateTime(timezone=True), nullable=True),
-        Column("expiration_time", DateTime(timezone=True), nullable=True),
+        Column("last_activity", DateTime(timezone=False), nullable=True),
+        Column("expiration_time", DateTime(timezone=False), nullable=True),
         Column("note", Unicode(1023), nullable=True),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
         Column("scopes", JSONList(511), nullable=False),
     )
     op.create_table(
         "sessions",
-        Column("time_created", DateTime(timezone=True), server_default=func.now()),
-        Column("time_updated", DateTime(timezone=True), onupdate=func.now()),
+        Column("time_created", DateTime(timezone=False), server_default=func.now()),
+        Column("time_updated", DateTime(timezone=False), onupdate=func.now()),
         Column("id", Integer, primary_key=True, index=True, autoincrement=True),
         Column(
             "uuid",
@@ -102,9 +102,9 @@ def upgrade():
             nullable=False,
             default=lambda: uuid.uuid4(),
         ),
-        Column("time_last_refreshed", DateTime(timezone=True), nullable=True),
+        Column("time_last_refreshed", DateTime(timezone=False), nullable=True),
         Column("refresh_count", Integer, nullable=False, default=0),
-        Column("expiration_time", DateTime(timezone=True), nullable=False),
+        Column("expiration_time", DateTime(timezone=False), nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id"), nullable=False),
         Column("revoked", Boolean, default=False, nullable=False),
     )
