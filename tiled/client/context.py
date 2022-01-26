@@ -635,8 +635,10 @@ Navigate web browser to this address to obtain access code:
             identities_by_provider = {
                 identity["provider"]: identity["id"] for identity in identities
             }
-            identities = confirmation_message.format(
-                username=identities_by_provider[spec["provider"]]
+            print(
+                confirmation_message.format(
+                    username=identities_by_provider[spec["provider"]]
+                )
             )
         return tokens
 
