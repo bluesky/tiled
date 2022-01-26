@@ -50,21 +50,25 @@ class UUID(TypeDecorator):
     """Represents a UUID in a dialect-agnostic way
 
     Postgres has built-in support but SQLite does not, so we
-    just use a generic binary column.
+    just use a 36-character Unicode column.
+
+    We could use 16-byte LargeBinary, which would be more compact
+    but we decided it was worth the cost to make the content easily
+    inspectable by external database management and development tools.
     """
 
-    impl = LargeBinary(16)
+    impl = Unicode(36)
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is not None:
             if not isinstance(value, uuid_module.UUID):
                 raise ValueError(f"Expected uuid.UUID, got {type(value)}")
-            return value.bytes
+            return str(value)
 
     def process_result_value(self, value, dialect):
         if value is not None:
-            return uuid_module.UUID(bytes=value)
+            return uuid_module.UUID(hex=value)
 
 
 class Timestamped:
