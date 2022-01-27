@@ -149,6 +149,9 @@ def build_app(
                 authentication_router.get(f"/provider/{provider}/code")(
                     build_auth_code_route(authenticator, provider)
                 )
+                authentication_router.post(f"/provider/{provider}/code")(
+                    build_auth_code_route(authenticator, provider)
+                )
             else:
                 raise ValueError(f"unknown authentication mode {mode}")
             for custom_router in getattr(authenticator, "include_routers", []):
