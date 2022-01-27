@@ -260,8 +260,11 @@ class SAMLAuthenticator:
         router = APIRouter()
 
         if not modules_available("onelogin"):
+            # The PyPI package name is 'python3-saml'
+            # but it imports as 'onelogin'.
+            # https://github.com/onelogin/python3-saml
             raise ModuleNotFoundError(
-                "This SAMLAuthenticator requires the module 'oneline' to be installed."
+                "This SAMLAuthenticator requires 'python3-saml' to be installed."
             )
 
         from onelogin.saml2.auth import OneLogin_Saml2_Auth
