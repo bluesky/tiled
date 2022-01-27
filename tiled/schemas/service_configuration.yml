@@ -202,7 +202,7 @@ properties:
                     args:
                       service: "custom_service"
                     ```
-      admins:
+      tiled_admins:
         type: array
         items:
           type: object
