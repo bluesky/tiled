@@ -1,3 +1,4 @@
+import io
 import time
 from datetime import timedelta
 
@@ -157,3 +158,34 @@ def test_revoke_session(enter_password, config):
     with pytest.raises(CannotRefreshAuthentication):
         # Set prompt=False so that this raises instead of interactively prompting.
         client.context.reauthenticate(prompt=False)
+
+
+def test_multiple_providers(enter_password, config, monkeypatch):
+    config["authentication"]["providers"].extend(
+        [
+            {
+                "provider": "second",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
+            },
+            {
+                "provider": "third",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {
+                    # Duplicate 'cara' username.
+                    "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
+                },
+            },
+        ],
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
+    with enter_password("secret1"):
+        client = from_config(config, username="alice", token_cache={})
+    client.context.whoami()
+    monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
+    with enter_password("secret3"):
+        client = from_config(config, username="cara", token_cache={})
+    monkeypatch.setattr("sys.stdin", io.StringIO("3\n"))
+    with enter_password("secret5"):
+        client = from_config(config, username="cara", token_cache={})
+    client.context.whoami()
