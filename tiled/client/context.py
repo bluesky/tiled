@@ -556,7 +556,7 @@ class Context:
                     for i, spec in enumerate(providers, start=1):
                         print(f"{i} - {spec['provider']}")
                     raw_choice = input(
-                        "Choose an authenticaiton provider (or press Enter to escape): "
+                        "Choose an authentication provider (or press Enter to escape): "
                     )
                     if not raw_choice:
                         print("No authentication provider chosen. Failed.")
@@ -567,7 +567,7 @@ class Context:
                         print("Choice must be a number.")
                         continue
                     try:
-                        spec = providers[1 + choice]
+                        spec = providers[choice - 1]
                     except IndexError:
                         print(f"Choice must be a number 1 through {len(providers)}.")
                         continue
