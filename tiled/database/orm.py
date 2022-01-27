@@ -165,7 +165,7 @@ class APIKey(Timestamped, Base):
         default=lambda: uuid_module.uuid4(),
     )
     expiration_time = Column(DateTime(timezone=False), nullable=True)
-    last_activity = Column(DateTime(timezone=False), nullable=True)
+    latest_activity = Column(DateTime(timezone=False), nullable=True)
     note = Column(Unicode(1023), nullable=True)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     scopes = Column(JSONList(511), nullable=False)
