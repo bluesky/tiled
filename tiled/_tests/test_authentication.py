@@ -146,13 +146,13 @@ def test_revoke_session(enter_password, config):
         client = from_config(config, username="alice", token_cache={})
     # Get the current session ID.
     info = client.context.whoami()
-    (session,) = info["sessions"]
+    (session,) = info["attributes"]["sessions"]
     assert not session["revoked"]
     # Revoke it.
     client.context.revoke_session(session["uuid"])
     # Update info and confirm it is listed as revoked.
     updated_info = client.context.whoami()
-    (updated_session,) = updated_info["sessions"]
+    (updated_session,) = updated_info["attributes"]["sessions"]
     assert updated_session["revoked"]
     # Confirm it cannot be refreshed.
     with pytest.raises(CannotRefreshAuthentication):

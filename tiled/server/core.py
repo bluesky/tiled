@@ -352,7 +352,9 @@ def construct_resource(
                 "search": f"{base_url}node/search/{path_str}",
                 "full": f"{base_url}node/full/{path_str}",
             }
-        resource = schemas.Resource[schemas.NodeLinks, schemas.NodeMeta](**d)
+        resource = schemas.Resource[
+            schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
+        ](**d)
     else:
         links = {"self": f"{base_url}node/metadata/{path_str}"}
         structure = {}
@@ -433,7 +435,9 @@ def construct_resource(
         }
         if not omit_links:
             d["links"] = links
-        resource = schemas.Resource[ResourceLinksT, schemas.EmptyDict](**d)
+        resource = schemas.Resource[
+            schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict
+        ](**d)
     return resource
 
 

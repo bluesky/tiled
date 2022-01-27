@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
-from typing import Dict, Generic, List, Optional, Tuple, TypeVar
+from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union
 
 import pydantic
 import pydantic.dataclasses
@@ -75,6 +75,7 @@ class NodeAttributes(pydantic.BaseModel):
     # sorting: Optional[List[Tuple[str, int]]]
 
 
+AttributesT = TypeVar("AttributesT")
 ResourceMetaT = TypeVar("ResourceMetaT")
 ResourceLinksT = TypeVar("ResourceLinksT")
 
@@ -130,10 +131,12 @@ class NodeMeta(pydantic.BaseModel):
     count: int
 
 
-class Resource(pydantic.generics.GenericModel, Generic[ResourceLinksT, ResourceMetaT]):
+class Resource(
+    pydantic.generics.GenericModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]
+):
     "A JSON API Resource"
-    id: str
-    attributes: NodeAttributes
+    id: Union[str, uuid.UUID]
+    attributes: AttributesT
     links: Optional[ResourceLinksT]
     meta: Optional[ResourceMetaT]
 
@@ -204,6 +207,13 @@ class Role(pydantic.BaseModel, orm_mode=True):
     # principals
 
 
+class APIKeyAttributes(pydantic.BaseModel):
+    principal: uuid.UUID
+    expiration_time: Optional[datetime]
+    note: Optional[pydantic.constr(max_length=255)]
+    scopes: List[str]
+
+
 class APIKey(pydantic.BaseModel, orm_mode=True):
     uuid: uuid.UUID
     expiration_time: Optional[datetime]
@@ -211,29 +221,8 @@ class APIKey(pydantic.BaseModel, orm_mode=True):
     scopes: List[str]
 
 
-class APIKeyWithPrincipal(pydantic.BaseModel):
-    uuid: uuid.UUID
-    principal: uuid.UUID
-    expiration_time: Optional[datetime]
-    note: Optional[pydantic.constr(max_length=255)]
-    scopes: List[str]
-
-
-class APIKeyWithSecret(pydantic.BaseModel):
-    uuid: uuid.UUID
-    principal: uuid.UUID
-    expiration_time: Optional[datetime]
-    note: Optional[pydantic.constr(max_length=255)]
-    scopes: List[str]
+class APIKeyWithSecretAttributes(APIKeyAttributes):
     secret: str  # hex-encoded bytes
-
-
-class APIKeyResponse(pydantic.BaseModel):
-    data: APIKeyWithPrincipal
-
-
-class APIKeyWithSecretResponse(pydantic.BaseModel):
-    data: APIKeyWithSecret
 
 
 class Session(pydantic.BaseModel, orm_mode=True):
@@ -252,11 +241,10 @@ class Session(pydantic.BaseModel, orm_mode=True):
     revoked: bool
 
 
-class Principal(pydantic.BaseModel, orm_mode=True):
+class PrincipalAttributes(pydantic.BaseModel, orm_mode=True):
     "Represents a User or Service"
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
-    uuid: uuid.UUID
     type: PrincipalType
     identities: List[Identity] = []
     roles: List[Role] = []
@@ -264,8 +252,8 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     sessions: List[Session] = []
 
 
-class WhoAmI(pydantic.BaseModel):
-    data: Principal
+class Principal(PrincipalAttributes):
+    uuid: uuid.UUID
 
 
 class APIKeyParams(pydantic.BaseModel):

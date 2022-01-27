@@ -224,14 +224,18 @@ def declare_search_router(query_registry):
     router.get(
         "/node/search",
         response_model=schemas.Response[
-            List[schemas.Resource[dict, dict]], schemas.PaginationLinks, dict
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
         ],
         include_in_schema=False,
     )(node_search)
     router.get(
         "/node/search/{path:path}",
         response_model=schemas.Response[
-            List[schemas.Resource[dict, dict]], schemas.PaginationLinks, dict
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
         ],
     )(node_search)
     return router
@@ -239,7 +243,9 @@ def declare_search_router(query_registry):
 
 @router.get(
     "/node/metadata/{path:path}",
-    response_model=schemas.Response[schemas.Resource[dict, dict], dict, dict],
+    response_model=schemas.Response[
+        schemas.Resource[schemas.NodeAttributes, dict, dict], dict, dict
+    ],
 )
 async def node_metadata(
     request: Request,

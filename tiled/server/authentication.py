@@ -5,7 +5,7 @@ import secrets
 import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.openapi.models import APIKey, APIKeyIn
@@ -29,20 +29,8 @@ from pydantic import BaseModel, BaseSettings
 from ..database import orm
 from ..database.core import create_user, purge_expired
 from ..utils import SpecialUsers
+from . import schemas
 from .core import json_or_msgpack
-from .schemas import (
-    AccessAndRefreshTokens,
-    APIKeyParams,
-    APIKeyResponse,
-    APIKeyWithPrincipal,
-    APIKeyWithSecret,
-    APIKeyWithSecretResponse,
-    Identity,
-    Principal,
-    RefreshToken,
-    Session,
-    WhoAmI,
-)
 from .settings import get_sessionmaker, get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
@@ -203,7 +191,7 @@ def get_current_principal(
                 .first()
             )
             if api_key_orm is not None:
-                principal = Principal.from_orm(api_key_orm.principal)
+                principal = schemas.Principal.from_orm(api_key_orm.principal)
                 scopes = api_key_orm.scopes
                 if "inherit" in scopes:
                     # The scope "inherit" is a metascope that confers all the
@@ -239,11 +227,11 @@ def get_current_principal(
                 status_code=401,
                 detail="Access token has expired. Refresh token.",
             )
-        principal = Principal(
+        principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=payload["sub"]),
             type=payload["sub_typ"],
             identities=[
-                Identity(id=identity["id"], provider=identity["idp"])
+                schemas.Identity(id=identity["id"], provider=identity["idp"])
                 for identity in payload["ids"]
             ],
         )
@@ -313,18 +301,16 @@ def create_session(db, settings, identity_provider, id):
     db.add(session)
     db.commit()
     db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
-    session_model = Session.from_orm(session)
-    principal_model = Principal.from_orm(principal)
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
     data = {
-        "sub": principal_model.uuid.hex,
-        "sub_typ": principal_model.type.value,
+        "sub": principal.uuid.hex,
+        "sub_typ": principal.type.value,
         "scp": list(set().union(*[role.scopes for role in principal.roles])),
         "ids": [
             {"id": identity.id, "idp": identity.provider}
-            for identity in principal_model.identities
+            for identity in principal.identities
         ],
     }
     access_token = create_access_token(
@@ -333,7 +319,7 @@ def create_session(db, settings, identity_provider, id):
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
     refresh_token = create_refresh_token(
-        session_id=session_model.uuid.hex,
+        session_id=session.uuid.hex,
         expires_delta=settings.refresh_token_max_age,
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
@@ -423,15 +409,19 @@ def generate_apikey(db, principal, apikey_params, request):
     db.refresh(new_key)
     return json_or_msgpack(
         request,
-        APIKeyWithSecretResponse(
-            data=APIKeyWithSecret(
-                secret=secret.hex(),
-                principal=new_key.principal.uuid,
-                expiration_time=new_key.expiration_time,
-                note=new_key.note,
-                scopes=new_key.scopes,
-                uuid=new_key.uuid,
-            )
+        schemas.Response[
+            schemas.Resource[schemas.APIKeyWithSecretAttributes, dict, dict], dict, dict
+        ](
+            data={
+                "id": new_key.uuid,
+                "attributes": schemas.APIKeyWithSecretAttributes(
+                    secret=secret.hex(),
+                    principal=new_key.principal.uuid,
+                    expiration_time=new_key.expiration_time,
+                    note=new_key.note,
+                    scopes=new_key.scopes,
+                ),
+            }
         ),
     )
 
@@ -439,7 +429,12 @@ def generate_apikey(db, principal, apikey_params, request):
 base_authentication_router = APIRouter()
 
 
-@base_authentication_router.get("/principal")
+@base_authentication_router.get(
+    "/principal",
+    response_model=schemas.Response[
+        List[schemas.Resource[schemas.PrincipalAttributes, dict, dict]], dict, dict
+    ],
+)
 def principal_list(
     request: Request,
     settings: BaseSettings = Depends(get_settings),
@@ -449,18 +444,29 @@ def principal_list(
     # TODO Pagination
     request.state.endpoint = "auth"
     db = get_sessionmaker(settings.database_uri)()
-    principals = db.query(orm.Principal).all()
-    schemas = []
-    for principal_orm in principals:
-        principal_model = Principal.from_orm(principal_orm)
-        schemas.append(principal_model)
+    principal_orms = db.query(orm.Principal).all()
     return json_or_msgpack(
         request,
-        {"data": [schemas]},
+        schemas.Response[
+            List[schemas.Resource[schemas.PrincipalAttributes, dict, dict]], dict, dict
+        ](
+            data=[
+                {
+                    "attributes": schemas.PrincipalAttributes.from_orm(principal_orm),
+                    "id": principal_orm.uuid,
+                }
+                for principal_orm in principal_orms
+            ]
+        ),
     )
 
 
-@base_authentication_router.get("/principal/{uuid}")
+@base_authentication_router.get(
+    "/principal/{uuid}",
+    response_model=schemas.Response[
+        schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
+    ],
+)
 def principal(
     request: Request,
     uuid: uuid_module.UUID,
@@ -470,23 +476,34 @@ def principal(
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
     db = get_sessionmaker(settings.database_uri)()
-    principal = db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
-    if principal is None:
+    principal_orm = db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
+    if principal_orm is None:
         raise HTTPException(
             404, f"Principal {uuid} does not exist or insufficient permissions."
         )
-    principal_model = Principal.from_orm(principal)
     return json_or_msgpack(
         request,
-        {"data": principal_model.dict()},
+        schemas.Response[
+            schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
+        ](
+            data={
+                "attributes": schemas.PrincipalAttributes.from_orm(principal_orm),
+                "id": principal_orm.uuid,
+            }
+        ),
     )
 
 
-@base_authentication_router.post("/principal/{uuid}/apikey")
+@base_authentication_router.post(
+    "/principal/{uuid}/apikey",
+    response_model=schemas.Response[
+        schemas.Resource[schemas.APIKeyWithSecretAttributes, dict, dict], dict, dict
+    ],
+)
 def apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
-    apikey_params: APIKeyParams,
+    apikey_params: schemas.APIKeyParams,
     principal=Security(get_current_principal, scopes=["admin:apikeys"]),
     settings: BaseSettings = Depends(get_settings),
 ):
@@ -502,11 +519,11 @@ def apikey_for_principal(
 
 
 @base_authentication_router.post(
-    "/session/refresh", response_model=AccessAndRefreshTokens
+    "/session/refresh", response_model=schemas.AccessAndRefreshTokens
 )
 def refresh_session(
     request: Request,
-    refresh_token: RefreshToken,
+    refresh_token: schemas.RefreshToken,
     settings: BaseSettings = Depends(get_settings),
 ):
     "Obtain a new access token and refresh token."
@@ -520,7 +537,7 @@ def refresh_session(
 def revoke_session(
     session_id: str,  # from path parameter
     request: Request,
-    principal: Principal = Security(get_current_principal, scopes=[]),
+    principal: schemas.Principal = Security(get_current_principal, scopes=[]),
     settings: BaseSettings = Depends(get_settings),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
@@ -572,7 +589,7 @@ def slide_session(refresh_token, settings, db):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
-    principal = Principal.from_orm(session.principal)
+    principal = schemas.Principal.from_orm(session.principal)
     data = {
         "sub": principal.uuid.hex,
         "sub_typ": principal.type.value,
@@ -601,10 +618,15 @@ def slide_session(refresh_token, settings, db):
     }
 
 
-@base_authentication_router.post("/apikey")
+@base_authentication_router.post(
+    "/apikey",
+    response_model=schemas.Response[
+        schemas.Resource[schemas.APIKeyWithSecretAttributes, dict, dict], dict, dict
+    ],
+)
 def new_apikey(
     request: Request,
-    apikey_params: APIKeyParams,
+    apikey_params: schemas.APIKeyParams,
     principal=Security(get_current_principal, scopes=["apikeys"]),
     settings: BaseSettings = Depends(get_settings),
 ):
@@ -623,7 +645,12 @@ def new_apikey(
     return generate_apikey(db, principal_orm, apikey_params, request)
 
 
-@base_authentication_router.get("/apikey")
+@base_authentication_router.get(
+    "/apikey",
+    response_model=schemas.Response[
+        schemas.Resource[schemas.APIKeyAttributes, dict, dict], dict, dict
+    ],
+)
 def current_apikey_info(
     request: Request,
     api_key: str = Depends(get_api_key),
@@ -650,14 +677,18 @@ def current_apikey_info(
     )
     return json_or_msgpack(
         request,
-        APIKeyResponse(
-            data=APIKeyWithPrincipal(
-                principal=api_key_orm.principal.uuid,
-                expiration_time=api_key_orm.expiration_time,
-                note=api_key_orm.note,
-                scopes=api_key_orm.scopes,
-                uuid=api_key_orm.uuid,
-            )
+        schemas.Response[
+            schemas.Resource[schemas.APIKeyAttributes, dict, dict], dict, dict
+        ](
+            data={
+                "attributes": schemas.APIKeyAttributes(
+                    principal=api_key_orm.principal.uuid,
+                    expiration_time=api_key_orm.expiration_time,
+                    note=api_key_orm.note,
+                    scopes=api_key_orm.scopes,
+                    uuid=api_key_orm.uuid,
+                )
+            }
         ),
     )
 
@@ -688,7 +719,12 @@ def revoke_apikey(
     return Response(status_code=204)
 
 
-@base_authentication_router.get("/whoami")
+@base_authentication_router.get(
+    "/whoami",
+    response_model=schemas.Response[
+        schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
+    ],
+)
 def whoami(
     request: Request,
     principal=Security(get_current_principal, scopes=[]),
@@ -705,10 +741,16 @@ def whoami(
     principal_orm = (
         db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
     )
-    principal_model = Principal.from_orm(principal_orm)
     return json_or_msgpack(
         request,
-        WhoAmI(data=principal_model),
+        schemas.Response[
+            schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
+        ](
+            data={
+                "id": principal_orm.uuid,
+                "attributes": schemas.PrincipalAttributes.from_orm(principal_orm),
+            }
+        ),
     )
 
 
