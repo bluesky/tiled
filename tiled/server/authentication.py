@@ -212,6 +212,8 @@ def get_current_principal(
                     scopes.extend(
                         set().union(*[role.scopes for role in principal.roles])
                     )
+                api_key_orm.latest_activity = datetime.utcnow()
+                db.commit()
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
         else:
