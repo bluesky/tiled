@@ -370,9 +370,14 @@ def build_auth_code_route(authenticator, provider):
         username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        return await asyncio.get_running_loop().run_in_executor(
+        tokens = await asyncio.get_running_loop().run_in_executor(
             None, create_session, settings, provider, username
         )
+        # Show only the refresh_token, which is what the user should
+        # paste into a terminal-based client.
+        # In the future for web apps we may want this to be optional,
+        # controlled by a query parameter (if it's possible to inject that).
+        return tokens["refresh_token"]
 
     return auth_code
 
