@@ -221,14 +221,26 @@ def declare_search_router(query_registry):
 
     # Register the search route.
     router = APIRouter()
-    router.get("/node/search", response_model=models.Response, include_in_schema=False)(
-        node_search
-    )
-    router.get("/node/search/{path:path}", response_model=models.Response)(node_search)
+    router.get(
+        "/node/search",
+        response_model=models.Response[
+            List[models.Resource[dict, dict]], models.PaginationLinks, dict
+        ],
+        include_in_schema=False,
+    )(node_search)
+    router.get(
+        "/node/search/{path:path}",
+        response_model=models.Response[
+            List[models.Resource[dict, dict]], models.PaginationLinks, dict
+        ],
+    )(node_search)
     return router
 
 
-@router.get("/node/metadata/{path:path}", response_model=models.Response)
+@router.get(
+    "/node/metadata/{path:path}",
+    response_model=models.Response[models.Resource[dict, dict], dict, dict],
+)
 async def node_metadata(
     request: Request,
     path: str,

@@ -352,13 +352,16 @@ def construct_resource(
                 "search": f"{base_url}node/search/{path_str}",
                 "full": f"{base_url}node/full/{path_str}",
             }
-        resource = models.Resource(**d)
+        resource = models.Resource[models.NodeLinks, models.NodeMeta](**d)
     else:
         links = {"self": f"{base_url}node/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Tree and not values.
+            ResourceLinksT = models.resource_links_type_by_structure_family[
+                entry.structure_family
+            ]
             links.update(
                 {
                     link: template.format(base_url=base_url, path=path_str)
@@ -421,13 +424,16 @@ def construct_resource(
                         "partition"
                     ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
             attributes["structure"] = structure
+        else:
+            # We only have entry names, not structure_family, so
+            ResourceLinksT = models.SelfLinkOnly
         d = {
             "id": path_parts[-1],
             "attributes": models.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = links
-        resource = models.Resource(**d)
+        resource = models.Resource[ResourceLinksT, models.EmptyDict](**d)
     return resource
 
 

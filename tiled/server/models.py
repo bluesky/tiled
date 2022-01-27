@@ -1,13 +1,15 @@
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
+from typing import Dict, Generic, List, Optional, Tuple, TypeVar
 
 import pydantic
 import pydantic.dataclasses
 import pydantic.generics
 
 DataT = TypeVar("DataT")
+LinksT = TypeVar("LinksT")
+MetaT = TypeVar("MetaT")
 
 
 class Error(pydantic.BaseModel):
@@ -15,11 +17,11 @@ class Error(pydantic.BaseModel):
     message: str
 
 
-class Response(pydantic.generics.GenericModel, Generic[DataT]):
+class Response(pydantic.generics.GenericModel, Generic[DataT, LinksT, MetaT]):
     data: Optional[DataT]
     error: Optional[Error]
-    meta: Optional[dict]
-    links: Optional[dict]
+    links: Optional[LinksT]
+    meta: Optional[MetaT]
 
     @pydantic.validator("error", always=True)
     def check_consistency(cls, v, values):
@@ -28,6 +30,14 @@ class Response(pydantic.generics.GenericModel, Generic[DataT]):
         if v is None and values.get("data") is None:
             raise ValueError("must provide data or error")
         return v
+
+
+class PaginationLinks(pydantic.BaseModel):
+    self: str
+    next: str
+    prev: str
+    first: str
+    last: str
 
 
 class EntryFields(str, enum.Enum):
@@ -49,21 +59,83 @@ class StructureFamilies(str, enum.Enum):
     xarray_dataset = "xarray_dataset"
 
 
+class Structure(pydantic.BaseModel):
+    micro: Optional[dict]
+    macro: Optional[dict]
+
+
 class NodeAttributes(pydantic.BaseModel):
     structure_family: Optional[StructureFamilies]
     specs: Optional[List[str]]
     metadata: Optional[dict]  # free-form, user-specified dict
-    structure: Optional[Any]  # TODO Figure out how to deal with dataclasses in FastAPI
+    structure: Optional[Structure]
     count: Optional[int]
-    sorting: Optional[List[Tuple[str, int]]]
+    sorting: Optional[List[Tuple]]
+    # This seems to hit a bug or limitation in OpenAPI.
+    # sorting: Optional[List[Tuple[str, int]]]
 
 
-class Resource(pydantic.BaseModel):
+ResourceMetaT = TypeVar("ResourceMetaT")
+ResourceLinksT = TypeVar("ResourceLinksT")
+
+
+class SelfLinkOnly(pydantic.BaseModel):
+    self: str
+
+
+class NodeLinks(pydantic.BaseModel):
+    self: str
+    search: str
+    full: str
+
+
+class ArrayLinks(pydantic.BaseModel):
+    self: str
+    full: str
+    block: str
+
+
+class DataFrameLinks(pydantic.BaseModel):
+    self: str
+    full: str
+    partition: str
+
+
+class XarrayDataArrayLinks(pydantic.BaseModel):
+    self: str
+    full_variable: str
+
+
+class XarrayDatasetLinks(pydantic.BaseModel):
+    self: str
+    full_variable: str
+    full_coord: str
+    full_dataset: str
+
+
+resource_links_type_by_structure_family = {
+    "node": NodeLinks,
+    "array": ArrayLinks,
+    "dataframe": DataFrameLinks,
+    "xarray_data_array": XarrayDataArrayLinks,
+    "xarray_dataset": XarrayDatasetLinks,
+}
+
+
+class EmptyDict(pydantic.BaseModel):
+    pass
+
+
+class NodeMeta(pydantic.BaseModel):
+    count: int
+
+
+class Resource(pydantic.generics.GenericModel, Generic[ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
     id: str
-    meta: Optional[dict]
-    links: Optional[dict]
     attributes: NodeAttributes
+    links: Optional[ResourceLinksT]
+    meta: Optional[ResourceMetaT]
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):
@@ -76,10 +148,6 @@ class AccessAndRefreshTokens(pydantic.BaseModel):
 
 class RefreshToken(pydantic.BaseModel):
     refresh_token: str
-
-
-class TokenData(pydantic.BaseModel):
-    username: Optional[str] = None
 
 
 class AuthenticationMode(str, enum.Enum):
