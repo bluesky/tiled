@@ -19,7 +19,7 @@ recursive-include docs *.yml *.rst conf.py Makefile make.bat
 
 include versioneer.py
 include tiled/_version.py
-include tiled/schemas/*.yml
+include tiled/config_schemas/*.yml
 
 # If including data files in the package, add them like:
 # include path/to/data_file

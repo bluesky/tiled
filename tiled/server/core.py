@@ -31,7 +31,7 @@ from ..utils import (
     UnsupportedShape,
     modules_available,
 )
-from . import models
+from . import schemas
 from .etag import tokenize
 from .utils import record_timing
 
@@ -181,7 +181,7 @@ def construct_entries_response(
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []
-    if fields != [models.EntryFields.none]:
+    if fields != [schemas.EntryFields.none]:
         # Pull a page of items into memory.
         items = tree.items_indexer[offset : offset + limit]  # noqa: E203
     else:
@@ -213,7 +213,7 @@ def construct_entries_response(
             else:
                 metadata_stale_at = min(metadata_stale_at, entry.metadata_stale_at)
     return (
-        models.Response(data=data, links=links, meta={"count": count}),
+        schemas.Response(data=data, links=links, meta={"count": count}),
         metadata_stale_at,
         must_revalidate,
     )
@@ -327,24 +327,24 @@ def construct_resource(
 ):
     path_str = "/".join(path_parts)
     attributes = {}
-    if models.EntryFields.metadata in fields:
+    if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
             attributes["metadata"] = jmespath.compile(select_metadata).search(
                 entry.metadata
             )
         else:
             attributes["metadata"] = entry.metadata
-    if models.EntryFields.specs in fields:
+    if schemas.EntryFields.specs in fields:
         attributes["specs"] = getattr(entry, "specs", None)
     if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
-        if models.EntryFields.count in fields:
+        if schemas.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
             if hasattr(entry, "sorting"):
                 attributes["sorting"] = entry.sorting
         d = {
             "id": path_parts[-1] if path_parts else "",
-            "attributes": models.NodeAttributes(**attributes),
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = {
@@ -352,14 +352,14 @@ def construct_resource(
                 "search": f"{base_url}node/search/{path_str}",
                 "full": f"{base_url}node/full/{path_str}",
             }
-        resource = models.Resource[models.NodeLinks, models.NodeMeta](**d)
+        resource = schemas.Resource[schemas.NodeLinks, schemas.NodeMeta](**d)
     else:
         links = {"self": f"{base_url}node/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Tree and not values.
-            ResourceLinksT = models.resource_links_type_by_structure_family[
+            ResourceLinksT = schemas.resource_links_type_by_structure_family[
                 entry.structure_family
             ]
             links.update(
@@ -368,13 +368,13 @@ def construct_resource(
                     for link, template in FULL_LINKS[entry.structure_family].items()
                 }
             )
-            if models.EntryFields.structure_family in fields:
+            if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if models.EntryFields.macrostructure in fields:
+            if schemas.EntryFields.macrostructure in fields:
                 macrostructure = entry.macrostructure()
                 if macrostructure is not None:
                     structure["macro"] = dataclasses.asdict(macrostructure)
-            if models.EntryFields.microstructure in fields:
+            if schemas.EntryFields.microstructure in fields:
                 if entry.structure_family == "node":
                     assert False  # not sure if this ever happens
                     pass
@@ -426,14 +426,14 @@ def construct_resource(
             attributes["structure"] = structure
         else:
             # We only have entry names, not structure_family, so
-            ResourceLinksT = models.SelfLinkOnly
+            ResourceLinksT = schemas.SelfLinkOnly
         d = {
             "id": path_parts[-1],
-            "attributes": models.NodeAttributes(**attributes),
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = links
-        resource = models.Resource[ResourceLinksT, models.EmptyDict](**d)
+        resource = schemas.Resource[ResourceLinksT, schemas.EmptyDict](**d)
     return resource
 
 

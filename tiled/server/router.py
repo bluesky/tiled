@@ -8,7 +8,7 @@ from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 
 from .. import __version__
-from . import models
+from . import schemas
 from .authentication import Mode, get_authenticators
 from .core import (
     NoEntry,
@@ -37,7 +37,7 @@ DEFAULT_PAGE_SIZE = 100
 router = APIRouter()
 
 
-@router.get("/", response_model=models.About)
+@router.get("/", response_model=schemas.About)
 async def about(
     request: Request,
     settings: BaseSettings = Depends(get_settings),
@@ -94,7 +94,7 @@ async def about(
 
     return json_or_msgpack(
         request,
-        models.About(
+        schemas.About(
             library_version=__version__,
             api_version=0,
             formats={
@@ -131,7 +131,7 @@ def declare_search_router(query_registry):
     async def node_search(
         request: Request,
         path: str,
-        fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+        fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
@@ -223,15 +223,15 @@ def declare_search_router(query_registry):
     router = APIRouter()
     router.get(
         "/node/search",
-        response_model=models.Response[
-            List[models.Resource[dict, dict]], models.PaginationLinks, dict
+        response_model=schemas.Response[
+            List[schemas.Resource[dict, dict]], schemas.PaginationLinks, dict
         ],
         include_in_schema=False,
     )(node_search)
     router.get(
         "/node/search/{path:path}",
-        response_model=models.Response[
-            List[models.Resource[dict, dict]], models.PaginationLinks, dict
+        response_model=schemas.Response[
+            List[schemas.Resource[dict, dict]], schemas.PaginationLinks, dict
         ],
     )(node_search)
     return router
@@ -239,12 +239,12 @@ def declare_search_router(query_registry):
 
 @router.get(
     "/node/metadata/{path:path}",
-    response_model=models.Response[models.Resource[dict, dict], dict, dict],
+    response_model=schemas.Response[schemas.Resource[dict, dict], dict, dict],
 )
 async def node_metadata(
     request: Request,
     path: str,
-    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
     select_metadata: Optional[str] = Query(None),
     omit_links: bool = Query(False),
     entry: Any = Security(entry, scopes=["read:metadata"]),
@@ -273,13 +273,13 @@ async def node_metadata(
     meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
     return json_or_msgpack(
         request,
-        models.Response(data=resource, meta=meta),
+        schemas.Response(data=resource, meta=meta),
         expires=getattr(entry, "metadata_stale_at", None),
     )
 
 
 @router.get(
-    "/array/block/{path:path}", response_model=models.Response, name="array block"
+    "/array/block/{path:path}", response_model=schemas.Response, name="array block"
 )
 def array_block(
     request: Request,
@@ -330,7 +330,7 @@ def array_block(
 
 
 @router.get(
-    "/array/full/{path:path}", response_model=models.Response, name="full array"
+    "/array/full/{path:path}", response_model=schemas.Response, name="full array"
 )
 def array_full(
     request: Request,
@@ -375,7 +375,7 @@ def array_full(
 
 @router.get(
     "/dataframe/partition/{path:path}",
-    response_model=models.Response,
+    response_model=schemas.Response,
     name="dataframe partition",
 )
 def dataframe_partition(
@@ -421,7 +421,7 @@ def dataframe_partition(
 
 @router.get(
     "/node/full/{path:path}",
-    response_model=models.Response,
+    response_model=schemas.Response,
     name="full xarray.Dataset",
 )
 def node_full(

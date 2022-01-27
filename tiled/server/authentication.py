@@ -30,7 +30,7 @@ from ..database import orm
 from ..database.core import create_user, purge_expired
 from ..utils import SpecialUsers
 from .core import json_or_msgpack
-from .models import (
+from .schemas import (
     AccessAndRefreshTokens,
     APIKeyParams,
     APIKeyResponse,
@@ -448,13 +448,13 @@ def principal_list(
     request.state.endpoint = "auth"
     db = get_sessionmaker(settings.database_uri)()
     principals = db.query(orm.Principal).all()
-    models = []
+    schemas = []
     for principal_orm in principals:
         principal_model = Principal.from_orm(principal_orm)
-        models.append(principal_model)
+        schemas.append(principal_model)
     return json_or_msgpack(
         request,
-        {"data": [models]},
+        {"data": [schemas]},
     )
 
 

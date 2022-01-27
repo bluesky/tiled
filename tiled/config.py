@@ -27,7 +27,7 @@ def schema():
     import yaml
 
     here = Path(__file__).parent.absolute()
-    schema_path = here / "schemas" / "service_configuration.yml"
+    schema_path = here / "config_schemas" / "service_configuration.yml"
     with open(schema_path, "r") as file:
         return yaml.safe_load(file)
 
