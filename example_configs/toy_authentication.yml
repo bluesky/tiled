@@ -7,7 +7,7 @@ authentication:
         alice: ${ALICE_PASSWORD}
         bob: ${BOB_PASSWORD}
         cara: ${CARA_PASSWORD}
-  admins:
+  tiled_admins:
     - provider: toy
       id: alice
 access_control:
