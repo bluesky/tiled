@@ -25,18 +25,6 @@ authentication:
             url: "http://localhost:8000/auth/provider/saml/code"
             binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
           x509cert: ""
-  admins:
-    - provider: toy
-      id: alice
-access_control:
-  access_policy: tiled.adapters.mapping:SimpleAccessPolicy
-  args:
-    provider: toy  # matches provider above
-    access_lists:
-      alice: ["A", "B"]
-      bob: ["A", "C"]
-      cara: tiled.adapters.mapping:SimpleAccessPolicy.ALL
-    public: ["D"]
 trees:
   - path: /
     tree: tiled.examples.toy_authentication:tree
