@@ -395,13 +395,17 @@ def generate_apikey(db, principal, apikey_params, request):
         expiration_time = datetime.utcnow() + timedelta(seconds=apikey_params.lifetime)
     else:
         expiration_time = None
-    secret = secrets.token_bytes(32)
+    # 32 secret bytes that are only shown to the user once, ever,
+    # plus 4 bytes that comprise the "last eight digits" that are shown to authorized
+    # users and can be used to make it convenient to identify a key
+    secret = secrets.token_bytes(32 + 4)
     hashed_secret = hashlib.sha256(secret).digest()
     new_key = orm.APIKey(
         principal_id=principal.id,
         expiration_time=expiration_time,
         note=apikey_params.note,
         scopes=scopes,
+        last_eight=secret.hex()[-8:],
         hashed_secret=hashed_secret,
     )
     db.add(new_key)
@@ -416,6 +420,7 @@ def generate_apikey(db, principal, apikey_params, request):
                 "id": new_key.uuid,
                 "attributes": schemas.APIKeyWithSecretAttributes(
                     secret=secret.hex(),
+                    last_eight=secret.hex()[-8:],
                     principal=new_key.principal.uuid,
                     expiration_time=new_key.expiration_time,
                     note=new_key.note,
@@ -689,6 +694,7 @@ def current_apikey_info(
                 "attributes": schemas.APIKeyAttributes(
                     principal=api_key_orm.principal.uuid,
                     expiration_time=api_key_orm.expiration_time,
+                    last_eight=api_key_orm.last_eight,
                     latest_activity=api_key_orm.latest_activity,
                     note=api_key_orm.note,
                     scopes=api_key_orm.scopes,

@@ -164,6 +164,7 @@ class APIKey(Timestamped, Base):
         nullable=False,
         default=lambda: uuid_module.uuid4(),
     )
+    last_eight = Column(Unicode(8), nullable=False)
     expiration_time = Column(DateTime(timezone=False), nullable=True)
     latest_activity = Column(DateTime(timezone=False), nullable=True)
     note = Column(Unicode(1023), nullable=True)

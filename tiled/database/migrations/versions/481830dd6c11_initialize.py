@@ -84,6 +84,7 @@ def upgrade():
             index=True,
             nullable=False,
         ),
+        Column("last_eight", Unicode(8), nullable=False),
         Column("latest_activity", DateTime(timezone=False), nullable=True),
         Column("expiration_time", DateTime(timezone=False), nullable=True),
         Column("note", Unicode(1023), nullable=True),

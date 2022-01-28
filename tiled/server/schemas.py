@@ -209,6 +209,7 @@ class Role(pydantic.BaseModel, orm_mode=True):
 
 class APIKeyAttributes(pydantic.BaseModel):
     principal: uuid.UUID
+    last_eight: pydantic.constr(min_length=8, max_length=8)
     expiration_time: Optional[datetime]
     note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]
@@ -217,6 +218,7 @@ class APIKeyAttributes(pydantic.BaseModel):
 
 class APIKey(pydantic.BaseModel, orm_mode=True):
     uuid: uuid.UUID
+    last_eight: pydantic.constr(min_length=8, max_length=8)
     expiration_time: Optional[datetime]
     note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]
