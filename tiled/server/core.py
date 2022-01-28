@@ -341,7 +341,13 @@ def construct_resource(
         if schemas.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
             if hasattr(entry, "sorting"):
-                attributes["sorting"] = entry.sorting
+                # In the Python API we encode sorting as (key, direction).
+                # This order-based "record" notion does not play well with OpenAPI.
+                # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
+                attributes["sorting"] = [
+                    {"key": key, "direction": direction}
+                    for key, direction in entry.sorting
+                ]
         d = {
             "id": path_parts[-1] if path_parts else "",
             "attributes": schemas.NodeAttributes(**attributes),
