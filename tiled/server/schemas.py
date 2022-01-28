@@ -212,6 +212,7 @@ class APIKeyAttributes(pydantic.BaseModel):
     expiration_time: Optional[datetime]
     note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]
+    latest_activity: Optional[datetime] = None
 
 
 class APIKey(pydantic.BaseModel, orm_mode=True):
@@ -219,6 +220,7 @@ class APIKey(pydantic.BaseModel, orm_mode=True):
     expiration_time: Optional[datetime]
     note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]
+    latest_activity: Optional[datetime] = None
 
 
 class APIKeyWithSecretAttributes(APIKeyAttributes):
