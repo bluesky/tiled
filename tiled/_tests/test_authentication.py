@@ -242,14 +242,18 @@ def test_api_keys(enter_password, config):
     user_client_from_key = from_config(
         config, api_key=user_key_info["attributes"]["secret"]
     )
+    # Check that api_key property is set.
+    assert user_client_from_key.context.api_key == user_key_info["attributes"]["secret"]
     # Use the key for a couple requests and see that latest_activity becomes set and then increases.
     user_client_from_key["A1"]
-    (updated_key_info1,) = user_client.context.whoami()["attributes"]["api_keys"]
-    activity1 = updated_key_info1["latest_activity"]
+    activity1 = user_client_from_key.context.which_api_key()["data"]["attributes"][
+        "latest_activity"
+    ]
     assert activity1 is not None
     user_client_from_key["A1"]
-    (updated_key_info2,) = user_client.context.whoami()["attributes"]["api_keys"]
-    activity2 = updated_key_info2["latest_activity"]
+    activity2 = user_client_from_key.context.which_api_key()["data"]["attributes"][
+        "latest_activity"
+    ]
     assert activity2 > activity1
     assert len(user_client_from_key.context.whoami()["attributes"]["api_keys"]) == 1
 

@@ -681,14 +681,14 @@ def current_apikey_info(
             schemas.Resource[schemas.APIKeyAttributes, dict, dict], dict, dict
         ](
             data={
+                "id": api_key_orm.uuid,
                 "attributes": schemas.APIKeyAttributes(
                     principal=api_key_orm.principal.uuid,
                     expiration_time=api_key_orm.expiration_time,
                     latest_activity=api_key_orm.latest_activity,
                     note=api_key_orm.note,
                     scopes=api_key_orm.scopes,
-                    uuid=api_key_orm.uuid,
-                )
+                ),
             }
         ),
     )

@@ -293,6 +293,12 @@ class Context:
             with self.disable_cache(allow_read=False, allow_write=True):
                 self._handshake_data = self.get_json()
 
+    def which_api_key(self):
+        """
+        A 'who am I' for API keys
+        """
+        return self.get_json(self._handshake_data["authentication"]["links"]["apikey"])
+
     def new_api_key(self, scopes=None, lifetime=None, note=None):
         """
         Generate a new API for the currently-authenticated user.
@@ -309,7 +315,7 @@ class Context:
             Description (for humans).
         """
         return self.post_json(
-            self._handshake_data["authentication"]["links"]["new_apikey"],
+            self._handshake_data["authentication"]["links"]["apikey"],
             {"scopes": scopes, "lifetime": lifetime, "note": note},
         )
 

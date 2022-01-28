@@ -167,7 +167,7 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
 
 class AboutAuthenticationLinks(pydantic.BaseModel):
     whoami: str
-    new_apikey: str
+    apikey: str
     revoke_apikey: str
     refresh_session: str
     revoke_session: str
