@@ -259,6 +259,9 @@ class Principal(PrincipalAttributes):
 
 
 class APIKeyParams(pydantic.BaseModel):
-    lifetime: Optional[int]  # seconds
+    # Provide an example for lifetime. Otherwise, OpenAPI suggests lifetime=0.
+    # If the user is not reading carefully, they will be frustrated when they
+    # try to use the instantly-expiring API key!
+    lifetime: Optional[int] = pydantic.Field(..., example=600)  # seconds
     scopes: Optional[List[str]]
     note: Optional[str]
