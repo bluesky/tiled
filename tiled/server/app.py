@@ -151,7 +151,7 @@ def build_app(
                 raise ValueError(f"unknown authentication mode {mode}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(
-                    custom_router, prefix=f"/{provider}"
+                    custom_router, prefix=f"/provider/{provider}"
                 )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/auth")
