@@ -257,6 +257,16 @@ def test_api_keys(enter_password, config):
     assert activity2 > activity1
     assert len(user_client_from_key.context.whoami()["attributes"]["api_keys"]) == 1
 
+    # Unset the API key.
+    secret = user_client_from_key.context.api_key
+    user_client_from_key.context.api_key = None
+    with pytest.raises(RuntimeError):
+        user_client_from_key.context.which_api_key()
+    # Set the API key.
+    user_client_from_key.context.api_key = secret
+    # Now this works again.
+    user_client_from_key.context.which_api_key()
+
     # Request a key with reduced scope that cannot read metadata.
     admin_key_info = admin_client.context.new_api_key(scopes=["metrics"])
     with fail_with_status_code(401):

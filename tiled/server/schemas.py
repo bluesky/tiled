@@ -263,5 +263,5 @@ class APIKeyParams(pydantic.BaseModel):
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
     lifetime: Optional[int] = pydantic.Field(..., example=600)  # seconds
-    scopes: Optional[List[str]]
+    scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
     note: Optional[str]

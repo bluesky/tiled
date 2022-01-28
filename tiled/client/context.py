@@ -297,6 +297,8 @@ class Context:
         """
         A 'who am I' for API keys
         """
+        if not self.api_key:
+            raise RuntimeError("Not API key is configured for the client.")
         return self.get_json(self._handshake_data["authentication"]["links"]["apikey"])
 
     def new_api_key(self, scopes=None, lifetime=None, note=None):

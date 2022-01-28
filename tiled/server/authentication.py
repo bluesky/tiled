@@ -663,6 +663,10 @@ def current_apikey_info(
     """
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
+    if api_key is None:
+        raise HTTPException(
+            status_code=401, detail="No API key was provided with this request."
+        )
     try:
         secret = bytes.fromhex(api_key)
     except Exception:
