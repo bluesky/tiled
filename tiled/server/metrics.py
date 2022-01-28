@@ -6,8 +6,10 @@ conventions for metrics & labels. We generally prefer naming them
 
 from functools import lru_cache
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request, Response, Security
 from prometheus_client import Histogram
+
+from .authentication import get_current_principal
 
 router = APIRouter()
 
@@ -149,7 +151,9 @@ def prometheus_registry():
 
 
 @router.get("/metrics")
-async def metrics(request: Request):
+async def metrics(
+    request: Request, principal: Security(get_current_principal, scopes=["metrics"])
+):
     """
     Prometheus metrics
     """

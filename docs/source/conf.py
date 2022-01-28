@@ -269,20 +269,20 @@ def generate_schema_documentation(header, schema, target):
 
 generate_schema_documentation(
     "reference/service-configuration-header.txt",
-    "../../tiled/schemas/service_configuration.yml",
+    "../../tiled/config_schemas/service_configuration.yml",
     "reference/service-configuration.md",
 )
 generate_schema_documentation(
     "reference/client-profiles-header.txt",
-    "../../tiled/schemas/client_profiles.yml",
+    "../../tiled/config_schemas/client_profiles.yml",
     "reference/client-profiles.md",
 )
 
 from tiled.adapters.mapping import MapAdapter
 from tiled.authenticators import DummyAuthenticator
-from tiled.server.app import serve_tree
+from tiled.server.app import build_app
 
-app = serve_tree(MapAdapter({}), authentication={"authenticator": DummyAuthenticator()})
+app = build_app(MapAdapter({}), authentication={"authenticator": DummyAuthenticator()})
 api = app.openapi()
 
 with open("reference/api.yml", "w") as file:

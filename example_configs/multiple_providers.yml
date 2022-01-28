@@ -1,0 +1,26 @@
+authentication:
+  providers:
+  - provider: one
+    authenticator: tiled.authenticators:DictionaryAuthenticator
+    args:
+      users_to_passwords:
+        alice: ${ALICE_PASSWORD}
+        bob: ${BOB_PASSWORD}
+        cara: ${CARA_PASSWORD}
+  - provider: two
+    authenticator: tiled.authenticators:DictionaryAuthenticator
+    args:
+      users_to_passwords:
+        alice: ${ALICE_PASSWORD}
+        bob: ${BOB_PASSWORD}
+        cara: ${CARA_PASSWORD}
+  - provider: three
+    authenticator: tiled.authenticators:DictionaryAuthenticator
+    args:
+      users_to_passwords:
+        alice: ${ALICE_PASSWORD}
+        bob: ${BOB_PASSWORD}
+        cara: ${CARA_PASSWORD}
+trees:
+  - path: /
+    tree: tiled.examples.toy_authentication:tree

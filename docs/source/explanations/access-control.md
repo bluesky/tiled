@@ -78,15 +78,15 @@ class PASSAccessPolicy:
     def check_compatibility(self, catalog):
         return isinstance(catalog, Tree)
 
-    def modify_queries(self, queries, authenticated_identity):
+    def modify_queries(self, queries, principal):
         try:
-            response = response_cache[authenticated_identity]
+            response = response_cache[principal]
         except KeyError:
-            logger.debug("%s: Cache miss", authenticated_identity)
-            response = self._client.get(f"/data_session/{authenticated_identity}")
-            response_cache[authenticated_identity] = response
+            logger.debug("%s: Cache miss", principal)
+            response = self._client.get(f"/data_session/{principal}")
+            response_cache[principal] = response
         else:
-            logger.debug("%s: Cache hit", authenticated_identity)
+            logger.debug("%s: Cache hit", principal)
         if response.status_code != 200:
             # TODO Fast-path for access policy to say "no access"
             modified_queries = list(queries)
@@ -94,18 +94,18 @@ class PASSAccessPolicy:
             try:
                 response.raise_for_status()
             except Exception:
-                logger.exception("%s: Failure", authenticated_identity)
+                logger.exception("%s: Failure", principal)
             return modified_queries
         data = response.json()
         if ("nsls2" in (data["facility_all_access"] or [])) or (
             self._beamline in (data["beamline_all_access"] or [])
         ):
-            logger.debug("%s: all access", authenticated_identity)
+            logger.debug("%s: all access", principal)
             return queries
         modified_queries = list(queries)
         modified_queries.append(
             {"data_session": {"$in": (data["data_sessions"] or [])}}
         )
-        logger.debug("%s: access to %d data sessions", authenticated_identity, len(data["data_sessions"]))
+        logger.debug("%s: access to %d data sessions", principal, len(data["data_sessions"]))
         return modified_queries
 ```

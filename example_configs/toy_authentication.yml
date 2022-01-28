@@ -1,18 +1,24 @@
 authentication:
+  providers:
+  - provider: toy
     authenticator: tiled.authenticators:DictionaryAuthenticator
     args:
-        users_to_passwords:
-            alice: ${ALICE_PASSWORD}
-            bob: ${BOB_PASSWORD}
-            cara: ${CARA_PASSWORD}
+      users_to_passwords:
+        alice: ${ALICE_PASSWORD}
+        bob: ${BOB_PASSWORD}
+        cara: ${CARA_PASSWORD}
+  tiled_admins:
+    - provider: toy
+      id: alice
 access_control:
-    access_policy: tiled.adapters.mapping:SimpleAccessPolicy
-    args:
-        access_lists:
-            alice: ["A", "B"]
-            bob: ["A", "C"]
-            cara: tiled.adapters.mapping:SimpleAccessPolicy.ALL
-        public: ["D"]
+  access_policy: tiled.adapters.mapping:SimpleAccessPolicy
+  args:
+    provider: toy  # matches provider above
+    access_lists:
+      alice: ["A", "B"]
+      bob: ["A", "C"]
+      cara: tiled.adapters.mapping:SimpleAccessPolicy.ALL
+    public: ["D"]
 trees:
-    - path: /
-      tree: tiled.examples.toy_authentication:tree
+  - path: /
+    tree: tiled.examples.toy_authentication:tree

@@ -11,6 +11,7 @@ import appdirs
 import httpx
 import msgpack
 
+from .._version import get_versions
 from ..utils import DictView
 from .cache import Revalidate
 from .utils import (
@@ -164,22 +165,25 @@ class Context:
         self,
         client,
         *,
-        authentication_uri=None,
         username=None,
+        auth_provider=None,
+        api_key=None,
         cache=None,
         offline=False,
         token_cache=DEFAULT_TOKEN_CACHE,
         prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
-        authentication_uri = authentication_uri or "/"
-        if not authentication_uri.endswith("/"):
-            authentication_uri += "/"
+        if (api_key is not None) and (
+            (username is not None) or (auth_provider is not None)
+        ):
+            raise ValueError("Use api_key or username/auth_provider, not both.")
         self._client = client
-        self._authentication_uri = authentication_uri
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._username = username
+        self._auth_provider = auth_provider
+        self.api_key = api_key  # property setter sets Authorization header
         self._offline = offline
         self._token_cache_or_root_directory = token_cache
         self._prompt_for_reauthentication = PromptForReauthentication(
@@ -196,33 +200,53 @@ class Context:
         self._tokens = {}
         self._app = app
 
+        # Set the User Agent to help the server fail informatively if the client
+        # version is too old.
+        self._client.headers["user-agent"] = f"python-tiled/{get_versions()['version']}"
+
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+        # And, at the same time, obtain the 'root_path', the path to the root route
+        # of the Tiled application, which may or may not be the same as the URL that
+        # the user provided.
         if offline:
-            self._handshake_data = self.get_json(self._authentication_uri)
+            self._handshake_data = self.get_json("/", params={"root_path": True})
         else:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self._handshake_data = self.get_json(self._authentication_uri)
-
-        # Ask the server what its root_path is.
-        if (not offline) and (
-            self._handshake_data["authentication"]["required"] or (username is not None)
-        ):
-            if self._handshake_data["authentication"]["type"] in (
-                "password",
-                "external",
-            ):
-                # Authenticate. If a valid refresh_token is available in the token_cache,
-                # it will be used. Otherwise, this will prompt for input from the stdin
-                # or raise CannotRefreshAuthentication.
-                prompt = (
-                    prompt_for_reauthentication == PromptForReauthentication.AT_INIT
-                    or prompt_for_reauthentication == PromptForReauthentication.ALWAYS
+                # Make this request manually to inject custom error handling.
+                request = self._client.build_request(
+                    "GET", "/", params={"root_path": True}
                 )
-                tokens = self.reauthenticate(prompt=prompt)
-                access_token = tokens["access_token"]
-                client.headers["Authorization"] = f"Bearer {access_token}"
+                response = self._client.send(request)
+                # Handle case where user pastes in a link like
+                # https://example.com/some/subpath/node/metadata/a/b/c
+                # and it requires authentication. The 401 response includes a header
+                # that points us to https://examples.com/some/subpath where we
+                # can see the authentication providers and their endpoints.
+                if response.status_code == 401:
+                    self.client.base_url = response.headers["x-tiled-root"]
+                # Now try again.
+                self._handshake_data = self.get_json("/", params={"root_path": True})
+
+        if (
+            (not offline)
+            and (api_key is None)
+            and (
+                self._handshake_data["authentication"]["required"]
+                or (username is not None)
+            )
+        ):
+            # Authenticate. If a valid refresh_token is available in the token_cache,
+            # it will be used. Otherwise, this will prompt for input from the stdin
+            # or raise CannotRefreshAuthentication.
+            prompt = (
+                prompt_for_reauthentication == PromptForReauthentication.AT_INIT
+                or prompt_for_reauthentication == PromptForReauthentication.ALWAYS
+            )
+            tokens = self.reauthenticate(prompt=prompt)
+            access_token = tokens["access_token"]
+            client.headers["Authorization"] = f"Bearer {access_token}"
         base_path = self._handshake_data["meta"]["root_path"]
         url = httpx.URL(self._client.base_url)
         base_url = urllib.parse.urlunsplit(
@@ -241,6 +265,19 @@ class Context:
         return DictView(self._tokens)
 
     @property
+    def api_key(self):
+        return self._api_key
+
+    @api_key.setter
+    def api_key(self, api_key):
+        if api_key is None:
+            if self._client.headers.get("Authorization", "").startswith("Apikey"):
+                self._client.headers.pop("Authorization")
+        else:
+            self._client.headers["Authorization"] = f"Apikey {api_key}"
+        self._api_key = api_key
+
+    @property
     def cache(self):
         return self._cache
 
@@ -254,7 +291,44 @@ class Context:
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self._handshake_data = self.get_json(self._authentication_uri)
+                self._handshake_data = self.get_json()
+
+    def which_api_key(self):
+        """
+        A 'who am I' for API keys
+        """
+        return self.get_json(self._handshake_data["authentication"]["links"]["apikey"])
+
+    def new_api_key(self, scopes=None, lifetime=None, note=None):
+        """
+        Generate a new API for the currently-authenticated user.
+
+        Parameters
+        ----------
+        scopes : Optional[List[str]]
+            If None, this will have the same access as the user.
+        lifetime : Optional[int]
+            Number of seconds until API key expires. If None,
+            it will never expire or it will have the maximum lifetime
+            allowed by the server.
+        note : Optional[str]
+            Description (for humans).
+        """
+        return self.post_json(
+            self._handshake_data["authentication"]["links"]["apikey"],
+            {"scopes": scopes, "lifetime": lifetime, "note": note},
+        )
+
+    def revoke_api_key(self, uuid):
+        request = self._client.build_request(
+            "DELETE",
+            self._handshake_data["authentication"]["links"]["revoke_apikey"].format(
+                uuid=uuid
+            ),
+            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+        )
+        response = self._client.send(request)
+        handle_error(response)
 
     @property
     def app(self):
@@ -424,12 +498,31 @@ class Context:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
+    def post_json(self, path, content):
+        request = self._client.build_request(
+            "POST",
+            path,
+            json=content,
+            # Submit CSRF token in both header and cookie.
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+            headers={
+                "x-csrf": self._client.cookies["tiled_csrf"],
+                "accept": "application/x-msgpack",
+            },
+        )
+        response = self._client.send(request)
+        handle_error(response)
+        return msgpack.unpackb(
+            response.content,
+            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
+        )["data"]
+
     def _send(self, request, stream=False, attempts=0):
         """
         If sending results in an authentication error, reauthenticate.
         """
         response = self._client.send(request, stream=stream)
-        if (response.status_code == 401) and (attempts == 0):
+        if (self.api_key is None) and (response.status_code == 401) and (attempts == 0):
             # Try refreshing the token.
             tokens = self.reauthenticate()
             # The line above updated self._client.headers["authorization"]
@@ -442,10 +535,53 @@ class Context:
             return self._send(request, stream=stream, attempts=1)
         return response
 
-    def authenticate(self):
+    def authenticate(self, provider=None):
         "Authenticate. Prompt for password or access code (refresh token)."
-        auth_type = self._handshake_data["authentication"]["type"]
-        if auth_type == "password":
+        if self.api_key is not None:
+            raise RuntimeError("API key authentication is being used.")
+        providers = self._handshake_data["authentication"]["providers"]
+        if len(providers) == 0:
+            raise Exception(
+                "This server does not support any authentication providers."
+            )
+        if provider is not None:
+            for spec in providers:
+                if spec["provider"] == provider:
+                    break
+            else:
+                raise ValueError(
+                    f"No such provider {provider}. Choices are {[spec['provider'] for spec in providers]}"
+                )
+        else:
+            if len(providers) == 1:
+                # There is only one choice, so no need to prompt the user.
+                (spec,) = providers
+            else:
+                while True:
+                    print("Authenticaiton providers:")
+                    for i, spec in enumerate(providers, start=1):
+                        print(f"{i} - {spec['provider']}")
+                    raw_choice = input(
+                        "Choose an authentication provider (or press Enter to escape): "
+                    )
+                    if not raw_choice:
+                        print("No authentication provider chosen. Failed.")
+                        break
+                    try:
+                        choice = int(raw_choice)
+                    except TypeError:
+                        print("Choice must be a number.")
+                        continue
+                    try:
+                        spec = providers[choice - 1]
+                    except IndexError:
+                        print(f"Choice must be a number 1 through {len(providers)}.")
+                        continue
+                    break
+        mode = spec["mode"]
+        auth_endpoint = spec["links"]["auth_endpoint"]
+        confirmation_message = spec["confirmation_message"]
+        if mode == "password":
             username = self._username or input("Username: ")
             password = getpass.getpass()
             form_data = {
@@ -455,7 +591,7 @@ class Context:
             }
             token_request = self._client.build_request(
                 "POST",
-                f"{self._authentication_uri}auth/token",
+                auth_endpoint,
                 data=form_data,
                 headers={},
             )
@@ -464,13 +600,12 @@ class Context:
             handle_error(token_response)
             tokens = token_response.json()
             refresh_token = tokens["refresh_token"]
-        elif auth_type == "external":
-            endpoint = self._handshake_data["authentication"]["endpoint"]
+        elif mode == "external":
             print(
                 f"""
 Navigate web browser to this address to obtain access code:
 
-{endpoint}
+{auth_endpoint}
 
 """
             )
@@ -493,24 +628,22 @@ Navigate web browser to this address to obtain access code:
                     )
                 else:
                     break
-            confirmation_message = self._handshake_data["authentication"][
-                "confirmation_message"
-            ]
-            if confirmation_message:
-                username = username = self.whoami()
-                print(confirmation_message.format(username=username))
-        elif auth_type == "api_key":
-            raise ValueError(
-                "authenticate() method is not applicable to API key authentication"
-            )
         else:
-            raise ValueError(f"Server has unknown authentication type {auth_type!r}")
+            raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
         if self._token_cache is not None:
             # We are using a token cache. Store the new refresh token.
             self._token_cache["refresh_token"] = refresh_token
         self._tokens.update(
             refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
         )
+        if confirmation_message:
+            identities = self.whoami()["identities"]
+            identities_by_provider = {
+                identity["provider"]: identity["id"] for identity in identities
+            }
+            print(
+                confirmation_message.format(id=identities_by_provider[spec["provider"]])
+            )
         return tokens
 
     def reauthenticate(self, prompt=None):
@@ -524,6 +657,8 @@ Navigate web browser to this address to obtain access code:
             tokens fails. If False raise an error. If None, fall back
             to default `prompt_for_reauthentication` set in Context.__init__.
         """
+        if self.api_key is not None:
+            raise RuntimeError("API key authentication is being used.")
         try:
             return self._refresh()
         except CannotRefreshAuthentication:
@@ -534,13 +669,10 @@ Navigate web browser to this address to obtain access code:
             raise
 
     def whoami(self):
-        "Return username."
-        request = self._client.build_request(
-            "GET", f"{self._authentication_uri}auth/whoami"
-        )
-        response = self._client.send(request)
-        handle_error(response)
-        return response.json()["username"]
+        "Return information about the currently-authenticated user or service."
+        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])[
+            "data"
+        ]
 
     def logout(self):
         """
@@ -552,6 +684,22 @@ Navigate web browser to this address to obtain access code:
         if self._token_cache is not None:
             self._token_cache.pop("refresh_token", None)
         self._tokens.clear()
+
+    def revoke_session(self, session_id):
+        """
+        Revoke a Session so it cannot be refreshed.
+
+        This may be done to ensure that a possibly-leaked refresh token cannot be used.
+        """
+        request = self._client.build_request(
+            "DELETE",
+            self._handshake_data["authentication"]["links"]["revoke_session"].format(
+                session_id=session_id
+            ),
+            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+        )
+        response = self._client.send(request)
+        handle_error(response)
 
     def _refresh(self, refresh_token=None):
         with self._refresh_lock:
@@ -574,7 +722,7 @@ Navigate web browser to this address to obtain access code:
                     )
             token_request = self._client.build_request(
                 "POST",
-                f"{self._authentication_uri}auth/token/refresh",
+                self._handshake_data["authentication"]["links"]["refresh_session"],
                 json={"refresh_token": refresh_token},
                 # Submit CSRF token in both header and cookie.
                 # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
@@ -620,9 +768,11 @@ def context_from_tree(
     token_cache=DEFAULT_TOKEN_CACHE,
     prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     username=None,
+    auth_provider=None,
+    api_key=None,
     headers=None,
 ):
-    from ..server.app import serve_tree
+    from ..server.app import build_app
 
     # By default make it "public" because there is no way to
     # secure access from inside the same process anyway.
@@ -632,10 +782,10 @@ def context_from_tree(
     headers = headers or {}
     headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
     # If a single-user API key will be used, generate the key here instead of
-    # letting serve_tree do it for us, so that we can give it to the client
+    # letting build_app do it for us, so that we can give it to the client
     # below.
     if (
-        (authentication.get("authenticator") is None)
+        (not authentication.get("providers"))
         and (not authentication.get("allow_anonymous_access", False))
         and (authentication.get("single_user_api_key") is None)
     ):
@@ -644,7 +794,7 @@ def context_from_tree(
         )
         authentication["single_user_api_key"] = single_user_api_key
         params["api_key"] = single_user_api_key
-    app = serve_tree(
+    app = build_app(
         tree,
         authentication,
         server_settings,
@@ -687,6 +837,8 @@ def context_from_tree(
         offline=offline,
         token_cache=token_cache,
         username=username,
+        auth_provider=auth_provider,
+        api_key=api_key,
         prompt_for_reauthentication=prompt_for_reauthentication,
         app=app,
     )

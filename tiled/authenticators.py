@@ -3,6 +3,7 @@ import secrets
 
 from jose import JWTError, jwk, jwt
 
+from .server.authentication import Mode
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class DummyAuthenticator:
 
     """
 
-    handles_credentials = True
+    mode = Mode.password
 
     async def authenticate(self, username: str, password: str):
         return username
@@ -29,7 +30,18 @@ class DictionaryAuthenticator:
     Check passwords from a dictionary of usernames mapped to passwords.
     """
 
-    handles_credentials = True
+    mode = Mode.password
+    configuration_schema = """
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  users_to_password:
+    type: object
+  description: |
+    Mapping usernames to password. Environment variable expansion should be
+    used to avoid placing passwords directly in configuration.
+"""
 
     def __init__(self, users_to_passwords):
         self._users_to_passwords = users_to_passwords
@@ -44,15 +56,25 @@ class DictionaryAuthenticator:
 
 
 class PAMAuthenticator:
-    handles_credentials = True
+
+    mode = Mode.password
+    configuration_schema = """
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  service:
+    type: string
+    description: PAM service. Default is 'login'.
+"""
 
     def __init__(self, service="login"):
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
             )
-        # TODO Try to open a PAM session.
         self.service = service
+        # TODO Try to open a PAM session.
 
     async def authenticate(self, username: str, password: str):
         import pamela
@@ -67,38 +89,47 @@ class PAMAuthenticator:
 
 
 class OIDCAuthenticator:
-    handles_credentials = False
+
+    mode = Mode.external
     configuration_schema = """
-client_id:
-  type: string
-client_secret:
-  type: string
-redirect_uri:
-  type: string
-public_keys:
-  type: array
-  item:
-    type: object
-    properties:
-      - alg:
-          type: string
-      - e
-          type: string
-      - kid
-          type: string
-      - kty
-          type: string
-      - n
-          type: string
-      - use
-          type: string
-    required:
-      - alg
-      - e
-      - kid
-      - kty
-      - n
-      - use
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  client_id:
+    type: string
+  client_secret:
+    type: string
+  redirect_uri:
+    type: string
+  token_uri:
+    type: string
+  authorization_endpoint:
+    type: string
+  public_keys:
+    type: array
+    item:
+      type: object
+      properties:
+        - alg:
+            type: string
+        - e
+            type: string
+        - kid
+            type: string
+        - kty
+            type: string
+        - n
+            type: string
+        - use
+            type: string
+      required:
+        - alg
+        - e
+        - kid
+        - kty
+        - n
+        - use
 """
 
     def __init__(

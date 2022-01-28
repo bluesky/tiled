@@ -15,7 +15,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
     __slots__ = (
         "_access_policy",
-        "_authenticated_identity",
+        "_principal",
         "_mapping",
         "_metadata",
         "_must_revalidate",
@@ -37,7 +37,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         mapping,
         metadata=None,
         access_policy=None,
-        authenticated_identity=None,
+        principal=None,
         entries_stale_after=None,
         metadata_stale_after=None,
         must_revalidate=True,
@@ -50,7 +50,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         mapping : dict-like
         metadata : dict, optional
         access_policy : AccessPolicy, optional
-        authenticated_identity : str, optional
+        principal : str, optional
         entries_stale_after: timedelta
             This server uses this to communite to the client how long
             it should rely on a local cache before checking back for changes.
@@ -69,7 +69,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
                 f"Access policy {access_policy} is not compatible with this Adapter."
             )
         self._access_policy = access_policy
-        self._authenticated_identity = authenticated_identity
+        self._principal = principal
         self._must_revalidate = must_revalidate
         self.include_routers = []
         self.background_tasks = []
@@ -94,8 +94,8 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self._access_policy = value
 
     @property
-    def authenticated_identity(self):
-        return self._authenticated_identity
+    def principal(self):
+        return self._principal
 
     @property
     def metadata(self):
@@ -129,15 +129,13 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             return
         return self.entries_stale_after + datetime.utcnow()
 
-    def authenticated_as(self, identity):
-        if self._authenticated_identity is not None:
-            raise RuntimeError(
-                f"Already authenticated as {self.authenticated_identity}"
-            )
+    def authenticated_as(self, principal):
+        if self._principal is not None:
+            raise RuntimeError(f"Already authenticated as {self.principal}")
         if self._access_policy is not None:
-            tree = self._access_policy.filter_results(self, identity)
+            tree = self._access_policy.filter_results(self, principal)
         else:
-            tree = self.new_variation(authenticated_identity=identity)
+            tree = self.new_variation(principal=principal)
         return tree
 
     def new_variation(
@@ -145,7 +143,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         *args,
         mapping=UNCHANGED,
         metadata=UNCHANGED,
-        authenticated_identity=UNCHANGED,
+        principal=UNCHANGED,
         must_revalidate=UNCHANGED,
         **kwargs,
     ):
@@ -153,8 +151,8 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             mapping = self._mapping
         if metadata is UNCHANGED:
             metadata = self._metadata
-        if authenticated_identity is UNCHANGED:
-            authenticated_identity = self._authenticated_identity
+        if principal is UNCHANGED:
+            principal = self._principal
         if must_revalidate is UNCHANGED:
             must_revalidate = self.must_revalidate
         return type(self)(
@@ -162,7 +160,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             mapping=mapping,
             metadata=self._metadata,
             access_policy=self.access_policy,
-            authenticated_identity=self.authenticated_identity,
+            principal=self.principal,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,
             must_revalidate=must_revalidate,
@@ -277,15 +275,15 @@ class DummyAccessPolicy:
         # This only works on in-memory Adapter or subclases.
         return isinstance(tree, MapAdapter)
 
-    def modify_queries(self, queries, authenticated_identity):
+    def modify_queries(self, queries, principal):
         return queries
 
-    def filter_results(self, tree, authenticated_identity):
+    def filter_results(self, tree, principal):
         return type(tree)(
             mapping=self._mapping,
             metadata=tree.metadata,
             access_policy=tree.access_policy,
-            authenticated_identity=authenticated_identity,
+            principal=principal,
         )
 
 
@@ -293,13 +291,14 @@ class SimpleAccessPolicy:
     """
     A mapping of user names to lists of entries they can access.
 
-    >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]})
+    >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]}, provider="toy")
     """
 
     ALL = object()  # sentinel
 
-    def __init__(self, access_lists, public=None):
+    def __init__(self, access_lists, *, provider, public=None):
         self.access_lists = {}
+        self.provider = provider
         self.public = set(public or [])
         for key, value in access_lists.items():
             if isinstance(value, str):
@@ -310,14 +309,24 @@ class SimpleAccessPolicy:
         # This only works on MapAdapter or subclases.
         return isinstance(tree, MapAdapter)
 
-    def modify_queries(self, queries, authenticated_identity):
+    def modify_queries(self, queries, principal):
         return queries
 
-    def filter_results(self, tree, authenticated_identity):
-        # either list of paths or ALL
-        access_list = self.access_lists.get(authenticated_identity, [])
+    def filter_results(self, tree, principal):
+        # Get the id (i.e. username) of this Principal for the
+        # associated authentication provider.
+        for identity in principal.identities:
+            if identity.provider == self.provider:
+                id = identity.id
+                break
+        else:
+            raise ValueError(
+                f"Principcal {principal} has no identity from provider {self.provider}. "
+                f"Its identities are: {principal.identities}"
+            )
+        access_list = self.access_lists.get(id, [])
 
-        if (authenticated_identity is SpecialUsers.admin) or (access_list is self.ALL):
+        if (principal is SpecialUsers.admin) or (access_list is self.ALL):
             mapping = tree._mapping
         else:
             allowed = set(access_list or []) | self.public
@@ -326,5 +335,5 @@ class SimpleAccessPolicy:
             mapping=mapping,
             metadata=tree.metadata,
             access_policy=tree.access_policy,
-            authenticated_identity=authenticated_identity,
+            principal=principal,
         )

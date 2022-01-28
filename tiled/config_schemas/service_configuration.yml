@@ -5,8 +5,8 @@
 # service configuration reference section based on the description fields. See
 # doc/source/conf.py for that logic!
 #
-# We look to document everything we have default values for in values.yaml, but
-# we don't look to enforce the perfect validation logic within this file.
+# We look to document all the options, but we don't look to enforce the perfect
+# validation logic within this file.
 #
 # ref: https://json-schema.org/learn/getting-started-step-by-step.html
 #
@@ -158,35 +158,65 @@ properties:
     type: [object, "null"]
     additionalProperties: false
     properties:
-      authenticator:
-        type: string
+      providers:
+        type: array
+        item:
+          type: object
+          additionalProperties: false
+          required:
+            - authenticator
+            - provider
+          properties:
+            provider:
+              type: string
+              pattern: "^[a-zA-Z0-9_-]*$"
+              description: |
+                Unique URL-friendly string used to identify this identity provider
+                in Tiled URLs and in internal book-keeping.
+            authenticator:
+              type: string
+              description: |
+                Type of Authenticator to use.
+
+                These are typically from the tiled.authenticators module,
+                though user-defined ones may be used as well.
+
+                This is given as an import path. In an import path, packages/modules
+                are separated by dots, and the object itself it separated by a colon.
+
+                Example:
+
+                ```yaml
+                authenticator: tiled.examples.DummyAuthenticator
+                ```
+                args:
+                  type: [object, "null"]
+                  description: |
+                    Named arguments to pass to Authenticator. If there are none,
+                    `args` may be omitted or empty.
+
+                    Example:
+
+                    ```yaml
+                    authenticator: tiled.examples.PAMAuthenticator
+                    args:
+                      service: "custom_service"
+                    ```
+      tiled_admins:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - provider
+            - id
+          properties:
+            provider:
+              type: string
+            id:
+              type: string
         description: |
-          Type of Authenticator to use.
-
-          These are typically from the tiled.authenticators module,
-          though user-defined ones may be used as well.
-
-          This is given as an import path. In an import path, packages/modules
-          are separated by dots, and the object itself it separated by a colon.
-
-          Example:
-
-          ```yaml
-          authenticator: tiled.examples.DummyAuthenticator
-          ```
-      args:
-        type: [object, "null"]
-        description: |
-          Named arguments to pass to Authenticator. If there are none,
-          `args` may be omitted or empty.
-
-          Example:
-
-          ```yaml
-          authenticator: tiled.examples.PAMAuthenticator
-          args:
-            service: "custom_service"
-          ```
+          Give users with these identities 'admin' Role.
       secret_keys:
         type: array
         items:
@@ -256,6 +286,20 @@ properties:
           this is unset and active session are never shut down.
     description:
       This section describes whether and how to authenticate users.
+  database_uri:
+    type: string
+    description: |
+      When Tiled is configured with authentication providers, it uses a SQL database
+      to persist information related to identities, sessions, and keys. (When it is
+      used without authentication providers, no database is used.)
+
+      If Tiled is configured with authentication providers above but a database
+      URI is not specified, `sqlite:///./tiled.sqlite` (i.e. a SQLite database in
+      the current working directory) will be used.
+
+      Tiled officially supports PostgreSQL and SQLite, but any database engine
+      supported by SQLAlchemy *may* work.
+
   access_control:
     type: object
     additionalProperties: false
