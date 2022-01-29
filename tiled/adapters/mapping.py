@@ -1,6 +1,7 @@
 import collections.abc
 import copy
 import itertools
+import sys
 from datetime import datetime
 
 from ..queries import FullText
@@ -197,7 +198,13 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
                 )
             )
             if direction < 0:
-                mapping = dict(reversed(mapping.items()))
+                if sys.version_info > (3, 7):
+                    to_reverse = mapping.items()
+                else:
+                    # In Python 3.7 dicts are not reversible.
+                    to_reverse = list(mapping.items())
+
+                mapping = dict(reversed(to_reverse))
 
         return self.new_variation(mapping=mapping, sorting=sorting)
 
