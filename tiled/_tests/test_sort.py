@@ -62,3 +62,33 @@ def test_sort_two_columns():
     assert sorted(numbers_[5:]) == numbers_[5:]
     # but not sorted overall.
     assert not sorted(numbers_) == numbers_
+
+
+def test_sort_sparse():
+    """
+    Sort where the key only present on some nodes.
+    """
+    tree = MapAdapter(
+        {
+            "yes1": ArrayAdapter.from_array(numpy.arange(10), metadata={"stuff": "a"}),
+            "no1": ArrayAdapter.from_array(numpy.arange(10), metadata={}),
+            "yes2": ArrayAdapter.from_array(numpy.arange(10), metadata={"stuff": "b"}),
+            "no2": ArrayAdapter.from_array(numpy.arange(10), metadata={}),
+        }
+    )
+    client = from_tree(tree).sort(("stuff", 1))
+    assert list(client)[:2] == ["yes1", "yes2"]
+
+
+def test_sort_missing():
+    """
+    Sort where the key not present on any node.
+    """
+    tree = MapAdapter(
+        {
+            "no1": ArrayAdapter.from_array(numpy.arange(10), metadata={}),
+            "no2": ArrayAdapter.from_array(numpy.arange(10), metadata={}),
+        }
+    )
+    client = from_tree(tree).sort(("stuff", 1))
+    list(client)  # Just check for no errors.

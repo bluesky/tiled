@@ -1,4 +1,5 @@
 import collections.abc
+import copy
 import itertools
 from datetime import datetime
 
@@ -187,10 +188,13 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         return self.query_registry(query, self)
 
     def sort(self, sorting):
-        mapping = self._mapping.copy()
+        mapping = copy.copy(self._mapping)
         for key, direction in reversed(sorting):
             mapping = dict(
-                sorted(mapping.items(), key=lambda item: item[1].metadata.get(key))
+                sorted(
+                    mapping.items(),
+                    key=lambda item: item[1].metadata.get(key, _HIGH_SORTER),
+                )
             )
             if direction < 0:
                 mapping = dict(reversed(mapping.items()))
@@ -356,3 +360,18 @@ class SimpleAccessPolicy:
             access_policy=tree.access_policy,
             principal=principal,
         )
+
+
+class _HIGH_SORTER_CLASS:
+    """
+    Enables sort to work when metadata is sparse
+    """
+
+    def __lt__(self, other):
+        return False
+
+    def __gt__(self, other):
+        return True
+
+
+_HIGH_SORTER = _HIGH_SORTER_CLASS()
