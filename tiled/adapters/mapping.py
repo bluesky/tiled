@@ -198,11 +198,11 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
                 )
             )
             if direction < 0:
-                if sys.version_info > (3, 7):
-                    to_reverse = mapping.items()
-                else:
-                    # In Python 3.7 dicts are not reversible.
+                if sys.version_info < (3, 8):
+                    # Prior to Python 3.8 dicts are not reversible.
                     to_reverse = list(mapping.items())
+                else:
+                    to_reverse = mapping.items()
 
                 mapping = dict(reversed(to_reverse))
 
