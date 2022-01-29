@@ -1,5 +1,7 @@
 import collections.abc
+import copy
 import itertools
+import sys
 from datetime import datetime
 
 from ..queries import FullText
@@ -18,6 +20,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         "_principal",
         "_mapping",
         "_metadata",
+        "_sorting",
         "_must_revalidate",
         "background_tasks",
         "entries_stale_after",
@@ -36,6 +39,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self,
         mapping,
         metadata=None,
+        sorting=None,
         access_policy=None,
         principal=None,
         entries_stale_after=None,
@@ -49,6 +53,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         ----------
         mapping : dict-like
         metadata : dict, optional
+        sorting : List[Tuple[str, int]], optional
         access_policy : AccessPolicy, optional
         principal : str, optional
         entries_stale_after: timedelta
@@ -61,6 +66,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             Whether the client should strictly refresh stale cache items.
         """
         self._mapping = mapping
+        self._sorting = sorting
         self._metadata = metadata or {}
         if (access_policy is not None) and (
             not access_policy.check_compatibility(self)
@@ -143,6 +149,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         *args,
         mapping=UNCHANGED,
         metadata=UNCHANGED,
+        sorting=UNCHANGED,
         principal=UNCHANGED,
         must_revalidate=UNCHANGED,
         **kwargs,
@@ -151,6 +158,8 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             mapping = self._mapping
         if metadata is UNCHANGED:
             metadata = self._metadata
+        if sorting is UNCHANGED:
+            sorting = self._sorting
         if principal is UNCHANGED:
             principal = self._principal
         if must_revalidate is UNCHANGED:
@@ -158,6 +167,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         return type(self)(
             *args,
             mapping=mapping,
+            sorting=sorting,
             metadata=self._metadata,
             access_policy=self.access_policy,
             principal=self.principal,
@@ -177,6 +187,26 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         Return a Adapter with a subset of the mapping.
         """
         return self.query_registry(query, self)
+
+    def sort(self, sorting):
+        mapping = copy.copy(self._mapping)
+        for key, direction in reversed(sorting):
+            mapping = dict(
+                sorted(
+                    mapping.items(),
+                    key=lambda item: item[1].metadata.get(key, _HIGH_SORTER),
+                )
+            )
+            if direction < 0:
+                if sys.version_info < (3, 8):
+                    # Prior to Python 3.8 dicts are not reversible.
+                    to_reverse = list(mapping.items())
+                else:
+                    to_reverse = mapping.items()
+
+                mapping = dict(reversed(to_reverse))
+
+        return self.new_variation(mapping=mapping, sorting=sorting)
 
     # The following three methods are used by IndexersMixin
     # to define keys_indexer, items_indexer, and values_indexer.
@@ -337,3 +367,18 @@ class SimpleAccessPolicy:
             access_policy=tree.access_policy,
             principal=principal,
         )
+
+
+class _HIGH_SORTER_CLASS:
+    """
+    Enables sort to work when metadata is sparse
+    """
+
+    def __lt__(self, other):
+        return False
+
+    def __gt__(self, other):
+        return True
+
+
+_HIGH_SORTER = _HIGH_SORTER_CLASS()

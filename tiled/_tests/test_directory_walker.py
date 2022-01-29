@@ -282,3 +282,22 @@ def test_subdirectory_handler(tmpdir):
     assert set(changes[0]) == set(expected_first_batch)
     # Second batch of changes reported
     assert set(changes[1]) == set(expected_second_batch)
+
+
+def test_sort(example_data_dir):
+    """
+    This should do nothing because the nodes have no metatdata.
+
+    The test is just that nothing errors out.
+    """
+    config = {
+        "trees": [
+            {
+                "tree": "tiled.adapters.files:DirectoryAdapter.from_directory",
+                "path": "/",
+                "args": {"directory": str(example_data_dir)},
+            }
+        ]
+    }
+    client = from_config(config)
+    list(client.sort(("does_not_exsit", 1)))
