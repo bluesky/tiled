@@ -71,16 +71,16 @@ def upgrade():
         Column("time_created", DateTime(timezone=False), server_default=func.now()),
         Column("time_updated", DateTime(timezone=False), onupdate=func.now()),
         Column(
-            "uuid",
-            UUID,
-            index=True,
-            nullable=False,
-            default=lambda: uuid.uuid4(),
-        ),
-        Column(
             "hashed_secret",
             LargeBinary(32),
             primary_key=True,
+            index=True,
+            nullable=False,
+        ),
+        Column(
+            "first_eight",
+            Unicode(8),
+            primary_eky=True,
             index=True,
             nullable=False,
         ),

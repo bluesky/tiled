@@ -168,7 +168,6 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
 class AboutAuthenticationLinks(pydantic.BaseModel):
     whoami: str
     apikey: str
-    revoke_apikey: str
     refresh_session: str
     revoke_session: str
     logout: str
@@ -207,24 +206,27 @@ class Role(pydantic.BaseModel, orm_mode=True):
     # principals
 
 
-class APIKeyAttributes(pydantic.BaseModel):
-    principal: uuid.UUID
-    expiration_time: Optional[datetime]
-    note: Optional[pydantic.constr(max_length=255)]
-    scopes: List[str]
-    latest_activity: Optional[datetime] = None
-
-
 class APIKey(pydantic.BaseModel, orm_mode=True):
-    uuid: uuid.UUID
+    first_eight: pydantic.constr(min_length=8, max_length=8)
     expiration_time: Optional[datetime]
     note: Optional[pydantic.constr(max_length=255)]
     scopes: List[str]
     latest_activity: Optional[datetime] = None
 
 
-class APIKeyWithSecretAttributes(APIKeyAttributes):
+class APIKeyWithSecret(APIKey):
     secret: str  # hex-encoded bytes
+
+    @classmethod
+    def from_orm(cls, orm, secret):
+        return cls(
+            first_eight=orm.first_eight,
+            expiration_time=orm.expiration_time,
+            note=orm.note,
+            scopes=orm.scopes,
+            latest_activity=orm.latest_activity,
+            secret=secret,
+        )
 
 
 class Session(pydantic.BaseModel, orm_mode=True):
@@ -243,10 +245,11 @@ class Session(pydantic.BaseModel, orm_mode=True):
     revoked: bool
 
 
-class PrincipalAttributes(pydantic.BaseModel, orm_mode=True):
+class Principal(pydantic.BaseModel, orm_mode=True):
     "Represents a User or Service"
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
+    uuid: uuid.UUID
     type: PrincipalType
     identities: List[Identity] = []
     roles: List[Role] = []
@@ -254,14 +257,10 @@ class PrincipalAttributes(pydantic.BaseModel, orm_mode=True):
     sessions: List[Session] = []
 
 
-class Principal(PrincipalAttributes):
-    uuid: uuid.UUID
-
-
-class APIKeyParams(pydantic.BaseModel):
-    # Provide an example for lifetime. Otherwise, OpenAPI suggests lifetime=0.
+class APIKeyRequestParams(pydantic.BaseModel):
+    # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
-    lifetime: Optional[int] = pydantic.Field(..., example=600)  # seconds
+    expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
     scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
     note: Optional[str]

@@ -1,5 +1,7 @@
+import hashlib
 import json
 import uuid as uuid_module
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
@@ -154,15 +156,14 @@ class Role(Timestamped, Base):
 class APIKey(Timestamped, Base):
     __tablename__ = "api_keys"
 
+    # Store the first_eight characters of the hex-encoded secret.
+    # The key holder can use this to identity the key.
+    # We do not store the full secret, only its sha256-hashed value.
+    # A primary key on (first_eight, hashed_secret) enables
+    # fast lookups.
+    first_eight = Column(Unicode(8), primary_key=True, index=True, nullable=False)
     hashed_secret = Column(
         LargeBinary(32), primary_key=True, index=True, nullable=False
-    )
-    # The UUID is *not* a secret; it is a public identifier.
-    uuid = Column(
-        UUID,
-        index=True,
-        nullable=False,
-        default=lambda: uuid_module.uuid4(),
     )
     expiration_time = Column(DateTime(timezone=False), nullable=True)
     latest_activity = Column(DateTime(timezone=False), nullable=True)
@@ -174,6 +175,37 @@ class APIKey(Timestamped, Base):
     # record-keeping.
 
     principal = relationship("Principal", back_populates="api_keys")
+
+    @classmethod
+    def safe_lookup(cls, db, secret):
+        """
+        Look up an API key. Ensure that it is valid.
+        """
+
+        now = datetime.utcnow()
+        hashed_secret = hashlib.sha256(secret).digest()
+        api_key = (
+            db.query(cls)
+            .filter(cls.first_eight == secret.hex()[:8])
+            .filter(cls.hashed_secret == hashed_secret)
+            .first()
+        )
+        if api_key is None:
+            # No match
+            validated_api_key = None
+        elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
+            # Match is expired. Delete it.
+            db.delete(api_key)
+            db.commit()
+            validated_api_key = None
+        elif api_key.principal is None:
+            # The Principal for the API key no longer exists. Delete it.
+            db.delete(api_key)
+            db.commit()
+            validated_api_key = None
+        else:
+            validated_api_key = api_key
+        return validated_api_key
 
 
 class Session(Timestamped, Base):

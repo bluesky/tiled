@@ -85,7 +85,6 @@ async def about(
         authentication["links"] = {
             "whoami": f"{base_url}auth/whoami",
             "apikey": f"{base_url}auth/apikey",
-            "revoke_apikey": f"{base_url}auth/apikey/{{uuid}}",
             "refresh_session": f"{base_url}auth/session/refresh",
             "revoke_session": f"{base_url}auth/session/revoke/{{session_id}}",
             "logout": f"{base_url}auth/logout",
