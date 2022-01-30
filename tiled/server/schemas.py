@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
-from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union
+from typing import Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic
 import pydantic.dataclasses
@@ -64,15 +64,23 @@ class Structure(pydantic.BaseModel):
     macro: Optional[dict]
 
 
+class SortingDirection(int, enum.Enum):
+    ASCENDING = 1
+    DECENDING = -1
+
+
+class SortingItem(pydantic.BaseModel):
+    key: str
+    direction: SortingDirection
+
+
 class NodeAttributes(pydantic.BaseModel):
     structure_family: Optional[StructureFamilies]
     specs: Optional[List[str]]
     metadata: Optional[dict]  # free-form, user-specified dict
     structure: Optional[Structure]
     count: Optional[int]
-    sorting: Optional[List[Tuple]]
-    # This seems to hit a bug or limitation in OpenAPI.
-    # sorting: Optional[List[Tuple[str, int]]]
+    sorting: Optional[List[SortingItem]]
 
 
 AttributesT = TypeVar("AttributesT")
