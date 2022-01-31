@@ -152,13 +152,13 @@ def test_revoke_session(enter_password, config):
         client = from_config(config, username="alice", token_cache={})
     # Get the current session ID.
     info = client.context.whoami()
-    (session,) = info["attributes"]["sessions"]
+    (session,) = info["sessions"]
     assert not session["revoked"]
     # Revoke it.
     client.context.revoke_session(session["uuid"])
     # Update info and confirm it is listed as revoked.
     updated_info = client.context.whoami()
-    (updated_session,) = updated_info["attributes"]["sessions"]
+    (updated_session,) = updated_info["sessions"]
     assert updated_session["revoked"]
     # Confirm it cannot be refreshed.
     with pytest.raises(CannotRefreshAuthentication):
@@ -215,10 +215,10 @@ def test_admin(enter_password, config):
     with enter_password("secret2"):
         user_client = from_config(config, username="bob", token_cache={})
 
-    user_roles = user_client.context.whoami()["attributes"]["roles"]
+    user_roles = user_client.context.whoami()["roles"]
     assert [role["name"] for role in user_roles] == ["user"]
 
-    adming_roles = admin_client.context.whoami()["attributes"]["roles"]
+    adming_roles = admin_client.context.whoami()["roles"]
     assert "admin" in [role["name"] for role in adming_roles]
 
 
@@ -237,25 +237,20 @@ def test_api_keys(enter_password, config):
         user_client = from_config(config, username="bob", token_cache={})
 
     # Make and use an API key. Check that latest_activity is updated.
-    user_key_info = user_client.context.new_api_key()
-    assert user_key_info["attributes"]["latest_activity"] is None  # never used
-    user_client_from_key = from_config(
-        config, api_key=user_key_info["attributes"]["secret"]
-    )
+    user_key_info = user_client.context.create_api_key()
+    assert user_key_info["latest_activity"] is None  # never used
+    user_client_from_key = from_config(config, api_key=user_key_info["secret"])
     # Check that api_key property is set.
-    assert user_client_from_key.context.api_key == user_key_info["attributes"]["secret"]
+    assert user_client_from_key.context.api_key == user_key_info["secret"]
     # Use the key for a couple requests and see that latest_activity becomes set and then increases.
     user_client_from_key["A1"]
-    activity1 = user_client_from_key.context.which_api_key()["data"]["attributes"][
-        "latest_activity"
-    ]
+    activity1 = user_client_from_key.context.which_api_key()["latest_activity"]
     assert activity1 is not None
+    time.sleep(2)  # Ensure time resolution (1 second) has ticked up.
     user_client_from_key["A1"]
-    activity2 = user_client_from_key.context.which_api_key()["data"]["attributes"][
-        "latest_activity"
-    ]
+    activity2 = user_client_from_key.context.which_api_key()["latest_activity"]
     assert activity2 > activity1
-    assert len(user_client_from_key.context.whoami()["attributes"]["api_keys"]) == 1
+    assert len(user_client_from_key.context.whoami()["api_keys"]) == 1
 
     # Unset the API key.
     secret = user_client_from_key.context.api_key
@@ -268,42 +263,40 @@ def test_api_keys(enter_password, config):
     user_client_from_key.context.which_api_key()
 
     # Request a key with reduced scope that cannot read metadata.
-    admin_key_info = admin_client.context.new_api_key(scopes=["metrics"])
+    admin_key_info = admin_client.context.create_api_key(scopes=["metrics"])
     with fail_with_status_code(401):
-        from_config(config, api_key=admin_key_info["attributes"]["secret"])
+        from_config(config, api_key=admin_key_info["secret"])
 
     # Request a key with reduced scope that can *only* read metadata.
-    admin_key_info = admin_client.context.new_api_key(scopes=["read:metadata"])
-    restricted_client = from_config(
-        config, api_key=admin_key_info["attributes"]["secret"]
-    )
+    admin_key_info = admin_client.context.create_api_key(scopes=["read:metadata"])
+    restricted_client = from_config(config, api_key=admin_key_info["secret"])
     restricted_client["A1"]
     with fail_with_status_code(401):
         restricted_client["A1"].read()  # no 'read:data' scope
 
     # Try to request a key with more scopes that the user has.
     with fail_with_status_code(400):
-        user_client.context.new_api_key(scopes=["admin:apikeys"])
+        user_client.context.create_api_key(scopes=["admin:apikeys"])
 
     # Create and revoke key.
-    user_key_info = user_client.context.new_api_key(note="will revoke soon")
-    assert len(user_client_from_key.context.whoami()["attributes"]["api_keys"]) == 2
+    user_key_info = user_client.context.create_api_key(note="will revoke soon")
+    assert len(user_client_from_key.context.whoami()["api_keys"]) == 2
     # There should now be two keys, one from above and this new one, with our note.
-    for api_key in user_client_from_key.context.whoami()["attributes"]["api_keys"]:
+    for api_key in user_client_from_key.context.whoami()["api_keys"]:
         if api_key["note"] == "will revoke soon":
             break
     else:
         assert False, "No api keys had a matching note."
     # Revoke the new key.
-    user_client_from_key.context.revoke_api_key(user_key_info["id"])
+    user_client_from_key.context.revoke_api_key(user_key_info["first_eight"])
     with fail_with_status_code(401):
-        from_config(config, api_key=user_key_info["attributes"]["secret"])
-    assert len(user_client_from_key.context.whoami()["attributes"]["api_keys"]) == 1
+        from_config(config, api_key=user_key_info["secret"])
+    assert len(user_client_from_key.context.whoami()["api_keys"]) == 1
 
     # Create a key with a very short lifetime.
-    user_key_info = user_client.context.new_api_key(
-        note="will expire very soon", lifetime=1
-    )  # lifetime units: seconds
+    user_key_info = user_client.context.create_api_key(
+        note="will expire very soon", expires_in=1
+    )  # units: seconds
     time.sleep(2)
     with fail_with_status_code(401):
-        from_config(config, api_key=user_key_info["attributes"]["secret"])
+        from_config(config, api_key=user_key_info["secret"])

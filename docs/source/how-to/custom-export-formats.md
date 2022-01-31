@@ -1,4 +1,4 @@
-# Custom Export Formats
+# Add Custom Export Formats
 
 The Tiled server can provide data---in whole or in part---in a variety of
 formats. See {doc}`../tutorials/export` for a list of the formats supported out

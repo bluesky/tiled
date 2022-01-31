@@ -174,10 +174,12 @@ class Context:
         prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
-        if (api_key is not None) and (
-            (username is not None) or (auth_provider is not None)
-        ):
-            raise ValueError("Use api_key or username/auth_provider, not both.")
+        if (username is not None) or (auth_provider is not None):
+            if api_key is not None:
+                raise ValueError("Use api_key or username/auth_provider, not both.")
+        elif api_key is None:
+            # Check for an API key from the environment.
+            api_key = os.getenv("TILED_API_KEY")
         self._client = client
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
@@ -301,15 +303,16 @@ class Context:
             raise RuntimeError("Not API key is configured for the client.")
         return self.get_json(self._handshake_data["authentication"]["links"]["apikey"])
 
-    def new_api_key(self, scopes=None, lifetime=None, note=None):
+    def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
         Generate a new API for the currently-authenticated user.
 
         Parameters
         ----------
         scopes : Optional[List[str]]
-            If None, this will have the same access as the user.
-        lifetime : Optional[int]
+            Restrict the access available to the API key by listing specific scopes.
+            By default, this will have the same access as the user.
+        expires_in : Optional[int]
             Number of seconds until API key expires. If None,
             it will never expire or it will have the maximum lifetime
             allowed by the server.
@@ -318,16 +321,15 @@ class Context:
         """
         return self.post_json(
             self._handshake_data["authentication"]["links"]["apikey"],
-            {"scopes": scopes, "lifetime": lifetime, "note": note},
+            {"scopes": scopes, "expires_in": expires_in, "note": note},
         )
 
-    def revoke_api_key(self, uuid):
+    def revoke_api_key(self, first_eight):
         request = self._client.build_request(
             "DELETE",
-            self._handshake_data["authentication"]["links"]["revoke_apikey"].format(
-                uuid=uuid
-            ),
+            self._handshake_data["authentication"]["links"]["apikey"],
             headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+            params={"first_eight": first_eight},
         )
         response = self._client.send(request)
         handle_error(response)
@@ -517,7 +519,7 @@ class Context:
         return msgpack.unpackb(
             response.content,
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-        )["data"]
+        )
 
     def _send(self, request, stream=False, attempts=0):
         """
@@ -672,9 +674,7 @@ Navigate web browser to this address to obtain access code:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])[
-            "data"
-        ]
+        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])
 
     def logout(self):
         """

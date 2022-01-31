@@ -5,7 +5,7 @@ import secrets
 import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.openapi.models import APIKey, APIKeyIn
@@ -27,7 +27,7 @@ with warnings.catch_warnings():
 from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
-from ..database.core import create_user, purge_expired
+from ..database.core import create_user, lookup_valid_api_key, lookup_valid_session
 from ..utils import SpecialUsers
 from . import schemas
 from .core import json_or_msgpack
@@ -41,6 +41,11 @@ from .utils import (
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
+
+
+def utcnow():
+    "UTC now with second resolution"
+    return datetime.utcnow().replace(microsecond=0)
 
 
 class Mode(enum.Enum):
@@ -98,14 +103,14 @@ api_key_cookie = APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
 
 def create_access_token(data, secret_key, expires_delta):
     to_encode = data.copy()
-    expire = datetime.utcnow() + expires_delta
+    expire = utcnow() + expires_delta
     to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
     return encoded_jwt
 
 
 def create_refresh_token(session_id, secret_key, expires_delta):
-    expire = datetime.utcnow() + expires_delta
+    expire = utcnow() + expires_delta
     to_encode = {
         "type": "refresh",
         "sid": session_id,
@@ -183,13 +188,7 @@ def get_current_principal(
             except Exception:
                 # Not valid hex, therefore not a valid API key
                 raise HTTPException(status_code=401, detail="Invalid API key")
-            hashed_secret = hashlib.sha256(secret).digest()
-            # TODO Check expiry.
-            api_key_orm = (
-                db.query(purge_expired(orm.APIKey, db))
-                .filter(orm.APIKey.hashed_secret == hashed_secret)
-                .first()
-            )
+            api_key_orm = lookup_valid_api_key(db, secret)
             if api_key_orm is not None:
                 principal = schemas.Principal.from_orm(api_key_orm.principal)
                 scopes = api_key_orm.scopes
@@ -200,7 +199,7 @@ def get_current_principal(
                     scopes.extend(
                         set().union(*[role.scopes for role in principal.roles])
                     )
-                api_key_orm.latest_activity = datetime.utcnow()
+                api_key_orm.latest_activity = utcnow()
                 db.commit()
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
@@ -296,7 +295,7 @@ def create_session(db, settings, identity_provider, id):
         principal = identity.principal
     session = orm.Session(
         principal_id=principal.id,
-        expiration_time=datetime.utcnow() + settings.session_max_age,
+        expiration_time=utcnow() + settings.session_max_age,
     )
     db.add(session)
     db.commit()
@@ -391,17 +390,20 @@ def generate_apikey(db, principal, apikey_params, request):
                 f"principal's scopes {list(principal_scopes)}."
             ),
         )
-    if apikey_params.lifetime is not None:
-        expiration_time = datetime.utcnow() + timedelta(seconds=apikey_params.lifetime)
+    if apikey_params.expires_in is not None:
+        expiration_time = utcnow() + timedelta(seconds=apikey_params.expires_in)
     else:
         expiration_time = None
-    secret = secrets.token_bytes(32)
+    # The standard 32 byes of entropy,
+    # plus 4 more for extra safety since we store the first eight HEX chars.
+    secret = secrets.token_bytes(4 + 32)
     hashed_secret = hashlib.sha256(secret).digest()
     new_key = orm.APIKey(
         principal_id=principal.id,
         expiration_time=expiration_time,
         note=apikey_params.note,
         scopes=scopes,
+        first_eight=secret.hex()[:8],
         hashed_secret=hashed_secret,
     )
     db.add(new_key)
@@ -409,20 +411,7 @@ def generate_apikey(db, principal, apikey_params, request):
     db.refresh(new_key)
     return json_or_msgpack(
         request,
-        schemas.Response[
-            schemas.Resource[schemas.APIKeyWithSecretAttributes, dict, dict], dict, dict
-        ](
-            data={
-                "id": new_key.uuid,
-                "attributes": schemas.APIKeyWithSecretAttributes(
-                    secret=secret.hex(),
-                    principal=new_key.principal.uuid,
-                    expiration_time=new_key.expiration_time,
-                    note=new_key.note,
-                    scopes=new_key.scopes,
-                ),
-            }
-        ),
+        schemas.APIKeyWithSecret.from_orm(new_key, secret=secret.hex()),
     )
 
 
@@ -431,9 +420,7 @@ base_authentication_router = APIRouter()
 
 @base_authentication_router.get(
     "/principal",
-    response_model=schemas.Response[
-        List[schemas.Resource[schemas.PrincipalAttributes, dict, dict]], dict, dict
-    ],
+    response_model=schemas.Principal,
 )
 def principal_list(
     request: Request,
@@ -447,25 +434,13 @@ def principal_list(
     principal_orms = db.query(orm.Principal).all()
     return json_or_msgpack(
         request,
-        schemas.Response[
-            List[schemas.Resource[schemas.PrincipalAttributes, dict, dict]], dict, dict
-        ](
-            data=[
-                {
-                    "attributes": schemas.PrincipalAttributes.from_orm(principal_orm),
-                    "id": principal_orm.uuid,
-                }
-                for principal_orm in principal_orms
-            ]
-        ),
+        [schemas.Principal.from_orm(principal_orm) for principal_orm in principal_orms],
     )
 
 
 @base_authentication_router.get(
     "/principal/{uuid}",
-    response_model=schemas.Response[
-        schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
-    ],
+    response_model=schemas.Principal,
 )
 def principal(
     request: Request,
@@ -481,29 +456,17 @@ def principal(
         raise HTTPException(
             404, f"Principal {uuid} does not exist or insufficient permissions."
         )
-    return json_or_msgpack(
-        request,
-        schemas.Response[
-            schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
-        ](
-            data={
-                "attributes": schemas.PrincipalAttributes.from_orm(principal_orm),
-                "id": principal_orm.uuid,
-            }
-        ),
-    )
+    return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
 
 
 @base_authentication_router.post(
     "/principal/{uuid}/apikey",
-    response_model=schemas.Response[
-        schemas.Resource[schemas.APIKeyWithSecretAttributes, dict, dict], dict, dict
-    ],
+    response_model=schemas.APIKeyWithSecret,
 )
 def apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
-    apikey_params: schemas.APIKeyParams,
+    apikey_params: schemas.APIKeyRequestParams,
     principal=Security(get_current_principal, scopes=["admin:apikeys"]),
     settings: BaseSettings = Depends(get_settings),
 ):
@@ -544,11 +507,9 @@ def revoke_session(
     request.state.endpoint = "auth"
     db = get_sessionmaker(settings.database_uri)()
     # Find this session in the database.
-    session = (
-        db.query(purge_expired(orm.Session, db))
-        .filter(orm.Session.uuid == uuid_module.UUID(hex=session_id))
-        .first()
-    )
+    session = lookup_valid_session(db, session_id)
+    if session is None:
+        raise HTTPException(404, detail=f"No session {session_id}")
     if principal.uuid != session.principal.uuid:
         # TODO Add a scope for doing this for other users.
         raise HTTPException(
@@ -568,12 +529,8 @@ def slide_session(refresh_token, settings, db):
             status_code=401, detail="Session has expired. Please re-authenticate."
         )
     # Find this session in the database.
-    session = (
-        db.query(purge_expired(orm.Session, db))
-        .filter(orm.Session.uuid == uuid_module.UUID(hex=payload["sid"]))
-        .first()
-    )
-    now = datetime.utcnow()
+    session = lookup_valid_session(db, payload["sid"])
+    now = utcnow()
     # This token is *signed* so we know that the information came from us.
     # If the Session is forgotten or revoked or expired, do not allow refresh.
     if (session is None) or session.revoked or (session.expiration_time < now):
@@ -620,13 +577,11 @@ def slide_session(refresh_token, settings, db):
 
 @base_authentication_router.post(
     "/apikey",
-    response_model=schemas.Response[
-        schemas.Resource[schemas.APIKeyWithSecretAttributes, dict, dict], dict, dict
-    ],
+    response_model=schemas.APIKeyWithSecret,
 )
 def new_apikey(
     request: Request,
-    apikey_params: schemas.APIKeyParams,
+    apikey_params: schemas.APIKeyRequestParams,
     principal=Security(get_current_principal, scopes=["apikeys"]),
     settings: BaseSettings = Depends(get_settings),
 ):
@@ -645,12 +600,7 @@ def new_apikey(
     return generate_apikey(db, principal_orm, apikey_params, request)
 
 
-@base_authentication_router.get(
-    "/apikey",
-    response_model=schemas.Response[
-        schemas.Resource[schemas.APIKeyAttributes, dict, dict], dict, dict
-    ],
-)
+@base_authentication_router.get("/apikey", response_model=schemas.APIKey)
 def current_apikey_info(
     request: Request,
     api_key: str = Depends(get_api_key),
@@ -672,36 +622,17 @@ def current_apikey_info(
     except Exception:
         # Not valid hex, therefore not a valid API key
         raise HTTPException(status_code=401, detail="Invalid API key")
-    hashed_secret = hashlib.sha256(secret).digest()
     db = get_sessionmaker(settings.database_uri)()
-    api_key_orm = (
-        db.query(purge_expired(orm.APIKey, db))
-        .filter(orm.APIKey.hashed_secret == hashed_secret)
-        .first()
-    )
-    return json_or_msgpack(
-        request,
-        schemas.Response[
-            schemas.Resource[schemas.APIKeyAttributes, dict, dict], dict, dict
-        ](
-            data={
-                "id": api_key_orm.uuid,
-                "attributes": schemas.APIKeyAttributes(
-                    principal=api_key_orm.principal.uuid,
-                    expiration_time=api_key_orm.expiration_time,
-                    latest_activity=api_key_orm.latest_activity,
-                    note=api_key_orm.note,
-                    scopes=api_key_orm.scopes,
-                ),
-            }
-        ),
-    )
+    api_key_orm = lookup_valid_api_key(db, secret)
+    if api_key_orm is None:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm))
 
 
-@base_authentication_router.delete("/apikey/{uuid}")
+@base_authentication_router.delete("/apikey")
 def revoke_apikey(
     request: Request,
-    uuid: uuid_module.UUID,
+    first_eight: str,
     principal=Security(get_current_principal, scopes=["apikeys"]),
     settings: BaseSettings = Depends(get_settings),
 ):
@@ -713,7 +644,7 @@ def revoke_apikey(
         return None
     db = get_sessionmaker(settings.database_uri)()
     api_key_orm = (
-        db.query(purge_expired(orm.APIKey, db)).filter(orm.APIKey.uuid == uuid).first()
+        db.query(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8]).first()
     )
     if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
         raise HTTPException(
@@ -726,9 +657,7 @@ def revoke_apikey(
 
 @base_authentication_router.get(
     "/whoami",
-    response_model=schemas.Response[
-        schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
-    ],
+    response_model=schemas.Principal,
 )
 def whoami(
     request: Request,
@@ -746,17 +675,7 @@ def whoami(
     principal_orm = (
         db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
     )
-    return json_or_msgpack(
-        request,
-        schemas.Response[
-            schemas.Resource[schemas.PrincipalAttributes, dict, dict], dict, dict
-        ](
-            data={
-                "id": principal_orm.uuid,
-                "attributes": schemas.PrincipalAttributes.from_orm(principal_orm),
-            }
-        ),
-    )
+    return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
 
 
 @base_authentication_router.post("/logout")

@@ -156,7 +156,7 @@ $ http POST https://tiled-demo.blueskyproject.io/auth/session/refresh refresh_to
 
 From here, everything follows the same as in Scenario 1, above.
 
-# Configure session lifetime parameters
+## Configure session lifetime parameters
 
 The server implements "sliding sessions". The following are tunable:
 

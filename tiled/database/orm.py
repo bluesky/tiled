@@ -154,15 +154,14 @@ class Role(Timestamped, Base):
 class APIKey(Timestamped, Base):
     __tablename__ = "api_keys"
 
+    # Store the first_eight characters of the hex-encoded secret.
+    # The key holder can use this to identity the key.
+    # We do not store the full secret, only its sha256-hashed value.
+    # A primary key on (first_eight, hashed_secret) enables
+    # fast lookups.
+    first_eight = Column(Unicode(8), primary_key=True, index=True, nullable=False)
     hashed_secret = Column(
         LargeBinary(32), primary_key=True, index=True, nullable=False
-    )
-    # The UUID is *not* a secret; it is a public identifier.
-    uuid = Column(
-        UUID,
-        index=True,
-        nullable=False,
-        default=lambda: uuid_module.uuid4(),
     )
     expiration_time = Column(DateTime(timezone=False), nullable=True)
     latest_activity = Column(DateTime(timezone=False), nullable=True)
