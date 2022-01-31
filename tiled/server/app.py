@@ -227,7 +227,7 @@ def build_app(
         for authenticator in authenticators:
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
         for task in background_tasks or []:
-            asyncio_task = app.asyncio.create_task(task())
+            asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
 
         # The /search route is defined at server startup so that the user has the
