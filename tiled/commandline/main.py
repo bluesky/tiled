@@ -1,14 +1,18 @@
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
 cli_app = typer.Typer()
 serve_app = typer.Typer()
 profile_app = typer.Typer()
+api_key_app = typer.Typer()
 cli_app.add_typer(serve_app, name="serve", help="Launch a Tiled server.")
 cli_app.add_typer(
     profile_app, name="profile", help="Examine Tiled 'profiles' (client-side config)."
+)
+cli_app.add_typer(
+    api_key_app, name="api_key", help="Create, list, and revoke API keys."
 )
 
 
@@ -31,12 +35,12 @@ def login(
     from tiled.client.utils import ClientError
 
     options = {}
-    if no_verify:
-        options["verify"] = False
     if refresh_or_fail:
         options["prompt_for_reauthentication"] = "never"
     try:
-        client = _client_from_uri_or_profile(uri_or_profile, **options)
+        client = _client_from_uri_or_profile(
+            uri_or_profile, no_verify=no_verify, **options
+        )
     except (ValueError, ClientError) as err:
         (msg,) = err.args
         typer.echo(msg)
@@ -62,10 +66,104 @@ def sessions(
         sessions_ = sessions()
         max_netloc_len = max(len(netloc) for netloc in sessions_)
         for netloc, token in sessions_.items():
-            typer.echo(f"{netloc}{' ' * (max_netloc_len - len(netloc))}   {token}")
+            padding = max_netloc_len - len(netloc)
+            typer.echo(f"{netloc}{' ' * padding}   {token}")
     else:
         for netloc in sessions():
             typer.echo(netloc)
+
+
+@api_key_app.command("create")
+def create_api_key(
+    uri_or_profile: str = typer.Argument(
+        ..., help="URI 'http[s]://...' or a profile name."
+    ),
+    expires_in: Optional[int] = typer.Option(
+        None,
+        help=(
+            "Number of seconds until API key expires. If None, "
+            "it will never expire or it will have the maximum lifetime "
+            "allowed by the server."
+        ),
+    ),
+    scopes: Optional[List[str]] = typer.Option(
+        None,
+        help=(
+            "Restrict the access available to this API key by listing scopes. "
+            "By default, it will inherit the scopes of its owner."
+        ),
+    ),
+    note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
+    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
+):
+    client = _client_from_uri_or_profile(uri_or_profile, no_verify=no_verify)
+    if not scopes:
+        # This is how typer interprets unspecified scopes.
+        # Replace with None to get default scopes.
+        scopes = None
+    info = client.context.create_api_key(
+        scopes=scopes, expires_in=expires_in, note=note
+    )
+    # TODO Print other info to the stderr?
+    typer.echo(info["secret"])
+
+
+@api_key_app.command("list")
+def list_api_keys(
+    uri_or_profile: str = typer.Argument(
+        ..., help="URI 'http[s]://...' or a profile name."
+    ),
+    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
+):
+    client = _client_from_uri_or_profile(uri_or_profile, no_verify=no_verify)
+    info = client.context.whoami()
+    if not info["api_keys"]:
+        type.echo("No API keys found")
+        return
+    max_note_len = max(len(api_key["note"] or "") for api_key in info["api_keys"])
+    COLUMNS = f"First 8   Expires at (UTC)     Latest activity      Note{' ' * (max_note_len - 4)}  Scopes"
+    typer.echo(COLUMNS)
+    for api_key in info["api_keys"]:
+        note_padding = 2 + max_note_len - len(api_key["note"] or "")
+        if api_key["expiration_time"] is None:
+            expiration_time = "-"
+        else:
+            expiration_time = (
+                api_key["expiration_time"]
+                .replace(microsecond=0, tzinfo=None)
+                .isoformat()
+            )
+        if api_key["latest_activity"] is None:
+            latest_activity = "-"
+        else:
+            latest_activity = (
+                api_key["latest_activity"]
+                .replace(microsecond=0, tzinfo=None)
+                .isoformat()
+            )
+        typer.echo(
+            (
+                f"{api_key['first_eight']:10}"
+                f"{expiration_time:21}"
+                f"{latest_activity:21}"
+                f"{(api_key['note'] or '')}{' ' * note_padding}"
+                f"{' '.join(api_key['scopes']) or '-'}"
+            )
+        )
+
+
+@api_key_app.command("revoke")
+def revoke_api_key(
+    uri_or_profile: str = typer.Argument(
+        ..., help="URI 'http[s]://...' or a profile name."
+    ),
+    first_eight: str = typer.Argument(
+        ..., help="First eight characters of API key (or the whole key)"
+    ),
+    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
+):
+    client = _client_from_uri_or_profile(uri_or_profile, no_verify=no_verify)
+    client.context.revoke_api_key(first_eight[:8])
 
 
 @cli_app.command("logout")
@@ -103,11 +201,7 @@ def tree(
     """
     from ..utils import gen_tree
 
-    if no_verify:
-        tree_obj = _client_from_uri_or_profile(uri_or_profile, verify=False)
-    else:
-        # Defer to the profile, which may or may not verify.
-        tree_obj = _client_from_uri_or_profile(uri_or_profile)
+    tree_obj = _client_from_uri_or_profile(uri_or_profile, no_verify=no_verify)
     for counter, line in enumerate(gen_tree(tree_obj), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
@@ -133,11 +227,9 @@ def download(
     from ..client.cache import Cache, download
 
     cache = Cache.on_disk(cache_path, available_bytes=available_bytes)
-    if no_verify:
-        client = _client_from_uri_or_profile(uri_or_profile, cache=cache, verify=False)
-    else:
-        # Defer to the profile, which may or may not verify.
-        client = _client_from_uri_or_profile(uri_or_profile, cache=cache)
+    client = _client_from_uri_or_profile(
+        uri_or_profile, cache=cache, no_verify=no_verify
+    )
     download(client)
 
 
@@ -373,12 +465,12 @@ def serve_config(
 
 
 def _client_from_uri_or_profile(
-    uri_or_profile, verify=None, cache=None, prompt_for_reauthentication=None
+    uri_or_profile, no_verify, cache=None, prompt_for_reauthentication=None
 ):
     from ..client import from_profile, from_uri
 
     options = {}
-    if verify is False:
+    if no_verify:
         options["verify"] = False
     if prompt_for_reauthentication is not None:
         options["prompt_for_reauthentication"] = prompt_for_reauthentication

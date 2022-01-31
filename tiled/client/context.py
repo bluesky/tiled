@@ -308,7 +308,8 @@ class Context:
         Parameters
         ----------
         scopes : Optional[List[str]]
-            If None, this will have the same access as the user.
+            Restrict the access available to the API key by listing specific scopes.
+            By default, this will have the same access as the user.
         expires_in : Optional[int]
             Number of seconds until API key expires. If None,
             it will never expire or it will have the maximum lifetime
