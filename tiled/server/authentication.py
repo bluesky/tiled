@@ -43,6 +43,11 @@ ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
 
 
+def utcnow():
+    "UTC now with second resolution"
+    return datetime.utcnow().replace(microsecond=0)
+
+
 class Mode(enum.Enum):
     password = "password"
     external = "external"
@@ -98,14 +103,14 @@ api_key_cookie = APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
 
 def create_access_token(data, secret_key, expires_delta):
     to_encode = data.copy()
-    expire = datetime.utcnow() + expires_delta
+    expire = utcnow() + expires_delta
     to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
     return encoded_jwt
 
 
 def create_refresh_token(session_id, secret_key, expires_delta):
-    expire = datetime.utcnow() + expires_delta
+    expire = utcnow() + expires_delta
     to_encode = {
         "type": "refresh",
         "sid": session_id,
@@ -194,7 +199,7 @@ def get_current_principal(
                     scopes.extend(
                         set().union(*[role.scopes for role in principal.roles])
                     )
-                api_key_orm.latest_activity = datetime.utcnow()
+                api_key_orm.latest_activity = utcnow()
                 db.commit()
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
@@ -290,7 +295,7 @@ def create_session(db, settings, identity_provider, id):
         principal = identity.principal
     session = orm.Session(
         principal_id=principal.id,
-        expiration_time=datetime.utcnow() + settings.session_max_age,
+        expiration_time=utcnow() + settings.session_max_age,
     )
     db.add(session)
     db.commit()
@@ -386,9 +391,7 @@ def generate_apikey(db, principal, apikey_params, request):
             ),
         )
     if apikey_params.expires_in is not None:
-        expiration_time = datetime.utcnow() + timedelta(
-            seconds=apikey_params.expires_in
-        )
+        expiration_time = utcnow() + timedelta(seconds=apikey_params.expires_in)
     else:
         expiration_time = None
     # The standard 32 byes of entropy,
@@ -533,7 +536,7 @@ def slide_session(refresh_token, settings, db):
         .filter(orm.Session.uuid == uuid_module.UUID(hex=payload["sid"]))
         .first()
     )
-    now = datetime.utcnow()
+    now = utcnow()
     # This token is *signed* so we know that the information came from us.
     # If the Session is forgotten or revoked or expired, do not allow refresh.
     if (session is None) or session.revoked or (session.expiration_time < now):
