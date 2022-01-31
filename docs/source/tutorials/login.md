@@ -1,7 +1,7 @@
 # Log into an Authenticated Tiled Server
 
 For this tutorial, we will log in to the demo Tiled server at
-`http://tiled-demo.blueskyproject.io`. This server is configured to use
+`https://tiled-demo.blueskyproject.io`. This server is configured to use
 [ORCID](https://orcid.org) for authentication, so you will need an ORCID
 account.
 
