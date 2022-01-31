@@ -6,6 +6,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import func
 
 from .alembic_utils import temp_alembic_ini
 from .base import Base
@@ -215,3 +216,39 @@ def lookup_valid_api_key(db, secret):
     else:
         validated_api_key = api_key
     return validated_api_key
+
+
+def latest_principal_activity(db, principal):
+    """
+    The most recent time this Principal has logged in with an Identity,
+    refreshed a Session, or used an APIKey.
+
+    Note that activity that is authenticated using an access token is not
+    captured here. As usual with JWTs, those requests do not interact with
+    this database, for performance reasons. Therefore, this may lag actual
+    activity by as much as the max age of an access token (default: 15
+    minutes).
+    """
+    latest_identity_activity = (
+        db.query(func.max(Identity.latest_login))
+        .filter(Identity.principal_id == principal.id)
+        .scalar()
+    )
+    latest_session_activity = (
+        db.query(func.max(Session.time_last_refreshed))
+        .filter(Session.principal_id == principal.id)
+        .scalar()
+    )
+    latest_api_key_activity = (
+        db.query(func.max(APIKey.latest_activity))
+        .filter(APIKey.principal_id == principal.id)
+        .scalar()
+    )
+    all_activity = [
+        latest_identity_activity,
+        latest_api_key_activity,
+        latest_session_activity,
+    ]
+    if all([t is None for t in all_activity]):
+        return None
+    return max(t for t in all_activity if t is not None)

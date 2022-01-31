@@ -27,7 +27,12 @@ with warnings.catch_warnings():
 from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
-from ..database.core import create_user, lookup_valid_api_key, lookup_valid_session
+from ..database.core import (
+    create_user,
+    latest_principal_activity,
+    lookup_valid_api_key,
+    lookup_valid_session,
+)
 from ..utils import SpecialUsers
 from . import schemas
 from .core import json_or_msgpack
@@ -286,12 +291,16 @@ def create_session(db, settings, identity_provider, id):
         .filter(orm.Identity.provider == identity_provider)
         .first()
     )
+    now = utcnow()
     if identity is None:
         # We have not. Make a new Principal and link this new Identity to it.
         # TODO Confirm that the user intends to create a new Principal here.
         # Give them the opportunity to link an existing Principal instead.
         principal = create_user(db, identity_provider, id)
+        (new_identity,) = principal.identities
+        new_identity.latest_login = now
     else:
+        identity.latest_login = now
         principal = identity.principal
     session = orm.Session(
         principal_id=principal.id,
@@ -432,9 +441,15 @@ def principal_list(
     request.state.endpoint = "auth"
     db = get_sessionmaker(settings.database_uri)()
     principal_orms = db.query(orm.Principal).all()
+
     return json_or_msgpack(
         request,
-        [schemas.Principal.from_orm(principal_orm) for principal_orm in principal_orms],
+        [
+            schemas.Principal.from_orm(
+                principal_orm, latest_principal_activity(db, principal_orm)
+            )
+            for principal_orm in principal_orms
+        ],
     )
 
 
@@ -456,7 +471,12 @@ def principal(
         raise HTTPException(
             404, f"Principal {uuid} does not exist or insufficient permissions."
         )
-    return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
+    return json_or_msgpack(
+        request,
+        schemas.Principal.from_orm(
+            principal_orm, latest_principal_activity(db, principal_orm)
+        ),
+    )
 
 
 @base_authentication_router.post(
@@ -675,7 +695,12 @@ def whoami(
     principal_orm = (
         db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
     )
-    return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
+    return json_or_msgpack(
+        request,
+        schemas.Principal.from_orm(
+            principal_orm, latest_principal_activity(db, principal_orm)
+        ),
+    )
 
 
 @base_authentication_router.post("/logout")
