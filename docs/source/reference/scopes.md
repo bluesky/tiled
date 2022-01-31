@@ -27,8 +27,8 @@ There is support for custom roles at the database level, but neither role
 creation/customization nor role assignment are yet exposed through the API.
 (This will come in a future release.)
 
-For now, admin role can only be assigned in the service configuration, as
-in this example.
+For now, admin role can only be assigned by setting `tiled_admins` in the
+service configuration, as in this example.
 
 ```{eval-rst}
 .. literalinclude:: ../../../example_configs/toy_authentication.yml
