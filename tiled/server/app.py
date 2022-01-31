@@ -317,12 +317,17 @@ def build_app(
             async def purge_expired_sessions_and_api_keys():
                 logger.info("Purging expired Sessions and API keys from the database.")
                 while True:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, purge_expired(db, orm.Session)
-                    )
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, purge_expired(db, orm.APIKey)
-                    )
+                    if engine.name == "sqlite":
+                        # Run in the main thread.
+                        purge_expired(db, orm.Session)
+                        purge_expired(db, orm.APIKey)
+                    else:
+                        await asyncio.get_running_loop().run_in_executor(
+                            None, purge_expired(db, orm.Session)
+                        )
+                        await asyncio.get_running_loop().run_in_executor(
+                            None, purge_expired(db, orm.APIKey)
+                        )
                     await asyncio.sleep(600)
 
             app.state.tasks.append(
