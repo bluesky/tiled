@@ -12,6 +12,8 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from tiled.database.core import purge_expired
+
 from ..authenticators import Mode
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
@@ -217,13 +219,16 @@ def build_app(
     """
                 )
 
+        # Stash these to cancel this on shutdown.
+        app.state.tasks = []
         # Trees and Authenticators can run tasks in the background.
         background_tasks = []
         background_tasks.extend(getattr(tree, "background_tasks", []))
         for authenticator in authenticators:
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
         for task in background_tasks or []:
-            asyncio.create_task(task())
+            asyncio_task = app.asyncio.create_task(task())
+            app.state.tasks.append(asyncio_task)
 
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
@@ -275,6 +280,7 @@ def build_app(
             from sqlalchemy import create_engine
             from sqlalchemy.orm import sessionmaker
 
+            from ..database import orm
             from ..database.core import (
                 REQUIRED_REVISION,
                 UninitializedDatabase,
@@ -307,6 +313,26 @@ def build_app(
                     identity_provider=admin["provider"],
                     id=admin["id"],
                 )
+
+            async def purge_expired_sessions_and_api_keys():
+                logger.info("Purging expired Sessions and API keys from the database.")
+                while True:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, purge_expired(db, orm.Session)
+                    )
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, purge_expired(db, orm.APIKey)
+                    )
+                    await asyncio.sleep(600)
+
+            app.state.tasks.append(
+                asyncio.create_task(purge_expired_sessions_and_api_keys())
+            )
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        for task in app.state.tasks:
+            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,

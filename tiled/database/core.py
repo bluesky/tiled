@@ -110,7 +110,7 @@ def check_database(engine):
         )
 
 
-def purge_expired(cls, db):
+def purge_expired(db, cls):
     """
     Remove expired entries.
 
@@ -122,7 +122,7 @@ def purge_expired(cls, db):
     deleted = False
     for obj in (
         db.query(cls)
-        .filter(cls.expiration_time is not None)
+        .filter(cls.expiration_time.is_not(None))
         .filter(cls.expiration_time < now)
     ):
         deleted = True
