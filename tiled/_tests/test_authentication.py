@@ -246,6 +246,7 @@ def test_api_keys(enter_password, config):
     user_client_from_key["A1"]
     activity1 = user_client_from_key.context.which_api_key()["latest_activity"]
     assert activity1 is not None
+    time.sleep(2)  # Ensure time resolution (1 second) has ticked up.
     user_client_from_key["A1"]
     activity2 = user_client_from_key.context.which_api_key()["latest_activity"]
     assert activity2 > activity1
