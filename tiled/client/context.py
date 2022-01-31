@@ -174,10 +174,12 @@ class Context:
         prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
-        if (api_key is not None) and (
-            (username is not None) or (auth_provider is not None)
-        ):
-            raise ValueError("Use api_key or username/auth_provider, not both.")
+        if (username is not None) or (auth_provider is not None):
+            if api_key is not None:
+                raise ValueError("Use api_key or username/auth_provider, not both.")
+        elif api_key is None:
+            # Check for an API key from the environment.
+            api_key = os.getenv("TILED_API_KEY")
         self._client = client
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
