@@ -1,7 +1,5 @@
-import hashlib
 import json
 import uuid as uuid_module
-from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
@@ -175,37 +173,6 @@ class APIKey(Timestamped, Base):
     # record-keeping.
 
     principal = relationship("Principal", back_populates="api_keys")
-
-    @classmethod
-    def safe_lookup(cls, db, secret):
-        """
-        Look up an API key. Ensure that it is valid.
-        """
-
-        now = datetime.utcnow()
-        hashed_secret = hashlib.sha256(secret).digest()
-        api_key = (
-            db.query(cls)
-            .filter(cls.first_eight == secret.hex()[:8])
-            .filter(cls.hashed_secret == hashed_secret)
-            .first()
-        )
-        if api_key is None:
-            # No match
-            validated_api_key = None
-        elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
-            # Match is expired. Delete it.
-            db.delete(api_key)
-            db.commit()
-            validated_api_key = None
-        elif api_key.principal is None:
-            # The Principal for the API key no longer exists. Delete it.
-            db.delete(api_key)
-            db.commit()
-            validated_api_key = None
-        else:
-            validated_api_key = api_key
-        return validated_api_key
 
 
 class Session(Timestamped, Base):

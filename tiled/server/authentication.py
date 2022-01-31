@@ -27,7 +27,7 @@ with warnings.catch_warnings():
 from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
-from ..database.core import create_user, purge_expired
+from ..database.core import create_user, lookup_valid_api_key, lookup_valid_session
 from ..utils import SpecialUsers
 from . import schemas
 from .core import json_or_msgpack
@@ -188,7 +188,7 @@ def get_current_principal(
             except Exception:
                 # Not valid hex, therefore not a valid API key
                 raise HTTPException(status_code=401, detail="Invalid API key")
-            api_key_orm = orm.APIKey.safe_lookup(db, secret)
+            api_key_orm = lookup_valid_api_key(db, secret)
             if api_key_orm is not None:
                 principal = schemas.Principal.from_orm(api_key_orm.principal)
                 scopes = api_key_orm.scopes
@@ -507,11 +507,9 @@ def revoke_session(
     request.state.endpoint = "auth"
     db = get_sessionmaker(settings.database_uri)()
     # Find this session in the database.
-    session = (
-        db.query(purge_expired(orm.Session, db))
-        .filter(orm.Session.uuid == uuid_module.UUID(hex=session_id))
-        .first()
-    )
+    session = lookup_valid_session(db, session_id)
+    if session is None:
+        raise HTTPException(404, detail=f"No session {session_id}")
     if principal.uuid != session.principal.uuid:
         # TODO Add a scope for doing this for other users.
         raise HTTPException(
@@ -531,11 +529,7 @@ def slide_session(refresh_token, settings, db):
             status_code=401, detail="Session has expired. Please re-authenticate."
         )
     # Find this session in the database.
-    session = (
-        db.query(purge_expired(orm.Session, db))
-        .filter(orm.Session.uuid == uuid_module.UUID(hex=payload["sid"]))
-        .first()
-    )
+    session = lookup_valid_session(db, payload["sid"])
     now = utcnow()
     # This token is *signed* so we know that the information came from us.
     # If the Session is forgotten or revoked or expired, do not allow refresh.
@@ -629,7 +623,9 @@ def current_apikey_info(
         # Not valid hex, therefore not a valid API key
         raise HTTPException(status_code=401, detail="Invalid API key")
     db = get_sessionmaker(settings.database_uri)()
-    api_key_orm = orm.APIKey.safe_lookup(db, secret)
+    api_key_orm = lookup_valid_api_key(db, secret)
+    if api_key_orm is None:
+        raise HTTPException(status_code=401, detail="Invalid API key")
     return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm))
 
 

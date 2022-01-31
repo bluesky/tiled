@@ -1,3 +1,5 @@
+import hashlib
+import uuid as uuid_module
 from datetime import datetime
 
 from alembic import command
@@ -7,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from .alembic_utils import temp_alembic_ini
 from .base import Base
-from .orm import Identity, Principal, Role
+from .orm import APIKey, Identity, Principal, Role, Session
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
@@ -110,14 +112,16 @@ def check_database(engine):
         )
 
 
-def purge_expired(db, cls):
+def purge_expired(engine, cls):
     """
     Remove expired entries.
 
     Return reference to cls, supporting usage like
 
-    >>> db.query(purge_expired(orm.APIKey, db))
+    >>> db.query(purge_expired(engine, orm.APIKey))
     """
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = SessionLocal()
     now = datetime.utcnow()
     deleted = False
     for obj in (
@@ -149,6 +153,22 @@ def create_user(db, identity_provider, id):
     return principal
 
 
+def lookup_valid_session(db, session_id):
+    session = (
+        db.query(Session)
+        .filter(Session.uuid == uuid_module.UUID(hex=session_id))
+        .first()
+    )
+    if (
+        session.expiration_time is not None
+        and session.expiration_time < datetime.utcnow()
+    ):
+        db.delete(session)
+        db.commit()
+        return None
+    return session
+
+
 def make_admin_by_identity(db, identity_provider, id):
     identity = (
         db.query(Identity)
@@ -164,3 +184,34 @@ def make_admin_by_identity(db, identity_provider, id):
     principal.roles.append(admin_role)
     db.commit()
     return principal
+
+
+def lookup_valid_api_key(db, secret):
+    """
+    Look up an API key. Ensure that it is valid.
+    """
+
+    now = datetime.utcnow()
+    hashed_secret = hashlib.sha256(secret).digest()
+    api_key = (
+        db.query(APIKey)
+        .filter(APIKey.first_eight == secret.hex()[:8])
+        .filter(APIKey.hashed_secret == hashed_secret)
+        .first()
+    )
+    if api_key is None:
+        # No match
+        validated_api_key = None
+    elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
+        # Match is expired. Delete it.
+        db.delete(api_key)
+        db.commit()
+        validated_api_key = None
+    elif api_key.principal is None:
+        # The Principal for the API key no longer exists. Delete it.
+        db.delete(api_key)
+        db.commit()
+        validated_api_key = None
+    else:
+        validated_api_key = api_key
+    return validated_api_key
