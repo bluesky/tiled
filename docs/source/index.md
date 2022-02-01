@@ -30,6 +30,7 @@ how-to/docker
 ```{toctree}
 :caption: Explanations
 
+explanations/standards
 explanations/structures
 explanations/security
 explanations/compression
