@@ -10,5 +10,5 @@ Tiled leverages the following standards from the web and from scientific computi
 * OAuth2 refresh flow with [https://jwt.io/](JWTs)
 * [Prometheus](https://prometheus.io/) metrics for server observability
 * [Apache Arrow](https://arrow.apache.org/) to describe tabular data
-* The [Numpy Array Interface]() to describe N-dimensional strided array data
+* The [Numpy Array Interface](https://numpy.org/doc/stable/reference/arrays.interface.html#object.__array_interface__) to describe N-dimensional strided array data
 * [JSON Schema](https://json-schema.org/understanding-json-schema/) to describe the HTTP API (via OpenAPI) and to document and validate server- and client-side configuration files
