@@ -66,7 +66,14 @@ def construct_build_app_kwargs(
         auth_spec = config.get("authentication", {}) or {}
         root_access_control = config.get("access_control", {}) or {}
         auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
-        for i, authenticator in enumerate(list(auth_spec.get("providers", []))):
+        providers = list(auth_spec.get("providers", []))
+        provider_names = [p["provider"] for p in providers]
+        if len(set(provider_names)) != len(provider_names):
+            raise ValueError(
+                "The names given for 'provider' must be unique. "
+                f"Found duplicates in {providers}"
+            )
+        for i, authenticator in enumerate(providers):
             import_path = auth_aliases.get(
                 authenticator["authenticator"], authenticator["authenticator"]
             )

@@ -202,6 +202,29 @@ def test_multiple_providers(enter_password, config, monkeypatch):
     client.context.whoami()
 
 
+def test_multiple_providers_name_collision(config):
+    """
+    Check that we enforce unique provider names.
+    """
+    config["authentication"]["providers"] = [
+        {
+            "provider": "some_name",
+            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+            "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
+        },
+        {
+            "provider": "some_name",  # duplicate!
+            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+            "args": {
+                # Duplicate 'cara' username.
+                "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
+            },
+        },
+    ]
+    with pytest.raises(ValueError):
+        from_config(config)
+
+
 def test_admin(enter_password, config):
     """
     Test that the 'tiled_admin' config confers the 'admin' Role on a Principal.
