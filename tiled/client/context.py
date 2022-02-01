@@ -206,6 +206,10 @@ class Context:
         # version is too old.
         self._client.headers["user-agent"] = f"python-tiled/{get_versions()['version']}"
 
+        # Stash the URL of the original request. We will alter the base_url below
+        # if it is not aligned with root_path of the tiled server.
+        url = httpx.URL(self._client.base_url)
+
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         # And, at the same time, obtain the 'root_path', the path to the root route
@@ -227,7 +231,7 @@ class Context:
                 # that points us to https://examples.com/some/subpath where we
                 # can see the authentication providers and their endpoints.
                 if response.status_code == 401:
-                    self.client.base_url = response.headers["x-tiled-root"]
+                    self._client.base_url = response.headers["x-tiled-root"]
                 # Now try again.
                 self._handshake_data = self.get_json("/", params={"root_path": True})
 
@@ -250,16 +254,13 @@ class Context:
             access_token = tokens["access_token"]
             client.headers["Authorization"] = f"Bearer {access_token}"
         base_path = self._handshake_data["meta"]["root_path"]
-        url = httpx.URL(self._client.base_url)
         base_url = urllib.parse.urlunsplit(
             (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
         )
         client.base_url = base_url
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-        if path_parts:
-            # Strip "/node/metadata"
-            path_parts.pop(1)
-        self._path_parts = path_parts
+        # Strip "/node/metadata"
+        self._path_parts = path_parts[2:]
 
     @property
     def tokens(self):
