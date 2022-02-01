@@ -18,6 +18,7 @@ tutorials/plotly-integration
 ```{toctree}
 :caption: How To Guides
 
+how-to/client-logger
 how-to/configuration
 how-to/custom-export-formats
 how-to/profiles
