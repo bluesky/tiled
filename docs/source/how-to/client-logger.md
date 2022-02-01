@@ -1,8 +1,8 @@
 # Use Performance and Debug Logging
 
 The client logs all network traffic (requests sent, responses received) and
-interactions with its cache, if present. This can be especially useful measuring speed
-and identifying bottlenecks.
+interactions with its cache, if present. This can be especially useful for
+measuring speed and identifying bottlenecks.
 
 ## Turn on client logging
 
@@ -17,8 +17,7 @@ show_logs()
 This uses the Python standard library's logging framework. The `show_logs()`
 function is just a convenience function that does some simple logging
 configuration. It will not affect the logging behavior of any other parts of
-your program. (It does not invoke `logging.basicConfig()` or any global logging
-settings.)
+your program; it does not alter any global logging configuration.
 
 ```
 
@@ -62,27 +61,29 @@ index
 ## Examine server performance with `server-timing`
 
 The `server-timing` header is especially useful. While the tiled server is
-process our request, it records the time taken during several steps of the
-process. In the last line of logging shown above, we see:
+handling our request, it records the time taken during each step of the
+process. For example, at the end of the last line of the logs shown above, we
+see:
 
 ```
 server-timing:acl;dur=0.0, read;dur=1.4, tok;dur=0.2, pack;dur=0.8, compress;dur=0.0;ratio=1.4, app;dur=9.1
 ```
 
-This follows a [standardized syntax](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing).
+This follows a [standard syntax](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing).
 The time units are **milliseconds**.
 
-At the end of the line, `app;dur=` gives the overall time, measured from when
+At the end of the line, `app;dur=` gives the total time, measured from when
 the tiled server first received the client's request to the moment it began
-transmitting the response.  By comparing this number to the timestamps at the
-left of each log line, we can separate _application_ time from _network_ time.
+transmitting its response. We can separate _application_ time from _network_
+time by cross-referencing this number with the timestamps at the left of each
+log line.
 
 The item...
 
 * `acl` gives time spent in authentication and access control enforcement;
 * `read` gives time spent accessing the data;
-* `tok` gives the time spent producing a content fingerprint used to cache invalidation;
-* `pack` gives the time spent encoding it in the requested format;
+* `tok` gives the time spent producing a fingerprint used for cache invalidation;
+* `pack` gives the time spent encoding the data in the requested format;
 * `compress` gives both the time spent compressing and the compression ratio
   achieved (higher is better).
 
