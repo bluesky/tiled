@@ -206,6 +206,7 @@ class PrincipalType(str, enum.Enum):
 class Identity(pydantic.BaseModel, orm_mode=True):
     id: pydantic.constr(max_length=255)
     provider: pydantic.constr(max_length=255)
+    latest_login: Optional[datetime]
 
 
 class Role(pydantic.BaseModel, orm_mode=True):
@@ -263,6 +264,13 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     roles: List[Role] = []
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
+    latest_activity: Optional[datetime] = None
+
+    @classmethod
+    def from_orm(cls, orm, latest_activity=None):
+        instance = super().from_orm(orm)
+        instance.latest_activity = latest_activity
+        return instance
 
 
 class APIKeyRequestParams(pydantic.BaseModel):

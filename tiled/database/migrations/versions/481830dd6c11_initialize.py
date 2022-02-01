@@ -51,6 +51,7 @@ def upgrade():
         Column("id", Unicode(255), primary_key=True, nullable=False),
         Column("provider", Unicode(255), primary_key=True, nullable=False),
         Column("principal_id", Integer, ForeignKey("principals.id")),
+        Column("latest_login", DateTime(timezone=False), nullable=True),
     )
     op.create_table(
         "roles",

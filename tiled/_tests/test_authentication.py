@@ -244,12 +244,15 @@ def test_api_keys(enter_password, config):
     assert user_client_from_key.context.api_key == user_key_info["secret"]
     # Use the key for a couple requests and see that latest_activity becomes set and then increases.
     user_client_from_key["A1"]
-    activity1 = user_client_from_key.context.which_api_key()["latest_activity"]
-    assert activity1 is not None
+    key_activity1 = user_client_from_key.context.which_api_key()["latest_activity"]
+    principal_activity1 = user_client_from_key.context.whoami()["latest_activity"]
+    assert key_activity1 is not None
     time.sleep(2)  # Ensure time resolution (1 second) has ticked up.
     user_client_from_key["A1"]
-    activity2 = user_client_from_key.context.which_api_key()["latest_activity"]
-    assert activity2 > activity1
+    key_activity2 = user_client_from_key.context.which_api_key()["latest_activity"]
+    principal_activity2 = user_client_from_key.context.whoami()["latest_activity"]
+    assert key_activity2 > key_activity1
+    assert principal_activity2 > principal_activity1
     assert len(user_client_from_key.context.whoami()["api_keys"]) == 1
 
     # Unset the API key.

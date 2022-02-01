@@ -134,6 +134,7 @@ class Identity(Timestamped, Base):
     id = Column(Unicode(255), primary_key=True, nullable=False)
     provider = Column(Unicode(255), primary_key=True, nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
+    latest_login = Column(DateTime(timezone=False), nullable=True)
     # In the future we may add a notion of "primary" identity.
 
     principal = relationship("Principal", back_populates="identities")
