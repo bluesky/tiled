@@ -1,4 +1,5 @@
 import shutil
+import time
 from pathlib import Path
 
 import numpy
@@ -262,12 +263,14 @@ def test_subdirectory_handler(tmpdir):
     # Adding, changing, or, removing files should notify the handler.
     df1.to_csv(Path(tmpdir, "separately_managed", "c.csv"))  # added
     df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))  # modified
+    time.sleep(0.5)  # Give slow CI filesystem time to catch up.
     force_update(client)
 
     Path(tmpdir, "separately_managed", "c.csv").unlink()  # removed
     # Add a new file in a new subdirectory.
     Path(tmpdir, "separately_managed", "new_subdir").mkdir()
     df1.to_csv(Path(tmpdir, "separately_managed", "new_subdir", "d.csv"))
+    time.sleep(0.5)  # Give slow CI filesystem time to catch up.
     force_update(client)
 
     expected_first_batch = [
