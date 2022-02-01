@@ -220,13 +220,14 @@ def get_current_principal(
                 scopes = {"read:metadata", "read:data", "metrics"}
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
+        # If we made it to this point, we have a valid API key.
         # If the API key was given in query param, move to cookie.
         # This is convenient for browser-based access.
-        if (
-            request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key
-        ) and ("api_key" in request.query_params):
+        if ("api_key" in request.query_params) and (
+            request.cookies.get(API_KEY_COOKIE_NAME) != api_key
+        ):
             request.state.cookies_to_set.append(
-                {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
+                {"key": API_KEY_COOKIE_NAME, "value": api_key}
             )
     elif access_token is not None:
         try:
@@ -246,29 +247,19 @@ def get_current_principal(
         )
         scopes = payload["scp"]
     else:
-        # No form of authentication is present. Is anonymous public access permitted?
+        # No form of authentication is present.
+        principal = SpecialUsers.public
+        # Is anonymous public access permitted?
         if settings.allow_anonymous_access:
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
-            principal = SpecialUsers.public
             scopes = {"read:metadata", "read:data"}
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
-
-            # Include a link to the root page which provides a list of
-            # authenticators. The use case here is:
-            # 1. User is emailed a link like https://example.com/subpath/node/metadata/a/b/c
-            # 2. Tiled Client tries to connect to that and gets 401.
-            # 3. Client can use this header to find its way to
-            #    https://examples.com/subpath/ and obtain a list of
-            #    authentication providers and endpoints.
-            raise HTTPException(
-                status_code=401,
-                detail="Not authenticated",
-                headers={"X-Tiled-Root": get_base_url(request)},
-            )
+            # They can still access the /  and /docs routes.
+            scopes = {}
     # Scope enforcement happens here.
     # https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/
     if security_scopes.scopes:
@@ -276,6 +267,13 @@ def get_current_principal(
     else:
         authenticate_value = "Bearer"
     if not set(security_scopes.scopes).issubset(scopes):
+        # Include a link to the root page which provides a list of
+        # authenticators. The use case here is:
+        # 1. User is emailed a link like https://example.com/subpath/node/metadata/a/b/c
+        # 2. Tiled Client tries to connect to that and gets 401.
+        # 3. Client can use this header to find its way to
+        #    https://examples.com/subpath/ and obtain a list of
+        #    authentication providers and endpoints.
         raise HTTPException(
             status_code=401,
             detail=(
@@ -283,7 +281,10 @@ def get_current_principal(
                 f"Requires scopes {security_scopes.scopes}. "
                 f"Request had scopes {list(scopes)}"
             ),
-            headers={"WWW-Authenticate": authenticate_value},
+            headers={
+                "WWW-Authenticate": authenticate_value,
+                "X-Tiled-Root": get_base_url(request),
+            },
         )
     return principal
 

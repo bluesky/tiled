@@ -9,7 +9,7 @@ from pydantic import BaseSettings
 
 from .. import __version__
 from . import schemas
-from .authentication import Mode, get_authenticators
+from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
     NoEntry,
     UnsupportedMediaTypes,
@@ -44,6 +44,9 @@ async def about(
     authenticators=Depends(get_authenticators),
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
+    # This dependency is here because it runs the code that moves
+    # API key from the query parameter to a cookie (if it is valid).
+    principal=Security(get_current_principal, scopes=[]),
 ):
     # TODO The lazy import of entry modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
