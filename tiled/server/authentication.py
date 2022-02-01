@@ -177,32 +177,32 @@ def get_current_principal(
     if api_key is not None:
         if authenticators:
             # Tiled is in a multi-user configuration with authentication providers.
-            db = get_sessionmaker(settings.database_uri)()
-            # We store the hashed value of the API key secret.
-            # By comparing hashes we protect against timing attacks.
-            # By storing only the hash of the (high-entropy) secret
-            # we reduce the value of that an attacker can extracted from a
-            # stolen database backup.
-            try:
-                secret = bytes.fromhex(api_key)
-            except Exception:
-                # Not valid hex, therefore not a valid API key
-                raise HTTPException(status_code=401, detail="Invalid API key")
-            api_key_orm = lookup_valid_api_key(db, secret)
-            if api_key_orm is not None:
-                principal = schemas.Principal.from_orm(api_key_orm.principal)
-                scopes = api_key_orm.scopes
-                if "inherit" in scopes:
-                    # The scope "inherit" is a metascope that confers all the
-                    # scopes for the Principal associated with this API,
-                    # resolved at access time.
-                    scopes.extend(
-                        set().union(*[role.scopes for role in principal.roles])
-                    )
-                api_key_orm.latest_activity = utcnow()
-                db.commit()
-            else:
-                raise HTTPException(status_code=401, detail="Invalid API key")
+            with get_sessionmaker(settings.database_uri)() as db:
+                # We store the hashed value of the API key secret.
+                # By comparing hashes we protect against timing attacks.
+                # By storing only the hash of the (high-entropy) secret
+                # we reduce the value of that an attacker can extracted from a
+                # stolen database backup.
+                try:
+                    secret = bytes.fromhex(api_key)
+                except Exception:
+                    # Not valid hex, therefore not a valid API key
+                    raise HTTPException(status_code=401, detail="Invalid API key")
+                api_key_orm = lookup_valid_api_key(db, secret)
+                if api_key_orm is not None:
+                    principal = schemas.Principal.from_orm(api_key_orm.principal)
+                    scopes = api_key_orm.scopes
+                    if "inherit" in scopes:
+                        # The scope "inherit" is a metascope that confers all the
+                        # scopes for the Principal associated with this API,
+                        # resolved at access time.
+                        scopes.extend(
+                            set().union(*[role.scopes for role in principal.roles])
+                        )
+                    api_key_orm.latest_activity = utcnow()
+                    db.commit()
+                else:
+                    raise HTTPException(status_code=401, detail="Invalid API key")
         else:
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
@@ -278,57 +278,58 @@ def get_current_principal(
     return principal
 
 
-def create_session(db, settings, identity_provider, id):
+def create_session(settings, identity_provider, id):
     # Have we seen this Identity before?
-    identity = (
-        db.query(orm.Identity)
-        .filter(orm.Identity.id == id)
-        .filter(orm.Identity.provider == identity_provider)
-        .first()
-    )
-    if identity is None:
-        # We have not. Make a new Principal and link this new Identity to it.
-        # TODO Confirm that the user intends to create a new Principal here.
-        # Give them the opportunity to link an existing Principal instead.
-        principal = create_user(db, identity_provider, id)
-    else:
-        principal = identity.principal
-    session = orm.Session(
-        principal_id=principal.id,
-        expiration_time=utcnow() + settings.session_max_age,
-    )
-    db.add(session)
-    db.commit()
-    db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
-    # Provide enough information in the access token to reconstruct Principal
-    # and its Identities sufficient for access policy enforcement without a
-    # database hit.
-    data = {
-        "sub": principal.uuid.hex,
-        "sub_typ": principal.type.value,
-        "scp": list(set().union(*[role.scopes for role in principal.roles])),
-        "ids": [
-            {"id": identity.id, "idp": identity.provider}
-            for identity in principal.identities
-        ],
-    }
-    access_token = create_access_token(
-        data=data,
-        expires_delta=settings.access_token_max_age,
-        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-    )
-    refresh_token = create_refresh_token(
-        session_id=session.uuid.hex,
-        expires_delta=settings.refresh_token_max_age,
-        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-    )
-    return {
-        "access_token": access_token,
-        "expires_in": settings.access_token_max_age / UNIT_SECOND,
-        "refresh_token": refresh_token,
-        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
-        "token_type": "bearer",
-    }
+    with get_sessionmaker(settings.database_uri)() as db:
+        identity = (
+            db.query(orm.Identity)
+            .filter(orm.Identity.id == id)
+            .filter(orm.Identity.provider == identity_provider)
+            .first()
+        )
+        if identity is None:
+            # We have not. Make a new Principal and link this new Identity to it.
+            # TODO Confirm that the user intends to create a new Principal here.
+            # Give them the opportunity to link an existing Principal instead.
+            principal = create_user(db, identity_provider, id)
+        else:
+            principal = identity.principal
+        session = orm.Session(
+            principal_id=principal.id,
+            expiration_time=utcnow() + settings.session_max_age,
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
+        # Provide enough information in the access token to reconstruct Principal
+        # and its Identities sufficient for access policy enforcement without a
+        # database hit.
+        data = {
+            "sub": principal.uuid.hex,
+            "sub_typ": principal.type.value,
+            "scp": list(set().union(*[role.scopes for role in principal.roles])),
+            "ids": [
+                {"id": identity.id, "idp": identity.provider}
+                for identity in principal.identities
+            ],
+        }
+        access_token = create_access_token(
+            data=data,
+            expires_delta=settings.access_token_max_age,
+            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+        )
+        refresh_token = create_refresh_token(
+            session_id=session.uuid.hex,
+            expires_delta=settings.refresh_token_max_age,
+            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+        )
+        return {
+            "access_token": access_token,
+            "expires_in": settings.access_token_max_age / UNIT_SECOND,
+            "refresh_token": refresh_token,
+            "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+            "token_type": "bearer",
+        }
 
 
 def build_auth_code_route(authenticator, provider):
@@ -342,9 +343,8 @@ def build_auth_code_route(authenticator, provider):
         username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        db = get_sessionmaker(settings.database_uri)()
         return await asyncio.get_running_loop().run_in_executor(
-            None, create_session, db, settings, provider, username
+            None, create_session, settings, provider, username
         )
 
     return auth_code
@@ -368,9 +368,8 @@ def build_handle_credentials_route(authenticator, provider):
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        db = get_sessionmaker(settings.database_uri)()
         return await asyncio.get_running_loop().run_in_executor(
-            None, create_session, db, settings, provider, username
+            None, create_session, settings, provider, username
         )
 
     return handle_credentials
@@ -430,12 +429,15 @@ def principal_list(
     "List Principals (users and services)."
     # TODO Pagination
     request.state.endpoint = "auth"
-    db = get_sessionmaker(settings.database_uri)()
-    principal_orms = db.query(orm.Principal).all()
-    return json_or_msgpack(
-        request,
-        [schemas.Principal.from_orm(principal_orm) for principal_orm in principal_orms],
-    )
+    with get_sessionmaker(settings.database_uri)() as db:
+        principal_orms = db.query(orm.Principal).all()
+        return json_or_msgpack(
+            request,
+            [
+                schemas.Principal.from_orm(principal_orm)
+                for principal_orm in principal_orms
+            ],
+        )
 
 
 @base_authentication_router.get(
@@ -450,13 +452,15 @@ def principal(
 ):
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
-    db = get_sessionmaker(settings.database_uri)()
-    principal_orm = db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
-    if principal_orm is None:
-        raise HTTPException(
-            404, f"Principal {uuid} does not exist or insufficient permissions."
+    with get_sessionmaker(settings.database_uri)() as db:
+        principal_orm = (
+            db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
         )
-    return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
+        if principal_orm is None:
+            raise HTTPException(
+                404, f"Principal {uuid} does not exist or insufficient permissions."
+            )
+        return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
 
 
 @base_authentication_router.post(
@@ -472,13 +476,13 @@ def apikey_for_principal(
 ):
     "Generate an API key for a Principal."
     request.state.endpoint = "auth"
-    db = get_sessionmaker(settings.database_uri)()
-    principal = db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
-    if principal is None:
-        raise HTTPException(
-            404, f"Principal {uuid} does not exist or insufficient permissions."
-        )
-    return generate_apikey(db, principal, apikey_params, request)
+    with get_sessionmaker(settings.database_uri)() as db:
+        principal = db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
+        if principal is None:
+            raise HTTPException(
+                404, f"Principal {uuid} does not exist or insufficient permissions."
+            )
+        return generate_apikey(db, principal, apikey_params, request)
 
 
 @base_authentication_router.post(
@@ -491,9 +495,9 @@ def refresh_session(
 ):
     "Obtain a new access token and refresh token."
     request.state.endpoint = "auth"
-    db = get_sessionmaker(settings.database_uri)()
-    new_tokens = slide_session(refresh_token.refresh_token, settings, db)
-    return new_tokens
+    with get_sessionmaker(settings.database_uri)() as db:
+        new_tokens = slide_session(refresh_token.refresh_token, settings, db)
+        return new_tokens
 
 
 @base_authentication_router.delete("/session/revoke/{session_id}")
@@ -505,20 +509,20 @@ def revoke_session(
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
-    db = get_sessionmaker(settings.database_uri)()
-    # Find this session in the database.
-    session = lookup_valid_session(db, session_id)
-    if session is None:
-        raise HTTPException(404, detail=f"No session {session_id}")
-    if principal.uuid != session.principal.uuid:
-        # TODO Add a scope for doing this for other users.
-        raise HTTPException(
-            404,
-            detail="Sessions does not exist or requester has insufficient permissions",
-        )
-    session.revoked = True
-    db.commit()
-    return Response(status_code=204)
+    with get_sessionmaker(settings.database_uri)() as db:
+        # Find this session in the database.
+        session = lookup_valid_session(db, session_id)
+        if session is None:
+            raise HTTPException(404, detail=f"No session {session_id}")
+        if principal.uuid != session.principal.uuid:
+            # TODO Add a scope for doing this for other users.
+            raise HTTPException(
+                404,
+                detail="Sessions does not exist or requester has insufficient permissions",
+            )
+        session.revoked = True
+        db.commit()
+        return Response(status_code=204)
 
 
 def slide_session(refresh_token, settings, db):
@@ -591,13 +595,14 @@ def new_apikey(
     request.state.endpoint = "auth"
     if principal is None:
         return None
-    db = get_sessionmaker(settings.database_uri)()
-    # The principal from get_current_principal tells us everything that the
-    # access_token carries around, but the database knows more than that.
-    principal_orm = (
-        db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
-    )
-    return generate_apikey(db, principal_orm, apikey_params, request)
+    with get_sessionmaker(settings.database_uri)() as db:
+        # The principal from get_current_principal tells us everything that the
+        # access_token carries around, but the database knows more than that.
+        principal_orm = (
+            db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
+        )
+        apikey = generate_apikey(db, principal_orm, apikey_params, request)
+        return apikey
 
 
 @base_authentication_router.get("/apikey", response_model=schemas.APIKey)
@@ -622,11 +627,11 @@ def current_apikey_info(
     except Exception:
         # Not valid hex, therefore not a valid API key
         raise HTTPException(status_code=401, detail="Invalid API key")
-    db = get_sessionmaker(settings.database_uri)()
-    api_key_orm = lookup_valid_api_key(db, secret)
-    if api_key_orm is None:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm))
+    with get_sessionmaker(settings.database_uri)() as db:
+        api_key_orm = lookup_valid_api_key(db, secret)
+        if api_key_orm is None:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm))
 
 
 @base_authentication_router.delete("/apikey")
@@ -642,17 +647,20 @@ def revoke_apikey(
     request.state.endpoint = "auth"
     if principal is None:
         return None
-    db = get_sessionmaker(settings.database_uri)()
-    api_key_orm = (
-        db.query(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8]).first()
-    )
-    if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
-        raise HTTPException(
-            404, f"The currently-authenticated {principal.type} has no such API key."
+    with get_sessionmaker(settings.database_uri)() as db:
+        api_key_orm = (
+            db.query(orm.APIKey)
+            .filter(orm.APIKey.first_eight == first_eight[:8])
+            .first()
         )
-    db.delete(api_key_orm)
-    db.commit()
-    return Response(status_code=204)
+        if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
+            raise HTTPException(
+                404,
+                f"The currently-authenticated {principal.type} has no such API key.",
+            )
+        db.delete(api_key_orm)
+        db.commit()
+        return Response(status_code=204)
 
 
 @base_authentication_router.get(
@@ -669,13 +677,13 @@ def whoami(
     request.state.endpoint = "auth"
     if principal is None:
         return None
-    db = get_sessionmaker(settings.database_uri)()
-    # The principal from get_current_principal tells us everything that the
-    # access_token carries around, but the database knows more than that.
-    principal_orm = (
-        db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
-    )
-    return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
+    with get_sessionmaker(settings.database_uri)() as db:
+        # The principal from get_current_principal tells us everything that the
+        # access_token carries around, but the database knows more than that.
+        principal_orm = (
+            db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
+        )
+        return json_or_msgpack(request, schemas.Principal.from_orm(principal_orm))
 
 
 @base_authentication_router.post("/logout")
