@@ -52,10 +52,10 @@ def get_settings():
 @lru_cache(1)
 def get_sessionmaker(database_uri):
     from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.orm import scoped_session, sessionmaker
 
     connect_args = {}
     if database_uri.startswith("sqlite"):
         connect_args.update({"check_same_thread": False})
     engine = create_engine(database_uri, connect_args=connect_args)
-    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
