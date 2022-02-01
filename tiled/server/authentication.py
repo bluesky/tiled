@@ -196,14 +196,19 @@ def get_current_principal(
                 api_key_orm = lookup_valid_api_key(db, secret)
                 if api_key_orm is not None:
                     principal = schemas.Principal.from_orm(api_key_orm.principal)
-                    scopes = api_key_orm.scopes
+                    principal_scopes = set().union(
+                        *[role.scopes for role in principal.roles]
+                    )
+                    # This intersection addresses the case where the Principal has
+                    # lost a scope that they had when this key was created.
+                    scopes = set(api_key_orm.scopes).intersection(
+                        principal_scopes | {"inherit"}
+                    )
                     if "inherit" in scopes:
                         # The scope "inherit" is a metascope that confers all the
                         # scopes for the Principal associated with this API,
                         # resolved at access time.
-                        scopes.extend(
-                            set().union(*[role.scopes for role in principal.roles])
-                        )
+                        scopes.update(principal_scopes)
                     api_key_orm.latest_activity = utcnow()
                     db.commit()
                 else:
@@ -212,7 +217,7 @@ def get_current_principal(
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 principal = SpecialUsers.admin
-                scopes = ["read:metadata", "read:data"]
+                scopes = {"read:metadata", "read:data", "metrics"}
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
         # If the API key was given in query param, move to cookie.
@@ -247,7 +252,7 @@ def get_current_principal(
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
             principal = SpecialUsers.public
-            scopes = ["read:metadata", "read:data"]
+            scopes = {"read:metadata", "read:data"}
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
@@ -688,7 +693,7 @@ def whoami(
 
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
-    if principal is None:
+    if principal is SpecialUsers.public:
         return None
     # The principal from get_current_principal tells us everything that the
     # access_token carries around, but the database knows more than that.
