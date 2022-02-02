@@ -10,33 +10,18 @@ from ..utils import DictView
 from .array import ArrayAdapter
 
 
-# https://stackoverflow.com/a/51695181
-class ArrayWithAttrs(numpy.ndarray):
-    def __new__(cls, input_array):
-        return numpy.asarray(input_array).view(cls)
+numpy.ndarray
+class MockHDF5Dataset():
+    "Mock just enough of the HDF5 Dataset interface to act as a placeholder."
+    def __init__(self, array, attrs):
+        self._array = array
+        self.shape = array.shape
+        self.dtype = array.dtype
+        self.ndim = array.ndim
+        self.attrs = attrs
 
-    def __array_finalize__(self, obj) -> None:
-        if obj is None:
-            return
-        # This attribute should be maintained!
-        default_attributes = {"attrs": {}}
-        self.__dict__.update(default_attributes)  # another way to set attributes
-
-    def __array_ufunc__(
-        self, ufunc, method, *inputs, **kwargs
-    ):  # this method is called whenever you use a ufunc
-        f = {
-            "reduce": ufunc.reduce,
-            "accumulate": ufunc.accumulate,
-            "reduceat": ufunc.reduceat,
-            "outer": ufunc.outer,
-            "at": ufunc.at,
-            "__call__": ufunc,
-        }
-        # convert the inputs to np.ndarray to prevent recursion, call the function, then cast it back
-        output = ArrayWithAttrs(f[method](*(i.view(numpy.ndarray) for i in inputs), **kwargs))
-        output.__dict__ = self.__dict__  # carry forward attributes
-        return output
+    def __getitem__(self, key):
+        return self._array.__getitem__(key)
 
 
 class HDF5DatasetAdapter(ArrayAdapter):
@@ -151,9 +136,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                 if check_str_dtype.length is None:
                     dataset_names = value.file[self._node.name + "/" + key][...][()]
                     if value.size == 1:
-                        arr = ArrayWithAttrs(numpy.array(dataset_names))
+                        arr = MockHDF5Dataset(numpy.array(dataset_names), {})
                         return HDF5DatasetAdapter(arr)
-                return HDF5DatasetAdapter(ArrayWithAttrs(numpy.array([])))
+                return HDF5DatasetAdapter(MockHDF5Dataset(numpy.array([])), {})
             return HDF5DatasetAdapter(value)
 
     def __len__(self):
