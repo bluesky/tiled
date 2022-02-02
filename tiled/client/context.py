@@ -243,6 +243,14 @@ class Context:
                 or (username is not None)
             )
         ):
+            if not self._handshake_data["authentication"]["providers"]:
+                raise RuntimeError(
+                    """This server requires API key authentication.
+Set an api_key as in:
+
+>>> c = from_uri("...", api_key="...")
+"""
+                )
             # Authenticate. If a valid refresh_token is available in the token_cache,
             # it will be used. Otherwise, this will prompt for input from the stdin
             # or raise CannotRefreshAuthentication.
@@ -546,7 +554,8 @@ class Context:
             raise RuntimeError("API key authentication is being used.")
         providers = self._handshake_data["authentication"]["providers"]
         if len(providers) == 0:
-            raise Exception(
+            raise RuntimeError(
+                "The authenticate() method is not applicable. "
                 "This server does not support any authentication providers."
             )
         if provider is not None:
