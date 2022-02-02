@@ -1,34 +1,28 @@
 import base64
 import collections.abc
-import contextlib
 import dataclasses
 import itertools
 import math
 import operator
 import re
 import sys
-import time
+import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
-from functools import lru_cache
 from hashlib import md5
-from typing import Any, Optional
+from typing import Any
 
 import dateutil.tz
 import jmespath
 import msgpack
-import pydantic
-from fastapi import Depends, HTTPException, Query, Request, Response
+import orjson
+from fastapi import HTTPException, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
 
 # Some are not directly used, but they register things on import.
 from .. import queries
 from ..adapters.mapping import MapAdapter
-from ..media_type_registration import (
-    serialization_registry as default_serialization_registry,
-)
 from ..queries import KeyLookup, QueryValueError
-from ..query_registration import query_registry as default_query_registry
 from ..structures import node  # noqa: F401
 from ..structures.dataframe import serialize_arrow
 from ..utils import (
@@ -38,9 +32,9 @@ from ..utils import (
     modules_available,
     safe_json_dump_array,
 )
-from . import models
-from .authentication import get_current_user
+from . import schemas
 from .etag import tokenize
+from .utils import record_timing
 
 del queries
 if modules_available("numpy", "dask.array"):
@@ -59,92 +53,6 @@ if modules_available("xarray"):
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 _LOCAL_TZINFO = dateutil.tz.gettz()
-
-
-@lru_cache(1)
-def get_query_registry():
-    "This may be overridden via dependency_overrides."
-    return default_query_registry
-
-
-@lru_cache(1)
-def get_serialization_registry():
-    "This may be overridden via dependency_overrides."
-    return default_serialization_registry
-
-
-def get_root_tree():
-    raise NotImplementedError(
-        "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.serve_tree()."
-    )
-
-
-def entry(
-    path: str,
-    request: Request,
-    current_user: str = Depends(get_current_user),
-    root_tree: pydantic.BaseSettings = Depends(get_root_tree),
-):
-    path_parts = [segment for segment in path.split("/") if segment]
-    entry = root_tree.authenticated_as(current_user)
-    try:
-        # Traverse into sub-tree(s).
-        for segment in path_parts:
-            try:
-                unauthenticated_entry = entry[segment]
-            except (KeyError, TypeError):
-                raise NoEntry(path_parts)
-            if hasattr(unauthenticated_entry, "authenticated_as"):
-                with record_timing(request.state.metrics, "acl"):
-                    entry = unauthenticated_entry.authenticated_as(current_user)
-            else:
-                entry = unauthenticated_entry
-        return entry
-    except NoEntry:
-        raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
-
-
-def block(
-    # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., regex="^[0-9]*(,[0-9]+)*$"),
-):
-    "Specify and parse a block index parameter."
-    if not block:
-        return ()
-    return tuple(map(int, block.split(",")))
-
-
-def expected_shape(
-    expected_shape: Optional[str] = Query(
-        None, min_length=1, regex="^[0-9]+(,[0-9]+)*$|^scalar$"
-    ),
-):
-    "Specify and parse an expected_shape parameter."
-    if expected_shape is None:
-        return
-    if expected_shape == "scalar":
-        return ()
-    return tuple(map(int, expected_shape.split(",")))
-
-
-def slice_(
-    slice: str = Query(None, regex="^[0-9,:]*$"),
-):
-    "Specify and parse a block index parameter."
-    import numpy
-
-    # IMPORTANT We are eval-ing a user-provider string here so we need to be
-    # very careful about locking down what can be in it. The regex above
-    # excludes any letters or operators, so it is not possible to execute
-    # functions or expensive arithmetic.
-    return tuple(
-        [
-            eval(f"numpy.s_[{dim!s}]", {"numpy": numpy})
-            for dim in (slice or "").split(",")
-            if dim
-        ]
-    )
 
 
 def len_or_approx(tree):
@@ -274,7 +182,7 @@ def construct_entries_response(
     count = len_or_approx(tree)
     links = pagination_links(route, path_parts, offset, limit, count)
     data = []
-    if fields != [models.EntryFields.none]:
+    if fields != [schemas.EntryFields.none]:
         # Pull a page of items into memory.
         items = tree.items_indexer[offset : offset + limit]  # noqa: E203
     else:
@@ -306,7 +214,7 @@ def construct_entries_response(
             else:
                 metadata_stale_at = min(metadata_stale_at, entry.metadata_stale_at)
     return (
-        models.Response(data=data, links=links, meta={"count": count}),
+        schemas.Response(data=data, links=links, meta={"count": count}),
         metadata_stale_at,
         must_revalidate,
     )
@@ -420,24 +328,30 @@ def construct_resource(
 ):
     path_str = "/".join(path_parts)
     attributes = {}
-    if models.EntryFields.metadata in fields:
+    if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
             attributes["metadata"] = jmespath.compile(select_metadata).search(
                 entry.metadata
             )
         else:
             attributes["metadata"] = entry.metadata
-    if models.EntryFields.specs in fields:
+    if schemas.EntryFields.specs in fields:
         attributes["specs"] = getattr(entry, "specs", None)
     if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
-        if models.EntryFields.count in fields:
+        if schemas.EntryFields.count in fields:
             attributes["count"] = len_or_approx(entry)
             if hasattr(entry, "sorting"):
-                attributes["sorting"] = entry.sorting
+                # In the Python API we encode sorting as (key, direction).
+                # This order-based "record" notion does not play well with OpenAPI.
+                # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
+                attributes["sorting"] = [
+                    {"key": key, "direction": direction}
+                    for key, direction in entry.sorting
+                ]
         d = {
             "id": path_parts[-1] if path_parts else "",
-            "attributes": models.NodeAttributes(**attributes),
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = {
@@ -445,26 +359,31 @@ def construct_resource(
                 "search": f"{base_url}node/search/{path_str}",
                 "full": f"{base_url}node/full/{path_str}",
             }
-        resource = models.Resource(**d)
+        resource = schemas.Resource[
+            schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
+        ](**d)
     else:
         links = {"self": f"{base_url}node/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Tree and not values.
+            ResourceLinksT = schemas.resource_links_type_by_structure_family[
+                entry.structure_family
+            ]
             links.update(
                 {
                     link: template.format(base_url=base_url, path=path_str)
                     for link, template in FULL_LINKS[entry.structure_family].items()
                 }
             )
-            if models.EntryFields.structure_family in fields:
+            if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if models.EntryFields.macrostructure in fields:
+            if schemas.EntryFields.macrostructure in fields:
                 macrostructure = entry.macrostructure()
                 if macrostructure is not None:
                     structure["macro"] = dataclasses.asdict(macrostructure)
-            if models.EntryFields.microstructure in fields:
+            if schemas.EntryFields.microstructure in fields:
                 if entry.structure_family == "node":
                     assert False  # not sure if this ever happens
                     pass
@@ -514,13 +433,18 @@ def construct_resource(
                         "partition"
                     ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
             attributes["structure"] = structure
+        else:
+            # We only have entry names, not structure_family, so
+            ResourceLinksT = schemas.SelfLinkOnly
         d = {
             "id": path_parts[-1],
-            "attributes": models.NodeAttributes(**attributes),
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = links
-        resource = models.Resource(**d)
+        resource = schemas.Resource[
+            schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict
+        ](**d)
     return resource
 
 
@@ -575,6 +499,8 @@ def _fallback_msgpack_encoder(obj):
             if numpy.isscalar(obj):
                 return obj.item()
             return obj.tolist()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)  # hyphen-separated hex per RFC4122
     return obj
 
 
@@ -651,7 +577,8 @@ def resolve_media_type(request):
     return media_type
 
 
-def json_or_msgpack(request, content, media_type, expires=None, headers=None):
+def json_or_msgpack(request, content, expires=None, headers=None):
+    media_type = resolve_media_type(request)
     content_as_dict = content.dict()
     with record_timing(request.state.metrics, "tok"):
         etag = md5(str(content_as_dict).encode()).hexdigest()
@@ -696,13 +623,3 @@ FULL_LINKS = {
         "full_dataset": "{base_url}node/full/{path}",
     },
 }
-
-
-@contextlib.contextmanager
-def record_timing(metrics, key):
-    """
-    Set timings[key] equal to the run time (in milliseconds) of the context body.
-    """
-    t0 = time.perf_counter()
-    yield
-    metrics[key]["dur"] += time.perf_counter() - t0  # Units: seconds

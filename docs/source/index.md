@@ -21,6 +21,7 @@ tutorials/plotly-integration
 how-to/configuration
 how-to/custom-export-formats
 how-to/profiles
+how-to/api-keys
 how-to/direct-client
 how-to/tune-caches
 how-to/docker
@@ -47,6 +48,7 @@ reference/service
 reference/http-api-overview
 reference/python-client
 reference/authentication
+reference/scopes
 reference/commandline
 reference/service-configuration
 reference/client-profiles

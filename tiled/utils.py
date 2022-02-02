@@ -249,7 +249,8 @@ class CachingMap(collections.abc.Mapping):
     def __getstate__(self):
         return self.__mapping, self.__cache
 
-    def __setstate__(self, mapping, cache):
+    def __setstate__(self, state):
+        mapping, cache = state
         self.__mapping = mapping
         self.__cache = cache
 

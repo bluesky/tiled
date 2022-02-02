@@ -1,4 +1,5 @@
 import shutil
+import time
 from pathlib import Path
 
 import numpy
@@ -262,12 +263,14 @@ def test_subdirectory_handler(tmpdir):
     # Adding, changing, or, removing files should notify the handler.
     df1.to_csv(Path(tmpdir, "separately_managed", "c.csv"))  # added
     df1.to_csv(Path(tmpdir, "separately_managed", "a.csv"))  # modified
+    time.sleep(0.5)  # Give slow CI filesystem time to catch up.
     force_update(client)
 
     Path(tmpdir, "separately_managed", "c.csv").unlink()  # removed
     # Add a new file in a new subdirectory.
     Path(tmpdir, "separately_managed", "new_subdir").mkdir()
     df1.to_csv(Path(tmpdir, "separately_managed", "new_subdir", "d.csv"))
+    time.sleep(0.5)  # Give slow CI filesystem time to catch up.
     force_update(client)
 
     expected_first_batch = [
@@ -282,3 +285,22 @@ def test_subdirectory_handler(tmpdir):
     assert set(changes[0]) == set(expected_first_batch)
     # Second batch of changes reported
     assert set(changes[1]) == set(expected_second_batch)
+
+
+def test_sort(example_data_dir):
+    """
+    This should do nothing because the nodes have no metatdata.
+
+    The test is just that nothing errors out.
+    """
+    config = {
+        "trees": [
+            {
+                "tree": "tiled.adapters.files:DirectoryAdapter.from_directory",
+                "path": "/",
+                "args": {"directory": str(example_data_dir)},
+            }
+        ]
+    }
+    client = from_config(config)
+    list(client.sort(("does_not_exsit", 1)))

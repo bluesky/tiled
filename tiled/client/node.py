@@ -122,8 +122,17 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         self._queries_as_params = _queries_to_params(*self._queries)
         # If the user has not specified a sorting, give the server the opportunity
         # to tell us the default sorting.
+        if sorting:
+            self._sorting = sorting
+        else:
+            # In the Python API we encode sorting as (key, direction).
+            # This order-based "record" notion does not play well with OpenAPI.
+            # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
+            self._sorting = [
+                (s["key"], int(s["direction"]))
+                for s in (item["attributes"].get("sorting") or [])
+            ]
         sorting = sorting or item["attributes"].get("sorting")
-        self._sorting = [(name, int(direction)) for name, direction in (sorting or [])]
         self._sorting_params = {
             "sort": ",".join(
                 f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting

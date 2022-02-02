@@ -5,8 +5,8 @@
 # client profile reference section based on the description fields. See
 # doc/source/conf.py for that logic!
 #
-# We look to document everything we have default values for in values.yaml, but
-# we don't look to enforce the perfect validation logic within this file.
+# We look to document all the options, but we don't look to enforce the perfect
+# validation logic within this file.
 #
 # ref: https://json-schema.org/learn/getting-started-step-by-step.html
 #
@@ -32,19 +32,15 @@ properties:
       URI of a Tiled server, such as
 
           http://localhost:8000
-  authentication_uri:
-    type: [string, "null"]
-    description: |
-      URI of a Tiled OAuth2 authentication server. If this is unset, `uri` will
-      be used for authentication as well, which is typically correct for simple
-      deployments of Tiled.
-
-      By default, `tiled serve ...` acts is both a Resource server and an
-      Authentication server.
   username:
     type: string
     description: |
       For authenticated Trees. Optional unless the Tree requires authentication.
+  auth_provider:
+    type: string
+    description: |
+      Authentication provider. If unspecified and there are multiple providers
+      supported by the server, the client will prompt the user to choose one.
   headers:
     type: object
     additionalProperties: true
@@ -162,7 +158,7 @@ properties:
       Filepath to directory of access tokens.
       Default location is usually suitable.
       The default is system-dependent and can be inspected at
-      `tiled.client.authentication.DEFAULT_TILED_TOKEN_CACHE`.
+      `tiled.client.context.DEFAULT_TOKEN_CACHE`.
   verify:
     type: boolean
     description: |

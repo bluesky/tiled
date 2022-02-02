@@ -115,7 +115,10 @@ if __debug__:
                         )
                 else:
                     if "authorization" in request.headers:
-                        message += " 'authorization:[redacted]'"
+                        scheme, _, param = request.headers["authorization"].partition(
+                            " "
+                        )
+                        message += f" 'authorization:{scheme} [redacted]'"
             elif hasattr(self, "response"):
                 response = self.response
                 request = response.request
