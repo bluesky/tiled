@@ -197,5 +197,6 @@ def hide_logs():
     """
     Undo show_logs().
     """
+    logger.setLevel("WARNING")
     if handler in logger.handlers:
         logger.removeHandler(handler)
