@@ -495,7 +495,7 @@ def safe_json_dump_array(array):
             if isinstance(content[0], (numpy.str_, numpy.bytes_)):
                 return content.tolist()
 
-        return list(bytes(content))
+        raise TypeError
 
 
     try:
