@@ -238,7 +238,7 @@ def profile_paths():
     "List the locations that the client will search for profiles (client-side configuration)."
     from ..profiles import paths
 
-    print("\n".join(paths))
+    print("\n".join(str(p) for p in paths))
 
 
 @profile_app.command("list")

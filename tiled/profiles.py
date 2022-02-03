@@ -33,18 +33,29 @@ def schema():
         return yaml.safe_load(file)
 
 
+# Some items in the search path is system-dependent, and others are hard-coded.
 # Paths later in the list ("closer" to the user) have higher precedence.
-paths = [
+_paths = [
+    Path(
+        os.getenv("TILED_SITE_PROFILES", Path("/etc/tiled/profiles"))
+    ),  # hard-coded system path
     Path(
         os.getenv(
             "TILED_SITE_PROFILES", Path(appdirs.site_config_dir("tiled"), "profiles")
         )
-    ),  # system
+    ),  # XDG-compliant system path
     Path(sys.prefix, "etc", "tiled", "profiles"),  # environment
     Path(
+        os.getenv("TILED_PROFILES", Path.home() / ".config/tiled/profiles")
+    ),  # hard-coded user path
+    Path(
         os.getenv("TILED_PROFILES", Path(appdirs.user_config_dir("tiled"), "profiles"))
-    ),  # user
+    ),  # system-dependent user path
 ]
+# Remove duplicates (i.e. if XDG and hard-coded are the same on this system).
+_seen = set()
+paths = [x for x in _paths if not (x in _seen or _seen.add(x))]
+del _seen, _paths
 
 
 def gather_profiles(paths, strict=True):
