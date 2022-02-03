@@ -8,7 +8,6 @@ import operator
 import os
 import sys
 import threading
-import numpy
 
 
 class ListView(collections.abc.Sequence):
@@ -487,8 +486,16 @@ def safe_json_dump_array(array):
 
 
     def default(content):
-        if isinstance(content[0], (numpy.str_, numpy.bytes_)):
-            return content.tolist()
+        # If numpy has not been imported, we can be sure that there are no
+        # instances of numpy objects, and we don't want to pay for the numpy
+        # import / dependency if it's not otherwise used.
+        if "numpy" in sys.modules:
+            import numpy
+
+            if isinstance(content[0], (numpy.str_, numpy.bytes_)):
+                return content.tolist()
+
+        return list(bytes(content))
 
 
     try:
