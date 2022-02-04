@@ -10,8 +10,9 @@ from ..utils import DictView
 from .array import ArrayAdapter
 
 
-class MockHDF5Dataset():
+class MockHDF5Dataset:
     "Mock just enough of the HDF5 Dataset interface to act as a placeholder."
+
     def __init__(self, array, attrs):
         self._array = array
         self.shape = array.shape

@@ -478,12 +478,11 @@ def prepend_to_sys_path(*paths):
             sys.path.pop(0)
 
 
-def safe_json_dump_array(array):
+def safe_json_dump(content):
     """
     Try to use native orjson path; fall back to going through Python list.
     """
     import orjson
-
 
     def default(content):
         # If numpy has not been imported, we can be sure that there are no
@@ -492,18 +491,18 @@ def safe_json_dump_array(array):
         if "numpy" in sys.modules:
             import numpy
 
-            if isinstance(content[0], (numpy.str_, numpy.bytes_)):
-                return content.tolist()
-
+            # Need to decode bytes to str otherwise TypeError thrown, as no option
+            # to leave existing bytes objects untouched by orjson.dumps().
+            if isinstance(content, numpy.bytes_):
+                return content.decode("utf-8")
+            elif isinstance(content[0], (numpy.str_, numpy.bytes_)):
+                content = [element.decode("utf-8") for element in content.tolist()]
+                return content
         raise TypeError
 
-
-    try:
-        return orjson.dumps(array, option=orjson.OPT_SERIALIZE_NUMPY)
-    except TypeError:
-        # Not all numpy dtypes are supported by orjson.
-        # Fall back to converting to a (possibly nested) Python list.
-        return orjson.dumps(array, default=default)
+    # Not all numpy dtypes are supported by orjson.
+    # Fall back to converting to a (possibly nested) Python list.
+    return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY, default=default)
 
 
 class MissingDependency(ModuleNotFoundError):
