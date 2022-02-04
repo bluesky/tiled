@@ -20,11 +20,11 @@ data visualization tool.
 5. Use the "Import" menu to import data by URL. Enter a URL such as
 
    ```
-   http://localhost:8000/node/full/dataframes/df?format=text/csv
+   http://localhost:8000/node/full/short_table?format=text/csv
    ```
 
    or, to load only certain columns,
 
    ```
-   http://localhost:8000/node/full/dataframes/df?format=text/csv&field=A&field=B
+   http://localhost:8000/node/full/short_table?format=text/csv&field=A&field=B
    ```
