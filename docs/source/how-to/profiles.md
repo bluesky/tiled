@@ -33,8 +33,19 @@ my_data:
 
 ## Where are profiles kept?
 
-Profiles are specified in YAML files located in any of several locations. To
-list where Tiled looks for profiles on your system, use the command line:
+Profiles are specified in YAML files located in any of several locations,
+including:
+
+```
+/etc/tiled/profiles
+~/.config/tiled/profiles
+```
+
+Tiled will also look for profiles in locations specific to the
+operating system and the software environment,
+[in accordance](https://pypi.org/project/appdirs/) with
+[standards](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html).
+To see the full list on your system, use the command line:
 
 ```
 $ tiled profile paths
@@ -70,10 +81,6 @@ Tiled always looks in three places for profiles:
    software.
 3. A user-controlled directory (a subdirectory of `$HOME`). This is
    for users' personal productivity.
-
-The exact locations depend on which operating system you are using and other
-system-specific details, in accordance with standards, which is why we can't
-list them here.
 
 The default locations for (1) and (3) can be overridden by setting the
 environment variables `TILED_SITE_PROFILES` and `TILED_PROFILES`, respectively,

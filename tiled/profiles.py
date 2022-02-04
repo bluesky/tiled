@@ -33,18 +33,29 @@ def schema():
         return yaml.safe_load(file)
 
 
+# Some items in the search path is system-dependent, and others are hard-coded.
 # Paths later in the list ("closer" to the user) have higher precedence.
-paths = [
+_all_paths = [
+    Path(
+        os.getenv("TILED_SITE_PROFILES", Path("/etc/tiled/profiles"))
+    ),  # hard-coded system path
     Path(
         os.getenv(
             "TILED_SITE_PROFILES", Path(appdirs.site_config_dir("tiled"), "profiles")
         )
-    ),  # system
+    ),  # XDG-compliant system path
     Path(sys.prefix, "etc", "tiled", "profiles"),  # environment
     Path(
+        os.getenv("TILED_PROFILES", Path.home() / ".config/tiled/profiles")
+    ),  # hard-coded user path
+    Path(
         os.getenv("TILED_PROFILES", Path(appdirs.user_config_dir("tiled"), "profiles"))
-    ),  # user
+    ),  # system-dependent user path
 ]
+# Remove duplicates (i.e. if XDG and hard-coded are the same on this system).
+_seen = set()
+paths = [x for x in _all_paths if not (x in _seen or _seen.add(x))]
+del _seen
 
 
 def gather_profiles(paths, strict=True):
@@ -160,7 +171,11 @@ defines a profile with the name {profile_name!r}.
 
 The profile will be ommitted. Fix this by removing one of the duplicates"""
     for profile_name, filepaths in collisions.items():
-        if filepaths[0].is_relative_to(paths[-1]):
+        # Is this file in either the XDG user or hard-coded user directory
+        # (which might or might not be the same directory)?
+        if filepaths[0].is_relative_to(_all_paths[-1]) or filepaths[0].is_relative_to(
+            _all_paths[-2]
+        ):
             msg = (MSG + ".").format(
                 filepaths="\n".join(filepaths), profile_name=profile_name
             )
