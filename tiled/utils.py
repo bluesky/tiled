@@ -485,19 +485,17 @@ def safe_json_dump(content):
     import orjson
 
     def default(content):
-        # If numpy has not been imported, we can be sure that there are no
-        # instances of numpy objects, and we don't want to pay for the numpy
-        # import / dependency if it's not otherwise used.
+        # No need to import numpy if it hasn't been used already.
         if "numpy" in sys.modules:
             import numpy
 
-            # Need to decode bytes to str otherwise TypeError thrown, as no option
-            # to leave existing bytes objects untouched by orjson.dumps().
-            if isinstance(content, numpy.bytes_):
+            if isinstance(content, numpy.ndarray):
+                # If we make it here, OPT_NUMPY_SERIALIZE failed because we have hit some edge case.
+                # Give up on the numpy fast-path and convert to Python list.
+                # If the items in this list aren't serializable (e.g. bytes) we'll recurse on each item.
+                return content.tolist()
+            elif isinstance(content, (bytes, numpy.bytes_)):
                 return content.decode("utf-8")
-            elif isinstance(content[0], (numpy.str_, numpy.bytes_)):
-                content = [element.decode("utf-8") for element in content.tolist()]
-                return content
         raise TypeError
 
     # Not all numpy dtypes are supported by orjson.
