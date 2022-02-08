@@ -52,10 +52,12 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
     client = from_tree(tree)
-    arr = client["a"]["b"]["c"]["d"].read()
+    with pytest.warns(UserWarning):
+        arr = client["a"]["b"]["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
     buffer = io.BytesIO()
-    client.export(buffer, format="application/x-hdf5")
+    with pytest.warns(UserWarning):
+        client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
     file["a"]["b"]["c"]["d"]
 
