@@ -197,8 +197,10 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
-    "numpy": ("https://docs.scipy.org/doc/numpy/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/reference/", None),
+    # Numpy/Scipy sphinx objects.inv is broken:
+    # https://github.com/scipy/scipy/issues/15545
+    # "numpy": ("https://docs.scipy.org/doc/numpy/", None),
+    # "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable", None),
     "matplotlib": ("https://matplotlib.org", None),
 }
