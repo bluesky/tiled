@@ -486,9 +486,8 @@ def safe_json_dump(content):
 
     def default(content):
         # No need to import numpy if it hasn't been used already.
-        if "numpy" in sys.modules:
-            import numpy
-
+        numpy = sys.modules.get("numpy", None)
+        if numpy is not None:
             if isinstance(content, numpy.ndarray):
                 # If we make it here, OPT_NUMPY_SERIALIZE failed because we have hit some edge case.
                 # Give up on the numpy fast-path and convert to Python list.
