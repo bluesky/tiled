@@ -19,10 +19,38 @@ def example_file():
     return file
 
 
+@pytest.fixture
+def example_file_with_vlen_str_in_dataset():
+    h5py = pytest.importorskip("h5py")
+    file = h5py.File(io.BytesIO(), "w")
+    a = file.create_group("a")
+    b = a.create_group("b")
+    c = b.create_group("c")
+    # Need to do this to make a vlen str dataset
+    dt = h5py.string_dtype(encoding="utf-8")
+    dset = c.create_dataset("d", (100,), dtype=dt)
+    # print(dset.dtype)
+    dset[0] = b"test"
+    return file
+
+
 def test_from_file(example_file):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file)
+    client = from_tree(tree)
+    arr = client["a"]["b"]["c"]["d"].read()
+    assert isinstance(arr, numpy.ndarray)
+    buffer = io.BytesIO()
+    client.export(buffer, format="application/x-hdf5")
+    file = h5py.File(buffer, "r")
+    file["a"]["b"]["c"]["d"]
+
+
+def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
+    """Serve a single HDF5 file at top level."""
+    h5py = pytest.importorskip("h5py")
+    tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
     client = from_tree(tree)
     arr = client["a"]["b"]["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)

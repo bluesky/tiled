@@ -13,7 +13,7 @@ from ..utils import (
     SerializationError,
     UnsupportedShape,
     modules_available,
-    safe_json_dump_array,
+    safe_json_dump,
 )
 
 
@@ -270,7 +270,7 @@ if modules_available("orjson"):
     serialization_registry.register(
         "array",
         "application/json",
-        lambda array, metadata: safe_json_dump_array(array),
+        lambda array, metadata: safe_json_dump(array),
     )
 
 

@@ -10,6 +10,20 @@ from ..utils import DictView
 from .array import ArrayAdapter
 
 
+class MockHDF5Dataset:
+    "Mock just enough of the HDF5 Dataset interface to act as a placeholder."
+
+    def __init__(self, array, attrs):
+        self._array = array
+        self.shape = array.shape
+        self.dtype = array.dtype
+        self.ndim = array.ndim
+        self.attrs = attrs
+
+    def __getitem__(self, key):
+        return self._array.__getitem__(key)
+
+
 class HDF5DatasetAdapter(ArrayAdapter):
     # TODO Just wrap h5py.Dataset directly, not via dask.array.
     def __init__(self, dataset):
@@ -111,9 +125,18 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                     "HDF5 in general. Read more about that feature at "
                     "https://docs.h5py.org/en/stable/special.html. "
                     "Consider using a fixed-length field instead. "
-                    "Tiled will serve an empty placeholder."
+                    "Tiled will serve an empty placeholder, unless the "
+                    "object is of size 1, where it will attempt to repackage "
+                    "the data into a numpy array."
                 )
-                return HDF5DatasetAdapter(numpy.array([]))
+
+                check_str_dtype = h5py.check_string_dtype(value.dtype)
+                if check_str_dtype.length is None:
+                    dataset_names = value.file[self._node.name + "/" + key][...][()]
+                    if value.size == 1:
+                        arr = MockHDF5Dataset(numpy.array(dataset_names), {})
+                        return HDF5DatasetAdapter(arr)
+                return HDF5DatasetAdapter(MockHDF5Dataset(numpy.array([]), {}))
             return HDF5DatasetAdapter(value)
 
     def __len__(self):

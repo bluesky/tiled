@@ -15,7 +15,6 @@ from typing import Any
 import dateutil.tz
 import jmespath
 import msgpack
-import orjson
 from fastapi import HTTPException, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
 
@@ -30,6 +29,7 @@ from ..utils import (
     SerializationError,
     UnsupportedShape,
     modules_available,
+    safe_json_dump,
 )
 from . import schemas
 from .etag import tokenize
@@ -484,7 +484,7 @@ class NumpySafeJSONResponse(JSONResponse):
 
     def render(self, content: Any) -> bytes:
         with record_timing(self.__metrics, "pack"):
-            return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY)
+            return safe_json_dump(content)
 
 
 def _fallback_msgpack_encoder(obj):
