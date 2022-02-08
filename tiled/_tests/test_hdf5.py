@@ -6,7 +6,6 @@ import pytest
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_tree
-from ..utils import safe_json_dump
 
 
 @pytest.fixture
@@ -21,26 +20,17 @@ def example_file():
 
 
 @pytest.fixture
-def example_file_with_nested_bytes_ndarray():
+def example_file_with_vlen_str_in_dataset():
     h5py = pytest.importorskip("h5py")
     file = h5py.File(io.BytesIO(), "w")
     a = file.create_group("a")
     b = a.create_group("b")
     c = b.create_group("c")
-    nested_data = safe_json_dump(
-        {
-            "data": [
-                {
-                    "id": "test",
-                    "attributes": {
-                        "metadata": {"test": numpy.array([b"test"], dtype="|S4")}
-                    },
-                },
-                {},
-            ]
-        }
-    )
-    c.create_dataset("d", data=nested_data)
+    # Need to do this to make a vlen str dataset
+    dt = h5py.string_dtype(encoding="utf-8")
+    dset = c.create_dataset("d", (100,), dtype=dt)
+    # print(dset.dtype)
+    dset[0] = b"test"
     return file
 
 
@@ -57,10 +47,10 @@ def test_from_file(example_file):
     file["a"]["b"]["c"]["d"]
 
 
-def test_from_file_with_nested_ndarray(example_file_with_nested_bytes_ndarray):
+def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
-    tree = HDF5Adapter(example_file_with_nested_bytes_ndarray)
+    tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
     client = from_tree(tree)
     arr = client["a"]["b"]["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)

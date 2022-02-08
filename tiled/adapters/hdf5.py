@@ -136,7 +136,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                     if value.size == 1:
                         arr = MockHDF5Dataset(numpy.array(dataset_names), {})
                         return HDF5DatasetAdapter(arr)
-                return HDF5DatasetAdapter(MockHDF5Dataset(numpy.array([])), {})
+                return HDF5DatasetAdapter(MockHDF5Dataset(numpy.array([]), {}))
             return HDF5DatasetAdapter(value)
 
     def __len__(self):
