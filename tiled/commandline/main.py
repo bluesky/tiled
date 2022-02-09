@@ -7,6 +7,7 @@ cli_app = typer.Typer()
 serve_app = typer.Typer()
 profile_app = typer.Typer()
 api_key_app = typer.Typer()
+admin_app = typer.Typer()
 cli_app.add_typer(serve_app, name="serve", help="Launch a Tiled server.")
 cli_app.add_typer(
     profile_app, name="profile", help="Examine Tiled 'profiles' (client-side config)."
@@ -14,6 +15,38 @@ cli_app.add_typer(
 cli_app.add_typer(
     api_key_app, name="api_key", help="Create, list, and revoke API keys."
 )
+cli_app.add_typer(
+    admin_app,
+    name="admin",
+    help="Administrative utilities for managing large deployments.",
+)
+
+
+@admin_app.command("initialize-database")
+def initialize_database(database_uri: str):
+    from sqlalchemy import create_engine
+
+    from ..database.core import (
+        REQUIRED_REVISION,
+        UninitializedDatabase,
+        check_database,
+        initialize_database,
+    )
+
+    engine = create_engine(database_uri)
+    redacted_url = engine.url._replace(password="[redacted]")
+    try:
+        check_database(engine)
+    except UninitializedDatabase:
+        # Create tables and stamp (alembic) revision.
+        type.echo(
+            f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
+        )
+        initialize_database(engine)
+        typer.echo("Database initialized.")
+    else:
+        typer.echo(f"Database at {redacted_url} is already initialized.")
+        raise typer.Abort()
 
 
 @cli_app.command("login")
