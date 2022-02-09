@@ -8,9 +8,12 @@ include requirements-server.txt
 include requirements-array.txt
 include requirements-dataframe.txt
 include requirements-xarray.txt
-include tiled/database/alembic.ini.template
 # This alembic migration scripts are not part of an importable package.
-include tiled/database/migrations/*.py
+include tiled/database/alembic.ini.template
+include tiled/database/alembic.ini.template
+include tiled/database/migrations/env.py
+include tiled/database/migrations/script.py.mako
+include tiled/database/migrations/versions/*.py
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
