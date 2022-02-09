@@ -39,7 +39,7 @@ def initialize_database(database_uri: str):
         check_database(engine)
     except UninitializedDatabase:
         # Create tables and stamp (alembic) revision.
-        type.echo(
+        typer.echo(
             f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
         )
         initialize_database(engine)
