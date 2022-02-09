@@ -155,6 +155,11 @@ def create_user(db, identity_provider, id):
 
 
 def lookup_valid_session(db, session_id):
+    if isinstance(session_id, int):
+        # Old versions of tiled used an integer sid.
+        # Reject any of those old sessions and force reauthentication.
+        return None
+
     session = (
         db.query(Session)
         .filter(Session.uuid == uuid_module.UUID(hex=session_id))
