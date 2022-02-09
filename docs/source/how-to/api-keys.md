@@ -181,6 +181,8 @@ $ tiled api_key create http://localhost:8000 --expires-in 600 --scopes read:meta
 ba9af604023a829ab22edb786168d6e1b97cef68c54c6d95d7fad5e3e6347fa131263581
 ```
 
+See {doc}`../reference/scopes` for the full list of scopes and their capabilities.
+
 ```
 $ tiled api_key list http://localhost:8000
 First 8   Expires at (UTC)     Latest activity      Note                Scopes
