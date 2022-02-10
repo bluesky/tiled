@@ -58,4 +58,8 @@ def get_sessionmaker(database_uri):
     if database_uri.startswith("sqlite"):
         connect_args.update({"check_same_thread": False})
     engine = create_engine(database_uri, connect_args=connect_args)
-    return scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
+    sm = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    if database_uri.startswith("sqlite"):
+        # Scope to a session per thread.
+        return scoped_session(sm)
+    return sm
