@@ -19,5 +19,5 @@ pyyaml
 sqlalchemy
 toolz
 typer
-uvicorn
+uvicorn[standard]
 watchgod
