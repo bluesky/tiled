@@ -185,6 +185,9 @@ def build_app(
         for item in ["allow_origins", "database_uri"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
+        pool_size = server_settings.get("database_settings", {}).get("pool_size")
+        if pool_size is not None:
+            settings.database_pool_size = pool_size
         object_cache_available_bytes = server_settings.get("object_cache", {}).get(
             "available_bytes"
         )

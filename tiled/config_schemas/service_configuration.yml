@@ -299,7 +299,13 @@ properties:
 
       Tiled officially supports PostgreSQL and SQLite, but any database engine
       supported by SQLAlchemy *may* work.
-
+  database_settings:
+    type: object
+    additionalProperties: false
+    properties:
+      pool_size:
+        type: integer
+        description: Connection pool size
   access_control:
     type: object
     additionalProperties: false

@@ -190,7 +190,7 @@ def get_current_principal(
     if api_key is not None:
         if authenticators:
             # Tiled is in a multi-user configuration with authentication providers.
-            with get_sessionmaker(settings.database_uri)() as db:
+            with get_sessionmaker(settings.database_settings)() as db:
                 # We store the hashed value of the API key secret.
                 # By comparing hashes we protect against timing attacks.
                 # By storing only the hash of the (high-entropy) secret
@@ -302,7 +302,7 @@ def get_current_principal(
 
 
 def create_session(settings, identity_provider, id):
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         # Have we seen this Identity before?
         identity = (
             db.query(orm.Identity)
@@ -461,7 +461,7 @@ def principal_list(
     "List Principals (users and services)."
     # TODO Pagination
     request.state.endpoint = "auth"
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         principal_orms = db.query(orm.Principal).all()
 
         return json_or_msgpack(
@@ -487,7 +487,7 @@ def principal(
 ):
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         principal_orm = (
             db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
         )
@@ -512,7 +512,7 @@ def apikey_for_principal(
 ):
     "Generate an API key for a Principal."
     request.state.endpoint = "auth"
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         principal = db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
         if principal is None:
             raise HTTPException(
@@ -531,7 +531,7 @@ def refresh_session(
 ):
     "Obtain a new access token and refresh token."
     request.state.endpoint = "auth"
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         new_tokens = slide_session(refresh_token.refresh_token, settings, db)
         return new_tokens
 
@@ -545,7 +545,7 @@ def revoke_session(
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         # Find this session in the database.
         session = lookup_valid_session(db, session_id)
         if session is None:
@@ -631,7 +631,7 @@ def new_apikey(
     request.state.endpoint = "auth"
     if principal is None:
         return None
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.
         principal_orm = (
@@ -663,7 +663,7 @@ def current_apikey_info(
     except Exception:
         # Not valid hex, therefore not a valid API key
         raise HTTPException(status_code=401, detail="Invalid API key")
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         api_key_orm = lookup_valid_api_key(db, secret)
         if api_key_orm is None:
             raise HTTPException(status_code=401, detail="Invalid API key")
@@ -683,7 +683,7 @@ def revoke_apikey(
     request.state.endpoint = "auth"
     if principal is None:
         return None
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         api_key_orm = (
             db.query(orm.APIKey)
             .filter(orm.APIKey.first_eight == first_eight[:8])
@@ -715,7 +715,7 @@ def whoami(
         return None
     # The principal from get_current_principal tells us everything that the
     # access_token carries around, but the database knows more than that.
-    with get_sessionmaker(settings.database_uri)() as db:
+    with get_sessionmaker(settings.database_settings)() as db:
         principal_orm = (
             db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
         )

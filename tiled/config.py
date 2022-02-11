@@ -210,6 +210,7 @@ def merge(configs):
     object_cache_config_source = None
     metrics_config_source = None
     database_uri_config_source = None
+    database_settings_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
     file_extensions = {}
@@ -274,6 +275,15 @@ def merge(configs):
                 )
             database_uri_config_source = filepath
             merged["database_uri"] = config["database_uri"]
+        if "database_settings" in config:
+            if "database_settings" in merged:
+                raise ConfigError(
+                    "database_settings can only be specified in one file. "
+                    f"It was found in both {database_settings_config_source} and "
+                    f"{filepath}"
+                )
+            database_settings_config_source = filepath
+            merged["database_settings"] = config["database_settings"]
         for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."

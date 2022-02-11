@@ -1,3 +1,4 @@
+import collections
 import os
 import secrets
 from datetime import timedelta
@@ -5,6 +6,8 @@ from functools import lru_cache
 from typing import Any, List, Optional
 
 from pydantic import BaseSettings
+
+DatabaseSettings = collections.namedtuple("DatabaseSettings", "uri pool_size")
 
 
 class Settings(BaseSettings):
@@ -41,7 +44,15 @@ class Settings(BaseSettings):
     session_max_age: Optional[timedelta] = timedelta(
         seconds=int(os.getenv("TILED_SESSION_MAX_AGE", 365 * 24 * 60 * 60))  # 365 days
     )
-    database_uri: Optional[str] = None
+    database_uri: Optional[str] = os.getenv("TILED_DATABASE_URI")
+    database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 0))
+
+    @property
+    def database_settings(self):
+        # The point of this alias is to return a hashable argument for get_sessionmaker.
+        return DatabaseSettings(
+            uri=self.database_uri, pool_size=self.database_pool_size
+        )
 
 
 @lru_cache()
@@ -50,16 +61,23 @@ def get_settings():
 
 
 @lru_cache(1)
-def get_sessionmaker(database_uri):
+def get_sessionmaker(database_settings):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import scoped_session, sessionmaker
 
     connect_args = {}
-    if database_uri.startswith("sqlite"):
+    kwargs = {}  # extra kwargs passed to create_engine
+    if database_settings.pool_size:
+        kwargs["pool_size"] = database_settings.pool_size
+    if database_settings.uri.startswith("sqlite"):
+        from sqlalchemy.pool import QueuePool
+
+        kwargs["poolclass"] = QueuePool
+    if database_settings.uri.startswith("sqlite"):
         connect_args.update({"check_same_thread": False})
-    engine = create_engine(database_uri, connect_args=connect_args)
+    engine = create_engine(database_settings.uri, connect_args=connect_args, **kwargs)
     sm = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    if database_uri.startswith("sqlite"):
+    if database_settings.uri.startswith("sqlite"):
         # Scope to a session per thread.
         return scoped_session(sm)
     return sm
