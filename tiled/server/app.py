@@ -11,7 +11,6 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.staticfiles import StaticFiles
 
 from tiled.database.core import purge_expired
 
@@ -27,6 +26,7 @@ from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
 from .settings import get_settings
+from .ui_app import TemplatedStaticFiles
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
@@ -107,8 +107,10 @@ def build_app(
     compression_registry = compression_registry or default_compression_registry
 
     app = FastAPI()
-    UI_DIRECTORY = Path(__file__).parent / ".." / "ui"
-    app.mount("/ui", StaticFiles(directory=UI_DIRECTORY, html=True), name="ui")
+    DEFAULT_UI_DIRECTORY = Path(__file__).parent / ".." / "ui"
+    app.mount(
+        "/ui", TemplatedStaticFiles(directories=[DEFAULT_UI_DIRECTORY]), name="ui"
+    )
     app.state.allow_origins = []
     app.include_router(router, prefix="/api")
 
