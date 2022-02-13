@@ -11,6 +11,8 @@ from starlette.responses import FileResponse, Response
 from starlette.staticfiles import NotModifiedResponse
 from starlette.types import Receive, Scope, Send
 
+from .utils import get_base_url_low_level
+
 PathLike = typing.Union[str, "os.PathLike[str]"]
 
 
@@ -27,8 +29,10 @@ class TemplatedStaticFiles:
         self,
         *,
         directories: typing.List[PathLike] = [],
+        api_url: typing.Optional[str] = None,
     ):
         self.directories = directories
+        self.api_url = api_url
         self.config_checked = False
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -114,9 +118,18 @@ class TemplatedStaticFiles:
     ) -> Response:
         request_headers = Headers(scope=scope)
         with open(static_path, mode="rt") as file:
+            if self.api_url is None:
+                # Assume that we are being served alongside the API, and
+                # sort out the URL from the request URL.
+                # This is janky but I don't think there is another way that works
+                # behind a proxy.
+                api_url = f"{get_base_url_low_level(request_headers, scope)[:-7]}api/"
+            else:
+                api_url = self.api_url
             raw_content = file.read()
-            print(path_params)
-            content = raw_content.replace("REQUEST_PATH_PARAMS", "/".join(path_params))
+            content = raw_content.replace(
+                "REQUEST_PATH_PARAMS", "/".join(path_params)
+            ).replace("TILED_API_URL", api_url)
             response = Response(content, status_code=status_code)
         if self.is_not_modified(response.headers, request_headers):
             return NotModifiedResponse(response.headers)

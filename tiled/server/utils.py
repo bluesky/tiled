@@ -24,6 +24,10 @@ def record_timing(metrics, key):
 
 
 def get_base_url(request):
+    return get_base_url_low_level(request.headers, request.scope)
+
+
+def get_base_url_low_level(request_headers, scope):
     # We want to get the scheme, host, and root_path (if any)
     # *as it appears to the client* for use in assembling links to
     # include in our responses.
@@ -43,9 +47,9 @@ def get_base_url(request):
     #   The HTTP spec specifies that the Host header may include a port
     #   to specify a non-default port.
     #   https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.23
-    host = request.headers.get("x-forwarded-host", request.headers["host"])
-    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    root_path = request.scope.get("root_path") or "/"
+    host = request_headers.get("x-forwarded-host", request_headers["host"])
+    scheme = request_headers.get("x-forwarded-proto", scope["scheme"])
+    root_path = scope.get("root_path") or "/"
     if not root_path.endswith("/"):
         root_path = f"{root_path}/"
     return f"{scheme}://{host}{root_path}api/"
