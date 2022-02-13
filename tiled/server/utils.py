@@ -48,4 +48,4 @@ def get_base_url(request):
     root_path = request.scope.get("root_path") or "/"
     if not root_path.endswith("/"):
         root_path = f"{root_path}/"
-    return f"{scheme}://{host}{root_path}"
+    return f"{scheme}://{host}{root_path}api/"

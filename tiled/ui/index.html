@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>JS Bin</title>
+  <script src="https://unpkg.com/htmx.org@1.6.1"></script>
+  <script src="https://unpkg.com/htmx.org@1.6.1/dist/ext/client-side-templates.js"></script>
+  <script src="https://unpkg.com/nunjucks@latest"></script>
+  <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
+  <script>
+    htmx.logAll();
+  </script>
+</head>
+<body>
+  <div hx-ext="client-side-templates" hx-ext='json-enc'>
+    <button hx-get="../api/node/search/"
+            hx-swap="innerHTML"
+            hx-target="#search-results"
+            nunjucks-template="search-results-template">
+      Go to Top
+    </button>
+
+    <table id="search-results"></table>
+
+    <template id="search-results-template">
+      <tr><th>Name</th></tr>
+      {% for item in data %}
+        <tr hx-get="{{ item.links.search }}"
+            hx-swap="innerHTML"
+            hx-target="#search-results"
+            nunjucks-template="search-results-template">
+          <td>{{ item.id }}</td>
+        </tr>
+      {% endfor %}
+    </template>
+  </div>
+</body>
+</html>

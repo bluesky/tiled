@@ -19,6 +19,7 @@ recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 
 recursive-include docs *.yml *.rst conf.py Makefile make.bat
+recursive-include ui
 
 include versioneer.py
 include tiled/_version.py

@@ -109,6 +109,7 @@ setup(
             "database/migrations/env.py",
             "database/migrations/script.py.mako",
             "database/migrations/versions/*.py",
+            "ui/*",
         ]
     },
     license="BSD (3-clause)",

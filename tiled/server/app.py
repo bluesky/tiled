@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
 
 from tiled.database.core import purge_expired
 
@@ -106,15 +107,17 @@ def build_app(
     compression_registry = compression_registry or default_compression_registry
 
     app = FastAPI()
+    UI_DIRECTORY = Path(__file__).parent / ".." / "ui"
+    app.mount("/ui", StaticFiles(directory=UI_DIRECTORY, html=True), name="ui")
     app.state.allow_origins = []
-    app.include_router(router)
+    app.include_router(router, prefix="/api")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
     for custom_router in getattr(tree, "include_routers", []):
-        app.include_router(custom_router)
+        app.include_router(custom_router, prefix="/api")
 
     if authentication.get("providers", []):
         # Delay this imports to avoid delaying startup with the SQL and cryptography
@@ -159,7 +162,7 @@ def build_app(
                     custom_router, prefix=f"/provider/{provider}"
                 )
         # And add this authentication_router itself to the app.
-        app.include_router(authentication_router, prefix="/auth")
+        app.include_router(authentication_router, prefix="/api/auth")
 
     @lru_cache(1)
     def override_get_authenticators():
@@ -238,7 +241,7 @@ def build_app(
 
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
-        app.include_router(declare_search_router(query_registry))
+        app.include_router(declare_search_router(query_registry), prefix="/api")
 
         app.state.allow_origins.extend(settings.allow_origins)
         app.add_middleware(
@@ -458,7 +461,7 @@ def build_app(
     if metrics_config.get("prometheus", False):
         from . import metrics
 
-        app.include_router(metrics.router)
+        app.include_router(metrics.router, prefix="/api")
 
         @app.middleware("http")
         async def capture_metrics_prometheus(request: Request, call_next):
