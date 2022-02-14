@@ -354,15 +354,15 @@ def construct_resource(
         }
         if not omit_links:
             d["links"] = {
-                "self": f"{base_url}node/metadata/{path_str}",
-                "search": f"{base_url}node/search/{path_str}",
-                "full": f"{base_url}node/full/{path_str}",
+                "self": f"{base_url}/node/metadata/{path_str}",
+                "search": f"{base_url}/node/search/{path_str}",
+                "full": f"{base_url}/node/full/{path_str}",
             }
         resource = schemas.Resource[
             schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
         ](**d)
     else:
-        links = {"self": f"{base_url}node/metadata/{path_str}"}
+        links = {"self": f"{base_url}/node/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
@@ -426,11 +426,11 @@ def construct_resource(
                     )
                     links[
                         "block"
-                    ] = f"{base_url}array/block/{path_str}?block={block_template}"
+                    ] = f"{base_url}/array/block/{path_str}?block={block_template}"
                 elif entry.structure_family == "dataframe":
                     links[
                         "partition"
-                    ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
+                    ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
             attributes["structure"] = structure
         else:
             # We only have entry names, not structure_family, so
@@ -610,15 +610,15 @@ class WrongTypeForRoute(Exception):
 
 
 FULL_LINKS = {
-    "node": {"full": "{base_url}node/full/{path}"},
-    "array": {"full": "{base_url}array/full/{path}"},
-    "dataframe": {"full": "{base_url}node/full/{path}"},
+    "node": {"full": "{base_url}/node/full/{path}"},
+    "array": {"full": "{base_url}/array/full/{path}"},
+    "dataframe": {"full": "{base_url}/node/full/{path}"},
     "xarray_data_array": {
-        "full_variable": "{base_url}array/full/{path}/variable",
+        "full_variable": "{base_url}/array/full/{path}/variable",
     },
     "xarray_dataset": {
-        "full_variable": "{base_url}array/full/{path}/data_vars/{{variable}}/variable",
-        "full_coord": "{base_url}array/full/{path}/coords/{{coord}}/variable",
-        "full_dataset": "{base_url}node/full/{path}",
+        "full_variable": "{base_url}/array/full/{path}/data_vars/{{variable}}/variable",
+        "full_coord": "{base_url}/array/full/{path}/coords/{{coord}}/variable",
+        "full_dataset": "{base_url}/node/full/{path}",
     },
 }

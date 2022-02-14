@@ -24,7 +24,7 @@ def record_timing(metrics, key):
 
 
 def get_base_url(request):
-    return get_base_url_low_level(request.headers, request.scope)
+    return f"{get_base_url_low_level(request.headers, request.scope)}/api"
 
 
 def get_base_url_low_level(request_headers, scope):
@@ -49,7 +49,7 @@ def get_base_url_low_level(request_headers, scope):
     #   https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.23
     host = request_headers.get("x-forwarded-host", request_headers["host"])
     scheme = request_headers.get("x-forwarded-proto", scope["scheme"])
-    root_path = scope.get("root_path") or "/"
-    if not root_path.endswith("/"):
-        root_path = f"{root_path}/"
-    return f"{scheme}://{host}{root_path}api/"
+    root_path = scope.get("root_path", "")
+    if root_path.endswith("/"):
+        root_path = root_path[:-1]
+    return f"{scheme}://{host}{root_path}"
