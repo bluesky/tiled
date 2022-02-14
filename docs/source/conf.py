@@ -197,8 +197,10 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
-    "numpy": ("https://docs.scipy.org/doc/numpy/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/reference/", None),
+    # Numpy/Scipy sphinx objects.inv is broken:
+    # https://github.com/scipy/scipy/issues/15545
+    # "numpy": ("https://docs.scipy.org/doc/numpy/", None),
+    # "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable", None),
     "matplotlib": ("https://matplotlib.org", None),
 }
@@ -269,20 +271,20 @@ def generate_schema_documentation(header, schema, target):
 
 generate_schema_documentation(
     "reference/service-configuration-header.txt",
-    "../../tiled/schemas/service_configuration.yml",
+    "../../tiled/config_schemas/service_configuration.yml",
     "reference/service-configuration.md",
 )
 generate_schema_documentation(
     "reference/client-profiles-header.txt",
-    "../../tiled/schemas/client_profiles.yml",
+    "../../tiled/config_schemas/client_profiles.yml",
     "reference/client-profiles.md",
 )
 
 from tiled.adapters.mapping import MapAdapter
 from tiled.authenticators import DummyAuthenticator
-from tiled.server.app import serve_tree
+from tiled.server.app import build_app
 
-app = serve_tree(MapAdapter({}), authentication={"authenticator": DummyAuthenticator()})
+app = build_app(MapAdapter({}), authentication={"authenticator": DummyAuthenticator()})
 api = app.openapi()
 
 with open("reference/api.yml", "w") as file:

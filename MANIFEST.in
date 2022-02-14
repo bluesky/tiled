@@ -8,6 +8,12 @@ include requirements-server.txt
 include requirements-array.txt
 include requirements-dataframe.txt
 include requirements-xarray.txt
+# This alembic migration scripts are not part of an importable package.
+include tiled/database/alembic.ini.template
+include tiled/database/alembic.ini.template
+include tiled/database/migrations/env.py
+include tiled/database/migrations/script.py.mako
+include tiled/database/migrations/versions/*.py
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
@@ -16,7 +22,7 @@ recursive-include docs *.yml *.rst conf.py Makefile make.bat
 
 include versioneer.py
 include tiled/_version.py
-include tiled/schemas/*.yml
+include tiled/config_schemas/*.yml
 
 # If including data files in the package, add them like:
 # include path/to/data_file

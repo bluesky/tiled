@@ -115,7 +115,10 @@ if __debug__:
                         )
                 else:
                     if "authorization" in request.headers:
-                        message += " 'authorization:[redacted]'"
+                        scheme, _, param = request.headers["authorization"].partition(
+                            " "
+                        )
+                        message += f" 'authorization:{scheme} [redacted]'"
             elif hasattr(self, "response"):
                 response = self.response
                 request = response.request
@@ -157,7 +160,6 @@ if __debug__:
     log_format = "%(asctime)s.%(msecs)03d %(message)s"
 
     handler.setFormatter(logging.Formatter(log_format, datefmt="%H:%M:%S"))
-    logger.addHandler(handler)
 
     def log_request(request):
         logger.debug("", extra={"request": request})
@@ -179,3 +181,22 @@ if __debug__:
 else:
     # We take this path when Python is started with -O optimizations.
     ASYNC_EVENT_HOOKS = EVENT_HOOKS = {"request": [], "response": []}
+
+
+def show_logs():
+    """
+    Log network traffic and interactions with the cache.
+
+    This is just a convenience function that makes some Python logging configuration calls.
+    """
+    logger.setLevel("DEBUG")
+    logger.addHandler(handler)
+
+
+def hide_logs():
+    """
+    Undo show_logs().
+    """
+    logger.setLevel("WARNING")
+    if handler in logger.handlers:
+        logger.removeHandler(handler)

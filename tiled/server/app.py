@@ -1,70 +1,205 @@
 import asyncio
 import collections
+import logging
 import os
 import secrets
 import sys
 import urllib.parse
 from functools import lru_cache, partial
+from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from tiled.database.core import purge_expired
+
+from ..authenticators import Mode
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
-from .authentication import (
-    ACCESS_TOKEN_COOKIE_NAME,
-    API_KEY_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    REFRESH_TOKEN_COOKIE_NAME,
-    external_authentication_router,
-    get_authenticator,
-    password_authentication_router,
-)
 from .compression import CompressionMiddleware
-from .core import (
-    PatchedStreamingResponse,
-    get_query_registry,
-    get_root_tree,
-    get_serialization_registry,
-    record_timing,
-)
-from .metrics import capture_request_metrics
+from .core import PatchedStreamingResponse
+from .dependencies import get_query_registry, get_root_tree, get_serialization_registry
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
 from .settings import get_settings
+from .utils import (
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    get_authenticators,
+    record_timing,
+)
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
     API_KEY_COOKIE_NAME,
-    ACCESS_TOKEN_COOKIE_NAME,
-    REFRESH_TOKEN_COOKIE_NAME,
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
+handler = logging.StreamHandler()
+handler.setLevel("DEBUG")
+handler.setFormatter(logging.Formatter("%(message)s"))
+logger.addHandler(handler)
 
-def get_app(
-    query_registry, compression_registry, include_routers=None, background_tasks=None
+
+def custom_openapi(app):
+    """
+    The app's openapi method will be monkey-patched with this.
+
+    This is the approach the documentation recommends.
+
+    https://fastapi.tiangolo.com/advanced/extending-openapi/
+    """
+    from .. import __version__
+
+    if app.openapi_schema:
+        return app.openapi_schema
+    # Customize heading.
+    openapi_schema = get_openapi(
+        title="Tiled",
+        version=__version__,
+        description="Structured data access service",
+        routes=app.routes,
+    )
+    # Insert refreshUrl.
+    openapi_schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]["flows"][
+        "password"
+    ]["refreshUrl"] = "token/refresh"
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+def build_app(
+    tree,
+    authentication=None,
+    server_settings=None,
+    query_registry=None,
+    serialization_registry=None,
+    compression_registry=None,
 ):
     """
-    Construct an instance of the FastAPI application.
+    Serve a Tree
 
     Parameters
     ----------
-    include_routers : list, optional
-        List of additional FastAPI.Router objects to be included (merged) into the app
-    background_tasks: list, optional
-        List of async functions to be run on the event loop.
+    tree : Tree
+    authentication: dict, optional
+        Dict of authentication configuration.
+    authenticators: list, optional
+        List of authenticator classes (one per support identity provider)
+    server_settings: dict, optional
+        Dict of other server configuration.
     """
+    authentication = authentication or {}
+    authenticators = {
+        spec["provider"]: spec["authenticator"]
+        for spec in authentication.get("providers", [])
+    }
+    server_settings = server_settings or {}
+    query_registry = query_registry or get_query_registry()
+    compression_registry = compression_registry or default_compression_registry
+
     app = FastAPI()
     app.state.allow_origins = []
     app.include_router(router)
-    for user_router in include_routers or []:
-        app.include_router(user_router)
+
+    # The Tree and Authenticator have the opportunity to add custom routes to
+    # the server here. (Just for example, a Tree of BlueskyRuns uses this
+    # hook to add a /documents route.) This has to be done before dependency_overrides
+    # are processed, so we cannot just inject this configuration via Depends.
+    for custom_router in getattr(tree, "include_routers", []):
+        app.include_router(custom_router)
+
+    if authentication.get("providers", []):
+        # Delay this imports to avoid delaying startup with the SQL and cryptography
+        # imports if they are not needed.
+        from .authentication import (
+            base_authentication_router,
+            build_auth_code_route,
+            build_handle_credentials_route,
+            oauth2_scheme,
+        )
+
+        # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
+        first_provider = authentication["providers"][0]["provider"]
+        oauth2_scheme.model.flows.password.tokenUrl = (
+            f"/auth/provider/{first_provider}/token"
+        )
+        # Authenticators provide Router(s) for their particular flow.
+        # Collect them in the authentication_router.
+        authentication_router = APIRouter()
+        # This adds the universal routes like /session/refresh and /session/revoke.
+        # Below we will add routes specific to our authentication providers.
+        authentication_router.include_router(base_authentication_router)
+        for spec in authentication["providers"]:
+            provider = spec["provider"]
+            authenticator = spec["authenticator"]
+            mode = authenticator.mode
+            if mode == Mode.password:
+                authentication_router.post(f"/provider/{provider}/token")(
+                    build_handle_credentials_route(authenticator, provider)
+                )
+            elif mode == Mode.external:
+                authentication_router.get(f"/provider/{provider}/code")(
+                    build_auth_code_route(authenticator, provider)
+                )
+                authentication_router.post(f"/provider/{provider}/code")(
+                    build_auth_code_route(authenticator, provider)
+                )
+            else:
+                raise ValueError(f"unknown authentication mode {mode}")
+            for custom_router in getattr(authenticator, "include_routers", []):
+                authentication_router.include_router(
+                    custom_router, prefix=f"/provider/{provider}"
+                )
+        # And add this authentication_router itself to the app.
+        app.include_router(authentication_router, prefix="/auth")
+
+    @lru_cache(1)
+    def override_get_authenticators():
+        return authenticators
+
+    @lru_cache(1)
+    def override_get_root_tree():
+        return tree
+
+    @lru_cache(1)
+    def override_get_settings():
+        settings = get_settings()
+        for item in [
+            "allow_anonymous_access",
+            "secret_keys",
+            "single_user_api_key",
+            "access_token_max_age",
+            "refresh_token_max_age",
+            "session_max_age",
+        ]:
+            if authentication.get(item) is not None:
+                setattr(settings, item, authentication[item])
+        for item in ["allow_origins", "database_uri"]:
+            if server_settings.get(item) is not None:
+                setattr(settings, item, server_settings[item])
+        pool_size = server_settings.get("database_settings", {}).get("pool_size")
+        if pool_size is not None:
+            settings.database_pool_size = pool_size
+        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
+            "available_bytes"
+        )
+        if object_cache_available_bytes is not None:
+            setattr(
+                settings, "object_cache_available_bytes", object_cache_available_bytes
+            )
+        if authentication.get("providers"):
+            # If we support authentication providers, we need a database, so if one is
+            # not set, use a SQLite database in the current working directory.
+            settings.database_uri = settings.database_uri or "sqlite:///./tiled.sqlite"
+        return settings
 
     @app.on_event("startup")
     async def startup_event():
@@ -90,15 +225,16 @@ def get_app(
     """
                 )
 
-        authenticator = app.dependency_overrides[get_authenticator]()
-        if authenticator is not None:
-            if authenticator.handles_credentials:
-                app.include_router(password_authentication_router)
-            else:
-                app.include_router(external_authentication_router)
-
+        # Stash these to cancel this on shutdown.
+        app.state.tasks = []
+        # Trees and Authenticators can run tasks in the background.
+        background_tasks = []
+        background_tasks.extend(getattr(tree, "background_tasks", []))
+        for authenticator in authenticators:
+            background_tasks.extend(getattr(authenticator, "background_tasks", []))
         for task in background_tasks or []:
-            asyncio.create_task(task())
+            asyncio_task = asyncio.create_task(task())
+            app.state.tasks.append(asyncio_task)
 
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
@@ -146,6 +282,64 @@ def get_app(
         # client.context.app.state.root_tree
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
+        if settings.database_uri is not None:
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+
+            from ..database import orm
+            from ..database.core import (
+                REQUIRED_REVISION,
+                UninitializedDatabase,
+                check_database,
+                initialize_database,
+                make_admin_by_identity,
+            )
+
+            engine = create_engine(settings.database_uri)
+            redacted_url = engine.url._replace(password="[redacted]")
+            try:
+                check_database(engine)
+            except UninitializedDatabase:
+                # Create tables and stamp (alembic) revision.
+                logger.info(
+                    f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
+                )
+                initialize_database(engine)
+                logger.info("Database initialized.")
+            else:
+                logger.info(f"Connected to existing database at {redacted_url}.")
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            db = SessionLocal()
+            for admin in authentication.get("tiled_admins", []):
+                logger.info(
+                    f"Ensuring that principal with identity {admin} has role 'admin'"
+                )
+                make_admin_by_identity(
+                    db,
+                    identity_provider=admin["provider"],
+                    id=admin["id"],
+                )
+
+            async def purge_expired_sessions_and_api_keys():
+                logger.info("Purging expired Sessions and API keys from the database.")
+                while True:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, purge_expired(engine, orm.Session)
+                    )
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, purge_expired(engine, orm.APIKey)
+                    )
+                    await asyncio.sleep(600)
+
+            app.state.tasks.append(
+                asyncio.create_task(purge_expired_sessions_and_api_keys())
+            )
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        for task in app.state.tasks:
+            task.cancel()
+
     app.add_middleware(
         CompressionMiddleware,
         compression_registry=compression_registry,
@@ -155,10 +349,7 @@ def get_app(
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):
         """
-        This does two things:
-
-        - Place metrics in Server-Timing header, in accordance with HTTP spec.
-        - Capture metrics in prometheus. The proemetheus metrics are availabe from /metrics.
+        Place metrics in Server-Timing header, in accordance with HTTP spec.
         """
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
         # https://w3c.github.io/server-timing/#the-server-timing-header-field
@@ -189,7 +380,6 @@ def get_app(
             for key, metrics_ in metrics.items()
         )
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        capture_request_metrics(request, response)
         return response
 
     @app.middleware("http")
@@ -244,111 +434,7 @@ def get_app(
         return response
 
     app.openapi = partial(custom_openapi, app)
-    return app
-
-
-def custom_openapi(app):
-    """
-    The app's openapi method will be monkey-patched with this.
-
-    This is the approach the documentation recommends.
-
-    https://fastapi.tiangolo.com/advanced/extending-openapi/
-    """
-    from .. import __version__
-
-    if app.openapi_schema:
-        return app.openapi_schema
-    # Customize heading.
-    openapi_schema = get_openapi(
-        title="Tiled",
-        version=__version__,
-        description="Structured data access service",
-        routes=app.routes,
-    )
-    # Insert refreshUrl.
-    openapi_schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]["flows"][
-        "password"
-    ]["refreshUrl"] = "token/refresh"
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-
-def serve_tree(
-    tree,
-    authentication=None,
-    server_settings=None,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-):
-    """
-    Serve a Tree
-
-    Parameters
-    ----------
-    tree : Tree
-    authentication: dict, optional
-        Dict of authentication configuration.
-    server_settings: dict, optional
-        Dict of other server configuration.
-    """
-    authentication = authentication or {}
-    server_settings = server_settings or {}
-    authenticator = authentication.get("authenticator")
-
-    @lru_cache(1)
-    def override_get_authenticator():
-        return authenticator
-
-    @lru_cache(1)
-    def override_get_root_tree():
-        return tree
-
-    @lru_cache(1)
-    def override_get_settings():
-        settings = get_settings()
-        for item in [
-            "allow_anonymous_access",
-            "secret_keys",
-            "single_user_api_key",
-            "access_token_max_age",
-            "refresh_token_max_age",
-            "session_max_age",
-        ]:
-            if authentication.get(item) is not None:
-                setattr(settings, item, authentication[item])
-        for item in ["allow_origins"]:
-            if server_settings.get(item) is not None:
-                setattr(settings, item, server_settings[item])
-        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
-            "available_bytes"
-        )
-        if object_cache_available_bytes is not None:
-            setattr(
-                settings, "object_cache_available_bytes", object_cache_available_bytes
-            )
-        return settings
-
-    # The Tree and Authenticator have the opportunity to add custom routes to
-    # the server here. (Just for example, a Tree of BlueskyRuns uses this
-    # hook to add a /documents route.) This has to be done before dependency_overrides
-    # are processed, so we cannot just inject this configuration via Depends.
-    include_routers = []
-    include_routers.extend(getattr(tree, "include_routers", []))
-    include_routers.extend(getattr(authenticator, "include_routers", []))
-    # Likewise, the Tree and Authenticator can run tasks in the background.
-    # These typically contain a periodic loop.
-    background_tasks = []
-    background_tasks.extend(getattr(tree, "background_tasks", []))
-    background_tasks.extend(getattr(authenticator, "background_tasks", []))
-    app = get_app(
-        query_registry or get_query_registry(),
-        compression_registry or default_compression_registry,
-        include_routers=include_routers,
-        background_tasks=background_tasks,
-    )
-    app.dependency_overrides[get_authenticator] = override_get_authenticator
+    app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
     if query_registry is not None:
@@ -367,6 +453,19 @@ def serve_tree(
         app.dependency_overrides[
             get_serialization_registry
         ] = override_get_serialization_registry
+
+    metrics_config = server_settings.get("metrics", {})
+    if metrics_config.get("prometheus", False):
+        from . import metrics
+
+        app.include_router(metrics.router)
+
+        @app.middleware("http")
+        async def capture_metrics_prometheus(request: Request, call_next):
+            response = await call_next(request)
+            metrics.capture_request_metrics(request, response)
+            return response
+
     return app
 
 
@@ -381,14 +480,15 @@ def app_factory():
     example) where only a module and instance or factory can be specified.
     """
     config_path = os.getenv("TILED_CONFIG", "config.yml")
+    logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    from ..config import construct_serve_tree_kwargs, parse_configs
+    from ..config import construct_build_app_kwargs, parse_configs
 
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_serve_tree_kwargs(parsed_config, source_filepath=config_path)
-    web_app = serve_tree(**kwargs)
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
+    web_app = build_app(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
@@ -412,8 +512,8 @@ def print_admin_api_key_if_generated(web_app, host, port):
     host = host or "127.0.0.1"
     port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
-    authenticator = web_app.dependency_overrides.get(
-        get_authenticator, get_authenticator
+    authenticators = web_app.dependency_overrides.get(
+        get_authenticators, get_authenticators
     )()
     if settings.allow_anonymous_access:
         print(
@@ -424,7 +524,7 @@ def print_admin_api_key_if_generated(web_app, host, port):
 """,
             file=sys.stderr,
         )
-    elif (authenticator is None) and settings.single_user_api_key_generated:
+    elif (not authenticators) and settings.single_user_api_key_generated:
         print(
             f"""
     Use the following URL to connect to Tiled:

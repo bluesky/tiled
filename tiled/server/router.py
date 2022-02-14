@@ -1,38 +1,35 @@
 import dataclasses
 import inspect
 from datetime import datetime, timedelta
-from functools import lru_cache
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 
 from .. import __version__
-from . import models
-from .authentication import (
-    API_KEY_COOKIE_NAME,
-    check_single_user_api_key,
-    get_authenticator,
-)
+from . import schemas
+from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
-    block,
     construct_data_response,
     construct_entries_response,
     construct_resource,
+    json_or_msgpack,
+    resolve_media_type,
+)
+from .dependencies import (
+    block,
     entry,
     expected_shape,
     get_query_registry,
     get_serialization_registry,
-    json_or_msgpack,
-    record_timing,
-    resolve_media_type,
     slice_,
 )
 from .settings import get_settings
+from .utils import get_base_url, record_timing
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -40,14 +37,16 @@ DEFAULT_PAGE_SIZE = 100
 router = APIRouter()
 
 
-@router.get("/", response_model=models.About)
+@router.get("/", response_model=schemas.About)
 async def about(
     request: Request,
-    has_single_user_api_key: str = Depends(check_single_user_api_key),
     settings: BaseSettings = Depends(get_settings),
-    authenticator=Depends(get_authenticator),
+    authenticators=Depends(get_authenticators),
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
+    # This dependency is here because it runs the code that moves
+    # API key from the query parameter to a cookie (if it is valid).
+    principal=Security(get_current_principal, scopes=[]),
 ):
     # TODO The lazy import of entry modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
@@ -55,25 +54,53 @@ async def about(
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
     # etc.) can remain lazy.
     request.state.endpoint = "about"
-    if (authenticator is None) and has_single_user_api_key:
-        if request.cookies.get(API_KEY_COOKIE_NAME) != settings.single_user_api_key:
-            request.state.cookies_to_set.append(
-                {"key": API_KEY_COOKIE_NAME, "value": settings.single_user_api_key}
-            )
-    if authenticator is None:
-        auth_type = "api_key"
-        auth_endpoint = None
-    else:
-        if authenticator.handles_credentials:
-            auth_type = "password"
-            auth_endpoint = None
+    base_url = get_base_url(request)
+    authentication = {
+        "required": not settings.allow_anonymous_access,
+    }
+    provider_specs = []
+    for provider, authenticator in authenticators.items():
+        if authenticator.mode == Mode.password:
+            spec = {
+                "provider": provider,
+                "mode": authenticator.mode.value,
+                "links": {"auth_endpoint": f"{base_url}auth/provider/{provider}/token"},
+                "confirmation_message": getattr(
+                    authenticator, "confirmation_message", None
+                ),
+            }
+        elif authenticator.mode == Mode.external:
+            endpoint = authenticator.authorization_endpoint
+            if endpoint.startswith("/"):
+                # This is relative.
+                endpoint = f"{base_url}auth/provider/{provider}{endpoint}"
+            spec = {
+                "provider": provider,
+                "mode": authenticator.mode.value,
+                "links": {"auth_endpoint": endpoint},
+                "confirmation_message": getattr(
+                    authenticator, "confirmation_message", None
+                ),
+            }
         else:
-            auth_type = "external"
-            auth_endpoint = authenticator.authorization_endpoint
+            # It should be impossible to reach here.
+            assert False
+        provider_specs.append(spec)
+    if provider_specs:
+        # If there are *any* authenticaiton providers, these
+        # endpoints will be added.
+        authentication["links"] = {
+            "whoami": f"{base_url}auth/whoami",
+            "apikey": f"{base_url}auth/apikey",
+            "refresh_session": f"{base_url}auth/session/refresh",
+            "revoke_session": f"{base_url}auth/session/revoke/{{session_id}}",
+            "logout": f"{base_url}auth/logout",
+        }
+    authentication["providers"] = provider_specs
 
     return json_or_msgpack(
         request,
-        models.About(
+        schemas.About(
             library_version=__version__,
             api_version=0,
             formats={
@@ -87,49 +114,15 @@ async def about(
                 for structure_family in serialization_registry.structure_families
             },
             queries=list(query_registry.name_to_query_type),
-            # documentation_url=".../docs",  # TODO How to get the base URL?
-            meta={"root_path": request.scope.get("root_path") or "/"},
-            authentication={
-                "type": auth_type,
-                "required": not settings.allow_anonymous_access,
-                "endpoint": auth_endpoint,
-                "confirmation_message": getattr(
-                    authenticator, "confirmation_message", None
-                ),
+            authentication=authentication,
+            links={
+                "self": base_url,
+                "documentation": f"{base_url}docs",
             },
+            meta={"root_path": request.scope.get("root_path") or "/"},
         ),
-        resolve_media_type(request),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
-
-
-@lru_cache()
-def prometheus_registry():
-    """
-    Configure prometheus_client.
-
-    This is run the first time the /metrics endpoint is used.
-    """
-    # The multiprocess configuration makes it compatible with gunicorn.
-    # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
-    from prometheus_client import CollectorRegistry
-    from prometheus_client.multiprocess import MultiProcessCollector
-
-    registry = CollectorRegistry()
-    MultiProcessCollector(registry)  # This has a side effect, apparently.
-    return registry
-
-
-@router.get("/metrics")
-async def metrics(request: Request):
-    """
-    Prometheus metrics
-    """
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-
-    request.state.endpoint = "metrics"
-    data = generate_latest(prometheus_registry())
-    return Response(data, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
 def declare_search_router(query_registry):
@@ -144,13 +137,13 @@ def declare_search_router(query_registry):
     async def node_search(
         request: Request,
         path: str,
-        fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+        fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
         offset: Optional[int] = Query(0, alias="page[offset]"),
         limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
         sort: Optional[str] = Query(None),
         omit_links: bool = Query(False),
-        entry: Any = Depends(entry),
+        entry: Any = Security(entry, scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
         **filters,
     ):
@@ -168,7 +161,7 @@ def declare_search_router(query_registry):
                 omit_links,
                 filters,
                 sort,
-                _get_base_url(request),
+                get_base_url(request),
                 resolve_media_type(request),
             )
             # We only get one Expires header, so if different parts
@@ -185,7 +178,6 @@ def declare_search_router(query_registry):
             return json_or_msgpack(
                 request,
                 resource,
-                resolve_media_type(request),
                 expires=expires,
                 headers=headers,
             )
@@ -235,27 +227,45 @@ def declare_search_router(query_registry):
 
     # Register the search route.
     router = APIRouter()
-    router.get("/node/search", response_model=models.Response, include_in_schema=False)(
-        node_search
-    )
-    router.get("/node/search/{path:path}", response_model=models.Response)(node_search)
+    router.get(
+        "/node/search",
+        response_model=schemas.Response[
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
+        ],
+        include_in_schema=False,
+    )(node_search)
+    router.get(
+        "/node/search/{path:path}",
+        response_model=schemas.Response[
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
+        ],
+    )(node_search)
     return router
 
 
-@router.get("/node/metadata/{path:path}", response_model=models.Response)
+@router.get(
+    "/node/metadata/{path:path}",
+    response_model=schemas.Response[
+        schemas.Resource[schemas.NodeAttributes, dict, dict], dict, dict
+    ],
+)
 async def node_metadata(
     request: Request,
     path: str,
-    fields: Optional[List[models.EntryFields]] = Query(list(models.EntryFields)),
+    fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
     select_metadata: Optional[str] = Query(None),
     omit_links: bool = Query(False),
-    entry: Any = Depends(entry),
-    root_path: str = Query(None),
+    entry: Any = Security(entry, scopes=["read:metadata"]),
+    root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
 
     request.state.endpoint = "metadata"
-    base_url = _get_base_url(request)
+    base_url = get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
     try:
         resource = construct_resource(
@@ -272,25 +282,20 @@ async def node_metadata(
             status_code=400,
             detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
-    meta = (
-        {"root_path": request.scope.get("root_path") or "/"}
-        if (root_path is not None)
-        else {}
-    )
+    meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
     return json_or_msgpack(
         request,
-        models.Response(data=resource, meta=meta),
-        resolve_media_type(request),
+        schemas.Response(data=resource, meta=meta),
         expires=getattr(entry, "metadata_stale_at", None),
     )
 
 
 @router.get(
-    "/array/block/{path:path}", response_model=models.Response, name="array block"
+    "/array/block/{path:path}", response_model=schemas.Response, name="array block"
 )
 def array_block(
     request: Request,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -337,11 +342,11 @@ def array_block(
 
 
 @router.get(
-    "/array/full/{path:path}", response_model=models.Response, name="full array"
+    "/array/full/{path:path}", response_model=schemas.Response, name="full array"
 )
 def array_full(
     request: Request,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -382,13 +387,13 @@ def array_full(
 
 @router.get(
     "/dataframe/partition/{path:path}",
-    response_model=models.Response,
+    response_model=schemas.Response,
     name="dataframe partition",
 )
 def dataframe_partition(
     request: Request,
     partition: int,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -428,12 +433,12 @@ def dataframe_partition(
 
 @router.get(
     "/node/full/{path:path}",
-    response_model=models.Response,
+    response_model=schemas.Response,
     name="full xarray.Dataset",
 )
 def node_full(
     request: Request,
-    entry=Depends(entry),
+    entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -462,31 +467,3 @@ def node_full(
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
-
-
-def _get_base_url(request):
-    # We want to get the scheme, host, and root_path (if any)
-    # *as it appears to the client* for use in assembling links to
-    # include in our responses.
-    #
-    # We need to consider:
-    #
-    # * FastAPI may be behind a load balancer, such that for a client request
-    #   like "https://example.com/..." the Host header is set to something
-    #   like "localhost:8000" and the request.url.scheme is "http".
-    #   We consult X-Forwarded-* headers to get the original Host and scheme.
-    #   Note that, although these are a de facto standard, they may not be
-    #   set by default. With nginx, for example, they need to be configured.
-    #
-    # * The client may be connecting through SSH port-forwarding. (This
-    #   is a niche use case but one that we nonetheless care about.)
-    #   The Host or X-Forwarded-Host header may include a non-default port.
-    #   The HTTP spec specifies that the Host header may include a port
-    #   to specify a non-default port.
-    #   https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.23
-    host = request.headers.get("x-forwarded-host", request.headers["host"])
-    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    root_path = request.scope.get("root_path") or "/"
-    if not root_path.endswith("/"):
-        root_path = f"{root_path}/"
-    return f"{scheme}://{host}{root_path}"

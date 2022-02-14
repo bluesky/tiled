@@ -47,7 +47,7 @@ $ http :8000/ | jq .authentication.type
 Exchange username/password credentials for "access" and "refresh" tokens.
 
 ```
-$ http --form POST :8000/auth/token username=alice password=secret1 > tokens.json
+$ http --form POST :8000/auth/provider/toy/token username=alice password=secret1 > tokens.json
 ```
 
 The content of `tokens.json` looks like
@@ -117,7 +117,7 @@ set-cookie: tiled_csrf=6sPHOrjBRzZOiSuXOXNtaDNyNNeqQj86nPIXf7X3C1M; HttpOnly; Pa
 Exchange the refresh token for a fresh pair of access and refresh tokens.
 
 ```
-$ http POST :8000/auth/token/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
+$ http POST :8000/auth/session/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
 ```
 
 And resume making requests with the new access token.
@@ -151,20 +151,19 @@ a valid refresh token from Tiled that encodes your ORCID username. Exchange the
 refresh token for an access token and a fresh refresh token like so.
 
 ```
-$ http POST https://tiled-demo.blueskyproject.io/token/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
+$ http POST https://tiled-demo.blueskyproject.io/auth/session/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
 ```
 
 From here, everything follows the same as in Scenario 1, above.
 
-# Configure session lifetime parameters
+## Configure session lifetime parameters
 
 The server implements "sliding sessions". The following are tunable:
 
 * Maximum inactive session age --- Time after which inactive sessions
   (sessions that have not refreshed tokens) will time out.
 * Maximum session age --- Even *active* sessions are timed out after this
-  limit, and the user is required to resubmit credentials. By default,
-  this is unset and active session are never shut down.
+  limit, and the user is required to resubmit credentials.
 * Access token max age --- This controls how often fresh access token have to be
   re-issued. The process is transparent to the user and just affects performance.
   An *access* token cannot be revoked, so its lifetime should be short. The
@@ -176,7 +175,7 @@ given in units of seconds. The default values are shown.
 ```yaml
 authentication:
     refresh_token_max_age: 604800  # one week
-    session_max_age: None  # unlimited
+    session_max_age: 31536000  # 365 days
     access_token_max_age: 900  # 15 minutes
 ```
 

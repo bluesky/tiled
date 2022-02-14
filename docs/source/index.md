@@ -18,17 +18,21 @@ tutorials/plotly-integration
 ```{toctree}
 :caption: How To Guides
 
+how-to/client-logger
 how-to/configuration
 how-to/custom-export-formats
 how-to/profiles
+how-to/api-keys
 how-to/direct-client
 how-to/tune-caches
 how-to/docker
+how-to/tiled-database
 ```
 
 ```{toctree}
 :caption: Explanations
 
+explanations/standards
 explanations/structures
 explanations/security
 explanations/compression
@@ -47,6 +51,7 @@ reference/service
 reference/http-api-overview
 reference/python-client
 reference/authentication
+reference/scopes
 reference/commandline
 reference/service-configuration
 reference/client-profiles

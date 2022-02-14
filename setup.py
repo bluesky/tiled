@@ -104,7 +104,11 @@ setup(
         "tiled": [
             # When adding files here, remember to update MANIFEST.in as well,
             # or else they will not be included in the distribution on PyPI!
-            "schemas/*.yml"
+            "config_schemas/*.yml",
+            "database/alembic.ini.template",
+            "database/migrations/env.py",
+            "database/migrations/script.py.mako",
+            "database/migrations/versions/*.py",
         ]
     },
     license="BSD (3-clause)",

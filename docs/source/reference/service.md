@@ -150,7 +150,7 @@ structures.
    tiled.config.parse_configs
    tiled.config.direct_access
    tiled.config.direct_access_from_profile
-   tiled.config.construct_serve_tree_kwargs
+   tiled.config.construct_build_app_kwargs
 ```
 ## HTTP Server Application
 
@@ -158,8 +158,7 @@ structures.
 .. autosummary::
    :toctree: generated
 
-   tiled.server.app.serve_tree
-   tiled.server.app.get_app
+   tiled.server.app.build_app
 ```
 
 ## Object Cache

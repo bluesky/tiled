@@ -27,12 +27,12 @@ def schema():
     import yaml
 
     here = Path(__file__).parent.absolute()
-    schema_path = here / "schemas" / "service_configuration.yml"
+    schema_path = here / "config_schemas" / "service_configuration.yml"
     with open(schema_path, "r") as file:
         return yaml.safe_load(file)
 
 
-def construct_serve_tree_kwargs(
+def construct_build_app_kwargs(
     config,
     *,
     source_filepath=None,
@@ -41,7 +41,7 @@ def construct_serve_tree_kwargs(
     serialization_registry=None,
 ):
     """
-    Given parsed configuration, construct arguments for serve_tree(...).
+    Given parsed configuration, construct arguments for build_app(...).
 
     The parameters query_registry, compression_registry, and
     serialization_registry are used by the tests to inject separate registry
@@ -65,15 +65,22 @@ def construct_serve_tree_kwargs(
     with prepend_to_sys_path(*sys_path_additions):
         auth_spec = config.get("authentication", {}) or {}
         root_access_control = config.get("access_control", {}) or {}
-        auth_aliases = {}
-        # TODO Enable entrypoint as alias for authenticator_class?
-        if auth_spec.get("authenticator") is not None:
+        auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
+        providers = list(auth_spec.get("providers", []))
+        provider_names = [p["provider"] for p in providers]
+        if len(set(provider_names)) != len(provider_names):
+            raise ValueError(
+                "The names given for 'provider' must be unique. "
+                f"Found duplicates in {providers}"
+            )
+        for i, authenticator in enumerate(providers):
             import_path = auth_aliases.get(
-                auth_spec["authenticator"], auth_spec["authenticator"]
+                authenticator["authenticator"], authenticator["authenticator"]
             )
             authenticator_class = import_object(import_path, accept_live_object=True)
-            authenticator = authenticator_class(**auth_spec.get("args", {}))
-            auth_spec["authenticator"] = authenticator
+            authenticator = authenticator_class(**authenticator.get("args", {}))
+            # Replace "package.module:Object" with live instance.
+            auth_spec["providers"][i]["authenticator"] = authenticator
         if root_access_control.get("access_policy") is not None:
             root_policy_import_path = root_access_control["access_policy"]
             root_policy_class = import_object(
@@ -154,6 +161,25 @@ def construct_serve_tree_kwargs(
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["object_cache"] = config.get("object_cache", {})
+        server_settings["database_uri"] = config.get("database_uri")
+        metrics = config.get("metrics", {})
+        if metrics.get("prometheus", False):
+            prometheus_multiproc_dir = os.getenv("PROMETHEUS_MULTIPROC_DIR", None)
+            if not prometheus_multiproc_dir:
+                raise ValueError(
+                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR env variable not set"
+                )
+            elif not Path(prometheus_multiproc_dir).is_dir():
+                raise ValueError(
+                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR "
+                    f"({prometheus_multiproc_dir}) is not a directory"
+                )
+            elif not os.access(prometheus_multiproc_dir, os.W_OK):
+                raise ValueError(
+                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR "
+                    f"({prometheus_multiproc_dir}) is not writable"
+                )
+        server_settings["metrics"] = metrics
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)
@@ -182,6 +208,9 @@ def merge(configs):
     access_control_config_source = None
     uvicorn_config_source = None
     object_cache_config_source = None
+    metrics_config_source = None
+    database_uri_config_source = None
+    database_settings_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
     file_extensions = {}
@@ -228,6 +257,33 @@ def merge(configs):
                 )
             object_cache_config_source = filepath
             merged["object_cache"] = config["object_cache"]
+        if "metrics" in config:
+            if "metrics" in merged:
+                raise ConfigError(
+                    "metrics can only be specified in one file. "
+                    f"It was found in both {metrics_config_source} and "
+                    f"{filepath}"
+                )
+            metrics_config_source = filepath
+            merged["metrics"] = config["metrics"]
+        if "database_uri" in config:
+            if "database_uri" in merged:
+                raise ConfigError(
+                    "database_uri can only be specified in one file. "
+                    f"It was found in both {database_uri_config_source} and "
+                    f"{filepath}"
+                )
+            database_uri_config_source = filepath
+            merged["database_uri"] = config["database_uri"]
+        if "database_settings" in config:
+            if "database_settings" in merged:
+                raise ConfigError(
+                    "database_settings can only be specified in one file. "
+                    f"It was found in both {database_settings_config_source} and "
+                    f"{filepath}"
+                )
+            database_settings_config_source = filepath
+            merged["database_settings"] = config["database_settings"]
         for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
@@ -334,7 +390,7 @@ def direct_access(config, source_filepath=None):
         parsed_config = parse_configs(config)
     else:
         parsed_config = config
-    kwargs = construct_serve_tree_kwargs(parsed_config, source_filepath=source_filepath)
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=source_filepath)
     return kwargs["tree"]
 
 

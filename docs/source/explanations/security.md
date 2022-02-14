@@ -179,7 +179,11 @@ Here is a complete working example:
 ```yaml
 # pam_config.yml
 authentication:
-  authenticator: tiled.authenticators:PAMAuthenticator
+  providers:
+    - authenticator: tiled.authenticators:PAMAuthenticator
+      # This 'provider' can be any string; it is used to differentiate
+      # authentication providers when multiple ones are supported.
+      provider: local
 trees:
   - path: /
     tree: tiled.examples.generated_minimal:tree
@@ -241,24 +245,26 @@ The configuration file(s) must include the following.
 
 ```yaml
 authentication:
-  authenticator: tiled.authenticators:OIDCAuthenticator
-  args:
-    # All of these are given by the OIDC provider you register
-    # your application.
-    client_id: ...
-    client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
-    token_uri: ...
-    authorization_endpoint: ...
-    redirect_uri: ...  # https://{YOUR_TILED_SERVER_ADDRESS}/auth/code
-    # These come from the OIDC provider as described above.
-    public_keys:
-      - kty: ...
-        e: ...
-        use: ...
-        kid: ...
-        n: ...
-        alg: ...
-    confirmation_message: "You have logged with ... as {username}."
+  providers:
+  - provider: some-oidc-service
+    authenticator: tiled.authenticators:OIDCAuthenticator
+    args:
+      # All of these are given by the OIDC provider you register
+      # your application.
+      client_id: ...
+      client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
+      token_uri: ...
+      authorization_endpoint: ...
+      redirect_uri: ...  # https://{YOUR_TILED_SERVER_ADDRESS}/provider/{some-oidc-service}/auth/code
+      # These come from the OIDC provider as described above.
+      public_keys:
+        - kty: ...
+          e: ...
+          use: ...
+          kid: ...
+          n: ...
+          alg: ...
+      confirmation_message: "You have logged with ... as {id}."
 ```
 
 Here is an example for ORCID authentication running at
@@ -266,23 +272,25 @@ Here is an example for ORCID authentication running at
 
 ```yaml
 authentication:
-  authenticator: tiled.authenticators:OIDCAuthenticator
-  args:
-    client_id: APP-0ROS9DU5F717F7XN  # obtained from ORCID for tiled-demo.blueskyproject.io; not secret
-    client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
-    redirect_uri: https://tiled-demo.blueskyproject.io/auth/code
-    token_uri: "https://orcid.org/oauth/token"
-    authorization_endpoint: "https://orcid.org/oauth/authorize?client_id={client_id}&response_type=code&scope=openid&redirect_uri={redirect_uri}"
-    # These values come from https://orcid.org/.well-known/openid-configuration.
-    # Obtain them directly from ORCID. They may change over time.
-    public_keys:
-      - kty: ...
-        e: ...
-        use: ...
-        kid: ...
-        n: ...
-        alg: RS256
-    confirmation_message: "You have logged with ORCID as {username}."
+  providers:
+  - provider: orcid
+    authenticator: tiled.authenticators:OIDCAuthenticator
+    args:
+      client_id: APP-0ROS9DU5F717F7XN  # obtained from ORCID for tiled-demo.blueskyproject.io; not secret
+      client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
+      redirect_uri: https://tiled-demo.blueskyproject.io/auth/provider/orcid/code
+      token_uri: "https://orcid.org/oauth/token"
+      authorization_endpoint: "https://orcid.org/oauth/authorize?client_id={client_id}&response_type=code&scope=openid&redirect_uri={redirect_uri}"
+      # These values come from https://orcid.org/.well-known/openid-configuration.
+      # Obtain them directly from ORCID. They may change over time.
+      public_keys:
+        - kty: ...
+          e: ...
+          use: ...
+          kid: ...
+          n: ...
+          alg: RS256
+      confirmation_message: "You have logged with ORCID as {id}."
 ```
 
 ### Toy examples for testing and development
@@ -295,12 +303,14 @@ should only for used for development and demos.
 ```yaml
 # dictionary_config.yml
 authentication:
-  authenticator: tiled.authenticators:DictionaryAuthenticator
-  args:
-    users_to_passwords:
-      alice: ${ALICE_PASSWORD}
-      bob: ${BOB_PASSWORD}
-      cara: ${CARA_PASSWORD}
+  providers:
+  - provider: toy
+    authenticator: tiled.authenticators:DictionaryAuthenticator
+    args:
+      users_to_passwords:
+        alice: ${ALICE_PASSWORD}
+        bob: ${BOB_PASSWORD}
+        cara: ${CARA_PASSWORD}
 trees:
   - path: /
     tree: tiled.examples.generated_minimal:tree
@@ -315,7 +325,9 @@ The ``DummyAuthenticator`` accepts *any* username and password combination.
 ```yaml
 # dummy_config.yml
 authentication:
-  authenticator: tiled.authenticators:DummyAuthenticator
+  providers:
+  - provider: toy
+    authenticator: tiled.authenticators:DummyAuthenticator
 trees:
   - path: /
     tree: tiled.examples.generated_minimal:tree

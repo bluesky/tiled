@@ -1,12 +1,9 @@
-from datetime import datetime
-
 import numpy
 import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_config
-from ..server.authentication import create_refresh_token
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
@@ -19,17 +16,25 @@ def tree_b(access_policy):
     return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
 
 
-def test_top_level_access_control():
-    SECRET_KEY = "secret"
-    config = {
+@pytest.fixture
+def config(tmpdir):
+    return {
         "authentication": {
-            "secret_keys": [SECRET_KEY],
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-            "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
+            "secret_keys": ["SECRET"],
+            "providers": [
+                {
+                    "provider": "toy",
+                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                    "args": {
+                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
+                    },
+                }
+            ],
         },
+        "database_uri": f"sqlite:///{tmpdir}/tiled.sqlite",
         "access_control": {
             "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
-            "args": {"access_lists": {"alice": ["a"]}},
+            "args": {"access_lists": {"alice": ["a"]}, "provider": "toy"},
         },
         "trees": [
             {
@@ -38,39 +43,26 @@ def test_top_level_access_control():
                 "access_control": {
                     "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
                     "args": {
+                        "provider": "toy",
                         "access_lists": {
                             "alice": ["A2"],
                             # This should have no effect because bob
                             # cannot access the parent node.
                             "bob": ["A1", "A2"],
-                        }
+                        },
                     },
                 },
             },
             {"tree": f"{__name__}:tree_b", "path": "/b"},
         ],
     }
-    # Directly generate a refresh token.
-    alice_refresh_token = create_refresh_token(
-        data={"sub": "alice"},
-        session_id=0,
-        session_creation_time=datetime.now(),
-        secret_key=SECRET_KEY,
-    )
-    bob_refresh_token = create_refresh_token(
-        data={"sub": "bob"},
-        session_id=0,
-        session_creation_time=datetime.now(),
-        secret_key=SECRET_KEY,
-    )
-    # Provide the refresh token in a token cache. The client
-    # will use this to "refresh" and obtain an access token.
-    alice_client = from_config(
-        config, username="alice", token_cache={"refresh_token": alice_refresh_token}
-    )
-    bob_client = from_config(
-        config, username="bob", token_cache={"refresh_token": bob_refresh_token}
-    )
+
+
+def test_top_level_access_control(enter_password, config):
+    with enter_password("secret1"):
+        alice_client = from_config(config, username="alice", token_cache={})
+    with enter_password("secret2"):
+        bob_client = from_config(config, username="bob", token_cache={})
     assert "a" in alice_client
     assert "A2" in alice_client["a"]
     assert "A1" not in alice_client["a"]

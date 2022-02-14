@@ -11,11 +11,17 @@ set -e
 export DIR=$( cd "$(dirname "$0")" ; pwd -P )
 
 # Expected to succeed (exit 0)
+echo "Testing config_with_api_key.yml"
 bash -c 'TILED_CONFIG=$DIR/test_configs/config_with_api_key.yml python $DIR/check_config.py'
+echo "Testing config_with_secret_keys.yml"
 bash -c 'TILED_CONFIG=$DIR/test_configs/config_with_secret_keys.yml python $DIR/check_config.py'
+echo "Testing config_public_with_no_authenticator.yml"
 bash -c 'TILED_CONFIG=$DIR/test_configs/config_public_no_authenticator.yml python $DIR/check_config.py'
 
 # Expected to fail (exit 1)
+echo "Testing config_missing_api_key.yml"
 bash -c '! TILED_CONFIG=$DIR/test_configs/config_missing_api_key.yml python $DIR/check_config.py'
+echo "Testing config_missing_secret_keys.yml"
 bash -c '! TILED_CONFIG=$DIR/test_configs/config_missing_secret_keys.yml python $DIR/check_config.py'
+echo "Testing config_missing_secret_keys_public.yml"
 bash -c '! TILED_CONFIG=$DIR/test_configs/config_missing_secret_keys_public.yml python $DIR/check_config.py'

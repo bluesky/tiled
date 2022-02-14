@@ -227,7 +227,12 @@ class DaskDataArrayClient(BaseStructureClient):
         coords = {}
         for name, client in self.coords.items():
             coords[name] = client.read(slice)
-        return xarray.DataArray(data=data, coords=coords, name=structure.name)
+        return xarray.DataArray(
+            data=data,
+            coords=coords,
+            name=structure.name,
+            attrs=self.item["attributes"]["metadata"]["attrs"],
+        )
 
     def __getitem__(self, slice):
         return self.read(slice)
@@ -405,6 +410,7 @@ class DaskDatasetClient(BaseStructureClient):
             if (variables is not None) and (name not in variables):
                 continue
 
+            metadata = self.metadata["data_vars"][name]
             # Optimization: Download scalar data as DataFrame.
             data_shape = data_array.macro.variable.macro.shape
             if (
@@ -412,10 +418,12 @@ class DaskDatasetClient(BaseStructureClient):
                 and (data_shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
                 and (len(data_shape) < 2)
             ):
-                data_vars_clients[name] = wide_table_fetcher.register(name, data_array)
+                data_vars_clients[name] = wide_table_fetcher.register(
+                    name, data_array, metadata
+                )
             else:
                 item = {
-                    "attributes": {"metadata": self.metadata["data_vars"][name]},
+                    "attributes": {"metadata": metadata},
                     "links": {
                         "self": self.item["links"]["self"]
                         + f"/data_vars/{name}/variable"
@@ -547,11 +555,11 @@ class _WideTableFetcher:
         self.variables = []
         self._dataframe = None
 
-    def register(self, name, data_array):
+    def register(self, name, data_array, metadata):
         if self._dataframe is not None:
             raise RuntimeError("Cannot add variables; already fetched.")
         self.variables.append(name)
-        return _MockClient(self, name, data_array)
+        return _MockClient(self, name, data_array, metadata)
 
     def dataframe(self):
         if self._dataframe is None:
@@ -591,10 +599,11 @@ class _WideTableFetcher:
 
 
 class _MockClient:
-    def __init__(self, wto, name, data_array_structure):
+    def __init__(self, wto, name, data_array_structure, metadata):
         self.wto = wto
         self.name = name
         self.data_array_structure = data_array_structure
+        self.metadata = metadata
 
     def read(self):
         # TODO Can we avoid .values here?
@@ -606,7 +615,9 @@ class _MockClient:
             # attrs=s.macro.variable.macro.attrs,
         )
         coords = {name: self.wto.coords[name] for name in s.macro.coord_names}
-        return xarray.DataArray(variable, name=s.macro.name, coords=coords)
+        return xarray.DataArray(
+            variable, name=s.macro.name, coords=coords, attrs=self.metadata["attrs"]
+        )
 
 
 class WrapperClient:

@@ -1,4 +1,5 @@
 # These are the requirements needed for basic server functionality.
+alembic
 cachey
 cached-property; python_version < '3.8'
 cachetools
@@ -15,7 +16,8 @@ python-dateutil
 python-jose[cryptography]
 python-multipart
 pyyaml
+sqlalchemy
 toolz
 typer
-uvicorn
+uvicorn[standard]
 watchgod

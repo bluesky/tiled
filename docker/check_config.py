@@ -21,7 +21,7 @@ def main():
     authentication = config.get("authentication", {})
     allow_anonymous_access = authentication.get("allow_anonymous_access", False)
 
-    if authentication.get("authenticator") is not None:
+    if authentication.get("providers"):
         # Even if the deployment allows public, anonymous access, secret
         # keys are needed to generate JWTs for any users that do log in.
         if not (
@@ -43,7 +43,7 @@ or via the environment variable TILED_SERVER_SECRET_KEYS.  Exiting...""",
             )
             sys.exit(1)
     else:
-        # No authentication mechanism is configured, so no secret keys are
+        # No authentication provider is configured, so no secret keys are
         # needed, but a single-user API key must be set unless the deployment
         # is public.
         if not (
