@@ -326,7 +326,7 @@ def construct_resource(
     media_type,
 ):
     path_str = "/".join(path_parts)
-    attributes = {}
+    attributes = {"ancestors": path_parts[:-1]}
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
             attributes["metadata"] = jmespath.compile(select_metadata).search(
