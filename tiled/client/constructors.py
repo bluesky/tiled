@@ -199,7 +199,7 @@ def from_context(context, structure_clients="numpy", *, path=None):
     if isinstance(structure_clients, str):
         structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     path = path or []
-    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
+    content = context.get_json(f"/api/node/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
     instance = Node(
         context,

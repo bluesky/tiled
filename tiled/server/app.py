@@ -11,6 +11,9 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from tiled.database.core import purge_expired
 
@@ -26,11 +29,11 @@ from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
 from .settings import get_settings
-from .ui_app import TemplatedStaticFiles
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     get_authenticators,
+    get_base_url,
     record_timing,
 )
 
@@ -107,10 +110,27 @@ def build_app(
     compression_registry = compression_registry or default_compression_registry
 
     app = FastAPI()
-    DEFAULT_UI_DIRECTORY = Path(__file__).parent / ".." / "ui"
     app.mount(
-        "/ui", TemplatedStaticFiles(directories=[DEFAULT_UI_DIRECTORY]), name="ui"
+        "/static",
+        StaticFiles(directory=Path(__file__).parent.parent / "ui" / "static"),
+        name="static",
     )
+    templates = Jinja2Templates(
+        directory=Path(__file__).parent.parent / "ui" / "templates"
+    )
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request):
+        return templates.TemplateResponse(
+            "index.html", {"request": request, "api_url": f"{get_base_url(request)}"}
+        )
+
+    @app.get("/ui", response_class=HTMLResponse)
+    async def ui(request: Request):
+        return templates.TemplateResponse(
+            "ui.html", {"request": request, "api_url": f"{get_base_url(request)}"}
+        )
+
     app.state.allow_origins = []
     app.include_router(router, prefix="/api")
 

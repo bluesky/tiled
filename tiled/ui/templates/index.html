@@ -1,0 +1,57 @@
+{% extends "page.html" %}
+{% block stylesheet %}
+{{ super() }}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
+{% endblock %}
+{% block main %}
+<div class = "container">
+  <section class="section">
+    <h1 class="title">Explore from your web browser</h1>
+    <h2 class="subtitle">
+      Use a basic, data-oriented web interface to navigate Tiled.
+    </h2>
+    <a href="ui/">
+      <button class="button is-large is-responsive is-link">
+        Try it
+      </button>
+    </a>
+  </section>
+  <section class="section">
+    <h1 class="title">Explore from Python</h1>
+    <h2 class="subtitle">
+      Install and use Tiled's Python client from Python, IPython, or Jupyter.
+    </h2>
+    <pre><code>$ pip install tiled[client]
+$ python3
+>>> from tiled.client import from_uri
+>>> from_uri("{{ api_url }}")</code></pre>
+  </section>
+  <section class="section">
+    <h1 class="title">Explore the API</h1>
+    <h2 class="subtitle">
+      Tiled includes interactive OpenAPI (a.k.a. "Swagger") documentation you can use in your web browser.
+    </h2>
+    <p class="box">
+      The Tiled API can be accessed from any Internet-connected software,
+      including graphical programs that accept URLs and commandline
+      utilities like <code>wget</code> and <code>curl</code>.
+    </p>
+    <a href="docs/">
+      <button class="button is-large is-responsive is-link">
+        Try it
+      </button>
+    </a>
+  </section>
+  <section class="section">
+    <h1 class="title">Learn</h1>
+    <h2 class="subtitle">
+      For tutorials, guides, and more details, see Tiled's project documentation.
+    </h2>
+    <a href="https://blueskyproject.io/tiled/">
+      <button class="button is-large is-responsive is-link">
+        Read
+      </button>
+    </a>
+  </section>
+</div>
+{% endblock %}
