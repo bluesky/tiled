@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { Link, Route, Routes } from 'react-router-dom';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import { search } from '../client';
+import Node from '../routes/node'
 
 function Contents() {
   const [results, setItems] = useState<string[]>([]);
@@ -19,9 +21,20 @@ function Contents() {
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="sm">
-      <Typography variant="h4" component="h1" gutterBottom>
-        <p>found {results.length} results</p>
-      </Typography>
+        <ul>
+        {results.map(id => (
+          <li key={id}>
+            <Link to={id}>{id}</Link>
+          </li>
+        ))
+        }
+        </ul>
+        <Routes>
+          {results.map(id => (
+            <Route path={`:id/*`} element={<Node />} />
+           ))
+          }
+        </Routes>
       </Container>
     </Box>
   );
