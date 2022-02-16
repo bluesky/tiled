@@ -1,7 +1,17 @@
 import axios from 'axios';
 
+declare global {
+    interface Window { baseURL: string; }
+}
+
+let baseURL = process.env.REACT_APP_API_PREFIX
+if (baseURL == null) {
+  let baseURL = window.baseURL;
+}
+let apiURL = `${baseURL}/api`
+
 var axiosInstance = axios.create({
-    baseURL: process.env.REACT_APP_API_PREFIX,
+  baseURL: apiURL,
 });
 
 export interface IEntries {
