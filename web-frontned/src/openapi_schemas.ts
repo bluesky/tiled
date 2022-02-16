@@ -155,7 +155,7 @@ export interface components {
      */
     Resource_NodeAttributes__dict__dict_: {
       /** Id */
-      id: Partial<string> & Partial<string>;
+      id: string;
       attributes: components["schemas"]["NodeAttributes"];
       /** Links */
       links?: { [key: string]: unknown };

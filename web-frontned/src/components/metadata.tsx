@@ -3,28 +3,32 @@ import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import { metadata } from '../client';
+import { components } from '../openapi_schemas';
 
 function Metadata() {
-  const [items, setItems] = useState<any[]>([]);
+  const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
 
   useEffect(() => {
     async function loadData() {
-      var result = await metadata([]);
-      if (result !== undefined) {
-        setItems(result);
+      var item = await metadata([]);
+      if (item !== undefined) {
+        setItem(item);
       }
     }
     loadData();
   }, []);
-  return (
-    <Box sx={{ my: 4 }}>
+  if (item && item.data) {
+    return (
+      <Box sx={{ my: 4 }}>
       <Container maxWidth="sm">
       <Typography variant="h4" component="h1" gutterBottom>
-        <p>found {items.entries.length} items</p>
+        ID {item.data.id}
       </Typography>
       </Container>
-    </Box>
-  );
+      </Box>
+    );
+  }
+  return <div>Loading...</div>
 }
 
 export default Metadata;
