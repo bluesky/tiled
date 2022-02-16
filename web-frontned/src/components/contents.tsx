@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Link, Route, Routes } from 'react-router-dom';
+import { Link, Route, Routes, useParams } from 'react-router-dom';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import { search } from '../client';
 import Node from '../routes/node'
 
+
 function Contents() {
   const [results, setItems] = useState<string[]>([]);
+  const params = useParams<{"id": string}>();
+  const segments = (params["id"] || "").split("/")
 
   useEffect(() => {
     async function loadData() {
-      var results = await search([]);
+      var results = await search(segments);
       if (results !== undefined) {
         setItems(results);
       }
@@ -22,16 +25,16 @@ function Contents() {
     <Box sx={{ my: 4 }}>
       <Container maxWidth="sm">
         <ul>
-        {results.map(id => (
-          <li key={id}>
-            <Link to={id}>{id}</Link>
+        {results.map(id=> (
+          <li key={"li-" + id}>
+            <Link key={"link-" + id} to={id}>{id}</Link>
           </li>
         ))
         }
         </ul>
         <Routes>
-          {results.map(id => (
-            <Route path={`:id/*`} element={<Node />} />
+          {results.map(id=> (
+            <Route key={"route-" + id} path={`:id/*`} element={<Node />} />
            ))
           }
         </Routes>
