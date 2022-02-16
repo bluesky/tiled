@@ -14,19 +14,18 @@ var axiosInstance = axios.create({
   baseURL: apiURL,
 });
 
-export interface IDs {
-    entries: string[];
+
+export const search = async(segments: string[]): Promise<string[]> => {
+    const response = await axiosInstance.get('/node/search/' + segments.join('/'));
+    let ids: string[] = [];
+    response.data.data.forEach((element: any) => {
+        ids.push(element.id)
+    });
+    return ids;
 }
 
-export const search = async(segments: string[]): Promise<IDs> => {
-    const res = await axiosInstance.get('/node/search/' + segments.join('/'));
-    console.log('search: ' + JSON.stringify(res.data));
-    //var result = { hosts: res.data.hosts, success: true };
-    let list: string[] = [];
-    res.data.data.forEach((element: any) => {
-        list.push(element.id)
-    });
-    console.log('items: ' + list);
-    var result = { entries: list }
-    return result;
+
+export const metadata = async(segments: string[]): Promise<any[]> => {
+    const response = await axiosInstance.get('/node/metadata/' + segments.join('/'));
+    return response.data;
 }
