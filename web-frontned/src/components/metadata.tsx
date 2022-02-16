@@ -10,9 +10,9 @@ function Metadata() {
 
   useEffect(() => {
     async function loadData() {
-      var item = await metadata([]);
-      if (item !== undefined) {
-        setItem(item);
+      var result = await metadata([]);
+      if (result !== undefined) {
+        setItem(result);
       }
     }
     loadData();
