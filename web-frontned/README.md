@@ -21,3 +21,12 @@ REACT_APP_API_PREFIX=http://localhost:8000/api npm start
 ```
 
 The front-end will launch at `http://localhost:3000`.
+
+
+## Generating TypeScript from OpenAPI
+
+```
+npx openapi-typescript http://localhost:8000/openapi.json --output ./src/openapi_schemas.ts
+```
+
+Docs: https://www.npmjs.com/package/openapi-typescript
