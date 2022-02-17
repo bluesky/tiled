@@ -15,7 +15,6 @@ function Node() {
       // Request structure information but not user metadata, which may be large.
       var result = await metadata(segments, ["structure_family", "structure", "specs"]);
       if (result !== undefined) {
-        console.log(result);
         setItem(result);
       }
     }
