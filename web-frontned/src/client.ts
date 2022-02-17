@@ -15,8 +15,8 @@ var axiosInstance = axios.create({
 });
 
 
-export const search = async (segments: string[]): Promise<string[]> => {
-  const response = await axiosInstance.get('/node/search/' + segments.join('/'));
+export const search = async (segments: string[], fields: string[] = []): Promise<string[]> => {
+  const response = await axiosInstance.get(`/node/search/${segments.join('/')}?fields=${fields.join("&")}`);
   let ids: string[] = [];
   response.data.data.forEach((element: any) => {
     ids.push(element.id)
@@ -25,7 +25,7 @@ export const search = async (segments: string[]): Promise<string[]> => {
 }
 
 
-export const metadata = async (segments: string[]): Promise<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]> => {
-  const response = await axiosInstance.get('/node/metadata/' + segments.join('/'));
+export const metadata = async (segments: string[], fields: string[] = []): Promise<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]> => {
+  const response = await axiosInstance.get(`/node/metadata/${segments.join('/')}?fields=${fields.join("&")}`);
   return response.data;
 }
