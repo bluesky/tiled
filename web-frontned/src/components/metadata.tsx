@@ -12,6 +12,7 @@ interface IProps {
 
 const Metadata: React.FunctionComponent<IProps> = (props) => {
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
+  // When props.segments updates, load metadata from that path.
   useEffect(() => {
     async function loadData() {
       var result = await metadata(props.segments);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import { search } from '../client';
@@ -11,7 +11,7 @@ interface IProps {
 
 const Contents: React.FunctionComponent<IProps> = (props) => {
   const [items, setItems] = useState<string[]>([]);
-
+  // When props.segments updates, load ids of children of that path.
   useEffect(() => {
     async function loadData() {
       var results = await search(props.segments);
