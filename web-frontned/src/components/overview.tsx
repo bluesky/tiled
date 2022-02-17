@@ -10,7 +10,7 @@ interface IProps {
   segments: string[]
 }
 
-const Metadata: React.FunctionComponent<IProps> = (props) => {
+const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   // When props.segments updates, load metadata from that path.
   useEffect(() => {
@@ -38,4 +38,4 @@ const Metadata: React.FunctionComponent<IProps> = (props) => {
   return <div>Loading...</div>
 }
 
-export default Metadata;
+export { NodeOverview };

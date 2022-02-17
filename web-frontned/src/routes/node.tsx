@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import Contents from '../components/contents'
-import Metadata from '../components/metadata'
+import { NodeOverview } from '../components/overview'
 
 function Node() {
   // Extract from path from react-router.
@@ -9,7 +9,7 @@ function Node() {
   const segments = (params["*"] || "").split("/").filter(function (segment) {return segment})
   return (
     <div>
-      <Metadata segments={segments} />
+      <NodeOverview segments={segments} />
       <Contents segments={segments} />
     </div>
   )
