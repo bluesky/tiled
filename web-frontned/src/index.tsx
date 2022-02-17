@@ -22,7 +22,6 @@ render(
       <Routes>
         <Route path="/" element={<App />}>
           <Route path="/node/*" element={<Node />} />
-            <Route index element={<Node />} />
         </Route>
         <Route path="*" element={
           <main style={{ padding: "1rem" }}>

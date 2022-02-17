@@ -5,19 +5,18 @@ import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import { metadata } from '../client';
 import { components } from '../openapi_schemas';
-import * as React from 'react';
-import Button from '@mui/material/Button';
-import Modal from '@mui/material/Modal';
 import JSONViewer from './json-viewer'
 
 function Metadata() {
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
-  const params = useParams<{"id": string}>();
-  const segments = (params["id"] || "").split("/")
+  const params = useParams<{"*": string}>();
+  const segments = (params["*"] || "").split("/").filter(function (segment) {return segment})
+  console.log("metadata", segments)
   useEffect(() => {
     async function loadData() {
       var result = await metadata(segments);
       if (result !== undefined) {
+        console.log(result);
         setItem(result);
       }
     }

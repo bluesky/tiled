@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Link, Route, Routes, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import { search } from '../client';
-import Node from '../routes/node'
 
 
 function Contents() {
   const [results, setItems] = useState<string[]>([]);
-  const params = useParams<{"id": string}>();
-  const segments = (params["id"] || "").split("/")
+  const params = useParams<{"*": string}>();
+  const segments = (params["*"] || "").split("/").filter(function (segment) {return segment})
+  console.log("contents", segments)
 
   useEffect(() => {
     async function loadData() {
@@ -27,17 +26,11 @@ function Contents() {
         <ul>
         {results.map(id=> (
           <li key={"li-" + id}>
-            <Link key={"link-" + id} to={id}>{id}</Link>
+            <Link key={"link-" + id} to={"/node" + segments.map(function (segment) {return "/" + segment}) + "/" + id}>{id}</Link>
           </li>
         ))
         }
         </ul>
-        <Routes>
-          {results.map(id=> (
-            <Route key={"route-" + id} path={`:id/*`} element={<Node />} />
-           ))
-          }
-        </Routes>
       </Container>
     </Box>
   );
