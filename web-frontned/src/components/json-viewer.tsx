@@ -38,9 +38,7 @@ const JSONViewer: React.FunctionComponent<IProps> = (props) => {
           <Typography id="modal-modal-title" variant="h6" component="h2">
             Item Detail
           </Typography>
-          <Typography id="modal-modal-description" sx={{ mt: 2 }}>
             <pre><code>{JSON.stringify(props.json, null, 2)}</code></pre>
-          </Typography>
         </Box>
       </Modal>
     </div>

@@ -5,28 +5,29 @@ import Box from '@mui/material/Box';
 import { search } from '../client';
 
 
-function Contents() {
-  const [results, setItems] = useState<string[]>([]);
-  const params = useParams<{"*": string}>();
-  const segments = (params["*"] || "").split("/").filter(function (segment) {return segment})
-  console.log("contents", segments)
+interface IProps {
+  segments: string[]
+}
+
+const Contents: React.FunctionComponent<IProps> = (props) => {
+  const [items, setItems] = useState<string[]>([]);
 
   useEffect(() => {
     async function loadData() {
-      var results = await search(segments);
+      var results = await search(props.segments);
       if (results !== undefined) {
         setItems(results);
       }
     }
     loadData();
-  }, []);
+  }, [props.segments]);
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="sm">
         <ul>
-        {results.map(id=> (
+        {items.map(id=> (
           <li key={"li-" + id}>
-            <Link key={"link-" + id} to={"/node" + segments.map(function (segment) {return "/" + segment}) + "/" + id}>{id}</Link>
+            <Link key={"link-" + id} to={"/node" + props.segments.map(function (segment) {return "/" + segment}) + "/" + id}>{id}</Link>
           </li>
         ))
         }
