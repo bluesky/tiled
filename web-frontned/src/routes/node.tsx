@@ -12,7 +12,8 @@ function Node() {
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   useEffect(() => {
     async function loadData() {
-      var result = await metadata(segments);
+      // Request structure information but not user metadata, which may be large.
+      var result = await metadata(segments, ["structure_family", "structure", "specs"]);
       if (result !== undefined) {
         console.log(result);
         setItem(result);
