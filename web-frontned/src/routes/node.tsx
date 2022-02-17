@@ -1,5 +1,4 @@
 import { useParams } from 'react-router-dom'
-import Contents from '../components/contents'
 import { NodeOverview } from '../components/overview'
 import { useState, useEffect } from 'react';
 import { metadata } from '../client';
@@ -24,7 +23,6 @@ function Node() {
   return (
     <div>
       <NodeOverview segments={segments} item={item} />
-      <Contents segments={segments} />
     </div>
   )
 }

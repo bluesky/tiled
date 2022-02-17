@@ -2,6 +2,7 @@ import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import JSONViewer from './json-viewer'
+import Contents from '../components/contents'
 
 interface IProps {
   segments: string[]
@@ -16,6 +17,7 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
       <Typography variant="h4" component="h1" gutterBottom>
         {props.item.data.id || "Top"}
         <JSONViewer json={props.item} />
+        <Contents segments={props.segments} />
       </Typography>
       </Container>
       </Box>
