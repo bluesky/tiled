@@ -81,20 +81,20 @@ def serialize_parquet(df, metadata):
 
 
 def serialize_csv(df, metadata):
-    file = io.BytesIO()
-    df.to_csv(file)  # TODO How would we expose options in the server?
-    return file.getbuffer()
+    file = io.StringIO()
+    df.to_csv(file)
+    return file.getvalue().encode()
 
 
 def serialize_excel(df, metadata):
     file = io.BytesIO()
-    df.to_excel(file)  # TODO How would we expose options in the server?
+    df.to_excel(file)
     return file.getbuffer()
 
 
 def serialize_html(df, metadata):
     file = io.StringIO()
-    df.to_html(file)  # TODO How would we expose options in the server?
+    df.to_html(file)
     return file.getvalue().encode()
 
 

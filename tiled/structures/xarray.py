@@ -105,7 +105,7 @@ class _BytesIOThatIgnoresClose(io.BytesIO):
 
 def serialize_netcdf(dataset, metadata):
     file = _BytesIOThatIgnoresClose()
-    dataset.to_netcdf(file)  # TODO How would we expose options in the server?
+    dataset.to_netcdf(file)
     return file.getbuffer()
 
 
