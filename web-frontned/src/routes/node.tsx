@@ -31,7 +31,7 @@ function Node() {
       }
     }
     loadData();
-  }, []);
+  }, [params]);
 
 
   if (item !== undefined) {
