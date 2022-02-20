@@ -1,16 +1,13 @@
 import { Outlet, Link } from "react-router-dom";
-import React from 'react';
+import Container from '@mui/material/Container';
+import TiledAppBar from './components/tiled-app-bar';
 
 function App() {
   return (
-    <div>
-      <h1>Tiled</h1>
-      <nav>
-        <Link to="/node/">Browse</Link>
-        <Link to="/apikeys">Manage API Keys</Link>
-      </nav>
+    <Container>
+      <TiledAppBar />
       <Outlet />
-    </div>
+    </Container>
   );
 }
 

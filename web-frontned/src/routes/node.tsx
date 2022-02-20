@@ -3,6 +3,8 @@ import { NodeOverview } from '../components/overview'
 import { useState, useEffect } from 'react';
 import { metadata } from '../client';
 import { components } from '../openapi_schemas';
+import NodeBreadcrumbs from '../components/node-breadcrumbs';
+import Box from '@mui/material/Box';
 
 function Node() {
   // Extract from path from react-router.
@@ -22,6 +24,9 @@ function Node() {
   }, []);
   return (
     <div>
+      <Box sx={{mt: 3, mb: 3}}>
+        <NodeBreadcrumbs segments={segments} />
+      </Box>
       <NodeOverview segments={segments} item={item} />
     </div>
   )
