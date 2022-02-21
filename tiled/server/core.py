@@ -220,11 +220,11 @@ def construct_entries_response(
 
 
 DEFAULT_MEDIA_TYPES = {
-    "array": "application/octet-stream",
-    "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
-    "node": "application/x-hdf5",
-    "xarray_data_array": "application/octet-stream",
-    "xarray_dataset": "application/netcdf",
+    "array": {"*/*": "application/octet-stream", "image/*": "image/png"},
+    "dataframe": {"*/*: APACHE_ARROW_FILE_MIME_TYPE"},
+    "node": {"*/*": "application/x-hdf5"},
+    "xarray_data_array": {"*/*": "application/octet-stream"},
+    "xarray_dataset": {"*/*": "application/netcdf"},
 }
 
 
@@ -241,7 +241,7 @@ def construct_data_response(
     request.state.endpoint = "data"
     if specs is None:
         specs = []
-    default_media_type = DEFAULT_MEDIA_TYPES[structure_family]
+    default_media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
     # Give priority to the `format` query parameter. Otherwise, consult Accept
     # header.
     if format is not None:
@@ -265,7 +265,9 @@ def construct_data_response(
     supported = set()
     for media_type in media_types:
         if media_type == "*/*":
-            media_type = default_media_type
+            media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
+        elif structure_family == "array" and media_type == "image/*":
+            media_type = DEFAULT_MEDIA_TYPES[structure_family]["image/*"]
         # fall back to generic dataframe serializer if no specs present
         for spec in specs + [structure_family]:
             media_types_for_spec = serialization_registry.media_types(spec)
@@ -419,18 +421,22 @@ def construct_resource(
                     microstructure = entry.microstructure()
                     if microstructure is not None:
                         structure["micro"] = dataclasses.asdict(microstructure)
-                if entry.structure_family == "array":
-                    block_template = ",".join(
-                        f"{{index_{index}}}"
-                        for index in range(len(structure["macro"]["shape"]))
-                    )
-                    links[
-                        "block"
-                    ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-                elif entry.structure_family == "dataframe":
-                    links[
-                        "partition"
-                    ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
+            if entry.structure_family == "array":
+                shape = structure.get("macro", {}).get("shape")
+                if shape is None:
+                    # The client did not request structure so we have not yet
+                    # accessed it, and we have access it specifically to construct this link.
+                    shape = entry.macrostructure().shape
+                block_template = ",".join(
+                    f"{{index_{index}}}" for index in range(len(shape))
+                )
+                links[
+                    "block"
+                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
+            elif entry.structure_family == "dataframe":
+                links[
+                    "partition"
+                ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
             attributes["structure"] = structure
         else:
             # We only have entry names, not structure_family, so
