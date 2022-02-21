@@ -17,7 +17,7 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   useEffect(() => {
     async function loadData() {
       // Request all the attributes.
-      var result = await metadata(props.segments, ["structure_family", "structure", "specs", "metadata", "sorting", "count"]);
+      var result = await metadata(props.segments, ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]);
       if (result !== undefined) {
         setFullItem(result);
       }
@@ -46,7 +46,7 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
   useEffect(() => {
     async function loadData() {
       // Request all the attributes.
-      var result = await metadata(props.segments, ["structure_family", "structure", "specs", "metadata", "sorting", "count"]);
+      var result = await metadata(props.segments, ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]);
       if (result !== undefined) {
         setFullItem(result);
       }
@@ -60,7 +60,7 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
       <Typography variant="h4" component="h1" gutterBottom>
         {props.item.data.id || "Top"}
         { fullItem ? <JSONViewer json={fullItem} /> : <div>Loading...</div>}
-        { fullItem ? <img src={fullItem.data!.links!.full as string} loading="lazy" /> : <div>Loading...</div> }
+        { fullItem ? <img alt="Data rendered" src={fullItem.data!.links!.full as string} loading="lazy" /> : <div>Loading...</div> }
       </Typography>
       </Container>
       </Box>
