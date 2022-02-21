@@ -23,7 +23,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
   }, [props.segments]);
   return (
     <Box sx={{ my: 4 }}>
-      <Container maxWidth="sm">
+      <Container maxWidth="lg">
         <ul>
         {items.map(id=> (
           <li key={"li-" + id}>

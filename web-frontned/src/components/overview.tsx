@@ -27,7 +27,7 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   if (props.item && props.item.data) {
     return (
       <Box sx={{ my: 4 }}>
-      <Container maxWidth="sm">
+      <Container maxWidth="lg">
       <Typography variant="h4" component="h1" gutterBottom>
         {props.item.data.id || "Top"}
         { fullItem ? <JSONViewer json={fullItem} /> : <div>Loading...</div>}
@@ -56,7 +56,7 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
   if (props.item && props.item.data) {
     return (
       <Box sx={{ my: 4 }}>
-      <Container maxWidth="sm">
+      <Container maxWidth="lg">
       <Typography variant="h4" component="h1" gutterBottom>
         {props.item.data.id || "Top"}
         { fullItem ? <JSONViewer json={fullItem} /> : <div>Loading...</div>}
