@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { NodeOverview } from '../components/overview'
+import { ArrayOverview, NodeOverview } from '../components/overview'
 import { useState, useEffect } from 'react';
 import { metadata } from '../client';
 import { components } from '../openapi_schemas';
@@ -11,7 +11,8 @@ function nodeForStructureFamily(segments: string[], item: components["schemas"][
   console.log("structure family", structureFamily);
   switch(structureFamily) {
     case "node": return <NodeOverview segments={segments} item={item} />
-    default: return <div>Unknown structure family {structureFamily}</div>
+    case "array": return <ArrayOverview segments={segments} item={item} />
+    default: return <div>Unknown structure family "{structureFamily}"</div>
   }
 }
 
@@ -20,7 +21,6 @@ function Node() {
   const params = useParams<{"*": string}>();
   // Transform "/a/b/c" to ["a", "b", "c"].
   const segments = (params["*"] || "").split("/").filter(function (segment) {return segment})
-  console.log(segments);
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   useEffect(() => {
     async function loadData() {
