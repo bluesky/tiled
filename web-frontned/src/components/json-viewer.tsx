@@ -3,6 +3,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import Modal from '@mui/material/Modal';
+import SyntaxHighlighter from 'react-syntax-highlighter';
 
 const style = {
   position: 'absolute',
@@ -39,9 +40,11 @@ const JSONViewer: React.FunctionComponent<IProps> = (props) => {
       >
         <Box sx={style}>
           <Typography id="modal-modal-title" variant="h6" component="h2">
-            Item Detail
+            JSON Description of Item
           </Typography>
-            <pre><code>{JSON.stringify(props.json, null, 2)}</code></pre>
+          <SyntaxHighlighter language="json">
+            {JSON.stringify(props.json, null, 2)}
+          </SyntaxHighlighter>
         </Box>
       </Modal>
     </div>
