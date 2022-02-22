@@ -5,14 +5,37 @@ import { metadata } from '../client';
 import { components } from '../openapi_schemas';
 import NodeBreadcrumbs from '../components/node-breadcrumbs';
 import Box from '@mui/material/Box';
+import Skeleton from '@mui/material/Skeleton';
 
-function nodeForStructureFamily(segments: string[], item: components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]) {
-  const structureFamily = item!.data!.attributes!.structure_family
-  switch(structureFamily) {
-    case "node": return <NodeOverview segments={segments} item={item} />
-    case "array": return <ArrayOverview segments={segments} item={item} />
-    default: return <div>Unknown structure family "{structureFamily}"</div>
+interface IProps {
+  segments: string[],
+}
+
+const Overview: React.FunctionComponent<IProps> = (props) => {
+  // Dispatch to a specific overview component based on the structure family.
+  // In the future we will extend this to consider 'specs' as well.
+  const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
+  useEffect(() => {
+    async function loadData() {
+      // Request only enough information to decide which React component
+      // we should use to display this. Let the component request
+      // more detailed information.
+      var result = await metadata(props.segments, ["structure_family", "specs"]);
+      if (result !== undefined) {
+        setItem(result);
+      }
+    }
+    loadData();
+  }, [props.segments]);
+  if (item !== undefined) {
+    const structureFamily = item!.data!.attributes!.structure_family
+    switch(structureFamily) {
+      case "node": return <NodeOverview segments={props.segments} item={item} />
+      case "array": return <ArrayOverview segments={props.segments} item={item} />
+      default: return <div>Unknown structure family "{structureFamily}"</div>
+    }
   }
+    return <Skeleton variant="rectangular" />
 }
 
 function Node() {
@@ -20,32 +43,17 @@ function Node() {
   const params = useParams<{"*": string}>();
   // Transform "/a/b/c" to ["a", "b", "c"].
   const segments = (params["*"] || "").split("/").filter(function (segment) {return segment})
-  const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
-  useEffect(() => {
-    const segments = (params["*"] || "").split("/").filter(function (segment) {return segment})
-    async function loadData() {
-      // Request only enough information to decide which React component
-      // we should use to display this. Let the component request
-      // more detailed information.
-      var result = await metadata(segments, ["structure_family", "specs"]);
-      if (result !== undefined) {
-        setItem(result);
-      }
-    }
-    loadData();
-  }, [params]);
 
-
-  if (item !== undefined) {
+  if (segments !== undefined) {
     return (
       <div>
         <Box sx={{mt: 3, mb: 3}}>
           <NodeBreadcrumbs segments={segments} />
-          {nodeForStructureFamily(segments, item!)}
+          <Overview segments={segments} />
         </Box>
       </div>
     )
-  } else { return <div>Loading...</div>}
+  } else { return <Skeleton variant="text" />}
 }
 
 export default Node;
