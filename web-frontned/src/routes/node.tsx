@@ -1,5 +1,7 @@
 import { useParams } from 'react-router-dom'
-import { ArrayOverview, NodeOverview } from '../components/overview'
+import { NodeOverview } from '../components/overview-generic-node'
+import { ArrayOverview } from '../components/overview-array'
+import { DataFrameOverview } from '../components/overview-dataframe'
 import { useState, useEffect } from 'react';
 import { metadata } from '../client';
 import { components } from '../openapi_schemas';
@@ -11,7 +13,7 @@ interface IProps {
   segments: string[],
 }
 
-const Overview: React.FunctionComponent<IProps> = (props) => {
+const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
   // Dispatch to a specific overview component based on the structure family.
   // In the future we will extend this to consider 'specs' as well.
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
@@ -20,7 +22,7 @@ const Overview: React.FunctionComponent<IProps> = (props) => {
       // Request only enough information to decide which React component
       // we should use to display this. Let the component request
       // more detailed information.
-      var result = await metadata(props.segments, ["structure_family", "specs"]);
+      var result = await metadata(props.segments, ["structure_family", "specs", "structure.macro"]);
       if (result !== undefined) {
         setItem(result);
       }
@@ -32,6 +34,7 @@ const Overview: React.FunctionComponent<IProps> = (props) => {
     switch(structureFamily) {
       case "node": return <NodeOverview segments={props.segments} item={item} />
       case "array": return <ArrayOverview segments={props.segments} item={item} />
+      case "dataframe": return <DataFrameOverview segments={props.segments} item={item} />
       default: return <div>Unknown structure family "{structureFamily}"</div>
     }
   }
@@ -49,7 +52,7 @@ function Node() {
       <div>
         <Box sx={{mt: 3, mb: 3}}>
           <NodeBreadcrumbs segments={segments} />
-          <Overview segments={segments} />
+          <OverviewDispatch segments={segments} />
         </Box>
       </div>
     )

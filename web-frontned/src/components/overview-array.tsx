@@ -14,37 +14,6 @@ interface IProps {
   item: any
 }
 
-const NodeOverview: React.FunctionComponent<IProps> = (props) => {
-  const [fullItem, setFullItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
-  useEffect(() => {
-    async function loadData() {
-      // Request all the attributes.
-      var result = await metadata(props.segments, ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]);
-      if (result !== undefined) {
-        setFullItem(result);
-      }
-    }
-    loadData();
-  }, [props.segments]);
-  if (props.item && props.item.data) {
-    return (
-      <Box sx={{ my: 4 }}>
-        <Container maxWidth="lg">
-          <Typography variant="h4" component="h1" gutterBottom>
-            {props.item.data.id || "Top"}
-          </Typography>
-          <Stack direction="row" spacing={2}>
-            { fullItem ? <JSONViewer json={fullItem} /> : <LoadingButton loading loadingIndicator="Loading...">Loading...</LoadingButton>}
-          </Stack>
-          <Contents segments={props.segments} />
-        </Container>
-      </Box>
-    );
-  }
-  return <div>Loading...</div>
-}
-
-
 const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
   const [fullItem, setFullItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   useEffect(() => {
@@ -75,4 +44,4 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
   return <div>Loading...</div>
 }
 
-export { NodeOverview, ArrayOverview };
+export { ArrayOverview };

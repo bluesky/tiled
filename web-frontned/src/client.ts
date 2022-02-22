@@ -29,3 +29,5 @@ export const metadata = async (segments: string[], fields: string[] = []): Promi
   const response = await axiosInstance.get(`/node/metadata/${segments.join('/')}?fields=${fields.join("&fields=")}`);
   return response.data;
 }
+
+export { axiosInstance };
