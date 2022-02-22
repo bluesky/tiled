@@ -127,3 +127,20 @@ if modules_available("orjson"):
             {column: df[column].tolist() for column in df},
         ),
     )
+
+    # Newline-delimited JSON. For example, this DataFrame:
+    #
+    # >>> pandas.DataFrame({"a": [1,2,3], "b": [4,5,6]})
+    #
+    # renders as this multi-line output:
+    #
+    # {'a': 1, 'b': 4}
+    # {'a': 2, 'b': 5}
+    # {'a': 3, 'b': 6}
+    serialization_registry.register(
+        "dataframe",
+        "application/json-seq",  # official mimetype for newline-delimited JSON
+        lambda df, metadata: b"\n".join(
+            [orjson.dumps(row.to_dict()) for _, row in df.iterrows()]
+        ),
+    )
