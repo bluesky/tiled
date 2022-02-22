@@ -20,13 +20,15 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
   let navigate = useNavigate();
   // When props.segments updates, load ids of children of that path.
   useEffect(() => {
+    const controller = new AbortController();
     async function loadData() {
-      var results = await search(props.segments);
+      var results = await search(props.segments, controller.signal);
       if (results !== undefined) {
         setItems(results);
       }
     }
     loadData();
+    return () => { controller.abort(); }
   }, [props.segments]);
   if (items !== undefined) {
     const rows = items.map((key) => ({id: key}));

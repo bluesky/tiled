@@ -17,14 +17,19 @@ interface IProps {
 const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   const [fullItem, setFullItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   useEffect(() => {
+    const controller = new AbortController();
     async function loadData() {
       // Request all the attributes.
-      var result = await metadata(props.segments, ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]);
+      var result = await metadata(
+        props.segments,
+        controller.signal,
+        ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]);
       if (result !== undefined) {
         setFullItem(result);
       }
     }
     loadData();
+    return () => { controller.abort(); }
   }, [props.segments]);
   if (props.item && props.item.data) {
     return (

@@ -18,16 +18,18 @@ const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
   // In the future we will extend this to consider 'specs' as well.
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   useEffect(() => {
+    const controller = new AbortController();
     async function loadData() {
       // Request only enough information to decide which React component
       // we should use to display this. Let the component request
       // more detailed information.
-      var result = await metadata(props.segments, ["structure_family", "specs", "structure.macro"]);
+      var result = await metadata(props.segments, controller.signal, ["structure_family", "specs", "structure.macro"]);
       if (result !== undefined) {
         setItem(result);
       }
     }
     loadData();
+    return () => { controller.abort(); }
   }, [props.segments]);
   if (item !== undefined) {
     const structureFamily = item!.data!.attributes!.structure_family

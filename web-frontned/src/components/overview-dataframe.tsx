@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { axiosInstance, metadata } from '../client';
 import { DataGrid, GridRowParams } from '@mui/x-data-grid';
 import { components } from '../openapi_schemas';
-import { Rowing } from '@mui/icons-material';
+import { ControlPointDuplicateRounded, Rowing } from '@mui/icons-material';
 
 interface IProps {
   segments: string[]
@@ -20,9 +20,14 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loadedRows, setLoadedRows] = useState<boolean>(false);
   useEffect(() => {
+    const controller = new AbortController();
     async function loadFullItem() {
       // Request all the attributes.
-      var result = await metadata(props.segments, ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]);
+      var result = await metadata(
+        props.segments,
+        controller.signal,
+        ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]
+      );
       if (result !== undefined) {
         setFullItem(result);
       }
@@ -30,13 +35,15 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
     loadFullItem();
   }, [props.segments]);
   useEffect(() => {
+    const controller = new AbortController();
     async function loadRows() {
-      var response = await axiosInstance.get(`${props.item.data.links.full}?format=application/json-seq`);
+      var response = await axiosInstance.get(`${props.item.data.links.full}?format=application/json-seq`, {signal: controller.signal});
       const rows = response.data.split("\n").map((line: string) => JSON.parse(line)) as any[];
       setRows(rows);
       setLoadedRows(true);
     }
     loadRows();
+    return () => { controller.abort() };
   }, [props.segments]);
   if (props.item && props.item.data) {
     return (
