@@ -1,6 +1,8 @@
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
+import LoadingButton from '@mui/lab/LoadingButton';
 import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
 import JSONViewer from './json-viewer'
 import Contents from '../components/contents'
 import { useState, useEffect } from 'react';
@@ -27,13 +29,15 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   if (props.item && props.item.data) {
     return (
       <Box sx={{ my: 4 }}>
-      <Container maxWidth="lg">
-      <Typography variant="h4" component="h1" gutterBottom>
-        {props.item.data.id || "Top"}
-        { fullItem ? <JSONViewer json={fullItem} /> : <div>Loading...</div>}
-        <Contents segments={props.segments} />
-      </Typography>
-      </Container>
+        <Container maxWidth="lg">
+          <Typography variant="h4" component="h1" gutterBottom>
+            {props.item.data.id || "Top"}
+          </Typography>
+          <Stack direction="row" spacing={2}>
+            { fullItem ? <JSONViewer json={fullItem} /> : <LoadingButton loading loadingIndicator="Loading...">Loading...</LoadingButton>}
+          </Stack>
+          <Contents segments={props.segments} />
+        </Container>
       </Box>
     );
   }
@@ -56,13 +60,15 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
   if (props.item && props.item.data) {
     return (
       <Box sx={{ my: 4 }}>
-      <Container maxWidth="lg">
-      <Typography variant="h4" component="h1" gutterBottom>
-        {props.item.data.id || "Top"}
-        { fullItem ? <JSONViewer json={fullItem} /> : <div>Loading...</div>}
-        { fullItem ? <img alt="Data rendered" src={fullItem.data!.links!.full as string} loading="lazy" /> : <div>Loading...</div> }
-      </Typography>
-      </Container>
+        <Container maxWidth="lg">
+          <Typography variant="h4" component="h1" gutterBottom>
+            {props.item.data.id || "Top"}
+          </Typography>
+          <Stack direction="row" spacing={2}>
+            { fullItem ? <JSONViewer json={fullItem} /> : <LoadingButton loading loadingIndicator="Loading...">Loading...</LoadingButton>}
+          </Stack>
+          { fullItem ? <img alt="Data rendered" src={fullItem.data!.links!.full as string} loading="lazy" /> : <div>Loading...</div> }
+        </Container>
       </Box>
     );
   }

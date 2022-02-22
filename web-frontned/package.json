@@ -7,6 +7,7 @@
     "@emotion/styled": "^11.6.0",
     "@fontsource/roboto": "^4.5.3",
     "@mui/icons-material": "^5.4.2",
+    "@mui/lab": "^5.0.0-alpha.70",
     "@mui/material": "^5.4.2",
     "@mui/styled-engine": "^5.4.2",
     "@mui/x-data-grid": "^5.5.1",
