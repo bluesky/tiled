@@ -4,6 +4,7 @@ import LoadingButton from '@mui/lab/LoadingButton';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import JSONViewer from './json-viewer'
+import MetadataViewer from './metadata-viewer'
 import Contents from '../components/contents'
 import { useState, useEffect } from 'react';
 import { metadata } from '../client';
@@ -39,6 +40,7 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
             {props.item.data.id || "Top"}
           </Typography>
           <Stack direction="row" spacing={2}>
+            { fullItem ? <MetadataViewer json={fullItem} /> : <LoadingButton loading loadingIndicator="Loading...">Loading...</LoadingButton>}
             { fullItem ? <JSONViewer json={fullItem} /> : <LoadingButton loading loadingIndicator="Loading...">Loading...</LoadingButton>}
           </Stack>
           <Contents segments={props.segments} />

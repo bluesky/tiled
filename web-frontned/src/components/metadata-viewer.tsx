@@ -4,6 +4,7 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import Modal from '@mui/material/Modal';
 import SyntaxHighlighter from 'react-syntax-highlighter';
+import yaml from 'js-yaml';
 
 const style = {
   position: 'absolute',
@@ -21,17 +22,17 @@ const style = {
 };
 
 interface IProps {
-  json: unknown
+  json: any
 }
 
-const JSONViewer: React.FunctionComponent<IProps> = (props) => {
+const MetadataViewer: React.FunctionComponent<IProps> = (props) => {
   const [open, setOpen] = React.useState(false);
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
 
   return (
     <div>
-      <Button onClick={handleOpen}>View Detail</Button>
+      <Button onClick={handleOpen}>View Metadata</Button>
       <Modal
         open={open}
         onClose={handleClose}
@@ -40,10 +41,10 @@ const JSONViewer: React.FunctionComponent<IProps> = (props) => {
       >
         <Box sx={style}>
           <Typography id="modal-modal-title" variant="h6" component="h2">
-            Detailed Description of Item
+            Metadata
           </Typography>
-          <SyntaxHighlighter language="json">
-            {JSON.stringify(props.json, null, 2)}
+          <SyntaxHighlighter language="yaml">
+            {yaml.dump(props!.json!.data!.attributes!.metadata)}
           </SyntaxHighlighter>
         </Box>
       </Modal>
@@ -51,4 +52,4 @@ const JSONViewer: React.FunctionComponent<IProps> = (props) => {
   );
 }
 
-export default JSONViewer;
+export default MetadataViewer;
