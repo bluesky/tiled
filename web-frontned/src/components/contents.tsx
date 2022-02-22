@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import { search } from '../client';
 
 import * as React from 'react';
-import { DataGrid } from '@mui/x-data-grid';
+import { DataGrid, GridRowParams } from '@mui/x-data-grid';
 
 const columns = [
   { field: 'id', headerName: 'ID', width: 200 },
@@ -14,14 +14,10 @@ const columns = [
 interface IProps {
   segments: string[]
 }
-        // {items.map(id=> (
-        //  <li key={"li-" + id}>
-        //    <Link key={"link-" + id} to={"/node" + props.segments.map(function (segment) {return "/" + segment}) + "/" + id}>{id}</Link>
-        //  </li>
-        //))
 
 const Contents: React.FunctionComponent<IProps> = (props) => {
   const [items, setItems] = useState<string[]>([]);
+  let navigate = useNavigate();
   // When props.segments updates, load ids of children of that path.
   useEffect(() => {
     async function loadData() {
@@ -37,13 +33,14 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
     return (
       <Box sx={{ my: 4 }}>
         <Container maxWidth="lg">
-          <div style={{ height: 400, width: '100%' }}>
-            <DataGrid
-              rows={rows}
-              columns={columns}
-              pageSize={10}
-            />
-          </div>
+          <DataGrid
+            rows={rows}
+            columns={columns}
+            pageSize={10}
+            onRowClick={(params: GridRowParams) => { navigate(`/node${props.segments.map(function (segment) {return "/" + segment})}/${params.id}`); }}
+            rowsPerPageOptions={[10, 30, 100]}
+            autoHeight
+          />
         </Container>
       </Box>
     );
