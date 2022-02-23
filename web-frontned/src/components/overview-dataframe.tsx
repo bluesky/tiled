@@ -1,14 +1,17 @@
+import { useNavigate } from 'react-router-dom';
 import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
-import LoadingButton from '@mui/lab/LoadingButton';
 import Box from '@mui/material/Box';
-import Stack from '@mui/material/Stack';
-import JSONViewer from './json-viewer'
 import { useState, useEffect } from 'react';
-import { axiosInstance, metadata } from '../client';
-import { DataGrid, GridRowParams } from '@mui/x-data-grid';
-import { components } from '../openapi_schemas';
-import { ControlPointDuplicateRounded, Rowing } from '@mui/icons-material';
+import { axiosInstance } from '../client';
+import { DataGrid } from '@mui/x-data-grid';
+import * as React from 'react';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import FormHelperText from '@mui/material/FormHelperText';
+import Select, { SelectChangeEvent } from '@mui/material/Select';
+import Typography from '@mui/material/Typography';
+
 
 interface IProps {
   segments: string[]
@@ -18,6 +21,7 @@ interface IProps {
 const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loadedRows, setLoadedRows] = useState<boolean>(false);
+  const columns = props.item.data.attributes.structure.macro.columns;
   useEffect(() => {
     const controller = new AbortController();
     async function loadRows() {
@@ -32,11 +36,50 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
-        <DataDisplay rows={rows} columns={props.item.data.attributes.structure.macro.columns} loading={!loadedRows} />
+        <VisitColumns segments={props.segments} columns={columns} />
+        <Box width='100%' mt={5}>
+          <Typography id="table-title" variant="h6" component="h2">
+            Full Table
+          </Typography>
+          <DataDisplay rows={rows} columns={columns} loading={!loadedRows} />
+        </Box>
       </Container>
     </Box>
   );
 }
+
+interface VisitColumnsProps {
+  columns: string[];
+  segments: string[];
+}
+
+const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
+  let navigate = useNavigate();
+
+  const handleChange = (event: SelectChangeEvent) => {
+    const column = event.target.value;
+    navigate(`/node${props.segments.map(function (segment) {return "/" + segment})}/${column}`);
+  }
+
+  return (
+    <Box>
+      <FormControl>
+        <InputLabel id="column-select-helper-label">Go to Column</InputLabel>
+        <Select
+          labelId="column-select-label"
+          id="column-select"
+          value=""
+          label="Column"
+          onChange={handleChange}
+        >
+          { props.columns.map((column) => { return <MenuItem key={`column-${column}`} value={column}>{column}</MenuItem> }) }
+        </Select>
+        <FormHelperText>Access a single column as an Array.</FormHelperText>
+      </FormControl>
+    </Box>
+  );
+}
+
 
 interface IDataDisplayProps {
   columns: string[]
@@ -48,18 +91,14 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   const data_columns = props.columns.map((column) => ({ field: column, headerName: column, width: 200 }));
   const data_rows = props.rows.map((row, index) => { row.id = index; return row });
   return (
-    <Box sx={{ my: 4 }}>
-      <Container maxWidth="lg">
-        <DataGrid
-          {...(props.loading ? {"loading": true} : {})}
-          rows={data_rows}
-          columns={data_columns}
-          pageSize={30}
-          rowsPerPageOptions={[10, 30, 100]}
-          autoHeight
-        />
-      </Container>
-    </Box>
+    <DataGrid
+      {...(props.loading ? {"loading": true} : {})}
+      rows={data_rows}
+      columns={data_columns}
+      pageSize={30}
+      rowsPerPageOptions={[10, 30, 100]}
+      autoHeight
+    />
   );
 }
 

@@ -27,7 +27,7 @@ const JSONViewer: React.FunctionComponent<IProps> = (props) => {
   if (props.json !== undefined) {
     return (
       <Box>
-        <Typography id="modal-modal-title" variant="h6" component="h2">
+        <Typography id="metadata-title" variant="h6" component="h2">
           Detailed Machine-Readable Representation of Item
         </Typography>
         <SyntaxHighlighter language="json">
