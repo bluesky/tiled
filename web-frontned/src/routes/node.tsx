@@ -14,6 +14,7 @@ import * as React from 'react';
 import PropTypes from 'prop-types';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
+import Typography from '@mui/material/Typography';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -65,6 +66,9 @@ const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
   const [item, setItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   useEffect(() => {
     const controller = new AbortController();
+    // Clear the old item to avoid rendering the new segments
+    // using the previous item's structure family.
+    setItem(undefined);
     async function loadData() {
       // Request only enough information to decide which React component
       // we should use to display this. Let the component request
@@ -86,7 +90,7 @@ const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
       default: return <div>Unknown structure family "{structureFamily}"</div>
     }
   }
-    return <Skeleton variant="rectangular" />
+  return <Skeleton variant="rectangular" />
 }
 
 function Node() {
@@ -138,6 +142,9 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
         </Tabs>
       </Box>
       <TabPanel value={tabValue} index={0}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          {props.segments.length > 0 ? props.segments[props.segments.length - 1] : "Top"}
+        </Typography>
         <OverviewDispatch segments={props.segments} />
       </TabPanel>
       <TabPanel value={tabValue} index={1}>

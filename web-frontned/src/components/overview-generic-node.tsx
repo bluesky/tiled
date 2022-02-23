@@ -16,14 +16,9 @@ interface IProps {
 
 const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   return (
-    <Box sx={{ my: 4 }}>
-      <Container maxWidth="lg">
-        <Typography variant="h4" component="h1" gutterBottom>
-          {props.item.data.id || "Top"}
-        </Typography>
-        <Contents segments={props.segments} />
-      </Container>
-    </Box>
+    <Container maxWidth="lg">
+      <Contents segments={props.segments} />
+    </Container>
   )
 }
 

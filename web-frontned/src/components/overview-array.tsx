@@ -14,39 +14,11 @@ interface IProps {
 }
 
 const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
-  const [fullItem, setFullItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
-  useEffect(() => {
-    const controller = new AbortController();
-    async function loadData() {
-      // Request all the attributes.
-      var result = await metadata(
-        props.segments,
-        controller.signal,
-        ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]
-      );
-      if (result !== undefined) {
-        setFullItem(result);
-      }
-    }
-    loadData();
-    return () => { controller.abort() }
-  }, [props.segments]);
-  if (props.item && props.item.data) {
-    return (
-      <Box sx={{ my: 4 }}>
-        <Container maxWidth="lg">
-          <Typography variant="h4" component="h1" gutterBottom>
-            {props.item.data.id || "Top"}
-          </Typography>
-          <Stack direction="row" spacing={2}>
-            { fullItem ? <JSONViewer json={fullItem} /> : <LoadingButton loading loadingIndicator="Loading...">Loading...</LoadingButton>}
-          </Stack>
-          { fullItem ? <img alt="Data rendered" src={fullItem.data!.links!.full as string} loading="lazy" /> : <div>Loading...</div> }
-        </Container>
-      </Box>
-    );
-  }
-  return <div>Loading...</div>
+  return (
+    <Container maxWidth="lg">
+      <img alt="Data rendered" src={props.item.data!.links!.full as string} loading="lazy" />
+    </Container>
+  )
 }
 
 export { ArrayOverview };

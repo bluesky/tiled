@@ -16,24 +16,8 @@ interface IProps {
 }
 
 const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
-  const [fullItem, setFullItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
   const [rows, setRows] = useState<any[]>([]);
   const [loadedRows, setLoadedRows] = useState<boolean>(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    async function loadFullItem() {
-      // Request all the attributes.
-      var result = await metadata(
-        props.segments,
-        controller.signal,
-        ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]
-      );
-      if (result !== undefined) {
-        setFullItem(result);
-      }
-    }
-    loadFullItem();
-  }, [props.segments]);
   useEffect(() => {
     const controller = new AbortController();
     async function loadRows() {
@@ -45,22 +29,13 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
     loadRows();
     return () => { controller.abort() };
   }, [props.segments]);
-  if (props.item && props.item.data) {
-    return (
-      <Box sx={{ my: 4 }}>
-        <Container maxWidth="lg">
-          <Typography variant="h4" component="h1" gutterBottom>
-            {props.item.data.id || "Top"}
-          </Typography>
-          <Stack direction="row" spacing={2}>
-            { fullItem ? <JSONViewer json={fullItem} /> : <LoadingButton loading loadingIndicator="Loading...">Loading...</LoadingButton>}
-          </Stack>
-          <DataDisplay rows={rows} columns={props.item.data.attributes.structure.macro.columns} loading={!loadedRows} />
-        </Container>
-      </Box>
-    );
-  }
-  return <div>Loading...</div>
+  return (
+    <Box sx={{ my: 4 }}>
+      <Container maxWidth="lg">
+        <DataDisplay rows={rows} columns={props.item.data.attributes.structure.macro.columns} loading={!loadedRows} />
+      </Container>
+    </Box>
+  );
 }
 
 interface IDataDisplayProps {
