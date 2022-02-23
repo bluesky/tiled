@@ -28,7 +28,7 @@ const JSONViewer: React.FunctionComponent<IProps> = (props) => {
     return (
       <Box>
         <Typography id="modal-modal-title" variant="h6" component="h2">
-          Detailed Description of Item
+          Detailed Machine-Readable Representation of Item
         </Typography>
         <SyntaxHighlighter language="json">
           {JSON.stringify(props.json, null, 2)}

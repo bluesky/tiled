@@ -135,7 +135,7 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
     <Box sx={{ width: '100%' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="basic tabs example">
-          <Tab label="Preview" {...a11yProps(0)} />
+          <Tab label="View" {...a11yProps(0)} />
           <Tab label="Download" {...a11yProps(1)} />
           <Tab label="Metadata" {...a11yProps(2)} />
           <Tab label="Detail" {...a11yProps(3)} />
