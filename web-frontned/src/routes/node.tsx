@@ -6,8 +6,54 @@ import { useState, useEffect } from 'react';
 import { metadata } from '../client';
 import { components } from '../openapi_schemas';
 import NodeBreadcrumbs from '../components/node-breadcrumbs';
+import MetadataView from '../components/metadata-view';
+import JSONViewer from '../components/json-viewer';
 import Box from '@mui/material/Box';
 import Skeleton from '@mui/material/Skeleton';
+import * as React from 'react';
+import PropTypes from 'prop-types';
+import Tabs from '@mui/material/Tabs';
+import Tab from '@mui/material/Tab';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: any;
+  value: any;
+ }
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+TabPanel.propTypes = {
+  children: PropTypes.node,
+  index: PropTypes.number.isRequired,
+  value: PropTypes.number.isRequired,
+};
+
+function a11yProps(index: number) {
+  return {
+    id: `simple-tab-${index}`,
+    'aria-controls': `simple-tabpanel-${index}`,
+  };
+}
+
 
 interface IProps {
   segments: string[],
@@ -51,14 +97,60 @@ function Node() {
 
   if (segments !== undefined) {
     return (
-      <div>
-        <Box sx={{mt: 3, mb: 3}}>
-          <NodeBreadcrumbs segments={segments} />
-          <OverviewDispatch segments={segments} />
-        </Box>
-      </div>
+      <Box sx={{ width: '100%' }}>
+        <NodeBreadcrumbs segments={segments} />
+        <NodeTabs segments={segments} />
+      </Box>
     )
   } else { return <Skeleton variant="text" />}
-}
+};
+
+const NodeTabs: React.FunctionComponent<IProps> = (props) => {
+  const [tabValue, setTabValue] = useState(0);
+  const handleTabChange = (event: React.ChangeEvent<any>, newValue: number) => {
+    setTabValue(newValue);
+  };
+  const [fullItem, setFullItem] = useState<components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]>();
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadData() {
+      // Request all the attributes.
+      var result = await metadata(
+        props.segments,
+        controller.signal,
+        ["structure_family", "structure.macro", "structure.micro", "specs", "metadata", "sorting", "count"]);
+      if (result !== undefined) {
+        setFullItem(result);
+      }
+    }
+    loadData();
+    return () => { controller.abort(); }
+  }, [props.segments]);
+  return (
+
+    <Box sx={{ width: '100%' }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs value={tabValue} onChange={handleTabChange} aria-label="basic tabs example">
+          <Tab label="Preview" {...a11yProps(0)} />
+          <Tab label="Download" {...a11yProps(1)} />
+          <Tab label="Metadata" {...a11yProps(2)} />
+          <Tab label="Detail" {...a11yProps(3)} />
+        </Tabs>
+      </Box>
+      <TabPanel value={tabValue} index={0}>
+        <OverviewDispatch segments={props.segments} />
+      </TabPanel>
+      <TabPanel value={tabValue} index={1}>
+        Download
+      </TabPanel>
+      <TabPanel value={tabValue} index={2}>
+        <MetadataView json={fullItem} />
+      </TabPanel>
+      <TabPanel value={tabValue} index={3}>
+        <JSONViewer json={fullItem} />
+      </TabPanel>
+    </Box>
+  );
+  }
 
 export default Node;
