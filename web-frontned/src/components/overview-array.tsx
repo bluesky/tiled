@@ -1,19 +1,21 @@
-import Container from "@mui/material/Container";
-import Typography from "@mui/material/Typography";
-import Box from "@mui/material/Box";
-import Grid from "@mui/material/Grid";
-import { useState, useEffect } from "react";
 import * as React from "react";
+
+import { useEffect, useState } from "react";
+
+import { ArrayLineChart } from "./line";
+import Box from "@mui/material/Box";
+import Container from "@mui/material/Container";
+import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormLabel from "@mui/material/FormLabel";
+import Grid from "@mui/material/Grid";
+import Input from "@mui/material/Input";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import FormControl from "@mui/material/FormControl";
-import FormLabel from "@mui/material/FormLabel";
-import { axiosInstance } from "../client";
-import Slider from "@mui/material/Slider";
-import Input from "@mui/material/Input";
 import Skeleton from "@mui/material/Skeleton";
-import { ArrayLineChart } from "./line";
+import Slider from "@mui/material/Slider";
+import Typography from "@mui/material/Typography";
+import { axiosInstance } from "../client";
 import { debounce } from "ts-debounce";
 
 const LIMIT = 1000;

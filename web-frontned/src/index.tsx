@@ -1,15 +1,17 @@
-import { render } from "react-dom";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import reportWebVitals from "./reportWebVitals";
 import "@fontsource/roboto/300.css";
 import "@fontsource/roboto/400.css";
 import "@fontsource/roboto/500.css";
 import "@fontsource/roboto/700.css";
-import CssBaseline from "@mui/material/CssBaseline";
-import { ThemeProvider } from "@mui/material/styles";
+
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+
 import App from "./App";
-import theme from "./theme";
+import CssBaseline from "@mui/material/CssBaseline";
 import Node from "./routes/node";
+import { ThemeProvider } from "@mui/material/styles";
+import { render } from "react-dom";
+import reportWebVitals from "./reportWebVitals";
+import theme from "./theme";
 
 const root_element = document.getElementById("root");
 render(
