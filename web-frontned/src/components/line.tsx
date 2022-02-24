@@ -7,7 +7,6 @@ interface ArrayLineChartProps {
 
 
 const ArrayLineChart: React.FunctionComponent<ArrayLineChartProps> = (props) => {
-  console.log(props.data.map((value, index) => { return {"index": index, "x": value}}));
   return (
     <Box height={300}>
     <ResponsiveContainer>
