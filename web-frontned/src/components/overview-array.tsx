@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import { ArrayLineChart } from "./line";
 import Box from "@mui/material/Box";
-import Container from "@mui/material/Container";
 import CutSlider from "./cut-slider";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -135,7 +134,7 @@ interface IProps {
 }
 
 const LIMIT = 1000; // largest number of 1D elements we will request and display at once
-const MAX_SIZE = 500; // max image size
+const MAX_SIZE = 800; // max image size
 
 const Array1D: React.FunctionComponent<IProps> = (props) => {
   const MAX_DEFAULT_RANGE = 100;
@@ -183,8 +182,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
       )}
       {stride !== 1 ? (
         <Alert severity="info">
-          This large array has be downsampled by a factor of {stride} to fit on
-          your screen.
+          This large array has been downsampled by a factor of {stride}.
           <br />
           Use the "Download" tab to access a full-resolution image.
         </Alert>
@@ -222,7 +220,8 @@ interface ImageDisplayProps {
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   return (
-    <img
+    <Box
+      component="img"
       alt="Data rendered"
       src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${
         props.stride

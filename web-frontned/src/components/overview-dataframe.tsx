@@ -100,7 +100,8 @@ const ChoosePartition: React.FunctionComponent<ChoosePartitionProps> = (
         This large dataframe available in <em>partitions</em> (chunks of rows)
         because the full dataframe may be slow to download and display.
         <br />
-        In the "Download" tab, you can request the full table as a single file if you wish.
+        In the "Download" tab, you can request the full table as a single file
+        if you wish.
       </Alert>
       <FormControl sx={{ my: 2 }}>
         <InputLabel id="partition-select-helper-label">Partition</InputLabel>
