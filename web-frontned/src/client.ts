@@ -20,16 +20,12 @@ export const search = async (
   segments: string[],
   signal: AbortSignal,
   fields: string[] = []
-): Promise<string[]> => {
+): Promise<components["schemas"]["Resource_NodeAttributes__dict__dict_"][]> => {
   const response = await axiosInstance.get(
     `/node/search/${segments.join("/")}?fields=${fields.join("&fields=")}`,
     { signal: signal }
   );
-  let ids: string[] = [];
-  response.data.data.forEach((element: any) => {
-    ids.push(element.id);
-  });
-  return ids;
+  return response.data.data;
 };
 
 export const metadata = async (

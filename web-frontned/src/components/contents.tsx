@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
+import { components } from "../openapi_schemas";
 import { search } from "../client";
 import { useNavigate } from "react-router-dom";
 
@@ -18,23 +19,34 @@ const DEFAULT_PAGE_SIZE = 10;
 
 const Contents: React.FunctionComponent<IProps> = (props) => {
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
-  const [items, setItems] = useState<string[]>([]);
+  const [items, setItems] = useState<
+    components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
+  >([]);
   let navigate = useNavigate();
   // When props.segments updates, load ids of children of that path.
   useEffect(() => {
     const controller = new AbortController();
     async function loadData() {
-      var results = await search(props.segments, controller.signal);
-      if (results !== undefined) {
-        setItems(results);
-      }
+      var items = await search(props.segments, controller.signal);
+      setItems(items);
     }
     loadData();
     return () => {
       controller.abort();
     };
   }, [props.segments]);
-  const rows = items.map((key) => ({ id: key }));
+  const rows = items.map(
+    (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => ({
+      id: item.id,
+    })
+  );
+  type IdToAncestors = { [key: string]: string[] };
+  var idsToAncestors: IdToAncestors = {};
+  items.map(
+    (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
+      idsToAncestors[item.id as string] = item.attributes.ancestors;
+    }
+  );
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
@@ -47,7 +59,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
           onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
           onRowClick={(params: GridRowParams) => {
             navigate(
-              `/node${props.segments.map(function (segment) {
+              `/node${idsToAncestors[params.id].map(function (segment: string) {
                 return "/" + segment;
               })}/${params.id}`
             );
@@ -56,7 +68,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
         />
       </Container>
     </Box>
-  )
+  );
 };
 
 export default Contents;
