@@ -17,6 +17,8 @@ import FormLabel from '@mui/material/FormLabel';
 import { axiosInstance } from '../client';
 import Slider from '@mui/material/Slider';
 import Input from '@mui/material/Input';
+import Skeleton from '@mui/material/Skeleton';
+import { ArrayLineChart } from './line';
 
 function valuetext(value: number) {
   return `${value}°C`;
@@ -60,7 +62,7 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
       <Grid container spacing={2} alignItems="center">
         <Grid item xs>
           <Slider
-            getAriaLabel={() => 'Temperature range'}
+            getAriaLabel={() => 'Array slice range'}
             value={props.value}
             min={props.min}
             max={props.max}
@@ -109,7 +111,13 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
 }
 
 
-function DisplayRadioButtons() {
+interface DisplayRadioButtonsProps {
+  value: string;
+  handleChange: any;
+}
+
+
+const DisplayRadioButtons: React.FunctionComponent<DisplayRadioButtonsProps> = (props) => {
   return (
     <FormControl>
       <FormLabel id="display-radio-buttons-group-label">View as</FormLabel>
@@ -117,24 +125,31 @@ function DisplayRadioButtons() {
         row
         aria-labelledby="display-radio-buttons-group-label"
         name="display-radio-buttons-group"
-        defaultValue="list"
+        value={props.value}
+        onChange={props.handleChange}
       >
-        <FormControlLabel value="list" control={<Radio />} label="List" />
         <FormControlLabel value="chart" control={<Radio />} label="Chart" />
+        <FormControlLabel value="list" control={<Radio />} label="List" />
       </RadioGroup>
     </FormControl>
   );
 }
 
-interface ItemListProps {
+interface DataDisplayProps {
   link: string;
   range: number[];
 }
 
 
-const ItemList: React.FunctionComponent<ItemListProps> = (props) => {
+const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
+  const [displayType, setDisplayType] = useState<string>("chart");
   const [data, setData] = useState<any[]>([]);
   const [dataIsLoaded, setDataIsLoaded] = useState<boolean>(false);
+
+  const handleDisplayTypeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setDisplayType((event.target as HTMLInputElement).value);
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     async function loadData() {
@@ -146,10 +161,32 @@ const ItemList: React.FunctionComponent<ItemListProps> = (props) => {
     loadData();
     return () => { controller.abort() };
   }, [props.link, props.range]);
+
+  const display = () => {
+    switch(displayType) {
+      case "chart": return dataIsLoaded ? <ArrayLineChart data={data} /> : <Skeleton variant="rectangular"/>
+      case "list": return dataIsLoaded ? <ItemList data={data} /> : <Skeleton variant="rectangular"/>
+    }
+  }
+
+  return (
+    <div>
+      <DisplayRadioButtons value={displayType} handleChange={handleDisplayTypeChange} />
+      {display()}
+    </div>
+  )
+}
+
+interface ItemListProps {
+  data: any[];
+}
+
+
+const ItemList: React.FunctionComponent<ItemListProps> = (props) => {
   return (
     <table>
       <tbody>
-        {data.map((item, index) => { return <tr key={`item-tr-${index}`}><td key={`item-td-${index}`}>{item}</td></tr> })}
+        {props.data.map((item, index) => { return <tr key={`item-tr-${index}`}><td key={`item-td-${index}`}>{item}</td></tr> })}
       </tbody>
     </table>
   )
@@ -170,8 +207,7 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
   return (
     <div>
       <RangeSlider value={value} setValue={setValue} min={0} max={max} />
-      <DisplayRadioButtons />
-      <ItemList link={props.item.data.links.full} range={value} />
+      <DataDisplay link={props.item.data.links.full} range={value} />
     </div>
   )
 }
