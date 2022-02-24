@@ -16,10 +16,7 @@ import Skeleton from '@mui/material/Skeleton';
 import { ArrayLineChart } from './line';
 import { debounce } from "ts-debounce";
 
-
-function valuetext(value: number) {
-  return `${value}°C`;
-}
+const LIMIT = 1000;
 
 interface RangeSliderProps {
   min: number;
@@ -29,16 +26,23 @@ interface RangeSliderProps {
 }
 
 const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
-  const handleSliderChange = (event: Event, newValue: number | number[]) => {
-    props.setValue(newValue as number[]);
+  const handleSliderChange = (event: Event, newValue: number | number[], activeThumb: number) => {
+    const range = newValue as number[]
+    let safeValue = [0, 0]
+    if (activeThumb === 0) {
+      safeValue = [range[0], Math.min(range[1], range[0] + LIMIT)]
+    } else {
+      safeValue = [Math.max(range[0], range[1] - LIMIT), range[1]]
+    }
+    props.setValue(safeValue as number[]);
   };
 
   const handleMinInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    props.setValue(event.target.value === '' ? props.value : [Number(event.target.value), props.value[1]]);
+    props.setValue(event.target.value === '' ? props.value : [Number(event.target.value), Math.min(props.value[1], Number(event.target.value) + LIMIT)]);
   };
 
   const handleMaxInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    props.setValue(event.target.value === '' ? props.value : [props.value[0], Number(event.target.value)]);
+    props.setValue(event.target.value === '' ? props.value : [Math.max(props.value[0], Number(event.target.value) - LIMIT), Number(event.target.value)]);
   };
 
   const handleBlur = () => {
@@ -50,11 +54,12 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
     }
   };
 
+  const marks = [{value: props.min, label: props.min}, {value: props.max, label: props.max}];
 
   return (
     <Box sx={{ width: 500}}>
       <Typography id="input-slider" gutterBottom>
-        Select slice of array
+        { (props.max - props.min <= LIMIT) ? "Optionally slice a range of elements from the array" : `Slice a range of up to ${LIMIT} elements of the array` }
       </Typography>
       <Grid container spacing={2} alignItems="center">
         <Grid item xs>
@@ -63,10 +68,9 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
             value={props.value}
             min={props.min}
             max={props.max}
-            disableSwap
+            marks={marks}
             onChange={handleSliderChange}
             valueLabelDisplay="auto"
-            getAriaValueText={valuetext}
           />
         </Grid>
         <Grid item>
