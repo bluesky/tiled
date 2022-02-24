@@ -1,11 +1,11 @@
-import * as React from 'react';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import Skeleton from '@mui/material/Skeleton';
-import SyntaxHighlighter from 'react-syntax-highlighter';
+import * as React from "react";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import Skeleton from "@mui/material/Skeleton";
+import SyntaxHighlighter from "react-syntax-highlighter";
 
 interface IProps {
-  json: any
+  json: any;
 }
 
 const JSONViewer: React.FunctionComponent<IProps> = (props) => {
@@ -19,10 +19,9 @@ const JSONViewer: React.FunctionComponent<IProps> = (props) => {
           {JSON.stringify(props.json, null, 2)}
         </SyntaxHighlighter>
       </Box>
-    )
+    );
   }
-  return <Skeleton variant="rectangular" />
-
-}
+  return <Skeleton variant="rectangular" />;
+};
 
 export default JSONViewer;

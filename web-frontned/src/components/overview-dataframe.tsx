@@ -1,21 +1,20 @@
-import { useNavigate } from 'react-router-dom';
-import Container from '@mui/material/Container';
-import Box from '@mui/material/Box';
-import { useState, useEffect } from 'react';
-import { axiosInstance } from '../client';
-import { DataGrid } from '@mui/x-data-grid';
-import * as React from 'react';
-import InputLabel from '@mui/material/InputLabel';
-import MenuItem from '@mui/material/MenuItem';
-import FormControl from '@mui/material/FormControl';
-import FormHelperText from '@mui/material/FormHelperText';
-import Select, { SelectChangeEvent } from '@mui/material/Select';
-import Typography from '@mui/material/Typography';
-
+import { useNavigate } from "react-router-dom";
+import Container from "@mui/material/Container";
+import Box from "@mui/material/Box";
+import { useState, useEffect } from "react";
+import { axiosInstance } from "../client";
+import { DataGrid } from "@mui/x-data-grid";
+import * as React from "react";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import FormControl from "@mui/material/FormControl";
+import FormHelperText from "@mui/material/FormHelperText";
+import Select, { SelectChangeEvent } from "@mui/material/Select";
+import Typography from "@mui/material/Typography";
 
 interface IProps {
-  segments: string[]
-  item: any
+  segments: string[];
+  item: any;
 }
 
 const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
@@ -25,19 +24,26 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
   useEffect(() => {
     const controller = new AbortController();
     async function loadRows() {
-      var response = await axiosInstance.get(`${props.item.data.links.full}?format=application/json-seq`, {signal: controller.signal});
-      const rows = response.data.split("\n").map((line: string) => JSON.parse(line)) as any[];
+      var response = await axiosInstance.get(
+        `${props.item.data.links.full}?format=application/json-seq`,
+        { signal: controller.signal }
+      );
+      const rows = response.data
+        .split("\n")
+        .map((line: string) => JSON.parse(line)) as any[];
       setRows(rows);
       setLoadedRows(true);
     }
     loadRows();
-    return () => { controller.abort() };
+    return () => {
+      controller.abort();
+    };
   }, [props.segments, props.item.data.links.full]);
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
         <VisitColumns segments={props.segments} columns={columns} />
-        <Box width='100%' mt={5}>
+        <Box width="100%" mt={5}>
           <Typography id="table-title" variant="h6" component="h2">
             Full Table
           </Typography>
@@ -46,7 +52,7 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
       </Container>
     </Box>
   );
-}
+};
 
 interface VisitColumnsProps {
   columns: string[];
@@ -58,8 +64,12 @@ const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
 
   const handleChange = (event: SelectChangeEvent) => {
     const column = event.target.value;
-    navigate(`/node${props.segments.map(function (segment) {return "/" + segment})}/${column}`);
-  }
+    navigate(
+      `/node${props.segments.map(function (segment) {
+        return "/" + segment;
+      })}/${column}`
+    );
+  };
 
   return (
     <Box>
@@ -72,27 +82,39 @@ const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
           label="Column"
           onChange={handleChange}
         >
-          { props.columns.map((column) => { return <MenuItem key={`column-${column}`} value={column}>{column}</MenuItem> }) }
+          {props.columns.map((column) => {
+            return (
+              <MenuItem key={`column-${column}`} value={column}>
+                {column}
+              </MenuItem>
+            );
+          })}
         </Select>
         <FormHelperText>Access a single column as an Array.</FormHelperText>
       </FormControl>
     </Box>
   );
-}
-
+};
 
 interface IDataDisplayProps {
-  columns: string[]
-  rows: any[]
-  loading: boolean
+  columns: string[];
+  rows: any[];
+  loading: boolean;
 }
 
 const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
-  const data_columns = props.columns.map((column) => ({ field: column, headerName: column, width: 200 }));
-  const data_rows = props.rows.map((row, index) => { row.id = index; return row });
+  const data_columns = props.columns.map((column) => ({
+    field: column,
+    headerName: column,
+    width: 200,
+  }));
+  const data_rows = props.rows.map((row, index) => {
+    row.id = index;
+    return row;
+  });
   return (
     <DataGrid
-      {...(props.loading ? {"loading": true} : {})}
+      {...(props.loading ? { loading: true } : {})}
       rows={data_rows}
       columns={data_columns}
       pageSize={30}
@@ -100,6 +122,6 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
       autoHeight
     />
   );
-}
+};
 
 export { DataFrameOverview };

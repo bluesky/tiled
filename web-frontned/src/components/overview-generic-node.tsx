@@ -1,9 +1,9 @@
-import Container from '@mui/material/Container';
-import Contents from '../components/contents'
+import Container from "@mui/material/Container";
+import Contents from "../components/contents";
 
 interface IProps {
-  segments: string[]
-  item: any
+  segments: string[];
+  item: any;
 }
 
 const NodeOverview: React.FunctionComponent<IProps> = (props) => {
@@ -11,7 +11,7 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
     <Container maxWidth="lg">
       <Contents segments={props.segments} />
     </Container>
-  )
-}
+  );
+};
 
 export { NodeOverview };

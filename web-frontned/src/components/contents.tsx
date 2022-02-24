@@ -1,18 +1,16 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Container from '@mui/material/Container';
-import Box from '@mui/material/Box';
-import { search } from '../client';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import Container from "@mui/material/Container";
+import Box from "@mui/material/Box";
+import { search } from "../client";
 
-import * as React from 'react';
-import { DataGrid, GridRowParams } from '@mui/x-data-grid';
+import * as React from "react";
+import { DataGrid, GridRowParams } from "@mui/x-data-grid";
 
-const columns = [
-  { field: 'id', headerName: 'ID', width: 200 },
-];
+const columns = [{ field: "id", headerName: "ID", width: 200 }];
 
 interface IProps {
-  segments: string[]
+  segments: string[];
 }
 
 const Contents: React.FunctionComponent<IProps> = (props) => {
@@ -28,10 +26,12 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
       }
     }
     loadData();
-    return () => { controller.abort(); }
+    return () => {
+      controller.abort();
+    };
   }, [props.segments]);
   if (items !== undefined) {
-    const rows = items.map((key) => ({id: key}));
+    const rows = items.map((key) => ({ id: key }));
     return (
       <Box sx={{ my: 4 }}>
         <Container maxWidth="lg">
@@ -39,7 +39,13 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
             rows={rows}
             columns={columns}
             pageSize={10}
-            onRowClick={(params: GridRowParams) => { navigate(`/node${props.segments.map(function (segment) {return "/" + segment})}/${params.id}`); }}
+            onRowClick={(params: GridRowParams) => {
+              navigate(
+                `/node${props.segments.map(function (segment) {
+                  return "/" + segment;
+                })}/${params.id}`
+              );
+            }}
             rowsPerPageOptions={[10, 30, 100]}
             autoHeight
           />
@@ -47,8 +53,8 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
       </Box>
     );
   } else {
-    return <div>Loading...</div>
+    return <div>Loading...</div>;
   }
-}
+};
 
 export default Contents;
