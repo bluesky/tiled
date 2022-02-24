@@ -14,6 +14,8 @@ import Slider from '@mui/material/Slider';
 import Input from '@mui/material/Input';
 import Skeleton from '@mui/material/Skeleton';
 import { ArrayLineChart } from './line';
+import { debounce } from "ts-debounce";
+
 
 function valuetext(value: number) {
   return `${value}°C`;
@@ -202,7 +204,7 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
   const [value, setValue] = React.useState<number[]>([0, Math.min(max, MAX_DEFAULT_RANGE)]);
   return (
     <div>
-      <RangeSlider value={value} setValue={setValue} min={0} max={max} />
+      <RangeSlider value={value} setValue={debounce(setValue, 100, {maxWait: 200})} min={0} max={max} />
       <DataDisplay link={props.item.data.links.full} range={value} name={props.item.data.id} />
     </div>
   )
