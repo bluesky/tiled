@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { useEffect, useState } from "react";
 
+import Alert from "@mui/material/Alert";
 import { ArrayLineChart } from "./line";
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
@@ -13,6 +14,7 @@ import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
 import RangeSlider from "./range-slider";
 import Skeleton from "@mui/material/Skeleton";
+import Typography from "@mui/material/Typography";
 import { axiosInstance } from "../client";
 import { debounce } from "ts-debounce";
 
@@ -132,7 +134,8 @@ interface IProps {
   item: any;
 }
 
-const LIMIT = 1000; // largest number of elements we will request and display at once
+const LIMIT = 1000; // largest number of 1D elements we will request and display at once
+const MAX_SIZE = 500; // max image size
 
 const Array1D: React.FunctionComponent<IProps> = (props) => {
   const MAX_DEFAULT_RANGE = 100;
@@ -162,10 +165,32 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const shape = props.item.data.attributes.structure.macro.shape;
   const middles = shape.slice(2).map((size: number) => Math.floor(size / 2));
+  const stride = Math.ceil(Math.max(...shape.slice(0, 2)) / MAX_SIZE);
   const [cuts, setCuts] = useState<number[]>(middles);
   return (
     <Box>
-      <ImageDisplay link={props.item.data!.links!.full as string} cuts={cuts} />
+      <ImageDisplay
+        link={props.item.data!.links!.full as string}
+        cuts={cuts}
+        stride={stride}
+      />
+      {shape.length > 2 ? (
+        <Typography id="input-slider" gutterBottom>
+          Choose a planar cut through this {shape.length}-dimensional array.
+        </Typography>
+      ) : (
+        ""
+      )}
+      {stride !== 1 ? (
+        <Alert severity="info">
+          This large array has be downsampled by a factor of {stride} to fit on
+          your screen.
+          <br />
+          Use the "Download" tab to access a full-resolution image.
+        </Alert>
+      ) : (
+        ""
+      )}
       {shape.slice(2).map((size: number, index: number) => {
         return (
           <CutSlider
@@ -192,28 +217,43 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
 interface ImageDisplayProps {
   link: string;
   cuts: number[];
+  stride: number;
 }
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   return (
     <img
       alt="Data rendered"
-      src={`${props.link}?format=image/png&slice=${props.cuts.join(",")}`}
+      src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${
+        props.stride
+      },::${props.stride}`}
       loading="lazy"
     />
   );
 };
 
 const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
-  return (
-    <Container maxWidth="lg">
-      {props.item.data.attributes.structure.macro.shape.length < 2 ? (
-        <Array1D segments={props.segments} item={props.item} />
-      ) : (
-        <ArrayND segments={props.segments} item={props.item} />
-      )}
-    </Container>
-  );
+  if (props.item.data.attributes.structure.micro.fields) {
+    return (
+      <Alert severity="warning">
+        This is a "record array" with a{" "}
+        <a
+          href="https://numpy.org/doc/stable/user/basics.rec.html"
+          target="_blank"
+        >
+          structured data type
+        </a>
+        . The web interface cannot view it. Use the "Download" tab to access the
+        data.
+      </Alert>
+    );
+  }
+  switch (props.item.data.attributes.structure.macro.shape.length < 2) {
+    case true:
+      return <Array1D segments={props.segments} item={props.item} />;
+    case false:
+      return <ArrayND segments={props.segments} item={props.item} />;
+  }
 };
 
 export { ArrayOverview };

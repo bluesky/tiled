@@ -1,20 +1,23 @@
-import { useParams } from "react-router-dom";
-import { NodeOverview } from "../components/overview-generic-node";
-import { ArrayOverview } from "../components/overview-array";
-import { DataFrameOverview } from "../components/overview-dataframe";
-import { useState, useEffect } from "react";
-import { metadata } from "../client";
-import { components } from "../openapi_schemas";
-import NodeBreadcrumbs from "../components/node-breadcrumbs";
-import MetadataView from "../components/metadata-view";
-import JSONViewer from "../components/json-viewer";
-import Box from "@mui/material/Box";
-import Skeleton from "@mui/material/Skeleton";
 import * as React from "react";
+
+import { useEffect, useState } from "react";
+
+import { ArrayOverview } from "../components/overview-array";
+import Box from "@mui/material/Box";
+import { DataFrameOverview } from "../components/overview-dataframe";
+import JSONViewer from "../components/json-viewer";
+import MetadataView from "../components/metadata-view";
+import NodeBreadcrumbs from "../components/node-breadcrumbs";
+import { NodeOverview } from "../components/overview-generic-node";
+import Paper from "@mui/material/Paper";
 import PropTypes from "prop-types";
-import Tabs from "@mui/material/Tabs";
+import Skeleton from "@mui/material/Skeleton";
 import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
+import { components } from "../openapi_schemas";
+import { metadata } from "../client";
+import { useParams } from "react-router-dom";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -75,6 +78,7 @@ const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
         "structure_family",
         "specs",
         "structure.macro",
+        "structure.micro",
       ]);
       if (result !== undefined) {
         setItem(result);
@@ -172,7 +176,9 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
             ? props.segments[props.segments.length - 1]
             : "Top"}
         </Typography>
-        <OverviewDispatch segments={props.segments} />
+        <Paper elevation={3} sx={{ px: 3, py: 3 }}>
+          <OverviewDispatch segments={props.segments} />
+        </Paper>
       </TabPanel>
       <TabPanel value={tabValue} index={1}>
         Download
