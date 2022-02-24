@@ -14,7 +14,10 @@ interface IProps {
   segments: string[];
 }
 
+const DEFAULT_PAGE_SIZE = 10;
+
 const Contents: React.FunctionComponent<IProps> = (props) => {
+  const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const [items, setItems] = useState<string[]>([]);
   let navigate = useNavigate();
   // When props.segments updates, load ids of children of that path.
@@ -31,31 +34,29 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
       controller.abort();
     };
   }, [props.segments]);
-  if (items !== undefined) {
-    const rows = items.map((key) => ({ id: key }));
-    return (
-      <Box sx={{ my: 4 }}>
-        <Container maxWidth="lg">
-          <DataGrid
-            rows={rows}
-            columns={columns}
-            pageSize={10}
-            onRowClick={(params: GridRowParams) => {
-              navigate(
-                `/node${props.segments.map(function (segment) {
-                  return "/" + segment;
-                })}/${params.id}`
-              );
-            }}
-            rowsPerPageOptions={[10, 30, 100]}
-            autoHeight
-          />
-        </Container>
-      </Box>
-    );
-  } else {
-    return <div>Loading...</div>;
-  }
+  const rows = items.map((key) => ({ id: key }));
+  return (
+    <Box sx={{ my: 4 }}>
+      <Container maxWidth="lg">
+        <DataGrid
+          rows={rows}
+          columns={columns}
+          pagination
+          pageSize={pageSize}
+          rowsPerPageOptions={[10, 30, 100]}
+          onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
+          onRowClick={(params: GridRowParams) => {
+            navigate(
+              `/node${props.segments.map(function (segment) {
+                return "/" + segment;
+              })}/${params.id}`
+            );
+          }}
+          autoHeight
+        />
+      </Container>
+    </Box>
+  )
 };
 
 export default Contents;
