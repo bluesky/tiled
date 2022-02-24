@@ -50,9 +50,10 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
   }, [props.segments, props.item.data.links.full, partition]);
 
   const setPartitionAndClearRows = (partition: number | string) => {
-    // Logging shows that this is propagating to DataGrid, but the loading
-    // spinner does not reappear. Needs investigation.
+    // First clear the current contents and reactive the loading spinner.
+    setRows([]);
     setRowsAreLoaded(false);
+    // And then update the select box and begin downloading the new partition.
     setPartition(partition);
   };
   return (
@@ -96,10 +97,10 @@ const ChoosePartition: React.FunctionComponent<ChoosePartitionProps> = (
   return (
     <Box>
       <Alert severity="info">
-        This large dataframe is split into <em>partitions</em> (chunks of rows)
+        This large dataframe available in <em>partitions</em> (chunks of rows)
         because the full dataframe may be slow to download and display.
         <br />
-        In the "Download" tab, you can access the full table as a single file.
+        In the "Download" tab, you can request the full table as a single file if you wish.
       </Alert>
       <FormControl sx={{ my: 2 }}>
         <InputLabel id="partition-select-helper-label">Partition</InputLabel>
