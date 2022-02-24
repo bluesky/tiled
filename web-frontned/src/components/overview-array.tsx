@@ -1,13 +1,8 @@
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
-import LoadingButton from '@mui/lab/LoadingButton';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import JSONViewer from './json-viewer'
 import { useState, useEffect } from 'react';
-import { metadata } from '../client';
-import { components } from '../openapi_schemas';
 import * as React from 'react';
 import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';

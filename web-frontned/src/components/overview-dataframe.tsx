@@ -32,7 +32,7 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
     }
     loadRows();
     return () => { controller.abort() };
-  }, [props.segments]);
+  }, [props.segments, props.item.data.links.full]);
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
