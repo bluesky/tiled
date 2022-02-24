@@ -3,7 +3,9 @@ import * as React from "react";
 import { useEffect, useState } from "react";
 
 import { ArrayLineChart } from "./line";
+import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
+import CutSlider from "./cut-slider";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormLabel from "@mui/material/FormLabel";
@@ -130,7 +132,7 @@ interface IProps {
   item: any;
 }
 
-const LIMIT = 1000;  // largest number of elements we will request and display at once
+const LIMIT = 1000; // largest number of elements we will request and display at once
 
 const Array1D: React.FunctionComponent<IProps> = (props) => {
   const MAX_DEFAULT_RANGE = 100;
@@ -158,10 +160,45 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
 };
 
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
+  const shape = props.item.data.attributes.structure.macro.shape;
+  const middles = shape.slice(2).map((size: number) => Math.floor(size / 2));
+  const [cuts, setCuts] = useState<number[]>(middles);
+  return (
+    <Box>
+      <ImageDisplay link={props.item.data!.links!.full as string} cuts={cuts} />
+      {shape.slice(2).map((size: number, index: number) => {
+        return (
+          <CutSlider
+            key={`slider-${index}`}
+            min={0}
+            max={size - 1}
+            value={cuts[index]}
+            setValue={debounce(
+              (value) => {
+                const newCuts = cuts.slice();
+                newCuts[index] = value;
+                setCuts(newCuts);
+              },
+              100,
+              { maxWait: 200 }
+            )}
+          />
+        );
+      })}
+    </Box>
+  );
+};
+
+interface ImageDisplayProps {
+  link: string;
+  cuts: number[];
+}
+
+const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   return (
     <img
       alt="Data rendered"
-      src={props.item.data!.links!.full as string}
+      src={`${props.link}?format=image/png&slice=${props.cuts.join(",")}`}
       loading="lazy"
     />
   );

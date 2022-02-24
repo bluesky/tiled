@@ -16,11 +16,11 @@ from tiled.adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdap
 print("Generating large example data...", file=sys.stderr)
 data = {
     "big_image": numpy.random.random((10_000, 10_000)),
-    "small_image": numpy.random.random((100, 100)),
+    "small_image": numpy.random.random((300, 300)),
     "medium_image": numpy.random.random((1000, 1000)),
-    "tiny_image": numpy.random.random((10, 10)),
-    "tiny_cube": numpy.random.random((10, 10, 10)),
-    "tiny_hypercube": numpy.random.random((10, 10, 10, 10, 10)),
+    "tiny_image": numpy.random.random((50, 50)),
+    "tiny_cube": numpy.random.random((50, 50, 50)),
+    "tiny_hypercube": numpy.random.random((50, 50, 50, 50, 50)),
     "high_entropy": numpy.random.random((100, 100)),
     "low_entropy": numpy.ones((100, 100)),
     "short_column": numpy.random.random(100),
@@ -133,6 +133,7 @@ mapping = {
         },
         metadata={"animal": "cat", "color": "green"},
     ),
+    "flat_array": ArrayAdapter.from_array(numpy.random.random(100)),
     # Below, an asynchronous task modifies this value over time.
     "dynamic": ArrayAdapter.from_array(numpy.zeros((3, 3))),
 }

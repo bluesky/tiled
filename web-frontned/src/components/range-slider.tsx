@@ -9,7 +9,7 @@ interface RangeSliderProps {
   max: number;
   setValue: any;
   value: number[];
-  limit: number;  // largest range allowed
+  limit: number; // largest range allowed
 }
 
 const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
