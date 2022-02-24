@@ -44,4 +44,4 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   );
 };
 
-export { NodeOverview };
+export { NodeOverview, NodeContents };

@@ -15,6 +15,7 @@ import Skeleton from "@mui/material/Skeleton";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
+import { XarrayDatasetOverview } from "../components/overview-xarray-dataset";
 import { components } from "../openapi_schemas";
 import { metadata } from "../client";
 import { useParams } from "react-router-dom";
@@ -98,6 +99,8 @@ const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
         return <ArrayOverview segments={props.segments} item={item} />;
       case "dataframe":
         return <DataFrameOverview segments={props.segments} item={item} />;
+      case "xarray_dataset":
+        return <XarrayDatasetOverview segments={props.segments} item={item} />;
       default:
         return <div>Unknown structure family "{structureFamily}"</div>;
     }

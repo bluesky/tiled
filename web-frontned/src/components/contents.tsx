@@ -42,9 +42,11 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
           onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
           onRowClick={(params: GridRowParams) => {
             navigate(
-              `/node${idsToAncestors[params.id].map(function (segment: string) {
-                return "/" + segment;
-              })}/${params.id}`
+              `/node${idsToAncestors[params.id]
+                .map(function (ancestor: string) {
+                  return "/" + ancestor;
+                })
+                .join("")}/${params.id}`
             );
           }}
           autoHeight
