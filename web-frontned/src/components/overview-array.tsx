@@ -136,6 +136,7 @@ const DisplayRadioButtons: React.FunctionComponent<DisplayRadioButtonsProps> = (
 }
 
 interface DataDisplayProps {
+  name: string;
   link: string;
   range: number[];
 }
@@ -164,7 +165,7 @@ const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
 
   const display = () => {
     switch(displayType) {
-      case "chart": return dataIsLoaded ? <ArrayLineChart data={data} /> : <Skeleton variant="rectangular"/>
+      case "chart": return dataIsLoaded ? <ArrayLineChart data={data} startingIndex={props.range[0]} name={props.name} /> : <Skeleton variant="rectangular"/>
       case "list": return dataIsLoaded ? <ItemList data={data} /> : <Skeleton variant="rectangular"/>
     }
   }
@@ -207,7 +208,7 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
   return (
     <div>
       <RangeSlider value={value} setValue={setValue} min={0} max={max} />
-      <DataDisplay link={props.item.data.links.full} range={value} />
+      <DataDisplay link={props.item.data.links.full} range={value} name={props.item.data.id} />
     </div>
   )
 }

@@ -3,8 +3,9 @@ import Box from '@mui/material/Box';
 
 interface ArrayLineChartProps {
   data: number[];
+  startingIndex: number;
+  name: string;
 }
-
 
 const ArrayLineChart: React.FunctionComponent<ArrayLineChartProps> = (props) => {
   return (
@@ -13,7 +14,7 @@ const ArrayLineChart: React.FunctionComponent<ArrayLineChartProps> = (props) => 
     <LineChart
       width={500}
       height={300}
-      data={props.data.map((value, index) => { return {"index": index, "x": value}})}
+      data={props.data.map((value, index) => { return {"index": index + props.startingIndex, [props.name]: value}})}
       margin={{
         top: 5,
         right: 30,
@@ -26,7 +27,7 @@ const ArrayLineChart: React.FunctionComponent<ArrayLineChartProps> = (props) => 
       <YAxis />
       <Tooltip />
       <Legend />
-      <Line type="monotone" stroke="#000000" dataKey="x" />
+      <Line type="monotone" stroke="#000000" dataKey={props.name} />
     </LineChart>
     </ResponsiveContainer>
     </Box>
