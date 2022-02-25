@@ -20,6 +20,7 @@
     - build-essential
     - git
     - nginx
+    - postgresql
     - python3-pip
     - python3-venv
   become: true
