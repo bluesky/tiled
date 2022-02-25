@@ -19,7 +19,7 @@ After=syslog.target
 [Service]
 User=tiled-worker
 Group=tiled-worker
-ExecStart=/srv/tiled/venv/bin/gunicorn -b 127.0.0.1:8000 -w {{ worker_count }} -k uvicorn.workers.UvicornWorker tiled.server.app:app --name tiled_svc --chdir /srv/tiled --access-logfile /srv/tiled/logs/access.log --error-logfile /srv/tiled/logs/errors.log --capture-output
+ExecStart=/srv/tiled/venv/bin/gunicorn -b 127.0.0.1:8000 -w {{ worker_count }} -k uvicorn.workers.UvicornWorker tiled.server.app:app --name tiled_svc --chdir /srv/tiled --capture-output
 Environment=TILED_CONFIG=/etc/tiled/config.yml
 EnvironmentFile=/etc/tiled/env.secret
 ExecReload=/bin/kill -s HUP $MAINPID
