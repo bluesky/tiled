@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import { ArrayLineChart } from "./line";
 import Box from "@mui/material/Box";
+import { ConstructionOutlined } from "@mui/icons-material";
 import CutSlider from "./cut-slider";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -15,6 +16,7 @@ import RangeSlider from "./range-slider";
 import Skeleton from "@mui/material/Skeleton";
 import Typography from "@mui/material/Typography";
 import { axiosInstance } from "../client";
+import { components } from "../openapi_schemas";
 import { debounce } from "ts-debounce";
 
 interface DisplayRadioButtonsProps {
@@ -131,6 +133,7 @@ const ItemList: React.FunctionComponent<ItemListProps> = (props) => {
 interface IProps {
   segments: string[];
   item: any;
+  structure: components["schemas"]["Structure"];
 }
 
 const LIMIT = 1000; // largest number of 1D elements we will request and display at once
@@ -138,7 +141,8 @@ const MAX_SIZE = 800; // max image size
 
 const Array1D: React.FunctionComponent<IProps> = (props) => {
   const MAX_DEFAULT_RANGE = 100;
-  const max = props.item.data.attributes.structure.macro.shape[0];
+  const shape = props.structure!.macro!.shape! as number[];
+  const max = shape[0];
   const [value, setValue] = React.useState<number[]>([
     0,
     Math.min(max, MAX_DEFAULT_RANGE),
@@ -162,7 +166,7 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
 };
 
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
-  const shape = props.item.data.attributes.structure.macro.shape;
+  const shape = props.structure!.macro!.shape as number[];
   const middles = shape.slice(2).map((size: number) => Math.floor(size / 2));
   const stride = Math.ceil(Math.max(...shape.slice(0, 2)) / MAX_SIZE);
   const [cuts, setCuts] = useState<number[]>(middles);
@@ -232,7 +236,7 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
 };
 
 const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
-  if (props.item.data.attributes.structure.micro.fields) {
+  if (props.structure!.micro!.fields) {
     return (
       <Alert severity="warning">
         This is a "record array" with a{" "}
@@ -247,11 +251,12 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
       </Alert>
     );
   }
-  switch (props.item.data.attributes.structure.macro.shape.length < 2) {
+  const shape = props.structure!.macro!.shape as number[];
+  switch (shape.length < 2) {
     case true:
-      return <Array1D segments={props.segments} item={props.item} />;
+      return <Array1D segments={props.segments} item={props.item} structure={props.structure} />;
     case false:
-      return <ArrayND segments={props.segments} item={props.item} />;
+      return <ArrayND segments={props.segments} item={props.item} structure={props.structure} />;
   }
 };
 

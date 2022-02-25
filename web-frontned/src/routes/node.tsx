@@ -15,6 +15,7 @@ import Skeleton from "@mui/material/Skeleton";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
+import { XarrayDataArrayOverview } from "../components/overview-xarray-data-array";
 import { XarrayDatasetOverview } from "../components/overview-xarray-dataset";
 import { components } from "../openapi_schemas";
 import { metadata } from "../client";
@@ -96,9 +97,11 @@ const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
       case "node":
         return <NodeOverview segments={props.segments} item={item} />;
       case "array":
-        return <ArrayOverview segments={props.segments} item={item} />;
+        return <ArrayOverview segments={props.segments} item={item} structure={item.data!.attributes!.structure!} />;
       case "dataframe":
         return <DataFrameOverview segments={props.segments} item={item} />;
+      case "xarray_data_array":
+        return <XarrayDataArrayOverview segments={props.segments} item={item} structure={item.data!.attributes!.structure!.macro!.variable! as components["schemas"]["Structure"]} />;
       case "xarray_dataset":
         return <XarrayDatasetOverview segments={props.segments} item={item} />;
       default:

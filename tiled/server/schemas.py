@@ -113,7 +113,8 @@ class DataFrameLinks(pydantic.BaseModel):
 
 class XarrayDataArrayLinks(pydantic.BaseModel):
     self: str
-    full_variable: str
+    full_variable: str  # back-compat
+    full: str
 
 
 class XarrayDatasetLinks(pydantic.BaseModel):

@@ -139,7 +139,7 @@ const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
     navigate(
       `/node${props.segments.map(function (segment) {
         return "/" + segment;
-      })}/${column}`
+      }).join("")}/${column}`
     );
   };
 
