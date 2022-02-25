@@ -9,6 +9,7 @@ include tiled/database/alembic.ini.template
 include tiled/database/migrations/env.py
 include tiled/database/migrations/script.py.mako
 include tiled/database/migrations/versions/*.py
+graft tiled/ui/
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
