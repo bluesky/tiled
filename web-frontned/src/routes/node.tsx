@@ -97,11 +97,26 @@ const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
       case "node":
         return <NodeOverview segments={props.segments} item={item} />;
       case "array":
-        return <ArrayOverview segments={props.segments} item={item} structure={item.data!.attributes!.structure!} />;
+        return (
+          <ArrayOverview
+            segments={props.segments}
+            item={item}
+            structure={item.data!.attributes!.structure!}
+          />
+        );
       case "dataframe":
         return <DataFrameOverview segments={props.segments} item={item} />;
       case "xarray_data_array":
-        return <XarrayDataArrayOverview segments={props.segments} item={item} structure={item.data!.attributes!.structure!.macro!.variable! as components["schemas"]["Structure"]} />;
+        return (
+          <XarrayDataArrayOverview
+            segments={props.segments}
+            item={item}
+            structure={
+              item.data!.attributes!.structure!.macro!
+                .variable! as components["schemas"]["Structure"]
+            }
+          />
+        );
       case "xarray_dataset":
         return <XarrayDatasetOverview segments={props.segments} item={item} />;
       default:

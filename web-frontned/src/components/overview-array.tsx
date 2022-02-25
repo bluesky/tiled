@@ -254,9 +254,21 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
   const shape = props.structure!.macro!.shape as number[];
   switch (shape.length < 2) {
     case true:
-      return <Array1D segments={props.segments} item={props.item} structure={props.structure} />;
+      return (
+        <Array1D
+          segments={props.segments}
+          item={props.item}
+          structure={props.structure}
+        />
+      );
     case false:
-      return <ArrayND segments={props.segments} item={props.item} structure={props.structure} />;
+      return (
+        <ArrayND
+          segments={props.segments}
+          item={props.item}
+          structure={props.structure}
+        />
+      );
   }
 };
 

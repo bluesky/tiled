@@ -17,7 +17,11 @@ const XarrayDataArrayOverview: React.FunctionComponent<IProps> = (props) => {
       <Typography id="table-title" variant="h6" component="h2">
         Variable
       </Typography>
-      <ArrayOverview segments={props.segments} item={props.item} structure={props.structure} />
+      <ArrayOverview
+        segments={props.segments}
+        item={props.item}
+        structure={props.structure}
+      />
       <Typography id="table-title" variant="h6" component="h2">
         Coordinates
       </Typography>

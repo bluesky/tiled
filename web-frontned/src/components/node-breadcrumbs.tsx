@@ -19,7 +19,12 @@ const NodeBreadcrumbs: React.FunctionComponent<IProps> = (props) => {
           {props.segments.map((segment, index, segments) => (
             <Link
               key={"breadcrumb-{1 + i}" + segment}
-              href={`/node${segments.slice(0, 1 + index).map((segment) => { return "/" + segment; }).join("")}/`}
+              href={`/node${segments
+                .slice(0, 1 + index)
+                .map((segment) => {
+                  return "/" + segment;
+                })
+                .join("")}/`}
             >
               {segment}
             </Link>

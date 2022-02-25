@@ -137,9 +137,11 @@ const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
   const handleChange = (event: SelectChangeEvent) => {
     const column = event.target.value;
     navigate(
-      `/node${props.segments.map(function (segment) {
-        return "/" + segment;
-      }).join("")}/${column}`
+      `/node${props.segments
+        .map(function (segment) {
+          return "/" + segment;
+        })
+        .join("")}/${column}`
     );
   };
 
