@@ -8,12 +8,14 @@ import urllib.parse
 from functools import lru_cache, partial
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, Request, Response
+import anyio
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.responses import FileResponse
 
 from tiled.database.core import purge_expired
 
@@ -110,9 +112,42 @@ def build_app(
     compression_registry = compression_registry or default_compression_registry
 
     app = FastAPI()
+
+    @app.get("/ui/{path:path}")
+    async def ui(path):
+        response = await lookup_file(path)
+        return response
+
+    async def lookup_file(path, try_app=True):
+        if not path:
+            path = "index.html"
+        full_path = Path(__file__).parent.parent / "ui" / "ui" / path
+        try:
+            stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+        except PermissionError:
+            raise HTTPException(status_code=401)
+        except FileNotFoundError:
+            # This may be a URL that has meaning to the client-side application,
+            # such as /ui/node/metadata/a/b/c.
+            # Serve index.html and let the client-side application sort it out.
+            if try_app:
+                response = await lookup_file("index.html", try_app=False)
+                return response
+            raise HTTPException(status_code=404)
+        except OSError:
+            raise
+        return FileResponse(
+            full_path,
+            stat_result=stat_result,
+            method="GET",
+            status_code=200,
+        )
+
     app.mount(
-        "/ui",
-        StaticFiles(directory=Path(__file__).parent.parent / "ui" / "static" / "ui"),
+        "/static",
+        StaticFiles(
+            directory=Path(__file__).parent.parent / "ui" / "static", html=True
+        ),
         name="ui",
     )
     templates = Jinja2Templates(

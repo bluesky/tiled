@@ -90,4 +90,4 @@ docs/source/reference/service-configuration.md
 docs/source/reference/api.yml
 
 # placed React bundle
-tiled/ui/static/ui
+tiled/ui/ui
