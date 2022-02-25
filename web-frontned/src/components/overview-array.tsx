@@ -140,7 +140,7 @@ const LIMIT = 1000; // largest number of 1D elements we will request and display
 const MAX_SIZE = 800; // max image size
 
 const Array1D: React.FunctionComponent<IProps> = (props) => {
-  const MAX_DEFAULT_RANGE = 100;
+  const MAX_DEFAULT_RANGE = 1000;
   const shape = props.structure!.macro!.shape! as number[];
   const max = shape[0];
   const [value, setValue] = React.useState<number[]>([
