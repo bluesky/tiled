@@ -9,17 +9,17 @@ include tiled/database/alembic.ini.template
 include tiled/database/migrations/env.py
 include tiled/database/migrations/script.py.mako
 include tiled/database/migrations/versions/*.py
-graft tiled/ui/
+graft share
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 
 recursive-include docs *.yml *.rst conf.py Makefile make.bat
-recursive-include ui
 
 include versioneer.py
 include tiled/_version.py
 include tiled/config_schemas/*.yml
+prune web-frontend/node_modules
 
 # If including data files in the package, add them like:
 # include path/to/data_file

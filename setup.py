@@ -1,3 +1,4 @@
+import os
 import sys
 from os import path
 
@@ -85,6 +86,19 @@ extras_require["all"] = extras_require["complete"] = sorted(
     set(sum(categorized_requirements.values(), []))
 )
 
+share_tiled = os.path.join(here, "share", "tiled")
+
+
+def get_data_files():
+    """Get data files in share/tiled"""
+
+    data_files = []
+    for (d, _dirs, filenames) in os.walk(share_tiled):
+        rel_d = os.path.relpath(d, here)
+        data_files.append((rel_d, [os.path.join(rel_d, f) for f in filenames]))
+    return data_files
+
+
 setup(
     name="tiled",
     version=versioneer.get_version(),
@@ -100,6 +114,7 @@ setup(
     extras_require=extras_require,
     packages=find_packages(exclude=["docs", "tests"]),
     entry_points={"console_scripts": ["tiled = tiled.commandline.main:main"]},
+    data_files=get_data_files(),
     package_data={
         "tiled": [
             # When adding files here, remember to update MANIFEST.in as well,
@@ -109,7 +124,6 @@ setup(
             "database/migrations/env.py",
             "database/migrations/script.py.mako",
             "database/migrations/versions/*.py",
-            "ui/*",
         ]
     },
     license="BSD (3-clause)",

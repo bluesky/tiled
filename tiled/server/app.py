@@ -23,6 +23,7 @@ from ..authenticators import Mode
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
+from ..utils import SHARE_TILED_PATH
 from .compression import CompressionMiddleware
 from .core import PatchedStreamingResponse
 from .dependencies import get_query_registry, get_root_tree, get_serialization_registry
@@ -113,52 +114,52 @@ def build_app(
 
     app = FastAPI()
 
-    @app.get("/ui/{path:path}")
-    async def ui(path):
-        response = await lookup_file(path)
-        return response
+    if SHARE_TILED_PATH:
+        # If the distribution includes static assets, serve UI routes.
 
-    async def lookup_file(path, try_app=True):
-        if not path:
-            path = "index.html"
-        full_path = Path(__file__).parent.parent / "ui" / "ui" / path
-        try:
-            stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
-        except PermissionError:
-            raise HTTPException(status_code=401)
-        except FileNotFoundError:
-            # This may be a URL that has meaning to the client-side application,
-            # such as /ui/node/metadata/a/b/c.
-            # Serve index.html and let the client-side application sort it out.
-            if try_app:
-                response = await lookup_file("index.html", try_app=False)
-                return response
-            raise HTTPException(status_code=404)
-        except OSError:
-            raise
-        return FileResponse(
-            full_path,
-            stat_result=stat_result,
-            method="GET",
-            status_code=200,
+        @app.get("/ui/{path:path}")
+        async def ui(path):
+            response = await lookup_file(path)
+            return response
+
+        async def lookup_file(path, try_app=True):
+            if not path:
+                path = "index.html"
+            full_path = Path(SHARE_TILED_PATH, "ui", path)
+            try:
+                stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+            except PermissionError:
+                raise HTTPException(status_code=401)
+            except FileNotFoundError:
+                # This may be a URL that has meaning to the client-side application,
+                # such as /ui/node/metadata/a/b/c.
+                # Serve index.html and let the client-side application sort it out.
+                if try_app:
+                    response = await lookup_file("index.html", try_app=False)
+                    return response
+                raise HTTPException(status_code=404)
+            except OSError:
+                raise
+            return FileResponse(
+                full_path,
+                stat_result=stat_result,
+                method="GET",
+                status_code=200,
+            )
+
+        app.mount(
+            "/static",
+            StaticFiles(directory=Path(SHARE_TILED_PATH, "static")),
+            name="ui",
         )
+        templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
 
-    app.mount(
-        "/static",
-        StaticFiles(
-            directory=Path(__file__).parent.parent / "ui" / "static", html=True
-        ),
-        name="ui",
-    )
-    templates = Jinja2Templates(
-        directory=Path(__file__).parent.parent / "ui" / "templates"
-    )
-
-    @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request):
-        return templates.TemplateResponse(
-            "index.html", {"request": request, "api_url": f"{get_base_url(request)}"}
-        )
+        @app.get("/", response_class=HTMLResponse)
+        async def index(request: Request):
+            return templates.TemplateResponse(
+                "index.html",
+                {"request": request, "api_url": f"{get_base_url(request)}"},
+            )
 
     app.state.allow_origins = []
     app.include_router(router, prefix="/api")
