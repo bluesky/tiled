@@ -14,12 +14,13 @@ import reportWebVitals from "./reportWebVitals";
 import theme from "./theme";
 
 const root_element = document.getElementById("root");
+const basename = process.env.PUBLIC_URL;
 render(
   <ThemeProvider theme={theme}>
     {/* CssBaseline kickstart an elegant, consistent, and simple baseline to build upon. */}
     <CssBaseline />
 
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Routes>
         <Route path="/" element={<App />}>
           <Route path="/node/*" element={<Node />} />

@@ -3,6 +3,7 @@ import * as React from "react";
 import Box from "@mui/material/Box";
 import Breadcrumbs from "@mui/material/Breadcrumbs";
 import Link from "@mui/material/Link";
+import { Link as RouterLink } from "react-router-dom";
 
 interface IProps {
   segments: string[];
@@ -13,13 +14,14 @@ const NodeBreadcrumbs: React.FunctionComponent<IProps> = (props) => {
     return (
       <Box mt={3} mb={2}>
         <Breadcrumbs aria-label="breadcrumb">
-          <Link key="breadcrumb-0" href="/node/">
+          <Link key="breadcrumb-0" component={RouterLink} to="/node/">
             Top
           </Link>
           {props.segments.map((segment, index, segments) => (
             <Link
+              component={RouterLink}
               key={"breadcrumb-{1 + i}" + segment}
-              href={`/node${segments
+              to={`/node${segments
                 .slice(0, 1 + index)
                 .map((segment) => {
                   return "/" + segment;
