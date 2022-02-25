@@ -111,9 +111,9 @@ def build_app(
 
     app = FastAPI()
     app.mount(
-        "/static",
-        StaticFiles(directory=Path(__file__).parent.parent / "ui" / "static"),
-        name="static",
+        "/ui",
+        StaticFiles(directory=Path(__file__).parent.parent / "ui" / "static" / "ui"),
+        name="ui",
     )
     templates = Jinja2Templates(
         directory=Path(__file__).parent.parent / "ui" / "templates"
@@ -123,12 +123,6 @@ def build_app(
     async def index(request: Request):
         return templates.TemplateResponse(
             "index.html", {"request": request, "api_url": f"{get_base_url(request)}"}
-        )
-
-    @app.get("/ui", response_class=HTMLResponse)
-    async def ui(request: Request):
-        return templates.TemplateResponse(
-            "ui.html", {"request": request, "api_url": f"{get_base_url(request)}"}
         )
 
     app.state.allow_origins = []
