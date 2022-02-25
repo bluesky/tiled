@@ -23,7 +23,7 @@ render(
     <BrowserRouter basename={basename}>
       <Routes>
         <Route path="/" element={<App />}>
-          <Route path="/node/*" element={<Node />} />
+          <Route path="/browse/*" element={<Node />} />
         </Route>
         <Route
           path="*"

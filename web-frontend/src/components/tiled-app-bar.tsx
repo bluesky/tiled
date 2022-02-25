@@ -24,7 +24,7 @@ const TiledAppBar = () => {
             component="div"
             sx={{ mr: 2, display: { xs: "none", md: "flex" } }}
           >
-            <Button component={Link} color="inherit" to="/node/">
+            <Button component={Link} color="inherit" to="/browse/">
               Browse
             </Button>
             <Button component={Link} color="inherit" to="/apikeys/">

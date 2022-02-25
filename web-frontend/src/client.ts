@@ -1,16 +1,7 @@
 import axios from "axios";
 import { components } from "./openapi_schemas";
 
-declare global {
-  interface Window {
-    baseURL: string;
-  }
-}
-
-let apiURL = process.env.REACT_APP_API_PREFIX;
-if (apiURL == null) {
-  let apiURL = `$window.baseURL/api`;
-}
+const apiURL = process.env.REACT_APP_API_PREFIX || "api"
 
 var axiosInstance = axios.create({
   baseURL: apiURL,

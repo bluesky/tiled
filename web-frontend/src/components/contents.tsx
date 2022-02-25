@@ -42,7 +42,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
           onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
           onRowClick={(params: GridRowParams) => {
             navigate(
-              `/node${idsToAncestors[params.id]
+              `/browse${idsToAncestors[params.id]
                 .map(function (ancestor: string) {
                   return "/" + ancestor;
                 })
