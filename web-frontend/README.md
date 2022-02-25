@@ -17,10 +17,30 @@ Start the development server, setting the environment variable
 `REACT_APP_API_PREFIX` to point to the Tiled server's `/api` route.
 
 ```
+cd web-frontend
 REACT_APP_API_PREFIX=http://localhost:8000/api npm start
 ```
 
 The front-end will launch at `http://localhost:3000`.
+
+## Packaging
+
+This builds the package and copies the built assets to
+`<repostiory root>/share/tiled/ui` where they can
+be found and served by the FastAPI application.
+
+```
+cd web-frontend/
+npm run build:pydist
+```
+
+Now a normal
+
+```
+python setup.py sdist bdist_wheel
+```
+
+will include the built application.
 
 ## Generating TypeScript from OpenAPI
 
