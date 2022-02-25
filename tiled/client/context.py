@@ -267,8 +267,8 @@ Set an api_key as in:
         )
         client.base_url = base_url
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-        # Strip "/node/metadata"
-        self._path_parts = path_parts[2:]
+        # Strip "/api/node/metadata"
+        self._path_parts = path_parts[3:]
 
     @property
     def tokens(self):
@@ -826,7 +826,7 @@ def context_from_tree(
         await app.router.startup()
 
     client = AsyncClientBridge(
-        base_url="http://local-tiled-app",
+        base_url="http://local-tiled-app/api/",
         params=params,
         app=app,
         _startup_hook=startup,

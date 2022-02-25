@@ -35,7 +35,7 @@ def from_uri(
     Parameters
     ----------
     uri : str
-        e.g. "http://localhost:8000"
+        e.g. "http://localhost:8000/api"
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
@@ -199,7 +199,7 @@ def from_context(context, structure_clients="numpy", *, path=None):
     if isinstance(structure_clients, str):
         structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     path = path or []
-    content = context.get_json(f"/api/node/metadata/{'/'.join(context.path_parts)}")
+    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
     instance = Node(
         context,

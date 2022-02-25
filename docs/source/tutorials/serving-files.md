@@ -48,7 +48,7 @@ In a Python interpreter, connect with the Python client.
 ```python
 from tiled.client import from_uri
 
-tree = from_uri("http://localhost:8000")
+tree = from_uri("http://localhost:8000/api")
 ```
 
 The ``tree`` has the same tree structure as the directory on

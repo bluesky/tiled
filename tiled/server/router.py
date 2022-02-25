@@ -64,7 +64,9 @@ async def about(
             spec = {
                 "provider": provider,
                 "mode": authenticator.mode.value,
-                "links": {"auth_endpoint": f"{base_url}auth/provider/{provider}/token"},
+                "links": {
+                    "auth_endpoint": f"{base_url}/auth/provider/{provider}/token"
+                },
                 "confirmation_message": getattr(
                     authenticator, "confirmation_message", None
                 ),
@@ -73,7 +75,7 @@ async def about(
             endpoint = authenticator.authorization_endpoint
             if endpoint.startswith("/"):
                 # This is relative.
-                endpoint = f"{base_url}auth/provider/{provider}{endpoint}"
+                endpoint = f"{base_url}/auth/provider/{provider}{endpoint}"
             spec = {
                 "provider": provider,
                 "mode": authenticator.mode.value,
@@ -90,11 +92,11 @@ async def about(
         # If there are *any* authenticaiton providers, these
         # endpoints will be added.
         authentication["links"] = {
-            "whoami": f"{base_url}auth/whoami",
-            "apikey": f"{base_url}auth/apikey",
-            "refresh_session": f"{base_url}auth/session/refresh",
-            "revoke_session": f"{base_url}auth/session/revoke/{{session_id}}",
-            "logout": f"{base_url}auth/logout",
+            "whoami": f"{base_url}/auth/whoami",
+            "apikey": f"{base_url}/auth/apikey",
+            "refresh_session": f"{base_url}/auth/session/refresh",
+            "revoke_session": f"{base_url}/auth/session/revoke/{{session_id}}",
+            "logout": f"{base_url}/auth/logout",
         }
     authentication["providers"] = provider_specs
 
@@ -119,7 +121,7 @@ async def about(
                 "self": base_url,
                 "documentation": f"{base_url}docs",
             },
-            meta={"root_path": request.scope.get("root_path") or "/"},
+            meta={"root_path": request.scope.get("root_path") or "" + "/api"},
         ),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
