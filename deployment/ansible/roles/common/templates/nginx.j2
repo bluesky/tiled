@@ -14,7 +14,7 @@ server {
 
     location / {
         proxy_pass http://localhost:8000;
-        proxy_set_header X-Forwarded-Scheme $scheme;
+        proxy_set_header X-Forwarded-Proto $scheme;
         # We handle the possibility of a non-standard request port
         # to cover the niche use case of connecting over SSH
         # port-forwarding.
