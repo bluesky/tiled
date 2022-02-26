@@ -195,7 +195,7 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
         <Typography variant="h4" component="h1" gutterBottom>
           {props.segments.length > 0
             ? props.segments[props.segments.length - 1]
-            : "Top"}
+            : ""}
         </Typography>
         <Paper elevation={3} sx={{ px: 3, py: 3 }}>
           <OverviewDispatch segments={props.segments} />
