@@ -56,5 +56,4 @@ if modules_available("h5py"):
                     dataset.attrs.create(k, v)
         return buffer.getbuffer()
 
-
-serialization_registry.register("node", "application/x-hdf5", serialize_hdf5)
+    serialization_registry.register("node", "application/x-hdf5", serialize_hdf5)
