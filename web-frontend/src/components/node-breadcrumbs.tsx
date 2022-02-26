@@ -21,7 +21,7 @@ const NodeBreadcrumbs: React.FunctionComponent<IProps> = (props) => {
             <Link
               component={RouterLink}
               key={"breadcrumb-{1 + i}" + segment}
-              to={`/node${segments
+              to={`/browse${segments
                 .slice(0, 1 + index)
                 .map((segment) => {
                   return "/" + segment;
