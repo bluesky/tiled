@@ -17,8 +17,8 @@ import Typography from "@mui/material/Typography";
 import { axiosInstance } from "../client";
 import { components } from "../openapi_schemas";
 import { debounce } from "ts-debounce";
-import useMediaQuery from '@mui/material/useMediaQuery';
-import { useTheme } from '@mui/material/styles';
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 interface DisplayRadioButtonsProps {
   value: string;
@@ -171,15 +171,15 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   // Request an image from the server that is downsampled to be at most
   // 2X as big as it will be displayed.
   const theme = useTheme();
-  const sm = useMediaQuery(theme.breakpoints.down('sm'));
-  const md = useMediaQuery(theme.breakpoints.down('md'));
+  const sm = useMediaQuery(theme.breakpoints.down("sm"));
+  const md = useMediaQuery(theme.breakpoints.down("md"));
   var maxImageSize: number;
   if (sm) {
-    maxImageSize = 2 * theme.breakpoints.values.sm
+    maxImageSize = 2 * theme.breakpoints.values.sm;
   } else if (md) {
-    maxImageSize = 2 * theme.breakpoints.values.md
+    maxImageSize = 2 * theme.breakpoints.values.md;
   } else {
-    maxImageSize = 2 * theme.breakpoints.values.lg
+    maxImageSize = 2 * theme.breakpoints.values.lg;
   }
   const stride = Math.ceil(Math.max(...shape.slice(0, 2)) / maxImageSize);
   const [cuts, setCuts] = useState<number[]>(middles);
@@ -241,8 +241,9 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
       component="img"
       sx={{ maxWidth: 1 }}
       alt="Data rendered"
-      src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${props.stride
-        },::${props.stride}`}
+      src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${
+        props.stride
+      },::${props.stride}`}
       loading="lazy"
     />
   );
