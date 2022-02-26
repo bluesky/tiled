@@ -36,7 +36,7 @@ const CutSlider: React.FunctionComponent<CutSliderProps> = (props) => {
   ];
 
   return (
-    <Box sx={{ width: 500 }}>
+    <Box>
       <Grid container spacing={2} alignItems="center">
         <Grid item xs>
           <Slider

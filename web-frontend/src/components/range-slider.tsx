@@ -66,7 +66,7 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
   ];
 
   return (
-    <Box sx={{ width: 500 }}>
+    <Box>
       <Typography id="input-slider" gutterBottom>
         {props.max - props.min <= props.limit
           ? "Optionally slice a range of elements from the array"
