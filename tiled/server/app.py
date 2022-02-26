@@ -156,6 +156,14 @@ def build_app(
 
         @app.get("/", response_class=HTMLResponse)
         async def index(request: Request):
+            if request.headers.get("user-agent", "").startswith("python-tiled"):
+                # This results in an error message like
+                # ClientError: 400: To connect from a Python client, use
+                # http://localhost:8000/api not http://localhost:8000/?root_path=true
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"To connect from a Python client, use {get_base_url(request)} not",
+                )
             return templates.TemplateResponse(
                 "index.html",
                 {"request": request, "api_url": f"{get_base_url(request)}"},
