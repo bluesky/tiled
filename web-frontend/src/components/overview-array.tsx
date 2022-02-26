@@ -175,11 +175,11 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const md = useMediaQuery(theme.breakpoints.down('md'));
   var maxImageSize: number;
   if (sm) {
-    maxImageSize = 600
+    maxImageSize = 2 * theme.breakpoints.values.sm
   } else if (md) {
-    maxImageSize = 900
+    maxImageSize = 2 * theme.breakpoints.values.md
   } else {
-    maxImageSize = 900
+    maxImageSize = 2 * theme.breakpoints.values.lg
   }
   const stride = Math.ceil(Math.max(...shape.slice(0, 2)) / maxImageSize);
   const [cuts, setCuts] = useState<number[]>(middles);
@@ -239,6 +239,7 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   return (
     <Box
       component="img"
+      sx={{ maxWidth: 1 }}
       alt="Data rendered"
       src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${props.stride
         },::${props.stride}`}
