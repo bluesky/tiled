@@ -7,4 +7,6 @@ exclude =
     versioneer.py,
     tiled/_version.py,
     docs/source/conf.py
+    share
+    web-frontend
 max-line-length = 115
