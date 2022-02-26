@@ -33,4 +33,9 @@ export const metadata = async (
   return response.data;
 };
 
+export const about = async (): Promise<components["schemas"]["About"]> => {
+  const response = await axiosInstance.get("/");
+  return response.data;
+};
+
 export { axiosInstance };

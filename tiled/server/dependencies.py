@@ -35,9 +35,14 @@ def get_root_tree():
 def entry(
     path: str,
     request: Request,
+    filename: Optional[str] = None,
     principal: str = Depends(get_current_principal),
     root_tree: pydantic.BaseSettings = Depends(get_root_tree),
 ):
+    if filename:
+        request.state.headers_to_set[
+            "Content-Disposition"
+        ] = f"attachment;filename={filename}"
     path_parts = [segment for segment in path.split("/") if segment]
     entry = root_tree.authenticated_as(principal)
     try:

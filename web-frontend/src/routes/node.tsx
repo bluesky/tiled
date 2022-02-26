@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrayOverview } from "../components/overview-array";
 import Box from "@mui/material/Box";
 import { DataFrameOverview } from "../components/overview-dataframe";
+import DownloadArray from "../components/download-array";
 import JSONViewer from "../components/json-viewer";
 import MetadataView from "../components/metadata-view";
 import NodeBreadcrumbs from "../components/node-breadcrumbs";
@@ -60,65 +61,95 @@ interface IProps {
   segments: string[];
 }
 
-const OverviewDispatch: React.FunctionComponent<IProps> = (props) => {
+interface DispatchProps {
+  segments: string[];
+  item:
+    | components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
+    | undefined;
+}
+
+const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
   // Dispatch to a specific overview component based on the structure family.
   // In the future we will extend this to consider 'specs' as well.
-  const [item, setItem] =
-    useState<
-      components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
-    >();
-  useEffect(() => {
-    const controller = new AbortController();
-    // Clear the old item to avoid rendering the new segments
-    // using the previous item's structure family.
-    setItem(undefined);
-    async function loadData() {
-      // Request only enough information to decide which React component
-      // we should use to display this. Let the component request
-      // more detailed information.
-      var result = await metadata(props.segments, controller.signal, [
-        "structure_family",
-        "specs",
-        "structure.macro",
-        "structure.micro",
-      ]);
-      if (result !== undefined) {
-        setItem(result);
-      }
-    }
-    loadData();
-    return () => {
-      controller.abort();
-    };
-  }, [props.segments]);
-  if (item !== undefined) {
-    const structureFamily = item!.data!.attributes!.structure_family;
+  if (props.item !== undefined) {
+    const attributes = props.item.data!.attributes!;
+    const structureFamily = attributes.structure_family;
     switch (structureFamily) {
       case "node":
-        return <NodeOverview segments={props.segments} item={item} />;
+        return <NodeOverview segments={props.segments} item={props.item} />;
       case "array":
         return (
-          <ArrayOverview
-            segments={props.segments}
-            item={item}
-            structure={item.data!.attributes!.structure!}
+          <DownloadArray
+            structure_family={structureFamily}
+            specs={attributes.specs as string[]}
+            link={props.item.data!.links!.full! as string}
           />
         );
       case "dataframe":
-        return <DataFrameOverview segments={props.segments} item={item} />;
+        return (
+          <DownloadArray
+            structure_family={structureFamily}
+            specs={attributes.specs as string[]}
+            link={props.item.data!.links!.full! as string}
+          />
+        );
       case "xarray_data_array":
         return (
           <XarrayDataArrayOverview
             segments={props.segments}
-            item={item}
+            item={props.item}
             structure={
-              item.data!.attributes!.structure!.macro!
+              props.item.data!.attributes!.structure!.macro!
                 .variable! as components["schemas"]["Structure"]
             }
           />
         );
       case "xarray_dataset":
-        return <XarrayDatasetOverview segments={props.segments} item={item} />;
+        return (
+          <XarrayDatasetOverview segments={props.segments} item={props.item} />
+        );
+      default:
+        return <div>Unknown structure family "{structureFamily}"</div>;
+    }
+  }
+  return <Skeleton variant="rectangular" />;
+};
+
+const OverviewDispatch: React.FunctionComponent<DispatchProps> = (props) => {
+  // Dispatch to a specific overview component based on the structure family.
+  // In the future we will extend this to consider 'specs' as well.
+  if (props.item !== undefined) {
+    const structureFamily = props.item!.data!.attributes!.structure_family;
+    switch (structureFamily) {
+      case "node":
+        return <NodeOverview segments={props.segments} item={props.item} />;
+      case "array":
+        return (
+          <ArrayOverview
+            segments={props.segments}
+            item={props.item}
+            structure={props.item.data!.attributes!.structure!}
+          />
+        );
+      case "dataframe":
+        return (
+          <DataFrameOverview segments={props.segments} item={props.item} />
+        );
+      case "xarray_data_array":
+        return (
+          <XarrayDataArrayOverview
+            segments={props.segments}
+            item={props.item}
+            structure={
+              props.item.data!.attributes!.structure!.macro!
+                .variable! as components["schemas"]["Structure"]
+            }
+          />
+        );
+      case "xarray_dataset":
+        return (
+          <XarrayDatasetOverview segments={props.segments} item={props.item} />
+        );
       default:
         return <div>Unknown structure family "{structureFamily}"</div>;
     }
@@ -151,6 +182,29 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
   const handleTabChange = (event: React.ChangeEvent<any>, newValue: number) => {
     setTabValue(newValue);
   };
+  const [item, setItem] =
+    useState<
+      components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
+    >();
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadData() {
+      // Request all the attributes.
+      var result = await metadata(props.segments, controller.signal, [
+        "structure_family",
+        "structure.macro",
+        "structure.micro",
+        "specs",
+      ]);
+      if (result !== undefined) {
+        setItem(result);
+      }
+    }
+    loadData();
+    return () => {
+      controller.abort();
+    };
+  }, [props.segments]);
   const [fullItem, setFullItem] =
     useState<
       components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
@@ -198,11 +252,11 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
             : ""}
         </Typography>
         <Paper elevation={3} sx={{ px: 3, py: 3 }}>
-          <OverviewDispatch segments={props.segments} />
+          <OverviewDispatch segments={props.segments} item={item} />
         </Paper>
       </TabPanel>
       <TabPanel value={tabValue} index={1}>
-        Download
+        <DownloadDispatch segments={props.segments} item={item} />
       </TabPanel>
       <TabPanel value={tabValue} index={2}>
         <MetadataView json={fullItem} />

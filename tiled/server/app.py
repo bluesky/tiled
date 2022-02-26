@@ -484,16 +484,19 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def set_cookies(request: Request, call_next):
-        "This enables dependencies to inject cookies that they want to be set."
+    async def set_headers_and_cookies(request: Request, call_next):
+        "This enables dependencies to inject headers and cookies that they want to be set."
         # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
+        request.state.headers_to_set = {}
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         for params in request.state.cookies_to_set:
             params.setdefault("httponly", True)
             params.setdefault("samesite", "lax")
             response.set_cookie(**params)
+        for key, value in request.state.headers_to_set.items():
+            response.headers[key] = value
         return response
 
     app.openapi = partial(custom_openapi, app)
