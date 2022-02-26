@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import { ArrayLineChart } from "./line";
 import Box from "@mui/material/Box";
-import { ConstructionOutlined } from "@mui/icons-material";
 import CutSlider from "./cut-slider";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -18,6 +17,8 @@ import Typography from "@mui/material/Typography";
 import { axiosInstance } from "../client";
 import { components } from "../openapi_schemas";
 import { debounce } from "ts-debounce";
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 
 interface DisplayRadioButtonsProps {
   value: string;
@@ -137,7 +138,6 @@ interface IProps {
 }
 
 const LIMIT = 1000; // largest number of 1D elements we will request and display at once
-const MAX_SIZE = 800; // max image size
 
 const Array1D: React.FunctionComponent<IProps> = (props) => {
   const MAX_DEFAULT_RANGE = 1000;
@@ -168,7 +168,20 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const shape = props.structure!.macro!.shape as number[];
   const middles = shape.slice(2).map((size: number) => Math.floor(size / 2));
-  const stride = Math.ceil(Math.max(...shape.slice(0, 2)) / MAX_SIZE);
+  // Request an image from the server that is downsampled to be at most
+  // 2X as big as it will be displayed.
+  const theme = useTheme();
+  const sm = useMediaQuery(theme.breakpoints.down('sm'));
+  const md = useMediaQuery(theme.breakpoints.down('md'));
+  var maxImageSize: number;
+  if (sm) {
+    maxImageSize = 600
+  } else if (md) {
+    maxImageSize = 900
+  } else {
+    maxImageSize = 900
+  }
+  const stride = Math.ceil(Math.max(...shape.slice(0, 2)) / maxImageSize);
   const [cuts, setCuts] = useState<number[]>(middles);
   return (
     <Box>
@@ -226,10 +239,10 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   return (
     <Box
       component="img"
+      sx={{ width: 1 }}
       alt="Data rendered"
-      src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${
-        props.stride
-      },::${props.stride}`}
+      src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${props.stride
+        },::${props.stride}`}
       loading="lazy"
     />
   );
