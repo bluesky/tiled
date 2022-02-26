@@ -239,7 +239,6 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   return (
     <Box
       component="img"
-      sx={{ width: 1 }}
       alt="Data rendered"
       src={`${props.link}?format=image/png&slice=${props.cuts.join(",")},::${props.stride
         },::${props.stride}`}
