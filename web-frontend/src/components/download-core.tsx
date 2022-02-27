@@ -49,7 +49,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
 
   const formats = JSON.parse(
     sessionStorage.getItem("config") as string
-  ).formats;
+  ).structure_families[props.structureFamily].formats;
 
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;

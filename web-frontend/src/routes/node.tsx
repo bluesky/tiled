@@ -7,6 +7,7 @@ import Box from "@mui/material/Box";
 import { DataFrameOverview } from "../components/overview-dataframe";
 import DownloadArray from "../components/download-array";
 import DownloadDataFrame from "../components/download-dataframe";
+import DownloadDataset from "../components/download-xarray-dataset";
 import JSONViewer from "../components/json-viewer";
 import MetadataView from "../components/metadata-view";
 import NodeBreadcrumbs from "../components/node-breadcrumbs";
@@ -122,12 +123,12 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         );
       case "xarray_dataset":
         return (
-          <DownloadArray
+          <DownloadDataset
             name={props.item.data!.id}
             structureFamily={structureFamily}
             macrostructure={attributes.structure!.macro!}
             specs={attributes.specs as string[]}
-            link={props.item.data!.links!.full! as string}
+            link={props.item.data!.links!.full_dataset! as string}
           />
         );
       default:

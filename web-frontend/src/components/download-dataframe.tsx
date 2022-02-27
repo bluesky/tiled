@@ -20,6 +20,7 @@ import Stack from "@mui/material/Stack";
 import { useState } from "react";
 
 interface ColumnListProps {
+  heading: string;
   allColumns: string[];
   columns: any;
   setColumns: any;
@@ -44,15 +45,13 @@ const ColumnList: React.FunctionComponent<ColumnListProps> = (props) => {
       <List
         sx={{
           width: "100%",
-          maxWidth: 360,
+          maxWidth: 500,
           overflow: "auto",
           maxHeight: 300,
           bgcolor: "background.paper",
         }}
         subheader={
-          <ListSubheader component="div" id="nested-list-subheader">
-            Columns
-          </ListSubheader>
+          <ListSubheader component="div" id="column-list-heading">{props.heading}</ListSubheader>
         }
       >
         {props.allColumns.map((value) => {
@@ -154,6 +153,7 @@ const DownloadDataFrame: React.FunctionComponent<DownloadDataFrameProps> = (
       <Stack spacing={2} direction="column">
         <Stack spacing={1} direction="row">
           <ColumnList
+            heading="Columns"
             allColumns={props.macrostructure.columns}
             columns={columns}
             setColumns={setColumns}
@@ -189,19 +189,10 @@ const DownloadDataFrame: React.FunctionComponent<DownloadDataFrameProps> = (
           structureFamily={props.structureFamily}
           link={link}
         />
-        {format !== undefined &&
-        format.mimetype.startsWith("image/") &&
-        props.macrostructure.shape.length !== 2 ? (
-          <Alert sx={{ mt: 2 }} severity="warning">
-            This is a multidimensional array. It may be necessary to slice a
-            portion of this array to successfully export it as an image.
-          </Alert>
-        ) : (
-          ""
-        )}
       </Stack>
     </Box>
   );
 };
 
 export default DownloadDataFrame;
+export { ColumnList };

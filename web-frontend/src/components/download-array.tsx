@@ -139,11 +139,11 @@ const DownloadArray: React.FunctionComponent<DownloadArrayProps> = (props) => {
           link={link}
         />
         {format !== undefined &&
-        format.mimetype.startsWith("image/") &&
+        (format.mimetype.startsWith("image/") || format.mimetype.startsWith("text/")) &&
         props.macrostructure.shape.length !== 2 ? (
           <Alert sx={{ mt: 2 }} severity="warning">
             This is a multidimensional array. It may be necessary to slice a
-            portion of this array to successfully export it as an image.
+            portion of this array to successfully export it as an image or textual format.
           </Alert>
         ) : (
           ""
