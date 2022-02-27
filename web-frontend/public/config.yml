@@ -15,7 +15,7 @@ formats:
   displayName: JSON
   extension: .json
 - mimetype: application/json-seq
-  displayName: JSON Line
+  displayName: JSON Lines
   extension: .jsonl
 - mimetype: text/html
   displayName: HTML

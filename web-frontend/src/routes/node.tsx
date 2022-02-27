@@ -76,7 +76,14 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
     const structureFamily = attributes.structure_family;
     switch (structureFamily) {
       case "node":
-        return <NodeOverview segments={props.segments} item={props.item} />;
+        return (
+          <DownloadArray
+            name={props.item.data!.id}
+            structure_family={structureFamily}
+            specs={attributes.specs as string[]}
+            link={props.item.data!.links!.full! as string}
+          />
+        );
       case "array":
         return (
           <DownloadArray
@@ -97,18 +104,21 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         );
       case "xarray_data_array":
         return (
-          <XarrayDataArrayOverview
-            segments={props.segments}
-            item={props.item}
-            structure={
-              props.item.data!.attributes!.structure!.macro!
-                .variable! as components["schemas"]["Structure"]
-            }
+          <DownloadArray
+            name={props.item.data!.id}
+            structure_family={structureFamily}
+            specs={attributes.specs as string[]}
+            link={props.item.data!.links!.full! as string}
           />
         );
       case "xarray_dataset":
         return (
-          <XarrayDatasetOverview segments={props.segments} item={props.item} />
+          <DownloadArray
+            name={props.item.data!.id}
+            structure_family={structureFamily}
+            specs={attributes.specs as string[]}
+            link={props.item.data!.links!.full! as string}
+          />
         );
       default:
         return <div>Unknown structure family "{structureFamily}"</div>;

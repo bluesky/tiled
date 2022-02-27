@@ -33,8 +33,6 @@ interface DownloadProps {
   link: string;
 }
 
-const formats = JSON.parse(sessionStorage.getItem("config") as string).formats
-
 const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const [info, setInfo] = useState<components["schemas"]["About"]>();
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
@@ -49,30 +47,11 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     setAnchorEl(null);
   };
 
+  const formats = JSON.parse(sessionStorage.getItem("config") as string).formats
+
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;
 
-
-  const download = () => {
-    const controller = new AbortController();
-    async function loadData() {
-      const response = await axiosInstance.get(`${props.link}`, {
-        signal: controller.signal,
-      });
-      // This is sad and will not scale. We need a better way.
-      // https://medium.com/@drevets/you-cant-prompt-a-file-download-with-the-content-disposition-header-using-axios-xhr-sorry-56577aa706d6
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `${props.name}${props.format!.extension}`)
-      document.body.appendChild(link);
-      link.click();
-    }
-    loadData();
-    return () => {
-      controller.abort();
-    };
-  };
 
   useMemo(() => {
     async function loadInfo() {
@@ -88,14 +67,9 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     props.setFormat(format);
   };
 
-  const handleDownloadClick = (event: React.MouseEvent) => {
-    download();
-  };
-
   if (info === undefined) {
     return <Skeleton variant="rectangular" />;
   }
-  console.log(props.format);
   const value = (props.format !== undefined) ? props.format.mimetype : "";
 
   return (
@@ -121,11 +95,16 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
           </Select>
         </FormControl>
       </Box>
-
+      {
+        // The filename query parameter cues the server to set the
+        // Content-Disposition header which prompts the browser to open
+        // a "Save As" dialog initialized with the specified filename.
+      }
       <Button
+        component="a"
+        href={props.format ? `${props.link}&filename=${props.name}${props.format!.extension}` : "#"}
         variant="outlined"
         {...(props.format ? {} : { disabled: true })}
-        onClick={handleDownloadClick}
       >
         Download
       </Button>
