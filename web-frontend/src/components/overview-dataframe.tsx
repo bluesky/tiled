@@ -65,11 +65,21 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
             Table
           </Typography>
           {npartitions > 1 ? (
-            <ChoosePartition
-              npartitions={npartitions}
-              value={partition}
-              setValue={setPartitionAndClearRows}
-            />
+            <Box>
+              <Alert severity="info">
+                This large dataframe available in <em>partitions</em> (chunks of
+                rows) because the full dataframe may be slow to download and
+                display.
+                <br />
+                In the "Download" tab, you can request the full table as a
+                single file if you wish.
+              </Alert>
+              <ChoosePartition
+                npartitions={npartitions}
+                value={partition}
+                setValue={setPartitionAndClearRows}
+              />
+            </Box>
           ) : (
             ""
           )}
@@ -96,13 +106,6 @@ const ChoosePartition: React.FunctionComponent<ChoosePartitionProps> = (
 
   return (
     <Box>
-      <Alert severity="info">
-        This large dataframe available in <em>partitions</em> (chunks of rows)
-        because the full dataframe may be slow to download and display.
-        <br />
-        In the "Download" tab, you can request the full table as a single file
-        if you wish.
-      </Alert>
       <FormControl sx={{ my: 2 }}>
         <InputLabel id="partition-select-helper-label">Partition</InputLabel>
         <Select
@@ -203,4 +206,4 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   );
 };
 
-export { DataFrameOverview };
+export { ChoosePartition, DataFrameOverview };

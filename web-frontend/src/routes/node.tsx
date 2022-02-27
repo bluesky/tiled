@@ -6,6 +6,7 @@ import { ArrayOverview } from "../components/overview-array";
 import Box from "@mui/material/Box";
 import { DataFrameOverview } from "../components/overview-dataframe";
 import DownloadArray from "../components/download-array";
+import DownloadDataFrame from "../components/download-dataframe";
 import JSONViewer from "../components/json-viewer";
 import MetadataView from "../components/metadata-view";
 import NodeBreadcrumbs from "../components/node-breadcrumbs";
@@ -97,12 +98,13 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         );
       case "dataframe":
         return (
-          <DownloadArray
+          <DownloadDataFrame
             name={props.item.data!.id}
             structureFamily={structureFamily}
             macrostructure={attributes.structure!.macro!}
             specs={attributes.specs as string[]}
-            link={props.item.data!.links!.full! as string}
+            full_link={props.item.data!.links!.full! as string}
+            partition_link={props.item.data!.links!.partition! as string}
           />
         );
       case "xarray_data_array":
