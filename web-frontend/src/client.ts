@@ -10,11 +10,14 @@ var axiosInstance = axios.create({
 export const search = async (
   segments: string[],
   signal: AbortSignal,
-  fields: string[] = []
+  fields: string[] = [],
+  select_metadata: string[] = []
 ): Promise<components["schemas"]["Resource_NodeAttributes__dict__dict_"][]> => {
-  const response = await axiosInstance.get(
-    `/node/search/${segments.join("/")}?fields=${fields.join("&fields=")}`,
-    { signal: signal }
+  let url = `/node/search/${segments.join("/")}?fields=${fields.join("&fields=")}`;
+  if (select_metadata.length > 0) {
+    url = url.concat(`?select_metadata=${select_metadata.join("&select_metadata=")}`)
+  }
+  const response = await axiosInstance.get(url, { signal: signal }
   );
   return response.data.data;
 };

@@ -1,25 +1,37 @@
+specs:
+- spec: CatalogOfBlueskyRuns
+  columns:
+    - header: Bluesky Plan
+      select_metadata: start.plan_name
+      field: plan_name
+    - header: Scan ID
+      select_metadata: start.scan_id
+      field: scan_id
+  default_columns:
+    - plan_name
+    - scan_id
 formats:
 - mimetype: text/csv
-  displayName: CSV
+  display_name: CSV
   extension: .csv
 - mimetype: text/plain
-  displayName: Text
+  display_name: Text
   extension: .txt
 - mimetype: image/png
-  displayName: PNG image
+  display_name: PNG image
   extension: .png
 - mimetype: image/tiff
-  displayName: TIFF image
+  display_name: TIFF image
   extension: .tiff
 - mimetype: application/json
-  displayName: JSON
+  display_name: JSON
   extension: .json
 - mimetype: application/json-seq
-  displayName: JSON Lines
+  display_name: JSON Lines
   extension: .jsonl
 - mimetype: text/html
-  displayName: HTML
+  display_name: HTML
   extension: .html
 - mimetype: application/octet-stream
-  displayName: C-ordered array
+  display_name: C-ordered array
   extension: ""

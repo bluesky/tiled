@@ -21,7 +21,7 @@ import copy from "clipboard-copy";
 
 interface Format {
   mimetype: string;
-  displayName: string;
+  display_name: string;
   extension: string;
 }
 
@@ -89,7 +89,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
               return (
                 // Look up the display name in the UI configuration.
                 // If none is given, skip this format.
-                info!.formats[props.structure_family].includes(format.mimetype) ? <MenuItem key={`format-${format.mimetype}`} value={format.mimetype}>{format.displayName as string}</MenuItem> : ""
+                info!.formats[props.structure_family].includes(format.mimetype) ? <MenuItem key={`format-${format.mimetype}`} value={format.mimetype}>{format.display_name as string}</MenuItem> : ""
               );
             })}
           </Select>
