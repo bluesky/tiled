@@ -76,7 +76,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const value = props.format !== undefined ? props.format.mimetype : "";
 
   return (
-    <Stack spacing={2} direction="row">
+    <Stack spacing={2} direction="column">
       <Box sx={{ minWidth: 120 }}>
         <FormControl fullWidth>
           <InputLabel id="formats-select-label">Format *</InputLabel>
@@ -109,71 +109,96 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
           </Select>
         </FormControl>
       </Box>
-      {
-        // The filename query parameter cues the server to set the
-        // Content-Disposition header which prompts the browser to open
-        // a "Save As" dialog initialized with the specified filename.
-      }
-      <Button
-        component="a"
-        href={
-          props.format
-            ? `${props.link}&filename=${props.name}${props.format!.extension}`
-            : "#"
-        }
-        variant="outlined"
-        {...(props.format ? {} : { disabled: true })}
-      >
-        Download
-      </Button>
-      <Button
-        aria-describedby={id}
-        variant="outlined"
-        {...(props.format ? {} : { disabled: true })}
-        onClick={handleLinkClick}
-      >
-        Link
-      </Button>
-      <Popover
-        id={id}
-        open={open}
-        anchorEl={anchorEl}
-        onClose={handleClose}
-        anchorOrigin={{
-          vertical: "bottom",
-          horizontal: "right",
-        }}
-        transformOrigin={{
-          vertical: "top",
-          horizontal: "right",
-        }}
-        PaperProps={{
-          style: { width: 500 },
-        }}
-      >
-        <Box sx={{ px: 2, py: 2 }}>
-          <Stack direction="row" spacing={1} />
-          <TextField
-            id="link-text"
-            label="Link"
-            sx={{ width: "90%" }}
-            defaultValue={props.link}
-            InputProps={{
-              readOnly: true,
-            }}
-            variant="outlined"
-          />
-          <Tooltip title="Copy to clipboard">
-            <IconButton
-              onClick={() => {
-                copy(props.link);
-              }}
+      <Stack spacing={1} direction="row">
+        <Tooltip title="Download to a file">
+          <span>
+            {
+              // The filename query parameter cues the server to set the
+              // Content-Disposition header which prompts the browser to open
+              // a "Save As" dialog initialized with the specified filename.
+            }
+            <Button
+              component="a"
+              href={
+                props.format
+                  ? `${props.link}&filename=${props.name}${
+                      props.format!.extension
+                    }`
+                  : "#"
+              }
+              variant="outlined"
+              {...(props.format ? {} : { disabled: true })}
             >
-              <ContentCopyIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Popover>
+              Download
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title="Get a URL to this specific data">
+          <span>
+            <Button
+              aria-describedby={id}
+              variant="outlined"
+              {...(props.format ? {} : { disabled: true })}
+              onClick={handleLinkClick}
+            >
+              Link
+            </Button>
+          </span>
+        </Tooltip>
+        <Popover
+          id={id}
+          open={open}
+          anchorEl={anchorEl}
+          onClose={handleClose}
+          anchorOrigin={{
+            vertical: "bottom",
+            horizontal: "right",
+          }}
+          transformOrigin={{
+            vertical: "top",
+            horizontal: "right",
+          }}
+          PaperProps={{
+            style: { width: 500 },
+          }}
+        >
+          <Box sx={{ px: 2, py: 2 }}>
+            <Stack direction="row" spacing={1} />
+            <TextField
+              id="link-text"
+              label="Link"
+              sx={{ width: "90%" }}
+              defaultValue={props.link}
+              InputProps={{
+                readOnly: true,
+              }}
+              variant="outlined"
+            />
+            <Tooltip title="Copy to clipboard">
+              <IconButton
+                onClick={() => {
+                  copy(props.link);
+                }}
+              >
+                <ContentCopyIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Popover>
+        <Tooltip title="Open in a new tab (if format is supported by web browser)">
+          <span>
+            <Button
+              component="a"
+              href={props.format ? props.link : "#"}
+              target="_blank"
+              variant="outlined"
+              {...(props.format ? {} : { disabled: true })}
+            >
+              Open
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
     </Stack>
   );
 };
