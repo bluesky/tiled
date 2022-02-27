@@ -623,8 +623,7 @@ FULL_LINKS = {
     "array": {"full": "{base_url}/array/full/{path}"},
     "dataframe": {"full": "{base_url}/node/full/{path}"},
     "xarray_data_array": {
-        "full_variable": "{base_url}/array/full/{path}/variable",  # back-compat
-        "full": "{base_url}/array/full/{path}/variable",
+        "full_variable": "{base_url}/array/full/{path}/variable",
     },
     "xarray_dataset": {
         "full_variable": "{base_url}/array/full/{path}/data_vars/{{variable}}/variable",
