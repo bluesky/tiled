@@ -24,9 +24,11 @@ interface ColumnListProps {
 }
 
 const ColumnList: React.FunctionComponent<ColumnListProps> = (props) => {
-  const handleToggle = (value: string) => () => {
-    const currentIndex = props.columns.indexOf(value);
-    const newChecked = [...props.columns];
+  const [checked, setChecked] = React.useState([0]);
+
+  const handleToggle = (value: number) => () => {
+    const currentIndex = checked.indexOf(value);
+    const newChecked = [...checked];
 
     if (currentIndex === -1) {
       newChecked.push(value);
@@ -34,52 +36,44 @@ const ColumnList: React.FunctionComponent<ColumnListProps> = (props) => {
       newChecked.splice(currentIndex, 1);
     }
 
-    props.setColumns(newChecked);
-    console.log(props.columns);
+    setChecked(newChecked);
+    console.log(newChecked)
   };
 
   return (
-    <List
-      sx={{
-        width: "100%",
-        maxWidth: 360,
-        overflow: "auto",
-        maxHeight: 300,
-        bgcolor: "background.paper",
-      }}
+    <List sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper' }}
       subheader={
         <ListSubheader component="div" id="nested-list-subheader">
           Columns
         </ListSubheader>
       }
-    >
-      {props.allColumns.map((value, index) => {
+      >
+      {Array.from(Array(props.allColumns.length).keys()).map((value) => {
         const labelId = `checkbox-list-label-${value}`;
 
         return (
-          <ListItem key={value} disablePadding>
-            <ListItemButton
-              role={undefined}
-              onClick={handleToggle(value)}
-              dense
-            >
+          <ListItem
+            key={value}
+            disablePadding
+          >
+            <ListItemButton role={undefined} onClick={handleToggle(value)} dense>
               <ListItemIcon>
                 <Checkbox
                   edge="start"
-                  checked={props.columns.indexOf(index) !== -1}
+                  checked={checked.indexOf(value) !== -1}
                   tabIndex={-1}
                   disableRipple
-                  inputProps={{ "aria-labelledby": labelId }}
+                  inputProps={{ 'aria-labelledby': labelId }}
                 />
               </ListItemIcon>
-              <ListItemText id={labelId} primary={value} />
+              <ListItemText id={labelId} primary={props.allColumns[value]} />
             </ListItemButton>
           </ListItem>
         );
       })}
     </List>
   );
-};
+}
 
 interface DownloadDataFrameProps {
   name: string;
