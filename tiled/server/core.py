@@ -337,7 +337,7 @@ def construct_resource(
         else:
             attributes["metadata"] = entry.metadata
     if schemas.EntryFields.specs in fields:
-        attributes["specs"] = getattr(entry, "specs", None)
+        attributes["specs"] = getattr(entry, "specs", [])
     if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
         if schemas.EntryFields.count in fields:
