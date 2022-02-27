@@ -120,14 +120,14 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
             <Button
               component="a"
               href={
-                props.format
+                props.link
                   ? `${props.link}&filename=${props.name}${
                       props.format!.extension
                     }`
                   : "#"
               }
               variant="outlined"
-              {...(props.format ? {} : { disabled: true })}
+              {...(props.link ? {} : { disabled: true })}
             >
               Download
             </Button>
@@ -138,7 +138,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
             <Button
               aria-describedby={id}
               variant="outlined"
-              {...(props.format ? {} : { disabled: true })}
+              {...(props.link ? {} : { disabled: true })}
               onClick={handleLinkClick}
             >
               Link
@@ -189,10 +189,10 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
           <span>
             <Button
               component="a"
-              href={props.format ? props.link : "#"}
+              href={props.link ? props.link : "#"}
               target="_blank"
               variant="outlined"
-              {...(props.format ? {} : { disabled: true })}
+              {...(props.link ? {} : { disabled: true })}
             >
               Open
             </Button>

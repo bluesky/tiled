@@ -1,4 +1,5 @@
 import asyncio
+import string
 import sys
 from datetime import timedelta
 
@@ -24,6 +25,7 @@ data = {
     "high_entropy": numpy.random.random((100, 100)),
     "low_entropy": numpy.ones((100, 100)),
     "short_column": numpy.random.random(100),
+    "tiny_column": numpy.random.random(10),
     "long_column": numpy.random.random(100_000),
 }
 print("Done generating example data.", file=sys.stderr)
@@ -60,6 +62,17 @@ mapping = {
         ),
         npartitions=5,
         metadata={"animal": "dog", "color": "green"},
+    ),
+    "wide_table": DataFrameAdapter.from_pandas(
+        pandas.DataFrame(
+            {
+                letter: i * data["tiny_column"]
+                for i, letter in enumerate(string.ascii_uppercase, start=1)
+            },
+            index=pandas.Index(numpy.arange(len(data["tiny_column"])), name="index"),
+        ),
+        npartitions=1,
+        metadata={"animal": "dog", "color": "red"},
     ),
     "labeled_data": MapAdapter(
         {
