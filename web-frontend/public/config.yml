@@ -1,37 +1,37 @@
 specs:
-- spec: CatalogOfBlueskyRuns
-  columns:
-    - header: Bluesky Plan
-      select_metadata: start.plan_name
-      field: plan_name
-    - header: Scan ID
-      select_metadata: start.scan_id
-      field: scan_id
-  default_columns:
-    - plan_name
-    - scan_id
+  - spec: CatalogOfBlueskyRuns
+    columns:
+      - header: Bluesky Plan
+        select_metadata: start.plan_name
+        field: plan_name
+      - header: Scan ID
+        select_metadata: start.scan_id
+        field: scan_id
+    default_columns:
+      - plan_name
+      - scan_id
 formats:
-- mimetype: text/csv
-  display_name: CSV
-  extension: .csv
-- mimetype: text/plain
-  display_name: Text
-  extension: .txt
-- mimetype: image/png
-  display_name: PNG image
-  extension: .png
-- mimetype: image/tiff
-  display_name: TIFF image
-  extension: .tiff
-- mimetype: application/json
-  display_name: JSON
-  extension: .json
-- mimetype: application/json-seq
-  display_name: JSON Lines
-  extension: .jsonl
-- mimetype: text/html
-  display_name: HTML
-  extension: .html
-- mimetype: application/octet-stream
-  display_name: C-ordered array
-  extension: ""
+  - mimetype: text/csv
+    display_name: CSV
+    extension: .csv
+  - mimetype: text/plain
+    display_name: Text
+    extension: .txt
+  - mimetype: image/png
+    display_name: PNG image
+    extension: .png
+  - mimetype: image/tiff
+    display_name: TIFF image
+    extension: .tiff
+  - mimetype: application/json
+    display_name: JSON
+    extension: .json
+  - mimetype: application/json-seq
+    display_name: JSON Lines
+    extension: .jsonl
+  - mimetype: text/html
+    display_name: HTML
+    extension: .html
+  - mimetype: application/octet-stream
+    display_name: C-ordered array
+    extension: ""

@@ -12,7 +12,7 @@ import { ThemeProvider } from "@mui/material/styles";
 import { render } from "react-dom";
 import reportWebVitals from "./reportWebVitals";
 import theme from "./theme";
-import yaml from 'js-yaml';
+import yaml from "js-yaml";
 
 const root_element = document.getElementById("root");
 const basename = process.env.PUBLIC_URL;
@@ -23,7 +23,11 @@ const basename = process.env.PUBLIC_URL;
 // "Why not JSON?" I hear you ask.
 // JSON is not a good configuration format because it does not support *comments*.
 // Therefore, we parse the YAML into JSON here and stash it in sessionStorage.
-fetch(`${basename}/config.yml`).then(response => response.text()).then(data => sessionStorage.setItem("config", JSON.stringify(yaml.load(data))));
+fetch(`${basename}/config.yml`)
+  .then((response) => response.text())
+  .then((data) =>
+    sessionStorage.setItem("config", JSON.stringify(yaml.load(data)))
+  );
 render(
   <ThemeProvider theme={theme}>
     {/* CssBaseline kickstart an elegant, consistent, and simple baseline to build upon. */}

@@ -11,14 +11,15 @@ export const search = async (
   segments: string[],
   signal: AbortSignal,
   fields: string[] = [],
-  select_metadata: string[] = []
+  select_metadata: any,
 ): Promise<components["schemas"]["Resource_NodeAttributes__dict__dict_"][]> => {
-  let url = `/node/search/${segments.join("/")}?fields=${fields.join("&fields=")}`;
-  if (select_metadata.length > 0) {
-    url = url.concat(`?select_metadata=${select_metadata.join("&select_metadata=")}`)
+  let url = `/node/search/${segments.join("/")}?fields=${fields.join(
+    "&fields="
+  )}`;
+  if (Object.keys(select_metadata).length > 0) {
+    url = url.concat(`&select_metadata=${select_metadata}`);
   }
-  const response = await axiosInstance.get(url, { signal: signal }
-  );
+  const response = await axiosInstance.get(url, { signal: signal });
   return response.data.data;
 };
 

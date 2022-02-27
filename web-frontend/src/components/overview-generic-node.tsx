@@ -20,16 +20,18 @@ const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
   >([]);
   useEffect(() => {
     const controller = new AbortController();
+    const select_metadata = "{" + props.columns.map((column) => { return `${column.field}:${column.select_metadata}` }).join(",") + "}";
     async function loadData() {
-      var items = await search(props.segments, controller.signal, ["metadata"], []);
+      var items = await search(props.segments, controller.signal, ["metadata"], select_metadata);
       setItems(items);
+      console.log(items);
     }
     loadData();
     return () => {
       controller.abort();
     };
   }, [props.segments]);
-  return <Contents items={items} specs={props.specs}/>;
+  return <Contents items={items} specs={props.specs} columns={props.columns} />;
 };
 
 interface IProps {

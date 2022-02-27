@@ -47,11 +47,12 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     setAnchorEl(null);
   };
 
-  const formats = JSON.parse(sessionStorage.getItem("config") as string).formats
+  const formats = JSON.parse(
+    sessionStorage.getItem("config") as string
+  ).formats;
 
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;
-
 
   useMemo(() => {
     async function loadInfo() {
@@ -63,14 +64,16 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
 
   const handleChange = (event: SelectChangeEvent) => {
     const mimetype = event.target.value as string;
-    const format = formats.find((format: Format) => format.mimetype === mimetype);
+    const format = formats.find(
+      (format: Format) => format.mimetype === mimetype
+    );
     props.setFormat(format);
   };
 
   if (info === undefined) {
     return <Skeleton variant="rectangular" />;
   }
-  const value = (props.format !== undefined) ? props.format.mimetype : "";
+  const value = props.format !== undefined ? props.format.mimetype : "";
 
   return (
     <Stack spacing={2} direction="row">
@@ -89,7 +92,18 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
               return (
                 // Look up the display name in the UI configuration.
                 // If none is given, skip this format.
-                info!.formats[props.structure_family].includes(format.mimetype) ? <MenuItem key={`format-${format.mimetype}`} value={format.mimetype}>{format.display_name as string}</MenuItem> : ""
+                info!.formats[props.structure_family].includes(
+                  format.mimetype
+                ) ? (
+                  <MenuItem
+                    key={`format-${format.mimetype}`}
+                    value={format.mimetype}
+                  >
+                    {format.display_name as string}
+                  </MenuItem>
+                ) : (
+                  ""
+                )
               );
             })}
           </Select>
@@ -102,7 +116,11 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
       }
       <Button
         component="a"
-        href={props.format ? `${props.link}&filename=${props.name}${props.format!.extension}` : "#"}
+        href={
+          props.format
+            ? `${props.link}&filename=${props.name}${props.format!.extension}`
+            : "#"
+        }
         variant="outlined"
         {...(props.format ? {} : { disabled: true })}
       >
@@ -160,5 +178,5 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   );
 };
 
-export {Download};
-export type {Format};
+export { Download };
+export type { Format };
