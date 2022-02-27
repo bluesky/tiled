@@ -2,9 +2,11 @@ import * as React from "react";
 
 import {
   DataGrid,
-  GridColDef,
   GridRowParams,
   GridToolbar,
+  GridToolbarColumnsButton,
+  GridToolbarContainer,
+  GridToolbarDensitySelector,
 } from "@mui/x-data-grid";
 
 import Box from "@mui/material/Box";
@@ -33,6 +35,15 @@ interface IProps {
 
 const DEFAULT_PAGE_SIZE = 10;
 
+function CustomToolbar() {
+  return (
+    <GridToolbarContainer>
+      <GridToolbarColumnsButton />
+      <GridToolbarDensitySelector />
+    </GridToolbarContainer>
+  );
+}
+
 const Contents: React.FunctionComponent<IProps> = (props) => {
   let navigate = useNavigate();
   const gridColumns = [
@@ -52,10 +63,6 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
     })
   );
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
-  const exportOptions = {
-    csvOptions: { fileName: `table.csv` },
-    printOptions: { fileName: `table` },
-  }; // TODO customize
   const rows = props.items.map(
     (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
       const row: { [key: string]: any } = {};
@@ -93,9 +100,8 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
             );
           }}
           components={{
-            Toolbar: GridToolbar,
+            Toolbar: CustomToolbar,
           }}
-          componentsProps={{ toolbar: exportOptions }}
           disableColumnFilter
           autoHeight
         />

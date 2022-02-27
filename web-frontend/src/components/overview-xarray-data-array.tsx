@@ -1,5 +1,6 @@
 import { ArrayOverview } from "./overview-array";
 import Container from "@mui/material/Container";
+import Divider from "@mui/material/Divider";
 import { NodeContents } from "./overview-generic-node";
 import Typography from "@mui/material/Typography";
 import { components } from "../openapi_schemas";
@@ -22,6 +23,7 @@ const XarrayDataArrayOverview: React.FunctionComponent<IProps> = (props) => {
         item={props.item}
         structure={props.structure}
       />
+      <Divider sx={{ mb: 3 }} />
       <Typography id="table-title" variant="h6" component="h2">
         Coordinates
       </Typography>

@@ -1,4 +1,5 @@
 import Container from "@mui/material/Container";
+import Divider from "@mui/material/Divider";
 import { NodeContents } from "./overview-generic-node";
 import Typography from "@mui/material/Typography";
 
@@ -11,7 +12,7 @@ const XarrayDatasetOverview: React.FunctionComponent<IProps> = (props) => {
   return (
     <Container maxWidth="lg">
       <Typography id="table-title" variant="h6" component="h2">
-        Data Variables
+        Variables
       </Typography>
       <NodeContents
         segments={props.segments.concat(["data_vars"])}
@@ -19,6 +20,7 @@ const XarrayDatasetOverview: React.FunctionComponent<IProps> = (props) => {
         columns={[]}
         defaultColumns={["id"]}
       />
+      <Divider sx={{ mb: 3 }} />
       <Typography id="table-title" variant="h6" component="h2">
         Coordinates
       </Typography>
