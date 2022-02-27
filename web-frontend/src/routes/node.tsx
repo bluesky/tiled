@@ -106,13 +106,16 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
           />
         );
       case "xarray_data_array":
+        // special case: handle this like an array
+        const structure = attributes!.structure! as any;
+        const macrostructure = structure.macro!.variable!.macro!;
         return (
           <DownloadArray
             name={props.item.data!.id}
-            structureFamily={structureFamily}
-            macrostructure={attributes.structure!.macro!}
+            structureFamily="array"
+            macrostructure={macrostructure}
             specs={attributes.specs as string[]}
-            link={props.item.data!.links!.full! as string}
+            link={props.item.data!.links!.full_variable! as string}
           />
         );
       case "xarray_dataset":

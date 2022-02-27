@@ -2,7 +2,6 @@ import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
 import Input from "@mui/material/Input";
 import Slider from "@mui/material/Slider";
-import Typography from "@mui/material/Typography";
 
 interface CutSliderProps {
   min: number;
