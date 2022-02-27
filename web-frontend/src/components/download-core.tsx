@@ -19,12 +19,21 @@ import Tooltip from "@mui/material/Tooltip";
 import { components } from "../openapi_schemas";
 import copy from "clipboard-copy";
 
+interface Format {
+  mimetype: string;
+  displayName: string;
+  extension: string;
+}
+
 interface DownloadProps {
+  name: string;
   structure_family: string;
-  format: string;
+  format: Format | undefined;
   setFormat: any;
   link: string;
 }
+
+const formats = JSON.parse(sessionStorage.getItem("config") as string).formats
 
 const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const [info, setInfo] = useState<components["schemas"]["About"]>();
@@ -43,6 +52,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;
 
+
   const download = () => {
     const controller = new AbortController();
     async function loadData() {
@@ -54,7 +64,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "file");
+      link.setAttribute("download", `${props.name}${props.format!.extension}`)
       document.body.appendChild(link);
       link.click();
     }
@@ -73,7 +83,9 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   }, []);
 
   const handleChange = (event: SelectChangeEvent) => {
-    props.setFormat(event.target.value as string);
+    const mimetype = event.target.value as string;
+    const format = formats.find((format: Format) => format.mimetype === mimetype);
+    props.setFormat(format);
   };
 
   const handleDownloadClick = (event: React.MouseEvent) => {
@@ -83,25 +95,27 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   if (info === undefined) {
     return <Skeleton variant="rectangular" />;
   }
+  console.log(props.format);
+  const value = (props.format !== undefined) ? props.format.mimetype : "";
 
   return (
     <Stack spacing={2} direction="row">
-      <Box sx={{ minWidth: 400, width: { flex: 0.7 } }}>
+      <Box sx={{ minWidth: 120 }}>
         <FormControl fullWidth>
           <InputLabel id="formats-select-label">Format *</InputLabel>
           <Select
             labelId="formats-select-label"
             id="formats-select"
-            value={props.format}
+            value={value}
             label="Format"
             onChange={handleChange}
             required
           >
-            {info!.formats[props.structure_family].map((format) => {
+            {formats.map((format: Format) => {
               return (
-                <MenuItem key={`format-${format}`} value={format}>
-                  {format}
-                </MenuItem>
+                // Look up the display name in the UI configuration.
+                // If none is given, skip this format.
+                info!.formats[props.structure_family].includes(format.mimetype) ? <MenuItem key={`format-${format.mimetype}`} value={format.mimetype}>{format.displayName as string}</MenuItem> : ""
               );
             })}
           </Select>
@@ -167,4 +181,5 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   );
 };
 
-export default Download;
+export {Download};
+export type {Format};

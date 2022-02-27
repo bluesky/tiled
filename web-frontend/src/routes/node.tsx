@@ -80,6 +80,7 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
       case "array":
         return (
           <DownloadArray
+            name={props.item.data!.id}
             structure_family={structureFamily}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
@@ -88,6 +89,7 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
       case "dataframe":
         return (
           <DownloadArray
+            name={props.item.data!.id}
             structure_family={structureFamily}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}

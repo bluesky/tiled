@@ -1,0 +1,25 @@
+formats:
+- mimetype: text/csv
+  displayName: CSV
+  extension: .csv
+- mimetype: text/plain
+  displayName: Text
+  extension: .txt
+- mimetype: image/png
+  displayName: PNG image
+  extension: .png
+- mimetype: image/tiff
+  displayName: TIFF image
+  extension: .tiff
+- mimetype: application/json
+  displayName: JSON
+  extension: .json
+- mimetype: application/json-seq
+  displayName: JSON Line
+  extension: .jsonl
+- mimetype: text/html
+  displayName: HTML
+  extension: .html
+- mimetype: application/octet-stream
+  displayName: C-ordered array
+  extension: ""
