@@ -38,3 +38,9 @@ formats:
   - mimetype: application/octet-stream
     display_name: C-ordered array
     extension: ""
+  - mimetype: application/vnd.apache.arrow.file
+    display_name: Apache Arrow
+    extension: ""
+  - mimetype: application/x-parquet
+    display_name: Parquet
+    extension: .parquet
