@@ -17,6 +17,7 @@ const XarrayDatasetOverview: React.FunctionComponent<IProps> = (props) => {
         segments={props.segments.concat(["data_vars"])}
         specs={props.item.data!.attributes!.specs!}
         columns={[]}
+        defaultColumns={["id"]}
       />
       <Typography id="table-title" variant="h6" component="h2">
         Coordinates
@@ -25,6 +26,7 @@ const XarrayDatasetOverview: React.FunctionComponent<IProps> = (props) => {
         segments={props.segments.concat(["coords"])}
         specs={props.item.data!.attributes!.specs!}
         columns={[]}
+        defaultColumns={["id"]}
       />
     </Container>
   );

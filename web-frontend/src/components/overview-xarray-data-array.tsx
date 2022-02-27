@@ -29,6 +29,7 @@ const XarrayDataArrayOverview: React.FunctionComponent<IProps> = (props) => {
         segments={props.segments.concat(["coords"])}
         specs={props.item!.data!.attributes!.specs}
         columns={[]}
+        defaultColumns={["id"]}
       />
     </Container>
   );

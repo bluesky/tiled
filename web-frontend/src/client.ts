@@ -11,13 +11,13 @@ export const search = async (
   segments: string[],
   signal: AbortSignal,
   fields: string[] = [],
-  select_metadata: any,
+  selectMetadata: any
 ): Promise<components["schemas"]["Resource_NodeAttributes__dict__dict_"][]> => {
   let url = `/node/search/${segments.join("/")}?fields=${fields.join(
     "&fields="
   )}`;
-  if (Object.keys(select_metadata).length > 0) {
-    url = url.concat(`&select_metadata=${select_metadata}`);
+  if (selectMetadata !== null) {
+    url = url.concat(`&select_metadata=${selectMetadata}`);
   }
   const response = await axiosInstance.get(url, { signal: signal });
   return response.data.data;

@@ -28,31 +28,43 @@ interface IProps {
   items: components["schemas"]["Resource_NodeAttributes__dict__dict_"][];
   specs: string[];
   columns: Column[];
+  defaultColumns: string[];
 }
 
 const DEFAULT_PAGE_SIZE = 10;
 
 const Contents: React.FunctionComponent<IProps> = (props) => {
   let navigate = useNavigate();
-  var gridColumns: GridColDef[];
-  if (props.columns.length > 0) {
-    gridColumns = props.columns.map((column) => ({
+  const gridColumns = [
+    {
+      field: "id",
+      headerName: "ID",
+      flex: 1,
+      hide: !props.defaultColumns.includes("id"),
+    },
+  ];
+  props.columns.map((column) =>
+    gridColumns.push({
       field: column.field,
       headerName: column.header,
       flex: 1,
-    }));
-  } else {
-    gridColumns = [{ field: "id", headerName: "ID", flex: 1 }];
-  }
+      hide: !props.defaultColumns.includes(column.field),
+    })
+  );
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const exportOptions = {
     csvOptions: { fileName: `table.csv` },
     printOptions: { fileName: `table` },
   }; // TODO customize
   const rows = props.items.map(
-    (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => ({
-      id: item.id,
-    })
+    (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
+      const row: { [key: string]: any } = {};
+      row.id = item.id;
+      props.columns.map((column) => {
+        row[column.field] = item.attributes!.metadata![column.field];
+      });
+      return row;
+    }
   );
   type IdToAncestors = { [key: string]: string[] };
   var idsToAncestors: IdToAncestors = {};

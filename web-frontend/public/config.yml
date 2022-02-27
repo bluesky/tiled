@@ -7,6 +7,9 @@ specs:
       - header: Scan ID
         select_metadata: start.scan_id
         field: scan_id
+      - header: Time
+        select_metadata: start.time
+        field: start_time
     default_columns:
       - plan_name
       - scan_id
