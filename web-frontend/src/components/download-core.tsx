@@ -27,7 +27,7 @@ interface Format {
 
 interface DownloadProps {
   name: string;
-  structure_family: string;
+  structureFamily: string;
   format: Format | undefined;
   setFormat: any;
   link: string;
@@ -92,7 +92,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
               return (
                 // Look up the display name in the UI configuration.
                 // If none is given, skip this format.
-                info!.formats[props.structure_family].includes(
+                info!.formats[props.structureFamily].includes(
                   format.mimetype
                 ) ? (
                   <MenuItem

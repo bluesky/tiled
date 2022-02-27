@@ -292,6 +292,11 @@ deserialization_registry.register(
 if modules_available("PIL"):
 
     def save_to_buffer_PIL(array, format):
+        # The logic of which shapes are support is subtle, and we'll leave the details
+        # PIL ("beg forgiveness rather than ask permission"). But we can rule out
+        # anything above 3 dimensions as definitely not supported.
+        if array.ndim > 3:
+            raise UnsupportedShape(array.ndim)
         from PIL import Image
 
         from .image_serializer_helpers import img_as_ubyte
@@ -344,6 +349,11 @@ if modules_available("tifffile"):
         # Handle too *few* dimensions here, and let tifffile raise if there are too
         # *many* because it depends on the shape (RGB, RGBA, etc.)
         normalized_array = numpy.atleast_2d(array)
+        # The logic of which shapes are support is subtle, and we'll leave the details
+        # tifffile ("beg forgiveness rather than ask permission"). But we can rule out
+        # anything above 4 dimensions as definitely not supported.
+        if normalized_array.ndim > 4:
+            raise UnsupportedShape(array.ndim)
         file = io.BytesIO()
         imsave(file, normalized_array)
         return file.getbuffer()

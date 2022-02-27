@@ -302,11 +302,17 @@ def array_block(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a chunk of array-like data.
     """
+    if entry.structure_family not in {"array", "xarray_data_array"}:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
+        )
     if block == ():
         # Handle special case of numpy scalar.
         if entry.macrostructure().shape != ():
@@ -337,6 +343,7 @@ def array_block(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         # raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -352,11 +359,17 @@ def array_full(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
     Fetch a slice of array-like data.
     """
+    if entry.structure_family not in {"array", "xarray_data_array"}:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
+        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -382,6 +395,7 @@ def array_full(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -398,6 +412,7 @@ def dataframe_partition(
     entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
@@ -428,6 +443,7 @@ def dataframe_partition(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -443,6 +459,7 @@ def node_full(
     entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
@@ -466,6 +483,7 @@ def node_full(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])

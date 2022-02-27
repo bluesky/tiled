@@ -79,7 +79,8 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         return (
           <DownloadArray
             name={props.item.data!.id}
-            structure_family={structureFamily}
+            structureFamily={structureFamily}
+            macrostructure={null}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
           />
@@ -88,7 +89,8 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         return (
           <DownloadArray
             name={props.item.data!.id}
-            structure_family={structureFamily}
+            structureFamily={structureFamily}
+            macrostructure={attributes.structure!.macro!}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
           />
@@ -97,7 +99,8 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         return (
           <DownloadArray
             name={props.item.data!.id}
-            structure_family={structureFamily}
+            structureFamily={structureFamily}
+            macrostructure={attributes.structure!.macro!}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
           />
@@ -106,7 +109,8 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         return (
           <DownloadArray
             name={props.item.data!.id}
-            structure_family={structureFamily}
+            structureFamily={structureFamily}
+            macrostructure={attributes.structure!.macro!}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
           />
@@ -115,7 +119,8 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
         return (
           <DownloadArray
             name={props.item.data!.id}
-            structure_family={structureFamily}
+            structureFamily={structureFamily}
+            macrostructure={attributes.structure!.macro!}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
           />

@@ -237,6 +237,7 @@ def construct_data_response(
     format=None,
     specs=None,
     expires=None,
+    filename=None,
 ):
     request.state.endpoint = "data"
     if specs is None:
@@ -297,6 +298,8 @@ def construct_data_response(
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
         return Response(status_code=304, headers=headers)
+    if filename:
+        headers["Content-Disposition"] = f"attachment;filename={filename}"
     # This is the expensive step: actually serialize.
     try:
         content = serialization_registry(
@@ -309,7 +312,7 @@ def construct_data_response(
         )
     except SerializationError as err:
         raise UnsupportedMediaTypes(
-            f"This type is supported in general but there was an error packing this specific data: {err.args}",
+            f"This type is supported in general but there was an error packing this specific data: {err.args[0]}",
         )
     return PatchedResponse(
         content=content,
