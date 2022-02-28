@@ -13,9 +13,13 @@ export const search = async (
   fields: string[] = [],
   selectMetadata: any = null,
   pageOffset: number = 0,
-  pageLimit: number = 100,
-): Promise<components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]> => {
-  let url = `/node/search/${segments.join("/")}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
+  pageLimit: number = 100
+): Promise<
+  components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]
+> => {
+  let url = `/node/search/${segments.join(
+    "/"
+  )}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
     "&fields="
   )}`;
   if (selectMetadata !== null) {
