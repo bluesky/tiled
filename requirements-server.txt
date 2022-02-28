@@ -1,4 +1,5 @@
 # These are the requirements needed for basic server functionality.
+aiofiles
 alembic
 cachey
 cached-property; python_version < '3.8'
