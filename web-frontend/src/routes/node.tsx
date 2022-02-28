@@ -223,6 +223,9 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
       components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
     >();
   useEffect(() => {
+    setTabValue(0);
+  }, [props.segments]);
+  useEffect(() => {
     setItem(undefined);
     const controller = new AbortController();
     async function loadData() {
