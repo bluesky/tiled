@@ -105,7 +105,9 @@ class _BytesIOThatIgnoresClose(io.BytesIO):
 
 def serialize_netcdf(dataset, metadata):
     file = _BytesIOThatIgnoresClose()
-    dataset.to_netcdf(file)
+    # This engine is reportedly faster.
+    # Also, by avoiding the default engine, we avoid a dependency on 'scipy'.
+    dataset.to_netcdf(file, engine="h5netcdf")
     return file.getbuffer()
 
 
