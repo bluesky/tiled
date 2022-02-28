@@ -37,8 +37,6 @@ mapping = {
     "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
     "tiny_cube": ArrayAdapter.from_array(data["tiny_cube"]),
     "tiny_hypercube": ArrayAdapter.from_array(data["tiny_hypercube"]),
-    "low_entropy": ArrayAdapter.from_array(data["low_entropy"]),
-    "high_entropy": ArrayAdapter.from_array(data["high_entropy"]),
     "short_table": DataFrameAdapter.from_pandas(
         pandas.DataFrame(
             {
@@ -147,6 +145,8 @@ mapping = {
         metadata={"animal": "cat", "color": "green"},
     ),
     "flat_array": ArrayAdapter.from_array(numpy.random.random(100)),
+    "low_entropy": ArrayAdapter.from_array(data["low_entropy"]),
+    "high_entropy": ArrayAdapter.from_array(data["high_entropy"]),
     # Below, an asynchronous task modifies this value over time.
     "dynamic": ArrayAdapter.from_array(numpy.zeros((3, 3))),
 }
