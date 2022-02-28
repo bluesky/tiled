@@ -41,6 +41,14 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     null
   );
 
+  useMemo(() => {
+    async function loadInfo() {
+      var result = await about();
+      setInfo(result);
+    }
+    loadInfo();
+  }, []);
+
   // Access config to get info about supported formats.
   useEffect(() => {
     async function loadFormats() {
@@ -49,7 +57,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
       setFormats(formats);
     }
     loadFormats();
-  }, []);
+  }, [props.structureFamily]);
   const handleLinkClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -61,14 +69,6 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;
 
-  useMemo(() => {
-    async function loadInfo() {
-      var result = await about();
-      setInfo(result);
-    }
-    loadInfo();
-  }, []);
-
   const handleChange = (event: SelectChangeEvent) => {
     const mimetype = event.target.value as string;
     const format = formats.find(
@@ -77,7 +77,8 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     props.setFormat(format);
   };
 
-  if (info === undefined) {
+  if ((formats === undefined) || (info === undefined)) {
+    // Waiting for 'about' and 'config' to load.
     return <Skeleton variant="rectangular" />;
   }
   const value = props.format !== undefined ? props.format.mimetype : "";
