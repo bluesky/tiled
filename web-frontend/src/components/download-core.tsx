@@ -51,12 +51,16 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
 
   // Access config to get info about supported formats.
   useEffect(() => {
+    const controller = new AbortController();
     async function loadFormats() {
-      const config = await loadConfig();
+      const config = await loadConfig(controller.signal);
       const formats = config.structure_families[props.structureFamily].formats;
       setFormats(formats);
     }
     loadFormats();
+    return () => {
+      controller.abort();
+    };
   }, [props.structureFamily]);
   const handleLinkClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);

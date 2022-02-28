@@ -16,12 +16,16 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   const [specs, setSpecs] = useState<any>();
 
   useEffect(() => {
+    const controller = new AbortController();
     async function loadSpecs() {
-      const config = await loadConfig();
+      const config = await loadConfig(controller.signal);
       const specs = config.specs;
       setSpecs(specs);
     }
     loadSpecs();
+    return () => {
+      controller.abort();
+    };
   }, []);
   // Walk through the node's specs until we find one we recognize.
   if (specs === undefined) {

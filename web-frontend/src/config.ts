@@ -28,24 +28,29 @@ interface Config {
   structure_families: any;
 }
 
-const fetchManifest = async (): Promise<string[]> => {
+const fetchManifest = async (signal: AbortSignal): Promise<string[]> => {
   // Fetch a specially-named file from the public static directory.
-  const response = await fetch(`${basename}/configuration_manifest.yml`);
+  const response = await fetch(`${basename}/configuration_manifest.yml`, {
+    signal,
+  });
   const text = await response.text();
   const data = yaml.load(text) as Manifest;
   return data.manifest;
 };
 
-const fetchConfig = async (path: string): Promise<Config> => {
+const fetchConfig = async (
+  path: string,
+  signal: AbortSignal
+): Promise<Config> => {
   // FastAPI StaticFiles ensures that we cannot "escape" the directory here
   // and serve arbitrary files from the filesystem.
-  const response = await fetch(`${basename}/${path}`);
+  const response = await fetch(`${basename}/${path}`, { signal });
   const text = await response.text();
   const data = yaml.load(text) as Config;
   return data;
 };
 
-export const loadConfig = async () => {
+export const loadConfig = async (signal: AbortSignal) => {
   // Try loading config from sessionStorage.
   // If not present, obtain it and cache it.
   // This is a job for Redux once we adopt Redux.
@@ -53,13 +58,12 @@ export const loadConfig = async () => {
   var config: string;
   if (cachedConfig === null) {
     // Config is not cached.
-    const manifest = await fetchManifest();
+    const manifest = await fetchManifest(signal);
     const configs: Config[] = await Promise.all(
       manifest.map((path: string) => {
-        return fetchConfig(path);
+        return fetchConfig(path, signal);
       })
     );
-    console.log(configs);
     const mergedConfig: Config = { specs: [], structure_families: {} };
     configs.map((config, index) => {
       (config.specs || []).map((spec: Spec) => {
@@ -68,12 +72,10 @@ export const loadConfig = async () => {
       for (const [key, value] of Object.entries(
         config.structure_families || {}
       )) {
-        console.log(`${key}: ${value}`);
         mergedConfig.structure_families[key] = value;
       }
       console.log(`Loaded config ${manifest[index]}`);
     });
-    console.log(mergedConfig);
     sessionStorage.setItem("config", JSON.stringify(mergedConfig));
     return mergedConfig;
   } else {
