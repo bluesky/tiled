@@ -128,6 +128,7 @@ const ItemList: React.FunctionComponent<ItemListProps> = (props) => {
 interface IProps {
   segments: string[];
   item: any;
+  link: string;
   structure: components["schemas"]["Structure"];
 }
 
@@ -150,11 +151,7 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
         max={max}
         limit={LIMIT}
       />
-      <DataDisplay
-        link={props.item.data.links.full}
-        range={value}
-        name={props.item.data.id}
-      />
+      <DataDisplay link={props.link} range={value} name={props.item.data.id} />
     </div>
   );
 };

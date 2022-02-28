@@ -41,6 +41,7 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
           <Array1D
             segments={props.segments}
             item={props.item}
+            link={props.link}
             structure={props.structure}
           />
         </Suspense>

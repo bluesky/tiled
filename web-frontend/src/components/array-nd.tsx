@@ -37,11 +37,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const [cuts, setCuts] = useState<number[]>(middles);
   return (
     <Box>
-      <ImageDisplay
-        link={props.link}
-        cuts={cuts}
-        stride={stride}
-      />
+      <ImageDisplay link={props.link} cuts={cuts} stride={stride} />
       {shape.length > 2 ? (
         <Typography id="input-slider" gutterBottom>
           Choose a planar cut through this {shape.length}-dimensional array.
