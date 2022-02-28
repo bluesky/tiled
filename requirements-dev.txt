@@ -16,5 +16,4 @@ myst-parser
 numpydoc
 sphinx-click
 sphinx-copybutton
-sphinxcontrib.openapi
 sphinx_rtd_theme
