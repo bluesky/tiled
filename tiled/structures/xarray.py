@@ -103,22 +103,23 @@ class _BytesIOThatIgnoresClose(io.BytesIO):
         pass
 
 
-def serialize_netcdf(dataset, metadata):
-    file = _BytesIOThatIgnoresClose()
-    # This engine is reportedly faster.
-    # Also, by avoiding the default engine, we avoid a dependency on 'scipy'.
-    dataset.to_netcdf(file, engine="h5netcdf")
-    return file.getbuffer()
+if modules_available("h5netcdf"):
 
+    def serialize_netcdf(dataset, metadata):
+        file = _BytesIOThatIgnoresClose()
+        # This engine is reportedly faster.
+        # Also, by avoiding the default engine, we avoid a dependency on 'scipy'.
+        dataset.to_netcdf(file, engine="h5netcdf")
+        return file.getbuffer()
 
-# Both application/netcdf and application/x-netcdf are used.
-# https://en.wikipedia.org/wiki/NetCDF
-serialization_registry.register(
-    "xarray_dataset", "application/netcdf", serialize_netcdf
-)
-serialization_registry.register(
-    "xarray_dataset", "application/x-netcdf", serialize_netcdf
-)
+    # Both application/netcdf and application/x-netcdf are used.
+    # https://en.wikipedia.org/wiki/NetCDF
+    serialization_registry.register(
+        "xarray_dataset", "application/netcdf", serialize_netcdf
+    )
+    serialization_registry.register(
+        "xarray_dataset", "application/x-netcdf", serialize_netcdf
+    )
 
 # Support DataFrame formats by first converting to DataFrame.
 # This doesn't make much sense for N-dimensional variables, but for
