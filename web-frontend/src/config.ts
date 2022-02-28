@@ -33,8 +33,8 @@ const fetchManifest = async (): Promise<string[]> => {
   const response = await fetch(`${basename}/configuration_manifest.yml`);
   const text = await response.text();
   const data = yaml.load(text) as Manifest;
-  return data.manifest
-}
+  return data.manifest;
+};
 
 const fetchConfig = async (path: string): Promise<Config> => {
   // FastAPI StaticFiles ensures that we cannot "escape" the directory here
@@ -42,8 +42,8 @@ const fetchConfig = async (path: string): Promise<Config> => {
   const response = await fetch(`${basename}/${path}`);
   const text = await response.text();
   const data = yaml.load(text) as Config;
-  return data
-}
+  return data;
+};
 
 export const loadConfig = async () => {
   // Try loading config from sessionStorage.
@@ -54,21 +54,25 @@ export const loadConfig = async () => {
   if (cachedConfig === null) {
     // Config is not cached.
     const manifest = await fetchManifest();
-    const configs: Config[] = await Promise.all(manifest.map((path: string) => {
-      return fetchConfig(path) }
-    ));
+    const configs: Config[] = await Promise.all(
+      manifest.map((path: string) => {
+        return fetchConfig(path);
+      })
+    );
     console.log(configs);
-    const mergedConfig: Config = {"specs": [], "structure_families": {}};
+    const mergedConfig: Config = { specs: [], structure_families: {} };
     configs.map((config, index) => {
       (config.specs || []).map((spec: Spec) => {
         mergedConfig.specs.push(spec);
-      })
-      for (const [key, value] of Object.entries(config.structure_families|| {})) {
+      });
+      for (const [key, value] of Object.entries(
+        config.structure_families || {}
+      )) {
         console.log(`${key}: ${value}`);
         mergedConfig.structure_families[key] = value;
       }
-      console.log(`Loaded config ${manifest[index]}`)
-    })
+      console.log(`Loaded config ${manifest[index]}`);
+    });
     console.log(mergedConfig);
     sessionStorage.setItem("config", JSON.stringify(mergedConfig));
     return mergedConfig;

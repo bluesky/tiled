@@ -2,4 +2,4 @@
 # To extend the UI (teaching it about additional formats or specs)
 # add new configuration. All of these will be loaded.
 manifest:
-- config/default.yml
+  - config/default.yml
