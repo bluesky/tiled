@@ -81,7 +81,7 @@ def expected_shape(
 
 
 def slice_(
-    slice: str = Query(None, regex="^[0-9,:]*$"),
+    slice: str = Query(None, regex="^[-0-9,:]*$"),
 ):
     "Specify and parse a block index parameter."
     import numpy

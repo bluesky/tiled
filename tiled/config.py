@@ -161,6 +161,9 @@ def construct_build_app_kwargs(
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["object_cache"] = config.get("object_cache", {})
+        server_settings["response_bytesize_limit"] = config.get(
+            "response_bytesize_limit"
+        )
         server_settings["database_uri"] = config.get("database_uri")
         metrics = config.get("metrics", {})
         if metrics.get("prometheus", False):
@@ -211,6 +214,7 @@ def merge(configs):
     metrics_config_source = None
     database_uri_config_source = None
     database_settings_config_source = None
+    response_bytesize_limit_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
     file_extensions = {}
@@ -257,6 +261,15 @@ def merge(configs):
                 )
             object_cache_config_source = filepath
             merged["object_cache"] = config["object_cache"]
+        if "response_bytesize_limit" in config:
+            if "response_bytesize_limit" in merged:
+                raise ConfigError(
+                    "response_bytesize_limit can only be specified in one file. "
+                    f"It was found in both {response_bytesize_limit_config_source} and "
+                    f"{filepath}"
+                )
+            response_bytesize_limit_config_source = filepath
+            merged["response_bytesize_limit"] = config["response_bytesize_limit"]
         if "metrics" in config:
             if "metrics" in merged:
                 raise ConfigError(

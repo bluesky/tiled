@@ -220,11 +220,11 @@ def construct_entries_response(
 
 
 DEFAULT_MEDIA_TYPES = {
-    "array": "application/octet-stream",
-    "dataframe": APACHE_ARROW_FILE_MIME_TYPE,
-    "node": "application/x-hdf5",
-    "xarray_data_array": "application/octet-stream",
-    "xarray_dataset": "application/netcdf",
+    "array": {"*/*": "application/octet-stream", "image/*": "image/png"},
+    "dataframe": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
+    "node": {"*/*": "application/x-hdf5"},
+    "xarray_data_array": {"*/*": "application/octet-stream"},
+    "xarray_dataset": {"*/*": "application/netcdf"},
 }
 
 
@@ -237,11 +237,12 @@ def construct_data_response(
     format=None,
     specs=None,
     expires=None,
+    filename=None,
 ):
     request.state.endpoint = "data"
     if specs is None:
         specs = []
-    default_media_type = DEFAULT_MEDIA_TYPES[structure_family]
+    default_media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
     # Give priority to the `format` query parameter. Otherwise, consult Accept
     # header.
     if format is not None:
@@ -265,7 +266,9 @@ def construct_data_response(
     supported = set()
     for media_type in media_types:
         if media_type == "*/*":
-            media_type = default_media_type
+            media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
+        elif structure_family == "array" and media_type == "image/*":
+            media_type = DEFAULT_MEDIA_TYPES[structure_family]["image/*"]
         # fall back to generic dataframe serializer if no specs present
         for spec in specs + [structure_family]:
             media_types_for_spec = serialization_registry.media_types(spec)
@@ -295,6 +298,8 @@ def construct_data_response(
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
         return Response(status_code=304, headers=headers)
+    if filename:
+        headers["Content-Disposition"] = f"attachment;filename={filename}"
     # This is the expensive step: actually serialize.
     try:
         content = serialization_registry(
@@ -307,7 +312,7 @@ def construct_data_response(
         )
     except SerializationError as err:
         raise UnsupportedMediaTypes(
-            f"This type is supported in general but there was an error packing this specific data: {err.args}",
+            f"This type is supported in general but there was an error packing this specific data: {err.args[0]}",
         )
     return PatchedResponse(
         content=content,
@@ -326,7 +331,7 @@ def construct_resource(
     media_type,
 ):
     path_str = "/".join(path_parts)
-    attributes = {}
+    attributes = {"ancestors": path_parts[:-1]}
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
             attributes["metadata"] = jmespath.compile(select_metadata).search(
@@ -335,7 +340,7 @@ def construct_resource(
         else:
             attributes["metadata"] = entry.metadata
     if schemas.EntryFields.specs in fields:
-        attributes["specs"] = getattr(entry, "specs", None)
+        attributes["specs"] = getattr(entry, "specs", [])
     if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
         if schemas.EntryFields.count in fields:
@@ -354,15 +359,15 @@ def construct_resource(
         }
         if not omit_links:
             d["links"] = {
-                "self": f"{base_url}node/metadata/{path_str}",
-                "search": f"{base_url}node/search/{path_str}",
-                "full": f"{base_url}node/full/{path_str}",
+                "self": f"{base_url}/node/metadata/{path_str}",
+                "search": f"{base_url}/node/search/{path_str}",
+                "full": f"{base_url}/node/full/{path_str}",
             }
         resource = schemas.Resource[
             schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
         ](**d)
     else:
-        links = {"self": f"{base_url}node/metadata/{path_str}"}
+        links = {"self": f"{base_url}/node/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
@@ -419,18 +424,22 @@ def construct_resource(
                     microstructure = entry.microstructure()
                     if microstructure is not None:
                         structure["micro"] = dataclasses.asdict(microstructure)
-                if entry.structure_family == "array":
-                    block_template = ",".join(
-                        f"{{index_{index}}}"
-                        for index in range(len(structure["macro"]["shape"]))
-                    )
-                    links[
-                        "block"
-                    ] = f"{base_url}array/block/{path_str}?block={block_template}"
-                elif entry.structure_family == "dataframe":
-                    links[
-                        "partition"
-                    ] = f"{base_url}dataframe/partition/{path_str}?partition={{index}}"
+            if entry.structure_family == "array":
+                shape = structure.get("macro", {}).get("shape")
+                if shape is None:
+                    # The client did not request structure so we have not yet
+                    # accessed it, and we have access it specifically to construct this link.
+                    shape = entry.macrostructure().shape
+                block_template = ",".join(
+                    f"{{index_{index}}}" for index in range(len(shape))
+                )
+                links[
+                    "block"
+                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
+            elif entry.structure_family == "dataframe":
+                links[
+                    "partition"
+                ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
             attributes["structure"] = structure
         else:
             # We only have entry names, not structure_family, so
@@ -610,15 +619,15 @@ class WrongTypeForRoute(Exception):
 
 
 FULL_LINKS = {
-    "node": {"full": "{base_url}node/full/{path}"},
-    "array": {"full": "{base_url}array/full/{path}"},
-    "dataframe": {"full": "{base_url}node/full/{path}"},
+    "node": {"full": "{base_url}/node/full/{path}"},
+    "array": {"full": "{base_url}/array/full/{path}"},
+    "dataframe": {"full": "{base_url}/node/full/{path}"},
     "xarray_data_array": {
-        "full_variable": "{base_url}array/full/{path}/variable",
+        "full_variable": "{base_url}/array/full/{path}/variable",
     },
     "xarray_dataset": {
-        "full_variable": "{base_url}array/full/{path}/data_vars/{{variable}}/variable",
-        "full_coord": "{base_url}array/full/{path}/coords/{{coord}}/variable",
-        "full_dataset": "{base_url}node/full/{path}",
+        "full_variable": "{base_url}/array/full/{path}/data_vars/{{variable}}/variable",
+        "full_coord": "{base_url}/array/full/{path}/coords/{{coord}}/variable",
+        "full_dataset": "{base_url}/node/full/{path}",
     },
 }

@@ -14,7 +14,7 @@ randomly generated and printed to the console at server startup, like so:
 
         Use the following URL to connect to Tiled:
 
-        "http://127.0.0.1:8000?api_key=8df0146c93e9add287d0e7f84a165ba4bd3517bbb3c7c6b4d963c3e1549d0311"
+        "http://127.0.0.1:8000/api?api_key=8df0146c93e9add287d0e7f84a165ba4bd3517bbb3c7c6b4d963c3e1549d0311"
 
 This guide does not apply to single-user deployments like this.
 ```
@@ -41,7 +41,7 @@ is useful when:
 
 To follow along, you may start a Tiled server with a simple authentication provider,
 as shown. Alternatively, you may use an existing authenticated Tiled server, such as
-`https://tiled-demo.blueskyproject.io`; if you do, replace `http://localhost:8000`
+`https://tiled-demo.blueskyproject.io/api`; if you do, replace `http://localhost:8000/api`
 in the examples below with that address.
 
 ```
@@ -52,7 +52,7 @@ ALICE_PASSWORD=secret1 tiled serve config example_configs/toy_authentication.yml
 Using the Tiled commandline interface, log in as `alice` using the password `secret1`.
 
 ```
-$ tiled login http://localhost:8000
+$ tiled login http://localhost:8000/api
 Username: alice
 Password:
 ```
@@ -60,7 +60,7 @@ Password:
 Create a new API key.
 
 ```
-$ tiled api_key create http://localhost:8000
+$ tiled api_key create http://localhost:8000/api
 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318
 ```
 
@@ -68,7 +68,7 @@ This text is the API key. **It should be handled as a secret.**
 
 ```{note}
 
-When typing out `http://localhost:8000` into each command grows tedious,
+When typing out `http://localhost:8000/api` into each command grows tedious,
 follow {doc}`profiles` to make a convenient alias. The command accepts URL _or_
 a profile name.
 ```
@@ -80,7 +80,7 @@ We can use it in the Python client:
 ```py
 >>> from tiled.client import from_url
 >>> API_KEY = "YOUR_KEY_HERE"
->>> c = from_uri("http://localhost:8000", api_key=API_KEY)
+>>> c = from_uri("http://localhost:8000/api", api_key=API_KEY)
 ```
 
 API keys should never be placed directly in scripts or notebooks.
@@ -95,7 +95,7 @@ use that, unless it is explicitly passed different credentials.
 
 ```py
 >>> from tiled.client import from_url
->>> c = from_uri("http://localhost:8000")  # uses TILED_API_KEY, if set
+>>> c = from_uri("http://localhost:8000/api")  # uses TILED_API_KEY, if set
 ```
 
 ## Use the API Key in other web clients
@@ -104,7 +104,7 @@ We can use in other web clients as well. For example, using [HTTPie](https://htt
 we can see that unauthenticated requests are refused
 
 ```
-$ http http://localhost:8000/node/metadata/
+$ http http://localhost:8000/api/node/metadata/
 HTTP/1.1 401 Unauthorized
 content-length: 30
 content-type: application/json
@@ -112,7 +112,7 @@ date: Mon, 31 Jan 2022 17:30:06 GMT
 server: uvicorn
 server-timing: app;dur=2.6
 set-cookie: tiled_csrf=bZLhKsXVE2VirgXQncHsHn4Y0Wwwr66U0T0hqarJyfw; HttpOnly; Path=/; SameSite=lax
-x-tiled-root: http://localhost:8000/
+x-tiled-root: http://localhost:8000/api
 
 {
     "detail": "Not authenticated"
@@ -123,7 +123,7 @@ but passing the API key in the `Authorization` header as `Apikey YOUR_KEY_HERE` 
 (Note the use of `'` quotes.)
 
 ```
-$ http http://localhost:8000/node/metadata/ 'Authorization:Apikey 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318'
+$ http http://localhost:8000/api/node/metadata/ 'Authorization:Apikey 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318'
 HTTP/1.1 200 OK
 content-length: 320
 content-type: application/json
@@ -136,7 +136,7 @@ set-cookie: tiled_csrf=InE4mplUO0goPxf4V07tVuLSLUvDqhgtALTHYoC3T3s; HttpOnly; Pa
 ```
 
 The API key can also be passed in the URL like
-`http://localhost:8000/node/metadata/?api_key=YOUR_KEY_HERE`. Using the
+`http://localhost:8000/api/node/metadata/?api_key=YOUR_KEY_HERE`. Using the
 `Authorization` header is preferred (more secure) but in some situations, as in
 pasting a link into a web browser, the URL is the only option.
 
@@ -162,7 +162,7 @@ Commands:
 We can see the key that we made above in the list.
 
 ```
-$ tiled api_key list http://localhost:8000
+$ tiled api_key list http://localhost:8000/api
 First 8   Expires at (UTC)     Latest activity      Note                Scopes
 48e8f859  -                    2022-01-31T18:32:33                      inherit
 
@@ -177,14 +177,14 @@ command creates an API key that will expire in 10 minutes (600 seconds) and can
 search/list metadata but cannot download array data.
 
 ```
-$ tiled api_key create http://localhost:8000 --expires-in 600 --scopes read:metadata
+$ tiled api_key create http://localhost:8000/api --expires-in 600 --scopes read:metadata
 ba9af604023a829ab22edb786168d6e1b97cef68c54c6d95d7fad5e3e6347fa131263581
 ```
 
 See {doc}`../reference/scopes` for the full list of scopes and their capabilities.
 
 ```
-$ tiled api_key list http://localhost:8000
+$ tiled api_key list http://localhost:8000/api
 First 8   Expires at (UTC)     Latest activity      Note                Scopes
 48e8f859  -                    2022-01-31T18:32:33                      inherit
 ba9af604  2022-01-31T23:03:57  -                                        read:metadata
@@ -194,9 +194,9 @@ Finally, the `--note` option can be used to label an API key as a reminder of
 where or how it is being used.
 
 ```
-$ tiled api_key create http://localhost:8000 --note="Data validation pipeline" --scopes read:metadata read:data
+$ tiled api_key create http://localhost:8000/api --note="Data validation pipeline" --scopes read:metadata read:data
 573928c62e53096321fb874847bcc6a90ea636eebd8acbd7c5e9d18d2859847b3bfb4f19
-$ tiled api_key list http://localhost:8000
+$ tiled api_key list http://localhost:8000/api
 First 8   Expires at (UTC)     Latest activity      Note                      Scopes
 48e8f859  -                    2022-01-31T18:32:33                            inherit
 ba9af604  2022-01-31T23:03:57  -                                              read:metadata
@@ -208,8 +208,8 @@ can be identified by its first eight characters, as shown in the the output of
 `tiled api_key list`.
 
 ```
-$ tiled api_key revoke http://localhost:8000 573928c6
-$ tiled api_key list http://localhost:8000
+$ tiled api_key revoke http://localhost:8000/api 573928c6
+$ tiled api_key list http://localhost:8000/api
 First 8   Expires at (UTC)     Latest activity      Note                      Scopes
 48e8f859  -                    2022-01-31T18:32:33                            inherit
 ba9af604  2022-01-31T23:03:57  -                                              read:metadata

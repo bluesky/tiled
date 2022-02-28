@@ -5,6 +5,7 @@ cached-property; python_version < '3.8'
 cachetools
 dask
 fastapi
+jinja2
 jmespath
 jsonschema
 msgpack

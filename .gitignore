@@ -88,3 +88,6 @@ tokens.json
 docs/source/reference/client-profiles.md
 docs/source/reference/service-configuration.md
 docs/source/reference/api.yml
+
+# placed React bundle
+share/tiled/ui

@@ -1,0 +1,5 @@
+node_modules/
+
+# For custom config development, ignore all config files except the built-in
+# default one.
+public/config/*.yml

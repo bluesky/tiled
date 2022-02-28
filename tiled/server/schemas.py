@@ -75,6 +75,7 @@ class SortingItem(pydantic.BaseModel):
 
 
 class NodeAttributes(pydantic.BaseModel):
+    ancestors: List[str]
     structure_family: Optional[StructureFamilies]
     specs: Optional[List[str]]
     metadata: Optional[dict]  # free-form, user-specified dict

@@ -522,3 +522,33 @@ class UnsupportedShape(SerializationError):
 # https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
 APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"
 XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+"""Get the data files for this package."""
+
+
+def get_share_tiled_path():
+    """Walk up until we find share/tiled"""
+    import sys
+    from os.path import abspath, dirname, exists, join, split
+
+    path = abspath(dirname(__file__))
+    starting_points = [path]
+    if not path.startswith(sys.prefix):
+        starting_points.append(sys.prefix)
+    for path in starting_points:
+        # walk up, looking for prefix/share/jupyter
+        while path != "/":
+            share_tiled = join(path, "share", "tiled")
+            if exists(
+                join(share_tiled, ".identifying_file_72628d5f953b4229b58c9f1f8f6a9a09")
+            ):
+                # We have the found the right directory,
+                # or one that is trying very hard to pretend to be!
+                return share_tiled
+            path, _ = split(path)
+    # Give up
+    return ""
+
+
+# Package managers can just override this with the appropriate constant
+SHARE_TILED_PATH = get_share_tiled_path()

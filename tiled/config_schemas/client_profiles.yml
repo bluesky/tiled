@@ -31,7 +31,7 @@ properties:
     description: |
       URI of a Tiled server, such as
 
-          http://localhost:8000
+          http://localhost:8000/api
   username:
     type: string
     description: |

@@ -84,8 +84,8 @@ set-cookie: tiled_csrf=1-Cpa1WcwggakZ91FtNsscjM8VO1N1znmuILlL5hGY8; HttpOnly; Pa
         },
         "id": "",
         "links": {
-            "search": "http://localhost:8000/node/search/",
-            "self": "http://localhost:8000/node/metadata/"
+            "search": "http://localhost:8000/api/node/search/",
+            "self": "http://localhost:8000/api/node/metadata/"
         },
         "meta": null,
         "type": "tree"

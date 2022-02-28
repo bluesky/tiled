@@ -18,7 +18,7 @@ tiled serve pyobject --public tiled.examples.generated:tree
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
+client = from_uri("http://localhost:8000/api", cache=Cache.in_memory(2e9))
 ```
 
 where we have to specify the maximum RAM we are willing to dedicate to the cache,
@@ -28,7 +28,7 @@ Most things that we do with our `client` make an HTTP request to the server and
 receive a response. For example...
 
 ```python
->>> client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
+>>> client = from_uri("http://localhost:8000/api", cache=Cache.in_memory(2e9))
 
 >>> client
 <Node {'big_image', 'small_image', 'tiny_image', 'tiny_cube', ...} ~11 entries>
@@ -85,7 +85,7 @@ see the next section.
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-client = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"))
+client = from_uri("http://localhost:8000/api", cache=Cache.on_disk("my_cache_directory"))
 ```
 
 This works exactly the same as before, but now the data is stored in files on disk.
@@ -114,7 +114,7 @@ First, when connected to the Internet, connect and download.
 from tiled.client.cache import download
 from tiled.client import from_uri
 
-client = from_uri("http://localhost:8000")
+client = from_uri("http://localhost:8000/api")
 download(client, "my_cache_directory")
 ```
 
@@ -134,7 +134,7 @@ TO DO: Demonstrate downloading only a *portion* of a Tree.
 Alternatively, a basic download can be performed from the command line via the
 tiled CLI.
 
-    $ tiled download "http://localhost:8000" my_cache_directory
+    $ tiled download "http://localhost:8000/api" my_cache_directory
 
 ```
 
@@ -149,7 +149,7 @@ attempt to connect and to rely entirely on its local cache.
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-client = from_uri("http://localhost:8000", cache=Cache.on_disk("my_cache_directory"), offline=True)
+client = from_uri("http://localhost:8000/api", cache=Cache.on_disk("my_cache_directory"), offline=True)
 ```
 
 If you attempt to access something that was not downloaded a

@@ -64,7 +64,9 @@ async def about(
             spec = {
                 "provider": provider,
                 "mode": authenticator.mode.value,
-                "links": {"auth_endpoint": f"{base_url}auth/provider/{provider}/token"},
+                "links": {
+                    "auth_endpoint": f"{base_url}/auth/provider/{provider}/token"
+                },
                 "confirmation_message": getattr(
                     authenticator, "confirmation_message", None
                 ),
@@ -73,7 +75,7 @@ async def about(
             endpoint = authenticator.authorization_endpoint
             if endpoint.startswith("/"):
                 # This is relative.
-                endpoint = f"{base_url}auth/provider/{provider}{endpoint}"
+                endpoint = f"{base_url}/auth/provider/{provider}{endpoint}"
             spec = {
                 "provider": provider,
                 "mode": authenticator.mode.value,
@@ -90,11 +92,11 @@ async def about(
         # If there are *any* authenticaiton providers, these
         # endpoints will be added.
         authentication["links"] = {
-            "whoami": f"{base_url}auth/whoami",
-            "apikey": f"{base_url}auth/apikey",
-            "refresh_session": f"{base_url}auth/session/refresh",
-            "revoke_session": f"{base_url}auth/session/revoke/{{session_id}}",
-            "logout": f"{base_url}auth/logout",
+            "whoami": f"{base_url}/auth/whoami",
+            "apikey": f"{base_url}/auth/apikey",
+            "refresh_session": f"{base_url}/auth/session/refresh",
+            "revoke_session": f"{base_url}/auth/session/revoke/{{session_id}}",
+            "logout": f"{base_url}/auth/logout",
         }
     authentication["providers"] = provider_specs
 
@@ -119,7 +121,7 @@ async def about(
                 "self": base_url,
                 "documentation": f"{base_url}docs",
             },
-            meta={"root_path": request.scope.get("root_path") or "/"},
+            meta={"root_path": request.scope.get("root_path") or "" + "/api"},
         ),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
@@ -300,11 +302,18 @@ def array_block(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch a chunk of array-like data.
     """
+    if entry.structure_family not in {"array", "xarray_data_array"}:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
+        )
     if block == ():
         # Handle special case of numpy scalar.
         if entry.macrostructure().shape != ():
@@ -325,6 +334,14 @@ def array_block(
                 status_code=400,
                 detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
             )
+    if array.nbytes > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -335,6 +352,7 @@ def array_block(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         # raise HTTPException(status_code=406, detail=", ".join(err.supported))
@@ -350,11 +368,18 @@ def array_full(
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch a slice of array-like data.
     """
+    if entry.structure_family not in {"array", "xarray_data_array"}:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
+        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -370,6 +395,14 @@ def array_full(
             status_code=400,
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
+    if array.nbytes > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -380,6 +413,7 @@ def array_full(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -396,7 +430,9 @@ def dataframe_partition(
     entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
@@ -416,6 +452,15 @@ def dataframe_partition(
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
+    if df.memory_usage().sum() > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Select a subset of the columns ('?field=...') to "
+                "request a smaller chunks."
+            ),
+        )
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -426,6 +471,7 @@ def dataframe_partition(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -434,14 +480,16 @@ def dataframe_partition(
 @router.get(
     "/node/full/{path:path}",
     response_model=schemas.Response,
-    name="full xarray.Dataset",
+    name="full generic 'node', dataframe, or xarray Dataset",
 )
 def node_full(
     request: Request,
     entry=Security(entry, scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
+    filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch the data below the given node.
@@ -454,6 +502,21 @@ def node_full(
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
+    if (entry.structure_family == "dataframe") and (
+        data.memory_usage().sum() > settings.response_bytesize_limit
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Select a subset of the columns ('?field=...') to "
+                "request a smaller chunks."
+            ),
+        )
+    # With a generic 'node' we cannot know at this point how large it
+    # will be. We rely on the serializers to give up if they discover too
+    # much data. Once we support asynchronous workers, we can default to or
+    # require async packing for generic nodes.
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -464,6 +527,7 @@ def node_full(
                 request,
                 format,
                 expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])

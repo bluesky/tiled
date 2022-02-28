@@ -144,7 +144,7 @@ class DaskDataArrayClient(BaseStructureClient):
             "links": {
                 "self": self.item["links"]["self"] + "/variable",
                 "full_variable": str(self.context.base_url)
-                + "array/full/"
+                + "/array/full/"
                 + "/".join(self.path)
                 + "/variable",
             },

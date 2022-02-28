@@ -38,7 +38,11 @@ nested under `/auth/`.
 
 ## Reference
 
-To view and try the *interactive* docs, start the Tiled server with the demo
+To view and try the *interactive* docs, visit
+
+[http://tiled-demoblueskyproject.io/docs](http://tiled-demoblueskyproject.io/docs)
+
+or, to work fully locally, start the Tiled server with the demo
 Tree from a Terminal
 
 ```
@@ -46,9 +50,3 @@ tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 and navigate your browser to http://localhost:8000/docs.
-
-A non-interactive reference with the same content follow below.
-
-```{eval-rst}
-.. openapi:: api.yml
-```

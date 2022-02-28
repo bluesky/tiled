@@ -1,4 +1,5 @@
 import asyncio
+import string
 import sys
 from datetime import timedelta
 
@@ -16,14 +17,15 @@ from tiled.adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdap
 print("Generating large example data...", file=sys.stderr)
 data = {
     "big_image": numpy.random.random((10_000, 10_000)),
-    "small_image": numpy.random.random((100, 100)),
+    "small_image": numpy.random.random((300, 300)),
     "medium_image": numpy.random.random((1000, 1000)),
-    "tiny_image": numpy.random.random((10, 10)),
-    "tiny_cube": numpy.random.random((10, 10, 10)),
-    "tiny_hypercube": numpy.random.random((10, 10, 10, 10, 10)),
+    "tiny_image": numpy.random.random((50, 50)),
+    "tiny_cube": numpy.random.random((50, 50, 50)),
+    "tiny_hypercube": numpy.random.random((50, 50, 50, 50, 50)),
     "high_entropy": numpy.random.random((100, 100)),
     "low_entropy": numpy.ones((100, 100)),
     "short_column": numpy.random.random(100),
+    "tiny_column": numpy.random.random(10),
     "long_column": numpy.random.random(100_000),
 }
 print("Done generating example data.", file=sys.stderr)
@@ -35,8 +37,6 @@ mapping = {
     "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
     "tiny_cube": ArrayAdapter.from_array(data["tiny_cube"]),
     "tiny_hypercube": ArrayAdapter.from_array(data["tiny_hypercube"]),
-    "low_entropy": ArrayAdapter.from_array(data["low_entropy"]),
-    "high_entropy": ArrayAdapter.from_array(data["high_entropy"]),
     "short_table": DataFrameAdapter.from_pandas(
         pandas.DataFrame(
             {
@@ -60,6 +60,17 @@ mapping = {
         ),
         npartitions=5,
         metadata={"animal": "dog", "color": "green"},
+    ),
+    "wide_table": DataFrameAdapter.from_pandas(
+        pandas.DataFrame(
+            {
+                letter: i * data["tiny_column"]
+                for i, letter in enumerate(string.ascii_uppercase, start=1)
+            },
+            index=pandas.Index(numpy.arange(len(data["tiny_column"])), name="index"),
+        ),
+        npartitions=1,
+        metadata={"animal": "dog", "color": "red"},
     ),
     "labeled_data": MapAdapter(
         {
@@ -133,6 +144,9 @@ mapping = {
         },
         metadata={"animal": "cat", "color": "green"},
     ),
+    "flat_array": ArrayAdapter.from_array(numpy.random.random(100)),
+    "low_entropy": ArrayAdapter.from_array(data["low_entropy"]),
+    "high_entropy": ArrayAdapter.from_array(data["high_entropy"]),
     # Below, an asynchronous task modifies this value over time.
     "dynamic": ArrayAdapter.from_array(numpy.zeros((3, 3))),
 }

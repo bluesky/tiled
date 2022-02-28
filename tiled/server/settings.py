@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     session_max_age: Optional[timedelta] = timedelta(
         seconds=int(os.getenv("TILED_SESSION_MAX_AGE", 365 * 24 * 60 * 60))  # 365 days
     )
+    # Put a fairly low limit on the maximum size of one chunk, keeping in mind
+    # that data should generally be chunked. When we implement async responses,
+    # we can raise this global limit.
+    response_bytesize_limit = int(
+        os.getenv("TILED_RESPONSE_BYTESIZE_LIMIT", 300_000_000)
+    )  # 300 MB
     database_uri: Optional[str] = os.getenv("TILED_DATABASE_URI")
     database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 0))
 

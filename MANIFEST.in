@@ -2,18 +2,14 @@ include AUTHORS.rst
 include CONTRIBUTING.rst
 include LICENSE
 include README.rst
-include requirements-client.txt
-include requirements-cache.txt
-include requirements-server.txt
-include requirements-array.txt
-include requirements-dataframe.txt
-include requirements-xarray.txt
+include requirements-*.txt
 # This alembic migration scripts are not part of an importable package.
 include tiled/database/alembic.ini.template
 include tiled/database/alembic.ini.template
 include tiled/database/migrations/env.py
 include tiled/database/migrations/script.py.mako
 include tiled/database/migrations/versions/*.py
+graft share
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
@@ -23,6 +19,7 @@ recursive-include docs *.yml *.rst conf.py Makefile make.bat
 include versioneer.py
 include tiled/_version.py
 include tiled/config_schemas/*.yml
+prune web-frontend/node_modules
 
 # If including data files in the package, add them like:
 # include path/to/data_file

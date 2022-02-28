@@ -8,9 +8,14 @@ import urllib.parse
 from functools import lru_cache, partial
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, Request, Response
+import anyio
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.responses import FileResponse
 
 from tiled.database.core import purge_expired
 
@@ -18,6 +23,7 @@ from ..authenticators import Mode
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
+from ..utils import SHARE_TILED_PATH
 from .compression import CompressionMiddleware
 from .core import PatchedStreamingResponse
 from .dependencies import get_query_registry, get_root_tree, get_serialization_registry
@@ -30,6 +36,7 @@ from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     get_authenticators,
+    get_base_url,
     record_timing,
 )
 
@@ -106,15 +113,71 @@ def build_app(
     compression_registry = compression_registry or default_compression_registry
 
     app = FastAPI()
+
+    if SHARE_TILED_PATH:
+        # If the distribution includes static assets, serve UI routes.
+
+        @app.get("/ui/{path:path}")
+        async def ui(path):
+            response = await lookup_file(path)
+            return response
+
+        async def lookup_file(path, try_app=True):
+            if not path:
+                path = "index.html"
+            full_path = Path(SHARE_TILED_PATH, "ui", path)
+            try:
+                stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+            except PermissionError:
+                raise HTTPException(status_code=401)
+            except FileNotFoundError:
+                # This may be a URL that has meaning to the client-side application,
+                # such as /ui/node/metadata/a/b/c.
+                # Serve index.html and let the client-side application sort it out.
+                if try_app:
+                    response = await lookup_file("index.html", try_app=False)
+                    return response
+                raise HTTPException(status_code=404)
+            except OSError:
+                raise
+            return FileResponse(
+                full_path,
+                stat_result=stat_result,
+                method="GET",
+                status_code=200,
+            )
+
+        app.mount(
+            "/static",
+            StaticFiles(directory=Path(SHARE_TILED_PATH, "static")),
+            name="ui",
+        )
+        templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
+
+        @app.get("/", response_class=HTMLResponse)
+        async def index(request: Request):
+            if request.headers.get("user-agent", "").startswith("python-tiled"):
+                # This results in an error message like
+                # ClientError: 400: To connect from a Python client, use
+                # http://localhost:8000/api not http://localhost:8000/?root_path=true
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"To connect from a Python client, use {get_base_url(request)} not",
+                )
+            return templates.TemplateResponse(
+                "index.html",
+                {"request": request, "api_url": f"{get_base_url(request)}"},
+            )
+
     app.state.allow_origins = []
-    app.include_router(router)
+    app.include_router(router, prefix="/api")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
     for custom_router in getattr(tree, "include_routers", []):
-        app.include_router(custom_router)
+        app.include_router(custom_router, prefix="/api")
 
     if authentication.get("providers", []):
         # Delay this imports to avoid delaying startup with the SQL and cryptography
@@ -159,7 +222,7 @@ def build_app(
                     custom_router, prefix=f"/provider/{provider}"
                 )
         # And add this authentication_router itself to the app.
-        app.include_router(authentication_router, prefix="/auth")
+        app.include_router(authentication_router, prefix="/api/auth")
 
     @lru_cache(1)
     def override_get_authenticators():
@@ -182,7 +245,7 @@ def build_app(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        for item in ["allow_origins", "database_uri"]:
+        for item in ["allow_origins", "response_bytesize_limit", "database_uri"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         pool_size = server_settings.get("database_settings", {}).get("pool_size")
@@ -238,7 +301,7 @@ def build_app(
 
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
-        app.include_router(declare_search_router(query_registry))
+        app.include_router(declare_search_router(query_registry), prefix="/api")
 
         app.state.allow_origins.extend(settings.allow_origins)
         app.add_middleware(
@@ -458,7 +521,7 @@ def build_app(
     if metrics_config.get("prometheus", False):
         from . import metrics
 
-        app.include_router(metrics.router)
+        app.include_router(metrics.router, prefix="/api")
 
         @app.middleware("http")
         async def capture_metrics_prometheus(request: Request, call_next):
