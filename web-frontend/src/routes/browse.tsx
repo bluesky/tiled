@@ -164,6 +164,7 @@ const OverviewDispatch: React.FunctionComponent<DispatchProps> = (props) => {
           <ArrayOverview
             segments={props.segments}
             item={props.item}
+            link={props.item.data!.links!.full as string}
             structure={props.item.data!.attributes!.structure!}
           />
         );
@@ -176,6 +177,7 @@ const OverviewDispatch: React.FunctionComponent<DispatchProps> = (props) => {
           <XarrayDataArrayOverview
             segments={props.segments}
             item={props.item}
+            link={props.item.data!.links!.full_variable as string}
             structure={
               props.item.data!.attributes!.structure!.macro!
                 .variable! as components["schemas"]["Structure"]

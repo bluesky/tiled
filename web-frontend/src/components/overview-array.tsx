@@ -12,6 +12,7 @@ const ArrayND = lazy(() => import("../components/array-nd"));
 interface IProps {
   segments: string[];
   item: any;
+  link: string;
   structure: components["schemas"]["Structure"];
 }
 
@@ -50,6 +51,7 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
           <ArrayND
             segments={props.segments}
             item={props.item}
+            link={props.link}
             structure={props.structure}
           />
         </Suspense>

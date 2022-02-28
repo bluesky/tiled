@@ -12,6 +12,7 @@ import { useTheme } from "@mui/material/styles";
 
 interface IProps {
   segments: string[];
+  link: string;
   item: any;
   structure: components["schemas"]["Structure"];
 }
@@ -37,7 +38,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   return (
     <Box>
       <ImageDisplay
-        link={props.item.data!.links!.full as string}
+        link={props.link}
         cuts={cuts}
         stride={stride}
       />

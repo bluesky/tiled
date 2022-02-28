@@ -8,6 +8,7 @@ import { components } from "../openapi_schemas";
 interface IProps {
   segments: string[];
   item: any;
+  link: string;
   structure: components["schemas"]["Structure"];
 }
 
@@ -21,6 +22,7 @@ const XarrayDataArrayOverview: React.FunctionComponent<IProps> = (props) => {
       <ArrayOverview
         segments={props.segments}
         item={props.item}
+        link={props.item.data!.links!.full_variable as string}
         structure={props.structure}
       />
       <Divider sx={{ mb: 3 }} />
