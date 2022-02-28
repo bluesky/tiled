@@ -2,7 +2,7 @@ import { Column, Spec } from "./contents";
 import { useEffect, useState } from "react";
 
 import Container from "@mui/material/Container";
-import NodeContents from "./node-contents";
+import NodeLazyContents from "./node-lazy-contents";
 import { Skeleton } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { loadConfig } from "../config";
@@ -44,7 +44,7 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
       <Typography id="table-title" variant="h6" component="h2">
         Contents
       </Typography>
-      <NodeContents
+      <NodeLazyContents
         segments={props.segments}
         specs={props.item.data!.attributes!.specs!}
         columns={columns}
