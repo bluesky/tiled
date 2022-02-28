@@ -353,6 +353,11 @@ properties:
     description: |
       The 'object' cache is available to all Adapters to cache arbitrary objects, including
       file handles or chunks of data, in process memory.
+  response_bytesize_limit:
+    type: integer
+    description: |
+      Maximum byte size of a response, given in bytes. The default is low (300 MB) keeping
+      in mind that data is read into server memory and should generally be fetched in chunks.
   allow_origins:
     type: array
     items:

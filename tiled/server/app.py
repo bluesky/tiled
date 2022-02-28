@@ -245,7 +245,7 @@ def build_app(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        for item in ["allow_origins", "database_uri"]:
+        for item in ["allow_origins", "response_bytesize_limit", "database_uri"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         pool_size = server_settings.get("database_settings", {}).get("pool_size")

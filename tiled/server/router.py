@@ -304,6 +304,7 @@ def array_block(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch a chunk of array-like data.
@@ -333,6 +334,14 @@ def array_block(
                 status_code=400,
                 detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
             )
+    if array.nbytes > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -361,6 +370,7 @@ def array_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch a slice of array-like data.
@@ -384,6 +394,14 @@ def array_full(
         raise HTTPException(
             status_code=400,
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
+    if array.nbytes > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
         )
     try:
         with record_timing(request.state.metrics, "pack"):
@@ -414,6 +432,7 @@ def dataframe_partition(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
@@ -433,6 +452,15 @@ def dataframe_partition(
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
+    if df.memory_usage().sum() > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Select a subset of the columns ('?field=...') to "
+                "request a smaller chunks."
+            ),
+        )
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -452,7 +480,7 @@ def dataframe_partition(
 @router.get(
     "/node/full/{path:path}",
     response_model=schemas.Response,
-    name="full xarray.Dataset",
+    name="full generic 'node', dataframe, or xarray Dataset",
 )
 def node_full(
     request: Request,
@@ -461,6 +489,7 @@ def node_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch the data below the given node.
@@ -473,6 +502,21 @@ def node_full(
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
+    if (entry.structure_family == "dataframe") and (
+        data.memory_usage().sum() > settings.response_bytesize_limit
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Response would exceed {settings.response_bytesize_limit}. "
+                "Select a subset of the columns ('?field=...') to "
+                "request a smaller chunks."
+            ),
+        )
+    # With a generic 'node' we cannot know at this point how large it
+    # will be. We rely on the serializers to give up if they discover too
+    # much data. Once we support asynchronous workers, we can default to or
+    # require async packing for generic nodes.
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
