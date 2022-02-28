@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import ChoosePartition from "./choose-partition";
 import Container from "@mui/material/Container";
 import { DataGrid } from "@mui/x-data-grid";
 import FormControl from "@mui/material/FormControl";
@@ -47,7 +48,12 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
     return () => {
       controller.abort();
     };
-  }, [props.segments, props.item.data.links.full, partition]);
+  }, [
+    props.segments,
+    props.item.data.links.full,
+    props.item.data.links.partition,
+    partition,
+  ]);
 
   const setPartitionAndClearRows = (partition: number | string) => {
     // First clear the current contents and reactive the loading spinner.
@@ -86,45 +92,6 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
           <DataDisplay rows={rows} columns={columns} loading={!rowsAreLoaded} />
         </Box>
       </Container>
-    </Box>
-  );
-};
-
-interface ChoosePartitionProps {
-  npartitions: number;
-  value: number | string;
-  setValue: any;
-}
-
-const ChoosePartition: React.FunctionComponent<ChoosePartitionProps> = (
-  props
-) => {
-  const partitions = Array.from(Array(props.npartitions).keys());
-  const handleChange = (event: SelectChangeEvent<typeof props.value>) => {
-    props.setValue(event.target.value);
-  };
-
-  return (
-    <Box>
-      <FormControl sx={{ my: 2 }}>
-        <InputLabel id="partition-select-helper-label">Partition</InputLabel>
-        <Select
-          labelId="partition-select-label"
-          id="partition-select"
-          value={props.value}
-          label="Partition"
-          onChange={handleChange}
-        >
-          {partitions.map((partition) => {
-            return (
-              <MenuItem key={`partition-${partition}`} value={partition}>
-                {partition}
-              </MenuItem>
-            );
-          })}
-        </Select>
-        <FormHelperText>A portion of the rows</FormHelperText>
-      </FormControl>
     </Box>
   );
 };
@@ -206,4 +173,4 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   );
 };
 
-export { ChoosePartition, DataFrameOverview };
+export default DataFrameOverview;

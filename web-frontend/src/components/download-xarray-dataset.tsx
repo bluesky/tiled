@@ -2,25 +2,12 @@ import * as React from "react";
 
 import { Download, Format } from "./download-core";
 
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import ButtonGroup from "@mui/material/ButtonGroup";
-import Checkbox from "@mui/material/Checkbox";
-import { ChoosePartition } from "./overview-dataframe";
-import { ColumnList } from './download-dataframe'
-import FormControlLabel from "@mui/material/FormControlLabel";
-import FormGroup from "@mui/material/FormGroup";
-import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemIcon from "@mui/material/ListItemIcon";
-import ListItemText from "@mui/material/ListItemText";
-import ListSubheader from "@mui/material/ListSubheader";
+import ColumnList from "./column-list";
 import Stack from "@mui/material/Stack";
 import { useState } from "react";
 
-interface DownloadDatasetProps{
+interface DownloadDatasetProps {
   name: string;
   structureFamily: string;
   macrostructure: any;
@@ -44,7 +31,7 @@ const DownloadDataset: React.FunctionComponent<DownloadDatasetProps> = (
     // We use .join(",") here so we can use string equality.
     // You wouldn't believe me if I told you how difficult it is
     // to check Array equality in Javascript.
-    if (columns.join(",") != allColumns.join(",")) {
+    if (columns.join(",") !== allColumns.join(",")) {
       const field_params = columns
         .map((column) => {
           return `&field=${column}`;

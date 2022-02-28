@@ -4,15 +4,18 @@ import "@fontsource/roboto/500.css";
 import "@fontsource/roboto/700.css";
 
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Suspense, lazy } from "react";
 
 import App from "./App";
 import CssBaseline from "@mui/material/CssBaseline";
-import Node from "./routes/node";
+import ErrorBoundary from "./components/error-boundary";
+import Skeleton from "@mui/material/Skeleton";
 import { ThemeProvider } from "@mui/material/styles";
 import { render } from "react-dom";
 import reportWebVitals from "./reportWebVitals";
 import theme from "./theme";
-import yaml from "js-yaml";
+
+const Node = lazy(() => import("./routes/node"));
 
 const root_element = document.getElementById("root");
 const basename = process.env.PUBLIC_URL;
@@ -23,19 +26,23 @@ render(
     <CssBaseline />
 
     <BrowserRouter basename={basename}>
-      <Routes>
-        <Route path="/" element={<App />}>
-          <Route path="/browse/*" element={<Node />} />
-        </Route>
-        <Route
-          path="*"
-          element={
-            <main style={{ padding: "1rem" }}>
-              <p>There's nothing here!</p>
-            </main>
-          }
-        />
-      </Routes>
+      <ErrorBoundary>
+        <Suspense fallback={<Skeleton variant="rectangular" />}>
+          <Routes>
+            <Route path="/" element={<App />}>
+              <Route path="/browse/*" element={<Node />} />
+            </Route>
+            <Route
+              path="*"
+              element={
+                <main style={{ padding: "1rem" }}>
+                  <p>There's nothing here!</p>
+                </main>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   </ThemeProvider>,
   root_element

@@ -1,8 +1,7 @@
 import * as React from "react";
 
 import Select, { SelectChangeEvent } from "@mui/material/Select";
-import { about, axiosInstance } from "../client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -16,9 +15,10 @@ import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
+import { about } from "../client";
 import { components } from "../openapi_schemas";
 import copy from "clipboard-copy";
-import { loadConfig } from "../config"
+import { loadConfig } from "../config";
 
 interface Format {
   mimetype: string;
@@ -48,7 +48,8 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     setAnchorEl(null);
   };
 
-  const formats = loadConfig().structure_families[props.structureFamily].formats;
+  const formats =
+    loadConfig().structure_families[props.structureFamily].formats;
 
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;

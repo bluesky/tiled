@@ -1,6 +1,6 @@
 import Container from "@mui/material/Container";
 import Divider from "@mui/material/Divider";
-import { NodeContents } from "./overview-generic-node";
+import NodeContents from "./node-contents";
 import Typography from "@mui/material/Typography";
 
 interface IProps {
@@ -34,4 +34,4 @@ const XarrayDatasetOverview: React.FunctionComponent<IProps> = (props) => {
   );
 };
 
-export { XarrayDatasetOverview };
+export default XarrayDatasetOverview;

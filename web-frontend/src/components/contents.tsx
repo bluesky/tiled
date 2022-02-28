@@ -3,7 +3,6 @@ import * as React from "react";
 import {
   DataGrid,
   GridRowParams,
-  GridToolbar,
   GridToolbarColumnsButton,
   GridToolbarContainer,
   GridToolbarDensitySelector,
@@ -69,6 +68,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
       row.id = item.id;
       props.columns.map((column) => {
         row[column.field] = item.attributes!.metadata![column.field];
+        return null;
       });
       return row;
     }
@@ -78,6 +78,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
   props.items.map(
     (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
       idsToAncestors[item.id as string] = item.attributes.ancestors;
+      return null;
     }
   );
   return (

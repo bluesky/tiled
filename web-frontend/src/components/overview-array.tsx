@@ -237,10 +237,10 @@ interface ImageDisplayProps {
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   var url: string;
-  url = `${props.link}?format=image/png&slice=${props.cuts.join(",")}`
+  url = `${props.link}?format=image/png&slice=${props.cuts.join(",")}`;
   if (props.stride !== 1) {
     // Downsample the image dimensions.
-    url = url.concat(`,::${ props.stride },::${props.stride}`)
+    url = url.concat(`,::${props.stride},::${props.stride}`);
   }
   return (
     <Box
@@ -261,6 +261,7 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
         <a
           href="https://numpy.org/doc/stable/user/basics.rec.html"
           target="_blank"
+          rel="noreferrer"
         >
           structured data type
         </a>
@@ -290,4 +291,4 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
   }
 };
 
-export { ArrayOverview };
+export default ArrayOverview;

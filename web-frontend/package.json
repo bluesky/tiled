@@ -41,7 +41,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "build:pydist": "react-scripts build && cp -r build/ ../share/tiled/ui",
+    "build:pydist": "react-scripts build && rm -rf ../share/tiled/ui && cp -r build/ ../share/tiled/ui",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

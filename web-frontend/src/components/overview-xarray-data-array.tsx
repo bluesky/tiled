@@ -1,7 +1,7 @@
-import { ArrayOverview } from "./overview-array";
+import ArrayOverview from "./overview-array";
 import Container from "@mui/material/Container";
 import Divider from "@mui/material/Divider";
-import { NodeContents } from "./overview-generic-node";
+import NodeContents from "./node-contents";
 import Typography from "@mui/material/Typography";
 import { components } from "../openapi_schemas";
 
@@ -37,4 +37,4 @@ const XarrayDataArrayOverview: React.FunctionComponent<IProps> = (props) => {
   );
 };
 
-export { XarrayDataArrayOverview };
+export default XarrayDataArrayOverview;

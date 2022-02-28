@@ -1,29 +1,42 @@
 import * as React from "react";
 
+import { Suspense, lazy } from "react";
 import { useEffect, useState } from "react";
 
-import { ArrayOverview } from "../components/overview-array";
 import Box from "@mui/material/Box";
-import { DataFrameOverview } from "../components/overview-dataframe";
-import DownloadArray from "../components/download-array";
-import DownloadDataFrame from "../components/download-dataframe";
-import DownloadDataset from "../components/download-xarray-dataset";
-import DownloadNode from "../components/download-node";
-import JSONViewer from "../components/json-viewer";
-import MetadataView from "../components/metadata-view";
+import ErrorBoundary from "../components/error-boundary";
 import NodeBreadcrumbs from "../components/node-breadcrumbs";
-import { NodeOverview } from "../components/overview-generic-node";
 import Paper from "@mui/material/Paper";
 import PropTypes from "prop-types";
 import Skeleton from "@mui/material/Skeleton";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
-import { XarrayDataArrayOverview } from "../components/overview-xarray-data-array";
-import { XarrayDatasetOverview } from "../components/overview-xarray-dataset";
 import { components } from "../openapi_schemas";
 import { metadata } from "../client";
 import { useParams } from "react-router-dom";
+
+const ArrayOverview = lazy(() => import("../components/overview-array"));
+const DataFrameOverview = lazy(
+  () => import("../components/overview-dataframe")
+);
+const DownloadArray = lazy(() => import("../components/download-array"));
+const DownloadDataFrame = lazy(
+  () => import("../components/download-dataframe")
+);
+const DownloadDataset = lazy(
+  () => import("../components/download-xarray-dataset")
+);
+const DownloadNode = lazy(() => import("../components/download-node"));
+const JSONViewer = lazy(() => import("../components/json-viewer"));
+const MetadataView = lazy(() => import("../components/metadata-view"));
+const NodeOverview = lazy(() => import("../components/overview-generic-node"));
+const XarrayDataArrayOverview = lazy(
+  () => import("../components/overview-xarray-data-array")
+);
+const XarrayDatasetOverview = lazy(
+  () => import("../components/overview-xarray-dataset")
+);
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -276,17 +289,33 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
             : ""}
         </Typography>
         <Paper elevation={3} sx={{ px: 3, py: 3 }}>
-          <OverviewDispatch segments={props.segments} item={item} />
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton variant="rectangular" />}>
+              <OverviewDispatch segments={props.segments} item={item} />
+            </Suspense>
+          </ErrorBoundary>
         </Paper>
       </TabPanel>
       <TabPanel value={tabValue} index={1}>
-        <DownloadDispatch segments={props.segments} item={item} />
+        <ErrorBoundary>
+          <Suspense fallback={<Skeleton variant="rectangular" />}>
+            <DownloadDispatch segments={props.segments} item={item} />
+          </Suspense>
+        </ErrorBoundary>
       </TabPanel>
       <TabPanel value={tabValue} index={2}>
-        <MetadataView json={fullItem} />
+        <ErrorBoundary>
+          <Suspense fallback={<Skeleton variant="rectangular" />}>
+            <MetadataView json={fullItem} />
+          </Suspense>
+        </ErrorBoundary>
       </TabPanel>
       <TabPanel value={tabValue} index={3}>
-        <JSONViewer json={fullItem} />
+        <ErrorBoundary>
+          <Suspense fallback={<Skeleton variant="rectangular" />}>
+            <JSONViewer json={fullItem} />
+          </Suspense>
+        </ErrorBoundary>
       </TabPanel>
     </Box>
   );

@@ -1,67 +1,11 @@
-import Contents, { Column, Spec } from "../components/contents";
-import { useEffect, useState } from "react";
+import { Column, Spec } from "./contents";
 
 import Container from "@mui/material/Container";
+import NodeContents from "./node-contents";
 import Typography from "@mui/material/Typography";
-import { components } from "../openapi_schemas";
-import { loadConfig } from "../config"
-import { search } from "../client";
-
-interface NodeContentsProps {
-  segments: string[];
-  columns: Column[];
-  defaultColumns: string[];
-  specs: string[];
-}
+import { loadConfig } from "../config";
 
 const specs = loadConfig().specs as Spec[] | [];
-
-const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
-  const [items, setItems] = useState<
-    components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
-  >([]);
-  useEffect(() => {
-    const controller = new AbortController();
-    var selectMetadata: string | null;
-    var fields: string[];
-    if (props.columns.length === 0) {
-      // No configuration on which columns to show. Fetch only the ID.
-      fields = [];
-      selectMetadata = null;
-    } else {
-      fields = ["metadata"];
-      selectMetadata =
-        "{" +
-        props.columns
-          .map((column) => {
-            return `${column.field}:${column.select_metadata}`;
-          })
-          .join(",") +
-        "}";
-    }
-    async function loadData() {
-      var items = await search(
-        props.segments,
-        controller.signal,
-        fields,
-        selectMetadata
-      );
-      setItems(items);
-    }
-    loadData();
-    return () => {
-      controller.abort();
-    };
-  }, [props.segments]);
-  return (
-    <Contents
-      items={items}
-      specs={props.specs}
-      columns={props.columns}
-      defaultColumns={props.defaultColumns}
-    />
-  );
-};
 
 interface IProps {
   segments: string[];
@@ -97,4 +41,4 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   );
 };
 
-export { NodeOverview, NodeContents };
+export default NodeOverview;
