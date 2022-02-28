@@ -144,3 +144,8 @@ if modules_available("orjson"):
             [orjson.dumps(row.to_dict()) for _, row in df.iterrows()]
         ),
     )
+
+if modules_available("h5py"):
+    from .node import serialize_hdf5
+
+    serialization_registry.register("dataframe", "application/x-hdf5", serialize_hdf5)
