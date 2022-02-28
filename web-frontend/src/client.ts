@@ -11,16 +11,18 @@ export const search = async (
   segments: string[],
   signal: AbortSignal,
   fields: string[] = [],
-  selectMetadata: any
-): Promise<components["schemas"]["Resource_NodeAttributes__dict__dict_"][]> => {
-  let url = `/node/search/${segments.join("/")}?fields=${fields.join(
+  selectMetadata: any = null,
+  pageOffset: number = 0,
+  pageLimit: number = 100,
+): Promise<components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]> => {
+  let url = `/node/search/${segments.join("/")}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
     "&fields="
   )}`;
   if (selectMetadata !== null) {
     url = url.concat(`&select_metadata=${selectMetadata}`);
   }
   const response = await axiosInstance.get(url, { signal: signal });
-  return response.data.data;
+  return response.data;
 };
 
 export const metadata = async (

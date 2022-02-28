@@ -35,13 +35,13 @@ const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
         "}";
     }
     async function loadData() {
-      var items = await search(
+      var data = await search(
         props.segments,
         controller.signal,
         fields,
         selectMetadata
       );
-      setItems(items);
+      setItems(data!.data!);
     }
     loadData();
     return () => {
@@ -50,7 +50,7 @@ const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
   }, [props.columns, props.segments]);
   return (
     <Contents
-      items={items}
+      items={items!}
       specs={props.specs}
       columns={props.columns}
       defaultColumns={props.defaultColumns}

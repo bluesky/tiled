@@ -33,6 +33,8 @@ interface IProps {
   specs: string[];
   columns: Column[];
   defaultColumns: string[];
+  pageSize: number;
+  setPageSize: any;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -71,24 +73,26 @@ const LazyContents: React.FunctionComponent<IProps> = (props) => {
       hide: !props.defaultColumns.includes(column.field),
     })
   );
-  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [rowsState, setRowsState] = useState<RowsState>({
     page: 0,
-    pageSize: pageSize,
+    pageSize: props.pageSize,
     rows: [],
     loading: false,
   });
   type IdsToAncestors = { [key: string]: string[] };
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
+  const { loadItems, columns } = props;
   useEffect(() => {
+    console.log("useEffect");
     let active = true;
 
     (async () => {
       setRowsState((prev) => ({ ...prev, loading: true }));
-      const newItems = await props.loadItems(
+      const newItems = await loadItems(
         rowsState.page,
         rowsState.pageSize
       );
+      console.log("newItems", newItems);
       var idsToAncestors: IdsToAncestors = {};
       newItems.map(
         (
@@ -104,7 +108,7 @@ const LazyContents: React.FunctionComponent<IProps> = (props) => {
         ) => {
           const row: { [key: string]: any } = {};
           row.id = item.id;
-          props.columns.map((column) => {
+          columns.map((column) => {
             row[column.field] = item.attributes!.metadata![column.field];
             return null;
           });
@@ -113,10 +117,12 @@ const LazyContents: React.FunctionComponent<IProps> = (props) => {
       );
 
       if (!active) {
+        console.log("return early");
         return;
       }
 
       // TODO Synchronize these. (Clear rows first?)
+      console.log("set rows");
       setIdsToAncestors(idsToAncestors);
       setRowsState((prev) => ({ ...prev, loading: false, rows: newRows }));
     })();
@@ -124,7 +130,7 @@ const LazyContents: React.FunctionComponent<IProps> = (props) => {
     return () => {
       active = false;
     };
-  }, [rowsState.page, rowsState.pageSize]);
+  }, [rowsState.page, rowsState.pageSize, columns, loadItems]);
 
   return (
     <Box sx={{ my: 4 }}>
@@ -135,12 +141,12 @@ const LazyContents: React.FunctionComponent<IProps> = (props) => {
           rowCount={props.rowCount}
           {...rowsState}
           paginationMode="server"
-          pageSize={pageSize}
+          pageSize={props.pageSize}
           rowsPerPageOptions={[10, 30, 100]}
           onPageChange={(page) => setRowsState((prev) => ({ ...prev, page }))}
           onPageSizeChange={(pageSize) => {
             setRowsState((prev) => ({ ...prev, pageSize }));
-            setPageSize(pageSize);
+            props.setPageSize(pageSize);
           }}
           onRowClick={(params: GridRowParams) => {
             navigate(
