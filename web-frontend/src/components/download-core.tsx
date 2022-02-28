@@ -18,6 +18,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import { components } from "../openapi_schemas";
 import copy from "clipboard-copy";
+import { loadConfig } from "../config"
 
 interface Format {
   mimetype: string;
@@ -47,9 +48,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     setAnchorEl(null);
   };
 
-  const formats = JSON.parse(
-    sessionStorage.getItem("config") as string
-  ).structure_families[props.structureFamily].formats;
+  const formats = loadConfig().structure_families[props.structureFamily].formats;
 
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;

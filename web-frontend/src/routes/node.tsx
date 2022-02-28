@@ -8,6 +8,7 @@ import { DataFrameOverview } from "../components/overview-dataframe";
 import DownloadArray from "../components/download-array";
 import DownloadDataFrame from "../components/download-dataframe";
 import DownloadDataset from "../components/download-xarray-dataset";
+import DownloadNode from "../components/download-node";
 import JSONViewer from "../components/json-viewer";
 import MetadataView from "../components/metadata-view";
 import NodeBreadcrumbs from "../components/node-breadcrumbs";
@@ -79,10 +80,9 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
     switch (structureFamily) {
       case "node":
         return (
-          <DownloadArray
+          <DownloadNode
             name={props.item.data!.id}
             structureFamily={structureFamily}
-            macrostructure={null}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
           />

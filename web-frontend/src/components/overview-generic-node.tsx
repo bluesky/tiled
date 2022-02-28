@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Container from "@mui/material/Container";
 import Typography from "@mui/material/Typography";
 import { components } from "../openapi_schemas";
+import { loadConfig } from "../config"
 import { search } from "../client";
 
 interface NodeContentsProps {
@@ -13,9 +14,7 @@ interface NodeContentsProps {
   specs: string[];
 }
 
-const specs =
-  (JSON.parse(sessionStorage.getItem("config") as string).specs as Spec[]) ||
-  [];
+const specs = loadConfig().specs as Spec[] | [];
 
 const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
   const [items, setItems] = useState<
