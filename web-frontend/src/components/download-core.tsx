@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import Select, { SelectChangeEvent } from "@mui/material/Select";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -35,11 +35,21 @@ interface DownloadProps {
 }
 
 const Download: React.FunctionComponent<DownloadProps> = (props) => {
+  const [formats, setFormats] = useState<any>();
   const [info, setInfo] = useState<components["schemas"]["About"]>();
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
     null
   );
 
+  // Access config to get info about supported formats.
+  useEffect(() => {
+    async function loadFormats() {
+      const config = await loadConfig();
+      const formats = config.structure_families[props.structureFamily].formats;
+      setFormats(formats);
+    }
+    loadFormats();
+  }, []);
   const handleLinkClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -47,9 +57,6 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const handleClose = () => {
     setAnchorEl(null);
   };
-
-  const formats =
-    loadConfig().structure_families[props.structureFamily].formats;
 
   const open = Boolean(anchorEl);
   const id = open ? "link-popover" : undefined;

@@ -1,11 +1,11 @@
 import { Column, Spec } from "./contents";
+import { useEffect, useState } from "react";
 
 import Container from "@mui/material/Container";
 import NodeContents from "./node-contents";
+import { Skeleton } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { loadConfig } from "../config";
-
-const specs = loadConfig().specs as Spec[] | [];
 
 interface IProps {
   segments: string[];
@@ -13,8 +13,21 @@ interface IProps {
 }
 
 const NodeOverview: React.FunctionComponent<IProps> = (props) => {
+  const [specs, setSpecs] = useState<any>();
+
+  useEffect(() => {
+    async function loadSpecs() {
+      const config = await loadConfig();
+      const specs = config.specs;
+      setSpecs(specs);
+    }
+    loadSpecs();
+  }, []);
   // Walk through the node's specs until we find one we recognize.
-  const spec = specs.find((spec) =>
+  if (specs === undefined) {
+    return <Skeleton variant="rectangular" />;
+  }
+  const spec = specs.find((spec: Spec) =>
     props.item.data!.attributes!.specs.includes(spec.spec)
   );
   var columns: Column[];
