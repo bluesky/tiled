@@ -15,7 +15,7 @@ import { render } from "react-dom";
 import reportWebVitals from "./reportWebVitals";
 import theme from "./theme";
 
-const Node = lazy(() => import("./routes/node"));
+const Browse = lazy(() => import("./routes/browse"));
 
 const root_element = document.getElementById("root");
 const basename = process.env.PUBLIC_URL;
@@ -30,7 +30,7 @@ render(
         <Suspense fallback={<Skeleton variant="rectangular" />}>
           <Routes>
             <Route path="/" element={<App />}>
-              <Route path="/browse/*" element={<Node />} />
+              <Route path="/browse/*" element={<Browse />} />
             </Route>
             <Route
               path="*"

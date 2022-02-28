@@ -193,7 +193,7 @@ const OverviewDispatch: React.FunctionComponent<DispatchProps> = (props) => {
   return <Skeleton variant="rectangular" />;
 };
 
-function Node() {
+function Browse() {
   // Extract from path from react-router.
   const params = useParams<{ "*": string }>();
   // Transform "/a/b/c" to ["a", "b", "c"].
@@ -324,4 +324,4 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
   );
 };
 
-export default Node;
+export default Browse;
