@@ -77,7 +77,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     props.setFormat(format);
   };
 
-  if ((formats === undefined) || (info === undefined)) {
+  if (formats === undefined || info === undefined) {
     // Waiting for 'about' and 'config' to load.
     return <Skeleton variant="rectangular" />;
   }

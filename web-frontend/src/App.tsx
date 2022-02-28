@@ -7,9 +7,9 @@ function App() {
   return (
     <Container>
       <TiledAppBar />
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
     </Container>
   );
 }
