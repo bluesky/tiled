@@ -17,6 +17,36 @@ class BaseClient:
         self.structure_clients = structure_clients
         super().__init__()
 
+    def login(self, provider=None):
+        """
+        Depending on the server's authentication method, this will prompt for username/password
+
+        >>> c.login()
+        Username: USERNAME
+        Password: <input is hidden>
+
+        or prompt you to open a link in a web browser to login with a third party and paste in a access code
+
+        >>> c.login()
+        Navigate your web browser to this address to obtain access code:
+
+        ...
+
+        Access code (quotes optional): <input is hidden>
+
+        See also c.context.authenticate() and c.context.reauthenticate().
+        """
+        self.context.authenticate(provider=provider)
+        # Do NOT return the tokens that are returned by authenticate().
+        # This avoids displaying valid refresh tokens into places they might persist,
+        # like Jupyter notebooks.
+
+    def logout(self):
+        """
+        Log out.
+        """
+        self.context.logout()
+
     def __repr__(self):
         return f"<{type(self).__name__}>"
 

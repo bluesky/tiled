@@ -12,6 +12,12 @@ From Python, connect as usual.
 >>> c = from_uri("https://tiled-demo.blueskyproject.io/api")
 ```
 
+Now, ask to log in.
+
+```python
+>>> c.login()
+```
+
 You will see this prompt.
 
 ```
@@ -45,10 +51,10 @@ Back in Python, paste it in to the prompt and press enter.
 ```
 Navigate web browser to this address to obtain access code:
 
-https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/auth/code
+https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/api/auth/provider/orcid/code
 
 
-Access code (quotes optional): <--- Paste and press Enter.
+Access code (quotes optional): <--- Paste and press Enter. Input is hidden.
 ```
 
 After a couple seconds, you will see a confirmation message:
@@ -82,7 +88,7 @@ vary from one Tiled server to another.
 Now log out via:
 
 ```
->>> c.context.logout()
+>>> c.logout()
 ```
 
 This removes the stashed file.
