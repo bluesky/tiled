@@ -37,6 +37,7 @@ from .utils import (
     CSRF_COOKIE_NAME,
     get_authenticators,
     get_base_url,
+    get_root_url,
     record_timing,
 )
 
@@ -166,7 +167,11 @@ def build_app(
                 )
             return templates.TemplateResponse(
                 "index.html",
-                {"request": request, "api_url": f"{get_base_url(request)}"},
+                {
+                    "request": request,
+                    "api_url": get_base_url(request),
+                    "root_url": get_root_url(request),
+                },
             )
 
     app.state.allow_origins = []

@@ -23,11 +23,21 @@ def record_timing(metrics, key):
     metrics[key]["dur"] += time.perf_counter() - t0  # Units: seconds
 
 
+def get_root_url(request):
+    """
+    URL at which the app is being server, including API and UI
+    """
+    return f"{get_root_url_low_level(request.headers, request.scope)}"
+
+
 def get_base_url(request):
-    return f"{get_base_url_low_level(request.headers, request.scope)}/api"
+    """
+    Base URL for the API
+    """
+    return f"{get_root_url(request)}/api"
 
 
-def get_base_url_low_level(request_headers, scope):
+def get_root_url_low_level(request_headers, scope):
     # We want to get the scheme, host, and root_path (if any)
     # *as it appears to the client* for use in assembling links to
     # include in our responses.
