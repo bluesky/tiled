@@ -9,7 +9,7 @@ From Python, connect as usual.
 
 ```python
 >>> from tiled.client import from_uri
->>> c = from_uri("https://tiled-demo.blueskyproject.io")
+>>> c = from_uri("https://tiled-demo.blueskyproject.io/api")
 ```
 
 You will see this prompt.
@@ -68,7 +68,7 @@ Next, quit Python and start it fresh.
 
 ```python
 >>> from tiled.client import from_uri
->>> c = from_uri("https://tiled-demo.blueskyproject.io")
+>>> c = from_uri("https://tiled-demo.blueskyproject.io/api")
 >>> c
 <Node {'big_image', 'small_image', 'medium_image', ...} ~13 entries>
 ```
@@ -91,13 +91,13 @@ The tiled commandline interface provides utilities to log in, log out,
 and list active sessions. Try the following.
 
 ```
-$ tiled login https://tiled-demo.blueskyproject.io
+$ tiled login https://tiled-demo.blueskyproject.io/api
 ...
 
-$ tiled logout https://tiled-demo.blueskyproject.io
+$ tiled logout https://tiled-demo.blueskyproject.io/api
 tiled-demo.bluesky.project.io
 
-$ tiled login https://tiled-demo.blueskyproject.io
+$ tiled login https://tiled-demo.blueskyproject.io/api
 ...
 
 $ tiled sessions  # List active sessions.

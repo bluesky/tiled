@@ -817,7 +817,7 @@ with a cache, such as:
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-c = from_uri("http://tiled-demo.blueskyproject.io", cache = Cache.on_disk("data"))
+c = from_uri("http://tiled-demo.blueskyproject.io/api", cache = Cache.on_disk("data"))
 
 See https://blueskyproject.io/tiled/tutorials/caching.html for details."""
         )

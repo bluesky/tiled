@@ -278,7 +278,7 @@ authentication:
     args:
       client_id: APP-0ROS9DU5F717F7XN  # obtained from ORCID for tiled-demo.blueskyproject.io; not secret
       client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
-      redirect_uri: https://tiled-demo.blueskyproject.io/auth/provider/orcid/code
+      redirect_uri: https://tiled-demo.blueskyproject.io/api/auth/provider/orcid/code
       token_uri: "https://orcid.org/oauth/token"
       authorization_endpoint: "https://orcid.org/oauth/authorize?client_id={client_id}&response_type=code&scope=openid&redirect_uri={redirect_uri}"
       # These values come from https://orcid.org/.well-known/openid-configuration.
