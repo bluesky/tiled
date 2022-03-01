@@ -9,7 +9,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 import anyio
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
@@ -24,6 +24,7 @@ from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
 from ..utils import SHARE_TILED_PATH
+from .authentication import get_current_principal
 from .compression import CompressionMiddleware
 from .core import PatchedStreamingResponse
 from .dependencies import get_query_registry, get_root_tree, get_serialization_registry
@@ -156,7 +157,12 @@ def build_app(
         templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
 
         @app.get("/", response_class=HTMLResponse)
-        async def index(request: Request):
+        async def index(
+            request: Request,
+            # This dependency is here because it runs the code that moves
+            # API key from the query parameter to a cookie (if it is valid).
+            principal=Security(get_current_principal, scopes=[]),
+        ):
             if request.headers.get("user-agent", "").startswith("python-tiled"):
                 # This results in an error message like
                 # ClientError: 400: To connect from a Python client, use
@@ -595,9 +601,14 @@ def print_admin_api_key_if_generated(web_app, host, port):
     elif (not authenticators) and settings.single_user_api_key_generated:
         print(
             f"""
-    Use the following URL to connect to Tiled:
+    Navigate a web browser to:
+
+    http://{host}:{port}?api_key={settings.single_user_api_key}
+
+    or connect a Tiled client to:
 
     http://{host}:{port}/api?api_key={settings.single_user_api_key}
+
 """,
             file=sys.stderr,
         )
