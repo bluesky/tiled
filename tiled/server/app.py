@@ -175,8 +175,12 @@ def build_app(
                 "index.html",
                 {
                     "request": request,
+                    # This is used to fill in the Python code sample with the API URL.
                     "api_url": get_base_url(request),
+                    # This is used to construct the link to the React UI.
                     "root_url": get_root_url(request),
+                    # If defined, this adds a Binder link to the page.
+                    "binder_link": os.getenv("TILED_BINDER_LINK"),
                 },
             )
 

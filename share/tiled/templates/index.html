@@ -25,11 +25,14 @@
 $ python
 >>> from tiled.client import from_uri
 >>> client = from_uri("{{ api_url }}")</code></pre>
+    {% if binder_link %}
+      Alternatively, try it in the cloud on <a href="{{ binder_link }}" target="_blank" rel="noreferrer">Binder</a>.
+    {% endif %}
   </section>
   <section class="section">
     <h1 class="title">Explore the API</h1>
     <h2 class="subtitle">
-      Tiled includes interactive OpenAPI (a.k.a. "Swagger") documentation you can use in your web browser.
+      Tiled includes interactive <em>OpenAPI</em> documentation you can use in your web browser.
     </h2>
     <p class="box">
       The Tiled API can be accessed from any Internet-connected software,
