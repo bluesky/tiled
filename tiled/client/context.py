@@ -298,11 +298,20 @@ Set an api_key as in:
 
     @offline.setter
     def offline(self, value):
+        if self._cache is None:
+            raise RuntimeError(
+                """To use offline mode,  Tiled must be configured with a Cache, as in
+
+>>> from tiled.client import from_uri
+>>> from tiled.client.cache import Cache
+>>> client = from_uri("...", cache=Cache.on_disk("my_cache"))
+"""
+            )
         self._offline = bool(value)
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self._handshake_data = self.get_json()
+                self._handshake_data = self.get_json("/")
 
     def which_api_key(self):
         """

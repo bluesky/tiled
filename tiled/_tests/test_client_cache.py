@@ -67,6 +67,9 @@ def test_offline(cache, structure_clients):
     assert expected_arr_md == actual_arr_md
     assert expected_tree_md == actual_tree_md
 
+    # Switch online.
+    client.offline = False
+
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 def test_download(cache, structure_clients):
