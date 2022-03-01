@@ -597,7 +597,7 @@ def print_admin_api_key_if_generated(web_app, host, port):
             f"""
     Use the following URL to connect to Tiled:
 
-    "http://{host}:{port}?api_key={settings.single_user_api_key}"
+    http://{host}:{port}/api?api_key={settings.single_user_api_key}
 """,
             file=sys.stderr,
         )
