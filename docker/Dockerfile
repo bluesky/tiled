@@ -9,16 +9,26 @@ FROM base as builder
 
 WORKDIR /app
 
-COPY docker/requirements.txt /tmp/
+# copy requirements over first so this layer is cached and we don't have to reinstall deps when editing src
+COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-compression.txt /tmp/
 RUN pip install --upgrade pip
-RUN pip install -r /tmp/requirements.txt
+RUN pip install \
+  -r /tmp/requirements-server.txt \
+  -r /tmp/requirements-formats.txt \
+  -r /tmp/requirements-dataframe.txt \
+  -r /tmp/requirements-array.txt \
+  -r /tmp/requirements-xarray.txt \
+  -r /tmp/requirements-compression.txt
 
 COPY . .
 
-RUN pip install -e '.[server, formats]'
+# note requirements listed here but all deps should be already satisfied
+RUN pip install -e '.[server, formats, dataframe, array, xarray, compression]'
 
 FROM builder as test
-RUN pip install -r docker/requirements-test.txt
+
+RUN pip install -e '.[client]'
+RUN pip install -r requirements-dev.txt
 RUN pytest -v
 
 FROM base as app
