@@ -21,7 +21,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const shape = props.structure!.macro!.shape as number[];
   const ndim = shape.length;
   const middles = shape
-    .slice(2, ndim - 2)
+    .slice(0, ndim - 2)
     .map((size: number) => Math.floor(size / 2));
   // Request an image from the server that is downsampled to be at most
   // 2X as big as it will be displayed.
