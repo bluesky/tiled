@@ -19,7 +19,10 @@ interface IProps {
 
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const shape = props.structure!.macro!.shape as number[];
-  const middles = shape.slice(2).map((size: number) => Math.floor(size / 2));
+  const ndim = shape.length;
+  const middles = shape
+    .slice(2, ndim - 2)
+    .map((size: number) => Math.floor(size / 2));
   // Request an image from the server that is downsampled to be at most
   // 2X as big as it will be displayed.
   const theme = useTheme();
@@ -54,24 +57,34 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
       ) : (
         ""
       )}
-      {shape.slice(2).map((size: number, index: number) => {
-        return (
-          <CutSlider
-            key={`slider-${index}`}
-            min={0}
-            max={size - 1}
-            value={cuts[index]}
-            setValue={debounce(
-              (value) => {
-                const newCuts = cuts.slice();
-                newCuts[index] = value;
-                setCuts(newCuts);
-              },
-              100,
-              { maxWait: 200 }
-            )}
-          />
-        );
+      {shape.slice(0, ndim - 2).map((size: number, index: number) => {
+        if (size > 1) {
+          return (
+            <CutSlider
+              key={`slider-${index}`}
+              min={0}
+              max={size - 1}
+              value={cuts[2 + index]}
+              setValue={debounce(
+                (value) => {
+                  const newCuts = cuts.slice();
+                  newCuts[index] = value;
+                  setCuts(newCuts);
+                },
+                100,
+                {
+                  maxWait:
+                    // If the image is smaller than, say, 255 x 255, update
+                    // during scrubbing. Otherwise, wait for scrubbing to stop.
+                    shape[ndim - 1] * shape[ndim - 2] > 65025 ? undefined : 200,
+                }
+              )}
+            />
+          );
+        } else {
+          // Dimension of length 1, nothing to select.
+          return "";
+        }
       })}
     </Box>
   );
