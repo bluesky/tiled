@@ -20,6 +20,7 @@ interface IProps {
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const shape = props.structure!.macro!.shape as number[];
   const ndim = shape.length;
+  // Find the middle slice in all dimensions except the last two.
   const middles = shape
     .slice(0, ndim - 2)
     .map((size: number) => Math.floor(size / 2));
@@ -36,7 +37,11 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   } else {
     maxImageSize = theme.breakpoints.values.lg;
   }
-  const stride = Math.ceil(Math.max(...shape.slice(0, 2)) / maxImageSize);
+  // Compute a downsampling stride based on the largest dimension
+  // among the last two.
+  const stride = Math.ceil(
+    Math.max(...shape.slice(ndim - 2, ndim)) / maxImageSize
+  );
   const [cuts, setCuts] = useState<number[]>(middles);
   return (
     <Box>
@@ -64,7 +69,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
               key={`slider-${index}`}
               min={0}
               max={size - 1}
-              value={cuts[2 + index]}
+              value={cuts[index]}
               setValue={debounce(
                 (value) => {
                   const newCuts = cuts.slice();
@@ -72,12 +77,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
                   setCuts(newCuts);
                 },
                 100,
-                {
-                  maxWait:
-                    // If the image is smaller than, say, 255 x 255, update
-                    // during scrubbing. Otherwise, wait for scrubbing to stop.
-                    shape[ndim - 1] * shape[ndim - 2] > 65025 ? undefined : 200,
-                }
+                { maxWait: 200 }
               )}
             />
           );
