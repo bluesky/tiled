@@ -1,6 +1,7 @@
 # These are the requirements needed for basic server functionality.
 aiofiles
 alembic
+anyio
 cachey
 cached-property; python_version < '3.8'
 cachetools
@@ -23,4 +24,3 @@ toolz
 typer
 uvicorn[standard]
 watchgod
-anyio
