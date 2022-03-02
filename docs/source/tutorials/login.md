@@ -113,7 +113,8 @@ $ tiled logout  # Log out of *all* sessions and list them.
 tiled-demo.bluesky.project.io
 ```
 
-This Tiled server is configured so that login is required, but once logged in,
-anyone with an ORCID can see the data. Other Tiled servers are configured to
-restrict access to a specific list of ORCIDs. To learn how to _deploy_
-authenticated Tiled servers, see {doc}`../explanations/security`.
+This Tiled server happens to be configured so that login is optional, and that
+anyone with an ORCID (_any_ ORCID) can log in. Other Tiled servers may be configured to
+restrict access to a specific list of ORCIDs, and/or to restrict access to some or
+all data to certain users. To learn how to _deploy_ authenticated Tiled
+servers, see {doc}`../explanations/security`.
