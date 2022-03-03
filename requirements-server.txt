@@ -14,7 +14,7 @@ msgpack
 orjson
 psutil
 prometheus_client
-pydantic
+pydantic >=1.8.2
 python-dateutil
 python-jose[cryptography]
 python-multipart
