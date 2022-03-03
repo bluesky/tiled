@@ -10,7 +10,7 @@ FROM base as builder
 WORKDIR /app
 
 # copy requirements over first so this layer is cached and we don't have to reinstall deps when editing src
-COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-compression.txt /tmp/
+COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-compression.txt docker/requirements-docker.txt /tmp/
 RUN pip install --upgrade pip
 RUN pip install \
   -r /tmp/requirements-server.txt \
@@ -18,7 +18,8 @@ RUN pip install \
   -r /tmp/requirements-dataframe.txt \
   -r /tmp/requirements-array.txt \
   -r /tmp/requirements-xarray.txt \
-  -r /tmp/requirements-compression.txt
+  -r /tmp/requirements-compression.txt \
+  -r /tmp/requirements-docker.txt
 
 COPY . .
 
