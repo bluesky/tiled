@@ -544,6 +544,11 @@ def build_app(
             metrics.capture_request_metrics(request, response)
             return response
 
+    graphql_config = server_settings.get("graphql", {})
+    if graphql_config.get("enabled", False):
+        from . import graphql
+        app.include_router(graphql.router, prefix="/graphql")
+
     return app
 
 
