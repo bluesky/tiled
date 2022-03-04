@@ -143,6 +143,7 @@ def construct_build_app_kwargs(
             root_mapping = {}
             index = {(): root_mapping}
             include_routers = []
+            graphql_queries = []
             for segments, tree in trees.items():
                 for i in range(len(segments)):
                     if segments[:i] not in index:
@@ -156,6 +157,9 @@ def construct_build_app_kwargs(
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
+                for query in getattr(tree, "graphql_queries", []):
+                    if query not in graphql_queries:
+                        graphql_queries.append(query)
             root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
