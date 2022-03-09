@@ -7,6 +7,8 @@ ENV PYTHONUNBUFFERED=1
 
 FROM base as builder
 
+RUN apt-get update && apt-get install -y curl
+
 WORKDIR /app
 
 # copy requirements over first so this layer is cached and we don't have to reinstall deps when editing src
@@ -23,8 +25,14 @@ RUN pip install \
 
 COPY . .
 
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash && \
+  . $HOME/.bashrc && \
+  nvm install node && \
+  cd web-frontend && \
+  npm run build:pydist
+
 # note requirements listed here but all deps should be already satisfied
-RUN pip install -e '.[server, formats, dataframe, array, xarray, compression]'
+RUN pip install '.[server, formats, dataframe, array, xarray, compression]'
 
 FROM builder as test
 
