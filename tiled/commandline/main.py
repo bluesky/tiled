@@ -151,7 +151,7 @@ def list_api_keys(
     client = _client_from_uri_or_profile(uri_or_profile, no_verify=no_verify)
     info = client.context.whoami()
     if not info["api_keys"]:
-        type.echo("No API keys found")
+        typer.echo("No API keys found")
         return
     max_note_len = max(len(api_key["note"] or "") for api_key in info["api_keys"])
     COLUMNS = f"First 8   Expires at (UTC)     Latest activity      Note{' ' * (max_note_len - 4)}  Scopes"
