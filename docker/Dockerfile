@@ -1,7 +1,7 @@
 FROM node:16-alpine AS web_builder
 WORKDIR /app
 COPY web-frontend .
-RUN npm run build
+RUN npm install && npm run build
 
 FROM python:3.8-slim as base
 
