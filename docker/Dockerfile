@@ -1,3 +1,8 @@
+FROM node:16-alpine AS web_builder
+WORKDIR /app
+COPY web-frontend .
+RUN npm run build
+
 FROM python:3.8-slim as base
 
 ENV VIRTUAL_ENV=/opt/venv
@@ -6,9 +11,6 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 FROM base as builder
-
-RUN apt-get update && apt-get install -y curl
-
 WORKDIR /app
 
 # copy requirements over first so this layer is cached and we don't have to reinstall deps when editing src
@@ -23,20 +25,15 @@ RUN pip install \
   -r /tmp/requirements-compression.txt \
   -r /tmp/requirements-docker.txt
 
+COPY --from=web_builder /app/build /app/share/tiled/ui
 COPY . .
-
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash && \
-  . $HOME/.bashrc && \
-  nvm install node && \
-  cd web-frontend && \
-  npm run build:pydist
 
 # note requirements listed here but all deps should be already satisfied
 RUN pip install '.[server, formats, dataframe, array, xarray, compression]'
 
 FROM builder as test
 
-RUN pip install -e '.[client]'
+RUN pip install '.[client]'
 RUN pip install -r requirements-dev.txt
 RUN pytest -v
 
