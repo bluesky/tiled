@@ -442,7 +442,7 @@ def generate_apikey(db, principal, apikey_params, request):
     db.refresh(new_key)
     return json_or_msgpack(
         request,
-        schemas.APIKeyWithSecret.from_orm(new_key, secret=secret.hex()),
+        schemas.APIKeyWithSecret.from_orm(new_key, secret=secret.hex()).dict(),
     )
 
 
@@ -467,11 +467,11 @@ def principal_list(
         principals = [
             schemas.Principal.from_orm(
                 principal_orm, latest_principal_activity(db, principal_orm)
-            )
+            ).dict()
             for principal_orm in principal_orms
         ]
 
-        return json_or_msgpack(request, schemas.ListOfPrincipals(principals=principals))
+        return json_or_msgpack(request, principals)
 
 
 @base_authentication_router.get(
@@ -494,7 +494,7 @@ def principal(
             request,
             schemas.Principal.from_orm(
                 principal_orm, latest_principal_activity(db, principal_orm)
-            ),
+            ).dict(),
         )
 
 
@@ -666,7 +666,7 @@ def current_apikey_info(
         api_key_orm = lookup_valid_api_key(db, secret)
         if api_key_orm is None:
             raise HTTPException(status_code=401, detail="Invalid API key")
-        return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm))
+        return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm).dict())
 
 
 @base_authentication_router.delete("/apikey")
@@ -722,7 +722,7 @@ def whoami(
             request,
             schemas.Principal.from_orm(
                 principal_orm, latest_principal_activity(db, principal_orm)
-            ),
+            ).dict(),
         )
 
 

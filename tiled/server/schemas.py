@@ -281,6 +281,3 @@ class APIKeyRequestParams(pydantic.BaseModel):
     expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
     scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
     note: Optional[str]
-
-class ListOfPrincipals(pydantic.BaseModel):
-    principals: List[Principal]
