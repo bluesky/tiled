@@ -464,15 +464,14 @@ def principal_list(
     with get_sessionmaker(settings.database_settings)() as db:
         principal_orms = db.query(orm.Principal).all()
 
-        return json_or_msgpack(
-            request,
-            [
-                schemas.Principal.from_orm(
-                    principal_orm, latest_principal_activity(db, principal_orm)
-                )
-                for principal_orm in principal_orms
-            ],
-        )
+        principals = [
+            schemas.Principal.from_orm(
+                principal_orm, latest_principal_activity(db, principal_orm)
+            )
+            for principal_orm in principal_orms
+        ]
+
+        return json_or_msgpack(request, schemas.ListOfPrincipals(principals=principals))
 
 
 @base_authentication_router.get(
