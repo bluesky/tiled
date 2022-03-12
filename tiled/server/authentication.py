@@ -711,7 +711,7 @@ def whoami(
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
     if principal is SpecialUsers.public:
-        return None
+        return json_or_msgpack(request, None)
     # The principal from get_current_principal tells us everything that the
     # access_token carries around, but the database knows more than that.
     with get_sessionmaker(settings.database_settings)() as db:
