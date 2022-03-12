@@ -373,7 +373,11 @@ def build_app(
                 make_admin_by_identity,
             )
 
-            engine = create_engine(settings.database_uri)
+            connect_args = {}
+            if settings.database_uri.startswith("sqlite"):
+                connect_args.update({"check_same_thread": False})
+
+            engine = create_engine(settings.database_uri, connect_args=connect_args)
             redacted_url = engine.url._replace(password="[redacted]")
             try:
                 check_database(engine)
