@@ -264,7 +264,7 @@ authentication:
           kid: ...
           n: ...
           alg: ...
-      confirmation_message: "You have logged with ... as {id}."
+      confirmation_message: "You have logged in with ... as {id}."
 ```
 
 Here is an example for ORCID authentication running at
@@ -290,7 +290,7 @@ authentication:
           kid: ...
           n: ...
           alg: RS256
-      confirmation_message: "You have logged with ORCID as {id}."
+      confirmation_message: "You have logged in with ORCID as {id}."
 ```
 
 ### Toy examples for testing and development
