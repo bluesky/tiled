@@ -122,7 +122,7 @@ async def about(
                 "documentation": f"{base_url}docs",
             },
             meta={"root_path": request.scope.get("root_path") or "" + "/api"},
-        ),
+        ).dict(),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
 
@@ -179,7 +179,7 @@ def declare_search_router(query_registry):
                 headers["Cache-Control"] = "must-revalidate"
             return json_or_msgpack(
                 request,
-                resource,
+                resource.dict(),
                 expires=expires,
                 headers=headers,
             )
@@ -287,7 +287,7 @@ async def node_metadata(
     meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
     return json_or_msgpack(
         request,
-        schemas.Response(data=resource, meta=meta),
+        schemas.Response(data=resource, meta=meta).dict(),
         expires=getattr(entry, "metadata_stale_at", None),
     )
 
