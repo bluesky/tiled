@@ -207,7 +207,7 @@ def build_app(
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
         oauth2_scheme.model.flows.password.tokenUrl = (
-            f"/auth/provider/{first_provider}/token"
+            f"/api/auth/provider/{first_provider}/token"
         )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
