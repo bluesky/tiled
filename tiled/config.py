@@ -164,7 +164,7 @@ def construct_build_app_kwargs(
         server_settings["response_bytesize_limit"] = config.get(
             "response_bytesize_limit"
         )
-        server_settings["database_uri"] = config.get("database_uri")
+        server_settings["database"] = config.get("database", {})
         metrics = config.get("metrics", {})
         if metrics.get("prometheus", False):
             prometheus_multiproc_dir = os.getenv("PROMETHEUS_MULTIPROC_DIR", None)
@@ -212,8 +212,7 @@ def merge(configs):
     uvicorn_config_source = None
     object_cache_config_source = None
     metrics_config_source = None
-    database_uri_config_source = None
-    database_settings_config_source = None
+    database_config_source = None
     response_bytesize_limit_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
@@ -279,24 +278,15 @@ def merge(configs):
                 )
             metrics_config_source = filepath
             merged["metrics"] = config["metrics"]
-        if "database_uri" in config:
-            if "database_uri" in merged:
+        if "database" in config:
+            if "database" in merged:
                 raise ConfigError(
-                    "database_uri can only be specified in one file. "
-                    f"It was found in both {database_uri_config_source} and "
+                    "database configuration can only be specified in one file. "
+                    f"It was found in both {database_config_source} and "
                     f"{filepath}"
                 )
-            database_uri_config_source = filepath
-            merged["database_uri"] = config["database_uri"]
-        if "database_settings" in config:
-            if "database_settings" in merged:
-                raise ConfigError(
-                    "database_settings can only be specified in one file. "
-                    f"It was found in both {database_settings_config_source} and "
-                    f"{filepath}"
-                )
-            database_settings_config_source = filepath
-            merged["database_settings"] = config["database_settings"]
+            database_config_source = filepath
+            merged["database"] = config["database"]
         for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
