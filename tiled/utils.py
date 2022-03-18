@@ -527,7 +527,19 @@ XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sh
 
 
 def get_share_tiled_path():
-    """Walk up until we find share/tiled"""
+    """
+    Walk up until we find share/tiled.
+
+    Because it is outside the pacakge, its location relative to us is up to the
+    package manager. Rather than assuming that it is a specific number of
+    directory levels above us, we walk upward until we find it. A file with
+    long unique name helps us confirm that we have found the right directory.
+
+    It's not clear whether being this flexible about the location of
+    shared/tiled is really necessary, but JupyterHub uses a similar approach,
+    so it seems possible that there is variation in the wild and that this is
+    the right way to cope with that.
+    """
     import sys
     from os.path import abspath, dirname, exists, join, split
 
@@ -536,7 +548,7 @@ def get_share_tiled_path():
     if not path.startswith(sys.prefix):
         starting_points.append(sys.prefix)
     for path in starting_points:
-        # walk up, looking for prefix/share/jupyter
+        # walk up, looking for prefix/share/tiled
         while path != "/":
             share_tiled = join(path, "share", "tiled")
             if exists(
