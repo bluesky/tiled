@@ -34,7 +34,8 @@ in place of `...` below. Inject the password via an environment variable as show
 do not hard-code it in the configuration file. Be sure to quote the URI.
 
 ```yaml
-database_uri: "postgresql://tiled:${TILED_DATABASE_PASSWORD}@.../tiled"
+database
+  uri: "postgresql://tiled:${TILED_DATABASE_PASSWORD}@.../tiled"
 ```
 
 Initialize the database. Initialization only has to be done once ever. (If you

@@ -31,7 +31,9 @@ def config(tmpdir):
                 }
             ],
         },
-        "database_uri": f"sqlite:///{tmpdir}/tiled.sqlite",
+        "database": {
+            "uri": f"sqlite:///{tmpdir}/tiled.sqlite",
+        },
         "access_control": {
             "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
             "args": {"access_lists": {"alice": ["a"]}, "provider": "toy"},
