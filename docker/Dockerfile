@@ -3,7 +3,7 @@ WORKDIR /app
 COPY web-frontend .
 RUN npm install && npm run build
 
-FROM python:3.8-slim as base
+FROM python:3.9-slim as base
 
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
