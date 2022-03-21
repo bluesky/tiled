@@ -143,6 +143,7 @@ def construct_build_app_kwargs(
             root_mapping = {}
             index = {(): root_mapping}
             include_routers = []
+            graphql_queries = []
             for segments, tree in trees.items():
                 for i in range(len(segments)):
                     if segments[:i] not in index:
@@ -156,6 +157,9 @@ def construct_build_app_kwargs(
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
+                for query in getattr(tree, "graphql_queries", []):
+                    if query not in graphql_queries:
+                        graphql_queries.append(query)
             root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
@@ -183,6 +187,7 @@ def construct_build_app_kwargs(
                     f"({prometheus_multiproc_dir}) is not writable"
                 )
         server_settings["metrics"] = metrics
+        server_settings["graphql"] = config.get("graphql", {})
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)
@@ -212,6 +217,7 @@ def merge(configs):
     uvicorn_config_source = None
     object_cache_config_source = None
     metrics_config_source = None
+    graphql_config_source = None
     database_uri_config_source = None
     database_settings_config_source = None
     response_bytesize_limit_config_source = None
@@ -279,6 +285,15 @@ def merge(configs):
                 )
             metrics_config_source = filepath
             merged["metrics"] = config["metrics"]
+        if "graphql" in config:
+            if "graphql" in merged:
+                raise ConfigError(
+                    "graphql can only be specified in one file. "
+                    f"It was found in both {graphql_config_source} and "
+                    f"{filepath}"
+                )
+            graphql_config_source = filepath
+            merged["graphql"] = config["graphql"]
         if "database_uri" in config:
             if "database_uri" in merged:
                 raise ConfigError(
