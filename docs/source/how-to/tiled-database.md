@@ -46,3 +46,9 @@ $ tiled admin initialize-database postgresql://tiled:${TILED_DATABASE_PASSWORD}@
 ```
 
 The database is ready to use.
+
+## Reference
+
+See `database` in the service configuration reference
+{doc}`../reference/service` for a comprehensive list of the options for tuning
+database performance and reliability.
