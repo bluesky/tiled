@@ -4,6 +4,8 @@ SCOPES = {
     },
     "read:metadata": {"description": "Read metadata."},
     "read:data": {"description": "Read data."},
+    "write:metadata": {"description": "Write metadata."},
+    "write:data": {"description": "Write data."},
     "metrics": {"description": "Access (Prometheus) metrics."},
     "apikeys": {
         "description": "Create and revoke API keys as the currently-authenticated user or service."

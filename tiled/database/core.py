@@ -38,6 +38,8 @@ def create_default_roles(engine):
             scopes=[
                 "read:metadata",
                 "read:data",
+                "write:metadata",
+                "write:data",
                 "admin:apikeys",
                 "read:principals",
                 "metrics",
