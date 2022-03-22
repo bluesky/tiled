@@ -1,0 +1,2 @@
+This is file is used as a sentinel by tiled.utils.get_share_tiled_path to
+confirm that it has found shared/tiled on the system.
