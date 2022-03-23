@@ -263,9 +263,10 @@ def build_app(
         for item in ["allow_origins", "response_bytesize_limit"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
-        database = server_settings.get("database")
+        database = server_settings.get("database", {})
         if database is not None:
-            settings.datbase_uri = database["uri"]
+            if database.get("uri"):
+                settings.datbase_uri = database["uri"]
             if database.get("pool_size"):
                 settings.datbase_pool_size = database["pool_size"]
             if database.get("pool_pre_ping"):

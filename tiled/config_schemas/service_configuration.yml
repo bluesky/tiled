@@ -311,7 +311,7 @@ properties:
           If true (default), use pessimistic connection testings. This is recommended.
       pool_size:
         type: integer
-        description: Connection pool size
+        description: Connection pool size. Default is 5.
   access_control:
     type: object
     additionalProperties: false

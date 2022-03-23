@@ -51,9 +51,9 @@ class Settings(BaseSettings):
         os.getenv("TILED_RESPONSE_BYTESIZE_LIMIT", 300_000_000)
     )  # 300 MB
     database_uri: Optional[str] = os.getenv("TILED_DATABASE_URI")
-    database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 0))
+    database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 5))
     database_pool_pre_ping: Optional[bool] = bool(
-        int(os.getenv("TILED_DATABASE_POOL_PRE_PING", 0))
+        int(os.getenv("TILED_DATABASE_POOL_PRE_PING", 1))
     )
 
     @property
@@ -78,10 +78,8 @@ def get_sessionmaker(database_settings):
 
     connect_args = {}
     kwargs = {}  # extra kwargs passed to create_engine
-    if database_settings.pool_size:
-        kwargs["pool_size"] = database_settings.pool_size
-    if database_settings.pool_pre_ping:
-        kwargs["pool_pre_ping"] = True
+    kwargs["pool_size"] = database_settings.pool_size
+    kwargs["pool_pre_ping"] = database_settings.pool_pre_ping
     if database_settings.uri.startswith("sqlite"):
         from sqlalchemy.pool import QueuePool
 
