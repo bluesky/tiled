@@ -367,6 +367,7 @@ def build_app(
             from ..database import orm
             from ..database.core import (
                 REQUIRED_REVISION,
+                DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
                 initialize_database,
@@ -388,6 +389,21 @@ def build_app(
                 )
                 initialize_database(engine)
                 logger.info("Database initialized.")
+            except DatabaseUpgradeNeeded as err:
+                print(
+                    f"""
+
+The database used by Tiled to store authentication-related information
+was created using an older version of Tiled. It needs to be upgraded to
+work with this version of Tiled.
+
+Back up the database, and then run:
+
+    tiled admin upgrade-database {redacted_url}
+""",
+                    file=sys.stderr,
+                )
+                raise err from None
             else:
                 logger.info(f"Connected to existing database at {redacted_url}.")
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

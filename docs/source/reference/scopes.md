@@ -10,6 +10,8 @@ with restricted scopes.
   associated with this key, resolved at access time.
 * `read:metadata` --- List and search metadata.
 * `read:data` --- Fetch (array, dataframe) data.
+* `write:metadata` --- Write metadata. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
+* `write:data` --- Write (array, dataframe) data. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
 * `apikeys` --- Manage API keys for the currently-authenticated user or service.
 * `metrics` --- Access Prometheus metrics.
 * `admin:apikeys` --- Manage API keys on behalf of any user or service.

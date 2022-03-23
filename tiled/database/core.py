@@ -14,9 +14,9 @@ from .orm import APIKey, Identity, Principal, Role, Session
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
-REQUIRED_REVISION = "481830dd6c11"
-# This is set of all valid revisions.
-ALL_REVISIONS = {"481830dd6c11"}
+REQUIRED_REVISION = "722ff4e4fcc7"
+# This is list of all valid revisions (from current to oldest).
+ALL_REVISIONS = ["722ff4e4fcc7", "481830dd6c11"]
 
 
 def create_default_roles(engine):
@@ -64,6 +64,24 @@ def initialize_database(engine):
     with temp_alembic_ini(engine.url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
         command.stamp(alembic_cfg, "head")
+
+
+def upgrade(engine, revision):
+    """
+    Upgrade schema to the specified revision.
+    """
+    with temp_alembic_ini(engine.url) as alembic_ini:
+        alembic_cfg = Config(alembic_ini)
+        command.upgrade(alembic_cfg, revision)
+
+
+def downgrade(engine, revision):
+    """
+    Downgrade schema to the specified revision.
+    """
+    with temp_alembic_ini(engine.url) as alembic_ini:
+        alembic_cfg = Config(alembic_ini)
+        command.downgrade(alembic_cfg, revision)
 
 
 class UnrecognizedDatabase(Exception):
