@@ -28,7 +28,13 @@ def create_default_roles(engine):
         Role(
             name="user",
             description="Default Role for users.",
-            scopes=["read:metadata", "read:data", "apikeys"],
+            scopes=[
+                "read:metadata",
+                "read:data",
+                "write:metadata",
+                "write:data",
+                "apikeys",
+            ],
         ),
     )
     db.add(
