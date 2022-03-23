@@ -49,6 +49,5 @@ The database is ready to use.
 
 ## Reference
 
-See `database` in the service configuration reference
-{doc}`../reference/service` for a comprehensive list of the options for tuning
-database performance and reliability.
+See `database` in {doc}`../reference/service-configuration` for comprehensive
+documentation of the options for tuning database performance and reliability.
