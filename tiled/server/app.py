@@ -367,6 +367,7 @@ def build_app(
             from ..database import orm
             from ..database.core import (
                 REQUIRED_REVISION,
+                DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
                 initialize_database,
@@ -388,6 +389,21 @@ def build_app(
                 )
                 initialize_database(engine)
                 logger.info("Database initialized.")
+            except DatabaseUpgradeNeeded as err:
+                print(
+                    f"""
+
+The database used by Tiled to store authentication-related information
+was created using an older version of Tiled. It needs to be upgraded to
+work with this version of Tiled.
+
+Back up the database, and then run:
+
+    tiled admin upgrade-database {redacted_url}
+""",
+                    file=sys.stderr,
+                )
+                raise err from None
             else:
                 logger.info(f"Connected to existing database at {redacted_url}.")
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -600,13 +616,13 @@ def print_admin_api_key_if_generated(web_app, host, port):
     if settings.allow_anonymous_access:
         print(
             """
-    Tiled server is running in "public" mode, permitting open, anonymous access.
-    Any data that is not specifically controlled with an access policy
-    will be visible to anyone who can connect to this server.
+    Tiled server is running in "public" mode, permitting open, anonymous access
+    for reading. Any data that is not specifically controlled with an access
+    policy will be visible to anyone who can connect to this server.
 """,
             file=sys.stderr,
         )
-    elif (not authenticators) and settings.single_user_api_key_generated:
+    if (not authenticators) and settings.single_user_api_key_generated:
         print(
             f"""
     Navigate a web browser to:

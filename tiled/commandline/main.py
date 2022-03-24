@@ -24,6 +24,9 @@ cli_app.add_typer(
 
 @admin_app.command("initialize-database")
 def initialize_database(database_uri: str):
+    """
+    Initialize a SQL database for use by Tiled.
+    """
     from sqlalchemy import create_engine
 
     from ..database.core import (
@@ -47,6 +50,57 @@ def initialize_database(database_uri: str):
     else:
         typer.echo(f"Database at {redacted_url} is already initialized.")
         raise typer.Abort()
+
+
+@admin_app.command("upgrade-database")
+def upgrade_database(
+    database_uri: str,
+    revision: Optional[str] = typer.Argument(
+        None,
+        help="The ID of a revision to upgrade to. By default, upgrade to the latest one.",
+    ),
+):
+    """
+    Upgrade the database schema to the latest version.
+    """
+    from sqlalchemy import create_engine
+
+    from ..database.core import get_current_revision, upgrade
+
+    engine = create_engine(database_uri)
+    redacted_url = engine.url._replace(password="[redacted]")
+    current_revision = get_current_revision(engine)
+    if current_revision is None:
+        # Create tables and stamp (alembic) revision.
+        typer.echo(
+            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`."
+        )
+        raise typer.Abort()
+    upgrade(engine, revision or "head")
+
+
+@admin_app.command("downgrade-database")
+def downgrade_database(
+    database_uri: str,
+    revision: str = typer.Argument(..., help="The ID of a revision to downgrade to."),
+):
+    """
+    Upgrade the database schema to the latest version.
+    """
+    from sqlalchemy import create_engine
+
+    from ..database.core import downgrade, get_current_revision
+
+    engine = create_engine(database_uri)
+    redacted_url = engine.url._replace(password="[redacted]")
+    current_revision = get_current_revision(engine)
+    if current_revision is None:
+        # Create tables and stamp (alembic) revision.
+        typer.echo(
+            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`."
+        )
+        raise typer.Abort()
+    downgrade(engine, revision)
 
 
 @cli_app.command("login")

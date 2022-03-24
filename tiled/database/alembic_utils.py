@@ -57,3 +57,29 @@ def temp_alembic_ini(database_uri):
         alembic_ini = os.path.join(td, "alembic.ini")
         write_alembic_ini(alembic_ini, database_uri)
         yield alembic_ini
+
+
+def main(args=None):
+    """
+    This is runs the alembic CLI with a dynamically genericated config file.
+
+    A database can be specified via TILED_DATABASE_URI, but it is not necessary to set
+    it for operations that do not connect to any database, such as defining new database
+    revisions (i.e. migrations).
+
+    To define a new revision:
+
+    $ python -m tiled.database.alembic_utils revision -m "description..."
+
+    """
+    import subprocess
+    import sys
+
+    if args is None:
+        args = sys.argv[1:]
+    with temp_alembic_ini(os.getenv("TILED_DATABASE_URI", "")) as config_file:
+        return subprocess.check_output(["alembic", "-c", config_file, *args])
+
+
+if __name__ == "__main__":
+    main()
