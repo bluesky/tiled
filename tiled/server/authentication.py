@@ -242,7 +242,13 @@ def get_current_principal(
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 principal = SpecialUsers.admin
-                scopes = {"read:metadata", "read:data", "metrics"}
+                scopes = {
+                    "read:metadata",
+                    "read:data",
+                    "write:metadata",
+                    "write:data",
+                    "metrics",
+                }
             else:
                 raise HTTPException(
                     status_code=401, detail="Invalid API key", headers=headers_for_401

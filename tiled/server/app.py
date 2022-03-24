@@ -616,13 +616,13 @@ def print_admin_api_key_if_generated(web_app, host, port):
     if settings.allow_anonymous_access:
         print(
             """
-    Tiled server is running in "public" mode, permitting open, anonymous access.
-    Any data that is not specifically controlled with an access policy
-    will be visible to anyone who can connect to this server.
+    Tiled server is running in "public" mode, permitting open, anonymous access
+    for reading. Any data that is not specifically controlled with an access
+    policy will be visible to anyone who can connect to this server.
 """,
             file=sys.stderr,
         )
-    elif (not authenticators) and settings.single_user_api_key_generated:
+    if (not authenticators) and settings.single_user_api_key_generated:
         print(
             f"""
     Navigate a web browser to:
