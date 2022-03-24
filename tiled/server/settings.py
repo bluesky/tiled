@@ -7,7 +7,9 @@ from typing import Any, List, Optional
 
 from pydantic import BaseSettings
 
-DatabaseSettings = collections.namedtuple("DatabaseSettings", "uri pool_size")
+DatabaseSettings = collections.namedtuple(
+    "DatabaseSettings", "uri pool_size pool_pre_ping"
+)
 
 
 class Settings(BaseSettings):
