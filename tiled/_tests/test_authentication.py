@@ -46,7 +46,9 @@ def config(tmpdir):
                 }
             ],
         },
-        "database_uri": f"sqlite:///{tmpdir}/tiled.sqlite",
+        "database": {
+            "uri": f"sqlite:///{tmpdir}/tiled.sqlite",
+        },
         "trees": [
             {
                 "tree": f"{__name__}:tree",

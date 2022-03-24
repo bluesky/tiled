@@ -286,26 +286,32 @@ properties:
           this is unset and active session are never shut down.
     description:
       This section describes whether and how to authenticate users.
-  database_uri:
-    type: string
-    description: |
-      When Tiled is configured with authentication providers, it uses a SQL database
-      to persist information related to identities, sessions, and keys. (When it is
-      used without authentication providers, no database is used.)
-
-      If Tiled is configured with authentication providers above but a database
-      URI is not specified, `sqlite:///./tiled.sqlite` (i.e. a SQLite database in
-      the current working directory) will be used.
-
-      Tiled officially supports PostgreSQL and SQLite, but any database engine
-      supported by SQLAlchemy *may* work.
-  database_settings:
+  database:
     type: object
     additionalProperties: false
+    required:
+      - uri
     properties:
+      uri:
+        type: string
+        description: |
+          When Tiled is configured with authentication providers, it uses a SQL database
+          to persist information related to identities, sessions, and keys. (When it is
+          used without authentication providers, no database is used.)
+
+          If Tiled is configured with authentication providers above but a database
+          URI is not specified, `sqlite:///./tiled.sqlite` (i.e. a SQLite database in
+          the current working directory) will be used.
+
+          Tiled officially supports PostgreSQL and SQLite, but any database engine
+          supported by SQLAlchemy *may* work.
+      pool_pre_ping:
+        type: boolean
+        description: |
+          If true (default), use pessimistic connection testings. This is recommended.
       pool_size:
         type: integer
-        description: Connection pool size
+        description: Connection pool size. Default is 5.
   access_control:
     type: object
     additionalProperties: false

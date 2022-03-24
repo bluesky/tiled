@@ -7,7 +7,9 @@ from typing import Any, List, Optional
 
 from pydantic import BaseSettings
 
-DatabaseSettings = collections.namedtuple("DatabaseSettings", "uri pool_size")
+DatabaseSettings = collections.namedtuple(
+    "DatabaseSettings", "uri pool_size pool_pre_ping"
+)
 
 
 class Settings(BaseSettings):
@@ -51,13 +53,18 @@ class Settings(BaseSettings):
         os.getenv("TILED_RESPONSE_BYTESIZE_LIMIT", 300_000_000)
     )  # 300 MB
     database_uri: Optional[str] = os.getenv("TILED_DATABASE_URI")
-    database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 0))
+    database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 5))
+    database_pool_pre_ping: Optional[bool] = bool(
+        int(os.getenv("TILED_DATABASE_POOL_PRE_PING", 1))
+    )
 
     @property
     def database_settings(self):
         # The point of this alias is to return a hashable argument for get_sessionmaker.
         return DatabaseSettings(
-            uri=self.database_uri, pool_size=self.database_pool_size
+            uri=self.database_uri,
+            pool_size=self.database_pool_size,
+            pool_pre_ping=self.database_pool_pre_ping,
         )
 
 
@@ -73,13 +80,12 @@ def get_sessionmaker(database_settings):
 
     connect_args = {}
     kwargs = {}  # extra kwargs passed to create_engine
-    if database_settings.pool_size:
-        kwargs["pool_size"] = database_settings.pool_size
+    kwargs["pool_size"] = database_settings.pool_size
+    kwargs["pool_pre_ping"] = database_settings.pool_pre_ping
     if database_settings.uri.startswith("sqlite"):
         from sqlalchemy.pool import QueuePool
 
         kwargs["poolclass"] = QueuePool
-    if database_settings.uri.startswith("sqlite"):
         connect_args.update({"check_same_thread": False})
     engine = create_engine(database_settings.uri, connect_args=connect_args, **kwargs)
     sm = sessionmaker(autocommit=False, autoflush=False, bind=engine)

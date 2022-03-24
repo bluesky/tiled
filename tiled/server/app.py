@@ -260,12 +260,16 @@ def build_app(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        for item in ["allow_origins", "response_bytesize_limit", "database_uri"]:
+        for item in ["allow_origins", "response_bytesize_limit"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
-        pool_size = server_settings.get("database_settings", {}).get("pool_size")
-        if pool_size is not None:
-            settings.database_pool_size = pool_size
+        database = server_settings.get("database", {})
+        if database.get("uri"):
+            settings.database_uri = database["uri"]
+        if database.get("pool_size"):
+            settings.database_pool_size = database["pool_size"]
+        if database.get("pool_pre_ping"):
+            settings.database_pool_pre_ping = database["pool_pre_ping"]
         object_cache_available_bytes = server_settings.get("object_cache", {}).get(
             "available_bytes"
         )
