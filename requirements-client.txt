@@ -2,8 +2,8 @@
 appdirs
 entrypoints
 heapdict
-httpx>=0.20.0
+httpx >=0.20.0
 jsonschema
-msgpack
+msgpack >=1.0.0
 pyyaml
 typer

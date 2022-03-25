@@ -10,7 +10,7 @@ fastapi
 jinja2
 jmespath
 jsonschema
-msgpack
+msgpack >=1.0.0
 orjson
 psutil
 prometheus_client
