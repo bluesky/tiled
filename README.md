@@ -2,14 +2,10 @@
 
 *Disclaimer: This is very early work, still in the process of defining scope.*
 
-Data analysis is easier and better when we load and operate on data in common,
-self-describing structures that keep our mind on the science rather than the
-book-keeping of filenames and file formats.
-
 Tiled is a **data access** service for data-aware portals and data science tools.
-Tiled has a Python client and integrates naturally with dask and Python data science
+Tiled has a Python client and integrates naturally with Python data science
 libraries, but nothing about the service is Python-specific; it also works from
-a web browser, `curl`, or any HTTP client.
+a web browser or any Internet-connected program.
 
 Tiled’s service can sit atop databases, filesystems, and/or remote
 services to enable **search** and **structured, chunkwise access to data** in an
@@ -31,7 +27,7 @@ Tiled implements extensible **access control enforcement** based on web security
 standards, similar to JuptyerHub. Like Jupyter, Tiled can be used by a single
 user or deployed as a shared public or private resource. Tiled can be configured
 to use third party services for login, such as Google, ORCID. or any OIDC
-authentication providers.
+or SAML authentication providers.
 
 Tiled facilitates **client-side caching** in a standard web browser or in
 Tiled's Python client, making efficient use of bandwidth and enabling an offline
