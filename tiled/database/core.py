@@ -104,6 +104,7 @@ class DatabaseUpgradeNeeded(Exception):
 
 def get_current_revision(engine):
 
+    redacted_url = engine.url._replace(password="[redacted]")
     with engine.begin() as conn:
         context = migration.MigrationContext.configure(conn)
         heads = context.get_current_heads()
@@ -111,7 +112,7 @@ def get_current_revision(engine):
         return None
     elif len(heads) != 1:
         raise UnrecognizedDatabase(
-            f"This database {engine.url} is stamped with an alembic revisions {heads}. "
+            f"This database {redacted_url} is stamped with an alembic revisions {heads}. "
             "It looks like Tiled has been configured to connect to a database "
             "already populated by some other application (not Tiled) or else "
             "its database is in a corrupted state."
@@ -119,7 +120,7 @@ def get_current_revision(engine):
     (revision,) = heads
     if revision not in ALL_REVISIONS:
         raise UnrecognizedDatabase(
-            f"The datbase {engine.url} has an unrecognized revision {revision}. "
+            f"The datbase {redacted_url} has an unrecognized revision {revision}. "
             "It may have been created by a newer version of Tiled."
         )
     return revision
@@ -127,14 +128,15 @@ def get_current_revision(engine):
 
 def check_database(engine):
     revision = get_current_revision(engine)
+    redacted_url = engine.url._replace(password="[redacted]")
     if revision is None:
         raise UninitializedDatabase(
-            f"The database {engine.url} has no revision stamp. It may be empty. "
+            f"The database {redacted_url} has no revision stamp. It may be empty. "
             "It can be initialized with `initialize_database(engine)`."
         )
     elif revision != REQUIRED_REVISION:
         raise DatabaseUpgradeNeeded(
-            f"The database {engine.url} has revision {revision} and "
+            f"The database {redacted_url} has revision {revision} and "
             f"needs to be upgraded to revision {REQUIRED_REVISION}."
         )
 
