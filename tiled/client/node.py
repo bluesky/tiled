@@ -305,6 +305,31 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def __getitem__(self, key):
+        # These are equivalent:
+        #
+        # >>> node['a']['b']['c']
+        # >>> node[('a', 'b', 'c')]
+        # >>> node['a', 'b', 'c']
+        #
+        # The last two are equivalent at a Python level;
+        # both call node.__getitem__(('a', 'b', 'c')).
+        #
+        # TODO Elide this into a single request to the server rather than
+        # a chain of requests. This is not totally straightforward because
+        # of this use case:
+        #
+        # >>> node.search(...)['a', 'b']
+        #
+        # which must only return a result if 'a' is contained in the search results.
+        # There are also some open design questions on the server side about
+        # how search and tree-traversal will relate, so we'll wait to make this
+        # optimization until that is fully worked out.
+        if isinstance(key, tuple):
+            child = self
+            for k in key:
+                child = child[k]
+            return child
+
         # Lookup this key *within the search results* of this Node.
         content = self.context.get_json(
             self.item["links"]["search"],
