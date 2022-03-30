@@ -50,3 +50,15 @@ def test_key_into_results():
     assert "apple" in results["a"].metadata
     assert "banana" in results["b"].metadata
     assert "c" not in results  # This *is* in the tree but not among the results.
+
+
+def test_compound_key_into_results():
+    nested_tree = MapAdapter(
+        {
+            "i": MapAdapter({"X": tree}, metadata={"temp": "hot"}),
+            "j": MapAdapter({}, metadata={"temp": "cold"}),
+        }
+    )
+    client = from_tree(nested_tree)
+    result = client.search(FullText("hot"))["i", "X", "a"]
+    assert "apple" in result.metadata
