@@ -100,9 +100,9 @@ def slice_to_interval(slice_):
     """
     Convert slice object to (start, stop, direction).
     """
-    start = slice_.start or 0  # Handles case where slice_.start is None.
-    step = slice_.step or 1  # Handles case where slice_.step is None.
+    step = slice_.step if slice_.step is not None else 1
     if step == 1:
+        start = slice_.start if slice_.start is not None else 0
         if start < 0:
             raise ValueError(
                 "Tree sequence slices with start < 0 must have step=-1. "
@@ -120,6 +120,7 @@ def slice_to_interval(slice_):
         stop_ = slice_.stop
         direction = 1
     elif step == -1:
+        start = slice_.start if slice_.start is not None else -1
         if start >= 0:
             raise ValueError(
                 "Tree sequence slices with start >= 0 must have step=1. "
@@ -131,10 +132,10 @@ def slice_to_interval(slice_):
                 raise ValueError(
                     "Tree sequence slices with step=-1 must have stop <= start."
                 )
-            stop_ = 1 - slice_.stop
+            stop_ = -(slice_.stop + 1)
         else:
             stop_ = slice_.stop
-        start_ = 1 - start
+        start_ = -(start + 1)
         direction = -1
     else:
         raise ValueError(
