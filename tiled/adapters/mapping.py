@@ -121,7 +121,9 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         return list(self._sorting)
 
     def __repr__(self):
-        return f"<{type(self).__name__}({set(self._mapping)!r})>"
+        return (
+            f"<{type(self).__name__}({{{', '.join(repr(k) for k in self._mapping)}}})>"
+        )
 
     def __getitem__(self, key):
         return self._mapping[key]
