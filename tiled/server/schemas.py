@@ -7,6 +7,8 @@ import pydantic
 import pydantic.dataclasses
 import pydantic.generics
 
+from ..structures.core import StructureFamily
+
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
@@ -51,14 +53,6 @@ class EntryFields(str, enum.Enum):
     none = ""
 
 
-class StructureFamilies(str, enum.Enum):
-    node = "node"
-    array = "array"
-    dataframe = "dataframe"
-    xarray_data_array = "xarray_data_array"
-    xarray_dataset = "xarray_dataset"
-
-
 class Structure(pydantic.BaseModel):
     micro: Optional[dict]
     macro: Optional[dict]
@@ -76,7 +70,7 @@ class SortingItem(pydantic.BaseModel):
 
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
-    structure_family: Optional[StructureFamilies]
+    structure_family: Optional[StructureFamily]
     specs: Optional[List[str]]
     metadata: Optional[dict]  # free-form, user-specified dict
     structure: Optional[Structure]
