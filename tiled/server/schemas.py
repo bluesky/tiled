@@ -7,7 +7,7 @@ import pydantic
 import pydantic.dataclasses
 import pydantic.generics
 
-from .structures.core import StructureFamily
+from ..structures.core import StructureFamily
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")

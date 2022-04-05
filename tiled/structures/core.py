@@ -7,7 +7,7 @@ the server and the client.
 import enum
 
 
-class StructureFamilies(str, enum.Enum):
+class StructureFamily(str, enum.Enum):
     node = "node"
     array = "array"
     dataframe = "dataframe"
