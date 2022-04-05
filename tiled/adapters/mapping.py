@@ -66,6 +66,11 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             Whether the client should strictly refresh stale cache items.
         """
         self._mapping = mapping
+        if sorting is None:
+            # This is a special case that means, "the given ordering".
+            # By giving that a name ("_") we enable requests to asking for the
+            # last N by requesting the sorting ("_", -1).
+            sorting = [("_", 1)]
         self._sorting = sorting
         self._metadata = metadata or {}
         if (access_policy is not None) and (
@@ -111,8 +116,14 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         # persistent.
         return DictView(self._metadata)
 
+    @property
+    def sorting(self):
+        return list(self._sorting)
+
     def __repr__(self):
-        return f"<{type(self).__name__}({set(self._mapping)!r})>"
+        return (
+            f"<{type(self).__name__}({{{', '.join(repr(k) for k in self._mapping)}}})>"
+        )
 
     def __getitem__(self, key):
         return self._mapping[key]
@@ -191,12 +202,17 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     def sort(self, sorting):
         mapping = copy.copy(self._mapping)
         for key, direction in reversed(sorting):
-            mapping = dict(
-                sorted(
-                    mapping.items(),
-                    key=lambda item: item[1].metadata.get(key, _HIGH_SORTER),
+            if key == "_":
+                # Special case to enable reversing the given/default ordering.
+                # Leave mapping as is, and possibly reserve it below.
+                pass
+            else:
+                mapping = dict(
+                    sorted(
+                        mapping.items(),
+                        key=lambda item: item[1].metadata.get(key, _HIGH_SORTER),
+                    )
                 )
-            )
             if direction < 0:
                 if sys.version_info < (3, 8):
                     # Prior to Python 3.8 dicts are not reversible.
