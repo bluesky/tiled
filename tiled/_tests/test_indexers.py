@@ -1,6 +1,7 @@
 import string
 
 import numpy
+import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -23,3 +24,11 @@ def test_indexers():
     assert client.keys_indexer[-3::-1] == keys[-3::-1]  # ["x", "w", "v", ...]
     assert client.keys_indexer[-1:-5:-1] == keys[-1:-5:-1] == list("zyxw")
     assert client.keys_indexer[:] == list(client) == keys
+    # Test out of bounds
+    with pytest.raises(IndexError):
+        client.keys_indexer[len(keys)]
+    with pytest.raises(IndexError):
+        client.keys_indexer[-len(keys) - 1]
+    # These should be in bounds and should not raise.
+    client.keys_indexer[len(keys) - 1]
+    client.keys_indexer[-len(keys)]

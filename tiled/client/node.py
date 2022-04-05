@@ -432,6 +432,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             content["meta"]["count"],
             time.monotonic() + LENGTH_CACHE_TTL,
         )
+        if not content["data"]:
+            raise IndexError("Index out of range.")
         (item,) = content["data"]
         key = item["id"]
         value = self.client_for_item(item, path=self._path + (item["id"],))
