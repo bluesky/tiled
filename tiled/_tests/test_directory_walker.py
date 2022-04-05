@@ -10,6 +10,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.files import Change, strip_suffixes
 from ..client import from_config
 from ..examples.generate_files import data, df1, generate_files
+from .utils import force_update
 
 
 @pytest.fixture
@@ -22,17 +23,6 @@ def example_data_dir(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("temp")
     generate_files(tmpdir)
     return tmpdir
-
-
-def force_update(client):
-    """
-    Reach into the tree force it to process an updates. Block until complete.
-
-    We could just wait (i.e. sleep) instead until the next polling loop completes,
-    but this makes the tests take longer to run, and it can be flaky on CI services
-    where things can take longer than they do in normal use.
-    """
-    client.context.app.state.root_tree.update_now()
 
 
 def test_from_directory(example_data_dir):

@@ -1,13 +1,12 @@
-import time
 from pathlib import Path
 
 import numpy
 import psutil
 import pytest
 
-from ..adapters.files import DEFAULT_POLL_INTERVAL
 from ..client import from_config
 from ..server.object_cache import NO_CACHE, ObjectCache, get_object_cache
+from .utils import force_update
 
 
 def test_tallying_hits_and_misses():
@@ -129,7 +128,7 @@ a,b,c
 4,5,6
 """
         )
-    time.sleep(4 * DEFAULT_POLL_INTERVAL)
+    force_update(client)
     assert len(client["data"].read()) == 2
     with open(path, "w") as file:
         file.write(
@@ -140,11 +139,11 @@ a,b,c
 7,8,9
 """
         )
-    time.sleep(4 * DEFAULT_POLL_INTERVAL)
+    force_update(client)
     assert len(client["data"].read()) == 3
     # Remove file.
     path.unlink()
-    time.sleep(4 * DEFAULT_POLL_INTERVAL)
+    force_update(client)
     assert "data" not in client
     with pytest.raises(KeyError):
         client["data"]
