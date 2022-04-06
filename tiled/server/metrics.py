@@ -152,7 +152,7 @@ def prometheus_registry():
 
 @router.get("/metrics")
 async def metrics(
-    request: Request, principal: Security(get_current_principal, scopes=["metrics"])
+    request: Request, principal=Security(get_current_principal, scopes=["metrics"])
 ):
     """
     Prometheus metrics
