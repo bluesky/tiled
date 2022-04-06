@@ -7,7 +7,7 @@
     name: nginx
     state: reloaded
   become: true
- 
+
 - name: reload-systemd
   systemd:
     daemon_reload: yes
