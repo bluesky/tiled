@@ -890,7 +890,11 @@ class TokenCache:
 
     def __delitem__(self, key):
         filepath = self._directory / key
-        filepath.unlink(missing_ok=False)
+        # filepath.unlink(missing_ok=False)  # Python 3.8+
+        try:
+            filepath.unlink()
+        except FileNotFoundError:
+            pass
 
     def pop(self, key, fallback=None):
         filepath = self._directory / key
@@ -899,5 +903,9 @@ class TokenCache:
                 content = file.read()
         except FileNotFoundError:
             content = fallback
-        filepath.unlink(missing_ok=True)
+        # filepath.unlink(missing_ok=True)  # Python 3.8+
+        try:
+            filepath.unlink()
+        except FileNotFoundError:
+            pass
         return content
