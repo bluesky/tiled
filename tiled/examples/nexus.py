@@ -28,7 +28,7 @@ from tiled.adapters.hdf5 import HDF5Adapter
 
 def build_tree(url):
     # Download a Nexus file into a memory buffer.
-    buffer = io.BytesIO(httpx.get(url).content)
+    buffer = io.BytesIO(httpx.get(url, follow_redirects=True).content)
     # Access the buffer with h5py, which can treat it like a "file".
     file = h5py.File(buffer, "r")
     # Wrap the h5py.File in a MapAdapter to serve it with Tiled.

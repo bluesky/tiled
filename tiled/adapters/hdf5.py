@@ -1,4 +1,5 @@
 import collections.abc
+import os
 import warnings
 
 import dask.array
@@ -8,6 +9,8 @@ import numpy
 from ..adapters.utils import IndexersMixin, tree_repr
 from ..utils import DictView
 from .array import ArrayAdapter
+
+SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 
 
 class MockHDF5Dataset:
@@ -73,9 +76,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         super().__init__()
 
     @classmethod
-    def from_file(cls, file):
+    def from_file(cls, file, swmr=SWMR_DEFAULT, libver="latest"):
         if not isinstance(file, h5py.File):
-            file = h5py.File(file, "r")
+            file = h5py.File(file, "r", swmr=swmr, libver=libver)
         return cls(file)
 
     def __repr__(self):
