@@ -1,17 +1,23 @@
+import base64
 import collections
 import collections.abc
 import importlib
 import itertools
 import time
 import warnings
-from dataclasses import fields
+from dataclasses import asdict, fields
+from io import BytesIO
 
 import entrypoints
 
 from ..adapters.utils import IndexersMixin, tree_repr
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..utils import UNCHANGED, OneShotCachedMap, Sentinel
+from ..structures.core import StructureFamily
+from ..structures.dataframe import serialize_arrow
+
+# from ..client.utils import handle_error
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED, OneShotCachedMap, Sentinel
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
 from .utils import export_util
@@ -542,6 +548,87 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         except Exception:
             # Do not print messy traceback from thread. Just fail silently.
             return []
+
+    def create_array(self, array, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: write an array
+
+        This is subject to change or removal without notice
+
+        """
+
+        from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
+
+        metadata = metadata or {}
+        specs = specs or []
+        mimetype = "application/octet-stream"
+
+        structure = ArrayStructure(
+            macro=ArrayMacroStructure(
+                shape=array.shape,
+                # just one chunk for now...
+                chunks=tuple((size,) for size in array.shape),
+            ),
+            micro=BuiltinDtype.from_numpy_dtype(array.dtype),
+        )
+        data = {
+            "metadata": metadata,
+            "structure": asdict(structure),
+            "structure_family": StructureFamily.array,
+            "specs": specs,
+            "mimetype": mimetype,
+        }
+        document = self.context.post_json("/node/metadata/", data)
+        uid = document["uid"]
+        self.context.put_content(f"/array/full/{uid}", content=array.tobytes())
+
+    def create_dataframe(self, dataframe, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: write a dataframe
+
+        This is subject to change or removal without notice
+
+
+        """
+        from dask.dataframe.utils import make_meta
+
+        from ..structures.dataframe import (
+            DataFrameMacroStructure,
+            DataFrameMicroStructure,
+            DataFrameStructure,
+        )
+
+        metadata = metadata or {}
+        specs = specs or []
+        mimetype = APACHE_ARROW_FILE_MIME_TYPE
+
+        structure = DataFrameStructure(
+            micro=DataFrameMicroStructure(meta=make_meta(dataframe), divisions=[]),
+            macro=DataFrameMacroStructure(
+                npartitions=1, columns=list(dataframe.columns)
+            ),
+        )
+
+        data = {
+            "metadata": metadata,
+            "structure": asdict(structure),
+            "structure_family": StructureFamily.dataframe,
+            "specs": specs,
+            "mimetype": mimetype,
+        }
+
+        data["structure"]["micro"]["meta"] = base64.b64encode(
+            bytes(serialize_arrow(data["structure"]["micro"]["meta"], {}))
+        ).decode()
+
+        document = self.context.post_json("/node/metadata/", data)
+        uid = document["uid"]
+
+        write_buffer = BytesIO()
+        dataframe.to_csv(write_buffer)
+        self.context.put_content(
+            f"/dataframe/full/{uid}", content=write_buffer.getvalue()
+        )
 
 
 def _queries_to_params(*queries):
