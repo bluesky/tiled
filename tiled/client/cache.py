@@ -214,11 +214,13 @@ class Reservation:
 
     def ensure_released(self):
         "Release the reservation. This is idempotent."
+        import locket
+
         if self._lock_held:
             try:
                 self._lock.release()
                 # TODO Investigate why this is sometimes released twice.
-            except (AttributeError, RuntimeError):
+            except locket.LockError:
                 pass
                 self._lock_held = False
 
