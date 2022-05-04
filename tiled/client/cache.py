@@ -220,7 +220,11 @@ class Reservation:
             try:
                 self._lock.release()
                 # TODO Investigate why this is sometimes released twice.
-            except locket.LockError:
+            except (
+                locket.LockError,  # for locket 1.0.0
+                AttributeError,  # for locket <1.0.0
+                RuntimeError,  # for locket <1.0.0
+            ):
                 pass
                 self._lock_held = False
 
