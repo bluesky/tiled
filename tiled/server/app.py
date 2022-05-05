@@ -385,7 +385,8 @@ def build_app(
                 except UninitializedDatabase:
                     # Create tables and stamp (alembic) revision.
                     logger.info(
-                        f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
+                        f"Database {redacted_url} is new. "
+                        f"Creating tables and marking revision {REQUIRED_REVISION}."
                     )
                     initialize_database(engine)
                     logger.info("Database initialized.")
