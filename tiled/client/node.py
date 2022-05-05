@@ -6,7 +6,6 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict, fields
-from io import BytesIO
 
 import entrypoints
 
@@ -549,7 +548,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
-    def create_array(self, array, metadata=None, specs=None):
+    def write_array(self, array, metadata=None, specs=None):
         """
         EXPERIMENTAL: write an array
 
@@ -582,7 +581,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         uid = document["uid"]
         self.context.put_content(f"/array/full/{uid}", content=array.tobytes())
 
-    def create_dataframe(self, dataframe, metadata=None, specs=None):
+    def write_dataframe(self, dataframe, metadata=None, specs=None):
         """
         EXPERIMENTAL: write a dataframe
 
@@ -624,11 +623,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         document = self.context.post_json("/node/metadata/", data)
         uid = document["uid"]
 
-        write_buffer = BytesIO()
-        dataframe.to_csv(write_buffer)
-        self.context.put_content(
-            f"/dataframe/full/{uid}", content=write_buffer.getvalue()
-        )
+        # write_buffer = BytesIO()
+        # dataframe.to_csv(write_buffer)
+        serilized_data = base64.b64encode(
+            bytes(serialize_arrow(dataframe, {}))
+        ).decode()
+        self.context.put_content(f"/dataframe/full/{uid}", content=serilized_data)
 
 
 def _queries_to_params(*queries):
