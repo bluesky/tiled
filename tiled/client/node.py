@@ -568,7 +568,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         metadata = metadata or {}
         specs = specs or []
-        mimetype = "application/octet-stream"
 
         structure = ArrayStructure(
             macro=ArrayMacroStructure(
@@ -583,7 +582,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             "structure": asdict(structure),
             "structure_family": StructureFamily.array,
             "specs": specs,
-            "mimetype": mimetype,
         }
 
         full_path_meta = (
@@ -633,7 +631,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         metadata = metadata or {}
         specs = specs or []
-        mimetype = APACHE_ARROW_FILE_MIME_TYPE
 
         structure = DataFrameStructure(
             micro=DataFrameMicroStructure(meta=make_meta(dataframe), divisions=[]),
@@ -647,7 +644,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             "structure": asdict(structure),
             "structure_family": StructureFamily.dataframe,
             "specs": specs,
-            "mimetype": mimetype,
         }
 
         data["structure"]["micro"]["meta"] = base64.b64encode(
@@ -670,7 +666,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             + uid
         )
         self.context.put_content(
-            full_path_data, content=bytes(serialize_arrow(dataframe, {}))
+            full_path_data,
+            content=bytes(serialize_arrow(dataframe, {})),
+            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
         )
 
 
