@@ -1,7 +1,6 @@
 import builtins
 import hashlib
 
-import numpy
 import tifffile
 
 from ..server.object_cache import with_object_cache
@@ -92,16 +91,17 @@ class TiffSequenceAdapter:
 
         # Print("Inside Adapter:", slice)
         if slice is None:
-            return with_object_cache(self._cache_key, _safe_asarray, self._seq)
+            return with_object_cache(self._cache_key, self._seq.asarray)
         if isinstance(slice, int):
             # e.g. read(slice=0)
             return with_object_cache(
-                self._cache_key + (slice,), _safe_asarray, self._seq, index=slice
+                self._cache_key + (slice,),
+                tifffile.TiffFile(self._seq.files[slice]).asarray,
             )
         # e.g. read(slice=(...))
         if isinstance(slice, tuple):
             if len(slice) == 0:
-                return with_object_cache(self._cache_key, _safe_asarray, self._seq)
+                return with_object_cache(self._cache_key, self._seq.asarray)
             image_axis, *the_rest = slice
             # Could be int or slice
             # (0, slice(...)) or (0,....) are converted to a list
@@ -109,9 +109,7 @@ class TiffSequenceAdapter:
                 # e.g. read(slice=(0, ....))
                 arr = with_object_cache(
                     self._cache_key + (image_axis,),
-                    _safe_asarray,
-                    self._seq,
-                    index=image_axis,
+                    tifffile.TiffFile(self._seq.files[image_axis]).asarray,
                 )
             if isinstance(image_axis, builtins.slice):
                 if image_axis.start is None:
@@ -122,13 +120,14 @@ class TiffSequenceAdapter:
                     slice_step = 1
                 else:
                     slice_step = image_axis.step
-                arr = numpy.stack(
-                    [
-                        with_object_cache(
-                            self._cache_key + (i,), _safe_asarray, self._seq, index=i
-                        )
-                        for i in range(slice_start, image_axis.stop, slice_step)
-                    ]
+
+                arr = with_object_cache(
+                    self._cache_key,
+                    tifffile.TiffSequence(
+                        self._seq.files[
+                            slice_start : image_axis.stop : slice_step  # noqa: E203
+                        ]
+                    ).asarray,
                 )
             arr = arr[tuple(the_rest)]
             return arr
@@ -142,13 +141,12 @@ class TiffSequenceAdapter:
                 slice_step = 1
             else:
                 slice_step = slice.step
-            arr = numpy.stack(
-                [
-                    with_object_cache(
-                        self._cache_key + (i,), _safe_asarray, self._seq, index=i
-                    )
-                    for i in range(slice_start, slice.stop, slice_step)
-                ]
+
+            arr = with_object_cache(
+                self._cache_key,
+                tifffile.TiffSequence(
+                    self._seq.files[slice_start : slice.stop : slice_step]  # noqa: E203
+                ).asarray,
             )
             return arr
 
@@ -207,17 +205,3 @@ def subdirectory_handler(path):
         return TiffSequenceAdapter(seq)
 
     return None
-
-
-def _safe_asarray(seq, index=None):
-    """
-    Wrap FileSequence.asarray to cope with this breaking change in tifffile.
-
-    https://github.com/cgohlke/tifffile/commit/18315846ebf0b31126dfdeffee8e0ef30d81b31c#diff-d8d5cccae6533b861bdf6c0c20c6f49415978effec9a13797909535f3fc7390dL9563-R9746  # noqa
-    """
-
-    try:
-        return seq.asarray(index=index)
-    except TypeError:
-        # usage for versions before 2021.10.10
-        return seq.asarray(file=index)
