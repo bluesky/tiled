@@ -550,9 +550,17 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def write_array(self, array, metadata=None, specs=None):
         """
-        EXPERIMENTAL: write an array
+        EXPERIMENTAL: Write an array.
 
-        This is subject to change or removal without notice
+        Parameters
+        ----------
+        array : array-like
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
 
         """
 
@@ -593,15 +601,27 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             + "/"
             + uid
         )
-        self.context.put_content(full_path_data, content=array.tobytes())
+        self.context.put_content(
+            full_path_data,
+            content=array.tobytes(),
+            headers={"Content-Type": "application/octet-stream"},
+        )
 
     def write_dataframe(self, dataframe, metadata=None, specs=None):
         """
-        EXPERIMENTAL: write a dataframe
+        EXPERIMENTAL: Write a DataFrame.
 
         This is subject to change or removal without notice
 
-
+        Parameters
+        ----------
+        dataframe : pandas.DataFrame
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
         """
         from dask.dataframe.utils import make_meta
 
