@@ -1,17 +1,22 @@
+import base64
 import collections
 import collections.abc
 import importlib
 import itertools
 import time
 import warnings
-from dataclasses import fields
+from dataclasses import asdict, fields
 
 import entrypoints
 
 from ..adapters.utils import IndexersMixin, tree_repr
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..utils import UNCHANGED, OneShotCachedMap, Sentinel
+from ..structures.core import StructureFamily
+from ..structures.dataframe import serialize_arrow
+
+# from ..client.utils import handle_error
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED, OneShotCachedMap, Sentinel
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
 from .utils import export_util
@@ -542,6 +547,129 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         except Exception:
             # Do not print messy traceback from thread. Just fail silently.
             return []
+
+    def write_array(self, array, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: Write an array.
+
+        Parameters
+        ----------
+        array : array-like
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+
+        from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
+
+        metadata = metadata or {}
+        specs = specs or []
+
+        structure = ArrayStructure(
+            macro=ArrayMacroStructure(
+                shape=array.shape,
+                # just one chunk for now...
+                chunks=tuple((size,) for size in array.shape),
+            ),
+            micro=BuiltinDtype.from_numpy_dtype(array.dtype),
+        )
+        data = {
+            "metadata": metadata,
+            "structure": asdict(structure),
+            "structure_family": StructureFamily.array,
+            "specs": specs,
+        }
+
+        full_path_meta = (
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+        document = self.context.post_json(full_path_meta, data)
+        uid = document["uid"]
+
+        full_path_data = (
+            "/array/full"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+            + uid
+        )
+        self.context.put_content(
+            full_path_data,
+            content=array.tobytes(),
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    def write_dataframe(self, dataframe, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: Write a DataFrame.
+
+        This is subject to change or removal without notice
+
+        Parameters
+        ----------
+        dataframe : pandas.DataFrame
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+        from dask.dataframe.utils import make_meta
+
+        from ..structures.dataframe import (
+            DataFrameMacroStructure,
+            DataFrameMicroStructure,
+            DataFrameStructure,
+        )
+
+        metadata = metadata or {}
+        specs = specs or []
+
+        structure = DataFrameStructure(
+            micro=DataFrameMicroStructure(meta=make_meta(dataframe), divisions=[]),
+            macro=DataFrameMacroStructure(
+                npartitions=1, columns=list(dataframe.columns)
+            ),
+        )
+
+        data = {
+            "metadata": metadata,
+            "structure": asdict(structure),
+            "structure_family": StructureFamily.dataframe,
+            "specs": specs,
+        }
+
+        data["structure"]["micro"]["meta"] = base64.b64encode(
+            bytes(serialize_arrow(data["structure"]["micro"]["meta"], {}))
+        ).decode()
+
+        full_path_meta = (
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+        document = self.context.post_json(full_path_meta, data)
+        uid = document["uid"]
+
+        full_path_data = (
+            "/dataframe/full"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+            + uid
+        )
+        self.context.put_content(
+            full_path_data,
+            content=bytes(serialize_arrow(dataframe, {})),
+            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+        )
 
 
 def _queries_to_params(*queries):
