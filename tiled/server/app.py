@@ -32,7 +32,7 @@ from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
-from .settings import get_settings
+from .settings import get_sessionmaker, get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
@@ -270,6 +270,8 @@ def build_app(
             settings.database_pool_size = database["pool_size"]
         if database.get("pool_pre_ping"):
             settings.database_pool_pre_ping = database["pool_pre_ping"]
+        if database.get("max_overflow"):
+            settings.database_max_overflow = database["max_overflow"]
         object_cache_available_bytes = server_settings.get("object_cache", {}).get(
             "available_bytes"
         )
@@ -365,62 +367,55 @@ def build_app(
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_uri is not None:
-            from sqlalchemy import create_engine
-            from sqlalchemy.orm import sessionmaker
-
-            from ..database import orm
-            from ..database.core import (
-                REQUIRED_REVISION,
-                DatabaseUpgradeNeeded,
-                UninitializedDatabase,
-                check_database,
-                initialize_database,
-                make_admin_by_identity,
-            )
-
-            connect_args = {}
-            if settings.database_uri.startswith("sqlite"):
-                connect_args.update({"check_same_thread": False})
-
-            engine = create_engine(settings.database_uri, connect_args=connect_args)
-            redacted_url = engine.url._replace(password="[redacted]")
-            try:
-                check_database(engine)
-            except UninitializedDatabase:
-                # Create tables and stamp (alembic) revision.
-                logger.info(
-                    f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
+            with get_sessionmaker(settings.database_settings)() as db:
+                from ..database import orm
+                from ..database.core import (
+                    REQUIRED_REVISION,
+                    DatabaseUpgradeNeeded,
+                    UninitializedDatabase,
+                    check_database,
+                    initialize_database,
+                    make_admin_by_identity,
                 )
-                initialize_database(engine)
-                logger.info("Database initialized.")
-            except DatabaseUpgradeNeeded as err:
-                print(
-                    f"""
 
-The database used by Tiled to store authentication-related information
-was created using an older version of Tiled. It needs to be upgraded to
-work with this version of Tiled.
+                engine = db.get_bind()
+                redacted_url = engine.url._replace(password="[redacted]")
+                try:
+                    check_database(engine)
+                except UninitializedDatabase:
+                    # Create tables and stamp (alembic) revision.
+                    logger.info(
+                        f"Database {redacted_url} is new. "
+                        f"Creating tables and marking revision {REQUIRED_REVISION}."
+                    )
+                    initialize_database(engine)
+                    logger.info("Database initialized.")
+                except DatabaseUpgradeNeeded as err:
+                    print(
+                        f"""
 
-Back up the database, and then run:
+    The database used by Tiled to store authentication-related information
+    was created using an older version of Tiled. It needs to be upgraded to
+    work with this version of Tiled.
 
-    tiled admin upgrade-database {redacted_url}
-""",
-                    file=sys.stderr,
-                )
-                raise err from None
-            else:
-                logger.info(f"Connected to existing database at {redacted_url}.")
-            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-            db = SessionLocal()
-            for admin in authentication.get("tiled_admins", []):
-                logger.info(
-                    f"Ensuring that principal with identity {admin} has role 'admin'"
-                )
-                make_admin_by_identity(
-                    db,
-                    identity_provider=admin["provider"],
-                    id=admin["id"],
-                )
+    Back up the database, and then run:
+
+        tiled admin upgrade-database {redacted_url}
+    """,
+                        file=sys.stderr,
+                    )
+                    raise err from None
+                else:
+                    logger.info(f"Connected to existing database at {redacted_url}.")
+                for admin in authentication.get("tiled_admins", []):
+                    logger.info(
+                        f"Ensuring that principal with identity {admin} has role 'admin'"
+                    )
+                    make_admin_by_identity(
+                        db,
+                        identity_provider=admin["provider"],
+                        id=admin["id"],
+                    )
 
             async def purge_expired_sessions_and_api_keys():
                 logger.info("Purging expired Sessions and API keys from the database.")

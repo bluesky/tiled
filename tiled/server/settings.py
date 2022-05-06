@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 from pydantic import BaseSettings
 
 DatabaseSettings = collections.namedtuple(
-    "DatabaseSettings", "uri pool_size pool_pre_ping"
+    "DatabaseSettings", "uri pool_size pool_pre_ping max_overflow"
 )
 
 
@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     database_pool_pre_ping: Optional[bool] = bool(
         int(os.getenv("TILED_DATABASE_POOL_PRE_PING", 1))
     )
+    database_max_overflow: Optional[int] = int(
+        os.getenv("TILED_DATABASE_MAX_OVERFLOW", 0)
+    )
 
     @property
     def database_settings(self):
@@ -65,6 +68,7 @@ class Settings(BaseSettings):
             uri=self.database_uri,
             pool_size=self.database_pool_size,
             pool_pre_ping=self.database_pool_pre_ping,
+            max_overflow=self.database_max_overflow,
         )
 
 
@@ -82,6 +86,7 @@ def get_sessionmaker(database_settings):
     kwargs = {}  # extra kwargs passed to create_engine
     kwargs["pool_size"] = database_settings.pool_size
     kwargs["pool_pre_ping"] = database_settings.pool_pre_ping
+    kwargs["max_overflow"] = database_settings.max_overflow
     if database_settings.uri.startswith("sqlite"):
         from sqlalchemy.pool import QueuePool
 
