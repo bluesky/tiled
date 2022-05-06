@@ -577,9 +577,23 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             "specs": specs,
             "mimetype": mimetype,
         }
-        document = self.context.post_json("/node/metadata/", data)
+
+        full_path_meta = (
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+        document = self.context.post_json(full_path_meta, data)
         uid = document["uid"]
-        self.context.put_content(f"/array/full/{uid}", content=array.tobytes())
+
+        full_path_data = (
+            "/array/full"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+            + uid
+        )
+        self.context.put_content(full_path_data, content=array.tobytes())
 
     def write_dataframe(self, dataframe, metadata=None, specs=None):
         """
@@ -620,15 +634,24 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             bytes(serialize_arrow(data["structure"]["micro"]["meta"], {}))
         ).decode()
 
-        document = self.context.post_json("/node/metadata/", data)
+        full_path_meta = (
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+        document = self.context.post_json(full_path_meta, data)
         uid = document["uid"]
 
-        # write_buffer = BytesIO()
-        # dataframe.to_csv(write_buffer)
-        serilized_data = base64.b64encode(
-            bytes(serialize_arrow(dataframe, {}))
-        ).decode()
-        self.context.put_content(f"/dataframe/full/{uid}", content=serilized_data)
+        full_path_data = (
+            "/dataframe/full"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+            + uid
+        )
+        self.context.put_content(
+            full_path_data, content=bytes(serialize_arrow(dataframe, {}))
+        )
 
 
 def _queries_to_params(*queries):
