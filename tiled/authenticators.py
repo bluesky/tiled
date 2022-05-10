@@ -571,11 +571,11 @@ class LDAPAuthenticator:
 
     def resolve_username(self, username_supplied_by_user):
         import ldap3
-        from ldap3.utils.conv import escape_filter_chars
+        import ldap3.utils.conv
 
         search_dn = self.lookup_dn_search_user
         if self.escape_userdn:
-            search_dn = escape_filter_chars(search_dn)
+            search_dn = ldap3.utils.conv.escape_filter_chars(search_dn)
         conn = self.get_connection(
             userdn=search_dn, password=self.lookup_dn_search_password
         )
@@ -674,7 +674,7 @@ class LDAPAuthenticator:
 
     async def authenticate(self, username: str, password: str):
         import ldap3
-        from ldap3.utils.conv import escape_filter_chars
+        import ldap3.utils.conv
 
         username_saved = username  # Save the user name passed as a parameter
 
@@ -721,7 +721,7 @@ class LDAPAuthenticator:
                 continue
             userdn = dn.format(username=username)
             if self.escape_userdn:
-                userdn = escape_filter_chars(userdn)
+                userdn = ldap3.utils.conv.escape_filter_chars(userdn)
             msg = "Attempting to bind {username} with {userdn}"
             logger.debug(msg.format(username=username, userdn=userdn))
             msg = "Status of user bind {username} with {userdn} : {is_bound}"
