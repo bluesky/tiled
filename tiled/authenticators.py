@@ -536,6 +536,10 @@ class LDAPAuthenticator:
         auth_state_attributes=None,
         use_lookup_dn_username=True,
     ):
+        if not modules_available("ldap3"):
+            raise ModuleNotFoundError(
+                "This LDAPAuthenticator requires the module 'ldap3' to be installed."
+            )
         self.use_ssl = use_ssl
         self.use_tls = use_tls
         self.bind_dn_template = bind_dn_template
@@ -568,6 +572,9 @@ class LDAPAuthenticator:
             return 389  # default plaintext port for LDAP
 
     def resolve_username(self, username_supplied_by_user):
+        import ldap3
+        from ldap3.utils.conv import escape_filter_chars
+
         search_dn = self.lookup_dn_search_user
         if self.escape_userdn:
             search_dn = escape_filter_chars(search_dn)
@@ -643,6 +650,8 @@ class LDAPAuthenticator:
         return (user_dn, response[0]["dn"])
 
     def get_connection(self, userdn, password):
+        import ldap3
+
         server = ldap3.Server(
             self.server_address, port=self.server_port, use_ssl=self.use_ssl
         )
@@ -666,6 +675,8 @@ class LDAPAuthenticator:
         return attrs
 
     async def authenticate(self, username: str, password: str):
+        import ldap3
+        from ldap3.utils.conv import escape_filter_chars
 
         username_saved = username  # Save the user name passed as a parameter
 
