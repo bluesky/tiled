@@ -1,4 +1,5 @@
 import asyncio
+
 import pytest
 
 from ..authenticators import LDAPAuthenticator
