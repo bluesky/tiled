@@ -11,6 +11,7 @@ fastapi
 jinja2
 jmespath
 jsonschema
+ldap3
 msgpack >=1.0.0
 orjson
 psutil
