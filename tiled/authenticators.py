@@ -551,11 +551,15 @@ class LDAPAuthenticator:
         self.escape_userdn = escape_userdn
         self.search_filter = search_filter
         self.attributes = attributes if attributes else []
-        self.auth_state_attributes = auth_state_attributes if auth_state_attributes else []
+        self.auth_state_attributes = (
+            auth_state_attributes if auth_state_attributes else []
+        )
         self.use_lookup_dn_username = use_lookup_dn_username
 
         self.server_address = server_address
-        self.server_port = server_port if server_port is not None else self._server_port_default()
+        self.server_port = (
+            server_port if server_port is not None else self._server_port_default()
+        )
 
     def _server_port_default(self):
         if self.use_ssl:
@@ -567,7 +571,9 @@ class LDAPAuthenticator:
         search_dn = self.lookup_dn_search_user
         if self.escape_userdn:
             search_dn = escape_filter_chars(search_dn)
-        conn = self.get_connection(userdn=search_dn, password=self.lookup_dn_search_password)
+        conn = self.get_connection(
+            userdn=search_dn, password=self.lookup_dn_search_password
+        )
         is_bound = conn.bind()
         if not is_bound:
             msg = "Failed to connect to LDAP server with search user '{search_dn}'"
@@ -600,8 +606,15 @@ class LDAPAuthenticator:
         )
         response = conn.response
         if len(response) == 0 or "attributes" not in response[0].keys():
-            msg = "No entry found for user '{username}' " "when looking up attribute '{attribute}'"
-            logger.warning(msg.format(username=username_supplied_by_user, attribute=self.user_attribute))
+            msg = (
+                "No entry found for user '{username}' "
+                "when looking up attribute '{attribute}'"
+            )
+            logger.warning(
+                msg.format(
+                    username=username_supplied_by_user, attribute=self.user_attribute
+                )
+            )
             return (None, None)
 
         user_dn = response[0]["attributes"][self.lookup_dn_user_dn_attribute]
@@ -630,16 +643,24 @@ class LDAPAuthenticator:
         return (user_dn, response[0]["dn"])
 
     def get_connection(self, userdn, password):
-        server = ldap3.Server(self.server_address, port=self.server_port, use_ssl=self.use_ssl)
-        auto_bind_no_ssl = ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
+        server = ldap3.Server(
+            self.server_address, port=self.server_port, use_ssl=self.use_ssl
+        )
+        auto_bind_no_ssl = (
+            ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
+        )
         auto_bind = ldap3.AUTO_BIND_NO_TLS if self.use_ssl else auto_bind_no_ssl
-        conn = ldap3.Connection(server, user=userdn, password=password, auto_bind=auto_bind)
+        conn = ldap3.Connection(
+            server, user=userdn, password=password, auto_bind=auto_bind
+        )
         return conn
 
     def get_user_attributes(self, conn, userdn):
         attrs = {}
         if self.auth_state_attributes:
-            found = conn.search(userdn, "(objectClass=*)", attributes=self.auth_state_attributes)
+            found = conn.search(
+                userdn, "(objectClass=*)", attributes=self.auth_state_attributes
+            )
             if found:
                 attrs = conn.entries[0].entry_attributes_as_dict
         return attrs
@@ -669,7 +690,9 @@ class LDAPAuthenticator:
 
         # sanity check
         if not self.lookup_dn and not bind_dn_template:
-            logger.warning("Login not allowed, please configure 'lookup_dn' or 'bind_dn_template'.")
+            logger.warning(
+                "Login not allowed, please configure 'lookup_dn' or 'bind_dn_template'."
+            )
             return None
 
         if self.lookup_dn:
@@ -714,7 +737,9 @@ class LDAPAuthenticator:
             return None
 
         if self.search_filter:
-            search_filter = self.search_filter.format(userattr=self.user_attribute, username=username)
+            search_filter = self.search_filter.format(
+                userattr=self.user_attribute, username=username
+            )
             conn.search(
                 search_base=self.user_search_base,
                 search_scope=ldap3.SUBTREE,
@@ -724,18 +749,33 @@ class LDAPAuthenticator:
             n_users = len(conn.response)
             if n_users == 0:
                 msg = "User with '{userattr}={username}' not found in directory"
-                logger.warning(msg.format(userattr=self.user_attribute, username=username))
+                logger.warning(
+                    msg.format(userattr=self.user_attribute, username=username)
+                )
                 return None
             if n_users > 1:
-                msg = "Duplicate users found! " "{n_users} users found with '{userattr}={username}'"
-                logger.warning(msg.format(userattr=self.user_attribute, username=username, n_users=n_users))
+                msg = (
+                    "Duplicate users found! "
+                    "{n_users} users found with '{userattr}={username}'"
+                )
+                logger.warning(
+                    msg.format(
+                        userattr=self.user_attribute, username=username, n_users=n_users
+                    )
+                )
                 return None
 
         if self.allowed_groups:
             logger.debug("username:%s Using dn %s", username, userdn)
             found = False
             for group in self.allowed_groups:
-                group_filter = "(|" "(member={userdn})" "(uniqueMember={userdn})" "(memberUid={uid})" ")"
+                group_filter = (
+                    "(|"
+                    "(member={userdn})"
+                    "(uniqueMember={userdn})"
+                    "(memberUid={uid})"
+                    ")"
+                )
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]
                 found = conn.search(
