@@ -193,6 +193,8 @@ def lookup_valid_session(db, session_id):
         .filter(Session.uuid == uuid_module.UUID(hex=session_id))
         .first()
     )
+    if session is None:
+        return None
     if (
         session.expiration_time is not None
         and session.expiration_time < datetime.utcnow()
