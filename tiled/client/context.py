@@ -267,8 +267,8 @@ Set an api_key as in:
         )
         client.base_url = base_url
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-        # Strip "/api/node/metadata"
-        self._path_parts = path_parts[3:]
+        # Strip "/node/metadata"
+        self._path_parts = path_parts[2:]
 
     @property
     def tokens(self):
