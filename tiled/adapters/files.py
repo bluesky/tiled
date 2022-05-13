@@ -651,7 +651,7 @@ def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
         # Use the Python's built-in facility for guessing mimetype
         # from file extension. This loads data about mimetypes from
         # the operating system the first time it is used.
-        mimetype, _ = mimetypes.guess_type(path)
+        mimetype, _ = mimetypes.guess_type(str(path))
     if mimetype is None:
         msg = (
             f"The file at {path} has a file extension {ext} this is not "
