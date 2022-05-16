@@ -659,7 +659,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         uid = document["uid"]
 
         full_path_data = (
-            "/dataframe/full"
+            "/node/full"
             + "".join(f"/{part}" for part in self.context.path_parts)
             + "".join(f"/{part}" for part in self._path)
             + "/"
