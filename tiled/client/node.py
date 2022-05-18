@@ -358,6 +358,19 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         (item,) = data
         return self.client_for_item(item, path=self._path + (item["id"],))
 
+    def __delitem__(self, key):
+        self._cached_len = None
+
+        path = (
+            "/node/delete/"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+            + key
+        )
+
+        self.context.delete_content(path, None)
+
     def items(self):
         # The base implementation would use __iter__ and __getitem__, making
         # one HTTP request per item. Pull pages instead.
