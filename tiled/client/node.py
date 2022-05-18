@@ -592,20 +592,22 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             + "".join(f"/{part}" for part in (self._path or [""]))
         )
         document = self.context.post_json(full_path_meta, data)
-        uid = document["uid"]
+        key = document["key"]
 
         full_path_data = (
             "/array/full"
             + "".join(f"/{part}" for part in self.context.path_parts)
             + "".join(f"/{part}" for part in self._path)
             + "/"
-            + uid
+            + key
         )
         self.context.put_content(
             full_path_data,
             content=array.tobytes(),
             headers={"Content-Type": "application/octet-stream"},
         )
+
+        return key
 
     def write_dataframe(self, dataframe, metadata=None, specs=None):
         """
@@ -660,20 +662,22 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             + "".join(f"/{part}" for part in (self._path or [""]))
         )
         document = self.context.post_json(full_path_meta, data)
-        uid = document["uid"]
+        key = document["key"]
 
         full_path_data = (
             "/node/full"
             + "".join(f"/{part}" for part in self.context.path_parts)
             + "".join(f"/{part}" for part in self._path)
             + "/"
-            + uid
+            + key
         )
         self.context.put_content(
             full_path_data,
             content=bytes(serialize_arrow(dataframe, {})),
             headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
         )
+
+        return key
 
 
 def _queries_to_params(*queries):
