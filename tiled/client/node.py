@@ -548,6 +548,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
+    def _invalidate_length_cache(self):
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            self._cached_len = (length, time.monotonic())
+
     def write_array(self, array, metadata=None, specs=None):
         """
         EXPERIMENTAL: Write an array.
@@ -565,6 +570,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
 
         from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
+
+        self._invalidate_length_cache()
 
         metadata = metadata or {}
         specs = specs or []
@@ -628,6 +635,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             DataFrameMicroStructure,
             DataFrameStructure,
         )
+
+        self._invalidate_length_cache()
 
         metadata = metadata or {}
         specs = specs or []
