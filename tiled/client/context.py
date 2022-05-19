@@ -532,14 +532,14 @@ Set an api_key as in:
                 "accept": "application/x-msgpack",
             },
         )
-        response = self._client.send(request)
+        response = self._send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def put_content(self, path, content, headers=None, **kwargs):
+    def put_content(self, path, content, headers=None):
         # Submit CSRF token in both header and cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         headers = headers or {}
@@ -551,7 +551,26 @@ Set an api_key as in:
             content=content,
             headers=headers,
         )
-        response = self._client.send(request)
+        response = self._send(request)
+        handle_error(response)
+        return msgpack.unpackb(
+            response.content,
+            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
+        )
+
+    def delete_content(self, path, content, headers=None):
+        # Submit CSRF token in both header and cookie.
+        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+        headers = headers or {}
+        headers.setdefault("x-csrf", self._client.cookies["tiled_csrf"])
+        headers.setdefault("accept", "application/x-msgpack")
+        request = self._client.build_request(
+            "DELETE",
+            path,
+            content=None,
+            headers=headers,
+        )
+        response = self._send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
