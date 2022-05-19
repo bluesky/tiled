@@ -566,6 +566,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
 
+        self._cached_len = None
+
         metadata = metadata or {}
         specs = specs or []
 
@@ -628,6 +630,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             DataFrameMicroStructure,
             DataFrameStructure,
         )
+
+        self._cached_len = None
 
         metadata = metadata or {}
         specs = specs or []
