@@ -18,17 +18,45 @@ tree = MapAdapter(
 
 def test_indexers():
     client = from_tree(tree)
-    assert client.keys_indexer[:3] == keys[:3] == list("abc")
-    assert client.keys_indexer[:1] == keys[:1] == list("a")
-    assert client.keys_indexer[1:3] == keys[1:3] == list("bc")
-    assert client.keys_indexer[-3::-1] == keys[-3::-1]  # ["x", "w", "v", ...]
-    assert client.keys_indexer[-1:-5:-1] == keys[-1:-5:-1] == list("zyxw")
-    assert client.keys_indexer[:] == list(client) == keys
+    assert client.keys()[0] == client.keys().first() == keys[0] == "a"
+    assert client.keys()[-1] == client.keys().last() == keys[-1] == "z"
+    assert client.keys()[:3] == client.keys().head(3) == keys[:3] == list("abc")
+    assert client.keys()[:1] == client.keys().head(1) == keys[:1] == list("a")
+    assert client.keys()[1:3] == keys[1:3] == list("bc")
+    assert client.keys()[-3::-1] == keys[-3::-1]  # ["x", "w", "v", ...]
+    assert client.keys()[-1:-5:-1] == keys[-1:-5:-1] == list("zyxw")
+    assert client.keys().tail(4) == list(reversed(keys[-1:-5:-1])) == list("wxyz")
+    assert client.keys()[:] == list(client) == keys
     # Test out of bounds
     with pytest.raises(IndexError):
-        client.keys_indexer[len(keys)]
+        client.keys()[len(keys)]
     with pytest.raises(IndexError):
-        client.keys_indexer[-len(keys) - 1]
+        client.keys()[-len(keys) - 1]
     # These should be in bounds and should not raise.
-    client.keys_indexer[len(keys) - 1]
-    client.keys_indexer[-len(keys)]
+    client.keys()[len(keys) - 1]
+    client.keys()[-len(keys)]
+
+    # smoke test values()
+    client.values().first()
+    client.values().last()
+    client.values().head()
+    client.values().tail()
+    client.values()[1:3]
+
+    # smoke test items()
+    client.items().first()
+    client.items().last()
+    client.items().head()
+    client.items().tail()
+    client.items()[1:3]
+
+
+def test_deprecated_indexer_accessors():
+    client = from_tree(tree)
+    with pytest.warns(DeprecationWarning):
+        assert client.keys_indexer[:3] == keys[:3] == list("abc")
+    # smoke test the others
+    with pytest.warns(DeprecationWarning):
+        client.values_indexer[:3]
+    with pytest.warns(DeprecationWarning):
+        client.items_indexer[:3]

@@ -4,6 +4,7 @@ import itertools
 import sys
 from datetime import datetime
 
+from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import FullText
 from ..query_registration import QueryTranslationRegistry
 from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
@@ -134,6 +135,15 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     def __len__(self):
         return len(self._mapping)
 
+    def keys(self):
+        return KeysView(lambda: len(self), self._keys_slice)
+
+    def values(self):
+        return ValuesView(lambda: len(self), self._items_slice)
+
+    def items(self):
+        return ItemsView(lambda: len(self), self._items_slice)
+
     @property
     def metadata_stale_at(self):
         if self.metadata_stale_after is None:
@@ -224,8 +234,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
         return self.new_variation(mapping=mapping, sorting=sorting)
 
-    # The following three methods are used by IndexersMixin
-    # to define keys_indexer, items_indexer, and values_indexer.
+    # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(self, start, stop, direction):
         if direction > 0:
@@ -250,13 +259,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             (key, self._mapping[key])
             for key in self._keys_slice(start, stop, direction)
         )
-
-    def _item_by_index(self, index, direction):
-        if direction > 0:
-            key = next(itertools.islice(self._mapping.keys(), index, 1 + index))
-        else:
-            key = itertools.islice(self._mapping.keys(), len(self._mapping) - index)
-        return (key, self._mapping[key])
 
 
 def walk_string_values(tree, node=None):

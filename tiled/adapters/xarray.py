@@ -127,7 +127,7 @@ class DataArrayAdapter:
             keys.append("coords")
         yield from keys
 
-    # TODO Add keys_indexer, etc. to support /node/search.
+    # TODO Add keys(), etc. to support /node/search.
 
     def microstructure(self):
         return None

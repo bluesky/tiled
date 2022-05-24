@@ -10,6 +10,7 @@ from dataclasses import asdict, fields
 import entrypoints
 
 from ..adapters.utils import IndexersMixin, tree_repr
+from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import StructureFamily
@@ -371,37 +372,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         self.context.delete_content(path, None)
 
-    def items(self):
-        # The base implementation would use __iter__ and __getitem__, making
-        # one HTTP request per item. Pull pages instead.
-        next_page_url = self.item["links"]["search"]
-        while next_page_url is not None:
-            content = self.context.get_json(
-                next_page_url,
-                params={
-                    **self._queries_as_params,
-                    **self._sorting_params,
-                    **self._params,
-                },
-            )
-            self._cached_len = (
-                content["meta"]["count"],
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
-            for item in content["data"]:
-                key = item["id"]
-                value = self.client_for_item(item, path=self._path + (item["id"],))
-                yield key, value
-            next_page_url = content["links"]["next"]
-
-    def values(self):
-        # The base implementation would use __iter__ and __getitem__, making
-        # one HTTP request per item. Pull pages instead.
-        for _, value in self.items():
-            yield value
-
-    # The following three methods are used by IndexersMixin
-    # to define keys_indexer, items_indexer, and values_indexer.
+    # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(self, start, stop, direction):
         if direction > 0:
@@ -458,29 +429,14 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield key, self.client_for_item(item, path=self._path + (item["id"],))
             next_page_url = content["links"]["next"]
 
-    def _item_by_index(self, index, direction):
-        if direction > 0:
-            sorting_params = self._sorting_params
-        else:
-            sorting_params = self._reversed_sorting_params
-        assert index >= 0
-        next_page_url = (
-            f"{self.item['links']['search']}?page[offset]={index}&page[limit]=1"
-        )
-        content = self.context.get_json(
-            next_page_url,
-            params={**self._queries_as_params, **sorting_params, **self._params},
-        )
-        self._cached_len = (
-            content["meta"]["count"],
-            time.monotonic() + LENGTH_CACHE_TTL,
-        )
-        if not content["data"]:
-            raise IndexError("Index out of range.")
-        (item,) = content["data"]
-        key = item["id"]
-        value = self.client_for_item(item, path=self._path + (item["id"],))
-        return (key, value)
+    def keys(self):
+        return KeysView(lambda: len(self), self._keys_slice)
+
+    def values(self):
+        return ValuesView(lambda: len(self), self._items_slice)
+
+    def items(self):
+        return ItemsView(lambda: len(self), self._items_slice)
 
     def search(self, query):
         """
