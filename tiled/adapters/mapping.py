@@ -1,7 +1,6 @@
 import collections.abc
 import copy
 import itertools
-import sys
 from datetime import datetime
 
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -224,12 +223,10 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
                     )
                 )
             if direction < 0:
-                if sys.version_info < (3, 8):
-                    # Prior to Python 3.8 dicts are not reversible.
-                    to_reverse = list(mapping.items())
-                else:
-                    to_reverse = mapping.items()
-
+                # TODO In Python 3.8 dict items should be reservible
+                # but I have seen errors in the wild that I could not
+                # quickly resolve so for now we convert to list in the middle.
+                to_reverse = list(mapping.items())
                 mapping = dict(reversed(to_reverse))
 
         return self.new_variation(mapping=mapping, sorting=sorting)
