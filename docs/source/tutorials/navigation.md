@@ -126,6 +126,7 @@ All the same methods work for values
 
 and `(key, value)` pairs ("items").
 
+```python
 >>> client.items()[1:3]  # Access (key, value) pairs.
 [('small_image', <ArrayClient>),
 [('tiny_image', <ArrayClient>),

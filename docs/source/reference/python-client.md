@@ -64,11 +64,13 @@ and several convenience methods:
 .. autosummary::
    :toctree: generated
 
-   tiled.client.node.IterViewbase.first
-   tiled.client.node.IterViewbase.last
-   tiled.client.node.IterViewbase.head
-   tiled.client.node.IterViewbase.tail
+   tiled.iterviews.ValuesView.first
+   tiled.iterviews.ValuesView.last
+   tiled.iterviews.ValuesView.head
+   tiled.iterviews.ValuesView.tail
 ```
+
+Likewise for `.keys()` and `.items()`.
 
 Beyond the Mapping interface, Node adds the following attributes
 
