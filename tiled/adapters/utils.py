@@ -50,3 +50,28 @@ def tree_repr(tree, sample):
     else:
         out += "}>"
     return out
+
+
+class IndexCallable:
+    """
+    DEPRECATED and no longer used internally
+
+    Provide getitem syntax for functions
+
+    >>> def inc(x):
+    ...     return x + 1
+
+    >>> I = IndexCallable(inc)
+    >>> I[3]
+    4
+
+    Vendored from dask
+    """
+
+    __slots__ = ("fn",)
+
+    def __init__(self, fn):
+        self.fn = fn
+
+    def __getitem__(self, key):
+        return self.fn(key)
