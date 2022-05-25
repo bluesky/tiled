@@ -93,9 +93,9 @@ for key, value in client.items():
     ...
 ```
 
-Nodes also support efficient list-like access. This is useful
-for efficiently grabbing batches of items, especially if you need to start
-from the middle.
+Nodes also support efficient list-like access. This is useful for quickly
+looking at a couple or efficiently grabbing batches of items, especially if you
+need to start from the middle.
 
 ```python
 >>> client.keys().first()  # Acces the first key.
