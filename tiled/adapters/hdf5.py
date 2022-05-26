@@ -7,6 +7,7 @@ import h5py
 import numpy
 
 from ..adapters.utils import IndexersMixin, tree_repr
+from ..iterviews import ItemsView, KeysView, ValuesView
 from ..utils import DictView
 from .array import ArrayAdapter
 
@@ -145,6 +146,15 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     def __len__(self):
         return len(self._node)
 
+    def keys(self):
+        return KeysView(lambda: len(self), self._keys_slice)
+
+    def values(self):
+        return ValuesView(lambda: len(self), self._items_slice)
+
+    def items(self):
+        return ItemsView(lambda: len(self), self._items_slice)
+
     def search(self, query):
         """
         Return a Tree with a subset of the mapping.
@@ -156,8 +166,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
             raise NotImplementedError
         return self
 
-    # The following three methods are used by IndexersMixin
-    # to define keys_indexer, items_indexer, and values_indexer.
+    # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(self, start, stop, direction):
         keys = list(self._node)
@@ -170,9 +179,3 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         if direction < 0:
             items = reversed(items)
         return items[start:stop]
-
-    def _item_by_index(self, index, direction):
-        keys = list(self)
-        if direction < 0:
-            keys = reversed(keys)
-        return keys[index]

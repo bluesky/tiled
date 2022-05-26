@@ -32,7 +32,7 @@ These are typically used for development and debugging only.
 The Node interface extends the ``collections.abc.Mapping`` (i.e. read-only
 dict) interface, so it supports these standard "magic methods":
 
-* `__getitem__` (lookup with `[]`)
+* `__getitem__` (lookup by key with `[]`)
 * `__iter__` (iteration, use in for-loops for example)
 * `__len__` (has a length, can be passed to `len`)
 
@@ -48,7 +48,31 @@ as well as:
    tiled.client.node.Node.values
 ```
 
-It adds the following attributes
+The views returned by `.keys()`, `.items()`, and `.values()`
+support efficient random access---e.g.
+
+```py
+node.values()[3]
+node.values()[-1]
+node.values()[:3]
+```
+
+and several convenience methods:
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.iterviews.ValuesView.first
+   tiled.iterviews.ValuesView.last
+   tiled.iterviews.ValuesView.head
+   tiled.iterviews.ValuesView.tail
+```
+
+Likewise for `.keys()` and `.items()`.
+
+Beyond the Mapping interface, Node adds the following attributes
 
 ```{eval-rst}
 .. autosummary::
@@ -78,18 +102,6 @@ It adds these methods for downloading and refreshing cached data.
 
    tiled.client.node.Node.download
    tiled.client.node.Node.refresh
-```
-
-Finally, it adds attributes that provide efficient positional-based lookup,
-as in ``tree.values_indexer[500:600]``.
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.node.Node.keys_indexer
-   tiled.client.node.Node.items_indexer
-   tiled.client.node.Node.values_indexer
 ```
 
 Finally, it exposes these methods, which are used internally and may be useful

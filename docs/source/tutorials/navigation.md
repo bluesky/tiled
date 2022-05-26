@@ -93,18 +93,41 @@ for key, value in client.items():
     ...
 ```
 
-Nodes also support list-like access, via special attributes. This is useful
-for efficiently grabbing batches of items, especially if you need to start
-from the middle.
+Nodes also support efficient list-like access. This is useful for quickly
+looking at a couple or efficiently grabbing batches of items, especially if you
+need to start from the middle.
 
 ```python
->>> client.keys_indexer[1:3]  # Access just the keys for entries 1:3.
+>>> client.keys().first()  # Acces the first key.
+'big_image'
+
+>>> client.keys().head()  # Access the first several keys.
+['big_image',
+ 'small_image',
+ 'tiny_image',
+ 'tiny_cube',
+ 'tiny_hypercube']
+
+>>> client.keys().head(3)  # Access the first N keys.
+['big_image',
+ 'small_image',
+ 'tiny_image']
+
+>>> client.keys()[1:3]  # Access just the keys for entries 1:3.
 ['small_image', 'tiny_image']
+```
 
->>> client.values_indexer[1:3]  # Access the values (which may be more expensive).
+All the same methods work for values
+
+```python
+>>> client.values()[1:3]  # Access the values (which may be more expensive).
 [<ArrayClient>, <ArrayClient>]
+```
 
->>> client.items_indexer[1:3]  # Access (key, value) pairs.
+and `(key, value)` pairs ("items").
+
+```python
+>>> client.items()[1:3]  # Access (key, value) pairs.
 [('small_image', <ArrayClient>),
 [('tiny_image', <ArrayClient>),
 ```

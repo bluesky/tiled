@@ -183,12 +183,11 @@ def construct_entries_response(
     data = []
     if fields != [schemas.EntryFields.none]:
         # Pull a page of items into memory.
-        items = tree.items_indexer[offset : offset + limit]  # noqa: E203
+        items = tree.items()[offset : offset + limit]  # noqa: E203
     else:
         # Pull a page of just the keys, which is cheaper.
         items = (
-            (key, None)
-            for key in tree.keys_indexer[offset : offset + limit]  # noqa: E203
+            (key, None) for key in tree.keys()[offset : offset + limit]  # noqa: E203
         )
     # This value will not leak out. It just used to seed comparisons.
     metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
