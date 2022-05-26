@@ -5,7 +5,7 @@ import importlib
 import itertools
 import time
 import warnings
-from dataclasses import asdict, fields
+from dataclasses import asdict
 
 import entrypoints
 
@@ -654,17 +654,9 @@ def _queries_to_params(*queries):
     params = collections.defaultdict(list)
     for query in queries:
         name = query_registry.query_type_to_name[type(query)]
-        for field in fields(query):
-            value = getattr(query, field.name)
-            if isinstance(value, (list, tuple)):
-                for item_as_str in map(str, value):
-                    if "," in item_as_str:
-                        raise ValueError(
-                            "Items in list- or tuple-type parameters may not contain commas."
-                        )
-                value = ",".join(map(str, value))
+        for field, value in query.encode().items():
             if value is not None:
-                params[f"filter[{name}][condition][{field.name}]"].append(value)
+                params[f"filter[{name}][condition][{field}]"].append(value)
     return dict(params)
 
 
