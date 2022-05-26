@@ -14,10 +14,12 @@ tree = MapAdapter(
         for letter, number in zip(keys, range(26))
     }
 )
+empty_tree = MapAdapter({})
 
 
 def test_indexers():
     client = from_tree(tree)
+    empty_client = from_tree(empty_tree)
     assert client.keys()[0] == client.keys().first() == keys[0] == "a"
     assert client.keys()[-1] == client.keys().last() == keys[-1] == "z"
     assert client.keys()[:3] == client.keys().head(3) == keys[:3] == list("abc")
@@ -27,11 +29,18 @@ def test_indexers():
     assert client.keys()[-1:-5:-1] == keys[-1:-5:-1] == list("zyxw")
     assert client.keys().tail(4) == list(reversed(keys[-1:-5:-1])) == list("wxyz")
     assert client.keys()[:] == list(client) == keys
+    # Slice beyond length.
+    assert 100 > len(client.keys())
+    assert client.keys()[:100] == client.keys().head(100) == keys[:100] == keys[:]
     # Test out of bounds
     with pytest.raises(IndexError):
         client.keys()[len(keys)]
     with pytest.raises(IndexError):
         client.keys()[-len(keys) - 1]
+    with pytest.raises(IndexError):
+        empty_client.keys().first()
+    with pytest.raises(IndexError):
+        empty_client.keys().last()
     # These should be in bounds and should not raise.
     client.keys()[len(keys) - 1]
     client.keys()[-len(keys)]
