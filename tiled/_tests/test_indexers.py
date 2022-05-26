@@ -32,6 +32,8 @@ def test_indexers():
     # Slice beyond length.
     assert 100 > len(client.keys())
     assert client.keys()[:100] == client.keys().head(100) == keys[:100] == keys[:]
+    assert empty_client.keys().head() == []
+    assert empty_client.keys().tail() == []
     # Test out of bounds
     with pytest.raises(IndexError):
         client.keys()[len(keys)]
