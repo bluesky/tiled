@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import inspect
 from datetime import datetime, timedelta
@@ -30,6 +31,9 @@ from .dependencies import (
 )
 from .settings import get_settings
 from .utils import get_base_url, record_timing
+
+from ..structures.core import StructureFamily
+from ..structures.dataframe import deserialize_arrow
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -531,3 +535,60 @@ def node_full(
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
+
+
+@router.post("/node/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
+def post_metadata(
+    request: Request,
+    body: schemas.PostMetadataRequest,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    if body.structure_family == StructureFamily.dataframe:
+        # Decode meta for pydantic validation
+        body.structure.micro.meta = deserialize_arrow(
+            base64.b64decode(body.structure.micro.meta)
+        )
+
+    try:
+        key = entry.post_metadata(
+            metadata=body.metadata,
+            structure_family=body.structure_family,
+            structure=body.structure,
+            specs=body.specs,
+        )
+    except Exception:
+        raise HTTPException(status_code=404, detail="This node is not writable.")
+
+    return json_or_msgpack(request, {"key": key})
+
+
+@router.put("/array/full/{path:path}")
+async def put_array_full(
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    data = await request.body()
+
+    try:
+        entry.put_data(data)
+    except Exception:
+        raise HTTPException(
+            status_code=404, detail="This path cannot accept this array."
+        )
+    return json_or_msgpack(request, None)
+
+
+@router.put("/node/full/{path:path}")
+async def put_dataframe_full(
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    data = await request.body()
+
+    try:
+        entry.put_data(data)
+    except Exception:
+        raise HTTPException(
+            status_code=404, detail="This path cannot accept this dataframe."
+        )
+    return json_or_msgpack(request, None)

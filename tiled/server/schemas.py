@@ -9,6 +9,9 @@ import pydantic.generics
 
 from ..structures.core import StructureFamily
 
+from .pydantic_array import ArrayStructure
+from .pydantic_dataframe import DataFrameStructure
+
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
@@ -275,3 +278,14 @@ class APIKeyRequestParams(pydantic.BaseModel):
     expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
     scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
     note: Optional[str]
+
+
+class PostMetadataRequest(pydantic.BaseModel):
+    structure_family: StructureFamily
+    structure: Union[ArrayStructure, DataFrameStructure]
+    metadata: Dict
+    specs: List[str]
+
+
+class PostMetadataResponse(pydantic.BaseModel):
+    key: str
