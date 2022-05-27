@@ -8,7 +8,6 @@ import pydantic.dataclasses
 import pydantic.generics
 
 from ..structures.core import StructureFamily
-
 from .pydantic_array import ArrayStructure
 from .pydantic_dataframe import DataFrameStructure
 
