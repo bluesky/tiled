@@ -9,6 +9,8 @@ from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 
 from .. import __version__
+from ..structures.core import StructureFamily
+from ..structures.dataframe import deserialize_arrow
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
@@ -31,9 +33,6 @@ from .dependencies import (
 )
 from .settings import get_settings
 from .utils import get_base_url, record_timing
-
-from ..structures.core import StructureFamily
-from ..structures.dataframe import deserialize_arrow
 
 DEFAULT_PAGE_SIZE = 100
 
