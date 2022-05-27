@@ -38,10 +38,11 @@ class FullText:
         return {"text": self.text, "case_sensitive": json.dumps(self.case_sensitive)}
 
     @classmethod
-    def decode(cls, *, text, case_sensitive="false"):
+    def decode(cls, *, text, case_sensitive=False):
+        # Note: FastAPI decodes case_sensitive into a boolean for us.
         return cls(
             text=text,
-            case_sensitive=json.loads(case_sensitive),
+            case_sensitive=case_sensitive,
         )
 
 
