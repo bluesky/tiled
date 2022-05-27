@@ -23,6 +23,12 @@ class FullText:
 
     This matches *complete words*, so 'dog' would match 'cat dog elephant',
     but 'do' would not match.
+
+    Parameters
+    ----------
+    text : str
+    case_sensitive : bool, optional
+        Default False (case-insensitive).
     """
 
     text: str
@@ -52,6 +58,10 @@ class KeyLookup:
     The server handles this directly and generically, simply calling __getitem__
     on the tree after apply all other queries.  Implementations of search(...)
     do not need to handle it.
+
+    Parameters
+    ----------
+    key : str
     """
 
     key: str
@@ -70,6 +80,21 @@ class Eq:
     """
     Query equality of a given key's value to the specified value.
 
+    See `Key` in this module for a more intuitive interface for equality.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    value : JSONSerializable
+        May be a string, number, list, or dict.
+
+    Examples
+    --------
+
+    Search for color == "red"
+
+    >>> c.search(Eq("color", "red"))
     """
 
     key: str
@@ -96,6 +121,22 @@ class Comparison:
     """
     Query binary comparison between given key's value to the specified value.
 
+    See `Key` in this module for a more intuitive interface for comparisons.
+
+    Parameters
+    ----------
+    operator : {"gt", "lt", "ge", "lt"}
+    key : str
+        e.g. "temperature"
+    value : JSONSerializable
+        May be a string, number, list, or dict.
+
+    Examples
+    --------
+
+    Search for temperature > 300.
+
+    >>> c.search(Comparison("gt", "temperature", 300))
     """
 
     operator: Operator
@@ -125,6 +166,19 @@ class Contains:
     """
     Query where a given key's value contains the specified value.
 
+    Parameters
+    ----------
+    key : str
+        e.g. "motors"
+    value : JSONSerializable
+        May be a string, number, list, or dict.
+
+    Examples
+    --------
+
+    Search for matches where "ccd" is including the list of detectors.
+
+    >>> c.search(Contains("detectors", "ccd"))
     """
 
     key: str
@@ -151,6 +205,8 @@ class Key:
 
     Examples
     --------
+
+    Search for equality, comparison, or membership in a collection.
 
     >>> c.search(Key("color") == "red")
     >>> c.search(Key("temperature") >= 300)
