@@ -1,10 +1,11 @@
 import collections.abc
 import copy
 import itertools
+import operator
 from datetime import datetime
 
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..queries import FullText
+from ..queries import Comparison, Contains, Eq, FullText, Regex
 from ..query_registration import QueryTranslationRegistry
 from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
 from .utils import IndexersMixin
@@ -311,6 +312,89 @@ def full_text_search(query, tree):
 
 
 MapAdapter.register_query(FullText, full_text_search)
+
+
+def regex(query, tree):
+    import re
+
+    matches = {}
+    flags = 0 if query.case_sensitive else re.IGNORECASE
+    pattern = re.compile(query.pattern, flags=flags)
+    for key, value in tree.items():
+        # Find the queried key in the metadata.
+        term = value.metadata
+        for subkey in query.key.split("."):
+            if subkey not in term:
+                break
+            term = term[subkey]
+        else:
+            if isinstance(term, str) and pattern.search(term):
+                matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(Regex, regex)
+
+
+def eq(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        # Find the queried key in the metadata.
+        term = value.metadata
+        for subkey in query.key.split("."):
+            if subkey not in term:
+                break
+            term = term[subkey]
+        else:
+            if term == query.value:
+                matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(Eq, eq)
+
+
+def contains(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        # Find the queried key in the metadata.
+        term = value.metadata
+        for subkey in query.key.split("."):
+            if subkey not in term:
+                break
+            term = term[subkey]
+        else:
+            if (
+                isinstance(term, collections.abc.Iterable)
+                and (not isinstance(term, str))
+                and (query.value in term)
+            ):
+                matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(Contains, contains)
+
+
+def comparison(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        # Find the queried key in the metadata.
+        term = value.metadata
+        for subkey in query.key.split("."):
+            if subkey not in term:
+                break
+            term = term[subkey]
+        else:
+            if query.operator not in {"le", "lt", "ge", "gt"}:
+                raise ValueError(f"Unexpected operator {query.operator}.")
+            comparison_func = getattr(operator, query.operator)
+            if comparison_func(term, query.value):
+                matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(Comparison, comparison)
 
 
 class DummyAccessPolicy:

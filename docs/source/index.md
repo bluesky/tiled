@@ -50,6 +50,7 @@ explanations/lineage
 reference/service
 reference/http-api-overview
 reference/python-client
+reference/queries
 reference/authentication
 reference/scopes
 reference/commandline

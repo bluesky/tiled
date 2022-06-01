@@ -247,6 +247,13 @@ class StableQuery:
     "A dummy query whose results will not change"
     dummy: str
 
+    def encode(self):
+        return {"dummy": str}
+
+    @classmethod
+    def decode(cls, *, dummy):
+        return cls(dummy=dummy)
+
 
 def test_must_revalidate(caplog, cache):
     """

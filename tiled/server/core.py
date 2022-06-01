@@ -146,16 +146,8 @@ def construct_entries_response(
             except IndexError:
                 break
             query_class = query_registry.name_to_query_type[query_name]
-            # Special case:
-            # List fields are serialized as comma-separated strings.
-            for field in dataclasses.fields(query_class):
-                if getattr(field.type, "__origin__", None) is list:
-                    (inner_type,) = field.type.__args__
-                    parameters[field.name] = [
-                        inner_type(item) for item in parameters[field.name].split(",")
-                    ]
             try:
-                query = query_class(**parameters)
+                query = query_class.decode(**parameters)
                 # Special case: Do key-lookups at the end after all other filtering.
                 # We do not require trees to implement this query; we implement it
                 # directly here by just calling __getitem__.
