@@ -75,6 +75,50 @@ class KeyLookup:
         return cls(key=key)
 
 
+@register(name="regex")
+@dataclass
+class Regex:
+    """
+    Match a key's value to a regular expression.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    pattern : str
+        regular expression
+    case_sensitive : bool, optional
+        Default False (case-insensitive).
+
+    Examples
+    --------
+
+    Search for color == "red"
+
+    >>> c.search(Regex("sample.name", "Cu.*"))
+    """
+
+    key: str
+    pattern: str
+    case_sensitive: bool = False
+
+    def encode(self):
+        return {
+            "key": self.key,
+            "pattern": self.pattern,
+            "case_sensitive": json.dumps(self.case_sensitive),
+        }
+
+    @classmethod
+    def decode(cls, *, key, pattern, case_sensitive=False):
+        # Note: FastAPI decodes case_sensitive into a boolean for us.
+        return cls(
+            key=key,
+            pattern=pattern,
+            case_sensitive=case_sensitive,
+        )
+
+
 @register(name="eq")
 @dataclass
 class Eq:
