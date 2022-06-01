@@ -2,7 +2,11 @@
 
 ## Built in query types
 
-These can be used in searches.
+These can be used in searches, as in
+
+```python
+c.search(FullText("hello"))
+```
 
 ```{eval-rst}
 .. autosummary::
@@ -12,6 +16,7 @@ These can be used in searches.
    tiled.queries.Contains
    tiled.queries.Eq
    tiled.queries.FullText
+   tiled.queries.Regex
 ```
 
 ## Query expressions
@@ -23,6 +28,13 @@ standard Python comparison operators, as in
 Key("color") == "red"
 Key("temperature") > 300
 ```
+
+used in searches like
+
+```python
+c.search(Key("color") == "red").search(Key("temperature") > 300)
+```
+
 
 ```{eval-rst}
 .. autosummary::
