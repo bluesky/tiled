@@ -344,7 +344,7 @@ if modules_available("tifffile"):
         return imread(buffer).astype(dtype).reshape(shape)
 
     def save_to_buffer_tifffile(array, metadata):
-        from tifffile import imsave
+        from tifffile import imwrite
 
         # Handle too *few* dimensions here, and let tifffile raise if there are too
         # *many* because it depends on the shape (RGB, RGBA, etc.)
@@ -355,7 +355,7 @@ if modules_available("tifffile"):
         if normalized_array.ndim > 4:
             raise UnsupportedShape(array.ndim)
         file = io.BytesIO()
-        imsave(file, normalized_array)
+        imwrite(file, normalized_array)
         return file.getbuffer()
 
     serialization_registry.register("array", "image/tiff", save_to_buffer_tifffile)

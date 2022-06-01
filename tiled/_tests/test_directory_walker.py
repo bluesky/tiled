@@ -114,7 +114,7 @@ def test_collision_at_startup(example_data_dir):
 
     # Add a.tiff which will collide with a.tif.
     p = Path(example_data_dir, "a.tiff")
-    tifffile.imsave(str(p), data)
+    tifffile.imwrite(str(p), data)
 
     with pytest.warns(UserWarning):
         # Tree warns about collision.
@@ -145,7 +145,7 @@ def test_collision_after_startup(example_data_dir):
     # Add a.tiff which will collide with a.tif.
     p = Path(example_data_dir, "a.tiff")
     with pytest.warns(UserWarning):
-        tifffile.imsave(str(p), data)
+        tifffile.imwrite(str(p), data)
         force_update(client)
 
     assert "a" not in client
@@ -178,7 +178,7 @@ def test_remove_and_re_add(example_data_dir):
     assert "a" not in client
 
     # Add it back.
-    tifffile.imsave(str(p), data)
+    tifffile.imwrite(str(p), data)
 
     # Confirm it is back (no spurious collision).
     force_update(client)
