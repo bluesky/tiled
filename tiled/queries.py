@@ -258,7 +258,6 @@ class Key:
     >>> c.search(Key("temperature") <= 300)
     >>> c.search(Key("position") > 5.0)
     >>> c.search(Key("position") < 5.0)
-    >>> c.search("current" in Key("detectors"))
     """
 
     def __init__(self, key):
@@ -278,6 +277,10 @@ class Key:
 
     def __ge__(self, value):
         return Comparison("ge", self.key, value)
+
+    # Note: __contains__ cannot be supported because the language coerces
+    # the result of __contains__ to be a literal boolean. We are not
+    # allowed to return a custom type.
 
 
 class QueryValueError(ValueError):
