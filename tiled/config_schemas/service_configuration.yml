@@ -311,7 +311,8 @@ properties:
           If true (default), use pessimistic connection testings. This is recommended.
       pool_size:
         type: integer
-        description: Connection pool size. Default is 5.
+        description: Connection pool size. Default is 5. Minimum is 2.
+        minimum: 2  # sqlalchemy raises if you try a pool_size of 1
       max_overflow:
         type: integer
         description: Connection pool max overflow. Default is 0.
