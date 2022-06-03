@@ -1,3 +1,5 @@
+import collections
+import contextlib
 import os
 from pathlib import Path
 
@@ -173,10 +175,27 @@ if __debug__:
     async def async_log_response(response):
         return log_response(response)
 
-    EVENT_HOOKS = {"request": [log_request], "response": [log_response]}
+    def collect_request(request):
+        if _telemetry is not None:
+            _telemetry.requests.append(request)
+
+    def collect_response(response):
+        if _telemetry is not None:
+            _telemetry.responses.append(response)
+
+    async def async_collect_request(request):
+        return collect_request(request)
+
+    async def async_collect_response(response):
+        return collect_response(response)
+
+    EVENT_HOOKS = {
+        "request": [log_request, collect_request],
+        "response": [log_response, collect_response],
+    }
     ASYNC_EVENT_HOOKS = {
-        "request": [async_log_request],
-        "response": [async_log_response],
+        "request": [async_log_request, async_collect_request],
+        "response": [async_log_response, async_collect_response],
     }
 else:
     # We take this path when Python is started with -O optimizations.
@@ -200,3 +219,32 @@ def hide_logs():
     logger.setLevel("WARNING")
     if handler in logger.handlers:
         logger.removeHandler(handler)
+
+
+Telemetry = collections.namedtuple("Telemetry", "requests responses")
+_telemetry = None
+
+
+@contextlib.contextmanager
+def telemetry():
+    """
+    Collect requests and responses.
+
+    >>> with telemetry() as t:
+    ...     ...
+    ...
+
+    >>> t.requests
+    [...]
+
+    >>> t.responses
+    [...]
+    """
+    global _telemetry
+
+    responses = []
+    requests = []
+    telemetry = Telemetry(requests, responses)
+    _telemetry = telemetry
+    yield telemetry
+    _telemetry = None

@@ -97,3 +97,15 @@ from tiled.client import hide_logs
 
 hide_logs()
 ```
+
+## Collect requests and responses for advanced profiling
+
+```python
+from tiled.client import telemetry
+
+with telemetry() as t:
+    ...
+
+t.requests  # list of Requests
+t.responses  # list of Responses
+```
