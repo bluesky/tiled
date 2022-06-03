@@ -101,11 +101,11 @@ hide_logs()
 ## Collect requests and responses for advanced profiling
 
 ```python
-from tiled.client import telemetry
+from tiled.client import record_history
 
-with telemetry() as t:
+with record_history() as history:
     ...
 
-t.requests  # list of Requests
-t.responses  # list of Responses
+history.requests  # list of Requests
+history.responses  # list of Responses
 ```

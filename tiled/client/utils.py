@@ -176,12 +176,12 @@ if __debug__:
         return log_response(response)
 
     def collect_request(request):
-        if _telemetry is not None:
-            _telemetry.requests.append(request)
+        if _history is not None:
+            _history.requests.append(request)
 
     def collect_response(response):
-        if _telemetry is not None:
-            _telemetry.responses.append(response)
+        if _history is not None:
+            _history.responses.append(response)
 
     async def async_collect_request(request):
         return collect_request(request)
@@ -221,16 +221,16 @@ def hide_logs():
         logger.removeHandler(handler)
 
 
-Telemetry = collections.namedtuple("Telemetry", "requests responses")
-_telemetry = None
+History = collections.namedtuple("History", "requests responses")
+_history = None
 
 
 @contextlib.contextmanager
-def telemetry():
+def record_history():
     """
     Collect requests and responses.
 
-    >>> with telemetry() as t:
+    >>> with history() as t:
     ...     ...
     ...
 
@@ -240,11 +240,11 @@ def telemetry():
     >>> t.responses
     [...]
     """
-    global _telemetry
+    global _history
 
     responses = []
     requests = []
-    telemetry = Telemetry(requests, responses)
-    _telemetry = telemetry
-    yield telemetry
-    _telemetry = None
+    history = History(requests, responses)
+    _history = history
+    yield history
+    _history = None
