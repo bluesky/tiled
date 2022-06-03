@@ -56,7 +56,7 @@ In Python, `and` and `or` have a particular behavior:
 ```
 
 which would result in the first or last query being used, respectively,
-ignoring all others. This is an unavoidable consequence of Python syntax,
+ignoring all others. This is an unavoidable consequence of Python semantics,
 so you just have to know not to mix queries with `and` and `or`.
 
 ````
