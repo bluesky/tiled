@@ -1,3 +1,5 @@
+import collections
+import contextlib
 import os
 from pathlib import Path
 
@@ -173,10 +175,27 @@ if __debug__:
     async def async_log_response(response):
         return log_response(response)
 
-    EVENT_HOOKS = {"request": [log_request], "response": [log_response]}
+    def collect_request(request):
+        if _history is not None:
+            _history.requests.append(request)
+
+    def collect_response(response):
+        if _history is not None:
+            _history.responses.append(response)
+
+    async def async_collect_request(request):
+        return collect_request(request)
+
+    async def async_collect_response(response):
+        return collect_response(response)
+
+    EVENT_HOOKS = {
+        "request": [log_request, collect_request],
+        "response": [log_response, collect_response],
+    }
     ASYNC_EVENT_HOOKS = {
-        "request": [async_log_request],
-        "response": [async_log_response],
+        "request": [async_log_request, async_collect_request],
+        "response": [async_log_response, async_collect_response],
     }
 else:
     # We take this path when Python is started with -O optimizations.
@@ -200,3 +219,32 @@ def hide_logs():
     logger.setLevel("WARNING")
     if handler in logger.handlers:
         logger.removeHandler(handler)
+
+
+History = collections.namedtuple("History", "requests responses")
+_history = None
+
+
+@contextlib.contextmanager
+def record_history():
+    """
+    Collect requests and responses.
+
+    >>> with history() as t:
+    ...     ...
+    ...
+
+    >>> t.requests
+    [...]
+
+    >>> t.responses
+    [...]
+    """
+    global _history
+
+    responses = []
+    requests = []
+    history = History(requests, responses)
+    _history = history
+    yield history
+    _history = None
