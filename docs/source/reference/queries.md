@@ -35,6 +35,32 @@ used in searches like
 c.search(Key("color") == "red").search(Key("temperature") > 300)
 ```
 
+````{warning}
+
+To compound searches, use repeated calls to `.search()` as in
+
+```python
+c.search(...).search(...).search(...)
+```
+
+**Do not use the Python keywords `and` or `or`.**
+
+In Python, `and` and `or` have a particular behavior:
+
+```python
+>>> 3 or 5
+3
+
+>>> 3 and 5
+5
+```
+
+which would result in the first or last query being used, respectively,
+ignoring all others. This is an unavoidable consequence of Python syntax,
+so you just have to know not to mix queries with `and` and `or`.
+
+````
+
 
 ```{eval-rst}
 .. autosummary::
