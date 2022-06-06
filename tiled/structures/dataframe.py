@@ -1,7 +1,7 @@
 import io
 import mimetypes
 from dataclasses import dataclass
-from typing import Any, List, Tuple, Union
+from typing import List, Tuple, Union
 
 from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
@@ -9,8 +9,8 @@ from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_availab
 
 @dataclass
 class DataFrameMicroStructure:
-    meta: "pandas.DataFrame"
-    divisions: List[Any]
+    meta: bytes  # Arrow-encoded DataFrame
+    divisions: bytes  # Arrow-encoded DataFrame
 
     @classmethod
     def from_dask_dataframe(cls, ddf):
@@ -19,8 +19,26 @@ class DataFrameMicroStructure:
         # datetime or actually generic objects.
         import dask.dataframe.utils
 
-        meta = dask.dataframe.utils.make_meta(ddf)
-        return cls(meta=meta, divisions=ddf.divisions)
+        meta = bytes(serialize_arrow(dask.dataframe.utils.make_meta(ddf), {}))
+        divisions = bytes(
+            serialize_arrow(pandas.DataFrame({"divisions": list(ddf.divisions)}), {})
+        )
+        return cls(meta=meta, divisions=divisions)
+
+    @classmethod
+    def from_dataframe(cls, df):
+        # Make an *empty* DataFrame with the same structure as ddf.
+        # TODO Look at make_meta_nonempty to see if the "objects" are str or
+        # datetime or actually generic objects.
+        import dask.dataframe
+        import dask.dataframe.utils
+
+        ddf = dask.dataframe.from_pandas(df, npartitions=1)
+        meta = bytes(serialize_arrow(dask.dataframe.utils.make_meta(ddf), {}))
+        divisions = bytes(
+            serialize_arrow(pandas.DataFrame({"divisions": list(ddf.divisions)}), {})
+        )
+        return cls(meta=meta, divisions=divisions)
 
 
 @dataclass
