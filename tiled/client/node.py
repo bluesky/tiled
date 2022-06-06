@@ -594,8 +594,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
         """
-        from dask.dataframe.utils import make_meta
-
         from ..structures.dataframe import (
             DataFrameMacroStructure,
             DataFrameMicroStructure,
@@ -608,7 +606,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs = specs or []
 
         structure = DataFrameStructure(
-            micro=DataFrameMicroStructure(meta=make_meta(dataframe), divisions=[]),
+            micro=DataFrameMicroStructure.from_dataframe(dataframe),
             macro=DataFrameMacroStructure(
                 npartitions=1, columns=list(dataframe.columns)
             ),

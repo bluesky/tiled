@@ -23,7 +23,6 @@ from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..structures import node  # noqa: F401
-from ..structures.dataframe import serialize_arrow
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
@@ -383,33 +382,21 @@ def construct_resource(
                     assert False  # not sure if this ever happens
                     pass
                 elif entry.structure_family == "dataframe":
-                    import pandas
-
                     microstructure = entry.microstructure()
-                    arrow_encoded_meta = bytes(serialize_arrow(microstructure.meta, {}))
-                    divisions_wrapped_in_df = pandas.DataFrame(
-                        {"divisions": list(microstructure.divisions)}
-                    )
-                    arrow_encoded_divisions = bytes(
-                        serialize_arrow(divisions_wrapped_in_df, {})
-                    )
+                    meta = microstructure.meta
+                    divisions = microstructure.divisions
                     if media_type == "application/json":
                         # For JSON, base64-encode the binary Arrow-encoded data,
                         # and indicate that this has been done in the data URI.
                         data_uri = f"data:{APACHE_ARROW_FILE_MIME_TYPE};base64,"
-                        arrow_encoded_meta = (
-                            data_uri + base64.b64encode(arrow_encoded_meta).decode()
-                        )
-                        arrow_encoded_divisions = (
-                            data_uri
-                            + base64.b64encode(arrow_encoded_divisions).decode()
-                        )
+                        meta = data_uri + base64.b64encode(meta).decode()
+                        divisions = data_uri + base64.b64encode(divisions).decode()
                     else:
                         # In msgpack, we can encode the binary Arrow-encoded data directly.
                         assert media_type == "application/x-msgpack"
                     structure["micro"] = {
-                        "meta": arrow_encoded_meta,
-                        "divisions": arrow_encoded_divisions,
+                        "meta": meta,
+                        "divisions": divisions,
                     }
                 else:
                     microstructure = entry.microstructure()

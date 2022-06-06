@@ -1,12 +1,17 @@
 """
-This script was created to replicate the behavior of ArrayStructure class from tiled.structures.array .py
-while making it compatible with pydantic which is required by FastAPI.
-NOTE: We tried other approaches like using a JSON schema and apischema but we found different limitations
-in both cases. The initial approach converted a dataclass ArrayStructure to a pydantic Datamodel which
-makes pydantic fall into an infinite recursive loop. This case was also pointed out in this link:
-https://stackoverflow.com/questions/69544658/how-to-build-a-self-referencing-model-in-pydantic-with-dataclasses
-Once this problem is fixed by pydantic, this library will be removed and tiled will go back to use
-structures.array.py
+The ArrayStructure class in tiled.structure.array is implemeneted with Python
+built-in dataclasses. This is an implementation of the same structure in pydantic.
+
+FastAPI requires pydantic models specifically, and will attempt to automatically
+convert dataclasses to pydantic models. This normally works fine, but in the
+case of ArrayStructure specifically it fails because of this issue:
+
+    https://github.com/samuelcolvin/pydantic/issues/3251
+
+Once this problem is fixed in pydantic, this separate implementation in
+ArrayStructure will no longer by needed. We will turn this module into a shim
+that just imports ArrayStructure from tiled.structures.array and then deprecate
+it.
 """
 
 import enum
