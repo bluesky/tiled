@@ -619,8 +619,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             "specs": specs,
         }
 
+        # send bytes base64 encoded
         data["structure"]["micro"]["meta"] = base64.b64encode(
-            bytes(serialize_arrow(data["structure"]["micro"]["meta"], {}))
+            data["structure"]["micro"]["meta"]
+        ).decode()
+        data["structure"]["micro"]["divisions"] = base64.b64encode(
+            data["structure"]["micro"]["divisions"]
         ).decode()
 
         full_path_meta = (
