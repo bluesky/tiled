@@ -548,15 +548,15 @@ def post_metadata(
             base64.b64decode(body.structure.micro.meta)
         )
 
-    try:
+    if hasattr(entry, "post_metadata"):
         key = entry.post_metadata(
             metadata=body.metadata,
             structure_family=body.structure_family,
             structure=body.structure,
             specs=body.specs,
         )
-    except Exception:
-        raise HTTPException(status_code=404, detail="This node is not writable.")
+    else:
+        raise HTTPException(status_code=404, detail="Failed to write in this node.")
 
     return json_or_msgpack(request, {"key": key})
 
@@ -568,9 +568,9 @@ async def put_array_full(
 ):
     data = await request.body()
 
-    try:
+    if hasattr(entry, "put_data"):
         entry.put_data(data)
-    except Exception:
+    else:
         raise HTTPException(
             status_code=404, detail="This path cannot accept this array."
         )
@@ -584,9 +584,9 @@ async def put_dataframe_full(
 ):
     data = await request.body()
 
-    try:
+    if hasattr(entry, "put_data"):
         entry.put_data(data)
-    except Exception:
+    else:
         raise HTTPException(
             status_code=404, detail="This path cannot accept this dataframe."
         )
