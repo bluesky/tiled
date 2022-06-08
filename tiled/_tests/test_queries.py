@@ -80,7 +80,9 @@ def test_regex():
     assert list(client.search(Regex("letters", "anything"))) == []
 
 
-def test_and_and_or():
+def test_not_and_and_or():
+    with pytest.raises(TypeError):
+        not (Key("color") == "red")
     with pytest.raises(TypeError):
         (Key("color") == "red") and (Key("sample") == "Ni")
     with pytest.raises(TypeError):
