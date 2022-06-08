@@ -43,7 +43,7 @@ c.search(...).search(...).search(...)
 
 ````{warning}
 
-**Do not use queries with the Python keywords `and` or `or`.**
+**You cannot use queries with the Python keywords `not`, `and`, or `or`.**
 
 In Python, `and` and `or` have a particular behavior:
 
@@ -56,8 +56,11 @@ In Python, `and` and `or` have a particular behavior:
 ```
 
 which would result in the first or last query being used, respectively,
-ignoring all others. This is an unavoidable consequence of Python semantics,
-so you just have to know not to mix queries with `and` and `or`.
+ignoring all others. This is an unavoidable consequence of Python semantics.
+Likewise, `not X` must return `True` or `False`; it cannot return a query.
+
+To avoid confusion, Tiled raises a `TypeError` if you attempt to use
+a query with `not`, `and`, or `or`.
 
 ````
 

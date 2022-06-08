@@ -1,6 +1,7 @@
 import string
 
 import numpy
+import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -77,3 +78,12 @@ def test_regex():
     assert list(client.search(Regex("letter", "[a-c]"))) == ["a", "b", "c"]
     # Check that if the key is not a string it is ignored.
     assert list(client.search(Regex("letters", "anything"))) == []
+
+
+def test_not_and_and_or():
+    with pytest.raises(TypeError):
+        not (Key("color") == "red")
+    with pytest.raises(TypeError):
+        (Key("color") == "red") and (Key("sample") == "Ni")
+    with pytest.raises(TypeError):
+        (Key("color") == "red") or (Key("sample") == "Ni")
