@@ -15,9 +15,23 @@ from .query_registration import register
 JSONSerializable = Any  # Feel free to refine this.
 
 
+class NoBool:
+    def __bool__(self):
+        raise TypeError(
+            """Queries are not "truth-y" or "false-y". They must be passed to search().
+
+You may be seeing this error message because you tried to use a tiled query
+with the Python keywords `and` or `or`. This does not (cannot) work.
+To compose queries, chain search calls like:
+
+    c.search(...).search(...).search(...)
+"""
+        )
+
+
 @register(name="fulltext")
 @dataclass
-class FullText:
+class FullText(NoBool):
     """
     Search the full text of all metadata values for word matches.
 
@@ -48,7 +62,7 @@ class FullText:
 
 @register(name="lookup")
 @dataclass
-class KeyLookup:
+class KeyLookup(NoBool):
     """
     Match a specific Entry by key. Mostly for internal use.
 
@@ -77,7 +91,7 @@ class KeyLookup:
 
 @register(name="regex")
 @dataclass
-class Regex:
+class Regex(NoBool):
     """
     Match a key's value to a regular expression.
 
@@ -121,7 +135,7 @@ class Regex:
 
 @register(name="eq")
 @dataclass
-class Eq:
+class Eq(NoBool):
     """
     Query equality of a given key's value to the specified value.
 
@@ -162,7 +176,7 @@ class Operator(str, enum.Enum):
 
 @register(name="comparison")
 @dataclass
-class Comparison:
+class Comparison(NoBool):
     """
     Query binary comparison between given key's value to the specified value.
 
@@ -207,7 +221,7 @@ class Comparison:
 
 @register(name="contains")
 @dataclass
-class Contains:
+class Contains(NoBool):
     """
     Query where a given key's value contains the specified value.
 
