@@ -10,7 +10,6 @@ from pydantic import BaseSettings
 
 from .. import __version__
 from ..structures.core import StructureFamily
-from ..structures.dataframe import deserialize_arrow
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
@@ -544,8 +543,9 @@ def post_metadata(
 ):
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
-        body.structure.micro.meta = deserialize_arrow(
-            base64.b64decode(body.structure.micro.meta)
+        body.structure.micro.meta = base64.b64decode(body.structure.micro.meta)
+        body.structure.micro.divisions = base64.b64decode(
+            body.structure.micro.divisions
         )
 
     if hasattr(entry, "post_metadata"):

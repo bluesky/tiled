@@ -7,10 +7,9 @@ import pydantic
 import pydantic.dataclasses
 import pydantic.generics
 
-from tiled.structures.dataframe import DataFrameStructure
-
 from ..structures.core import StructureFamily
 from .pydantic_array import ArrayStructure
+from .pydantic_dataframe import DataFrameStructure
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
