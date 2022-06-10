@@ -556,7 +556,7 @@ def post_metadata(
             specs=body.specs,
         )
     else:
-        raise HTTPException(status_code=404, detail="This path cannot accept metadata.")
+        raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
 
     return json_or_msgpack(request, {"key": key})
 
@@ -570,7 +570,7 @@ async def delete(
         entry.delete()
     else:
         raise HTTPException(
-            status_code=404, detail="This path does not support deletion."
+            status_code=405, detail="This path does not support deletion."
         )
     return json_or_msgpack(request, None)
 
@@ -586,7 +586,7 @@ async def put_array_full(
         entry.put_data(data)
     else:
         raise HTTPException(
-            status_code=404, detail="This path cannot accept array data."
+            status_code=405, detail="This path cannot accept array data."
         )
     return json_or_msgpack(request, None)
 
@@ -602,6 +602,6 @@ async def put_dataframe_full(
         entry.put_data(data)
     else:
         raise HTTPException(
-            status_code=404, detail="This path cannot accept dataframe data."
+            status_code=405, detail="This path cannot accept dataframe data."
         )
     return json_or_msgpack(request, None)
