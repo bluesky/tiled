@@ -236,6 +236,9 @@ class StructDtype(BaseModel):
         )
 
 
+Field.update_forward_refs()
+
+
 class ArrayStructure(BaseModel):
     macro: ArrayMacroStructure
     micro: Union[BuiltinDtype, StructDtype]

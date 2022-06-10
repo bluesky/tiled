@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import inspect
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 
 from .. import __version__
+from ..structures.core import StructureFamily
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
@@ -531,3 +533,61 @@ def node_full(
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
+
+
+@router.post("/node/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
+def post_metadata(
+    request: Request,
+    body: schemas.PostMetadataRequest,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    if body.structure_family == StructureFamily.dataframe:
+        # Decode meta for pydantic validation
+        body.structure.micro.meta = base64.b64decode(body.structure.micro.meta)
+        body.structure.micro.divisions = base64.b64decode(
+            body.structure.micro.divisions
+        )
+
+    if hasattr(entry, "post_metadata"):
+        key = entry.post_metadata(
+            metadata=body.metadata,
+            structure_family=body.structure_family,
+            structure=body.structure,
+            specs=body.specs,
+        )
+    else:
+        raise HTTPException(status_code=404, detail="Failed to write in this node.")
+
+    return json_or_msgpack(request, {"key": key})
+
+
+@router.put("/array/full/{path:path}")
+async def put_array_full(
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data)
+    else:
+        raise HTTPException(
+            status_code=404, detail="This path cannot accept this array."
+        )
+    return json_or_msgpack(request, None)
+
+
+@router.put("/node/full/{path:path}")
+async def put_dataframe_full(
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data)
+    else:
+        raise HTTPException(
+            status_code=404, detail="This path cannot accept this dataframe."
+        )
+    return json_or_msgpack(request, None)
