@@ -5,7 +5,7 @@ import operator
 from datetime import datetime
 
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..queries import Comparison, Contains, Eq, FullText, Regex
+from ..queries import Comparison, Contains, Eq, FullText, In, NotIn, Regex
 from ..query_registration import QueryTranslationRegistry
 from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
 from .utils import IndexersMixin
@@ -395,6 +395,42 @@ def comparison(query, tree):
 
 
 MapAdapter.register_query(Comparison, comparison)
+
+
+def _in(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        # Find the queried key in the metadata.
+        term = value.metadata
+        for subkey in query.key.split("."):
+            if subkey not in term:
+                break
+            term = term[subkey]
+        else:
+            if term in query.value:
+                matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(In, _in)
+
+
+def notin(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        # Find the queried key in the metadata.
+        term = value.metadata
+        for subkey in query.key.split("."):
+            if subkey not in term:
+                break
+            term = term[subkey]
+        else:
+            if term not in query.value:
+                matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(NotIn, notin)
 
 
 class DummyAccessPolicy:
