@@ -561,7 +561,7 @@ def post_metadata(
     return json_or_msgpack(request, {"key": key})
 
 
-@router.delete("/node/delete/{path:path}")
+@router.delete("/node/metadata/{path:path}")
 async def delete(
     request: Request,
     entry=Security(entry, scopes=["write:data", "write:metadata"]),
