@@ -102,7 +102,9 @@ class Regex(NoBool):
     pattern : str
         regular expression
     case_sensitive : bool, optional
-        Default False (case-insensitive).
+        Default True (case-sensitive).
+        Note that this is the opposite of the default for FullText;
+        regex users generally expect case sensitivity by default.
 
     Examples
     --------
@@ -114,7 +116,7 @@ class Regex(NoBool):
 
     key: str
     pattern: str
-    case_sensitive: bool = False
+    case_sensitive: bool = True
 
     def encode(self):
         return {
@@ -124,7 +126,7 @@ class Regex(NoBool):
         }
 
     @classmethod
-    def decode(cls, *, key, pattern, case_sensitive=False):
+    def decode(cls, *, key, pattern, case_sensitive=True):
         # Note: FastAPI decodes case_sensitive into a boolean for us.
         return cls(
             key=key,

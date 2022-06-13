@@ -70,9 +70,9 @@ def test_regex():
     client = from_tree(tree)
 
     assert list(client.search(Regex("letter", "^z$"))) == ["z"]
-    assert list(client.search(Regex("letter", "^Z$"))) == [
-        "z"
-    ]  # default case_sensitive=False
+    assert (
+        list(client.search(Regex("letter", "^Z$"))) == []
+    )  # default case_sensitive=True
     assert list(client.search(Regex("letter", "^Z$", case_sensitive=False))) == ["z"]
     assert list(client.search(Regex("letter", "^Z$", case_sensitive=True))) == []
     assert list(client.search(Regex("letter", "[a-c]"))) == ["a", "b", "c"]
