@@ -6,7 +6,7 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_tree
-from ..queries import Comparison, Contains, Eq, FullText, Key, Regex
+from ..queries import Comparison, Contains, Eq, FullText, In, Key, NotIn, Regex
 
 keys = list(string.ascii_lowercase)
 mapping = {
@@ -87,3 +87,17 @@ def test_not_and_and_or():
         (Key("color") == "red") and (Key("sample") == "Ni")
     with pytest.raises(TypeError):
         (Key("color") == "red") or (Key("sample") == "Ni")
+
+
+def test_in():
+    client = from_tree(tree)
+
+    assert list(client.search(In("letter", ["a", "k", "z"]))) == ["a", "k", "z"]
+
+
+def test_notin():
+    client = from_tree(tree)
+
+    assert list(client.search(NotIn("letter", ["a", "k", "z"]))) == sorted(
+        list(set(keys) - set(["a", "k", "z"]))
+    )

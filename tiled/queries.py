@@ -8,7 +8,7 @@ The are encoded into and decoded from URL query parameters.
 import enum
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List
 
 from .query_registration import register
 
@@ -244,6 +244,70 @@ class Contains(NoBool):
 
     key: str
     value: JSONSerializable
+
+    def encode(self):
+        return {"key": self.key, "value": json.dumps(self.value)}
+
+    @classmethod
+    def decode(cls, *, key, value):
+        return cls(key=key, value=json.loads(value))
+
+
+@register(name="in")
+@dataclass
+class In:
+    """
+    Query if a given key's value is present in the specified list of values.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    value : List[JSONSerializable]
+        e.g. ["red", "blue"]
+
+    Examples
+    --------
+
+    Search for color in ["red", "blue"]
+
+    >>> c.search(In("color", ["red", "blue"]))
+    """
+
+    key: str
+    value: List[JSONSerializable]
+
+    def encode(self):
+        return {"key": self.key, "value": json.dumps(self.value)}
+
+    @classmethod
+    def decode(cls, *, key, value):
+        return cls(key=key, value=json.loads(value))
+
+
+@register(name="notin")
+@dataclass
+class NotIn:
+    """
+    Query if a given key's value is not present in the specified list of values.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    value : List[JSONSerializable]
+        e.g. ["red", "blue"]
+
+    Examples
+    --------
+
+    Search for color not in ["red", "blue"]
+
+    >>> c.search(NotIn("color", ["red", "blue"]))
+    """
+
+    key: str
+    value: List[JSONSerializable]
 
     def encode(self):
         return {"key": self.key, "value": json.dumps(self.value)}
