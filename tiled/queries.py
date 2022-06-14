@@ -380,6 +380,9 @@ class Key:
     def __eq__(self, value):
         return Eq(self.key, value)
 
+    def __ne__(self, value):
+        return NotEq(self.key, value)
+
     def __lt__(self, value):
         return Comparison("lt", self.key, value)
 
