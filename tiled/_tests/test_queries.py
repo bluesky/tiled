@@ -6,7 +6,7 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_tree
-from ..queries import Comparison, Contains, Eq, FullText, In, Key, NotIn, Regex
+from ..queries import Comparison, Contains, Eq, FullText, In, Key, NotEq, NotIn, Regex
 
 keys = list(string.ascii_lowercase)
 mapping = {
@@ -43,6 +43,16 @@ def test_eq():
     assert list(client.search(Eq("number", 1))) == ["b"]
     # Number is an int, not a string, so this should not match anything.
     assert list(client.search(Eq("number", "0"))) == []
+
+
+def test_noteq():
+    client = from_tree(tree)
+
+    # Test encoding letters and ints.
+    assert list(client.search(NotEq("letter", "a"))) != ["a"]
+    assert list(client.search(NotEq("letter", "b"))) != ["b"]
+    assert list(client.search(NotEq("number", 0))) != ["a"]
+    assert list(client.search(NotEq("number", 1))) != ["b"]
 
 
 def test_comparison():

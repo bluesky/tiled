@@ -169,6 +169,40 @@ class Eq(NoBool):
         return cls(key=key, value=json.loads(value))
 
 
+@register(name="noteq")
+@dataclass
+class NotEq(NoBool):
+    """
+    Query inequality of a given key's value to the specified value.
+
+    See `Key` in this module for a more intuitive interface for inequality.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    value : JSONSerializable
+        May be a string, number, list, or dict.
+
+    Examples
+    --------
+
+    Search for color == "red"
+
+    >>> c.search(Eq("color", "red"))
+    """
+
+    key: str
+    value: JSONSerializable
+
+    def encode(self):
+        return {"key": self.key, "value": json.dumps(self.value)}
+
+    @classmethod
+    def decode(cls, *, key, value):
+        return cls(key=key, value=json.loads(value))
+
+
 class Operator(str, enum.Enum):
     lt = "lt"
     gt = "gt"
