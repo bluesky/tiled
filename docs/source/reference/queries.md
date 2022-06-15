@@ -15,7 +15,10 @@ c.search(FullText("hello"))
    tiled.queries.Comparison
    tiled.queries.Contains
    tiled.queries.Eq
+   tiled.queries.NotEq
    tiled.queries.FullText
+   tiled.queries.In
+   tiled.queries.NotIn
    tiled.queries.Regex
 ```
 
@@ -26,13 +29,14 @@ standard Python comparison operators, as in
 
 ```python
 Key("color") == "red"
+Key("shape") != "circle"
 Key("temperature") > 300
 ```
 
 used in searches like
 
 ```python
-c.search(Key("color") == "red").search(Key("temperature") > 300)
+c.search(Key("color") == "red").search(Key("shape") != "circle").search(Key("temperature") > 300)
 ```
 
 Notice that, to compound searches, you may use repeated calls to `.search()` as in
