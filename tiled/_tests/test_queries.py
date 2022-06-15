@@ -27,6 +27,7 @@ tree = MapAdapter(mapping)
 def test_key():
     "Binary operators with Key create query objects."
     assert (Key("a") == 1) == Eq("a", 1)
+    assert (Key("a") != 2) == NotEq("a", 2)
     assert (Key("a") > 1) == Comparison("gt", "a", 1)
     assert (Key("a") < 1) == Comparison("lt", "a", 1)
     assert (Key("a") >= 1) == Comparison("ge", "a", 1)
