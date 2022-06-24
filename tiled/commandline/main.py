@@ -374,7 +374,11 @@ def profile_show(profile_name: str):
 @serve_app.command("directory")
 def serve_directory(
     directory: str,
-    public: bool = typer.Option(False, "--public"),
+    public: bool = typer.Option(False, "--public", help=(
+            "Turns off requirement for API key authentication for reading. "
+            "However, the API key is still required for writing, so data cannot be modified even with this option selected."
+        ),
+    ),
     keep_ext: bool = typer.Option(
         False,
         "--keep-ext",
@@ -445,7 +449,11 @@ def serve_pyobject(
     object_path: str = typer.Argument(
         ..., help="Object path, as in 'package.subpackage.module:object_name'"
     ),
-    public: bool = typer.Option(False, "--public"),
+    public: bool = typer.Option(False, "--public", help=(
+            "Turns off requirement for API key authentication for reading. "
+            "However, the API key is still required for writing, so data cannot be modified even with this option selected."
+        ),
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -495,7 +503,11 @@ def serve_config(
             "If that is unset, try default location ./config.yml."
         ),
     ),
-    public: bool = typer.Option(False, "--public"),
+    public: bool = typer.Option(False, "--public", help=(
+            "Turns off requirement for API key authentication for reading. "
+            "However, the API key is still required for writing, so data cannot be modified even with this option selected."
+        ),
+    ),
     host: str = typer.Option(
         None,
         help=(
