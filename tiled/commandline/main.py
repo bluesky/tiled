@@ -379,7 +379,8 @@ def serve_directory(
         "--public",
         help=(
             "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with this option selected."
+            "However, the API key is still required for writing, so data cannot be modified even with "
+            "this option selected."
         ),
     ),
     keep_ext: bool = typer.Option(
@@ -457,7 +458,8 @@ def serve_pyobject(
         "--public",
         help=(
             "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with this option selected."
+            "However, the API key is still required for writing, so data cannot be modified even with this "
+            "option selected."
         ),
     ),
     host: str = typer.Option(
@@ -514,7 +516,8 @@ def serve_config(
         "--public",
         help=(
             "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with this option selected."
+            "However, the API key is still required for writing, so data cannot be modified even with this "
+            "option selected."
         ),
     ),
     host: str = typer.Option(
