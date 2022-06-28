@@ -99,10 +99,36 @@ def downgrade_database(
     if current_revision is None:
         # Create tables and stamp (alembic) revision.
         typer.echo(
-            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`."
+            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`.",
+            err=True,
         )
         raise typer.Abort()
     downgrade(engine, revision)
+
+
+@admin_app.command("check-config")
+def check_config(
+    config_path: Path = typer.Argument(
+        None,
+        help=(
+            "Path to a config file or directory of config files. "
+            "If None, check environment variable TILED_CONFIG. "
+            "If that is unset, try default location ./config.yml."
+        ),
+    ),
+):
+    "Check configuration file for syntax and validation errors."
+    import os
+
+    from ..config import parse_configs
+
+    config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
+    try:
+        parse_configs(config_path)
+    except Exception as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(1)
+    typer.echo("No errors found in configuration.")
 
 
 @cli_app.command("login")
