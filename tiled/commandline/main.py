@@ -43,12 +43,13 @@ def initialize_database(database_uri: str):
     except UninitializedDatabase:
         # Create tables and stamp (alembic) revision.
         typer.echo(
-            f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}."
+            f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
+            err=True,
         )
         initialize_database(engine)
-        typer.echo("Database initialized.")
+        typer.echo("Database initialized.", err=True)
     else:
-        typer.echo(f"Database at {redacted_url} is already initialized.")
+        typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
         raise typer.Abort()
 
 
@@ -73,7 +74,8 @@ def upgrade_database(
     if current_revision is None:
         # Create tables and stamp (alembic) revision.
         typer.echo(
-            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`."
+            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`.",
+            err=True,
         )
         raise typer.Abort()
     upgrade(engine, revision or "head")
@@ -97,10 +99,36 @@ def downgrade_database(
     if current_revision is None:
         # Create tables and stamp (alembic) revision.
         typer.echo(
-            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`."
+            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`.",
+            err=True,
         )
         raise typer.Abort()
     downgrade(engine, revision)
+
+
+@admin_app.command("check-config")
+def check_config(
+    config_path: Path = typer.Argument(
+        None,
+        help=(
+            "Path to a config file or directory of config files. "
+            "If None, check environment variable TILED_CONFIG. "
+            "If that is unset, try default location ./config.yml."
+        ),
+    ),
+):
+    "Check configuration file for syntax and validation errors."
+    import os
+
+    from ..config import parse_configs
+
+    config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
+    try:
+        parse_configs(config_path)
+    except Exception as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(1)
+    typer.echo("No errors found in configuration.")
 
 
 @cli_app.command("login")
@@ -130,7 +158,7 @@ def login(
         )
     except (ValueError, ClientError) as err:
         (msg,) = err.args
-        typer.echo(msg)
+        typer.echo(msg, err=True)
         raise typer.Abort()
     if show_secret_tokens:
         from pprint import pformat
@@ -205,7 +233,7 @@ def list_api_keys(
     client = _client_from_uri_or_profile(uri_or_profile, no_verify=no_verify)
     info = client.context.whoami()
     if not info["api_keys"]:
-        typer.echo("No API keys found")
+        typer.echo("No API keys found", err=True)
         return
     max_note_len = max(len(api_key["note"] or "") for api_key in info["api_keys"])
     COLUMNS = f"First 8   Expires at (UTC)     Latest activity      Note{' ' * (max_note_len - 4)}  Scopes"
@@ -363,7 +391,8 @@ def profile_show(profile_name: str):
     except KeyError:
         typer.echo(
             f"The profile {profile_name!r} could not be found. "
-            "Use tiled profile list to see profile names."
+            "Use tiled profile list to see profile names.",
+            err=True,
         )
         raise typer.Abort()
     print(f"Source: {filepath}", file=sys.stderr)
@@ -517,7 +546,7 @@ def serve_config(
     try:
         parsed_config = parse_configs(config_path)
     except Exception as err:
-        typer.echo(str(err))
+        typer.echo(str(err), err=True)
         raise typer.Abort()
 
     # Let --public flag override config.
@@ -576,7 +605,8 @@ def _client_from_uri_or_profile(
             f"Not sure what to do with tree {uri_or_profile!r}. "
             "It does not look like a URI (it does not start with http[s]://) "
             "and it does not match any profiles. Use `tiled profiles list` to "
-            "see profiles."
+            "see profiles.",
+            err=True,
         )
         raise typer.Abort()
 
