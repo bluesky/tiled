@@ -28,19 +28,16 @@ class DataFrameAdapter:
     structure_family = "dataframe"
 
     @classmethod
-    def from_pandas(cls, *args, metadata=None, specs=None, **kwargs):
-        ddf = dask.dataframe.from_pandas(*args, **kwargs)
-        return cls.from_dask_dataframe(ddf, metadata=metadata, specs=specs)
-
-    @classmethod
-    def from_dask_dataframe(cls, ddf, metadata=None, specs=None):
-        # Danger: using internal attribute _meta here.
+    def from_pandas(cls, *args, metadata=None, specs=None, references=None, **kwargs):
         return cls(
-            ddf.partitions, ddf._meta, ddf.divisions, metadata=metadata, specs=specs
+            dask.dataframe.from_pandas(*args, **kwargs),
+            metadata=metadata,
+            specs=specs,
+            references=references,
         )
 
     @classmethod
-    def read_csv(cls, *args, metadata=None, specs=None, **kwargs):
+    def read_csv(cls, *args, metadata=None, specs=None, references=None, **kwargs):
         """
         Read a CSV.
 
@@ -61,7 +58,7 @@ class DataFrameAdapter:
         cache = get_object_cache()
         if cache is not NO_CACHE:
             cache.discard_dask(ddf.__dask_keys__())
-        return cls.from_dask_dataframe(ddf, metadata=metadata, specs=specs)
+        return cls(ddf, metadata=metadata, specs=specs, references=references)
 
     read_csv.__doc__ = (
         """
@@ -71,12 +68,11 @@ class DataFrameAdapter:
         + dask.dataframe.read_csv.__doc__
     )
 
-    def __init__(self, partitions, meta, divisions, *, metadata=None, specs=None):
+    def __init__(self, ddf, metadata=None, specs=None, references=None):
         self._metadata = metadata or {}
-        self._partitions = list(partitions)
-        self._meta = meta
-        self._divisions = divisions
+        self._ddf = ddf
         self.specs = specs or []
+        self.references = references or {}
 
     def __repr__(self):
         return f"{type(self).__name__}({self._meta.columns!r})"

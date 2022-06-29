@@ -19,10 +19,11 @@ class TiffAdapter:
 
     structure_family = "array"
 
-    def __init__(self, path, specs=None):
+    def __init__(self, path, *, specs=None, references=None):
         self._file = tifffile.TiffFile(path)
         self._cache_key = (type(self).__module__, type(self).__qualname__, path)
         self.specs = specs or []
+        self.references = references or {}
 
     @property
     def metadata(self):
@@ -67,7 +68,7 @@ class TiffSequenceAdapter:
 
     structure_family = "array"
 
-    def __init__(self, seq, specs=None):
+    def __init__(self, seq, *, specs=None, references=None):
         self._seq = seq
         self._metadata = {}
         self._cache_key = (
@@ -76,6 +77,7 @@ class TiffSequenceAdapter:
             hashlib.md5(str(seq.files).encode()).hexdigest(),
         )
         self.specs = specs or []
+        self.references = references or {}
 
     @property
     def metadata(self):
@@ -153,7 +155,6 @@ class TiffSequenceAdapter:
             return arr
 
     def read_block(self, block, slice=None):
-        # Print("Block:", block)
         if block[1:] != (0, 0):
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
@@ -167,7 +168,6 @@ class TiffSequenceAdapter:
 
     def macrostructure(self):
         shape = (len(self._seq), *self.read(slice=0).shape)
-        # print("array shape", shape)
         return ArrayMacroStructure(
             shape=shape,
             # one chunks per underlying TIFF file

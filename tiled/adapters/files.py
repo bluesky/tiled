@@ -126,6 +126,7 @@ class DirectoryAdapter(MapAdapter):
         metadata=None,
         sorting=None,
         specs=None,
+        references=None,
         access_policy=None,
         error_if_missing=True,
         greedy=False,
@@ -159,7 +160,8 @@ class DirectoryAdapter(MapAdapter):
             By default, this strips off the suffixes, so "a.tif" -> "a".
         metadata : dict, optional,
             Metadata for the top-level node of this tree.
-        specs : List[str]
+        specs : List[str], optional
+        references: List[dict], optional
         access_policy : AccessPolicy, optional
         error_if_missing : boolean, optional
             If True (default) raise an error if the directory does not exist.

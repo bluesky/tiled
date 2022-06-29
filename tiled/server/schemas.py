@@ -56,6 +56,7 @@ class EntryFields(str, enum.Enum):
     count = "count"
     sorting = "sorting"
     specs = "specs"
+    references = "references"
     none = ""
 
 
@@ -78,11 +79,12 @@ class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
     specs: Optional[List[str]]
-    metadata: Optional[dict]  # free-form, user-specified dict
+    metadata: Optional[Dict]  # free-form, user-specified dict
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
+    references: Optional[Dict[str, pydantic.AnyUrl]]
 
 
 AttributesT = TypeVar("AttributesT")
@@ -190,7 +192,7 @@ class About(pydantic.BaseModel):
     queries: List[str]
     authentication: AboutAuthentication
     links: Dict[str, str]
-    meta: dict
+    meta: Dict
 
 
 class PrincipalType(str, enum.Enum):
