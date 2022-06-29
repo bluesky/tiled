@@ -601,7 +601,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
-    def new(self, structure_family, structure, *, metadata=None, specs=None):
+    def new(self, structure_family, structure, *, metadata=None, specs=None, references=None):
         """
         Create a new item within this Node.
 
@@ -615,12 +615,14 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         metadata = metadata or {}
         specs = specs or []
+        references = references or []
         item = {
             "attributes": {
                 "metadata": metadata,
                 "structure": asdict(structure),
                 "structure_family": StructureFamily(structure_family),
                 "specs": specs,
+                "references": references,
             }
         }
 
@@ -654,7 +656,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def write_array(self, array, *, metadata=None, dims=None, specs=None):
+    def write_array(self, array, metadata=None, dims=None, specs=None, references=None):
         """
         EXPERIMENTAL: Write an array.
 
@@ -669,6 +671,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        references : Dict[str, URL], optional
+            References (e.g. links) to related information. This may include
+            links into other Tiled data sets, search results, or external
+            resources unrelated to Tiled.
 
         """
         import dask.array
@@ -710,8 +716,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             micro=BuiltinDtype.from_numpy_dtype(array.dtype),
         )
         client = self.new(
-            StructureFamily.array, structure, metadata=metadata, specs=specs
-        )
+            StructureFamily.array, structure, metadata=metadata, specs=specs, references=references,)
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
             client.write(array)
@@ -735,7 +740,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
 
-    def write_sparse(self, coords, data, shape, metadata=None, dims=None, specs=None):
+    def write_sparse(self, coords, data, shape, metadata=None, dims=None, specs=None, references=None):
         """
         EXPERIMENTAL: Write a sparse array.
 
@@ -771,6 +776,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        references : Dict[str, URL], optional
+            References (e.g. links) to related information. This may include
+            links into other Tiled data sets, search results, or external
+            resources unrelated to Tiled.
 
         """
         from ..structures.sparse import COOStructure
@@ -782,12 +791,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             dims=dims,
         )
         client = self.new(
-            StructureFamily.sparse, structure, metadata=metadata, specs=specs
+            StructureFamily.sparse, structure, metadata=metadata, specs=specs, references=references
         )
         client.write(coords, data)
         return client
 
-    def write_dataframe(self, dataframe, metadata=None, specs=None):
+    def write_dataframe(self, dataframe, metadata=None, specs=None, references=None):
         """
         EXPERIMENTAL: Write a DataFrame.
 
@@ -802,6 +811,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        references : Dict[str, URL], optional
+            References (e.g. links) to related information. This may include
+            links into other Tiled data sets, search results, or external
+            resources unrelated to Tiled.
         """
         import dask.dataframe
         import pandas
@@ -837,9 +850,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 npartitions=npartitions, columns=list(dataframe.columns)
             ),
         )
+
         client = self.new(
-            StructureFamily.dataframe, structure, metadata=metadata, specs=specs
-        )
+            StructureFamily.dataframe, structure, metadata=metadata, specs=specs, references=references)
 
         if hasattr(dataframe, "partitions"):
             if isinstance(dataframe, dask.dataframe.DataFrame):
