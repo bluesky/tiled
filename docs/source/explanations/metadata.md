@@ -1,4 +1,4 @@
-# Metadata and Specs
+# Metadata, Specs, and References
 
 ## Metadata
 
@@ -6,11 +6,13 @@ Each Tiled node carries an optional dictionary of metadata. This is fully
 under the control of the user: Tiled itself is not opinionated about its
 content and does not reserve any names for its own use.
 
+
 ```{note}
 The metadata dictionary may be arbitrarily nested, and it may contain
 anything that Tiled can transmit as JSON or [msgpack](https://msgpack.org).
 All JSON-serializable types (dicts, lists, numbers, strings) are supported.
 The following types are additionally supported:
+
 * Dates, represented as `datetime.datetime` objects,
   are supported natively by msgpack. JSON does not support dates, so they are
   converted to [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) strings
@@ -47,3 +49,12 @@ the specs in the list, or if no specs are given, it can fall back to the
 structure family to obtain a workable description of the data. Specs are just
 an upgrade: "If you know what this means, you can use it to assume additional
 constraints."
+
+## References
+
+Each Tiled structure carries an optional List of references, labeled links to
+external resources. Their usage is open-ended. They may be used as links to:
+
+* other structures or search results within this Tiled server or other Tiled servers
+* data stored in other data storage systems unrelated to Tiled
+* documents or publications related to the data
