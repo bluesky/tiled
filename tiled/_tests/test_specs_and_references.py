@@ -37,7 +37,7 @@ def test_bad_reference():
 
     # dict has too many items
     tree = MapAdapter(
-        {}, references={"ref_test": "https://example.com", "extra": "oops"}
+        {}, references=[{"ref_test": "https://example.com", "extra": "oops"}]
     )
     with pytest.raises(pydantic.error_wrappers.ValidationError):
         from_tree(tree)
