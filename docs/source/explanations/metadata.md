@@ -6,7 +6,6 @@ Each Tiled node carries an optional dictionary of metadata. This is fully
 under the control of the user: Tiled itself is not opinionated about its
 content and does not reserve any names for its own use.
 
-
 ```{note}
 The metadata dictionary may be arbitrarily nested, and it may contain
 anything that Tiled can transmit as JSON or [msgpack](https://msgpack.org).
