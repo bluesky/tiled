@@ -107,24 +107,10 @@ class DataFrameLinks(pydantic.BaseModel):
     partition: str
 
 
-class XarrayDataArrayLinks(pydantic.BaseModel):
-    self: str
-    full_variable: str
-
-
-class XarrayDatasetLinks(pydantic.BaseModel):
-    self: str
-    full_variable: str
-    full_coord: str
-    full_dataset: str
-
-
 resource_links_type_by_structure_family = {
     "node": NodeLinks,
     "array": ArrayLinks,
     "dataframe": DataFrameLinks,
-    "xarray_data_array": XarrayDataArrayLinks,
-    "xarray_dataset": XarrayDatasetLinks,
 }
 
 

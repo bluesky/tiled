@@ -9,18 +9,22 @@ from dataclasses import asdict
 
 import entrypoints
 
-from ..adapters.utils import IndexersMixin, tree_repr
+from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import StructureFamily
 from ..structures.dataframe import serialize_arrow
-
-# from ..client.utils import handle_error
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED, OneShotCachedMap, Sentinel
+from ..utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    UNCHANGED,
+    OneShotCachedMap,
+    Sentinel,
+    node_repr,
+)
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
-from .utils import export_util
+from .utils import ClientError, client_for_item, export_util
 
 
 class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -38,12 +42,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Node.__module__
                 ).DataFrameClient,
-                "variable": lambda: importlib.import_module(
-                    "..xarray", Node.__module__
-                ).VariableClient,
-                "xarray_data_array": lambda: importlib.import_module(
-                    "..xarray", Node.__module__
-                ).DataArrayClient,
                 "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DatasetClient,
@@ -58,12 +56,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Node.__module__
                 ).DaskDataFrameClient,
-                "variable": lambda: importlib.import_module(
-                    "..xarray", Node.__module__
-                ).DaskVariableClient,
-                "xarray_data_array": lambda: importlib.import_module(
-                    "..xarray", Node.__module__
-                ).DaskDataArrayClient,
                 "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskDatasetClient,
@@ -117,7 +109,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         path,
         item,
         structure_clients,
-        params=None,
         queries=None,
         sorting=None,
     ):
@@ -153,7 +144,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             context=context,
             item=item,
             path=path,
-            params=params,
             structure_clients=structure_clients,
         )
 
@@ -161,7 +151,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
-        return tree_repr(self, self._keys_slice(0, N, direction=1))
+        return node_repr(self, self._keys_slice(0, N, direction=1))
 
     @property
     def sorting(self):
@@ -202,37 +192,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             revalidate = Revalidate.IF_EXPIRED
         with self.context.revalidation(revalidate):
             self.download()
-
-    def client_for_item(self, item, path):
-        """
-        Create an instance of the appropriate client class for an item.
-
-        This is intended primarily for internal use and use by subclasses.
-        """
-        # The server can use specs to tell us that this is not just *any*
-        # node/array/dataframe/etc. but that is matches a certain specification
-        # for which there may be a special client available.
-        # Check each spec in order for a matching structure client. Use the first
-        # one we find. If we find no structure client for any spec, fall back on
-        # the default for this structure family.
-        specs = item["attributes"].get("specs", []) or []
-        for spec in specs:
-            class_ = self.structure_clients.get(spec)
-            if class_ is not None:
-                break
-        else:
-            structure_family = item["attributes"]["structure_family"]
-            try:
-                class_ = self.structure_clients[structure_family]
-            except KeyError:
-                raise UnknownStructureFamily(structure_family) from None
-        return class_(
-            context=self.context,
-            item=item,
-            path=path,
-            structure_clients=self.structure_clients,
-            params=self._params,
-        )
 
     def new_variation(
         self,
@@ -278,7 +237,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "fields": "",
                 **self._queries_as_params,
                 **self._sorting_params,
-                **self._params,
             },
         )
         length = content["meta"]["count"]
@@ -299,7 +257,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                     "fields": "",
                     **self._queries_as_params,
                     **self._sorting_params,
-                    **self._params,
                 },
             )
             self._cached_len = (
@@ -336,28 +293,46 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 child = child[k]
             return child
 
-        # Lookup this key *within the search results* of this Node.
-        content = self.context.get_json(
-            self.item["links"]["search"],
-            params={
-                **_queries_to_params(KeyLookup(key)),
-                **self._queries_as_params,
-                **self._sorting_params,
-                **self._params,
-            },
+        if self._queries:
+            # Lookup this key *within the search results* of this Node.
+            content = self.context.get_json(
+                self.item["links"]["search"],
+                params={
+                    **_queries_to_params(KeyLookup(key)),
+                    **self._queries_as_params,
+                    **self._sorting_params,
+                },
+            )
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
+            )
+            data = content["data"]
+            if not data:
+                raise KeyError(key)
+            assert (
+                len(data) == 1
+            ), "The key lookup query must never result more than one result."
+            (item,) = data
+        else:
+            # Straightforwardly look up the key under this node.
+            # There is no search filter in place, so if it is there
+            # then we want it.
+            try:
+                self_link = self.item["links"]["self"]
+                if self_link.endswith("/"):
+                    self_link = self_link[:-1]
+                content = self.context.get_json(
+                    self_link + f"/{key}",
+                )
+            except ClientError as err:
+                if err.response.status_code == 404:
+                    raise KeyError(key)
+                raise
+            item = content["data"]
+        return client_for_item(
+            self.context, self.structure_clients, item, path=self._path + (item["id"],)
         )
-        self._cached_len = (
-            content["meta"]["count"],
-            time.monotonic() + LENGTH_CACHE_TTL,
-        )
-        data = content["data"]
-        if not data:
-            raise KeyError(key)
-        assert (
-            len(data) == 1
-        ), "The key lookup query must never result more than one result."
-        (item,) = data
-        return self.client_for_item(item, path=self._path + (item["id"],))
 
     def __delitem__(self, key):
         self._cached_len = None
@@ -390,7 +365,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                     "fields": "",
                     **self._queries_as_params,
                     **sorting_params,
-                    **self._params,
                 },
             )
             self._cached_len = (
@@ -415,7 +389,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         while next_page_url is not None:
             content = self.context.get_json(
                 next_page_url,
-                params={**self._queries_as_params, **sorting_params, **self._params},
+                params={**self._queries_as_params, **sorting_params},
             )
             self._cached_len = (
                 content["meta"]["count"],
@@ -426,7 +400,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 if stop is not None and next(item_counter) == stop:
                     return
                 key = item["id"]
-                yield key, self.client_for_item(item, path=self._path + (item["id"],))
+                yield key, client_for_item(
+                    self.context,
+                    self.structure_clients,
+                    item,
+                    path=self._path + (item["id"],),
+                )
             next_page_url = content["links"]["next"]
 
     def keys(self):
@@ -467,14 +446,16 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(sorting=sorting)
 
-    def export(self, filepath, format=None):
+    def export(self, filepath, fields=None, *, format=None):
         """
-        Download all metadata and data below this node in some format and write to a file.
+        Download metadata and data below this node in some format and write to a file.
 
         Parameters
         ----------
         file: str or buffer
             Filepath or writeable buffer.
+        fields: List[str], optional
+            Filter which items in this node to export.
         format : str, optional
             If format is None and `file` is a filepath, the format is inferred
             from the name, like 'table.h5' implies format="application/x-hdf5". The format
@@ -660,10 +641,6 @@ def _queries_to_params(*queries):
             if value is not None:
                 params[f"filter[{name}][condition][{field}]"].append(value)
     return dict(params)
-
-
-class UnknownStructureFamily(KeyError):
-    pass
 
 
 LENGTH_CACHE_TTL = 1  # second

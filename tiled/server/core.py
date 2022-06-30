@@ -22,12 +22,11 @@ from starlette.responses import JSONResponse, Send, StreamingResponse
 from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
-from ..structures import node  # noqa: F401
+from ..serialization import register_builtin_serializers
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
     UnsupportedShape,
-    modules_available,
     safe_json_dump,
 )
 from . import schemas
@@ -35,18 +34,7 @@ from .etag import tokenize
 from .utils import record_timing
 
 del queries
-if modules_available("numpy", "dask.array"):
-    from ..structures import array as _array  # noqa: F401
-
-    del _array
-if modules_available("pandas", "pyarrow", "dask.dataframe"):
-    from ..structures import dataframe as _dataframe  # noqa: F401
-
-    del _dataframe
-if modules_available("xarray"):
-    from ..structures import xarray as _xarray  # noqa: F401
-
-    del _xarray
+register_builtin_serializers()
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
@@ -213,8 +201,6 @@ DEFAULT_MEDIA_TYPES = {
     "array": {"*/*": "application/octet-stream", "image/*": "image/png"},
     "dataframe": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     "node": {"*/*": "application/x-hdf5"},
-    "xarray_data_array": {"*/*": "application/octet-stream"},
-    "xarray_dataset": {"*/*": "application/netcdf"},
 }
 
 
@@ -259,7 +245,8 @@ def construct_data_response(
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
         elif structure_family == "array" and media_type == "image/*":
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["image/*"]
-        # fall back to generic dataframe serializer if no specs present
+        # Compare the request formats to the formats supported by each spec
+        # and, finally, by the structure family.
         for spec in specs + [structure_family]:
             media_types_for_spec = serialization_registry.media_types(spec)
             if media_type in media_types_for_spec:
@@ -292,9 +279,7 @@ def construct_data_response(
         headers["Content-Disposition"] = f"attachment;filename={filename}"
     # This is the expensive step: actually serialize.
     try:
-        content = serialization_registry(
-            structure_family, media_type, payload, metadata
-        )
+        content = serialization_registry(spec, media_type, payload, metadata)
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
@@ -597,12 +582,4 @@ FULL_LINKS = {
     "node": {"full": "{base_url}/node/full/{path}"},
     "array": {"full": "{base_url}/array/full/{path}"},
     "dataframe": {"full": "{base_url}/node/full/{path}"},
-    "xarray_data_array": {
-        "full_variable": "{base_url}/array/full/{path}/variable",
-    },
-    "xarray_dataset": {
-        "full_variable": "{base_url}/array/full/{path}/data_vars/{{variable}}/variable",
-        "full_coord": "{base_url}/array/full/{path}/coords/{{coord}}/variable",
-        "full_dataset": "{base_url}/node/full/{path}",
-    },
 }

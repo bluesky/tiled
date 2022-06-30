@@ -6,9 +6,9 @@ import dask.array
 import h5py
 import numpy
 
-from ..adapters.utils import IndexersMixin, tree_repr
+from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..utils import DictView
+from ..utils import DictView, node_repr
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -83,7 +83,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         return cls(file)
 
     def __repr__(self):
-        return tree_repr(self, list(self))
+        return node_repr(self, list(self))
 
     @property
     def access_policy(self):

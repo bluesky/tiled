@@ -1,11 +1,10 @@
 import dask
 import dask.dataframe
 
-from ..media_type_registration import deserialization_registry
-from ..structures.dataframe import APACHE_ARROW_FILE_MIME_TYPE
-from ..utils import UNCHANGED
+from ..serialization.dataframe import deserialize_arrow
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
 from .base import BaseStructureClient
-from .utils import export_util
+from .utils import ClientError, client_for_item, export_util
 
 
 class DaskDataFrameClient(BaseStructureClient):
@@ -32,7 +31,7 @@ class DaskDataFrameClient(BaseStructureClient):
             try:
                 content = self.context.get_json(
                     self.uri,
-                    params={"fields": "structure.macro", **self._params},
+                    params={"fields": "structure.macro"},
                     timeout=TIMEOUT,
                 )
             except TimeoutError:
@@ -67,7 +66,7 @@ class DaskDataFrameClient(BaseStructureClient):
             return structure.macro.columns
         try:
             content = self.context.get_json(
-                self.uri, params={"fields": "structure.macro", **self._params}
+                self.uri, params={"fields": "structure.macro"}
             )
             columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
         except Exception:
@@ -99,11 +98,9 @@ class DaskDataFrameClient(BaseStructureClient):
         content = self.context.get_content(
             full_path,
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-            params={**params, **self._params},
+            params=params,
         )
-        return deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content
-        )
+        return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):
         """
@@ -134,9 +131,7 @@ class DaskDataFrameClient(BaseStructureClient):
         # Build a client-side dask dataframe whose partitions pull from a
         # server-side dask array.
         name = (
-            "remote-dask-dataframe-"
-            f"{self.context.base_url!s}/{'/'.join(self._path)}"
-            f"{'-'.join(map(repr, sorted(self._params.items())))}"
+            "remote-dask-dataframe-" f"{self.context.base_url!s}/{'/'.join(self._path)}"
         )
         dask_tasks = {
             (name,) + (partition,): (self._get_partition, partition, columns)
@@ -159,14 +154,22 @@ class DaskDataFrameClient(BaseStructureClient):
     # `len(list(obj)) == # len(obj)` for Mappings. Additionally, their behavior
     # with `__getitem__` is a bit "extra", e.g. df[["A", "B"]].
 
-    def __getitem__(self, columns):
-        # This is type unstable, matching pandas' behavior.
-        if isinstance(columns, str):
-            # Return a single column (a pandas.Series)
-            return self.read(columns=[columns])[columns]
-        else:
-            # Return a DataFrame with a subset of the available columns.
-            return self.read(columns=columns)
+    def __getitem__(self, column):
+        try:
+            self_link = self.item["links"]["self"]
+            if self_link.endswith("/"):
+                self_link = self_link[:-1]
+            content = self.context.get_json(
+                self_link + f"/{column}",
+            )
+        except ClientError as err:
+            if err.response.status_code == 404:
+                raise KeyError(column)
+            raise
+        item = content["data"]
+        return client_for_item(
+            self.context, self.structure_clients, item, path=self._path + (item["id"],)
+        )
 
     def __iter__(self):
         yield from self.structure().macro.columns
@@ -174,7 +177,7 @@ class DaskDataFrameClient(BaseStructureClient):
     # __len__ is intentionally not implemented. For DataFrames it means "number
     # of rows" which is expensive to compute.
 
-    def export(self, filepath, format=None, columns=None):
+    def export(self, filepath, columns=None, *, format=None):
         """
         Download data in some format and write to a file.
 
@@ -191,7 +194,7 @@ class DaskDataFrameClient(BaseStructureClient):
         """
         params = {}
         if columns is not None:
-            params["column"] = columns
+            params["field"] = columns
         return export_util(
             filepath,
             format,
@@ -199,11 +202,6 @@ class DaskDataFrameClient(BaseStructureClient):
             self.item["links"]["full"],
             params=params,
         )
-
-    @property
-    def formats(self):
-        "List formats that the server can export this data as."
-        return self.context.get_json("")["formats"]["dataframe"]
 
 
 class DataFrameClient(DaskDataFrameClient):

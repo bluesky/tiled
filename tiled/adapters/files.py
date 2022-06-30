@@ -12,7 +12,7 @@ from pathlib import Path
 import cachetools
 from watchgod.watcher import Change, RegExpWatcher
 
-from ..structures.dataframe import XLSX_MIME_TYPE
+from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..utils import CachingMap, OneShotCachedMap, import_object
 from .mapping import MapAdapter
 

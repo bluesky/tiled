@@ -1,5 +1,7 @@
-import operator
 import warnings
+
+# for back-compat
+from ..utils import node_repr as tree_repr  # noqa: F401
 
 _MESSAGE = (
     "Instead of {name}_indexer[...] use {name}()[...]. "
@@ -28,28 +30,6 @@ class IndexersMixin:
     def items_indexer(self):
         warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
         return self.items()
-
-
-def tree_repr(tree, sample):
-    sample_reprs = list(map(repr, sample))
-    out = f"<{type(tree).__name__} {{"
-    # Always show at least one.
-    if sample_reprs:
-        out += sample_reprs[0]
-    # And then show as many more as we can fit on one line.
-    counter = 1
-    for sample_repr in sample_reprs[1:]:
-        if len(out) + len(sample_repr) > 60:  # character count
-            break
-        out += ", " + sample_repr
-        counter += 1
-    approx_len = operator.length_hint(tree)  # cheaper to compute than len(tree)
-    # Are there more in the tree that what we displayed above?
-    if approx_len > counter:
-        out += f", ...}} ~{approx_len} entries>"
-    else:
-        out += "}>"
-    return out
 
 
 class IndexCallable:

@@ -311,7 +311,7 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family not in {"array", "xarray_data_array"}:
+    if entry.structure_family != "array":
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
@@ -353,6 +353,7 @@ def array_block(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )
@@ -377,7 +378,7 @@ def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if entry.structure_family not in {"array", "xarray_data_array"}:
+    if entry.structure_family != "array":
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
@@ -414,6 +415,7 @@ def array_full(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )
@@ -472,6 +474,7 @@ def dataframe_partition(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )
@@ -482,7 +485,7 @@ def dataframe_partition(
 @router.get(
     "/node/full/{path:path}",
     response_model=schemas.Response,
-    name="full generic 'node', dataframe, or xarray Dataset",
+    name="full generic 'node' or 'dataframe'",
 )
 def node_full(
     request: Request,
@@ -528,6 +531,7 @@ def node_full(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )

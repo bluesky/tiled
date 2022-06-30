@@ -46,6 +46,10 @@ class NotAvailableOffline(Exception):
     "Item looked for in offline cache was not found."
 
 
+class UnknownStructureFamily(KeyError):
+    pass
+
+
 def export_util(file, format, get, link, params):
     """
     Download client data in some format and write to a file.
@@ -248,3 +252,34 @@ def record_history():
     _history = history
     yield history
     _history = None
+
+
+def client_for_item(context, structure_clients, item, path):
+    """
+    Create an instance of the appropriate client class for an item.
+
+    This is intended primarily for internal use and use by subclasses.
+    """
+    # The server can use specs to tell us that this is not just *any*
+    # node/array/dataframe/etc. but that is matches a certain specification
+    # for which there may be a special client available.
+    # Check each spec in order for a matching structure client. Use the first
+    # one we find. If we find no structure client for any spec, fall back on
+    # the default for this structure family.
+    specs = item["attributes"].get("specs", []) or []
+    for spec in specs:
+        class_ = structure_clients.get(spec)
+        if class_ is not None:
+            break
+    else:
+        structure_family = item["attributes"]["structure_family"]
+        try:
+            class_ = structure_clients[structure_family]
+        except KeyError:
+            raise UnknownStructureFamily(structure_family) from None
+    return class_(
+        context=context,
+        item=item,
+        path=path,
+        structure_clients=structure_clients,
+    )

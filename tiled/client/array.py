@@ -57,7 +57,6 @@ class DaskArrayClient(BaseStructureClient):
             params={
                 "block": ",".join(map(str, block)),
                 "expected_shape": expected_shape,
-                **self._params,
             },
         )
         return deserialization_registry("array", media_type, content, dtype, shape)
@@ -96,11 +95,7 @@ class DaskArrayClient(BaseStructureClient):
         dtype = structure.micro.to_numpy_dtype()
         # Build a client-side dask array whose chunks pull from a server-side
         # dask array.
-        name = (
-            "remote-dask-array-"
-            f"{self.uri}"
-            f"{'-'.join(map(repr, sorted(self._params.items())))}"
-        )
+        name = "remote-dask-array-" f"{self.uri}"
         chunks = structure.macro.chunks
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)
@@ -138,7 +133,9 @@ class DaskArrayClient(BaseStructureClient):
         super().download()
         self.read().compute()
 
-    def export(self, filepath, format=None, slice=None, link=None, template_vars=None):
+    def export(
+        self, filepath, *, format=None, slice=None, link=None, template_vars=None
+    ):
         """
         Download data in some format and write to a file.
 
@@ -205,11 +202,6 @@ class DaskArrayClient(BaseStructureClient):
             self.item["links"][link].format(**template_vars),
             params=params,
         )
-
-    @property
-    def formats(self):
-        "List formats that the server can export this data as."
-        return self.context.get_json("")["formats"]["array"]
 
 
 class ArrayClient(DaskArrayClient):

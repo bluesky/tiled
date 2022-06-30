@@ -1,119 +1,40 @@
 import dask.array
 import numpy
+import pandas
 import pytest
 import xarray
 import xarray.testing
 
 from ..adapters.mapping import MapAdapter
-from ..adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
+from ..adapters.xarray import DatasetAdapter
 from ..client import from_tree
 from ..client import xarray as xarray_client
 
-array = numpy.random.random((10, 10))
+image = numpy.random.random((11, 13))
+temp = 15 + 8 * numpy.random.randn(2, 2, 3)
+precip = 10 * numpy.random.rand(2, 2, 3)
+lon = [[-99.83, -99.32], [-99.79, -99.23]]
+lat = [[42.25, 42.21], [42.63, 42.59]]
+
 EXPECTED = {
-    "variable": xarray.Variable(
-        data=dask.array.from_array(array),
-        dims=["x", "y"],
-        attrs={"thing": "stuff"},
-    ),
-    "data_array": xarray.DataArray(
-        xarray.Variable(
-            data=dask.array.from_array(array),
-            dims=["x", "y"],
-            attrs={"thing": "stuff"},
-        ),
-        coords={
-            "x": dask.array.arange(len(array)),
-            "y": 10 * dask.array.arange(len(array)),
-        },
-    ),
-    "dataset": xarray.Dataset(
+    "image": xarray.Dataset(
         {
             "image": xarray.DataArray(
                 xarray.Variable(
-                    data=dask.array.from_array(array),
+                    data=dask.array.from_array(image),
                     dims=["x", "y"],
                     attrs={"thing": "stuff"},
                 ),
                 coords={
-                    "x": dask.array.arange(len(array)),
-                    "y": 10 * dask.array.arange(len(array)),
+                    "x": dask.array.arange(image.shape[0]) / 10,
+                    "y": dask.array.arange(image.shape[1]) / 50,
                 },
             ),
-            "z": xarray.DataArray(data=dask.array.ones((len(array),))),
+            "z": xarray.DataArray(data=dask.array.ones(17)),
         },
-        coords={"time": numpy.arange(len(array))},
+        attrs={"snow": "cold"},
     ),
-    "wide": xarray.Dataset(
-        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
-    ),
-}
-
-tree = MapAdapter(
-    {
-        "variable": VariableAdapter(EXPECTED["variable"]),
-        "data_array": DataArrayAdapter.from_data_array(EXPECTED["data_array"]),
-        "dataset": DatasetAdapter(EXPECTED["dataset"]),
-        "wide": DatasetAdapter(EXPECTED["wide"]),
-    }
-)
-
-
-@pytest.mark.parametrize("key", list(tree))
-def test_xarrays(key):
-    client = from_tree(tree)
-    expected = EXPECTED[key]
-    actual = client[key].read()
-    xarray.testing.assert_equal(actual, expected)
-
-
-def test_dataset_column_access():
-    client = from_tree(tree)
-    expected_dataset = tree["dataset"].read()
-    client_dataset = client["dataset"]
-    for col in expected_dataset:
-        actual = client_dataset[col]
-        expected = expected_dataset[col]
-        xarray.testing.assert_equal(actual, expected)
-
-
-def test_dataset_coord_access():
-    client = from_tree(tree)
-    expected_dataset = tree["dataset"].read()
-    client_dataset = client["dataset"]
-
-    # Coordinate on data variable
-    actual = client_dataset["image"].coords["x"]
-    expected = expected_dataset["image"].coords["x"]
-    xarray.testing.assert_equal(actual, expected)
-    # Circular reference
-    actual = client_dataset["image"].coords["x"].coords["x"].coords["x"]
-    xarray.testing.assert_equal(actual, expected)
-
-    # Coordinate on dataset
-    actual = client_dataset.coords["time"].read()
-    expected = expected_dataset.coords["time"]
-    xarray.testing.assert_equal(actual, expected)
-    # Circular reference
-    actual = (
-        client_dataset.coords["time"]
-        .read()
-        .coords["time"]
-        .coords["time"]
-        .coords["time"]
-    )
-    xarray.testing.assert_equal(actual, expected)
-
-
-def test_nested_coords():
-    # Example from
-    # https://xarray.pydata.org/en/stable/user-guide/data-structures.html#creating-a-dataset
-    temp = 15 + 8 * numpy.random.randn(2, 2, 3)
-    precip = 10 * numpy.random.rand(2, 2, 3)
-    lon = [[-99.83, -99.32], [-99.79, -99.23]]
-    lat = [[42.25, 42.21], [42.63, 42.59]]
-
-    ds = xarray.Dataset(
+    "weather": xarray.Dataset(
         {
             "temperature": (["x", "y", "time"], temp),
             "precipitation": (["x", "y", "time"], precip),
@@ -121,20 +42,45 @@ def test_nested_coords():
         coords={
             "lon": (["x", "y"], lon),
             "lat": (["x", "y"], lat),
-            "time": [1, 2, 3],
-            "reference_time": [11, 12, 13],
+            "time": pandas.date_range("2014-09-06", periods=3),
         },
-    )
-    tree = MapAdapter({"ds": DatasetAdapter(ds)})
+    ),
+    "wide": xarray.Dataset(
+        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
+    ),
+}
+
+tree = MapAdapter(
+    {key: DatasetAdapter.from_dataset(ds) for key, ds in EXPECTED.items()}
+)
+
+
+@pytest.mark.parametrize("key", list(tree))
+def test_xarray_dataset(key):
+    if key == "image":
+        raise pytest.xfail("Problem with xarray construction to report upstream.")
     client = from_tree(tree)
-    expected_dataset = ds
-    client_dataset = client["ds"].read()
-    xarray.testing.assert_equal(client_dataset, expected_dataset)
+    expected = EXPECTED[key]
+    actual = client[key].read().load()
+    xarray.testing.assert_equal(actual, expected)
+
+
+@pytest.mark.parametrize("key", ["image", "weather"])
+def test_dataset_column_access(key):
+    if key == "image":
+        raise pytest.xfail("Problem with xarray construction to report upstream.")
+    client = from_tree(tree)
+    expected_dataset = EXPECTED[key]
+    actual_dataset = client[key].read().load()
+    for col in expected_dataset:
+        actual = actual_dataset[col]
+        expected = expected_dataset[col]
+        xarray.testing.assert_equal(actual, expected)
 
 
 def test_url_limit_handling():
     "Check that requests and split up to stay below the URL length limit."
-    expected = tree["wide"].read()
+    expected = EXPECTED["wide"]
     client = from_tree(tree)
     client["wide"].read()  # Dry run to run any one-off state-initializing requests.
     # Accumulate Requests here for later inspection.

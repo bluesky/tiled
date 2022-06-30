@@ -11,5 +11,3 @@ class StructureFamily(str, enum.Enum):
     node = "node"
     array = "array"
     dataframe = "dataframe"
-    xarray_data_array = "xarray_data_array"
-    xarray_dataset = "xarray_dataset"

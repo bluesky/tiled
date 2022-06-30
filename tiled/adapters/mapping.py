@@ -200,7 +200,10 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
     def read(self, fields=None):
         if fields is not None:
-            raise NotImplementedError
+            new_mapping = {}
+            for field in fields:
+                new_mapping[field] = self._mapping[field]
+            return self.new_variation(mapping=new_mapping)
         return self
 
     def search(self, query):

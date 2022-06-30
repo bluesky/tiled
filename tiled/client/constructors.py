@@ -12,7 +12,7 @@ from .context import (
     context_from_tree,
 )
 from .node import Node
-from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS
+from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS, client_for_item
 
 
 def from_uri(
@@ -201,13 +201,7 @@ def from_context(context, structure_clients="numpy", *, path=None):
     path = path or []
     content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
-    instance = Node(
-        context,
-        item=item,
-        path=path,
-        structure_clients=structure_clients,
-    )
-    return instance.client_for_item(item, path=path)
+    return client_for_item(context, structure_clients, item, path=path)
 
 
 def from_profile(name, structure_clients=None, **kwargs):

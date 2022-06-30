@@ -116,7 +116,7 @@ index
 
 [100000 rows x 3 columns]
 
->>> client['long_table'][['A', 'B']]
+>>> client['long_table'].read(['A', 'B'])
               A         B
 index
 0      0.748885  0.769644
