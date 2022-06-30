@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel
@@ -7,15 +9,14 @@ from .pydantic_array import ArrayStructure
 
 class DataArrayMacroStructure(BaseModel):
     variable: ArrayStructure
-    coords: Optional[
-        Dict[str, str]
-    ]  # overridden below to be Optional[Dict[str, DataArrayStructure]]
+    coords: Optional[Dict[str, DataArrayStructure]]
     coord_names: List[str]
-    name: str
+    name: Optional[str]
     resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):
+        # cls.update_forward_refs()
         if structure["coords"] is not None:
             coords = {
                 key: DataArrayStructure.from_json(value)
@@ -40,6 +41,9 @@ class DataArrayStructure(BaseModel):
         return cls(
             macro=DataArrayMacroStructure.from_json(structure["macro"]), micro=None
         )
+
+
+DataArrayMacroStructure.update_forward_refs()
 
 
 class DatasetMacroStructure(BaseModel):

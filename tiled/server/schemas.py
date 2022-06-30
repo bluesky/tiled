@@ -10,6 +10,7 @@ import pydantic.generics
 from ..structures.core import StructureFamily
 from .pydantic_array import ArrayStructure
 from .pydantic_dataframe import DataFrameStructure
+from .pydantic_xarray import DataArrayStructure, DatasetStructure
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
@@ -281,7 +282,9 @@ class APIKeyRequestParams(pydantic.BaseModel):
 
 class PostMetadataRequest(pydantic.BaseModel):
     structure_family: StructureFamily
-    structure: Union[ArrayStructure, DataFrameStructure]
+    structure: Union[
+        ArrayStructure, DataFrameStructure, DataArrayStructure, DatasetStructure
+    ]
     metadata: Dict
     specs: List[str]
 

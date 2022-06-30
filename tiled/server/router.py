@@ -605,3 +605,35 @@ async def put_dataframe_full(
             status_code=405, detail="This path cannot accept dataframe data."
         )
     return json_or_msgpack(request, None)
+
+
+@router.put("/node/full/{path:path}")
+async def put_dataarray_full(
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data)
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path cannot accept dataarray data."
+        )
+    return json_or_msgpack(request, None)
+
+
+@router.put("/node/full/{path:path}")
+async def put_dataset_full(
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data)
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path cannot accept dataset data."
+        )
+    return json_or_msgpack(request, None)

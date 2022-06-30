@@ -650,6 +650,135 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         return key
 
+    def write_dataarray(self, dataarray, specs=None):
+        """
+        EXPERIMENTAL: Write a DataArray.
+
+        This is subject to change or removal without notice
+
+        Parameters
+        ----------
+        dataframe : xarray.DataArray
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+        from ..adapters.xarray import DataArrayAdapter
+        from ..structures.xarray import DataArrayStructure
+
+        self._cached_len = None
+
+        specs = specs or []
+
+        darr_adapter = DataArrayAdapter.from_data_array(dataarray)
+        structure = DataArrayStructure.from_json(
+            {"macro": asdict(darr_adapter.macrostructure())}
+        )
+
+        xarr_meta = {
+            "attrs": dataarray.variable.attrs,
+            "coords": {
+                name: {"attrs": coord.attrs} for name, coord in dataarray.coords.items()
+            },
+        }
+        data = {
+            "metadata": xarr_meta,
+            "structure": asdict(structure),
+            "structure_family": StructureFamily.xarray_data_array,
+            "specs": specs,
+        }
+
+        full_path_meta = (
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+        document = self.context.post_json(full_path_meta, data)
+        key = document["key"]
+
+        full_path_data = (
+            "/node/full"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+            + key
+        )
+
+        self.context.put_content(
+            full_path_data,
+            content=dataarray.to_netcdf(),
+            headers={"Content-Type": "application/x-netcdf"},
+        )
+
+        return key
+
+    def write_dataset(self, dataset, specs=None):
+        """
+        EXPERIMENTAL: Write a DataArray.
+
+        This is subject to change or removal without notice
+
+        Parameters
+        ----------
+        dataset : xarray.DataSet
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+
+        from ..adapters.xarray import DatasetAdapter
+        from ..structures.xarray import DatasetStructure
+
+        self._cached_len = None
+
+        specs = specs or []
+
+        ds_adapter = DatasetAdapter(dataset)
+        structure = DatasetStructure.from_json(
+            {"macro": asdict(ds_adapter.macrostructure())}
+        )
+
+        ds_metadata = {
+            varname: {
+                "attrs": da.variable.attrs,
+                "coords": {
+                    name: {"attrs": coord.attrs} for name, coord in da.coords.items()
+                },
+            }
+            for varname, da in dataset.data_vars.items()
+        }
+
+        data = {
+            "metadata": ds_metadata,
+            "structure": asdict(structure),
+            "structure_family": StructureFamily.xarray_dataset,
+            "specs": specs,
+        }
+
+        full_path_meta = (
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+        document = self.context.post_json(full_path_meta, data)
+        key = document["key"]
+
+        full_path_data = (
+            "/node/full"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+            + key
+        )
+
+        self.context.put_content(
+            full_path_data,
+            content=dataset.to_netcdf(),
+            headers={"Content-Type": "application/x-netcdf"},
+        )
+
+        return key
+
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
