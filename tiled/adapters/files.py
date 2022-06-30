@@ -358,7 +358,11 @@ class DirectoryAdapter(MapAdapter):
             specs=specs,
             references=references,
             sorting=sorting,
+<<<<<<< HEAD
             specs=specs,
+=======
+            principal=principal,
+>>>>>>> Make references a list of single-item dicts.
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
@@ -381,7 +385,6 @@ class DirectoryAdapter(MapAdapter):
         specs,
         references,
         sorting,
-        specs,
         access_policy,
         entries_stale_after=None,
         metadata_stale_after=None,

@@ -58,7 +58,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         self._node = node
         self._access_policy = access_policy
         self.specs = specs or []
-        self.references = references or {}
+        self.references = references or []
         super().__init__()
 
     @classmethod

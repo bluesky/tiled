@@ -100,7 +100,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self.entries_stale_after = entries_stale_after
         self.metadata_stale_after = metadata_stale_after
         self.specs = specs or []
-        self.references = references or {}
+        self.references = references or []
         super().__init__()
 
     @property

@@ -19,12 +19,30 @@ def test_spec_is_converted_to_str():
 
 
 def test_references():
-    tree = MapAdapter({}, references={"ref_test": "https://example.com"})
+    tree = MapAdapter({}, references=[{"ref_test": "https://example.com"}])
     c = from_tree(tree)
-    assert c.references == {"ref_test": "https://example.com"}
+    assert c.references == [{"ref_test": "https://example.com"}]
 
 
 def test_bad_reference():
-    tree = MapAdapter({}, references={"ref_test": "not a URL"})
+    # an invalid URL
+    tree = MapAdapter({}, references=[{"ref_test": "not a URL"}])
+    with pytest.raises(pydantic.error_wrappers.ValidationError):
+        from_tree(tree)
+
+    # a dict instead of a list of dicts
+    tree = MapAdapter({}, references={"ref_test": "https://example.com"})
+    with pytest.raises(pydantic.error_wrappers.ValidationError):
+        from_tree(tree)
+
+    # dict has too many items
+    tree = MapAdapter(
+        {}, references={"ref_test": "https://example.com", "extra": "oops"}
+    )
+    with pytest.raises(pydantic.error_wrappers.ValidationError):
+        from_tree(tree)
+
+    # dict has not enough items
+    tree = MapAdapter({}, references=[{}])
     with pytest.raises(pydantic.error_wrappers.ValidationError):
         from_tree(tree)

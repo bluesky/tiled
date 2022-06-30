@@ -24,6 +24,7 @@ class DatasetAdapter(MapAdapter):
             references=references,
         )
 
+
     def __init__(self, mapping, *args, specs=None, references=None, **kwargs):
         if isinstance(mapping, xarray.Dataset):
             raise TypeError(

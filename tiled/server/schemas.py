@@ -84,7 +84,16 @@ class NodeAttributes(pydantic.BaseModel):
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
-    references: Optional[Dict[str, pydantic.AnyUrl]]
+    references: Optional[List[Dict[str, pydantic.AnyUrl]]]
+
+    @pydantic.validator("references")
+    def each_item_is_asingle_item_dict(cls, v):
+        for item in v:
+            if len(item) != 1:
+                raise ValueError(
+                    "Each item in references must be a dict with a single key--value pair."
+                )
+        return v
 
 
 AttributesT = TypeVar("AttributesT")

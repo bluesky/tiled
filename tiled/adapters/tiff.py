@@ -23,7 +23,7 @@ class TiffAdapter:
         self._file = tifffile.TiffFile(path)
         self._cache_key = (type(self).__module__, type(self).__qualname__, path)
         self.specs = specs or []
-        self.references = references or {}
+        self.references = references or []
 
     @property
     def metadata(self):
@@ -77,7 +77,7 @@ class TiffSequenceAdapter:
             hashlib.md5(str(seq.files).encode()).hexdigest(),
         )
         self.specs = specs or []
-        self.references = references or {}
+        self.references = references or []
 
     @property
     def metadata(self):

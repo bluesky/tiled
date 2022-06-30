@@ -51,9 +51,28 @@ constraints."
 
 ## References
 
-Each Tiled structure carries an optional List of references, labeled links to
+Each Tiled structure carries an optional List of references, labeling links to
 external resources. Their usage is open-ended. They may be used as links to:
 
 * other structures or search results within this Tiled server or other Tiled servers
 * data stored in other data storage systems unrelated to Tiled
 * documents or publications related to the data
+
+References look like this:
+
+```py
+references = [
+    {"raw_data": "https://..."},
+    {"raw_data": "https://..."},
+    {"doi:" "https://..."},
+]
+```
+
+Each item must be a dict where the key is a string, and the value is a valid
+URL. The formal definiton of URL is broad: it can include references to web
+resources  (e.g.  `https://...`), local files (`file://localhost/...`), and
+more.
+
+In the future, we may expand this to integrate with richer standards for
+describing relationships between data, such as RDF, OWL, XLink, and JSON-LD.
+If you are interested in this, please open a GitHub issue describing your use case.

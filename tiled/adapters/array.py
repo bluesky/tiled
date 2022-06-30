@@ -29,7 +29,7 @@ class ArrayAdapter:
         self._metadata = metadata or {}
         self._dims = dims
         self.specs = specs or []
-        self.references = references or {}
+        self.references = references or []
 
     @classmethod
     def from_array(cls, data, *, metadata=None, dims=None, specs=None, references=None):

@@ -72,7 +72,7 @@ class DataFrameAdapter:
         self._metadata = metadata or {}
         self._ddf = ddf
         self.specs = specs or []
-        self.references = references or {}
+        self.references = references or []
 
     def __repr__(self):
         return f"{type(self).__name__}({self._meta.columns!r})"

@@ -671,7 +671,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        references : Dict[str, URL], optional
+        references : List[Dict[str, URL]], optional
             References (e.g. links) to related information. This may include
             links into other Tiled data sets, search results, or external
             resources unrelated to Tiled.
@@ -811,7 +811,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        references : Dict[str, URL], optional
+        references : List[Dict[str, URL]], optional
             References (e.g. links) to related information. This may include
             links into other Tiled data sets, search results, or external
             resources unrelated to Tiled.

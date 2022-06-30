@@ -158,10 +158,10 @@ class BaseClient:
 
     @property
     def references(self):
-        "References (links) to related context, metadata, or data"
+        "References (links) to related context, metadata, or data."
         # We use .get(...) here for backward-compatibility.
         # This can be a straight dict lookup once all servers are updated.
-        return DictView(self._item["attributes"].get("references", {}))
+        return ListView(self._item["attributes"].get("references", []))
 
     @property
     def path(self):
