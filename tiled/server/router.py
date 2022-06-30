@@ -637,10 +637,11 @@ def post_metadata(
 
     if hasattr(entry, "post_metadata"):
         key = entry.post_metadata(
-            metadata=metadata,
-            structure_family=structure_family,
-            structure=structure,
-            specs=specs,
+            metadata=body.metadata,
+            structure_family=body.structure_family,
+            structure=body.structure,
+            specs=body.specs,
+            references=body.references,
         )
         links = {}
         base_url = get_base_url(request)

@@ -284,6 +284,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
     metadata: Dict
     specs: List[str]
+    references: Dict[str, pydantic.AnyUrl]
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
