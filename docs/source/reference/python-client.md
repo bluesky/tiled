@@ -79,9 +79,11 @@ Beyond the Mapping interface, Node adds the following attributes
    :toctree: generated
 
    tiled.client.node.Node.metadata
+   tiled.client.node.Node.references
    tiled.client.node.Node.sorting
    tiled.client.node.Node.path
    tiled.client.node.Node.uri
+   tiled.client.node.Node.specs
 ```
 
 It adds these methods, which return a new Node instance.
