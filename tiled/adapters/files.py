@@ -123,6 +123,7 @@ class DirectoryAdapter(MapAdapter):
         key_from_filename=strip_suffixes,
         metadata=None,
         sorting=None,
+        specs=None,
         access_policy=None,
         principal=None,
         error_if_missing=True,
@@ -152,6 +153,7 @@ class DirectoryAdapter(MapAdapter):
             By default, this strips off the suffixes, so "a.tif" -> "a".
         metadata : dict, optional,
             Metadata for the top-level node of this tree.
+        specs : List[str]
         access_policy : AccessPolicy, optional
         principal : str, optional
         error_if_missing : boolean, optional
@@ -343,6 +345,7 @@ class DirectoryAdapter(MapAdapter):
             manual_trigger=manual_trigger,
             metadata=metadata,
             sorting=sorting,
+            specs=specs,
             principal=principal,
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,
@@ -364,6 +367,7 @@ class DirectoryAdapter(MapAdapter):
         manual_trigger,
         metadata,
         sorting,
+        specs,
         access_policy,
         principal,
         entries_stale_after=None,
@@ -374,6 +378,7 @@ class DirectoryAdapter(MapAdapter):
             mapping,
             metadata=metadata,
             sorting=sorting,
+            specs=specs,
             access_policy=access_policy,
             principal=principal,
             entries_stale_after=entries_stale_after,

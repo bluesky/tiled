@@ -64,7 +64,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
 
     structure_family = "node"
 
-    def __init__(self, node, access_policy=None, principal=None):
+    def __init__(self, node, *, specs=None, access_policy=None, principal=None):
         if (access_policy is not None) and (
             not access_policy.check_compatibility(self)
         ):
@@ -74,13 +74,14 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         self._node = node
         self._access_policy = access_policy
         self._principal = principal
+        self.specs = specs or []
         super().__init__()
 
     @classmethod
-    def from_file(cls, file, swmr=SWMR_DEFAULT, libver="latest"):
+    def from_file(cls, file, *, swmr=SWMR_DEFAULT, libver="latest", specs=None):
         if not isinstance(file, h5py.File):
             file = h5py.File(file, "r", swmr=swmr, libver=libver)
-        return cls(file)
+        return cls(file, specs=specs)
 
     def __repr__(self):
         return node_repr(self, list(self))

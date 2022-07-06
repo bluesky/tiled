@@ -131,8 +131,6 @@ index
 [100 rows x 2 columns]
 ```
 
-TO DO: Cover xarray Variables, DataArrays, Datasets.
-
 ## Dask
 
 [Dask](https://dask.org/) integrates with numpy, pandas, and xarray to enable

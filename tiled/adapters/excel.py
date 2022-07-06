@@ -33,7 +33,7 @@ class ExcelAdapter(MapAdapter):
     """
 
     @classmethod
-    def from_file(cls, file):
+    def from_file(cls, file, specs=None):
 
         if isinstance(file, pandas.ExcelFile):
             excel_file = file
@@ -54,4 +54,4 @@ class ExcelAdapter(MapAdapter):
                 cache.discard(cache_key)  # parsed sheet content
                 cache.discard_dask(ddf.__dask_keys__())  # dask tasks
             mapping[sheet_name] = DataFrameAdapter(ddf)
-        return cls(mapping)
+        return cls(mapping, specs=specs)

@@ -104,17 +104,6 @@ It adds these methods for downloading and refreshing cached data.
    tiled.client.node.Node.refresh
 ```
 
-Finally, it exposes these methods, which are used internally and may be useful
-in advanced applications.
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.node.Node.client_for_item
-   tiled.client.node.Node.new_variation
-```
-
 ## Structure Clients
 
 For each *structure family* ("array", "dataframe", etc.) there is a client
@@ -195,59 +184,13 @@ Tiled currently includes two clients for each structure family:
    tiled.client.dataframe.DaskDataFrameClient.export
 ```
 
-### Xarray Structures
-
-#### Variable
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.xarray.DaskVariableClient
-   tiled.client.xarray.DaskVariableClient.read_block
-   tiled.client.xarray.DaskVariableClient.read
-```
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.xarray.VariableClient
-   tiled.client.xarray.VariableClient.read_block
-   tiled.client.xarray.VariableClient.read
-```
-
-#### DataArray
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.xarray.DaskDataArrayClient
-   tiled.client.xarray.DaskDataArrayClient.coords
-   tiled.client.xarray.DaskDataArrayClient.read_block
-   tiled.client.xarray.DaskDataArrayClient.read
-```
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.xarray.DataArrayClient
-   tiled.client.xarray.DataArrayClient.coords
-   tiled.client.xarray.DataArrayClient.read_block
-   tiled.client.xarray.DataArrayClient.read
-```
-
-#### Dataset
+### Xarray Dataset
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
    tiled.client.xarray.DaskDatasetClient
-   tiled.client.xarray.DaskDatasetClient.coords
-   tiled.client.xarray.DaskDatasetClient.data_vars
    tiled.client.xarray.DaskDatasetClient.read
 ```
 
@@ -256,8 +199,6 @@ Tiled currently includes two clients for each structure family:
    :toctree: generated
 
    tiled.client.xarray.DatasetClient
-   tiled.client.xarray.DatasetClient.data_vars
-   tiled.client.xarray.DatasetClient.coords
    tiled.client.xarray.DatasetClient.read
 ```
 

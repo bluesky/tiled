@@ -19,9 +19,10 @@ class TiffAdapter:
 
     structure_family = "array"
 
-    def __init__(self, path):
+    def __init__(self, path, specs=None):
         self._file = tifffile.TiffFile(path)
         self._cache_key = (type(self).__module__, type(self).__qualname__, path)
+        self.specs = specs or []
 
     @property
     def metadata(self):
@@ -66,7 +67,7 @@ class TiffSequenceAdapter:
 
     structure_family = "array"
 
-    def __init__(self, seq):
+    def __init__(self, seq, specs=None):
         self._seq = seq
         self._metadata = {}
         self._cache_key = (
@@ -74,6 +75,7 @@ class TiffSequenceAdapter:
             type(self).__qualname__,
             hashlib.md5(str(seq.files).encode()).hexdigest(),
         )
+        self.specs = specs or []
 
     @property
     def metadata(self):
