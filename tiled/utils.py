@@ -52,6 +52,9 @@ class ListView(collections.abc.Sequence):
     def __add__(self, other):
         return type(self)(self._internal_list + other)
 
+    def __eq__(self, other):
+        return self._internal_list == other
+
 
 class DictView(collections.abc.Mapping):
     "An immutable view of a dict."
@@ -91,6 +94,9 @@ class DictView(collections.abc.Mapping):
 
     def __delitem__(self, key):
         raise TypeError("Deleting items is not allowed.")
+
+    def __eq__(self, other):
+        return self._internal_dict == other
 
 
 # This object should never be directly instantiated by external code.
