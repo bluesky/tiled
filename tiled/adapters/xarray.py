@@ -13,11 +13,11 @@ class DatasetAdapter(MapAdapter):
     """
 
     @classmethod
-    def from_dataset(cls, dataset, *, specs=None, references=None):
+    def from_dataset(cls, dataset, *, specs=None):
         mapping = _DatasetMap(dataset)
         specs = specs or []
         specs.append("xarray_dataset")
-        return cls(mapping, metadata=dataset.attrs, specs=specs, references=references)
+        return cls(mapping, metadata=dataset.attrs, specs=specs)
 
     def __init__(self, mapping, *args, **kwargs):
         if isinstance(mapping, xarray.Dataset):

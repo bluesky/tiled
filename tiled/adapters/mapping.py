@@ -39,7 +39,9 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     def __init__(
         self,
         mapping,
+        *,
         metadata=None,
+        specs=None,
         sorting=None,
         access_policy=None,
         principal=None,
@@ -54,6 +56,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         ----------
         mapping : dict-like
         metadata : dict, optional
+        specs : List[str], optional
         sorting : List[Tuple[str, int]], optional
         access_policy : AccessPolicy, optional
         principal : str, optional
@@ -74,6 +77,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             sorting = [("_", 1)]
         self._sorting = sorting
         self._metadata = metadata or {}
+        self.specs = specs or []
         if (access_policy is not None) and (
             not access_policy.check_compatibility(self)
         ):
