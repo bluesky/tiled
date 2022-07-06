@@ -366,10 +366,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             "/node/metadata/"
             + "".join(f"/{part}" for part in self.context.path_parts)
             + "".join(f"/{part}" for part in self._path)
-            + "/"
+            # + "/"
             + key
         )
-
         self.context.delete_content(path, None)
 
     # The following two methods are used by keys(), values(), items().
@@ -649,6 +648,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
         return key
+
+    def delete(self, key):
+        self.__delitem__(key)
 
 
 def _queries_to_params(*queries):
