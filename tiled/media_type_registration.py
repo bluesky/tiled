@@ -30,6 +30,8 @@ class SerializationRegistry:
 
     # Supplement the defaults we get from the mimetypes module.
     DEFAULT_ALIASES = {
+        "h5": "application/x-hdf5",
+        "hdf5": "application/x-hdf5",
         "nc": "application/netcdf",
         "text": "text/plain",
         "txt": "text/plain",
