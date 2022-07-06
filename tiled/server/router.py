@@ -30,6 +30,7 @@ from .dependencies import (
     get_serialization_registry,
     slice_,
 )
+from .pydantic_node import NodeAttributes
 from .settings import get_settings
 from .utils import get_base_url, record_timing
 
@@ -234,7 +235,7 @@ def declare_search_router(query_registry):
     router.get(
         "/node/search",
         response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            List[schemas.Resource[NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
             dict,
         ],
@@ -243,7 +244,7 @@ def declare_search_router(query_registry):
     router.get(
         "/node/search/{path:path}",
         response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            List[schemas.Resource[NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
             dict,
         ],
@@ -254,7 +255,7 @@ def declare_search_router(query_registry):
 @router.get(
     "/node/metadata/{path:path}",
     response_model=schemas.Response[
-        schemas.Resource[schemas.NodeAttributes, dict, dict], dict, dict
+        schemas.Resource[NodeAttributes, dict, dict], dict, dict
     ],
 )
 async def node_metadata(
