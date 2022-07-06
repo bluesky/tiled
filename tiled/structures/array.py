@@ -4,8 +4,6 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-import numpy
-
 
 class Endianness(str, enum.Enum):
     """
@@ -115,6 +113,8 @@ class BuiltinDtype:
         )
 
     def to_numpy_dtype(self):
+        import numpy
+
         return numpy.dtype(self.to_numpy_str())
 
     def to_numpy_str(self):
@@ -148,6 +148,8 @@ class Field:
 
     @classmethod
     def from_numpy_descr(cls, field):
+        import numpy
+
         name, *rest = field
         if name == "":
             raise ValueError(
@@ -205,6 +207,8 @@ class StructDtype:
         )
 
     def to_numpy_dtype(self):
+        import numpy
+
         return numpy.dtype(self.to_numpy_descr())
 
     def to_numpy_descr(self):

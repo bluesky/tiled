@@ -1,10 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Tuple, Union
 
-import pandas
-
-from ..serialization.dataframe import deserialize_arrow, serialize_arrow
-
 
 @dataclass
 class DataFrameMicroStructure:
@@ -17,6 +13,9 @@ class DataFrameMicroStructure:
         # TODO Look at make_meta_nonempty to see if the "objects" are str or
         # datetime or actually generic objects.
         import dask.dataframe.utils
+        import pandas
+
+        from ..serialization.dataframe import serialize_arrow
 
         meta = bytes(serialize_arrow(dask.dataframe.utils.make_meta(ddf), {}))
         divisions = bytes(
@@ -31,6 +30,9 @@ class DataFrameMicroStructure:
         # datetime or actually generic objects.
         import dask.dataframe
         import dask.dataframe.utils
+        import pandas
+
+        from ..serialization.dataframe import serialize_arrow
 
         ddf = dask.dataframe.from_pandas(df, npartitions=1)
         meta = bytes(serialize_arrow(dask.dataframe.utils.make_meta(ddf), {}))
@@ -58,6 +60,8 @@ class DataFrameStructure:
 
     @classmethod
     def from_json(cls, content):
+        from ..serialization.dataframe import deserialize_arrow
+
         divisions_wrapped_in_df = deserialize_arrow(content["micro"]["divisions"])
         divisions = tuple(divisions_wrapped_in_df["divisions"].values)
         meta = deserialize_arrow(content["micro"]["meta"])

@@ -31,6 +31,7 @@ from ..utils import (
 )
 from . import schemas
 from .etag import tokenize
+from .pydantic_node import NodeStructure
 from .utils import record_timing
 
 del queries
@@ -330,7 +331,7 @@ def construct_resource(
                 ]
         d = {
             "id": path_parts[-1] if path_parts else "",
-            "attributes": schemas.NodeAttributes(**attributes),
+            "attributes": NodeStructure(**attributes),
         }
         if not omit_links:
             d["links"] = {
@@ -338,9 +339,9 @@ def construct_resource(
                 "search": f"{base_url}/node/search/{path_str}",
                 "full": f"{base_url}/node/full/{path_str}",
             }
-        resource = schemas.Resource[
-            schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
-        ](**d)
+        resource = schemas.Resource[NodeStructure, schemas.NodeLinks, schemas.NodeMeta](
+            **d
+        )
     else:
         links = {"self": f"{base_url}/node/metadata/{path_str}"}
         structure = {}
@@ -409,13 +410,13 @@ def construct_resource(
             ResourceLinksT = schemas.SelfLinkOnly
         d = {
             "id": path_parts[-1],
-            "attributes": schemas.NodeAttributes(**attributes),
+            "attributes": NodeStructure(**attributes),
         }
         if not omit_links:
             d["links"] = links
-        resource = schemas.Resource[
-            schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict
-        ](**d)
+        resource = schemas.Resource[NodeStructure, ResourceLinksT, schemas.EmptyDict](
+            **d
+        )
     return resource
 
 

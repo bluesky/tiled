@@ -55,31 +55,6 @@ class EntryFields(str, enum.Enum):
     none = ""
 
 
-class Structure(pydantic.BaseModel):
-    micro: Optional[dict]
-    macro: Optional[dict]
-
-
-class SortingDirection(int, enum.Enum):
-    ASCENDING = 1
-    DECENDING = -1
-
-
-class SortingItem(pydantic.BaseModel):
-    key: str
-    direction: SortingDirection
-
-
-class NodeAttributes(pydantic.BaseModel):
-    ancestors: List[str]
-    structure_family: Optional[StructureFamily]
-    specs: Optional[List[str]]
-    metadata: Optional[dict]  # free-form, user-specified dict
-    structure: Optional[Structure]
-    count: Optional[int]
-    sorting: Optional[List[SortingItem]]
-
-
 AttributesT = TypeVar("AttributesT")
 ResourceMetaT = TypeVar("ResourceMetaT")
 ResourceLinksT = TypeVar("ResourceLinksT")

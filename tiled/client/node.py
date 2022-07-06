@@ -13,8 +13,8 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
+from ..serialization.dataframe import serialize_arrow
 from ..structures.core import StructureFamily
-from ..structures.dataframe import serialize_arrow
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     UNCHANGED,
