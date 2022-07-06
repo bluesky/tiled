@@ -19,12 +19,12 @@ class DatasetAdapter(MapAdapter):
         specs.append("xarray_dataset")
         return cls(mapping, metadata=dataset.attrs, specs=specs)
 
-    def __init__(self, mapping, *args, **kwargs):
+    def __init__(self, mapping, *args, specs=None, **kwargs):
         if isinstance(mapping, xarray.Dataset):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
             )
-        super().__init__(mapping, *args, **kwargs)
+        super().__init__(mapping, *args, specs=specs, **kwargs)
 
     def as_dataset(self):
         # We do not stash the original dataset as state.

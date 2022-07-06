@@ -27,6 +27,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         "entries_stale_after",
         "include_routers",
         "metadata_stale_after",
+        "specs",
     )
 
     structure_family = "node"
@@ -194,6 +195,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             mapping=mapping,
             sorting=sorting,
             metadata=self._metadata,
+            specs=self.specs,
             access_policy=self.access_policy,
             principal=self.principal,
             entries_stale_after=self.entries_stale_after,

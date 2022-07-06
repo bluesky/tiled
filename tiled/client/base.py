@@ -67,6 +67,11 @@ class BaseClient:
         return DictView(self._item["attributes"]["metadata"])
 
     @property
+    def specs(self):
+        "List of specifications describing the structure of the metadata and/or data."
+        return ListView(self.item["attributes"]["specs"])
+
+    @property
     def path(self):
         "Sequence of entry names from the root Tree to this entry"
         return ListView(self._path)
