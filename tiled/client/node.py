@@ -363,13 +363,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         self._cached_len = None
 
         path = (
-            "/node/metadata/"
+            "/node/metadata"
             + "".join(f"/{part}" for part in self.context.path_parts)
             + "".join(f"/{part}" for part in self._path)
             + "/"
             + key
         )
-
         self.context.delete_content(path, None)
 
     # The following two methods are used by keys(), values(), items().
