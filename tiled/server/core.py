@@ -39,7 +39,14 @@ register_builtin_serializers()
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 _LOCAL_TZINFO = dateutil.tz.gettz()
+
+# Pragmatic limit on how "wide" a node can be
+# before the server refusing to inline its contents
 INLINED_CONTENTS_LIMIT = 100
+
+# Pragmatic limit on how deep the server will recurse into
+# nodes that request inlined contents
+DEPTH_LIMIT = 20
 
 
 def len_or_approx(tree):
@@ -327,8 +334,9 @@ def construct_resource(
             print(path_parts, depth, max_depth)
             if (
                 ((max_depth is None) or (depth < max_depth))
-                and hasattr(entry, "recursive_structure_enabled")
-                and entry.recursive_structure_enabled(depth)
+                and hasattr(entry, "inlined_contents_enabled")
+                and entry.inlined_contents_enabled(depth)
+                and depth <= DEPTH_LIMIT
             ):
                 # This node wants us to inline its contents.
                 # First check that it is not too large.
