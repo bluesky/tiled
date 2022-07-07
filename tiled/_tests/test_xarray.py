@@ -7,7 +7,7 @@ import xarray.testing
 
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
-from ..client import from_tree
+from ..client import from_tree, record_history
 from ..client import xarray as xarray_client
 
 image = numpy.random.random((11, 13))
@@ -78,11 +78,31 @@ def test_dataset_column_access(key):
         xarray.testing.assert_equal(actual, expected)
 
 
+def test_wide_table_optimization():
+    client = from_tree(tree)
+    wide = client["wide"]
+    with record_history() as history:
+        wide.read()
+    # This should be just a couple requests.
+    # This upper bound is somewhat arbitrary to give wiggle room for future
+    # minor changes. The point is: it's much less than one request per variable.
+    assert len(history.requests) < 100 / 10
+
+
+def test_wide_table_optimization_off():
+    client = from_tree(tree)
+    wide = client["wide"]
+    with record_history() as history:
+        wide.read(optimize_wide_table=False)
+    assert len(history.requests) >= 100
+
+
 def test_url_limit_handling():
     "Check that requests and split up to stay below the URL length limit."
     expected = EXPECTED["wide"]
     client = from_tree(tree)
-    client["wide"].read()  # Dry run to run any one-off state-initializing requests.
+    dsc = client["wide"]
+    dsc.read()  # Dry run to run any one-off state-initializing requests.
     # Accumulate Requests here for later inspection.
     requests = []
 
@@ -91,7 +111,7 @@ def test_url_limit_handling():
         requests.append(request)
 
     client.context.event_hooks["request"].append(accumulate)
-    actual = client["wide"].read()
+    actual = dsc.read()
     xarray.testing.assert_equal(actual, expected)
     normal_request_count = len(requests)
     original = xarray_client.URL_CHARACTER_LIMIT
@@ -102,13 +122,13 @@ def test_url_limit_handling():
         # The client will need to split this across more requests in order to
         # stay within the tighter limit.
         requests.clear()  # Empty the Request cache before the next batch of requests.
-        actual = client["wide"].read()
+        actual = dsc.read()
         xarray.testing.assert_equal(actual, expected)
         higher_request_count = len(requests)
         # Tighten even more.
         xarray_client.URL_CHARACTER_LIMIT = 100
         requests.clear()  # Empty the Request cache before the next batch of requests.
-        actual = client["wide"].read()
+        actual = dsc.read()
         xarray.testing.assert_equal(actual, expected)
         highest_request_count = len(requests)
     finally:
