@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
@@ -47,12 +49,37 @@ class PaginationLinks(pydantic.BaseModel):
 class EntryFields(str, enum.Enum):
     metadata = "metadata"
     structure_family = "structure_family"
+    structure = "structure"
     microstructure = "structure.micro"
     macrostructure = "structure.macro"
     count = "count"
     sorting = "sorting"
     specs = "specs"
     none = ""
+
+
+class NodeStructure(pydantic.BaseModel):
+    contents: Optional[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]
+    count: int
+
+
+class SortingDirection(int, enum.Enum):
+    ASCENDING = 1
+    DECENDING = -1
+
+
+class SortingItem(pydantic.BaseModel):
+    key: str
+    direction: SortingDirection
+
+
+class NodeAttributes(pydantic.BaseModel):
+    ancestors: List[str]
+    structure_family: Optional[StructureFamily]
+    specs: Optional[List[str]]
+    metadata: Optional[dict]  # free-form, user-specified dict
+    structure: Optional[Union[ArrayStructure, DataFrameStructure, NodeStructure]]
+    sorting: Optional[List[SortingItem]]
 
 
 AttributesT = TypeVar("AttributesT")
@@ -249,3 +276,6 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel):
     key: str
+
+
+NodeStructure.update_forward_refs()

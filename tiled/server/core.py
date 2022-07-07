@@ -31,7 +31,6 @@ from ..utils import (
 )
 from . import schemas
 from .etag import tokenize
-from .pydantic_node import NodeAttributes
 from .utils import record_timing
 
 del queries
@@ -40,6 +39,7 @@ register_builtin_serializers()
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 _LOCAL_TZINFO = dateutil.tz.gettz()
+INLINED_CONTENTS_LIMIT = 100
 
 
 def len_or_approx(tree):
@@ -95,6 +95,7 @@ def construct_entries_response(
     sort,
     base_url,
     media_type,
+    max_depth,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     if tree.structure_family != "node":
@@ -181,6 +182,7 @@ def construct_entries_response(
             select_metadata,
             omit_links,
             media_type,
+            max_depth=max_depth,
         )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
@@ -305,6 +307,8 @@ def construct_resource(
     select_metadata,
     omit_links,
     media_type,
+    max_depth,
+    depth=0,
 ):
     path_str = "/".join(path_parts)
     attributes = {"ancestors": path_parts[:-1]}
@@ -319,8 +323,53 @@ def construct_resource(
         attributes["specs"] = getattr(entry, "specs", [])
     if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
-        if schemas.EntryFields.count in fields:
-            attributes["count"] = len_or_approx(entry)
+        if schemas.EntryFields.structure in fields:
+            print(path_parts, depth, max_depth)
+            if (
+                ((max_depth is None) or (depth < max_depth))
+                and hasattr(entry, "recursive_structure_enabled")
+                and entry.recursive_structure_enabled(depth)
+            ):
+                # This node wants us to inline its contents.
+                # First check that it is not too large.
+                est_count = len_or_approx(entry)
+                if est_count > INLINED_CONTENTS_LIMIT:
+                    # Too large: do not inline its contents.
+                    count = est_count
+                    contents = None
+                else:
+                    contents = {}
+                    # The size may change as we are walking the entry.
+                    # Keep a *true* count separately from est_count.
+                    count = 0
+                    for key, adapter in entry.items():
+                        count += 1
+                        if count > INLINED_CONTENTS_LIMIT:
+                            # The est_count was inaccurate or else the entry has grown
+                            # new children while we are walking it. Too large!
+                            count = len_or_approx(entry)
+                            contents = None
+                            break
+                        contents[key] = construct_resource(
+                            base_url,
+                            path_parts + [key],
+                            adapter,
+                            fields,
+                            select_metadata,
+                            omit_links,
+                            media_type,
+                            max_depth,
+                            depth=1 + depth,
+                        )
+            else:
+                count = len_or_approx(entry)
+                contents = None
+            structure = schemas.NodeStructure(
+                count=count,
+                contents=contents,
+            )
+            attributes["structure"] = structure
+        if schemas.EntryFields.sorting in fields:
             if hasattr(entry, "sorting"):
                 # In the Python API we encode sorting as (key, direction).
                 # This order-based "record" notion does not play well with OpenAPI.
@@ -331,7 +380,7 @@ def construct_resource(
                 ]
         d = {
             "id": path_parts[-1] if path_parts else "",
-            "attributes": NodeAttributes(**attributes),
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = {
@@ -340,7 +389,7 @@ def construct_resource(
                 "full": f"{base_url}/node/full/{path_str}",
             }
         resource = schemas.Resource[
-            NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
+            schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
         ](**d)
     else:
         links = {"self": f"{base_url}/node/metadata/{path_str}"}
@@ -359,11 +408,15 @@ def construct_resource(
             )
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if schemas.EntryFields.macrostructure in fields:
+            if (schemas.EntryFields.macrostructure in fields) or (
+                schemas.EntryFields.structure in fields
+            ):
                 macrostructure = entry.macrostructure()
                 if macrostructure is not None:
                     structure["macro"] = dataclasses.asdict(macrostructure)
-            if schemas.EntryFields.microstructure in fields:
+            if (schemas.EntryFields.microstructure in fields) or (
+                schemas.EntryFields.structure in fields
+            ):
                 if entry.structure_family == "node":
                     assert False  # not sure if this ever happens
                     pass
@@ -410,13 +463,13 @@ def construct_resource(
             ResourceLinksT = schemas.SelfLinkOnly
         d = {
             "id": path_parts[-1],
-            "attributes": NodeAttributes(**attributes),
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = links
-        resource = schemas.Resource[NodeAttributes, ResourceLinksT, schemas.EmptyDict](
-            **d
-        )
+        resource = schemas.Resource[
+            schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict
+        ](**d)
     return resource
 
 

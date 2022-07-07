@@ -47,6 +47,12 @@ class DatasetAdapter(MapAdapter):
                 assert False, "Expected a spec"
         return xarray.Dataset(data_vars=data_vars, coords=coords, attrs=self.metadata)
 
+    def recursive_structure_enabled(self, depth):
+        # Tell the server to in-line the description of each array
+        # (i.e. data_vars and coords) to avoid latency of a second
+        # request.
+        return True
+
 
 class _DatasetMap(collections.abc.Mapping):
     def __init__(self, dataset):

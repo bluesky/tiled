@@ -27,7 +27,7 @@ The structures encodings are designed to be as unoriginal as possible, using
 established standards and, where some invention is required, using established
 names from numpy, pandas/Arrow, and dask.
 
-The structures are encoded in two parts:
+Some structures are encoded in two parts:
 
 * **Macrostructure** --- This is the high-level structure including things like
   shape, chunk shape, number of partitions, and column names. This structure
@@ -248,5 +248,287 @@ Python, to perform the same function.
 
 ### Node
 
-Node is the most open-ended structure family. It has contents---it can be listed
-and searched. It has no additional structure information.
+The node structure is a container for other structures. It may be compared to a
+directory, a JSON object, a Python dictionary, or an HDF5 Group. Nodes may contain
+other nodes, any other structure, or a mixture.
+
+Some nodes contain a small number of children, easy to list in a single request,
+while others may contain many listed via multiple paginated requests. Some Tiled
+deployments currently in use contain nodes with with up to hundreds of thousands
+of children.
+
+Typically, a node's structures tell us only how many children it has (`count`).
+The `contents` key is typically set to `null`, which indicates that we will need
+a separate request to fetch information of this node's children.
+
+```json
+"structure": {
+    "contents": null,
+    "count": 2
+}
+
+In certain cases, it is efficient to in-line all the information about the node's children
+(their metadata, structure, and more) in a single response.
+
+
+```json
+{
+    "contents": {
+        "lat": {
+            "attributes": {
+                "ancestors": [
+                    "structured_data",
+                    "xarray_dataset"
+                ],
+                "metadata": {},
+                "sorting": null,
+                "specs": [
+                    "xarray_coord"
+                ],
+                "structure": {
+                    "macro": {
+                        "chunks": [
+                            [
+                                2
+                            ],
+                            [
+                                2
+                            ]
+                        ],
+                        "dims": [
+                            "x",
+                            "y"
+                        ],
+                        "resizable": false,
+                        "shape": [
+                            2,
+                            2
+                        ]
+                    },
+                    "micro": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "f"
+                    }
+                },
+                "structure_family": "array"
+            },
+            "id": "lat",
+            "links": {
+                "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/lat?block={index_0},{index_1}",
+                "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/lat",
+                "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/lat"
+            },
+            "meta": null
+        },
+        "lon": {
+            "attributes": {
+                "ancestors": [
+                    "structured_data",
+                    "xarray_dataset"
+                ],
+                "metadata": {},
+                "sorting": null,
+                "specs": [
+                    "xarray_coord"
+                ],
+                "structure": {
+                    "macro": {
+                        "chunks": [
+                            [
+                                2
+                            ],
+                            [
+                                2
+                            ]
+                        ],
+                        "dims": [
+                            "x",
+                            "y"
+                        ],
+                        "resizable": false,
+                        "shape": [
+                            2,
+                            2
+                        ]
+                    },
+                    "micro": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "f"
+                    }
+                },
+                "structure_family": "array"
+            },
+            "id": "lon",
+            "links": {
+                "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/lon?block={index_0},{index_1}",
+                "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/lon",
+                "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/lon"
+            },
+            "meta": null
+        },
+        "precipitation": {
+            "attributes": {
+                "ancestors": [
+                    "structured_data",
+                    "xarray_dataset"
+                ],
+                "metadata": {},
+                "sorting": null,
+                "specs": [
+                    "xarray_data_var"
+                ],
+                "structure": {
+                    "macro": {
+                        "chunks": [
+                            [
+                                2
+                            ],
+                            [
+                                2
+                            ],
+                            [
+                                3
+                            ]
+                        ],
+                        "dims": [
+                            "x",
+                            "y",
+                            "time"
+                        ],
+                        "resizable": false,
+                        "shape": [
+                            2,
+                            2,
+                            3
+                        ]
+                    },
+                    "micro": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "f"
+                    }
+                },
+                "structure_family": "array"
+            },
+            "id": "precipitation",
+            "links": {
+                "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/precipitation?block={index_0},{index_1},{index_2}",
+                "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/precipitation",
+                "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/precipitation"
+            },
+            "meta": null
+        },
+        "temperature": {
+            "attributes": {
+                "ancestors": [
+                    "structured_data",
+                    "xarray_dataset"
+                ],
+                "metadata": {},
+                "sorting": null,
+                "specs": [
+                    "xarray_data_var"
+                ],
+                "structure": {
+                    "macro": {
+                        "chunks": [
+                            [
+                                2
+                            ],
+                            [
+                                2
+                            ],
+                            [
+                                3
+                            ]
+                        ],
+                        "dims": [
+                            "x",
+                            "y",
+                            "time"
+                        ],
+                        "resizable": false,
+                        "shape": [
+                            2,
+                            2,
+                            3
+                        ]
+                    },
+                    "micro": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "f"
+                    }
+                },
+                "structure_family": "array"
+            },
+            "id": "temperature",
+            "links": {
+                "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/temperature?block={index_0},{index_1},{index_2}",
+                "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/temperature",
+                "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/temperature"
+            },
+            "meta": null
+        },
+        "time": {
+            "attributes": {
+                "ancestors": [
+                    "structured_data",
+                    "xarray_dataset"
+                ],
+                "metadata": {},
+                "sorting": null,
+                "specs": [
+                    "xarray_coord"
+                ],
+                "structure": {
+                    "macro": {
+                        "chunks": [
+                            [
+                                3
+                            ]
+                        ],
+                        "dims": [
+                            "time"
+                        ],
+                        "resizable": false,
+                        "shape": [
+                            3
+                        ]
+                    },
+                    "micro": {
+                        "endianness": "little",
+                        "itemsize": 8,
+                        "kind": "M"
+                    }
+                },
+                "structure_family": "array"
+            },
+            "id": "time",
+            "links": {
+                "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/time?block={index_0}",
+                "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/time",
+                "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/time"
+            },
+            "meta": null
+        }
+    },
+    "count": 5
+},
+"structure_family": "node"
+},
+        "id": "xarray_dataset",
+        "links": {
+            "full": "http://localhost:8000/api/node/full/structured_data/xarray_dataset",
+            "search": "http://localhost:8000/api/node/search/structured_data/xarray_dataset",
+            "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset"
+        },
+        "meta": null
+    },
+    "error": null,
+    "links": null,
+    "meta": {}
+}
+```

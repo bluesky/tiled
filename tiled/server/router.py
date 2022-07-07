@@ -30,11 +30,11 @@ from .dependencies import (
     get_serialization_registry,
     slice_,
 )
-from .pydantic_node import NodeAttributes
 from .settings import get_settings
 from .utils import get_base_url, record_timing
 
 DEFAULT_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 300
 
 
 router = APIRouter()
@@ -144,9 +144,12 @@ def declare_search_router(query_registry):
         path: str,
         fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
-        offset: Optional[int] = Query(0, alias="page[offset]"),
-        limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
+        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+        limit: Optional[int] = Query(
+            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+        ),
         sort: Optional[str] = Query(None),
+        max_depth: Optional[int] = Query(None, ge=0),
         omit_links: bool = Query(False),
         entry: Any = Security(entry, scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
@@ -168,6 +171,7 @@ def declare_search_router(query_registry):
                 sort,
                 get_base_url(request),
                 resolve_media_type(request),
+                max_depth=max_depth,
             )
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
@@ -235,7 +239,7 @@ def declare_search_router(query_registry):
     router.get(
         "/node/search",
         response_model=schemas.Response[
-            List[schemas.Resource[NodeAttributes, dict, dict]],
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
             dict,
         ],
@@ -244,7 +248,7 @@ def declare_search_router(query_registry):
     router.get(
         "/node/search/{path:path}",
         response_model=schemas.Response[
-            List[schemas.Resource[NodeAttributes, dict, dict]],
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
             dict,
         ],
@@ -255,7 +259,7 @@ def declare_search_router(query_registry):
 @router.get(
     "/node/metadata/{path:path}",
     response_model=schemas.Response[
-        schemas.Resource[NodeAttributes, dict, dict], dict, dict
+        schemas.Resource[schemas.NodeAttributes, dict, dict], dict, dict
     ],
 )
 async def node_metadata(
@@ -263,6 +267,7 @@ async def node_metadata(
     path: str,
     fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
     select_metadata: Optional[str] = Query(None),
+    max_depth: Optional[int] = Query(None, ge=0),
     omit_links: bool = Query(False),
     entry: Any = Security(entry, scopes=["read:metadata"]),
     root_path: bool = Query(False),
@@ -281,6 +286,7 @@ async def node_metadata(
             select_metadata,
             omit_links,
             resolve_media_type(request),
+            max_depth=max_depth,
         )
     except JMESPathError as err:
         raise HTTPException(
