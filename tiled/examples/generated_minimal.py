@@ -1,9 +1,11 @@
 import numpy
 import pandas
+import xarray
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.xarray import DatasetAdapter
 
 tree = MapAdapter(
     {
@@ -18,6 +20,12 @@ tree = MapAdapter(
                 }
             ),
             npartitions=3,
+        ),
+        "D": DatasetAdapter.from_dataset(
+            xarray.Dataset(
+                data_vars={"temperature": ("time", [100, 99, 98])},
+                coords={"time": [1, 2, 3]},
+            )
         ),
     },
     metadata={"thing": "stuff"},
