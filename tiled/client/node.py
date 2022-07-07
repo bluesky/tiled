@@ -267,7 +267,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def __getitem__(self, key):
+    def __getitem__(self, key, _ignore_inlined_items=False):
         # These are equivalent:
         #
         # >>> node['a']['b']['c']
@@ -318,18 +318,25 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Straightforwardly look up the key under this node.
             # There is no search filter in place, so if it is there
             # then we want it.
-            try:
-                self_link = self.item["links"]["self"]
-                if self_link.endswith("/"):
-                    self_link = self_link[:-1]
-                content = self.context.get_json(
-                    self_link + f"/{key}",
-                )
-            except ClientError as err:
-                if err.response.status_code == 404:
-                    raise KeyError(key)
-                raise
-            item = content["data"]
+
+            # Sometimes Nodes will in-line their contents (child nodes)
+            # to reduce latency. This is how we handle xarray Datasets efficiently,
+            # for example. Use that, if present.
+            item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
+            if (item is None) or _ignore_inlined_items:
+                # The item was not inlined.
+                try:
+                    self_link = self.item["links"]["self"]
+                    if self_link.endswith("/"):
+                        self_link = self_link[:-1]
+                    content = self.context.get_json(
+                        self_link + f"/{key}",
+                    )
+                except ClientError as err:
+                    if err.response.status_code == 404:
+                        raise KeyError(key)
+                    raise
+                item = content["data"]
         return client_for_item(
             self.context, self.structure_clients, item, path=self._path + (item["id"],)
         )
