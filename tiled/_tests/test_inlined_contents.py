@@ -69,3 +69,29 @@ def test_keys_slice():
     with record_history() as history:
         list(dsc._keys_slice(0, 1, 1, _ignore_inlined_contents=True))
     assert history.requests
+
+
+def test_items_slice():
+    "Iteration should be free because the contents were in-lined."
+    dsc = client["dataset"]
+    with record_history() as history:
+        list(dsc.items())
+    assert not history.requests
+
+    with record_history() as history:
+        dsc.items()
+    assert not history.requests
+
+    with record_history() as history:
+        dsc.items().first()
+    assert not history.requests
+
+    with record_history() as history:
+        dsc.items().last()
+    assert not history.requests
+
+    # Implementation detail:
+    # Without inlined contents, a request is needed.
+    with record_history() as history:
+        list(dsc._items_slice(0, 1, 1, _ignore_inlined_contents=True))
+    assert history.requests

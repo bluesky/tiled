@@ -265,8 +265,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             and self.sorting == [("_", 1)]
             and (not _ignore_inlined_contents)
         ):
-            yield from contents
-            return
+            return (yield from contents)
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
             content = self.context.get_json(
@@ -387,8 +386,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             and self.sorting == [("_", 1)]
             and (not _ignore_inlined_contents)
         ):
-            yield from list(contents)[start:stop:direction]
-            return
+            keys = list(contents)
+            if direction < 0:
+                keys = list(reversed(keys))
+            return (yield from keys[start:stop])
         if direction > 0:
             sorting_params = self._sorting_params
         else:
@@ -427,7 +428,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             and self.sorting == [("_", 1)]
             and (not _ignore_inlined_contents)
         ):
-            for key, item in list(contents.items())[start:stop:direction]:
+            items = list(contents.items())
+            if direction < 0:
+                items = list(reversed(items))
+            for key, item in items[start:stop]:
                 yield key, client_for_item(
                     self.context,
                     self.structure_clients,
