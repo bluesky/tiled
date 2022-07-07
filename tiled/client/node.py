@@ -649,9 +649,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         return key
 
-    def delete(self, key):
-        self.__delitem__(key)
-
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
