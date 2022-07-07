@@ -13,6 +13,7 @@ from ..structures.core import StructureFamily
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
+    DEPTH_LIMIT,
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
@@ -149,7 +150,7 @@ def declare_search_router(query_registry):
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),
         sort: Optional[str] = Query(None),
-        max_depth: Optional[int] = Query(None, ge=0),
+        max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         entry: Any = Security(entry, scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
@@ -267,7 +268,7 @@ async def node_metadata(
     path: str,
     fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
     select_metadata: Optional[str] = Query(None),
-    max_depth: Optional[int] = Query(None, ge=0),
+    max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
     entry: Any = Security(entry, scopes=["read:metadata"]),
     root_path: bool = Query(False),
