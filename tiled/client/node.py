@@ -225,6 +225,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
     def __len__(self):
+        # If the contents of this node was provided in-line, there is an
+        # implication that the contents are not expected to be dynamic. Used the
+        # count provided in the structure.
+        structure = self.item["attributes"]["structure"]
+        if structure["contents"]:
+            return structure["count"]
         now = time.monotonic()
         if self._cached_len is not None:
             length, deadline = self._cached_len
@@ -248,7 +254,19 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # https://www.python.org/dev/peps/pep-0424/
         return len(self)
 
-    def __iter__(self):
+    def __iter__(self, _ignore_inlined_contents=False):
+        # If the contents of this node was provided in-line, and we don't need
+        # to apply any filtering or sorting, we can slice the in-lined data
+        # without fetching anything from the server.
+        contents = self.item["attributes"]["structure"]["contents"]
+        if (
+            (contents is not None)
+            and (not self._queries)
+            and self.sorting == [("_", 1)]
+            and (not _ignore_inlined_contents)
+        ):
+            yield from contents
+            return
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
             content = self.context.get_json(
@@ -267,7 +285,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def __getitem__(self, key, _ignore_inlined_items=False):
+    def __getitem__(self, key, _ignore_inlined_contents=False):
         # These are equivalent:
         #
         # >>> node['a']['b']['c']
@@ -323,8 +341,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             # to reduce latency. This is how we handle xarray Datasets efficiently,
             # for example. Use that, if present.
             item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
-            if (item is None) or _ignore_inlined_items:
-                # The item was not inlined.
+            if (item is None) or _ignore_inlined_contents:
+                # The item was not inlined, either because nothing was inlined
+                # or because it was added after we fetched the inlined contents.
+                # Make a request for it.
                 try:
                     self_link = self.item["links"]["self"]
                     if self_link.endswith("/"):
@@ -356,7 +376,19 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start, stop, direction):
+    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+        # If the contents of this node was provided in-line, and we don't need
+        # to apply any filtering or sorting, we can slice the in-lined data
+        # without fetching anything from the server.
+        contents = self.item["attributes"]["structure"]["contents"]
+        if (
+            (contents is not None)
+            and (not self._queries)
+            and self.sorting == [("_", 1)]
+            and (not _ignore_inlined_contents)
+        ):
+            yield from list(contents)[start:stop:direction]
+            return
         if direction > 0:
             sorting_params = self._sorting_params
         else:
@@ -384,7 +416,25 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def _items_slice(self, start, stop, direction):
+    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+        # If the contents of this node was provided in-line, and we don't need
+        # to apply any filtering or sorting, we can slice the in-lined data
+        # without fetching anything from the server.
+        contents = self.item["attributes"]["structure"]["contents"]
+        if (
+            (contents is not None)
+            and (not self._queries)
+            and self.sorting == [("_", 1)]
+            and (not _ignore_inlined_contents)
+        ):
+            for key, item in list(contents.items())[start:stop:direction]:
+                yield key, client_for_item(
+                    self.context,
+                    self.structure_clients,
+                    item,
+                    path=self._path + (item["id"],),
+                )
+            return
         if direction > 0:
             sorting_params = self._sorting_params
         else:

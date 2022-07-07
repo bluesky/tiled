@@ -331,7 +331,6 @@ def construct_resource(
     if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
         if schemas.EntryFields.structure in fields:
-            print(path_parts, depth, max_depth)
             if (
                 ((max_depth is None) or (depth < max_depth))
                 and hasattr(entry, "inlined_contents_enabled")
