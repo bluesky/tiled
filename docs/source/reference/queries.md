@@ -8,6 +8,8 @@ These can be used in searches, as in
 c.search(FullText("hello"))
 ```
 
+Follow the links in the table below for examples specific to each query.
+
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
@@ -47,7 +49,7 @@ c.search(...).search(...).search(...)
 
 ````{warning}
 
-**You cannot use queries with the Python keywords `not`, `and`, or `or`.**
+**You cannot use queries with the Python keywords `not`, `in`, `and`, or `or`.**
 
 In Python, `and` and `or` have a particular behavior:
 
@@ -61,10 +63,11 @@ In Python, `and` and `or` have a particular behavior:
 
 which would result in the first or last query being used, respectively,
 ignoring all others. This is an unavoidable consequence of Python semantics.
-Likewise, `not X` must return `True` or `False`; it cannot return a query.
+Likewise, `in X` and ``not X` must return `True` or `False`; they cannot return
+a query.
 
 To avoid confusion, Tiled raises a `TypeError` if you attempt to use
-a query with `not`, `and`, or `or`.
+a query with `not`, `in`, `and`, or `or`.
 
 ````
 
@@ -75,3 +78,29 @@ a query with `not`, `and`, or `or`.
 
    tiled.queries.Key
 ```
+
+## Convenience Functions
+
+We recommend building convenience functions to provide for succinct usage for
+common searches. For example:
+
+```py
+def Sample(sample_name):
+    return Key("sample_name") == sample_name
+```
+
+This reduces
+
+```py
+c.search(Key("sample_name") == "stuff")
+```
+
+```py
+c.search(Sample("stuff"))
+```
+
+##  Custom queries
+
+Not all queries can be expressed as combinations of the built in ones.
+External libraries (like databroker) may register custom query types
+in addition to those built in to Tiled.
