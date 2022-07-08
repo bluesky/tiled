@@ -95,6 +95,8 @@ This reduces
 c.search(Key("sample_name") == "stuff")
 ```
 
+to
+
 ```py
 c.search(Sample("stuff"))
 ```
