@@ -47,7 +47,7 @@ from .utils import (
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
 
-# Max API keys allowed to Principal.
+# Max API keys and Sessions allowed to Principal.
 # This is here for at least two reasons:
 # 1. Ensure that the routes which list API keys and sessions, which are
 #    not paginated, returns in a reasonable time.
