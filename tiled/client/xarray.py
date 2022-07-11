@@ -49,10 +49,24 @@ class DaskDatasetClient(Node):
             )
         else:
             data_vars_fetcher = coords_fetcher
+        array_clients = {}
+        array_structures = {}
+        first_dims = []
         for name, array_client in self.items():
             if (variables is not None) and (name not in variables):
                 continue
+            array_clients[name] = array_client
             array_structure = array_client.structure()
+            array_structures[name] = array_structure
+            if array_structure.macro.shape:
+                first_dims.append(array_structure.macro.shape[0])
+            else:
+                first_dims.append(None)
+        if len(set(first_dims)) > 1:
+            # ragged, not tabular
+            optimize_wide_table = False
+        for name, array_client in array_clients.items():
+            array_structure = array_structures[name]
             shape = array_structure.macro.shape
             if optimize_wide_table and (
                 (not shape)  # empty

@@ -1,6 +1,5 @@
 import dask.array
 import numpy
-import pandas
 import pytest
 import xarray
 import xarray.testing
@@ -42,11 +41,17 @@ EXPECTED = {
         coords={
             "lon": (["x", "y"], lon),
             "lat": (["x", "y"], lat),
-            "time": pandas.date_range("2014-09-06", periods=3),
+            "time": [1, 2, 3],
         },
     ),
     "wide": xarray.Dataset(
         {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
+    ),
+    "ragged": xarray.Dataset(
+        {
+            f"{i}": xarray.DataArray(i * numpy.ones(2 * i), dims=f"dim{i}")
+            for i in range(10)
+        }
     ),
 }
 
@@ -57,8 +62,6 @@ tree = MapAdapter(
 
 @pytest.mark.parametrize("key", list(tree))
 def test_xarray_dataset(key):
-    if key == "image":
-        raise pytest.xfail("Problem with xarray construction to report upstream.")
     client = from_tree(tree)
     expected = EXPECTED[key]
     actual = client[key].read().load()
@@ -67,8 +70,6 @@ def test_xarray_dataset(key):
 
 @pytest.mark.parametrize("key", ["image", "weather"])
 def test_dataset_column_access(key):
-    if key == "image":
-        raise pytest.xfail("Problem with xarray construction to report upstream.")
     client = from_tree(tree)
     expected_dataset = EXPECTED[key]
     actual_dataset = client[key].read().load()
