@@ -1,7 +1,27 @@
 from pathlib import Path
 from typing import List, Optional
 
-import typer
+try:
+    import typer
+except Exception as err:
+    raise Exception(
+        """
+
+You trying to the run the tiled commandline tool but you do not have the
+necessary dependencies. It looks like tiled has been installed with
+bare-minimum dependencies, possibly via
+
+    pip install tiled
+
+Instead, try:
+
+    pip install tiled[all]  # Note: on a Mac, you may need quotes like 'tiled[all]'.
+
+which installs *everything* you might want. For other options, see:
+
+    https://blueskyproject.io/tiled/tutorials/installation.html
+"""
+    ) from err
 
 cli_app = typer.Typer()
 serve_app = typer.Typer()
