@@ -11,6 +11,7 @@ from ..adapters.mapping import MapAdapter
 from ..client import from_config
 from ..client.context import CannotRefreshAuthentication
 from ..client.utils import ClientError
+from ..server import authentication
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
@@ -328,3 +329,35 @@ def test_api_keys(enter_password, config):
     time.sleep(2)
     with fail_with_status_code(401):
         from_config(config, api_key=user_key_info["secret"])
+
+
+def test_api_key_limit(enter_password, config):
+    # Decrease the limit so this test runs faster.
+    original_limit = authentication.API_KEY_LIMIT
+    authentication.API_KEY_LIMIT = 10
+    try:
+        with enter_password("secret2"):
+            user_client = from_config(config, username="bob", token_cache={})
+
+        for i in range(authentication.API_KEY_LIMIT):
+            user_client.context.create_api_key(note=f"key {i}")
+        # Hit API key limit.
+        with fail_with_status_code(400):
+            user_client.context.create_api_key(note="one key too many")
+    finally:
+        authentication.API_KEY_LIMIT = original_limit
+
+
+def test_session_limit(enter_password, config):
+    # Decrease the limit so this test runs faster.
+    original_limit = authentication.SESSION_LIMIT
+    authentication.SESSION_LIMIT = 10
+    try:
+        with enter_password("secret1"):
+            for _ in range(authentication.SESSION_LIMIT):
+                from_config(config, username="alice", token_cache={})
+            # Hit Session limit.
+            with fail_with_status_code(400):
+                from_config(config, username="alice", token_cache={})
+    finally:
+        authentication.SESSION_LIMIT = original_limit

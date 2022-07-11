@@ -47,6 +47,14 @@ from .utils import (
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
 
+# Max API keys and Sessions allowed to Principal.
+# This is here for at least two reasons:
+# 1. Ensure that the routes which list API keys and sessions, which are
+#    not paginated, returns in a reasonable time.
+# 2. Avoid unintentional or intentional abuse.
+API_KEY_LIMIT = 100
+SESSION_LIMIT = 200
+
 
 def utcnow():
     "UTC now with second resolution"
@@ -336,6 +344,19 @@ def create_session(settings, identity_provider, id):
         else:
             identity.latest_login = now
             principal = identity.principal
+        session_count = (
+            db.query(orm.Session)
+            .join(orm.Principal)
+            .filter(orm.Principal.id == principal.id)
+            .count()
+        )
+        if session_count >= SESSION_LIMIT:
+            raise HTTPException(
+                400,
+                f"This Principal already has {session_count} sessions which is greater "
+                f"than or equal to the maximum number allowed, {SESSION_LIMIT}. "
+                "Some Sessions must be closed before creating new ones.",
+            )
         session = orm.Session(
             principal_id=principal.id,
             expiration_time=utcnow() + settings.session_max_age,
@@ -444,6 +465,19 @@ def generate_apikey(db, principal, apikey_params, request):
     # plus 4 more for extra safety since we store the first eight HEX chars.
     secret = secrets.token_bytes(4 + 32)
     hashed_secret = hashlib.sha256(secret).digest()
+    keys_count = (
+        db.query(orm.APIKey)
+        .join(orm.Principal)
+        .filter(orm.Principal.id == principal.id)
+        .count()
+    )
+    if keys_count >= API_KEY_LIMIT:
+        raise HTTPException(
+            400,
+            f"This Principal already has {keys_count} API keys which is greater "
+            f"than or equal to the maximum number allowed, {API_KEY_LIMIT}. "
+            "Some API keys must be deleted before creating new ones.",
+        )
     new_key = orm.APIKey(
         principal_id=principal.id,
         expiration_time=expiration_time,
