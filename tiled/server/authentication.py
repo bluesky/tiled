@@ -49,10 +49,11 @@ UNIT_SECOND = timedelta(seconds=1)
 
 # Max API keys allowed to Principal.
 # This is here for at least two reasons:
-# 1. Ensure that the route which lists API keys, which is not paginated, returns in
-#    a reasonable time.
+# 1. Ensure that the routes which list API keys and sessions, which are
+#    not paginated, returns in a reasonable time.
 # 2. Avoid unintentional or intentional abuse.
 API_KEY_LIMIT = 100
+SESSION_LIMIT = 200
 
 
 def utcnow():
@@ -343,6 +344,19 @@ def create_session(settings, identity_provider, id):
         else:
             identity.latest_login = now
             principal = identity.principal
+        session_count = (
+            db.query(orm.Session)
+            .join(orm.Principal)
+            .filter(orm.Principal.id == principal.id)
+            .count()
+        )
+        if session_count >= SESSION_LIMIT:
+            raise HTTPException(
+                400,
+                f"This Principal already has {session_count} sessions which is greater "
+                f"than or equal to the maximum number allowed, {SESSION_LIMIT}. "
+                "Some Sessions must be closed before creating new ones.",
+            )
         session = orm.Session(
             principal_id=principal.id,
             expiration_time=utcnow() + settings.session_max_age,
