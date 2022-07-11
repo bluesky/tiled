@@ -1,4 +1,5 @@
 import collections.abc
+import itertools
 
 import dask.array
 import xarray
@@ -62,7 +63,7 @@ class _DatasetMap(collections.abc.Mapping):
         return len(self._dataset.data_vars) + len(self._dataset.coords)
 
     def __iter__(self):
-        yield from (list(self._dataset.data_vars) + list(self._dataset.coords))
+        yield from itertools.chain(self._dataset.data_vars, self._dataset.coords)
 
     def __getitem__(self, key):
         data_array = self._dataset[key]
