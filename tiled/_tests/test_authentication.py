@@ -353,15 +353,11 @@ def test_session_limit(enter_password, config):
     original_limit = authentication.SESSION_LIMIT
     authentication.SESSION_LIMIT = 10
     try:
-        with enter_password("secret2"):
-            from_config(config, username="bob", token_cache={})
-
         with enter_password("secret1"):
             for _ in range(authentication.SESSION_LIMIT):
                 from_config(config, username="alice", token_cache={})
-        # Hit Session limit.
-        with fail_with_status_code(400):
-            with enter_password("secret1"):
+            # Hit Session limit.
+            with fail_with_status_code(400):
                 from_config(config, username="alice", token_cache={})
     finally:
         authentication.SESSION_LIMIT = original_limit
