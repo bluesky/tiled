@@ -11,6 +11,7 @@ from ..adapters.mapping import MapAdapter
 from ..client import from_config
 from ..client.context import CannotRefreshAuthentication
 from ..client.utils import ClientError
+from ..server.authentication import API_KEY_LIMIT
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
@@ -328,3 +329,8 @@ def test_api_keys(enter_password, config):
     time.sleep(2)
     with fail_with_status_code(401):
         from_config(config, api_key=user_key_info["secret"])
+
+    # Hit API key limit.
+    with fail_with_status_code(400):
+        for i in range(1 + API_KEY_LIMIT):
+            user_client.context.create_api_key(note=f"key {i}")

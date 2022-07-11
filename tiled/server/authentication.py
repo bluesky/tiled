@@ -47,6 +47,13 @@ from .utils import (
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
 
+# Max API keys allowed to Principal.
+# This is here for at least two reasons:
+# 1. Ensure that the route which lists API keys, which is not paginated, returns in
+#    a reasonable time.
+# 2. Avoid unintentional or intentional abuse.
+API_KEY_LIMIT = 100
+
 
 def utcnow():
     "UTC now with second resolution"
@@ -444,6 +451,19 @@ def generate_apikey(db, principal, apikey_params, request):
     # plus 4 more for extra safety since we store the first eight HEX chars.
     secret = secrets.token_bytes(4 + 32)
     hashed_secret = hashlib.sha256(secret).digest()
+    keys_count = (
+        db.query(orm.APIKey)
+        .join(orm.Principal)
+        .filter(orm.Principal.id == principal.id)
+        .count()
+    )
+    if keys_count >= API_KEY_LIMIT:
+        raise HTTPException(
+            400,
+            f"This Principal already has {keys_count} API keys which is greater "
+            f"than or equal to the maximum number allowed, {API_KEY_LIMIT}. "
+            "Some API keys must be deleted before creating new ones.",
+        )
     new_key = orm.APIKey(
         principal_id=principal.id,
         expiration_time=expiration_time,
