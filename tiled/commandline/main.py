@@ -7,7 +7,7 @@ except Exception as err:
     raise Exception(
         """
 
-You trying to the run the tiled commandline tool but you do not have the
+You are trying to the run the tiled commandline tool but you do not have the
 necessary dependencies. It looks like tiled has been installed with
 bare-minimum dependencies, possibly via
 
