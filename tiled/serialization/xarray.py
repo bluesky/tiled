@@ -23,8 +23,8 @@ if modules_available("scipy"):
 
     def serialize_netcdf(node, metadata):
         file = _BytesIOThatIgnoresClose()
-        # This engine is reportedly faster.
-        # Also, by avoiding the default engine, we avoid a dependency on 'scipy'.
+        # Per the xarray.Dataset.to_netcdf documentation,
+        # file-like objects are only supported by the scipy engine.
         node.as_dataset().to_netcdf(file, engine="scipy")
         return file.getbuffer()
 
