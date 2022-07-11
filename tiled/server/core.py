@@ -44,9 +44,11 @@ _LOCAL_TZINFO = dateutil.tz.gettz()
 # before the server refusing to inline its contents
 INLINED_CONTENTS_LIMIT = 100
 
-# Pragmatic limit on how deep the server will recurse into
-# nodes that request inlined contents
-DEPTH_LIMIT = 20
+# Pragmatic limit on how deep the server will recurse into nodes that request
+# inlined contents. This is a hard upper bound meant to protect the server from
+# being crashed by badly designed or buggy Adapters. It is up to Adapters to
+# opt in to this behavior and decide on a reasonable depth.
+DEPTH_LIMIT = 5
 
 
 def len_or_approx(tree):
