@@ -45,7 +45,7 @@ EXPECTED = {
         },
     ),
     "wide": xarray.Dataset(
-        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
+        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(100)}
     ),
     "ragged": xarray.Dataset(
         {
@@ -100,9 +100,12 @@ def test_wide_table_optimization_off():
 
 def test_url_limit_handling():
     "Check that requests and split up to stay below the URL length limit."
-    expected = EXPECTED["wide"]
+    expected = xarray.Dataset(
+        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
+    )
+    tree = MapAdapter({"very_wide": DatasetAdapter.from_dataset(expected)})
     client = from_tree(tree)
-    dsc = client["wide"]
+    dsc = client["very_wide"]
     dsc.read()  # Dry run to run any one-off state-initializing requests.
     # Accumulate Requests here for later inspection.
     requests = []

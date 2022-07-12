@@ -18,7 +18,7 @@ class DatasetAdapter(MapAdapter):
         mapping = _DatasetMap(dataset)
         specs = specs or []
         specs.append("xarray_dataset")
-        return cls(mapping, metadata=dataset.attrs, specs=specs)
+        return cls(mapping, metadata={"attrs": dataset.attrs}, specs=specs)
 
     def __init__(self, mapping, *args, specs=None, **kwargs):
         if isinstance(mapping, xarray.Dataset):
@@ -46,7 +46,9 @@ class DatasetAdapter(MapAdapter):
                 )
             else:
                 assert False, "Expected a spec"
-        return xarray.Dataset(data_vars=data_vars, coords=coords, attrs=self.metadata)
+        return xarray.Dataset(
+            data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
+        )
 
     def inlined_contents_enabled(self, depth):
         # Tell the server to in-line the description of each array
@@ -77,7 +79,7 @@ class _DatasetMap(collections.abc.Mapping):
             func = ArrayAdapter.from_array
         return func(
             data_array.data,
-            metadata=data_array.attrs,
+            metadata={"attrs": data_array.attrs},
             dims=data_array.dims,
             specs=[spec],
         )

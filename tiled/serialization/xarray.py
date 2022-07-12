@@ -11,6 +11,7 @@ from .dataframe import (
     serialize_html,
     serialize_parquet,
 )
+from .node import walk
 
 
 class _BytesIOThatIgnoresClose(io.BytesIO):
@@ -85,4 +86,36 @@ if modules_available("orjson"):
         "xarray_dataset",
         "application/json",
         serialize_json,
+    )
+if modules_available("h5py"):
+
+    def serialize_hdf5(node, metadata):
+        """
+        Like for node, but encode everything under 'attrs' in attrs.
+        """
+        import h5py
+
+        buffer = io.BytesIO()
+        root_node = node
+        with h5py.File(buffer, mode="w") as file:
+            for k, v in metadata["attrs"].items():
+                file.attrs.create(k, v)
+            for key_path, array_adapter in walk(node):
+                group = file
+                node = root_node
+                for key in key_path[:-1]:
+                    node = node[key]
+                    if key in group:
+                        group = group[key]
+                    else:
+                        group = group.create_group(key)
+                        group.attrs.update(node.metadata["attrs"])
+                data = array_adapter.read()
+                dataset = group.create_dataset(key_path[-1], data=data)
+                for k, v in array_adapter.metadata["attrs"].items():
+                    dataset.attrs.create(k, v)
+        return buffer.getbuffer()
+
+    serialization_registry.register(
+        "xarray_dataset", "application/x-hdf5", serialize_hdf5
     )
