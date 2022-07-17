@@ -36,18 +36,39 @@ is configured to use [ORCID](https://orcid.org/) for authentication.
 
 ### Scenario 1: Authenticator Directly Handles Credentials
 
-An initial handshake with the `/` route tells us that this server uses
-`"password"` authentication.
+An initial handshake with the `/` route tells us that authentication is required
+on this server. This is one authentication provider, and it expects (HTTP
+basic) password authentication. The `auth_endpoint` tells us where to POST our
+credentials.
 
 ```
-$ http :8000/ | jq .authentication.type
-"password"
+$ http :8000/api/ | jq .authentication
+{
+  "required": true,
+  "providers": [
+    {
+      "provider": "toy",
+      "mode": "password",
+      "links": {
+        "auth_endpoint": "http://localhost:8000/api/auth/provider/toy/token"
+      },
+      "confirmation_message": null
+    }
+  ],
+  "links": {
+    "whoami": "http://localhost:8000/api/auth/whoami",
+    "apikey": "http://localhost:8000/api/auth/apikey",
+    "refresh_session": "http://localhost:8000/api/auth/session/refresh",
+    "revoke_session": "http://localhost:8000/api/auth/session/revoke/{session_id}",
+    "logout": "http://localhost:8000/api/auth/logout"
+  }
+}
 ```
 
 Exchange username/password credentials for "access" and "refresh" tokens.
 
 ```
-$ http --form POST :8000/auth/provider/toy/token username=alice password=secret1 > tokens.json
+$ http --form POST :8000/api/auth/provider/toy/token username=alice password=secret1 > tokens.json
 ```
 
 The content of `tokens.json` looks like
@@ -64,7 +85,7 @@ The content of `tokens.json` looks like
 Make an authenticated request using that access token.
 
 ```
-$ http GET :8000/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+$ http GET :8000/api/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
 HTTP/1.1 200 OK
 content-length: 239
 content-type: application/json
@@ -100,7 +121,7 @@ When the access token expires (after 15 minutes, by default) requests will be
 rejected like this.
 
 ```
-$ http GET :8000/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+$ http GET :8000/api/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
 HTTP/1.1 401 Unauthorized
 content-length: 53
 content-type: application/json
@@ -117,7 +138,7 @@ set-cookie: tiled_csrf=6sPHOrjBRzZOiSuXOXNtaDNyNNeqQj86nPIXf7X3C1M; HttpOnly; Pa
 Exchange the refresh token for a fresh pair of access and refresh tokens.
 
 ```
-$ http POST :8000/auth/session/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
+$ http POST :8000/api/auth/session/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
 ```
 
 And resume making requests with the new access token.
@@ -132,7 +153,7 @@ An initial handshake with the `/` route tells us that this server uses
 `"external"` authentication.
 
 ```
-$ http https://tiled-demo.blueskyproject.io/ | jq .authentication.type
+$ http https://tiled-demo.blueskyproject.io/api/ | jq .authentication.type
 "external"
 ```
 
@@ -140,7 +161,7 @@ Elsewhere in this same response, we can find the authentication endpoint for
 this external identity provider.
 
 ```
-$ http https://tiled-demo.blueskyproject.io/ | jq .authentication.endpoint
+$ http https://tiled-demo.blueskyproject.io/api/ | jq .authentication.endpoint
 "https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/auth/code",
 ```
 
@@ -151,7 +172,7 @@ a valid refresh token from Tiled that encodes your ORCID username. Exchange the
 refresh token for an access token and a fresh refresh token like so.
 
 ```
-$ http POST https://tiled-demo.blueskyproject.io/auth/session/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
+$ http POST https://tiled-demo.blueskyproject.io/api/auth/session/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
 ```
 
 From here, everything follows the same as in Scenario 1, above.
