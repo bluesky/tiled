@@ -7,6 +7,7 @@ import queue
 import re
 import threading
 import warnings
+from fnmatch import fnmatch
 from pathlib import Path
 
 import cachetools
@@ -679,10 +680,16 @@ def _reader_factory_for_file(
     if ext in mimetypes_by_file_ext:
         mimetype = mimetypes_by_file_ext[ext]
     else:
-        # Use the Python's built-in facility for guessing mimetype
-        # from file extension. This loads data about mimetypes from
-        # the operating system the first time it is used.
-        mimetype, _ = mimetypes.guess_type(str(path))
+        # This may match wildcards, such as
+        # ext like ".1.txt" to ".*.txt" or ".txt.1" to ".txt.*".
+        for file_ext, mimetype in mimetypes_by_file_ext.items():
+            if fnmatch(ext, file_ext):
+                break
+        else:
+            # Use the Python's built-in facility for guessing mimetype
+            # from file extension. This loads data about mimetypes from
+            # the operating system the first time it is used.
+            mimetype, _ = mimetypes.guess_type(str(path))
     # Finally, user-specified function has the opportunity to
     # look at more than just the file extension. This gets access to the full
     # path, so it can consider the file name and even open the file. It is also
