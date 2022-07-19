@@ -44,8 +44,6 @@ class DatasetAdapter(MapAdapter):
                     array_adapter.macrostructure().dims,
                     array_adapter.read(),
                 )
-            else:
-                assert False, "Expected a spec"
         return xarray.Dataset(
             data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
         )
