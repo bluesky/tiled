@@ -162,6 +162,18 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.DaskArrayClient.formats
 ```
 
+### Sparse Array
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.sparse.SparseClient
+   tiled.client.sparse.SparseClient.read
+   tiled.client.sparse.SparseClient.export
+   tiled.client.sparse.SparseClient.formats
+```
+
 ### DataFrame
 
 ```{eval-rst}

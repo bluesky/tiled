@@ -14,6 +14,7 @@ or its dask counterpart.
    tiled.adapters.mapping.MapAdapter
    tiled.adapters.array.ArrayAdapter
    tiled.adapters.dataframe.DataFrameAdapter
+   tiled.adapters.sparse.COOAdapter
    tiled.adapters.xarray.DatasetAdapter.from_dataset
 ```
 
@@ -100,6 +101,15 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.array.BuiltinDtype
    tiled.structures.array.Kind
    tiled.structures.array.Endianness
+```
+
+### Sparse Array
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.structures.sparse.COOStructure
 ```
 
 ### DataFrame

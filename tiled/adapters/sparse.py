@@ -6,6 +6,7 @@ from .array import ArrayAdapter
 
 
 class COOAdapter:
+    "Wrap sparse Coordinate List (COO) arrays."
     structure_family = "sparse"
 
     @classmethod
