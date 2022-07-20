@@ -106,6 +106,13 @@ class DaskDatasetClient(Node):
 class DatasetClient(DaskDatasetClient):
     separate_coords_and_data_vars_download = False
 
+    def read(self, variables=None, *, optimize_wide_table=True):
+        return (
+            super()
+            .read(variables=variables, optimize_wide_table=optimize_wide_table)
+            .load()
+        )
+
     def download(self):
         # Do not run super().download() because DaskDatasetClient calls compute()
         # which does not apply here.
