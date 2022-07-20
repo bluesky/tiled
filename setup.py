@@ -53,6 +53,7 @@ categorized_requirements = {
         "server",
         "array",
         "dataframe",
+        "sparse",
         "xarray",
     ]
 }
