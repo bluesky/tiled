@@ -262,7 +262,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if (
             (contents is not None)
             and (not self._queries)
-            and self.sorting == [("_", 1)]
+            and ((not self.sorting) or (self.sorting == [("_", 1)]))
             and (not _ignore_inlined_contents)
         ):
             return (yield from contents)
@@ -383,7 +383,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if (
             (contents is not None)
             and (not self._queries)
-            and self.sorting == [("_", 1)]
+            and ((not self.sorting) or (self.sorting == [("_", 1)]))
             and (not _ignore_inlined_contents)
         ):
             keys = list(contents)
@@ -425,7 +425,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if (
             (contents is not None)
             and (not self._queries)
-            and self.sorting == [("_", 1)]
+            and ((not self.sorting) or (self.sorting == [("_", 1)]))
             and (not _ignore_inlined_contents)
         ):
             items = list(contents.items())
