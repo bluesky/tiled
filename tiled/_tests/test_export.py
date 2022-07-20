@@ -91,3 +91,9 @@ def test_path_as_Path_or_string(tmpdir):
     client = from_tree(tree)
     client["A"].export(Path(tmpdir, "test_path_as_path.txt"))
     client["A"].export(str(Path(tmpdir, "test_path_as_str.txt")))
+
+
+def test_formats():
+    client = from_tree(tree)
+    client.formats
+    client["A"].formats

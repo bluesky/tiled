@@ -114,7 +114,11 @@ class BaseClient:
         formats = set()
         for spec in self.item["attributes"]["specs"]:
             formats.update(self.context.get_json("")["formats"].get(spec, []))
-        formats.update(self.context.get_json("")["formats"]["structure_family"])
+        formats.update(
+            self.context.get_json("")["formats"][
+                self.item["attributes"]["structure_family"]
+            ]
+        )
         return sorted(formats)
 
 
