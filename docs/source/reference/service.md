@@ -14,9 +14,7 @@ or its dask counterpart.
    tiled.adapters.mapping.MapAdapter
    tiled.adapters.array.ArrayAdapter
    tiled.adapters.dataframe.DataFrameAdapter
-   tiled.adapters.xarray.VariableAdapter
-   tiled.adapters.xarray.DataArrayAdapter
-   tiled.adapters.xarray.DatasetAdapter
+   tiled.adapters.xarray.DatasetAdapter.from_dataset
 ```
 
 ### File and Directory Adapters
@@ -113,32 +111,6 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.dataframe.DataFrameStructure
    tiled.structures.dataframe.DataFrameMacroStructure
    tiled.structures.dataframe.DataFrameMicroStructure
-```
-
-### Xarray Structures
-
-Xarrays are "meta" structures that contain chunks of arrays. For this reason,
-they have no microstructure. Their macrostructure encompasses nested array
-structures.
-
-#### DataArray
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.structures.xarray.DataArrayStructure
-   tiled.structures.xarray.DataArrayMacroStructure
-```
-
-#### Dataset
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.structures.xarray.DatasetStructure
-   tiled.structures.xarray.DatasetMacroStructure
 ```
 
 ## Configuration Parsing

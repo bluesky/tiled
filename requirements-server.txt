@@ -3,7 +3,6 @@ aiofiles
 alembic
 anyio
 cachey
-cached-property; python_version < '3.8'
 cachetools
 click !=8.1.0
 dask

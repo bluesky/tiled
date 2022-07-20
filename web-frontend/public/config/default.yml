@@ -51,11 +51,6 @@ structure_families:
       - mimetype: application/x-hdf5
         display_name: HDF5
         extension: .h5
-  xarray_dataset:
-    formats:
-      - mimetype: application/x-netcdf
-        display_name: NetCDF
-        extension: .nc
   node:
     formats:
       - mimetype: application/x-hdf5

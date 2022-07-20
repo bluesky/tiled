@@ -3,8 +3,6 @@ import string
 import sys
 from datetime import timedelta
 
-import dask.array
-import dask.dataframe
 import numpy
 import pandas
 import xarray
@@ -12,7 +10,7 @@ import xarray
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
-from tiled.adapters.xarray import DataArrayAdapter, DatasetAdapter, VariableAdapter
+from tiled.adapters.xarray import DatasetAdapter
 
 print("Generating large example data...", file=sys.stderr)
 data = {
@@ -28,6 +26,10 @@ data = {
     "tiny_column": numpy.random.random(10),
     "long_column": numpy.random.random(100_000),
 }
+temp = 15 + 8 * numpy.random.randn(2, 2, 3)
+precip = 10 * numpy.random.rand(2, 2, 3)
+lon = [[-99.83, -99.32], [-99.79, -99.23]]
+lat = [[42.25, 42.21], [42.63, 42.59]]
 print("Done generating example data.", file=sys.stderr)
 
 mapping = {
@@ -72,17 +74,6 @@ mapping = {
         npartitions=1,
         metadata={"animal": "dog", "color": "red"},
     ),
-    "labeled_data": MapAdapter(
-        {
-            "image_with_dims": VariableAdapter(
-                xarray.Variable(
-                    data=dask.array.from_array(data["medium_image"]),
-                    dims=["x", "y"],
-                    attrs={"thing": "stuff"},
-                )
-            )
-        }
-    ),
     "structured_data": MapAdapter(
         {
             "pets": ArrayAdapter.from_array(
@@ -91,55 +82,18 @@ mapping = {
                     dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
                 )
             ),
-            "image_with_coords": DataArrayAdapter.from_data_array(
-                xarray.DataArray(
-                    xarray.Variable(
-                        data=dask.array.from_array(data["medium_image"]),
-                        dims=["x", "y"],
-                        attrs={"thing": "stuff"},
-                    ),
-                    coords={
-                        "x": dask.array.arange(len(data["medium_image"])) / 10,
-                        "y": dask.array.arange(len(data["medium_image"])) / 50,
-                    },
-                )
-            ),
-            "xarray_dataset": DatasetAdapter(
+            "xarray_dataset": DatasetAdapter.from_dataset(
                 xarray.Dataset(
                     {
-                        "image": xarray.DataArray(
-                            xarray.Variable(
-                                data=dask.array.from_array(data["medium_image"]),
-                                dims=["x", "y"],
-                                attrs={"thing": "stuff"},
-                            ),
-                            coords={
-                                "x": dask.array.arange(len(data["medium_image"])) / 10,
-                                "y": dask.array.arange(len(data["medium_image"])) / 50,
-                            },
-                        ),
-                        "z": xarray.DataArray(
-                            data=dask.array.ones((len(data["medium_image"]),))
-                        ),
+                        "temperature": (["x", "y", "time"], temp),
+                        "precipitation": (["x", "y", "time"], precip),
                     },
-                    attrs={"snow": "cold"},
-                )
-            ),
-            "xarray_data_array": DataArrayAdapter.from_data_array(
-                xarray.DataArray(
-                    xarray.Variable(
-                        data=dask.array.from_array(data["medium_image"]),
-                        dims=["x", "y"],
-                        attrs={"thing": "stuff"},
-                    )
-                )
-            ),
-            "xarray_variable": VariableAdapter(
-                xarray.Variable(
-                    data=dask.array.from_array(data["medium_image"]),
-                    dims=["x", "y"],
-                    attrs={"thing": "stuff"},
-                )
+                    coords={
+                        "lon": (["x", "y"], lon),
+                        "lat": (["x", "y"], lat),
+                        "time": pandas.date_range("2014-09-06", periods=3),
+                    },
+                ),
             ),
         },
         metadata={"animal": "cat", "color": "green"},

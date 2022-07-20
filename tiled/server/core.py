@@ -22,12 +22,11 @@ from starlette.responses import JSONResponse, Send, StreamingResponse
 from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
-from ..structures import node  # noqa: F401
+from ..serialization import register_builtin_serializers
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
     UnsupportedShape,
-    modules_available,
     safe_json_dump,
 )
 from . import schemas
@@ -35,22 +34,21 @@ from .etag import tokenize
 from .utils import record_timing
 
 del queries
-if modules_available("numpy", "dask.array"):
-    from ..structures import array as _array  # noqa: F401
-
-    del _array
-if modules_available("pandas", "pyarrow", "dask.dataframe"):
-    from ..structures import dataframe as _dataframe  # noqa: F401
-
-    del _dataframe
-if modules_available("xarray"):
-    from ..structures import xarray as _xarray  # noqa: F401
-
-    del _xarray
+register_builtin_serializers()
 
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 _LOCAL_TZINFO = dateutil.tz.gettz()
+
+# Pragmatic limit on how "wide" a node can be
+# before the server refusing to inline its contents
+INLINED_CONTENTS_LIMIT = 100
+
+# Pragmatic limit on how deep the server will recurse into nodes that request
+# inlined contents. This is a hard upper bound meant to protect the server from
+# being crashed by badly designed or buggy Adapters. It is up to Adapters to
+# opt in to this behavior and decide on a reasonable depth.
+DEPTH_LIMIT = 5
 
 
 def len_or_approx(tree):
@@ -106,6 +104,7 @@ def construct_entries_response(
     sort,
     base_url,
     media_type,
+    max_depth,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     if tree.structure_family != "node":
@@ -192,6 +191,7 @@ def construct_entries_response(
             select_metadata,
             omit_links,
             media_type,
+            max_depth=max_depth,
         )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
@@ -213,8 +213,6 @@ DEFAULT_MEDIA_TYPES = {
     "array": {"*/*": "application/octet-stream", "image/*": "image/png"},
     "dataframe": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     "node": {"*/*": "application/x-hdf5"},
-    "xarray_data_array": {"*/*": "application/octet-stream"},
-    "xarray_dataset": {"*/*": "application/netcdf"},
 }
 
 
@@ -259,7 +257,8 @@ def construct_data_response(
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
         elif structure_family == "array" and media_type == "image/*":
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["image/*"]
-        # fall back to generic dataframe serializer if no specs present
+        # Compare the request formats to the formats supported by each spec
+        # and, finally, by the structure family.
         for spec in specs + [structure_family]:
             media_types_for_spec = serialization_registry.media_types(spec)
             if media_type in media_types_for_spec:
@@ -292,9 +291,7 @@ def construct_data_response(
         headers["Content-Disposition"] = f"attachment;filename={filename}"
     # This is the expensive step: actually serialize.
     try:
-        content = serialization_registry(
-            structure_family, media_type, payload, metadata
-        )
+        content = serialization_registry(spec, media_type, payload, metadata)
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
@@ -319,6 +316,8 @@ def construct_resource(
     select_metadata,
     omit_links,
     media_type,
+    max_depth,
+    depth=0,
 ):
     path_str = "/".join(path_parts)
     attributes = {"ancestors": path_parts[:-1]}
@@ -333,8 +332,53 @@ def construct_resource(
         attributes["specs"] = getattr(entry, "specs", [])
     if (entry is not None) and entry.structure_family == "node":
         attributes["structure_family"] = "node"
-        if schemas.EntryFields.count in fields:
-            attributes["count"] = len_or_approx(entry)
+        if schemas.EntryFields.structure in fields:
+            if (
+                ((max_depth is None) or (depth < max_depth))
+                and hasattr(entry, "inlined_contents_enabled")
+                and entry.inlined_contents_enabled(depth)
+                and depth <= DEPTH_LIMIT
+            ):
+                # This node wants us to inline its contents.
+                # First check that it is not too large.
+                est_count = len_or_approx(entry)
+                if est_count > INLINED_CONTENTS_LIMIT:
+                    # Too large: do not inline its contents.
+                    count = est_count
+                    contents = None
+                else:
+                    contents = {}
+                    # The size may change as we are walking the entry.
+                    # Keep a *true* count separately from est_count.
+                    count = 0
+                    for key, adapter in entry.items():
+                        count += 1
+                        if count > INLINED_CONTENTS_LIMIT:
+                            # The est_count was inaccurate or else the entry has grown
+                            # new children while we are walking it. Too large!
+                            count = len_or_approx(entry)
+                            contents = None
+                            break
+                        contents[key] = construct_resource(
+                            base_url,
+                            path_parts + [key],
+                            adapter,
+                            fields,
+                            select_metadata,
+                            omit_links,
+                            media_type,
+                            max_depth,
+                            depth=1 + depth,
+                        )
+            else:
+                count = len_or_approx(entry)
+                contents = None
+            structure = schemas.NodeStructure(
+                count=count,
+                contents=contents,
+            )
+            attributes["structure"] = structure
+        if schemas.EntryFields.sorting in fields:
             if hasattr(entry, "sorting"):
                 # In the Python API we encode sorting as (key, direction).
                 # This order-based "record" notion does not play well with OpenAPI.
@@ -373,11 +417,15 @@ def construct_resource(
             )
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if schemas.EntryFields.macrostructure in fields:
+            if (schemas.EntryFields.macrostructure in fields) or (
+                schemas.EntryFields.structure in fields
+            ):
                 macrostructure = entry.macrostructure()
                 if macrostructure is not None:
                     structure["macro"] = dataclasses.asdict(macrostructure)
-            if schemas.EntryFields.microstructure in fields:
+            if (schemas.EntryFields.microstructure in fields) or (
+                schemas.EntryFields.structure in fields
+            ):
                 if entry.structure_family == "node":
                     assert False  # not sure if this ever happens
                     pass
@@ -597,12 +645,4 @@ FULL_LINKS = {
     "node": {"full": "{base_url}/node/full/{path}"},
     "array": {"full": "{base_url}/array/full/{path}"},
     "dataframe": {"full": "{base_url}/node/full/{path}"},
-    "xarray_data_array": {
-        "full_variable": "{base_url}/array/full/{path}/variable",
-    },
-    "xarray_dataset": {
-        "full_variable": "{base_url}/array/full/{path}/data_vars/{{variable}}/variable",
-        "full_coord": "{base_url}/array/full/{path}/coords/{{coord}}/variable",
-        "full_dataset": "{base_url}/node/full/{path}",
-    },
 }

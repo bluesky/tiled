@@ -4,7 +4,7 @@ import pandas
 from pydantic import BaseModel
 
 from ..media_type_registration import deserialization_registry
-from ..structures.dataframe import serialize_arrow
+from ..serialization.dataframe import serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 
 

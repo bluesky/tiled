@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
@@ -47,6 +49,7 @@ class PaginationLinks(pydantic.BaseModel):
 class EntryFields(str, enum.Enum):
     metadata = "metadata"
     structure_family = "structure_family"
+    structure = "structure"
     microstructure = "structure.micro"
     macrostructure = "structure.macro"
     count = "count"
@@ -55,9 +58,9 @@ class EntryFields(str, enum.Enum):
     none = ""
 
 
-class Structure(pydantic.BaseModel):
-    micro: Optional[dict]
-    macro: Optional[dict]
+class NodeStructure(pydantic.BaseModel):
+    contents: Optional[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]
+    count: int
 
 
 class SortingDirection(int, enum.Enum):
@@ -75,8 +78,7 @@ class NodeAttributes(pydantic.BaseModel):
     structure_family: Optional[StructureFamily]
     specs: Optional[List[str]]
     metadata: Optional[dict]  # free-form, user-specified dict
-    structure: Optional[Structure]
-    count: Optional[int]
+    structure: Optional[Union[ArrayStructure, DataFrameStructure, NodeStructure]]
     sorting: Optional[List[SortingItem]]
 
 
@@ -107,24 +109,10 @@ class DataFrameLinks(pydantic.BaseModel):
     partition: str
 
 
-class XarrayDataArrayLinks(pydantic.BaseModel):
-    self: str
-    full_variable: str
-
-
-class XarrayDatasetLinks(pydantic.BaseModel):
-    self: str
-    full_variable: str
-    full_coord: str
-    full_dataset: str
-
-
 resource_links_type_by_structure_family = {
     "node": NodeLinks,
     "array": ArrayLinks,
     "dataframe": DataFrameLinks,
-    "xarray_data_array": XarrayDataArrayLinks,
-    "xarray_dataset": XarrayDatasetLinks,
 }
 
 
@@ -288,3 +276,6 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel):
     key: str
+
+
+NodeStructure.update_forward_refs()

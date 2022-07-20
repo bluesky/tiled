@@ -34,6 +34,7 @@ how-to/tiled-database
 
 explanations/standards
 explanations/structures
+explanations/metadata
 explanations/security
 explanations/compression
 explanations/specialized-formats

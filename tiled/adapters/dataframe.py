@@ -26,11 +26,13 @@ class DataFrameAdapter:
     structure_family = "dataframe"
 
     @classmethod
-    def from_pandas(cls, *args, metadata=None, **kwargs):
-        return cls(dask.dataframe.from_pandas(*args, **kwargs), metadata=metadata)
+    def from_pandas(cls, *args, metadata=None, specs=None, **kwargs):
+        return cls(
+            dask.dataframe.from_pandas(*args, **kwargs), metadata=metadata, specs=specs
+        )
 
     @classmethod
-    def read_csv(cls, *args, metadata=None, **kwargs):
+    def read_csv(cls, *args, metadata=None, specs=None, **kwargs):
         """
         Read a CSV.
 
@@ -51,7 +53,7 @@ class DataFrameAdapter:
         cache = get_object_cache()
         if cache is not NO_CACHE:
             cache.discard_dask(ddf.__dask_keys__())
-        return cls(ddf, metadata=metadata)
+        return cls(ddf, metadata=metadata, specs=specs)
 
     read_csv.__doc__ = (
         """
@@ -61,9 +63,10 @@ class DataFrameAdapter:
         + dask.dataframe.read_csv.__doc__
     )
 
-    def __init__(self, ddf, metadata=None):
+    def __init__(self, ddf, *, metadata=None, specs=None):
         self._metadata = metadata or {}
         self._ddf = ddf
+        self.specs = specs or []
 
     def __repr__(self):
         return f"{type(self).__name__}({self._ddf!r})"

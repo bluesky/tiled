@@ -27,6 +27,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         "entries_stale_after",
         "include_routers",
         "metadata_stale_after",
+        "specs",
     )
 
     structure_family = "node"
@@ -39,7 +40,9 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     def __init__(
         self,
         mapping,
+        *,
         metadata=None,
+        specs=None,
         sorting=None,
         access_policy=None,
         principal=None,
@@ -54,6 +57,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         ----------
         mapping : dict-like
         metadata : dict, optional
+        specs : List[str], optional
         sorting : List[Tuple[str, int]], optional
         access_policy : AccessPolicy, optional
         principal : str, optional
@@ -74,6 +78,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             sorting = [("_", 1)]
         self._sorting = sorting
         self._metadata = metadata or {}
+        self.specs = specs or []
         if (access_policy is not None) and (
             not access_policy.check_compatibility(self)
         ):
@@ -190,6 +195,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             mapping=mapping,
             sorting=sorting,
             metadata=self._metadata,
+            specs=self.specs,
             access_policy=self.access_policy,
             principal=self.principal,
             entries_stale_after=self.entries_stale_after,
@@ -200,7 +206,10 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
     def read(self, fields=None):
         if fields is not None:
-            raise NotImplementedError
+            new_mapping = {}
+            for field in fields:
+                new_mapping[field] = self._mapping[field]
+            return self.new_variation(mapping=new_mapping)
         return self
 
     def search(self, query):

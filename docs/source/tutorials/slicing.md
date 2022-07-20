@@ -98,7 +98,7 @@ index
 You may select a column or a list of columns.
 
 ```python
->>> client['short_table']['A']
+>>> client['short_table'].read(['A'])
 index
 0     0.100145
 1     0.634538
@@ -113,7 +113,7 @@ index
 99    0.456574
 Name: A, Length: 100, dtype: float64
 
->>> client['short_table'][['A', 'B']]
+>>> client['short_table'].read(['A', 'B'])
               A         B
 index
 0      0.100145  0.833089
@@ -130,8 +130,6 @@ index
 
 [100 rows x 2 columns]
 ```
-
-TO DO: Cover xarray Variables, DataArrays, Datasets.
 
 ## Dask
 

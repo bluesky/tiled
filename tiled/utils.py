@@ -52,6 +52,9 @@ class ListView(collections.abc.Sequence):
     def __add__(self, other):
         return type(self)(self._internal_list + other)
 
+    def __eq__(self, other):
+        return self._internal_list == other
+
 
 class DictView(collections.abc.Mapping):
     "An immutable view of a dict."
@@ -91,6 +94,9 @@ class DictView(collections.abc.Mapping):
 
     def __delitem__(self, key):
         raise TypeError("Deleting items is not allowed.")
+
+    def __eq__(self, other):
+        return self._internal_dict == other
 
 
 # This object should never be directly instantiated by external code.
@@ -564,3 +570,25 @@ def get_share_tiled_path():
 
 # Package managers can just override this with the appropriate constant
 SHARE_TILED_PATH = get_share_tiled_path()
+
+
+def node_repr(tree, sample):
+    sample_reprs = list(map(repr, sample))
+    out = f"<{type(tree).__name__} {{"
+    # Always show at least one.
+    if sample_reprs:
+        out += sample_reprs[0]
+    # And then show as many more as we can fit on one line.
+    counter = 1
+    for sample_repr in sample_reprs[1:]:
+        if len(out) + len(sample_repr) > 60:  # character count
+            break
+        out += ", " + sample_repr
+        counter += 1
+    approx_len = operator.length_hint(tree)  # cheaper to compute than len(tree)
+    # Are there more in the tree that what we displayed above?
+    if approx_len > counter:
+        out += f", ...}} ~{approx_len} entries>"
+    else:
+        out += "}>"
+    return out

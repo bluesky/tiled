@@ -5,7 +5,7 @@ from .cache import Revalidate, verify_cache
 
 
 class BaseClient:
-    def __init__(self, context, *, item, path, params, structure_clients):
+    def __init__(self, context, *, item, path, structure_clients):
         self._context = context
         if isinstance(path, str):
             raise ValueError("path is expected to be a list of segments")
@@ -13,7 +13,6 @@ class BaseClient:
         self._path = tuple(path or [])
         self._item = item
         self._cached_len = None  # a cache just for __len__
-        self._params = params or {}
         self.structure_clients = structure_clients
         super().__init__()
 
@@ -68,6 +67,11 @@ class BaseClient:
         return DictView(self._item["attributes"]["metadata"])
 
     @property
+    def specs(self):
+        "List of specifications describing the structure of the metadata and/or data."
+        return ListView(self.item["attributes"]["specs"])
+
+    @property
     def path(self):
         "Sequence of entry names from the root Tree to this entry"
         return ListView(self._path)
@@ -89,25 +93,33 @@ class BaseClient:
     def offline(self, value):
         self.context.offline = bool(value)
 
-    def new_variation(
-        self, path=UNCHANGED, params=UNCHANGED, structure_clients=UNCHANGED, **kwargs
-    ):
+    def new_variation(self, path=UNCHANGED, structure_clients=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.
         """
         if path is UNCHANGED:
             path = self._path
-        if params is UNCHANGED:
-            params = self._params
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
         return type(self)(
             item=self._item,
             path=path,
-            params=params,
             structure_clients=structure_clients,
             **kwargs,
         )
+
+    @property
+    def formats(self):
+        "List formats that the server can export this data as."
+        formats = set()
+        for spec in self.item["attributes"]["specs"]:
+            formats.update(self.context.get_json("")["formats"].get(spec, []))
+        formats.update(
+            self.context.get_json("")["formats"][
+                self.item["attributes"]["structure_family"]
+            ]
+        )
+        return sorted(formats)
 
 
 class BaseStructureClient(BaseClient):
@@ -171,11 +183,5 @@ STRUCTURE_TYPES = OneShotCachedMap(
         "dataframe": lambda: importlib.import_module(
             "...structures.dataframe", BaseStructureClient.__module__
         ).DataFrameStructure,
-        "xarray_data_array": lambda: importlib.import_module(
-            "...structures.xarray", BaseStructureClient.__module__
-        ).DataArrayStructure,
-        "xarray_dataset": lambda: importlib.import_module(
-            "...structures.xarray", BaseStructureClient.__module__
-        ).DatasetStructure,
     }
 )

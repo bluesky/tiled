@@ -7,21 +7,15 @@ potentially any language.
 
 ## Supported structure families
 
-The most commonly-used structure families are:
+The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
-* node --- a grouping of other structures, akin to a directory
+* node --- a grouping of other structures, akin to a dictionary or a directory
 
-Additional structures come from
-[xarray](https://xarray.pydata.org/en/stable/). They may be considered
-*containers* for one or more strided arrays.
-
-* xarray_data_array
-* xarray_dataset
-
-Support for [Awkward Array](https://awkward-array.org/) is planned.
+Support for sparse arrays and [Awkward Array](https://awkward-array.org/) are
+planned.
 
 ## How structure is encoded
 
@@ -31,9 +25,9 @@ wants.
 
 The structures encodings are designed to be as unoriginal as possible, using
 established standards and, where some invention is required, using established
-names from numpy, pandas/Arrow, xarray, and dask.
+names from numpy, pandas/Arrow, and dask.
 
-The structures are encoded in two parts:
+Some structures are encoded in two parts:
 
 * **Macrostructure** --- This is the high-level structure including things like
   shape, chunk shape, number of partitions, and column names. This structure
@@ -252,317 +246,276 @@ Both of the concepts (and their names) are borrowed directly from
 dask.dataframe. They should enable any client, including in languages other than
 Python, to perform the same function.
 
-### Data Array (xarray)
+### Node
 
-A
-[DataArray](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-DataArray)
-is an array with labeled dimensions, grouped with optional "coordinates", which are
-tick labels for the dimensions.
+The node structure is a container for other structures. It may be compared to a
+directory, a JSON object, a Python dictionary, or an HDF5 Group. Nodes may contain
+other nodes, any other structure, or a mixture.
 
-Here is an example DataArray that holds only an array, without coordinates.
+Some nodes contain a small number of children, easy to list in a single request,
+while others may contain many listed via multiple paginated requests. Some Tiled
+deployments currently in use contain nodes with with up to hundreds of thousands
+of children.
 
-```
-$ http :8000/node/metadata/structured_data/xarray_data_array | jq .data.attributes.structure
-```
+Typically, a node's structures tell us only how many children it has (`count`).
+The `contents` key is typically set to `null`, which indicates that we will need
+a separate request to fetch information of this node's children.
 
 ```json
 {
-  "macro": {
-    "variable": {
-      "macro": {
-        "chunks": [
-          [
-            1000
-          ],
-          [
-            1000
-          ]
-        ],
-        "shape": [
-          1000,
-          1000
-        ],
-        "dims": [
-          "x",
-          "y"
-        ],
-        "resizable": false
-      },
-      "micro": {
-        "endianness": "little",
-        "kind": "f",
-        "itemsize": 8
-      }
-    },
-    "coords": {},
-    "coord_names": [],
-    "name": null,
-    "resizable": false
-  }
+  "contents": null,
+  "count": 2
 }
 ```
 
-And here is an example DataArray with an array and coordinates:
+In certain cases, it is efficient to in-line all the information about the node's children
+(their metadata, structure, and more) in a single response.
 
-```
-$ http :8000/node/metadata/structured_data/image_with_coords | jq .data.attributes.structure
-```
 
 ```json
 {
-  "macro": {
-    "variable": {
-      "macro": {
-        "chunks": [
-          [
-            1000
-          ],
-          [
-            1000
-          ]
+  "contents": {
+    "lat": {
+      "attributes": {
+        "ancestors": [
+          "structured_data",
+          "xarray_dataset"
         ],
-        "shape": [
-          1000,
-          1000
+        "metadata": {},
+        "sorting": null,
+        "specs": [
+          "xarray_coord"
         ],
-        "dims": [
-          "x",
-          "y"
+        "structure": {
+          "macro": {
+            "chunks": [
+              [
+                2
+              ],
+              [
+                2
+              ]
+            ],
+            "dims": [
+              "x",
+              "y"
+            ],
+            "resizable": false,
+            "shape": [
+              2,
+              2
+            ]
+          },
+          "micro": {
+            "endianness": "little",
+            "itemsize": 8,
+            "kind": "f"
+          }
+        },
+        "structure_family": "array"
+      },
+      "id": "lat",
+      "links": {
+        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/lat?block={index_0},{index_1}",
+        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/lat",
+        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/lat"
+      },
+      "meta": null
+    },
+    "lon": {
+      "attributes": {
+        "ancestors": [
+          "structured_data",
+          "xarray_dataset"
         ],
-        "resizable": false
+        "metadata": {},
+        "sorting": null,
+        "specs": [
+          "xarray_coord"
+        ],
+        "structure": {
+          "macro": {
+            "chunks": [
+              [
+                2
+              ],
+              [
+                2
+              ]
+            ],
+            "dims": [
+              "x",
+              "y"
+            ],
+            "resizable": false,
+            "shape": [
+              2,
+              2
+            ]
+          },
+          "micro": {
+            "endianness": "little",
+            "itemsize": 8,
+            "kind": "f"
+          }
+        },
+        "structure_family": "array"
       },
-      "micro": {
-        "endianness": "little",
-        "kind": "f",
-        "itemsize": 8
-      }
-    },
-    "coords": {
-      "x": {
-        "macro": {
-          "variable": {
-            "macro": {
-              "chunks": [
-                [
-                  1000
-                ]
-              ],
-              "shape": [
-                1000
-              ],
-              "dims": [
-                "x"
-              ],
-              "resizable": false
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "f",
-              "itemsize": 8
-            }
-          },
-          "coords": null,
-          "coord_names": [
-            "x"
-          ],
-          "name": "x",
-          "resizable": false
-        },
-        "micro": null
+      "id": "lon",
+      "links": {
+        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/lon?block={index_0},{index_1}",
+        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/lon",
+        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/lon"
       },
-      "y": {
-        "macro": {
-          "variable": {
-            "macro": {
-              "chunks": [
-                [
-                  1000
-                ]
-              ],
-              "shape": [
-                1000
-              ],
-              "dims": [
-                "y"
-              ],
-              "resizable": false
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "f",
-              "itemsize": 8
-            }
-          },
-          "coords": null,
-          "coord_names": [
-            "y"
-          ],
-          "name": "y",
-          "resizable": false
-        },
-        "micro": null
-      }
+      "meta": null
     },
-    "coord_names": [
-      "x",
-      "y"
-    ],
-    "name": null,
-    "resizable": false
-  }
-}
-```
-
-### Dataset (xarray)
-
-A
-[Dataset](http://xarray.pydata.org/en/stable/user-guide/terminology.html#term-Dataset)
-is a dict-like collection of DataArrays that may share coordinates.
-
-```
-$ http :8000/node/metadata/structured_data/xarray_dataset | jq .data.attributes.structure
-```
-
-```json
-{
-  "macro": {
-    "data_vars": {
-      "image": {
-        "macro": {
-          "variable": {
-            "macro": {
-              "chunks": [
-                [
-                  1000
-                ],
-                [
-                  1000
-                ]
+    "precipitation": {
+      "attributes": {
+        "ancestors": [
+          "structured_data",
+          "xarray_dataset"
+        ],
+        "metadata": {},
+        "sorting": null,
+        "specs": [
+          "xarray_data_var"
+        ],
+        "structure": {
+          "macro": {
+            "chunks": [
+              [
+                2
               ],
-              "shape": [
-                1000,
-                1000
+              [
+                2
               ],
-              "dims": [
-                "x",
-                "y"
-              ],
-              "resizable": false
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "f",
-              "itemsize": 8
-            }
+              [
+                3
+              ]
+            ],
+            "dims": [
+              "x",
+              "y",
+              "time"
+            ],
+            "resizable": false,
+            "shape": [
+              2,
+              2,
+              3
+            ]
           },
-          "coords": null,
-          "coord_names": [
-            "x",
-            "y"
-          ],
-          "name": "image",
-          "resizable": false
+          "micro": {
+            "endianness": "little",
+            "itemsize": 8,
+            "kind": "f"
+          }
         },
-        "micro": null
+        "structure_family": "array"
       },
-      "z": {
-        "macro": {
-          "variable": {
-            "macro": {
-              "chunks": [
-                [
-                  1000
-                ]
-              ],
-              "shape": [
-                1000
-              ],
-              "dims": [
-                "dim_0"
-              ],
-              "resizable": false
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "f",
-              "itemsize": 8
-            }
-          },
-          "coords": null,
-          "coord_names": [],
-          "name": "z",
-          "resizable": false
-        },
-        "micro": null
-      }
-    },
-    "coords": {
-      "x": {
-        "macro": {
-          "variable": {
-            "macro": {
-              "chunks": [
-                [
-                  1000
-                ]
-              ],
-              "shape": [
-                1000
-              ],
-              "dims": [
-                "x"
-              ],
-              "resizable": false
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "f",
-              "itemsize": 8
-            }
-          },
-          "coords": null,
-          "coord_names": [
-            "x"
-          ],
-          "name": "x",
-          "resizable": false
-        },
-        "micro": null
+      "id": "precipitation",
+      "links": {
+        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/precipitation?block={index_0},{index_1},{index_2}",
+        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/precipitation",
+        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/precipitation"
       },
-      "y": {
-        "macro": {
-          "variable": {
-            "macro": {
-              "chunks": [
-                [
-                  1000
-                ]
-              ],
-              "shape": [
-                1000
-              ],
-              "dims": [
-                "y"
-              ],
-              "resizable": false
-            },
-            "micro": {
-              "endianness": "little",
-              "kind": "f",
-              "itemsize": 8
-            }
-          },
-          "coords": null,
-          "coord_names": [
-            "y"
-          ],
-          "name": "y",
-          "resizable": false
-        },
-        "micro": null
-      }
+      "meta": null
     },
-    "resizable": false
-  }
+    "temperature": {
+      "attributes": {
+        "ancestors": [
+          "structured_data",
+          "xarray_dataset"
+        ],
+        "metadata": {},
+        "sorting": null,
+        "specs": [
+          "xarray_data_var"
+        ],
+        "structure": {
+          "macro": {
+            "chunks": [
+              [
+                2
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ]
+            ],
+            "dims": [
+              "x",
+              "y",
+              "time"
+            ],
+            "resizable": false,
+            "shape": [
+              2,
+              2,
+              3
+            ]
+          },
+          "micro": {
+            "endianness": "little",
+            "itemsize": 8,
+            "kind": "f"
+          }
+        },
+        "structure_family": "array"
+      },
+      "id": "temperature",
+      "links": {
+        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/temperature?block={index_0},{index_1},{index_2}",
+        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/temperature",
+        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/temperature"
+      },
+      "meta": null
+    },
+    "time": {
+      "attributes": {
+        "ancestors": [
+          "structured_data",
+          "xarray_dataset"
+        ],
+        "metadata": {},
+        "sorting": null,
+        "specs": [
+          "xarray_coord"
+        ],
+        "structure": {
+          "macro": {
+            "chunks": [
+              [
+                3
+              ]
+            ],
+            "dims": [
+              "time"
+            ],
+            "resizable": false,
+            "shape": [
+              3
+            ]
+          },
+          "micro": {
+            "endianness": "little",
+            "itemsize": 8,
+            "kind": "M"
+          }
+        },
+        "structure_family": "array"
+      },
+      "id": "time",
+      "links": {
+        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/time?block={index_0}",
+        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/time",
+        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/time"
+      },
+      "meta": null
+    }
+  },
+  "count": 5
 }
 ```

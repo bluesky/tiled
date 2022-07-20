@@ -13,6 +13,7 @@ from ..structures.core import StructureFamily
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
+    DEPTH_LIMIT,
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
@@ -34,6 +35,7 @@ from .settings import get_settings
 from .utils import get_base_url, record_timing
 
 DEFAULT_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 300
 
 
 router = APIRouter()
@@ -143,9 +145,12 @@ def declare_search_router(query_registry):
         path: str,
         fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
-        offset: Optional[int] = Query(0, alias="page[offset]"),
-        limit: Optional[int] = Query(DEFAULT_PAGE_SIZE, alias="page[limit]"),
+        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+        limit: Optional[int] = Query(
+            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+        ),
         sort: Optional[str] = Query(None),
+        max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         entry: Any = Security(entry, scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
@@ -167,6 +172,7 @@ def declare_search_router(query_registry):
                 sort,
                 get_base_url(request),
                 resolve_media_type(request),
+                max_depth=max_depth,
             )
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
@@ -262,6 +268,7 @@ async def node_metadata(
     path: str,
     fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
     select_metadata: Optional[str] = Query(None),
+    max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
     entry: Any = Security(entry, scopes=["read:metadata"]),
     root_path: bool = Query(False),
@@ -280,6 +287,7 @@ async def node_metadata(
             select_metadata,
             omit_links,
             resolve_media_type(request),
+            max_depth=max_depth,
         )
     except JMESPathError as err:
         raise HTTPException(
@@ -311,7 +319,7 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family not in {"array", "xarray_data_array"}:
+    if entry.structure_family != "array":
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
@@ -353,6 +361,7 @@ def array_block(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )
@@ -377,7 +386,7 @@ def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if entry.structure_family not in {"array", "xarray_data_array"}:
+    if entry.structure_family != "array":
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
@@ -414,6 +423,7 @@ def array_full(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )
@@ -472,6 +482,7 @@ def dataframe_partition(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )
@@ -482,7 +493,7 @@ def dataframe_partition(
 @router.get(
     "/node/full/{path:path}",
     response_model=schemas.Response,
-    name="full generic 'node', dataframe, or xarray Dataset",
+    name="full generic 'node' or 'dataframe'",
 )
 def node_full(
     request: Request,
@@ -528,6 +539,7 @@ def node_full(
                 entry.metadata,
                 request,
                 format,
+                specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
             )
