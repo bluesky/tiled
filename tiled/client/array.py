@@ -1,4 +1,3 @@
-import builtins
 import itertools
 
 import dask
@@ -7,7 +6,7 @@ import numpy
 
 from ..media_type_registration import deserialization_registry
 from .base import BaseStructureClient
-from .utils import export_util
+from .utils import export_util, params_from_slice
 
 
 class DaskArrayClient(BaseStructureClient):
@@ -172,29 +171,7 @@ class DaskArrayClient(BaseStructureClient):
         if link is None:
             link = "full"
         template_vars = template_vars or {}
-        params = {}
-        if slice is not None:
-            slices = []
-            for dim in slice:
-                if isinstance(dim, builtins.slice):
-                    # slice(10, 50) -> "10:50"
-                    # slice(None, 50) -> ":50"
-                    # slice(10, None) -> "10:"
-                    # slice(None, None) -> ":"
-                    if (dim.step is not None) and dim.step != 1:
-                        raise ValueError(
-                            "Slices with a 'step' other than 1 are not supported."
-                        )
-                    slices.append(
-                        (
-                            (str(dim.start) if dim.start else "")
-                            + ":"
-                            + (str(dim.stop) if dim.stop else "")
-                        )
-                    )
-                else:
-                    slices.append(str(int(dim)))
-            params["slice"] = ",".join(slices)
+        params = params_from_slice(slice)
         return export_util(
             filepath,
             format,

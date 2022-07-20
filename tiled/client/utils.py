@@ -1,3 +1,4 @@
+import builtins
 import collections
 import contextlib
 import os
@@ -298,3 +299,33 @@ DEFAULT_TIMEOUT_PARAMS = {
     "write": 30.0,
     "pool": 5.0,
 }
+
+
+def params_from_slice(slice):
+    "Generate URL query param ?slice=... from Python slice object."
+    params = {}
+    if slice is not None:
+        if isinstance(slice, (int, builtins.slice)):
+            slice = [slice]
+        slices = []
+        for dim in slice:
+            if isinstance(dim, builtins.slice):
+                # slice(10, 50) -> "10:50"
+                # slice(None, 50) -> ":50"
+                # slice(10, None) -> "10:"
+                # slice(None, None) -> ":"
+                if (dim.step is not None) and dim.step != 1:
+                    raise ValueError(
+                        "Slices with a 'step' other than 1 are not supported."
+                    )
+                slices.append(
+                    (
+                        (str(dim.start) if dim.start else "")
+                        + ":"
+                        + (str(dim.stop) if dim.stop else "")
+                    )
+                )
+            else:
+                slices.append(str(int(dim)))
+        params["slice"] = ",".join(slices)
+    return params
