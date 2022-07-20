@@ -386,7 +386,8 @@ def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if entry.structure_family != "array":
+    structure_family = entry.structure_family
+    if structure_family not in {"array", "sparse"}:
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
@@ -398,7 +399,8 @@ def array_full(
     try:
         with record_timing(request.state.metrics, "read"):
             array = entry.read(slice)
-        array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
+        if structure_family == "array":
+            array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
     if (expected_shape is not None) and (expected_shape != array.shape):
@@ -417,7 +419,7 @@ def array_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
+                structure_family,
                 serialization_registry,
                 array,
                 entry.metadata,

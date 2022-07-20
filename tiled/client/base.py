@@ -165,7 +165,7 @@ class BaseStructureClient(BaseClient):
         """
         Return a dataclass describing the structure of the data.
         """
-        if self._structure.macro.resizable:
+        if getattr(getattr(self._structure, "macro", None), "resizable", None):
             # In the future, conditionally fetch updated information.
             raise NotImplementedError(
                 "The server has indicated that this has a dynamic, resizable "
@@ -183,5 +183,8 @@ STRUCTURE_TYPES = OneShotCachedMap(
         "dataframe": lambda: importlib.import_module(
             "...structures.dataframe", BaseStructureClient.__module__
         ).DataFrameStructure,
+        "sparse": lambda: importlib.import_module(
+            "...structures.sparse", BaseStructureClient.__module__
+        ).SparseStructure,
     }
 )

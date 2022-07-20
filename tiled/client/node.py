@@ -42,6 +42,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Node.__module__
                 ).DataFrameClient,
+                "sparse": lambda: importlib.import_module(
+                    "..sparse", Node.__module__
+                ).SparseClient,
                 "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DatasetClient,
@@ -56,6 +59,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "dataframe": lambda: importlib.import_module(
                     "..dataframe", Node.__module__
                 ).DaskDataFrameClient,
+                "sparse": lambda: importlib.import_module(
+                    "..sparse", Node.__module__
+                ).SparseClient,
                 "xarray_dataset": lambda: importlib.import_module(
                     "..xarray", Node.__module__
                 ).DaskDatasetClient,

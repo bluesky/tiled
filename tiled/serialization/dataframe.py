@@ -21,31 +21,31 @@ def deserialize_arrow(buffer):
     return pyarrow.ipc.open_file(buffer).read_pandas()
 
 
-def serialize_parquet(df, metadata):
+def serialize_parquet(df, metadata, preserve_index=True):
     import pyarrow.parquet
 
-    table = pyarrow.Table.from_pandas(df)
+    table = pyarrow.Table.from_pandas(df, preserve_index=preserve_index)
     sink = pyarrow.BufferOutputStream()
     with pyarrow.parquet.ParquetWriter(sink, table.schema) as writer:
         writer.write_table(table)
     return memoryview(sink.getvalue())
 
 
-def serialize_csv(df, metadata):
+def serialize_csv(df, metadata, preserve_index=True):
     file = io.StringIO()
-    df.to_csv(file)
+    df.to_csv(file, index=preserve_index)
     return file.getvalue().encode()
 
 
-def serialize_excel(df, metadata):
+def serialize_excel(df, metadata, preserve_index=True):
     file = io.BytesIO()
-    df.to_excel(file)
+    df.to_excel(file, index=preserve_index)
     return file.getbuffer()
 
 
-def serialize_html(df, metadata):
+def serialize_html(df, metadata, preserve_index=True):
     file = io.StringIO()
-    df.to_html(file)
+    df.to_html(file, index=preserve_index)
     return file.getvalue().encode()
 
 

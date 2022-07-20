@@ -11,3 +11,4 @@ class StructureFamily(str, enum.Enum):
     node = "node"
     array = "array"
     dataframe = "dataframe"
+    sparse = "sparse"

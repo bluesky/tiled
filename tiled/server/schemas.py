@@ -12,6 +12,7 @@ import pydantic.generics
 from ..structures.core import StructureFamily
 from .pydantic_array import ArrayStructure
 from .pydantic_dataframe import DataFrameStructure
+from .pydantic_sparse import SparseStructure
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
@@ -78,7 +79,9 @@ class NodeAttributes(pydantic.BaseModel):
     structure_family: Optional[StructureFamily]
     specs: Optional[List[str]]
     metadata: Optional[dict]  # free-form, user-specified dict
-    structure: Optional[Union[ArrayStructure, DataFrameStructure, NodeStructure]]
+    structure: Optional[
+        Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
+    ]
     sorting: Optional[List[SortingItem]]
 
 
@@ -109,10 +112,16 @@ class DataFrameLinks(pydantic.BaseModel):
     partition: str
 
 
+class SparseLinks(pydantic.BaseModel):
+    self: str
+    full: str
+
+
 resource_links_type_by_structure_family = {
     "node": NodeLinks,
     "array": ArrayLinks,
     "dataframe": DataFrameLinks,
+    "sparse": SparseLinks,
 }
 
 

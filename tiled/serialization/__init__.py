@@ -18,6 +18,10 @@ def register_builtin_serializers():
         from ..serialization import dataframe as _dataframe  # noqa: F401
 
         del _dataframe
+    if modules_available("sparse"):
+        from ..serialization import sparse as _sparse  # noqa: F401
+
+        del _sparse
     if modules_available("xarray"):
         from ..serialization import xarray as _xarray  # noqa: F401
 
