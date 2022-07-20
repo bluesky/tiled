@@ -213,7 +213,7 @@ DEFAULT_MEDIA_TYPES = {
     "array": {"*/*": "application/octet-stream", "image/*": "image/png"},
     "dataframe": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     "node": {"*/*": "application/x-hdf5"},
-    "sparse": {"*/*": "application/x-hdf5"},
+    "sparse": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
 
