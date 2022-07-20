@@ -24,19 +24,10 @@ const DownloadArray = lazy(() => import("../components/download-array"));
 const DownloadDataFrame = lazy(
   () => import("../components/download-dataframe")
 );
-const DownloadDataset = lazy(
-  () => import("../components/download-xarray-dataset")
-);
 const DownloadNode = lazy(() => import("../components/download-node"));
 const JSONViewer = lazy(() => import("../components/json-viewer"));
 const MetadataView = lazy(() => import("../components/metadata-view"));
 const NodeOverview = lazy(() => import("../components/overview-generic-node"));
-const XarrayDataArrayOverview = lazy(
-  () => import("../components/overview-xarray-data-array")
-);
-const XarrayDatasetOverview = lazy(
-  () => import("../components/overview-xarray-dataset")
-);
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -121,29 +112,6 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
             partition_link={props.item.data!.links!.partition! as string}
           />
         );
-      case "xarray_data_array":
-        // special case: handle this like an array
-        const structure = attributes!.structure! as any;
-        const macrostructure = structure.macro!.variable!.macro!;
-        return (
-          <DownloadArray
-            name={props.item.data!.id}
-            structureFamily="array"
-            macrostructure={macrostructure}
-            specs={attributes.specs as string[]}
-            link={props.item.data!.links!.full_variable! as string}
-          />
-        );
-      case "xarray_dataset":
-        return (
-          <DownloadDataset
-            name={props.item.data!.id}
-            structureFamily={structureFamily}
-            macrostructure={attributes.structure!.macro!}
-            specs={attributes.specs as string[]}
-            link={props.item.data!.links!.full_dataset! as string}
-          />
-        );
       default:
         return <div>Unknown structure family "{structureFamily}"</div>;
     }
@@ -171,22 +139,6 @@ const OverviewDispatch: React.FunctionComponent<DispatchProps> = (props) => {
       case "dataframe":
         return (
           <DataFrameOverview segments={props.segments} item={props.item} />
-        );
-      case "xarray_data_array":
-        return (
-          <XarrayDataArrayOverview
-            segments={props.segments}
-            item={props.item}
-            link={props.item.data!.links!.full_variable as string}
-            structure={
-              props.item.data!.attributes!.structure!.macro!
-                .variable! as components["schemas"]["Structure"]
-            }
-          />
-        );
-      case "xarray_dataset":
-        return (
-          <XarrayDatasetOverview segments={props.segments} item={props.item} />
         );
       default:
         return <div>Unknown structure family "{structureFamily}"</div>;
