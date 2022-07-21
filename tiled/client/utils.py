@@ -283,3 +283,14 @@ def client_for_item(context, structure_clients, item, path):
         path=path,
         structure_clients=structure_clients,
     )
+
+
+# These timeouts are really high, but in practice we find that
+# ~100 MB chunks over very slow home Internet connections
+# can bump into lower timeouts.
+DEFAULT_TIMEOUT_PARAMS = {
+    "connect": 5.0,
+    "read": 30.0,
+    "write": 30.0,
+    "pool": 5.0,
+}
