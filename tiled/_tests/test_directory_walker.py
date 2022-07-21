@@ -7,7 +7,7 @@ import pytest
 import tifffile
 
 from ..adapters.array import ArrayAdapter
-from ..adapters.files import Change, strip_suffixes
+from ..adapters.files import Change, identity, strip_suffixes
 from ..client import from_config
 from ..examples.generate_files import data, df1, generate_files
 from .utils import force_update
@@ -294,3 +294,35 @@ def test_sort(example_data_dir):
     }
     client = from_config(config)
     list(client.sort(("does_not_exsit", 1)))
+
+
+def test_mimetype_detection_hook(tmpdir):
+    content = "a, b, c\n1, 2 ,3\n4, 5, 6\n"
+    with open(Path(tmpdir / "a0"), "w") as file:
+        file.write(content)
+    with open(Path(tmpdir / "b0"), "w") as file:
+        file.write(content)
+    with open(Path(tmpdir / "a.0.asfwoeijviojefeiofw"), "w") as file:
+        file.write(content)
+    with open(Path(tmpdir / "b.0.asfwoeijviojefeiofw"), "w") as file:
+        file.write(content)
+
+    def detect_mimetype(path):
+        if Path(path).name.startswith("a"):
+            return "text/csv"
+
+    config = {
+        "trees": [
+            {
+                "tree": "tiled.adapters.files:DirectoryAdapter.from_directory",
+                "path": "/",
+                "args": {
+                    "directory": str(tmpdir),
+                    "mimetype_detection_hook": detect_mimetype,
+                    "key_from_filename": identity,
+                },
+            }
+        ]
+    }
+    client = from_config(config)
+    assert set(client) == {"a0", "a.0.asfwoeijviojefeiofw"}

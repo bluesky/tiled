@@ -119,6 +119,7 @@ class DirectoryAdapter(MapAdapter):
         ignore_re_files=None,
         readers_by_mimetype=None,
         mimetypes_by_file_ext=None,
+        mimetype_detection_hook=None,
         subdirectory_handler=None,
         key_from_filename=strip_suffixes,
         metadata=None,
@@ -146,6 +147,11 @@ class DirectoryAdapter(MapAdapter):
             Map a mimetype to a Reader suitable for that mimetype
         mimetypes_by_file_ext : dict, optional
             Map a file extension (e.g. '.tif') to a mimetype (e.g. 'image/tiff')
+        mimetype_detection_hook: callable, optional
+            Signature: f(filepath) -> str
+
+            It may return a registered mimetype like 'text/csv' or
+            a custom unregistered mimetype 'text/x-specfile'.
         subdirectory_handler : callable, optional
             Given a (relative) filepath to a direj
         key_from_filename : callable[str] -> str,
@@ -234,6 +240,7 @@ class DirectoryAdapter(MapAdapter):
                 subdirectory_handler,
                 merged_readers_by_mimetype,
                 merged_mimetypes_by_file_ext,
+                mimetype_detection_hook,
                 key_from_filename,
                 initial_scan_complete,
                 watcher_thread_kill_switch,
@@ -323,6 +330,7 @@ class DirectoryAdapter(MapAdapter):
                         reader_factory = _reader_factory_for_file(
                             merged_readers_by_mimetype,
                             merged_mimetypes_by_file_ext,
+                            mimetype_detection_hook,
                             Path(root, filename),
                         )
                     except NoReaderAvailable:
@@ -431,6 +439,7 @@ def _watch(
     subdirectory_handler,
     readers_by_mimetype,
     mimetypes_by_file_ext,
+    mimetype_detection_hook,
     key_from_filename,
     initial_scan_complete,
     watcher_thread_kill_switch,
@@ -452,6 +461,7 @@ def _watch(
                     directory,
                     readers_by_mimetype,
                     mimetypes_by_file_ext,
+                    mimetype_detection_hook,
                     key_from_filename,
                     index,
                     subdirectory_trie,
@@ -465,6 +475,7 @@ def _watch(
                 directory,
                 readers_by_mimetype,
                 mimetypes_by_file_ext,
+                mimetype_detection_hook,
                 key_from_filename,
                 index,
                 subdirectory_trie,
@@ -490,6 +501,7 @@ def _process_changes(
     directory,
     readers_by_mimetype,
     mimetypes_by_file_ext,
+    mimetype_detection_hook,
     key_from_filename,
     index,
     subdirectory_trie,
@@ -574,7 +586,10 @@ def _process_changes(
                                 )
                     try:
                         reader_factory = _reader_factory_for_file(
-                            readers_by_mimetype, mimetypes_by_file_ext, path
+                            readers_by_mimetype,
+                            mimetypes_by_file_ext,
+                            mimetype_detection_hook,
+                            path,
                         )
                     except NoReaderAvailable:
                         # Ignore this file in the future.
@@ -606,6 +621,7 @@ def _process_changes(
                         directory,
                         readers_by_mimetype,
                         mimetypes_by_file_ext,
+                        mimetype_detection_hook,
                         key_from_filename,
                         index,
                         subdirectory_trie,
@@ -629,7 +645,10 @@ def _process_changes(
                 # that this could be the first time we see this path.
                 try:
                     reader_factory = _reader_factory_for_file(
-                        readers_by_mimetype, mimetypes_by_file_ext, path
+                        readers_by_mimetype,
+                        mimetypes_by_file_ext,
+                        mimetype_detection_hook,
+                        path,
                     )
                 except NoReaderAvailable:
                     # Ignore this file in the future.
@@ -648,23 +667,28 @@ def _process_changes(
                 changes_callback(changes)
 
 
-def _reader_factory_for_file(readers_by_mimetype, mimetypes_by_file_ext, path):
+def _reader_factory_for_file(
+    readers_by_mimetype, mimetypes_by_file_ext, mimetype_detection_hook, path
+):
     ext = "".join(path.suffixes)  # e.g. ".h5" or ".tar.gz"
-    if ext in mimetypes_by_file_ext:
-        mimetype = mimetypes_by_file_ext[ext]
-    else:
-        # Use the Python's built-in facility for guessing mimetype
-        # from file extension. This loads data about mimetypes from
-        # the operating system the first time it is used.
-        mimetype, _ = mimetypes.guess_type(str(path))
+    mimetype = None
+    if mimetype_detection_hook is not None:
+        mimetype = mimetype_detection_hook(path)
+    if mimetype is None:
+        if ext in mimetypes_by_file_ext:
+            mimetype = mimetypes_by_file_ext[ext]
+        else:
+            # Use the Python's built-in facility for guessing mimetype
+            # from file extension. This loads data about mimetypes from
+            # the operating system the first time it is used.
+            mimetype, _ = mimetypes.guess_type(str(path))
     if mimetype is None:
         msg = (
             f"The file at {path} has a file extension {ext} this is not "
             "recognized. The file will be skipped, pass in a mimetype "
             "for this file extension via the parameter "
-            "DirectoryAdapter.from_directory(..., mimetypes_by_file_ext={...}) and "
-            "pass in a Reader than handles this mimetype via "
-            "the parameter DirectoryAdapter.from_directory(..., readers_by_mimetype={...})."
+            "DirectoryAdapter.from_directory(..., mimetypes_by_file_ext={...}) "
+            "DirectoryAdapter.from_directory(..., mimetype_detection_hook=func)."
         )
         warnings.warn(msg)
         raise NoReaderAvailable
