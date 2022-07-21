@@ -189,6 +189,8 @@ class DirectoryAdapter(MapAdapter):
                     "appearing later, use error_if_missing=False."
                 )
         readers_by_mimetype = readers_by_mimetype or {}
+        if mimetype_detection_hook is not None:
+            mimetype_detection_hook = import_object(mimetype_detection_hook)
         # If readers_by_mimetype comes from a configuration file,
         # objects are given as importable strings, like "package.module:Reader".
         for key, value in list(readers_by_mimetype.items()):
