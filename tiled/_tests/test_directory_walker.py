@@ -302,14 +302,25 @@ def test_mimetype_detection_hook(tmpdir):
         file.write(content)
     with open(Path(tmpdir / "b0"), "w") as file:
         file.write(content)
+    with open(Path(tmpdir / "c.csv"), "w") as file:
+        file.write(content)
     with open(Path(tmpdir / "a.0.asfwoeijviojefeiofw"), "w") as file:
         file.write(content)
     with open(Path(tmpdir / "b.0.asfwoeijviojefeiofw"), "w") as file:
         file.write(content)
 
-    def detect_mimetype(path):
-        if Path(path).name.startswith("a"):
+    def detect_mimetype(path, mimetype):
+        filename = Path(path).name
+        # If detection based on file extension worked,
+        # we should get that in the mimetype. Otherwise,
+        # mimetype should be None.
+        if filename.endswith(".csv"):
+            assert mimetype == "text/csv"
+        else:
+            assert mimetype is None
+        if filename.startswith("a"):
             return "text/csv"
+        return mimetype
 
     config = {
         "trees": [
@@ -325,4 +336,4 @@ def test_mimetype_detection_hook(tmpdir):
         ]
     }
     client = from_config(config)
-    assert set(client) == {"a0", "a.0.asfwoeijviojefeiofw"}
+    assert set(client) == {"a0", "a.0.asfwoeijviojefeiofw", "c.csv"}

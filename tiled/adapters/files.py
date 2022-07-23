@@ -672,24 +672,30 @@ def _process_changes(
 def _reader_factory_for_file(
     readers_by_mimetype, mimetypes_by_file_ext, mimetype_detection_hook, path
 ):
+    # First, try to infer the mimetype from the file extension.
     ext = "".join(path.suffixes)  # e.g. ".h5" or ".tar.gz"
-    mimetype = None
+    # User-specified mapping from file extension to mimetype
+    # gets priority.
+    if ext in mimetypes_by_file_ext:
+        mimetype = mimetypes_by_file_ext[ext]
+    else:
+        # Use the Python's built-in facility for guessing mimetype
+        # from file extension. This loads data about mimetypes from
+        # the operating system the first time it is used.
+        mimetype, _ = mimetypes.guess_type(str(path))
+    # Finally, user-specified function has the opportunity to
+    # look at more than just the file extension. This gets access to the full
+    # path, so it can consider the file name and even open the file. It is also
+    # passed the mimetype determined above, or None if no match was found.
     if mimetype_detection_hook is not None:
-        mimetype = mimetype_detection_hook(path)
-    if mimetype is None:
-        if ext in mimetypes_by_file_ext:
-            mimetype = mimetypes_by_file_ext[ext]
-        else:
-            # Use the Python's built-in facility for guessing mimetype
-            # from file extension. This loads data about mimetypes from
-            # the operating system the first time it is used.
-            mimetype, _ = mimetypes.guess_type(str(path))
+        mimetype = mimetype_detection_hook(path, mimetype)
     if mimetype is None:
         msg = (
             f"The file at {path} has a file extension {ext} this is not "
-            "recognized. The file will be skipped, pass in a mimetype "
+            "recognized. The file will be skipped. Pass in a mimetype "
             "for this file extension via the parameter "
             "DirectoryAdapter.from_directory(..., mimetypes_by_file_ext={...}) "
+            "or a function for determining the mimetype based the full filepath "
             "DirectoryAdapter.from_directory(..., mimetype_detection_hook=func)."
         )
         warnings.warn(msg)
