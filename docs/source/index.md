@@ -20,6 +20,7 @@ tutorials/plotly-integration
 
 how-to/client-logger
 how-to/configuration
+how-to/custom-file-types
 how-to/custom-export-formats
 how-to/profiles
 how-to/api-keys
