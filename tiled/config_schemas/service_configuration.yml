@@ -315,7 +315,7 @@ properties:
         minimum: 2  # sqlalchemy raises if you try a pool_size of 1
       max_overflow:
         type: integer
-        description: Connection pool max overflow. Default is 0.
+        description: Connection pool max overflow. Default is 5.
   access_control:
     type: object
     additionalProperties: false
