@@ -1,4 +1,4 @@
-# Reading and Exporting Specialized Formats
+# Case Study: Reading and Exporting a Specialized Format
 
 
 
