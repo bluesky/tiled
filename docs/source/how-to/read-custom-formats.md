@@ -122,7 +122,7 @@ its file extension. Therefore, this function can be used to catch files that
 have no file extension or to _override_ the determination based file extension
 if it is wrong.
 
-If the Python script `custom.py` must be placed in the same directory as
+If the Python script `custom.py` is placed in the same directory as
 `config.yml`, Tiled will find it. (Tiled temporarily adds the directory
 containing the configuration file(s) to the Python import path while
 it parses the configuration.)
@@ -142,6 +142,10 @@ like `my_package.my_module.func` and configured like
 ```
 mimetype_detection_hook: my_package.my_module:func
 ```
+
+Note that the packages are separated by `.` but the final object (`func`) is
+preceded by a `:`. If you forget this, Tiled will raise a clear error to remind
+you.
 
 The names `custom.py` and `detect_mimetype` are arbitrary. The
 `mimetype_detection_hook` may be used in combination with
@@ -240,6 +244,21 @@ See the implementations in the pacakage `tiled.adapters` for more advanced
 examples, especially ways to refer reading the entire file up front if the user
 only wants to read part of it.
 
+#### Advanced: Mark up Structure with optional "Specs"
+
+If the array, table, or nested structure follows some convention or standard
+for its internal layout or naming scheme, it can be useful to notate that.
+Some Tiled clients may be able to use that information to provide additional
+functionality or performance.
+
+See :doc:`../explanations/metadata` for more information on Specs.
+
+Specify them as an argument to the Adapter, as in:
+
+```py
+DataFrameAdapter(..., specs=["xdi"])
+```
+
 ### Configure Tiled to use this Adapter
 
 Our configuration file should use `mimetypes_by_file_ext` (Case 1) or
@@ -247,8 +266,9 @@ Our configuration file should use `mimetypes_by_file_ext` (Case 1) or
 Additionally, it should add a section `readers_by_mimetype` to
 map our MIME type `application/x-stuff` to our custom function.
 
-As in Case 2, Tiled will find `custom.py` if it is placed in the same
-directory as `config.yml`.
+Again, Tiled will find `custom.py` if it is placed in the same directory as
+`config.yml`. The name is arbitrary, and you can have multiple such files if
+needed.
 
 ```yaml
 # config.yml
@@ -259,4 +279,10 @@ trees:
     mimetype_detection_hook: custom:detect_mimetype
     readers_by_mimetype:
       application/x-stuff: custom:read_custom_format
+```
+
+We then use the configuration file like this:
+
+```
+tiled serve config config.yml
 ```
