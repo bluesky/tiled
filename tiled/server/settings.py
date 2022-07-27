@@ -58,7 +58,7 @@ class Settings(BaseSettings):
         int(os.getenv("TILED_DATABASE_POOL_PRE_PING", 1))
     )
     database_max_overflow: Optional[int] = int(
-        os.getenv("TILED_DATABASE_MAX_OVERFLOW", 0)
+        os.getenv("TILED_DATABASE_MAX_OVERFLOW", 5)
     )
 
     @property
