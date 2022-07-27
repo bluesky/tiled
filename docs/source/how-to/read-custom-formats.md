@@ -212,7 +212,7 @@ def read_custom_format(filepath):
     return DataFrameAdapter.from_pandas(df, npartitions=1, metadata=metadata)
 ```
 
-#### Nested Structure
+#### Simple Nested Structure example
 
 ```py
 # custom.py
