@@ -738,5 +738,18 @@ async def put_dataframe_partition(
     else:
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."
+
+
+@router.put("/node/metadata/{path:path}")
+async def put_metadata(
+    request: Request,
+    body: schemas.PutMetadataRequest,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    if hasattr(entry, "put"):
+        entry.put_metadata()
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path does not support update of metadata."
         )
     return json_or_msgpack(request, None)

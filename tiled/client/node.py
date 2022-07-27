@@ -853,6 +853,37 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         return client
 
+    def update_metadata(self, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: Update metadata.
+
+        This is subject to change or removal without notice
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+
+        self._cached_len = None
+
+        data = {  # noqa: F841
+            "metadata": metadata,
+            # "structure": asdict(structure),
+            # "structure_family": StructureFamily.dataframe,
+            "specs": specs,
+        }
+
+        full_path_meta = (  # noqa: F841
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
