@@ -17,6 +17,7 @@ from .cache import Revalidate
 from .utils import (
     ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
+    DEFAULT_TIMEOUT_PARAMS,
     NotAvailableOffline,
     handle_error,
 )
@@ -830,6 +831,7 @@ def context_from_tree(
     auth_provider=None,
     api_key=None,
     headers=None,
+    timeout=None,
 ):
     from ..server.app import build_app
 
@@ -872,6 +874,9 @@ def context_from_tree(
         # startup.
         await app.router.startup()
 
+    if timeout is None:
+        timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
+
     client = AsyncClientBridge(
         base_url="http://local-tiled-app/api/",
         params=params,
@@ -879,7 +884,7 @@ def context_from_tree(
         _startup_hook=startup,
         event_hooks=ASYNC_EVENT_HOOKS,
         headers=headers,
-        timeout=httpx.Timeout(5.0, read=20.0),
+        timeout=timeout,
     )
     # Block for application startup.
     try:

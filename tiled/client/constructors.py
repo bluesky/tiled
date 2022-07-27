@@ -6,6 +6,7 @@ import httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .context import (
+    DEFAULT_TIMEOUT_PARAMS,
     DEFAULT_TOKEN_CACHE,
     Context,
     PromptForReauthentication,
@@ -28,6 +29,7 @@ def from_uri(
     verify=True,
     prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
     headers=None,
+    timeout=None,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -60,6 +62,9 @@ def from_uri(
     prompt_for_reauthentication : {"at_init", "always", "never"}
     headers : dict, optional
         Extra HTTP headers.
+    timeout : httpx.Timeout, optional
+        If None, use Tiled default settings.
+        (To disable timeouts, use httpx.Timeout(None)).
     """
     # The uri is expected to reach the root or /node/metadata/[...] route.
     url = httpx.URL(uri)
@@ -82,12 +87,14 @@ def from_uri(
     base_uri = urllib.parse.urlunsplit(
         (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
     )
+    if timeout is None:
+        timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
 
     client = httpx.Client(
         base_url=base_uri,
         verify=verify,
         event_hooks=EVENT_HOOKS,
-        timeout=httpx.Timeout(5.0, read=20.0),
+        timeout=timeout,
         headers=headers,
         params=params,
     )
@@ -120,6 +127,7 @@ def from_tree(
     api_key=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     headers=None,
+    timeout=None,
 ):
     """
     Connect to a Node directly, running the app in this same process.
@@ -157,6 +165,9 @@ def from_tree(
     token_cache : str, optional
         Path to directory for storing refresh tokens.
     prompt_for_reauthentication : {"at_init", "always", "never"}
+    timeout : httpx.Timeout, optional
+        If None, use Tiled default settings.
+        (To disable timeouts, use httpx.Timeout(None)).
     """
     context = context_from_tree(
         tree=tree,
@@ -175,6 +186,7 @@ def from_tree(
         auth_provider=auth_provider,
         api_key=api_key,
         headers=headers,
+        timeout=timeout,
     )
     return from_context(context, structure_clients=structure_clients)
 
@@ -273,6 +285,12 @@ def from_profile(name, structure_clients=None, **kwargs):
             # Interpret this as a Cache object passed in directly.
             cache = cache_config
         merged["cache"] = cache
+    timeout_config = merged.pop("timeout", None)
+    if timeout_config is not None:
+        timeout_params = DEFAULT_TIMEOUT_PARAMS.copy()
+        timeout_params.update(timeout_config)
+        timeout = httpx.Timeout(**timeout_params)
+        merged["timeout"] = timeout
     # Below, we may convert importable strings like
     # "package.module:obj" to live objects. Include the profile's
     # source directory in the import path, temporarily.

@@ -152,6 +152,26 @@ properties:
           available_bytes:
             type: number
             description: Deprecated alias for "capacity"
+  timeout:
+    description: |
+      Configure timeouts for the HTTP client.
+
+      Tiled sets read and write timeouts very high (30 seconds) by default to
+      accommodate pulling ~100 MB chunks over a slow network connection.
+
+      Units are seconds.
+      For details see https://www.python-httpx.org/advanced/#timeout-configuration
+
+    type: object
+    properties:
+      connection:
+        type: number
+      read:
+        type: number
+      write:
+        type: number
+      pool:
+        type: number
   token_cache:
     type: string
     description: |
