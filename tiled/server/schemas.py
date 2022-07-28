@@ -301,10 +301,10 @@ class GetDistinctResponse(pydantic.BaseModel):
     specs: Optional[List[DistinctValueInfo]]
 
 
-NodeStructure.update_forward_refs()
-
-
 class PutMetadataRequest(pydantic.BaseModel):
     metadata: Optional[Dict]
     specs: Optional[List[str]]
+
+
+NodeStructure.update_forward_refs()
 
