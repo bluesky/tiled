@@ -31,8 +31,10 @@ def handle_error(response):
                 detail = response.json().get("detail", "")
             else:
                 # This can happen when we get an error from a proxy,
-                # such as a 502.
-                detail = ""
+                # such as a 502, which serves an HTML error page.
+                # Use the stock "reason phrase" for the error code
+                # instead of dumping HTML into the terminal.
+                detail = response.reason_phrase
             message = f"{exc.response.status_code}: " f"{detail} " f"{exc.request.url}"
             raise ClientError(message, exc.request, exc.response) from exc
         else:
