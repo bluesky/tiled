@@ -27,11 +27,13 @@ def handle_error(response):
     except httpx.HTTPStatusError as exc:
         if response.status_code < 500:
             # Include more detail that httpx does by default.
-            message = (
-                f"{exc.response.status_code}: "
-                f"{exc.response.json()['detail'] if response.content else ''} "
-                f"{exc.request.url}"
-            )
+            if response.headers["Content-Type"] == "application/json":
+                detail = response.json().get("detail", "")
+            else:
+                # This can happen when we get an error from a proxy,
+                # such as a 502.
+                detail = ""
+            message = f"{exc.response.status_code}: " f"{detail} " f"{exc.request.url}"
             raise ClientError(message, exc.request, exc.response) from exc
         else:
             raise
