@@ -53,6 +53,45 @@ def identity(filename):
     return filename
 
 
+# This maps MIME types (i.e. file formats) for appropriate Readers.
+# OneShotCachedMap is used to defer imports. We don't want to pay up front
+# for importing Readers that we will not actually use.
+DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
+    {
+        "image/tiff": lambda: importlib.import_module(
+            "...adapters.tiff", __name__
+        ).TiffAdapter,
+        "text/csv": lambda: importlib.import_module(
+            "...adapters.dataframe", __name__
+        ).DataFrameAdapter.read_csv,
+        XLSX_MIME_TYPE: lambda: importlib.import_module(
+            "...adapters.excel", __name__
+        ).ExcelAdapter.from_file,
+        "application/x-hdf5": lambda: importlib.import_module(
+            "...adapters.hdf5", __name__
+        ).HDF5Adapter.from_file,
+    }
+)
+
+# We can mostly rely on mimetypes.types_map for the common ones
+# ('.csv' -> 'text/csv', etc.) but we supplement here for some
+# of the more exotic ones that not all platforms know about.
+DEFAULT_MIMETYPES_BY_FILE_EXT = {
+    # This is the "official" file extension.
+    ".h5": "application/x-hdf5",
+    # This is NeXus. We may want to invent a special media type
+    # like 'application/x-nexus' for this, but I'll punt that for now.
+    # Needs thought about how to encode the various types of NeXus
+    # (media type arguments, for example).
+    ".nxs": "application/x-hdf5",
+    # These are unofficial but common file extensions.
+    ".hdf": "application/x-hdf5",
+    ".hdf5": "application/x-hdf5",
+    # on opensuse csv -> text/x-comma-separated-values
+    ".csv": "text/csv",
+}
+
+
 class DirectoryAdapter(MapAdapter):
     """
     An Adapter constructed by walking a directory and watching it for changes.
@@ -71,44 +110,6 @@ class DirectoryAdapter(MapAdapter):
         "_directory",
         "_manual_trigger",
     )
-
-    # This maps MIME types (i.e. file formats) for appropriate Readers.
-    # OneShotCachedMap is used to defer imports. We don't want to pay up front
-    # for importing Readers that we will not actually use.
-    DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
-        {
-            "image/tiff": lambda: importlib.import_module(
-                "...adapters.tiff", DirectoryAdapter.__module__
-            ).TiffAdapter,
-            "text/csv": lambda: importlib.import_module(
-                "...adapters.dataframe", DirectoryAdapter.__module__
-            ).DataFrameAdapter.read_csv,
-            XLSX_MIME_TYPE: lambda: importlib.import_module(
-                "...adapters.excel", DirectoryAdapter.__module__
-            ).ExcelAdapter.from_file,
-            "application/x-hdf5": lambda: importlib.import_module(
-                "...adapters.hdf5", DirectoryAdapter.__module__
-            ).HDF5Adapter.from_file,
-        }
-    )
-
-    # We can mostly rely on mimetypes.types_map for the common ones
-    # ('.csv' -> 'text/csv', etc.) but we supplement here for some
-    # of the more exotic ones that not all platforms know about.
-    DEFAULT_MIMETYPES_BY_FILE_EXT = {
-        # This is the "official" file extension.
-        ".h5": "application/x-hdf5",
-        # This is NeXus. We may want to invent a special media type
-        # like 'application/x-nexus' for this, but I'll punt that for now.
-        # Needs thought about how to encode the various types of NeXus
-        # (media type arguments, for example).
-        ".nxs": "application/x-hdf5",
-        # These are unofficial but common file extensions.
-        ".hdf": "application/x-hdf5",
-        ".hdf5": "application/x-hdf5",
-        # on opensuse csv -> text/x-comma-separated-values
-        ".csv": "text/csv",
-    }
 
     @classmethod
     def from_directory(
@@ -202,11 +203,11 @@ class DirectoryAdapter(MapAdapter):
             subdirectory_handler = import_object(subdirectory_handler)
         # User-provided readers take precedence over defaults.
         merged_readers_by_mimetype = collections.ChainMap(
-            readers_by_mimetype, cls.DEFAULT_READERS_BY_MIMETYPE
+            readers_by_mimetype, DEFAULT_READERS_BY_MIMETYPE
         )
         mimetypes_by_file_ext = mimetypes_by_file_ext or {}
         merged_mimetypes_by_file_ext = collections.ChainMap(
-            mimetypes_by_file_ext, cls.DEFAULT_MIMETYPES_BY_FILE_EXT
+            mimetypes_by_file_ext, DEFAULT_MIMETYPES_BY_FILE_EXT
         )
         # Map subdirectory path parts, as in ('a', 'b', 'c'), to mapping of partials.
         # This single index represents the entire nested directory structure. (We
