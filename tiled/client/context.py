@@ -540,7 +540,7 @@ Set an api_key as in:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def put_content(self, path, content, headers=None):
+    def put_content(self, path, content, headers=None, params=None):
         # Submit CSRF token in both header and cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         headers = headers or {}
@@ -551,6 +551,7 @@ Set an api_key as in:
             path,
             content=content,
             headers=headers,
+            params=params,
         )
         response = self._send(request)
         handle_error(response)

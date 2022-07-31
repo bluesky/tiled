@@ -583,18 +583,24 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         """
 
+        import dask.array
+        from dask.array.core import normalize_chunks
+
         from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
 
         self._cached_len = None
 
         metadata = metadata or {}
         specs = specs or []
+        if hasattr(array, "chunks"):
+            chunks = normalize_chunks(array.chunks)
+        else:
+            chunks = tuple((size,) for size in array.shape)
 
         structure = ArrayStructure(
             macro=ArrayMacroStructure(
                 shape=array.shape,
-                # just one chunk for now...
-                chunks=tuple((size,) for size in array.shape),
+                chunks=chunks,
             ),
             micro=BuiltinDtype.from_numpy_dtype(array.dtype),
         )
@@ -613,18 +619,43 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         document = self.context.post_json(full_path_meta, data)
         key = document["key"]
 
-        full_path_data = (
-            "/array/full"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in self._path)
-            + "/"
-            + key
-        )
-        self.context.put_content(
-            full_path_data,
-            content=array.tobytes(),
-            headers={"Content-Type": "application/octet-stream"},
-        )
+        if hasattr(array, "chunks"):
+            if isinstance(array, dask.array.Array):
+                da = array
+            else:
+                da = dask.array.from_array(array)
+
+            def upload(x, block_id):
+                full_path_data = (
+                    "/array/block"
+                    + "".join(f"/{part}" for part in self.context.path_parts)
+                    + "".join(f"/{part}" for part in self._path)
+                    + "/"
+                    + key
+                )
+                self.context.put_content(
+                    full_path_data,
+                    content=x.tobytes(),
+                    headers={"Content-Type": "application/octet-stream"},
+                    params={"block": ",".join(map(str, block_id))},
+                )
+                print(block_id, block_id)
+                return x
+
+            da.map_blocks(upload, dtype=da.dtype).compute()
+        else:
+            full_path_data = (
+                "/array/full"
+                + "".join(f"/{part}" for part in self.context.path_parts)
+                + "".join(f"/{part}" for part in self._path)
+                + "/"
+                + key
+            )
+            self.context.put_content(
+                full_path_data,
+                content=array.tobytes(),
+                headers={"Content-Type": "application/octet-stream"},
+            )
 
         return key
 

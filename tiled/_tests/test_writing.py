@@ -8,6 +8,8 @@ import uuid
 import dask.dataframe
 import numpy
 import pandas.testing
+from dask.array.core import cached_cumsum
+from ndindex import ndindex
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
@@ -19,11 +21,27 @@ from ..structures.core import StructureFamily
 
 
 class WritableArrayAdapter(ArrayAdapter):
-    def put_data(self, body):
+    def put_data(self, body, block=None):
+        macrostructure = self.macrostructure()
+        if block is None:
+            shape = macrostructure.shape
+            s = numpy.s_[:]
+        else:
+            chunks = macrostructure.chunks
+            cumdims = [cached_cumsum(bds, initial_zero=True) for bds in chunks]
+            slices = [
+                [slice(s, s + dim) for s, dim in zip(starts, shapes)]
+                for starts, shapes in zip(cumdims, chunks)
+            ]
+            s = []
+            for i, b in enumerate(block):
+                s.append(slices[i][b])
+            s = tuple(s)
+            shape = ndindex(s).newshape(macrostructure.shape)
         array = numpy.frombuffer(
             body, dtype=self.microstructure().to_numpy_dtype()
-        ).reshape(self.macrostructure().shape)
-        self._data[:] = array
+        ).reshape(shape)
+        self._data[s] = array
 
 
 class WritableDataFrameAdapter(DataFrameAdapter):
@@ -38,10 +56,12 @@ class WritableMapAdapter(MapAdapter):
         if structure_family == StructureFamily.array:
             # Initialize an array of zeros, similar to how chunked storage
             # formats (e.g. HDF5, Zarr) use a fill_value.
-            array = numpy.zeros(
-                structure.macro.shape, dtype=structure.micro.to_numpy_dtype()
+            array = dask.array.zeros(
+                structure.macro.shape,
+                dtype=structure.micro.to_numpy_dtype(),
+                chunks=structure.macro.chunks,
             )
-            self._mapping[key] = WritableArrayAdapter.from_array(
+            self._mapping[key] = WritableArrayAdapter(
                 array, metadata=metadata, specs=specs
             )
         elif structure_family == StructureFamily.dataframe:
@@ -58,7 +78,7 @@ class WritableMapAdapter(MapAdapter):
 API_KEY = "secret"
 
 
-def test_write_array():
+def test_write_array_full():
 
     tree = WritableMapAdapter({})
     client = from_tree(
@@ -76,6 +96,28 @@ def test_write_array():
     result_array = result.read()
 
     numpy.testing.assert_equal(result_array, a)
+    assert result.metadata == metadata
+    assert result.specs == specs
+
+
+def test_write_array_chunked():
+
+    tree = WritableMapAdapter({})
+    client = from_tree(
+        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+    )
+
+    a = dask.array.arange(2500).reshape((50, 50)).rechunk((20, 20))
+
+    metadata = {"scan_id": 1, "method": "A"}
+    specs = ["SomeSpec"]
+    client.write_array(a, metadata, specs)
+
+    results = client.search(Key("scan_id") == 1)
+    result = results.values().first()
+    result_array = result.read()
+
+    numpy.testing.assert_equal(result_array, a.compute())
     assert result.metadata == metadata
     assert result.specs == specs
 

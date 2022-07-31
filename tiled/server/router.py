@@ -605,6 +605,23 @@ async def put_array_full(
     return json_or_msgpack(request, None)
 
 
+@router.put("/array/block/{path:path}")
+async def put_array_block(
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    block=Depends(block),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data, block=block)
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path cannot accept array data."
+        )
+    return json_or_msgpack(request, None)
+
+
 @router.put("/node/full/{path:path}")
 async def put_dataframe_full(
     request: Request,
