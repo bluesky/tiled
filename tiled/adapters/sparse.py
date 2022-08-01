@@ -2,6 +2,7 @@ import numpy
 import sparse
 
 from ..structures.sparse import COOStructure
+from .array import slice_and_shape_from_block_and_chunks
 
 
 class COOAdapter:
@@ -94,17 +95,3 @@ class COOAdapter:
         if slice:
             return arr[slice]
         return arr
-
-
-def slice_and_shape_from_block_and_chunks(block, chunks):
-    """
-    Given dask-like chunks and block id, return slice and shape of the block.
-    """
-    slice_ = []
-    shape = []
-    for b, c in zip(block, chunks):
-        start = sum(c[:b])
-        dim = c[b]
-        slice_.append(slice(start, start + dim))
-        shape.append(dim)
-    return tuple(slice_), tuple(shape)
