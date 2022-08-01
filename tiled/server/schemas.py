@@ -115,6 +115,7 @@ class DataFrameLinks(pydantic.BaseModel):
 class SparseLinks(pydantic.BaseModel):
     self: str
     full: str
+    block: str
 
 
 resource_links_type_by_structure_family = {

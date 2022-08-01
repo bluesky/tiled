@@ -421,6 +421,17 @@ def construct_resource(
             if entry.structure_family == "sparse":
                 if schemas.EntryFields.structure in fields:
                     structure = dataclasses.asdict(entry.structure())
+                    shape = structure.get("shape")
+                else:
+                    # The client did not request structure so we have not yet
+                    # accessed it, and we have access it specifically to construct this link.
+                    shape = entry.structure().shape
+                block_template = ",".join(
+                    f"{{index_{index}}}" for index in range(len(shape))
+                )
+                links[
+                    "block"
+                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
             else:
                 if (schemas.EntryFields.macrostructure in fields) or (
                     schemas.EntryFields.structure in fields

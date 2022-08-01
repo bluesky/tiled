@@ -9,6 +9,31 @@ from .utils import export_util, params_from_slice
 
 
 class SparseClient(BaseStructureClient):
+    def read_block(self, block, slice=None):
+        # Fetch the data as an Apache Arrow table
+        # with columns named dim0, dim1, ..., dimN, data.
+        structure = self.structure()
+        params = params_from_slice(slice)
+        params["block"] = ",".join(map(str, block))
+        content = self.context.get_content(
+            self.item["links"]["block"],
+            accept=APACHE_ARROW_FILE_MIME_TYPE,
+            params=params,
+        )
+        df = deserialize_arrow(content)
+        original_shape = structure.shape
+        if slice is not None:
+            sliced_shape = ndindex(slice).newshape(original_shape)
+        else:
+            sliced_shape = original_shape
+        ndim = len(sliced_shape)
+
+        return sparse.COO(
+            data=df["data"].values,
+            coords=numpy.stack([df[f"dim{i}"].values for i in range(ndim)]),
+            shape=sliced_shape,
+        )
+
     def read(self, slice=None):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
