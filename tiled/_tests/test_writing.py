@@ -12,7 +12,7 @@ import pandas.testing
 from ..adapters.array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import from_tree, record_history
 from ..queries import Key
 from ..serialization.dataframe import deserialize_arrow
 from ..structures.core import StructureFamily
@@ -85,7 +85,10 @@ def test_write_array_full():
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
-    client.write_array(a, metadata, specs)
+    with record_history() as history:
+        client.write_array(a, metadata, specs)
+    # one request for metadata, one for data
+    assert len(history.requests) == 2
 
     results = client.search(Key("scan_id") == 1)
     result = results.values().first()
@@ -107,7 +110,10 @@ def test_write_array_chunked():
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
-    client.write_array(a, metadata, specs)
+    with record_history() as history:
+        client.write_array(a, metadata, specs)
+    # one request for metadata, multiple for data
+    assert len(history.requests) > 2
 
     results = client.search(Key("scan_id") == 1)
     result = results.values().first()
@@ -118,7 +124,7 @@ def test_write_array_chunked():
     assert result.specs == specs
 
 
-def test_write_dataframe():
+def test_write_dataframe_full():
 
     tree = WritableMapAdapter({})
     client = from_tree(
@@ -130,7 +136,38 @@ def test_write_dataframe():
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
 
-    client.write_dataframe(df, metadata, specs)
+    with record_history() as history:
+        client.write_dataframe(df, metadata, specs)
+    # one request for metadata, one for data
+    assert len(history.requests) == 2
+
+    results = client.search(Key("scan_id") == 1)
+    result = results.values().first()
+    result_dataframe = result.read()
+
+    pandas.testing.assert_frame_equal(result_dataframe, df)
+    assert result.metadata == metadata
+    # TODO In the future this will be accessible via result.specs.
+    assert result.item["attributes"]["specs"] == specs
+
+
+def test_write_dataframe_partitioned():
+
+    tree = WritableMapAdapter({})
+    client = from_tree(
+        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+    )
+
+    data = {f"Column{i}": (1 + i) * numpy.ones(10) for i in range(5)}
+    df = pandas.DataFrame(data)
+    ddf = dask.dataframe.from_pandas(df, npartitions=3)
+    metadata = {"scan_id": 1, "method": "A"}
+    specs = ["SomeSpec"]
+
+    with record_history() as history:
+        client.write_dataframe(ddf, metadata, specs)
+    # one request for metadata, multiple for data
+    assert len(history.requests) == 1 + 3
 
     results = client.search(Key("scan_id") == 1)
     result = results.values().first()

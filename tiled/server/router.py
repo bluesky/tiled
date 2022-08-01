@@ -636,3 +636,20 @@ async def put_dataframe_full(
             status_code=405, detail="This path cannot accept dataframe data."
         )
     return json_or_msgpack(request, None)
+
+
+@router.put("/dataframe/partition/{path:path}")
+async def put_dataframe_partition(
+    partition: int,
+    request: Request,
+    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data, partition=partition)
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path cannot accept dataframe data."
+        )
+    return json_or_msgpack(request, None)

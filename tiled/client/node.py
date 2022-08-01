@@ -639,7 +639,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                     headers={"Content-Type": "application/octet-stream"},
                     params={"block": ",".join(map(str, block_id))},
                 )
-                print(block_id, block_id)
                 return x
 
             da.map_blocks(upload, dtype=da.dtype).compute()
@@ -675,6 +674,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
         """
+        import dask.dataframe
+        import pandas
+
         from ..structures.dataframe import (
             DataFrameMacroStructure,
             DataFrameMicroStructure,
@@ -686,10 +688,23 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata = metadata or {}
         specs = specs or []
 
+        if isinstance(dataframe, dask.dataframe.DataFrame):
+            meta = bytes(serialize_arrow(dataframe._meta, {}))
+            divisions = bytes(
+                serialize_arrow(
+                    pandas.DataFrame({"divisions": list(dataframe.divisions)}), {}
+                )
+            )
+            micro = DataFrameMicroStructure(meta=meta, divisions=divisions)
+            npartitions = dataframe.npartitions
+        else:
+            micro = DataFrameMicroStructure.from_dataframe(dataframe)
+            npartitions = 1
+
         structure = DataFrameStructure(
-            micro=DataFrameMicroStructure.from_dataframe(dataframe),
+            micro=micro,
             macro=DataFrameMacroStructure(
-                npartitions=1, columns=list(dataframe.columns)
+                npartitions=npartitions, columns=list(dataframe.columns)
             ),
         )
 
@@ -716,18 +731,44 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         document = self.context.post_json(full_path_meta, data)
         key = document["key"]
 
-        full_path_data = (
-            "/node/full"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in self._path)
-            + "/"
-            + key
-        )
-        self.context.put_content(
-            full_path_data,
-            content=bytes(serialize_arrow(dataframe, {})),
-            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-        )
+        if hasattr(dataframe, "partitions"):
+            if isinstance(dataframe, dask.dataframe.DataFrame):
+                ddf = dataframe
+            else:
+                raise NotImplementedError(
+                    f"Unsure how to handle type {type(dataframe)}"
+                )
+
+            def upload(x, partition_info):
+                full_path_data = (
+                    "/dataframe/partition"
+                    + "".join(f"/{part}" for part in self.context.path_parts)
+                    + "".join(f"/{part}" for part in self._path)
+                    + "/"
+                    + key
+                )
+                self.context.put_content(
+                    full_path_data,
+                    content=bytes(serialize_arrow(x, {})),
+                    headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    params={"partition": str(partition_info["number"])},
+                )
+                return x
+
+            ddf.map_partitions(upload, meta=dataframe._meta).compute()
+        else:
+            full_path_data = (
+                "/node/full"
+                + "".join(f"/{part}" for part in self.context.path_parts)
+                + "".join(f"/{part}" for part in self._path)
+                + "/"
+                + key
+            )
+            self.context.put_content(
+                full_path_data,
+                content=bytes(serialize_arrow(dataframe, {})),
+                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+            )
 
         return key
 
