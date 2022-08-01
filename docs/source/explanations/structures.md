@@ -203,57 +203,19 @@ layout consists of writing the coordinate (e.g. row, column, or N-dimensional po
 and value of each nonzero element. A N-dimensional COO array with M nonzero
 elements is described by an NxM array of coordinates and a length-M array of values.
 
-Tiled describes this with two Array structures: one for `coords` (the
-coordinates) and one for `data` (the values). Beside these it encodes the
-`shape` of the sparse array and dimension labels `dims`.
+Tiled describes this as a chunked array where each chunk contains a table
+of coordinates and their values. The data types within each table are not described
+at this level; they are self-described by the individual chunk payloads.
 
 The key `layout` is always set to `COO` currently. In the future if other sparse
 representations are supported, this key will be used to indicate which is used.
 
 ```json
 {
-  "coords": {
-    "macro": {
-      "chunks": [
-        [
-          2
-        ],
-        [
-          1013
-        ]
-      ],
-      "shape": [
-        2,
-        1013
-      ],
-      "dims": null,
-      "resizable": false
-    },
-    "micro": {
-      "endianness": "little",
-      "kind": "i",
-      "itemsize": 8
-    }
-  },
-  "data": {
-    "macro": {
-      "chunks": [
-        [
-          1013
-        ]
-      ],
-      "shape": [
-        1013
-      ],
-      "dims": null,
-      "resizable": false
-    },
-    "micro": {
-      "endianness": "little",
-      "kind": "f",
-      "itemsize": 8
-    }
-  },
+  "shape": [
+    100,
+    100
+  ],
   "chunks": [
     [
       100
@@ -261,10 +223,6 @@ representations are supported, this key will be used to indicate which is used.
     [
       100
     ]
-  ],
-  "shape": [
-    100,
-    100
   ],
   "dims": null,
   "resizable": false

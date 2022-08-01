@@ -319,7 +319,7 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family != "array":
+    if entry.structure_family not in {"array", "sparse"}:
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
@@ -355,7 +355,7 @@ def array_block(
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
-                "array",
+                entry.structure_family,
                 serialization_registry,
                 array,
                 entry.metadata,

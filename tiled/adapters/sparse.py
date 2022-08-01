@@ -1,8 +1,7 @@
+import numpy
 import sparse
 
-from ..structures.array import ArrayStructure
 from ..structures.sparse import COOStructure
-from .array import ArrayAdapter
 
 
 class COOAdapter:
@@ -10,46 +9,102 @@ class COOAdapter:
     structure_family = "sparse"
 
     @classmethod
+    def from_arrays(cls, coords, data, shape):
+        """
+        Simplest constructor. Single chunk from coords, data arrays.
+        """
+        return cls(
+            {(0, 0): (coords, data)},
+            shape=shape,
+            chunks=tuple((dim,) for dim in shape),
+        )
+
+    @classmethod
     def from_coo(cls, coo):
         "Construct from sparse.COO object."
-        return cls(coo.data, coo.coords, shape=coo.shape)
+        return cls.from_arrays(coords=coo.coords, data=coo.data, shape=coo.shape)
 
-    def __init__(self, data, coords, shape, *, dims=None, metadata=None, specs=None):
-        self.data = ArrayAdapter.from_array(data)
-        self.coords = ArrayAdapter.from_array(coords)
+    @classmethod
+    def from_global_ref(
+        cls, blocks, shape, chunks, *, dims=None, metadata=None, specs=None
+    ):
+        """
+        Construct from blocks with coords given in global reference frame.
+        """
+        local_blocks = {}
+        for (block, (coords, data)) in blocks.items():
+            offsets = []
+            for b, c in zip(block, chunks):
+                offset = sum(c[:b])
+                offsets.append(offset)
+            local_coords = coords - [[i] for i in offsets]
+            local_blocks[block] = local_coords, data
+        return cls(
+            blocks=local_blocks,
+            shape=shape,
+            chunks=chunks,
+            dims=dims,
+            metadata=metadata,
+            specs=specs,
+        )
+
+    def __init__(self, blocks, shape, chunks, *, dims=None, metadata=None, specs=None):
+        """
+        Construct from blocks with coords given in block-local reference frame.
+        """
+        self.blocks = blocks
+        self.chunks = chunks
         self.shape = shape
         self.dims = dims
         self.metadata = metadata or {}
         self.specs = specs or []
 
-    def __getitem__(self, key):
-        if key == "data":
-            return self.data
-        if key == "coords":
-            return self.coords
-        else:
-            raise KeyError(key)
-
     def structure(self):
         return COOStructure(
-            coords=ArrayStructure(
-                macro=self.coords.macrostructure(), micro=self.coords.microstructure()
-            ),
-            data=ArrayStructure(
-                macro=self.data.macrostructure(), micro=self.data.microstructure()
-            ),
             dims=self.dims,
             shape=self.shape,
-            chunks=tuple(
-                (dim,) for dim in self.shape
-            ),  # hard-code to one chunk for one
+            chunks=self.chunks,
             resizable=False,
         )
 
+    def read_block(self, block, slice=None):
+        coords, data = self.blocks[block]
+        _, shape = slice_and_shape_from_block_and_chunks(block, self.chunks)
+        arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
+        if slice:
+            arr = arr[slice]
+        return arr
+
     def read(self, slice=None):
+        all_coords = []
+        all_data = []
+        for (block, (coords, data)) in self.blocks.items():
+            offsets = []
+            for b, c in zip(block, self.chunks):
+                offset = sum(c[:b])
+                offsets.append(offset)
+            global_coords = coords + [[i] for i in offsets]
+            all_coords.append(global_coords)
+            all_data.append(data)
         arr = sparse.COO(
-            data=self.data.read(), coords=self.coords.read(), shape=self.shape
+            data=numpy.concatenate(all_data),
+            coords=numpy.concatenate(all_coords, axis=-1),
+            shape=self.shape,
         )
         if slice:
             return arr[slice]
         return arr
+
+
+def slice_and_shape_from_block_and_chunks(block, chunks):
+    """
+    Given dask-like chunks and block id, return slice and shape of the block.
+    """
+    slice_ = []
+    shape = []
+    for b, c in zip(block, chunks):
+        start = sum(c[:b])
+        dim = c[b]
+        slice_.append(slice(start, start + dim))
+        shape.append(dim)
+    return tuple(slice_), tuple(shape)
