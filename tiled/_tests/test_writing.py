@@ -8,10 +8,8 @@ import uuid
 import dask.dataframe
 import numpy
 import pandas.testing
-from dask.array.core import cached_cumsum
-from ndindex import ndindex
 
-from ..adapters.array import ArrayAdapter
+from ..adapters.array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_tree
@@ -25,29 +23,21 @@ class WritableArrayAdapter(ArrayAdapter):
         macrostructure = self.macrostructure()
         if block is None:
             shape = macrostructure.shape
-            s = numpy.s_[:]
+            slice_ = numpy.s_[:]
         else:
-            chunks = macrostructure.chunks
-            cumdims = [cached_cumsum(bds, initial_zero=True) for bds in chunks]
-            slices = [
-                [slice(s, s + dim) for s, dim in zip(starts, shapes)]
-                for starts, shapes in zip(cumdims, chunks)
-            ]
-            s = []
-            for i, b in enumerate(block):
-                s.append(slices[i][b])
-            s = tuple(s)
-            shape = ndindex(s).newshape(macrostructure.shape)
+            slice_, shape = slice_and_shape_from_block_and_chunks(
+                block, macrostructure.chunks
+            )
         array = numpy.frombuffer(
             body, dtype=self.microstructure().to_numpy_dtype()
         ).reshape(shape)
-        self._data[s] = array
+        self._array[slice_] = array
 
 
 class WritableDataFrameAdapter(DataFrameAdapter):
-    def put_data(self, body):
+    def put_data(self, body, partition=0):
         df = deserialize_arrow(body)
-        self._ddf = dask.dataframe.from_pandas(df, npartitions=1)
+        self._partitions[partition] = df
 
 
 class WritableMapAdapter(MapAdapter):
@@ -66,9 +56,15 @@ class WritableMapAdapter(MapAdapter):
             )
         elif structure_family == StructureFamily.dataframe:
             # Initialize an empty DataFrame with the right columns/types.
-            df = deserialize_arrow(structure.micro.meta)
-            self._mapping[key] = WritableDataFrameAdapter.from_pandas(
-                df, npartitions=1, metadata=metadata, specs=specs
+            meta = deserialize_arrow(structure.micro.meta)
+            divisions_wrapped_in_df = deserialize_arrow(structure.micro.divisions)
+            divisions = tuple(divisions_wrapped_in_df["divisions"].values)
+            self._mapping[key] = WritableDataFrameAdapter(
+                [None] * structure.macro.npartitions,
+                meta=meta,
+                divisions=divisions,
+                metadata=metadata,
+                specs=specs,
             )
         else:
             raise NotImplementedError(structure_family)

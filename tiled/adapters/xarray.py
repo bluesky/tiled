@@ -1,7 +1,6 @@
 import collections.abc
 import itertools
 
-import dask.array
 import xarray
 
 from ..adapters.array import ArrayAdapter
@@ -71,11 +70,7 @@ class _DatasetMap(collections.abc.Mapping):
             spec = "xarray_coord"
         else:
             spec = "xarray_data_var"
-        if isinstance(data_array.data, dask.array.Array):
-            func = ArrayAdapter
-        else:
-            func = ArrayAdapter.from_array
-        return func(
+        return ArrayAdapter(
             data_array.data,
             metadata={"attrs": data_array.attrs},
             dims=data_array.dims,
