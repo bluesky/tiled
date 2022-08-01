@@ -2,7 +2,6 @@ import collections.abc
 import os
 import warnings
 
-import dask.array
 import h5py
 import numpy
 
@@ -14,24 +13,9 @@ from .array import ArrayAdapter
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 
 
-class MockHDF5Dataset:
-    "Mock just enough of the HDF5 Dataset interface to act as a placeholder."
-
-    def __init__(self, array, attrs):
-        self._array = array
-        self.shape = array.shape
-        self.dtype = array.dtype
-        self.ndim = array.ndim
-        self.attrs = attrs
-
-    def __getitem__(self, key):
-        return self._array.__getitem__(key)
-
-
 class HDF5DatasetAdapter(ArrayAdapter):
-    # TODO Just wrap h5py.Dataset directly, not via dask.array.
     def __init__(self, dataset):
-        super().__init__(dask.array.from_array(dataset), metadata=dataset.attrs)
+        super().__init__(dataset, metadata=getattr(dataset, "attrs", {}))
 
 
 class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
@@ -139,9 +123,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                 if check_str_dtype.length is None:
                     dataset_names = value.file[self._node.name + "/" + key][...][()]
                     if value.size == 1:
-                        arr = MockHDF5Dataset(numpy.array(dataset_names), {})
+                        arr = numpy.array(dataset_names)
                         return HDF5DatasetAdapter(arr)
-                return HDF5DatasetAdapter(MockHDF5Dataset(numpy.array([]), {}))
+                return HDF5DatasetAdapter(numpy.array([]))
             return HDF5DatasetAdapter(value)
 
     def __len__(self):
