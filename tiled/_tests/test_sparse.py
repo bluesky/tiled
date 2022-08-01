@@ -32,7 +32,9 @@ def test_sparse_single_chunk():
     actual_via_read = client["single_chunk"].read()
     actual_via_read_block = client["single_chunk"].read_block((0, 0))
     assert numpy.array_equal(actual_via_slice.todense(), actual_via_read.todense())
-    assert numpy.array_equal(actual_via_slice.todense(), actual_via_read_block.todense())
+    assert numpy.array_equal(
+        actual_via_slice.todense(), actual_via_read_block.todense()
+    )
     assert numpy.array_equal(actual_via_slice.todense(), a)
 
 
