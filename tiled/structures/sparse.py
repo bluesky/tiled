@@ -1,6 +1,6 @@
 import enum
 from dataclasses import dataclass
-from typing import ClassVar, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 
 class SparseLayout(str, enum.Enum):
@@ -11,11 +11,11 @@ class SparseLayout(str, enum.Enum):
 
 @dataclass
 class COOStructure:
-    layout: ClassVar[SparseLayout] = SparseLayout.COO
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
+    layout: SparseLayout = SparseLayout.COO
     # TODO Include fill_value?
 
     @classmethod
