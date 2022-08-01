@@ -682,7 +682,6 @@ async def put_array_full(
     entry=Security(entry, scopes=["write:data"]),
 ):
     data = await request.body()
-
     if hasattr(entry, "put_data"):
         entry.put_data(data)
     else:
@@ -746,7 +745,7 @@ async def put_metadata(
     body: schemas.PutMetadataRequest,
     entry=Security(entry, scopes=["write:data", "write:metadata"]),
 ):
-    if hasattr(entry, "put"):
+    if hasattr(entry, "put_metadata"):
         entry.put_metadata()
     else:
         raise HTTPException(
