@@ -10,6 +10,7 @@ potentially any language.
 The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
+* sparse --- a sparse array (i.e. an array which is mostly zeros)
 * dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
 * node --- a grouping of other structures, akin to a dictionary or a directory
@@ -190,6 +191,41 @@ $ http :8000/node/metadata/structured_data/pets | jq .data.attributes.structure
       }
     ]
   }
+}
+```
+
+### Sparse Array
+
+There are a variety of ways to represent
+[sparse arrays](https://en.wikipedia.org/wiki/Sparse_matrix).
+The [Coordinate list (COO)](https://en.wikipedia.org/wiki/Sparse_matrix#Coordinate_list_(COO))
+layout consists of writing the coordinate (e.g. row, column, or N-dimensional position)
+and value of each nonzero element. A N-dimensional COO array with M nonzero
+elements is described by an NxM array of coordinates and a length-M array of values.
+
+Tiled describes this as a chunked array where each chunk contains a table
+of coordinates and their values. The data types within each table are not described
+at this level; they are self-described by the individual chunk payloads.
+
+The key `layout` is always set to `COO` currently. In the future if other sparse
+representations are supported, this key will be used to indicate which is used.
+
+```json
+{
+  "shape": [
+    100,
+    100
+  ],
+  "chunks": [
+    [
+      100
+    ],
+    [
+      100
+    ]
+  ],
+  "dims": null,
+  "resizable": false
 }
 ```
 

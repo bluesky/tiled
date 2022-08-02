@@ -213,6 +213,7 @@ DEFAULT_MEDIA_TYPES = {
     "array": {"*/*": "application/octet-stream", "image/*": "image/png"},
     "dataframe": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     "node": {"*/*": "application/x-hdf5"},
+    "sparse": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
 
@@ -417,55 +418,71 @@ def construct_resource(
             )
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if (schemas.EntryFields.macrostructure in fields) or (
-                schemas.EntryFields.structure in fields
-            ):
-                macrostructure = entry.macrostructure()
-                if macrostructure is not None:
-                    structure["macro"] = dataclasses.asdict(macrostructure)
-            if (schemas.EntryFields.microstructure in fields) or (
-                schemas.EntryFields.structure in fields
-            ):
-                if entry.structure_family == "node":
-                    assert False  # not sure if this ever happens
-                    pass
-                elif entry.structure_family == "dataframe":
-                    microstructure = entry.microstructure()
-                    meta = microstructure.meta
-                    divisions = microstructure.divisions
-                    if media_type == "application/json":
-                        # For JSON, base64-encode the binary Arrow-encoded data,
-                        # and indicate that this has been done in the data URI.
-                        data_uri = f"data:{APACHE_ARROW_FILE_MIME_TYPE};base64,"
-                        meta = data_uri + base64.b64encode(meta).decode()
-                        divisions = data_uri + base64.b64encode(divisions).decode()
-                    else:
-                        # In msgpack, we can encode the binary Arrow-encoded data directly.
-                        assert media_type == "application/x-msgpack"
-                    structure["micro"] = {
-                        "meta": meta,
-                        "divisions": divisions,
-                    }
+            if entry.structure_family == "sparse":
+                if schemas.EntryFields.structure in fields:
+                    structure = dataclasses.asdict(entry.structure())
+                    shape = structure.get("shape")
                 else:
-                    microstructure = entry.microstructure()
-                    if microstructure is not None:
-                        structure["micro"] = dataclasses.asdict(microstructure)
-            if entry.structure_family == "array":
-                shape = structure.get("macro", {}).get("shape")
-                if shape is None:
                     # The client did not request structure so we have not yet
                     # accessed it, and we have access it specifically to construct this link.
-                    shape = entry.macrostructure().shape
+                    shape = entry.structure().shape
+                    structure = None
                 block_template = ",".join(
                     f"{{index_{index}}}" for index in range(len(shape))
                 )
                 links[
                     "block"
                 ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            elif entry.structure_family == "dataframe":
-                links[
-                    "partition"
-                ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
+            else:
+                if (schemas.EntryFields.macrostructure in fields) or (
+                    schemas.EntryFields.structure in fields
+                ):
+                    macrostructure = entry.macrostructure()
+                    if macrostructure is not None:
+                        structure["macro"] = dataclasses.asdict(macrostructure)
+                if (schemas.EntryFields.microstructure in fields) or (
+                    schemas.EntryFields.structure in fields
+                ):
+                    if entry.structure_family == "node":
+                        assert False  # not sure if this ever happens
+                        pass
+                    elif entry.structure_family == "dataframe":
+                        microstructure = entry.microstructure()
+                        meta = microstructure.meta
+                        divisions = microstructure.divisions
+                        if media_type == "application/json":
+                            # For JSON, base64-encode the binary Arrow-encoded data,
+                            # and indicate that this has been done in the data URI.
+                            data_uri = f"data:{APACHE_ARROW_FILE_MIME_TYPE};base64,"
+                            meta = data_uri + base64.b64encode(meta).decode()
+                            divisions = data_uri + base64.b64encode(divisions).decode()
+                        else:
+                            # In msgpack, we can encode the binary Arrow-encoded data directly.
+                            assert media_type == "application/x-msgpack"
+                        structure["micro"] = {
+                            "meta": meta,
+                            "divisions": divisions,
+                        }
+                    else:
+                        microstructure = entry.microstructure()
+                        if microstructure is not None:
+                            structure["micro"] = dataclasses.asdict(microstructure)
+                if entry.structure_family == "array":
+                    shape = structure.get("macro", {}).get("shape")
+                    if shape is None:
+                        # The client did not request structure so we have not yet
+                        # accessed it, and we have access it specifically to construct this link.
+                        shape = entry.macrostructure().shape
+                    block_template = ",".join(
+                        f"{{index_{index}}}" for index in range(len(shape))
+                    )
+                    links[
+                        "block"
+                    ] = f"{base_url}/array/block/{path_str}?block={block_template}"
+                elif entry.structure_family == "dataframe":
+                    links[
+                        "partition"
+                    ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
             attributes["structure"] = structure
         else:
             # We only have entry names, not structure_family, so
@@ -645,4 +662,5 @@ FULL_LINKS = {
     "node": {"full": "{base_url}/node/full/{path}"},
     "array": {"full": "{base_url}/array/full/{path}"},
     "dataframe": {"full": "{base_url}/node/full/{path}"},
+    "sparse": {"full": "{base_url}/array/full/{path}"},
 }

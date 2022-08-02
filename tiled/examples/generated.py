@@ -5,11 +5,13 @@ from datetime import timedelta
 
 import numpy
 import pandas
+import sparse
 import xarray
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.sparse import COOAdapter
 from tiled.adapters.xarray import DatasetAdapter
 
 print("Generating large example data...", file=sys.stderr)
@@ -30,12 +32,16 @@ temp = 15 + 8 * numpy.random.randn(2, 2, 3)
 precip = 10 * numpy.random.rand(2, 2, 3)
 lon = [[-99.83, -99.32], [-99.79, -99.23]]
 lat = [[42.25, 42.21], [42.63, 42.59]]
+sparse_arr = numpy.random.random((100, 100))
+sparse_arr[sparse_arr < 0.9] = 0  # fill most of the array with zeros
+
 print("Done generating example data.", file=sys.stderr)
 
 mapping = {
     "big_image": ArrayAdapter.from_array(data["big_image"]),
     "small_image": ArrayAdapter.from_array(data["small_image"]),
     "medium_image": ArrayAdapter.from_array(data["medium_image"]),
+    "sparse_image": COOAdapter.from_coo(sparse.COO(sparse_arr)),
     "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
     "tiny_cube": ArrayAdapter.from_array(data["tiny_cube"]),
     "tiny_hypercube": ArrayAdapter.from_array(data["tiny_hypercube"]),

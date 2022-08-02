@@ -53,6 +53,7 @@ categorized_requirements = {
         "server",
         "array",
         "dataframe",
+        "sparse",
         "xarray",
     ]
 }
@@ -62,7 +63,14 @@ extras_require["client"] = sorted(
         sum(
             (
                 categorized_requirements[k]
-                for k in ["client", "array", "dataframe", "xarray", "compression"]
+                for k in [
+                    "client",
+                    "array",
+                    "dataframe",
+                    "sparse",
+                    "xarray",
+                    "compression",
+                ]
             ),
             [],
         )
@@ -73,7 +81,14 @@ extras_require["server"] = sorted(
         sum(
             (
                 categorized_requirements[k]
-                for k in ["server", "array", "dataframe", "xarray", "compression"]
+                for k in [
+                    "server",
+                    "array",
+                    "dataframe",
+                    "sparse",
+                    "xarray",
+                    "compression",
+                ]
             ),
             [],
         )

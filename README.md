@@ -20,7 +20,8 @@ access data with very light software dependencies and fast partial downloads.
 Tiled puts an emphasis on **structures** rather than formats, including:
 
 * N-dimensional strided arrays (i.e. numpy-like arrays)
-* Tabular data (i.e. pandas-like "dataframes")
+* Sparse arrays
+* Tabular data (e.g. pandas-like "dataframes")
 * Hierarchical structures thereof (e.g. xarrays, HDF5-compatible structures like NeXus)
 
 Tiled implements extensible **access control enforcement** based on web security
