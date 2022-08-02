@@ -608,6 +608,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure=structure,
         )
 
+    # When (re)chunking arrays for upload, we use this limit
+    # to attempt to avoid bumping into size limits.
+    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
+
     def write_array(self, array, *, metadata=None, dims=None, specs=None):
         """
         EXPERIMENTAL: Write an array.
@@ -632,12 +636,23 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         self._cached_len = None
 
-        chunked = hasattr(array, "chunks")
-        if chunked:
-            chunks = normalize_chunks(array.chunks)
+        # Determine chunks such that each chunk is not too large to upload.
+        # Any existing chunking will be taken into account.
+        # If the array is small, there will be only one chunk.
+        if hasattr(array, "chunks"):
+            chunks = normalize_chunks(
+                array.chunks,
+                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
+                dtype=array.dtype,
+                shape=array.shape,
+            )
         else:
-            # one chunk
-            chunks = tuple((size,) for size in array.shape)
+            chunks = normalize_chunks(
+                tuple("auto" for _ in array.shape),
+                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
+                dtype=array.dtype,
+                shape=array.shape,
+            )
 
         structure = ArrayStructure(
             macro=ArrayMacroStructure(
@@ -650,14 +665,15 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         client = self.new(
             StructureFamily.array, structure, metadata=metadata, specs=specs
         )
+        chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
             client.write(array)
         else:
             # Fan out client.write_block over each chunk using dask.
             if isinstance(array, dask.array.Array):
-                da = array
+                da = array.rechunk(chunks)
             else:
-                da = dask.array.from_array(array)
+                da = dask.array.from_array(array, chunks=chunks)
 
             # Dask inspects the signature and passes block_id in if present.
             # It also apparently calls it with an empty array and block_id

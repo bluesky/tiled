@@ -120,6 +120,39 @@ def test_write_array_full():
     assert result.specs == specs
 
 
+def test_write_large_array_full():
+    "Test that a large array is chunked"
+
+    tree = WritableMapAdapter({})
+    client = from_tree(
+        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+    )
+
+    a = numpy.ones(100)
+    # Low the limit so we can test on small data, for speed.
+    original = client._SUGGESTED_MAX_UPLOAD_SIZE
+    client._SUGGESTED_MAX_UPLOAD_SIZE = 50
+    try:
+        assert a.nbytes > client._SUGGESTED_MAX_UPLOAD_SIZE
+
+        metadata = {"scan_id": 1, "method": "A"}
+        specs = ["SomeSpec"]
+        with record_history() as history:
+            client.write_array(a, metadata=metadata, specs=specs)
+        # one request for metadata, more than one for data
+        assert len(history.requests) > 1 + 1
+
+        results = client.search(Key("scan_id") == 1)
+        result = results.values().first()
+        result_array = result.read()
+
+        numpy.testing.assert_equal(result_array, a)
+        assert result.metadata == metadata
+        assert result.specs == specs
+    finally:
+        client._SUGGESTED_MAX_UPLOAD_SIZE = original
+
+
 def test_write_array_chunked():
 
     tree = WritableMapAdapter({})
