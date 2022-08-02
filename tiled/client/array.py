@@ -118,6 +118,20 @@ class DaskArrayClient(BaseStructureClient):
             dask_array = dask_array[slice]
         return dask_array
 
+    def write(self, array):
+        self.context.put_content(
+            self.item["links"]["full"],
+            content=array.tobytes(),
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    def write_block(self, array, block):
+        self.context.put_content(
+            self.item["links"]["block"].format(*block),
+            content=array.tobytes(),
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
     def __getitem__(self, slice):
         return self.read(slice)
 

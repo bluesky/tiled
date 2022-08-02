@@ -552,6 +552,7 @@ def node_full(
 @router.post("/node/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
 def post_metadata(
     request: Request,
+    path: str,
     body: schemas.PostMetadataRequest,
     entry=Security(entry, scopes=["write:data", "write:metadata"]),
 ):
@@ -569,10 +570,27 @@ def post_metadata(
             structure=body.structure,
             specs=body.specs,
         )
+        links = {}
+        base_url = get_base_url(request)
+        path_parts = [segment for segment in path.split("/") if segment] + [key]
+        path_str = "/".join(path_parts)
+        if body.structure_family == StructureFamily.array:
+            block_template = ",".join(
+                f"{{{index}}}" for index in range(len(body.structure.macro.shape))
+            )
+            links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
+            links["full"] = f"{base_url}/array/full/{path_str}"
+        elif body.structure_family == StructureFamily.dataframe:
+            links[
+                "partition"
+            ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
+            links["full"] = f"{base_url}/node/full/{path_str}"
+        else:
+            raise NotImplementedError(body.structure_family)
     else:
         raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
 
-    return json_or_msgpack(request, {"key": key})
+    return json_or_msgpack(request, {"id": key, "links": links})
 
 
 @router.delete("/node/metadata/{path:path}")

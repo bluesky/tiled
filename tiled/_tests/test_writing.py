@@ -12,6 +12,7 @@ import pandas.testing
 from ..adapters.array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
+from ..adapters.sparse import COOAdapter
 from ..client import from_tree, record_history
 from ..queries import Key
 from ..serialization.dataframe import deserialize_arrow
@@ -38,6 +39,22 @@ class WritableDataFrameAdapter(DataFrameAdapter):
     def put_data(self, body, partition=0):
         df = deserialize_arrow(body)
         self._partitions[partition] = df
+
+
+class WritableCOOAdapter(COOAdapter):
+    def put_data(self, body, block=(0, 0)):
+        macrostructure = self.macrostructure()
+        if block is None:
+            shape = macrostructure.shape
+            slice_ = numpy.s_[:]
+        else:
+            slice_, shape = slice_and_shape_from_block_and_chunks(
+                block, macrostructure.chunks
+            )
+        df = deserialize_arrow(body)
+        coords = df[df.columns[:-1]].values.T
+        data = df["data"].values
+        self.blocks[block] = (coords, data)
 
 
 class WritableMapAdapter(MapAdapter):
@@ -86,9 +103,9 @@ def test_write_array_full():
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
     with record_history() as history:
-        client.write_array(a, metadata, specs)
+        client.write_array(a, metadata=metadata, specs=specs)
     # one request for metadata, one for data
-    assert len(history.requests) == 2
+    assert len(history.requests) == 1 + 1
 
     results = client.search(Key("scan_id") == 1)
     result = results.values().first()
@@ -111,9 +128,9 @@ def test_write_array_chunked():
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
     with record_history() as history:
-        client.write_array(a, metadata, specs)
+        client.write_array(a, metadata=metadata, specs=specs)
     # one request for metadata, multiple for data
-    assert len(history.requests) > 2
+    assert len(history.requests) == 1 + a.npartitions
 
     results = client.search(Key("scan_id") == 1)
     result = results.values().first()
@@ -137,9 +154,9 @@ def test_write_dataframe_full():
     specs = ["SomeSpec"]
 
     with record_history() as history:
-        client.write_dataframe(df, metadata, specs)
+        client.write_dataframe(df, metadata=metadata, specs=specs)
     # one request for metadata, one for data
-    assert len(history.requests) == 2
+    assert len(history.requests) == 1 + 1
 
     results = client.search(Key("scan_id") == 1)
     result = results.values().first()
@@ -165,7 +182,7 @@ def test_write_dataframe_partitioned():
     specs = ["SomeSpec"]
 
     with record_history() as history:
-        client.write_dataframe(ddf, metadata, specs)
+        client.write_dataframe(ddf, metadata=metadata, specs=specs)
     # one request for metadata, multiple for data
     assert len(history.requests) == 1 + 3
 

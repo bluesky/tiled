@@ -427,9 +427,7 @@ def construct_resource(
                     # accessed it, and we have access it specifically to construct this link.
                     shape = entry.structure().shape
                     structure = None
-                block_template = ",".join(
-                    f"{{index_{index}}}" for index in range(len(shape))
-                )
+                block_template = ",".join(f"{{{index}}}" for index in range(len(shape)))
                 links[
                     "block"
                 ] = f"{base_url}/array/block/{path_str}?block={block_template}"
