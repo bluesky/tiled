@@ -746,7 +746,10 @@ async def put_metadata(
     entry=Security(entry, scopes=["write:data", "write:metadata"]),
 ):
     if hasattr(entry, "put_metadata"):
-        entry.put_metadata()
+        entry.put_metadata(
+            metadata=body.metadata,
+            specs=body.specs,
+        )
     else:
         raise HTTPException(
             status_code=405, detail="This path does not support update of metadata."

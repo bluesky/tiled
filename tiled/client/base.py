@@ -152,7 +152,7 @@ class BaseClient:
             + "".join(f"/{part}" for part in (self._path or [""]))
         )
 
-        self.context.put_content(full_path_meta, content=data)
+        self.context.put_json(full_path_meta, data)
 
 
 class BaseStructureClient(BaseClient):
