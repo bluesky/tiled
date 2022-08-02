@@ -580,6 +580,14 @@ def post_metadata(
             )
             links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
             links["full"] = f"{base_url}/array/full/{path_str}"
+        elif body.structure_family == StructureFamily.sparse:
+            # Different from array because of structure.macro.shape vs structure.shape
+            # Can be unified if we drop macro/micro namespace.
+            block_template = ",".join(
+                f"{{{index}}}" for index in range(len(body.structure.shape))
+            )
+            links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
+            links["full"] = f"{base_url}/array/full/{path_str}"
         elif body.structure_family == StructureFamily.dataframe:
             links[
                 "partition"

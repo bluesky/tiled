@@ -13,7 +13,6 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..serialization.dataframe import serialize_arrow
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr
 from .base import BaseClient
@@ -673,13 +672,34 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
 
-    def write_sparse(self, array, metadata=None, dims=None, specs=None):
+    def write_sparse(self, coords, data, shape, metadata=None, dims=None, specs=None):
         """
         EXPERIMENTAL: Write a sparse array.
 
+        Examples
+        --------
+
+        Write a sparse.COO array.
+
+        >>> import sparse
+        >>> coo = sparse.COO([0, 0, 1, 0, 0, 5])
+        >>> c.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape)
+
+        This only supports a single chunk. For chunked upload, use lower-level methods.
+
+        # Define the overall shape and the dimensions of each chunk.
+        >>> from tiled.structures.sparse import COOStructure
+        >>> x = c.new("sparse", COOStructure(shape=(10,), chunks=((5, 5),)))
+        # Upload the data in each chunk.
+        # Coords are given with in the reference frame of each chunk.
+        >>> x.write_block(coords=[2, 4], data=[3.1, 2.8], block=(0,))
+        >>> x.write_block(coords=[0, 1], data=[6.7, 1.2], block=(1,))
+
         Parameters
         ----------
-        array : array-like
+        coords : array-like
+        data : array-like
+        shape: Tuple
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
@@ -690,79 +710,18 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             conform to some named standard specification.
 
         """
-
-        import dask.array
-        from dask.array.core import normalize_chunks
-
         from ..structures.sparse import COOStructure
 
-        self._cached_len = None
-
-        metadata = metadata or {}
-        specs = specs or []
-        if hasattr(array, "chunks"):
-            chunks = normalize_chunks(array.chunks)
-        else:
-            chunks = tuple((size,) for size in array.shape)
-
         structure = COOStructure(
-            shape=array.shape,
-            chunks=chunks,
+            shape=shape,
+            # This method only supports single-chunk COO arrays.
+            chunks=tuple((dim,) for dim in shape),
             dims=dims,
         )
-        data = {
-            "metadata": metadata,
-            "structure": asdict(structure),
-            "structure_family": StructureFamily.array,
-            "specs": specs,
-        }
-
-        full_path_meta = (
-            "/node/metadata"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
+        client = self.new(
+            StructureFamily.sparse, structure, metadata=metadata, specs=specs
         )
-        document = self.context.post_json(full_path_meta, data)
-        key = document["key"]
-
-        if hasattr(array, "chunks"):
-            if isinstance(array, dask.array.Array):
-                da = array
-            else:
-                da = dask.array.from_array(array)
-
-            def upload(x, block_id):
-                full_path_data = (
-                    "/array/block"
-                    + "".join(f"/{part}" for part in self.context.path_parts)
-                    + "".join(f"/{part}" for part in self._path)
-                    + "/"
-                    + key
-                )
-                self.context.put_content(
-                    full_path_data,
-                    content=x.tobytes(),
-                    headers={"Content-Type": "application/octet-stream"},
-                    params={"block": ",".join(map(str, block_id))},
-                )
-                return x
-
-            da.map_blocks(upload, dtype=da.dtype).compute()
-        else:
-            full_path_data = (
-                "/array/full"
-                + "".join(f"/{part}" for part in self.context.path_parts)
-                + "".join(f"/{part}" for part in self._path)
-                + "/"
-                + key
-            )
-            self.context.put_content(
-                full_path_data,
-                content=array.tobytes(),
-                headers={"Content-Type": "application/octet-stream"},
-            )
-
-        return key
+        client.write(coords, data)
 
     def write_dataframe(self, dataframe, metadata=None, specs=None):
         """
@@ -783,6 +742,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         import dask.dataframe
         import pandas
 
+        from ..serialization.dataframe import serialize_arrow
         from ..structures.dataframe import (
             DataFrameMacroStructure,
             DataFrameMicroStructure,
