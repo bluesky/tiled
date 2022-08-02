@@ -98,7 +98,7 @@ def test_write_array_full():
         tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
     )
 
-    a = numpy.ones((5, 5))
+    a = numpy.ones((5, 7))
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
@@ -123,7 +123,7 @@ def test_write_array_chunked():
         tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
     )
 
-    a = dask.array.arange(2500).reshape((50, 50)).rechunk((20, 20))
+    a = dask.array.arange(1500).reshape((50, 30)).rechunk((20, 15))
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]

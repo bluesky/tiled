@@ -5,22 +5,23 @@ from ..adapters.mapping import MapAdapter
 from ..adapters.sparse import COOAdapter
 from ..client import from_tree
 
-N = 3
+N, M = 3, 5
 state = numpy.random.RandomState(0)
-a = state.random((N * 2, N * 2))
+a = state.random((N * 2, M * 2))
 a[a < 0.5] = 0  # Fill half of the array with zeros.
 s = sparse.COO(a)
 blocks = {}
 for i in range(2):
     for j in range(2):
-        chunk = s[i * N : (1 + i) * N, j * N : (1 + j) * N]  # noqa: E203
-        # Coordinates should be in the reference frame of the whole array.
-        coords = chunk.coords + [[i * N], [j * N]]
+        chunk = s[i * N : (1 + i) * N, j * M : (1 + j) * M]  # noqa: E203
+        # Below we test the COOAdapter.from_global_ref constructor, so
+        # coordinates should be in the reference frame of the whole array.
+        coords = chunk.coords + [[i * N], [j * M]]
         blocks[i, j] = coords, chunk.data
 mapping = {
     "single_chunk": COOAdapter.from_coo(sparse.COO(a)),
     "multi_chunk": COOAdapter.from_global_ref(
-        blocks=blocks, shape=(2 * N, 2 * N), chunks=((N, N), (N, N))
+        blocks=blocks, shape=(2 * N, 2 * M), chunks=((N, N), (M, M))
     ),
 }
 tree = MapAdapter(mapping)
