@@ -554,7 +554,7 @@ def post_metadata(
     request: Request,
     path: str,
     body: schemas.PostMetadataRequest,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:metadata"]),
 ):
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
