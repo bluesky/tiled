@@ -74,6 +74,10 @@ class DaskDataFrameClient(BaseStructureClient):
             return []
         return columns
 
+    @property
+    def columns(self):
+        return self.structure().macro.columns
+
     def download(self):
         super().download()
         self._ipython_key_completions_()

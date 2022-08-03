@@ -9,6 +9,36 @@ from .utils import export_util, params_from_slice
 
 
 class SparseClient(BaseStructureClient):
+    @property
+    def dims(self):
+        return self.structure().dims
+
+    @property
+    def shape(self):
+        return self.structure().shape
+
+    @property
+    def chunks(self):
+        return self.structure().chunks
+
+    @property
+    def ndim(self):
+        return len(self.structure().shape)
+
+    def __repr__(self):
+        structure = self.structure()
+        attrs = {"shape": structure.shape, "chunks": structure.chunks}
+        if structure.dims:
+            attrs["dims"] = structure.dims
+        return (
+            f"<{type(self).__name__}"
+            + "".join(f" {k}={v}" for k, v in attrs.items())
+            + ">"
+        )
+
+    def __array__(self, *args, **kwargs):
+        return self.read().__array__(*args, **kwargs)
+
     def read_block(self, block, slice=None):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.

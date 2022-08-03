@@ -19,6 +19,52 @@ class DaskArrayClient(BaseStructureClient):
     def dims(self):
         return self.structure().macro.dims
 
+    @property
+    def shape(self):
+        return self.structure().macro.shape
+
+    @property
+    def size(self):
+        return numpy.product(self.structure().macro.shape)
+
+    @property
+    def dtype(self):
+        return self.structure().micro.to_numpy_dtype()
+
+    @property
+    def nbytes(self):
+        structure = self.structure()
+        return (
+            numpy.product(structure.macro.shape)
+            * structure.micro.to_numpy_dtype().itemsize
+        )
+
+    @property
+    def chunks(self):
+        return self.structure().macro.chunks
+
+    @property
+    def ndim(self):
+        return len(self.structure().macro.shape)
+
+    def __repr__(self):
+        structure = self.structure()
+        attrs = {
+            "shape": structure.macro.shape,
+            "chunks": structure.macro.chunks,
+            "dtype": structure.micro.to_numpy_dtype(),
+        }
+        if structure.macro.dims:
+            attrs["dims"] = structure.macro.dims
+        return (
+            f"<{type(self).__name__}"
+            + "".join(f" {k}={v}" for k, v in attrs.items())
+            + ">"
+        )
+
+    def __array__(self, *args, **kwargs):
+        return self.read().__array__(*args, **kwargs)
+
     def _get_block(self, block, dtype, shape, slice=None):
         """
         Fetch the actual data for one block in a chunked (dask) array.
