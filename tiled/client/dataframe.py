@@ -1,7 +1,7 @@
 import dask
 import dask.dataframe
 
-from ..serialization.dataframe import deserialize_arrow
+from ..serialization.dataframe import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
 from .base import BaseStructureClient
 from .utils import ClientError, client_for_item, export_util
@@ -73,6 +73,10 @@ class DaskDataFrameClient(BaseStructureClient):
             # Do not print messy traceback from thread. Just fail silently.
             return []
         return columns
+
+    @property
+    def columns(self):
+        return self.structure().macro.columns
 
     def download(self):
         super().download()
@@ -176,6 +180,20 @@ class DaskDataFrameClient(BaseStructureClient):
 
     # __len__ is intentionally not implemented. For DataFrames it means "number
     # of rows" which is expensive to compute.
+
+    def write(self, dataframe):
+        self.context.put_content(
+            self.item["links"]["full"],
+            content=bytes(serialize_arrow(dataframe, {})),
+            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+        )
+
+    def write_partition(self, dataframe, partition):
+        self.context.put_content(
+            self.item["links"]["partition"].format(index=partition),
+            content=bytes(serialize_arrow(dataframe, {})),
+            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+        )
 
     def export(self, filepath, columns=None, *, format=None):
         """

@@ -2,13 +2,43 @@ import numpy
 import sparse
 from ndindex import ndindex
 
-from ..serialization.dataframe import deserialize_arrow
+from ..serialization.dataframe import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .base import BaseStructureClient
 from .utils import export_util, params_from_slice
 
 
 class SparseClient(BaseStructureClient):
+    @property
+    def dims(self):
+        return self.structure().dims
+
+    @property
+    def shape(self):
+        return self.structure().shape
+
+    @property
+    def chunks(self):
+        return self.structure().chunks
+
+    @property
+    def ndim(self):
+        return len(self.structure().shape)
+
+    def __repr__(self):
+        structure = self.structure()
+        attrs = {"shape": structure.shape, "chunks": structure.chunks}
+        if structure.dims:
+            attrs["dims"] = structure.dims
+        return (
+            f"<{type(self).__name__}"
+            + "".join(f" {k}={v}" for k, v in attrs.items())
+            + ">"
+        )
+
+    def __array__(self, *args, **kwargs):
+        return self.read().__array__(*args, **kwargs)
+
     def read_block(self, block, slice=None):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
@@ -56,6 +86,30 @@ class SparseClient(BaseStructureClient):
             data=df["data"].values,
             coords=numpy.stack([df[f"dim{i}"].values for i in range(ndim)]),
             shape=sliced_shape,
+        )
+
+    def write(self, coords, data):
+        import pandas
+
+        d = {f"dim{i}": coords for i, coords in enumerate(coords)}
+        d["data"] = data
+        df = pandas.DataFrame(d)
+        self.context.put_content(
+            self.item["links"]["full"],
+            content=bytes(serialize_arrow(df, {})),
+            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+        )
+
+    def write_block(self, coords, data, block):
+        import pandas
+
+        d = {f"dim{i}": coords for i, coords in enumerate(coords)}
+        d["data"] = data
+        df = pandas.DataFrame(d)
+        self.context.put_content(
+            self.item["links"]["block"].format(*block),
+            content=bytes(serialize_arrow(df, {})),
+            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
         )
 
     def __getitem__(self, slice):

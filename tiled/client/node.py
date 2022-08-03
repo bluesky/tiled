@@ -13,15 +13,8 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..serialization.dataframe import serialize_arrow
 from ..structures.core import StructureFamily
-from ..utils import (
-    APACHE_ARROW_FILE_MIME_TYPE,
-    UNCHANGED,
-    OneShotCachedMap,
-    Sentinel,
-    node_repr,
-)
+from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
 from .utils import ClientError, client_for_item, export_util
@@ -117,9 +110,14 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         structure_clients,
         queries=None,
         sorting=None,
+        structure=None,
     ):
         "This is not user-facing. Use Node.from_uri."
 
+        if structure is not None:
+            # Node accepts 'structure' param for API compatibility with other clients,
+            # but it should always be None.
+            raise ValueError(f"Node received unexpected structure: {structure}")
         self.structure_clients = structure_clients
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
@@ -567,7 +565,54 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
-    def write_array(self, array, metadata=None, specs=None):
+    def new(self, structure_family, structure, *, metadata=None, specs=None):
+        """
+        Create a new item within this Node.
+
+        This is a low-level method. See high-level convenience methods listed below.
+
+        See Also
+        --------
+        write_array
+        write_dataframe
+        write_coo_array
+        """
+        metadata = metadata or {}
+        specs = specs or []
+        item = {
+            "attributes": {
+                "metadata": metadata,
+                "structure": asdict(structure),
+                "structure_family": StructureFamily(structure_family),
+                "specs": specs,
+            }
+        }
+
+        if structure_family == StructureFamily.dataframe:
+            # send bytes base64 encoded
+            item["attributes"]["structure"]["micro"]["meta"] = base64.b64encode(
+                item["attributes"]["structure"]["micro"]["meta"]
+            ).decode()
+            item["attributes"]["structure"]["micro"]["divisions"] = base64.b64encode(
+                item["attributes"]["structure"]["micro"]["divisions"]
+            ).decode()
+
+        document = self.context.post_json(self.uri, item["attributes"])
+        # Merge in "id" and "links" returned by the server.
+        item.update(document)
+        return client_for_item(
+            self.context,
+            self.structure_clients,
+            item,
+            path=self._path + (item["id"],),
+            structure=structure,
+        )
+
+    # When (re)chunking arrays for upload, we use this limit
+    # to attempt to avoid bumping into size limits.
+    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
+
+    def write_array(self, array, *, metadata=None, dims=None, specs=None):
         """
         EXPERIMENTAL: Write an array.
 
@@ -577,56 +622,128 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        dims : List[str], optional
+            A label for each dimension of the array.
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
 
         """
+        import dask.array
+        import numpy
+        from dask.array.core import normalize_chunks
 
         from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
 
         self._cached_len = None
+        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
+            # This does not implement enough of the array-like interface.
+            # Coerce to numpy.
+            array = numpy.asarray(array)
 
-        metadata = metadata or {}
-        specs = specs or []
+        # Determine chunks such that each chunk is not too large to upload.
+        # Any existing chunking will be taken into account.
+        # If the array is small, there will be only one chunk.
+        if hasattr(array, "chunks"):
+            chunks = normalize_chunks(
+                array.chunks,
+                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
+                dtype=array.dtype,
+                shape=array.shape,
+            )
+        else:
+            chunks = normalize_chunks(
+                tuple("auto" for _ in array.shape),
+                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
+                dtype=array.dtype,
+                shape=array.shape,
+            )
 
         structure = ArrayStructure(
             macro=ArrayMacroStructure(
                 shape=array.shape,
-                # just one chunk for now...
-                chunks=tuple((size,) for size in array.shape),
+                chunks=chunks,
+                dims=dims,
             ),
             micro=BuiltinDtype.from_numpy_dtype(array.dtype),
         )
-        data = {
-            "metadata": metadata,
-            "structure": asdict(structure),
-            "structure_family": StructureFamily.array,
-            "specs": specs,
-        }
-
-        full_path_meta = (
-            "/node/metadata"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
+        client = self.new(
+            StructureFamily.array, structure, metadata=metadata, specs=specs
         )
-        document = self.context.post_json(full_path_meta, data)
-        key = document["key"]
+        chunked = any(len(dim) > 1 for dim in chunks)
+        if not chunked:
+            client.write(array)
+        else:
+            # Fan out client.write_block over each chunk using dask.
+            if isinstance(array, dask.array.Array):
+                da = array.rechunk(chunks)
+            else:
+                da = dask.array.from_array(array, chunks=chunks)
 
-        full_path_data = (
-            "/array/full"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in self._path)
-            + "/"
-            + key
-        )
-        self.context.put_content(
-            full_path_data,
-            content=array.tobytes(),
-            headers={"Content-Type": "application/octet-stream"},
-        )
+            # Dask inspects the signature and passes block_id in if present.
+            # It also apparently calls it with an empty array and block_id
+            # once, so we catch that call and become a no-op.
+            def write_block(x, block_id, client):
+                if len(block_id):
+                    client.write_block(x, block=block_id)
+                return x
 
-        return key
+            # TODO Is there a fire-and-forget analogue such that we don't need
+            # to bother with the return type?
+            da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
+        return client
+
+    def write_sparse(self, coords, data, shape, metadata=None, dims=None, specs=None):
+        """
+        EXPERIMENTAL: Write a sparse array.
+
+        Examples
+        --------
+
+        Write a sparse.COO array.
+
+        >>> import sparse
+        >>> coo = sparse.COO([0, 0, 1, 0, 0, 5])
+        >>> c.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape)
+
+        This only supports a single chunk. For chunked upload, use lower-level methods.
+
+        # Define the overall shape and the dimensions of each chunk.
+        >>> from tiled.structures.sparse import COOStructure
+        >>> x = c.new("sparse", COOStructure(shape=(10,), chunks=((5, 5),)))
+        # Upload the data in each chunk.
+        # Coords are given with in the reference frame of each chunk.
+        >>> x.write_block(coords=[2, 4], data=[3.1, 2.8], block=(0,))
+        >>> x.write_block(coords=[0, 1], data=[6.7, 1.2], block=(1,))
+
+        Parameters
+        ----------
+        coords : array-like
+        data : array-like
+        shape: Tuple
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        dims : List[str], optional
+            A label for each dimension of the array.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+        from ..structures.sparse import COOStructure
+
+        structure = COOStructure(
+            shape=shape,
+            # This method only supports single-chunk COO arrays.
+            chunks=tuple((dim,) for dim in shape),
+            dims=dims,
+        )
+        client = self.new(
+            StructureFamily.sparse, structure, metadata=metadata, specs=specs
+        )
+        client.write(coords, data)
+        return client
 
     def write_dataframe(self, dataframe, metadata=None, specs=None):
         """
@@ -644,6 +761,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
         """
+        import dask.dataframe
+        import pandas
+
+        from ..serialization.dataframe import serialize_arrow
         from ..structures.dataframe import (
             DataFrameMacroStructure,
             DataFrameMicroStructure,
@@ -655,50 +776,46 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata = metadata or {}
         specs = specs or []
 
+        if isinstance(dataframe, dask.dataframe.DataFrame):
+            meta = bytes(serialize_arrow(dataframe._meta, {}))
+            divisions = bytes(
+                serialize_arrow(
+                    pandas.DataFrame({"divisions": list(dataframe.divisions)}), {}
+                )
+            )
+            micro = DataFrameMicroStructure(meta=meta, divisions=divisions)
+            npartitions = dataframe.npartitions
+        else:
+            micro = DataFrameMicroStructure.from_dataframe(dataframe)
+            npartitions = 1
+
         structure = DataFrameStructure(
-            micro=DataFrameMicroStructure.from_dataframe(dataframe),
+            micro=micro,
             macro=DataFrameMacroStructure(
-                npartitions=1, columns=list(dataframe.columns)
+                npartitions=npartitions, columns=list(dataframe.columns)
             ),
         )
-
-        data = {
-            "metadata": metadata,
-            "structure": asdict(structure),
-            "structure_family": StructureFamily.dataframe,
-            "specs": specs,
-        }
-
-        # send bytes base64 encoded
-        data["structure"]["micro"]["meta"] = base64.b64encode(
-            data["structure"]["micro"]["meta"]
-        ).decode()
-        data["structure"]["micro"]["divisions"] = base64.b64encode(
-            data["structure"]["micro"]["divisions"]
-        ).decode()
-
-        full_path_meta = (
-            "/node/metadata"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-        document = self.context.post_json(full_path_meta, data)
-        key = document["key"]
-
-        full_path_data = (
-            "/node/full"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in self._path)
-            + "/"
-            + key
-        )
-        self.context.put_content(
-            full_path_data,
-            content=bytes(serialize_arrow(dataframe, {})),
-            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+        client = self.new(
+            StructureFamily.dataframe, structure, metadata=metadata, specs=specs
         )
 
-        return key
+        if hasattr(dataframe, "partitions"):
+            if isinstance(dataframe, dask.dataframe.DataFrame):
+                ddf = dataframe
+            else:
+                raise NotImplementedError(
+                    f"Unsure how to handle type {type(dataframe)}"
+                )
+
+            def write_partition(x, partition_info):
+                client.write_partition(x, partition_info["number"])
+                return x
+
+            ddf.map_partitions(write_partition, meta=dataframe._meta).compute()
+        else:
+            client.write(dataframe)
+
+        return client
 
 
 def _queries_to_params(*queries):

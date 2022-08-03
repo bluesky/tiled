@@ -95,7 +95,9 @@ class XDIDataFrameAdapter(DataFrameAdapter):
     @classmethod
     def from_file(cls, file):
         df, metadata = read_xdi(file)
-        return cls(dask.dataframe.from_pandas(df, npartitions=1), metadata=metadata)
+        return cls.from_dask_dataframe(
+            dask.dataframe.from_pandas(df, npartitions=1), metadata=metadata
+        )
 
 
 def write_xdi(df, metadata):

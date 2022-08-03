@@ -53,5 +53,5 @@ class ExcelAdapter(MapAdapter):
             if cache is not NO_CACHE:
                 cache.discard(cache_key)  # parsed sheet content
                 cache.discard_dask(ddf.__dask_keys__())  # dask tasks
-            mapping[sheet_name] = DataFrameAdapter(ddf)
+            mapping[sheet_name] = DataFrameAdapter.from_dask_dataframe(ddf)
         return cls(mapping, specs=specs)

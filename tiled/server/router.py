@@ -552,8 +552,9 @@ def node_full(
 @router.post("/node/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
 def post_metadata(
     request: Request,
+    path: str,
     body: schemas.PostMetadataRequest,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:metadata"]),
 ):
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
@@ -569,10 +570,36 @@ def post_metadata(
             structure=body.structure,
             specs=body.specs,
         )
+        links = {}
+        base_url = get_base_url(request)
+        path_parts = [segment for segment in path.split("/") if segment] + [key]
+        path_str = "/".join(path_parts)
+        links["self"] = f"{base_url}/node/metadata/{path_str}"
+        if body.structure_family == StructureFamily.array:
+            block_template = ",".join(
+                f"{{{index}}}" for index in range(len(body.structure.macro.shape))
+            )
+            links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
+            links["full"] = f"{base_url}/array/full/{path_str}"
+        elif body.structure_family == StructureFamily.sparse:
+            # Different from array because of structure.macro.shape vs structure.shape
+            # Can be unified if we drop macro/micro namespace.
+            block_template = ",".join(
+                f"{{{index}}}" for index in range(len(body.structure.shape))
+            )
+            links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
+            links["full"] = f"{base_url}/array/full/{path_str}"
+        elif body.structure_family == StructureFamily.dataframe:
+            links[
+                "partition"
+            ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
+            links["full"] = f"{base_url}/node/full/{path_str}"
+        else:
+            raise NotImplementedError(body.structure_family)
     else:
         raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
 
-    return json_or_msgpack(request, {"key": key})
+    return json_or_msgpack(request, {"id": key, "links": links})
 
 
 @router.delete("/node/metadata/{path:path}")
@@ -592,7 +619,7 @@ async def delete(
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:data"]),
 ):
     data = await request.body()
 
@@ -605,15 +632,49 @@ async def put_array_full(
     return json_or_msgpack(request, None)
 
 
+@router.put("/array/block/{path:path}")
+async def put_array_block(
+    request: Request,
+    entry=Security(entry, scopes=["write:data"]),
+    block=Depends(block),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data, block=block)
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path cannot accept array data."
+        )
+    return json_or_msgpack(request, None)
+
+
 @router.put("/node/full/{path:path}")
 async def put_dataframe_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:data"]),
 ):
     data = await request.body()
 
     if hasattr(entry, "put_data"):
         entry.put_data(data)
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path cannot accept dataframe data."
+        )
+    return json_or_msgpack(request, None)
+
+
+@router.put("/dataframe/partition/{path:path}")
+async def put_dataframe_partition(
+    partition: int,
+    request: Request,
+    entry=Security(entry, scopes=["write:data"]),
+):
+    data = await request.body()
+
+    if hasattr(entry, "put_data"):
+        entry.put_data(data, partition=partition)
     else:
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."

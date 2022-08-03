@@ -11,9 +11,9 @@ tree = MapAdapter(
         "basic": DataFrameAdapter.from_pandas(
             pandas.DataFrame(
                 {
-                    "x": 1 * numpy.ones(100),
-                    "y": 2 * numpy.ones(100),
-                    "z": 3 * numpy.ones(100),
+                    "x": 1 * numpy.ones(10),
+                    "y": 2 * numpy.ones(10),
+                    "z": 3 * numpy.ones(10),
                 }
             ),
             npartitions=3,
@@ -22,9 +22,9 @@ tree = MapAdapter(
         "single_partition": DataFrameAdapter.from_pandas(
             pandas.DataFrame(
                 {
-                    "x": 1 * numpy.ones(100),
-                    "y": 2 * numpy.ones(100),
-                    "z": 3 * numpy.ones(100),
+                    "x": 1 * numpy.ones(5),
+                    "y": 2 * numpy.ones(5),
+                    "z": 3 * numpy.ones(5),
                 }
             ),
             npartitions=1,
