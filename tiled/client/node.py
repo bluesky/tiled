@@ -535,12 +535,15 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> a.export("everything.h5")
 
         """
+        params = {}
+        if fields is not None:
+            params["field"] = fields
         return export_util(
             filepath,
             format,
             self.context.get_content,
             self.item["links"]["full"],
-            params={"field": fields},
+            params=params,
         )
 
     def _ipython_key_completions_(self):
