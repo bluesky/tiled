@@ -618,7 +618,7 @@ async def delete(
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:data"]),
 ):
     data = await request.body()
 
@@ -634,7 +634,7 @@ async def put_array_full(
 @router.put("/array/block/{path:path}")
 async def put_array_block(
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:data"]),
     block=Depends(block),
 ):
     data = await request.body()
@@ -651,7 +651,7 @@ async def put_array_block(
 @router.put("/node/full/{path:path}")
 async def put_dataframe_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:data"]),
 ):
     data = await request.body()
 
@@ -668,7 +668,7 @@ async def put_dataframe_full(
 async def put_dataframe_partition(
     partition: int,
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:data"]),
 ):
     data = await request.body()
 
