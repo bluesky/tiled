@@ -540,7 +540,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             format,
             self.context.get_content,
             self.item["links"]["full"],
-            params={},
+            params={"field": fields},
         )
 
     def _ipython_key_completions_(self):
