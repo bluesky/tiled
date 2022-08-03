@@ -630,11 +630,16 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         """
         import dask.array
+        import numpy
         from dask.array.core import normalize_chunks
 
         from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
 
         self._cached_len = None
+        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
+            # This does not implement enough of the array-like interface.
+            # Coerce to numpy.
+            array = numpy.asarray(array)
 
         # Determine chunks such that each chunk is not too large to upload.
         # Any existing chunking will be taken into account.
@@ -738,6 +743,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             StructureFamily.sparse, structure, metadata=metadata, specs=specs
         )
         client.write(coords, data)
+        return client
 
     def write_dataframe(self, dataframe, metadata=None, specs=None):
         """

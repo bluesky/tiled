@@ -574,6 +574,7 @@ def post_metadata(
         base_url = get_base_url(request)
         path_parts = [segment for segment in path.split("/") if segment] + [key]
         path_str = "/".join(path_parts)
+        links["self"] = f"{base_url}/node/metadata/{path_str}"
         if body.structure_family == StructureFamily.array:
             block_template = ",".join(
                 f"{{{index}}}" for index in range(len(body.structure.macro.shape))
