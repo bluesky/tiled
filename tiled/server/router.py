@@ -745,7 +745,7 @@ async def put_dataframe_partition(
 async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=Security(entry, scopes=["write:metadata"]),
 ):
     if hasattr(entry, "put_metadata"):
         entry.put_metadata(
