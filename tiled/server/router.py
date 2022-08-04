@@ -737,6 +737,7 @@ async def put_dataframe_partition(
     else:
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."
+        )
 
 
 @router.put("/node/metadata/{path:path}")
