@@ -116,13 +116,13 @@ class DaskDataFrameClient(BaseStructureClient):
         npartitions = structure.macro.npartitions
         if not (0 <= partition < npartitions):
             raise IndexError(f"partition {partition} out of range")
-        meta = structure.micro.meta
+        meta = structure.micro.meta_decoded
         if columns is not None:
             meta = meta[columns]
         return dask.dataframe.from_delayed(
             [dask.delayed(self._get_partition)(partition, columns)],
             meta=meta,
-            divisions=structure.micro.divisions,
+            divisions=structure.micro.divisions_decoded,
         )
 
     def read(self, columns=None):
@@ -141,11 +141,15 @@ class DaskDataFrameClient(BaseStructureClient):
             (name,) + (partition,): (self._get_partition, partition, columns)
             for partition in range(structure.macro.npartitions)
         }
-        meta = structure.micro.meta
+        meta = structure.micro.meta_decoded
+
         if columns is not None:
             meta = meta[columns]
         ddf = dask.dataframe.DataFrame(
-            dask_tasks, name=name, meta=meta, divisions=structure.micro.divisions
+            dask_tasks,
+            name=name,
+            meta=meta,
+            divisions=structure.micro.divisions_decoded,
         )
         if columns is not None:
             ddf = ddf[columns]

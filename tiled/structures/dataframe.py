@@ -41,6 +41,19 @@ class DataFrameMicroStructure:
         )
         return cls(meta=meta, divisions=divisions)
 
+    @property
+    def meta_decoded(self):
+        from ..serialization.dataframe import deserialize_arrow
+
+        return deserialize_arrow(self.meta)
+
+    @property
+    def divisions_decoded(self):
+        from ..serialization.dataframe import deserialize_arrow
+
+        divisions_wrapped_in_df = deserialize_arrow(self.divisions)
+        return tuple(divisions_wrapped_in_df["divisions"].values)
+
 
 @dataclass
 class DataFrameMacroStructure:
@@ -60,12 +73,7 @@ class DataFrameStructure:
 
     @classmethod
     def from_json(cls, content):
-        from ..serialization.dataframe import deserialize_arrow
-
-        divisions_wrapped_in_df = deserialize_arrow(content["micro"]["divisions"])
-        divisions = tuple(divisions_wrapped_in_df["divisions"].values)
-        meta = deserialize_arrow(content["micro"]["meta"])
         return cls(
-            micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
+            micro=DataFrameMicroStructure(**content["micro"]),
             macro=DataFrameMacroStructure(**content["macro"]),
         )
