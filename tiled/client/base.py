@@ -139,14 +139,15 @@ class BaseClient:
 
         self._cached_len = None
 
-        data = {  # noqa: F841
+        metadata = metadata or {}
+        specs = specs or []
+
+        data = {
             "metadata": metadata,
-            # "structure": asdict(structure),
-            # "structure_family": StructureFamily.dataframe,
             "specs": specs,
         }
 
-        full_path_meta = (  # noqa: F841
+        full_path_meta = (
             "/node/metadata"
             + "".join(f"/{part}" for part in self.context.path_parts)
             + "".join(f"/{part}" for part in (self._path or [""]))
