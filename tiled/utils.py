@@ -618,3 +618,15 @@ def node_repr(tree, sample):
     else:
         out += "}>"
     return out
+
+
+def bytesize_repr(num):
+    # adapted from dask.utils
+    for x in ["B", "MB", "GB", "TB"]:
+        if num < 1024.0:
+            if x == "B":
+                s = f"{num:.0f} {x}"
+            else:
+                s = f"{num:.1f} {x}"
+            return s
+        num /= 1024.0

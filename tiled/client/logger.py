@@ -3,6 +3,8 @@ import contextlib
 import logging
 import os
 
+from ..utils import bytesize_repr
+
 # By default, the token in the authentication header is redacted from the logs.
 # Set this env var to 1 to show it for debugging purposes.
 TILED_LOG_AUTH_TOKEN = int(os.getenv("TILED_LOG_AUTH_TOKEN", False))
@@ -12,7 +14,11 @@ class ClientLogRecord(logging.LogRecord):
     def getMessage(self):
         if hasattr(self, "request"):
             request = self.request
-            message = f"-> {request.method} '{request.url}' " + " ".join(
+            if "content-length" in request.headers:
+                size = f"({bytesize_repr(int(request.headers['content-length']))})"
+            else:
+                size = ""
+            message = f"-> {size} {request.method} '{request.url}' " + " ".join(
                 f"'{k}:{v}'" for k, v in request.headers.items() if k != "authorization"
             )
             # Handle the authorization header specially.
@@ -29,7 +35,11 @@ class ClientLogRecord(logging.LogRecord):
         elif hasattr(self, "response"):
             response = self.response
             request = response.request
-            message = f"<- {response.status_code} " + " ".join(
+            if "content-length" in response.headers:
+                size = f"({bytesize_repr(int(response.headers['content-length']))})"
+            else:
+                size = ""
+            message = f"<- {size} {response.status_code} " + " ".join(
                 f"{k}:{v}" for k, v in response.headers.items()
             )
         else:
