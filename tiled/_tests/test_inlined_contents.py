@@ -123,4 +123,4 @@ def test_too_wide_for_inline():
     assert client.item["attributes"]["structure"]["contents"] is None
     with record_history() as history:
         assert set(client) == set(tree)
-    assert len(history.requests) == 3
+    assert len(history.requests) >= 3
