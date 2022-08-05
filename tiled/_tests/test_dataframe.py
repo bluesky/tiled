@@ -39,6 +39,7 @@ def test_dataframe_basic():
     actual = client["basic"].read()
     assert client["basic"].structure().macro.npartitions == 3
     pandas.testing.assert_frame_equal(actual, expected)
+    assert client["basic"].columns == list(expected.columns) == list(actual.columns)
 
 
 def test_dataframe_column_access():

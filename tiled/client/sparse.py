@@ -39,6 +39,10 @@ class SparseClient(BaseStructureClient):
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
+    def todense(self, *args, **kwargs):
+        "Return a dense numpy array. May be large."
+        return self.read().todense(*args, **kwargs)
+
     def read_block(self, block, slice=None):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
