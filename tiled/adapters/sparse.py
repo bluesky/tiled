@@ -10,7 +10,7 @@ class COOAdapter:
     structure_family = "sparse"
 
     @classmethod
-    def from_arrays(cls, coords, data, shape):
+    def from_arrays(cls, coords, data, shape, dims=None, metadata=None, specs=None):
         """
         Simplest constructor. Single chunk from coords, data arrays.
         """
@@ -18,12 +18,22 @@ class COOAdapter:
             {(0, 0): (coords, data)},
             shape=shape,
             chunks=tuple((dim,) for dim in shape),
+            dims=dims,
+            metadata=metadata,
+            specs=specs,
         )
 
     @classmethod
-    def from_coo(cls, coo):
+    def from_coo(cls, coo, *, dims=None, metadata=None, specs=None):
         "Construct from sparse.COO object."
-        return cls.from_arrays(coords=coo.coords, data=coo.data, shape=coo.shape)
+        return cls.from_arrays(
+            coords=coo.coords,
+            data=coo.data,
+            shape=coo.shape,
+            dims=dims,
+            metadata=metadata,
+            specs=specs,
+        )
 
     @classmethod
     def from_global_ref(

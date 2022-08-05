@@ -21,10 +21,10 @@ class COOStructure:
     @classmethod
     def from_json(cls, structure):
         return cls(
-            chunks=structure["chunks"],
-            shape=structure["shape"],
+            chunks=tuple(map(tuple, structure["chunks"])),
+            shape=tuple(structure["shape"]),
             dims=structure["dims"],
-            resizable=structure["resizable"],
+            resizable=structure.get("resizable", False),
         )
 
 

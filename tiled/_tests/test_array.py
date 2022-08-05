@@ -114,3 +114,16 @@ def test_array_format_shape_from_cube():
         hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
     # Check that the error is 406 (Not Acceptable).
     assert err.match("406")
+
+
+def test_array_interface():
+    client = from_tree(array_tree)
+    for k, v in client.items():
+        assert v.shape == array_cases[k].shape
+        assert v.ndim == array_cases[k].ndim
+        assert v.nbytes == array_cases[k].nbytes
+        assert v.dtype == array_cases[k].dtype
+        assert numpy.array_equal(numpy.asarray(v), array_cases[k])
+        # smoke test
+        v.chunks
+        v.dims
