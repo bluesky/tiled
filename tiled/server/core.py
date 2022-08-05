@@ -40,9 +40,14 @@ register_builtin_serializers()
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 _LOCAL_TZINFO = dateutil.tz.gettz()
 
-# Pragmatic limit on how "wide" a node can be
-# before the server refusing to inline its contents
-INLINED_CONTENTS_LIMIT = 100
+# Pragmatic limit on how "wide" a node can be before the server refuses to
+# inline its contents.
+# There are some wide-and-short DataFrame datasets we have observed
+# (specifically, bluesky "baseline" readings) that can touch this limit.
+# We raised it from an initial guess of 100 to avoid splitting these over
+# too many requests. This value *may* be too high --- need more benchmarking
+# on realistic workloads.
+INLINED_CONTENTS_LIMIT = 500
 
 # Pragmatic limit on how deep the server will recurse into nodes that request
 # inlined contents. This is a hard upper bound meant to protect the server from
