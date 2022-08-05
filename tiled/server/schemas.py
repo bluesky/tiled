@@ -284,8 +284,9 @@ class PostMetadataRequest(pydantic.BaseModel):
     specs: List[str]
 
 
-class PostMetadataResponse(pydantic.BaseModel):
-    key: str
+class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
+    id: str
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
 
 
 NodeStructure.update_forward_refs()
