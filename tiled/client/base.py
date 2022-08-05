@@ -139,9 +139,6 @@ class BaseClient:
 
         self._cached_len = None
 
-        metadata = metadata or {}
-        specs = specs or []
-
         data = {
             "metadata": metadata,
             "specs": specs,
