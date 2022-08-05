@@ -5,11 +5,14 @@ description of a node. This is used in xarray_dataset now and may
 be used more widely later.
 """
 
+import numpy
 import xarray
 
+from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import from_tree, record_history
+from ..server.core import INLINED_CONTENTS_LIMIT
 
 tree = MapAdapter(
     {
@@ -95,3 +98,29 @@ def test_items_slice():
     with record_history() as history:
         list(dsc._items_slice(0, 1, 1, _ignore_inlined_contents=True))
     assert history.requests
+
+
+def test_too_wide_for_inline():
+    """
+    The server will not inline contents above a certain limit.
+
+
+    It is fetched in pages on demand, as usual with nodes.
+    """
+
+    class Adapter(MapAdapter):
+        def inlined_contents_enabled(self):
+            return True
+
+    a = numpy.array([1])
+    tree = MapAdapter(
+        {
+            f"item{i:05}": ArrayAdapter(i * a)
+            for i in range(1 + 2 * INLINED_CONTENTS_LIMIT)
+        }
+    )
+    client = from_tree(tree)
+    assert client.item["attributes"]["structure"]["contents"] is None
+    with record_history() as history:
+        assert set(client) == set(tree)
+    assert len(history.requests) == 3
