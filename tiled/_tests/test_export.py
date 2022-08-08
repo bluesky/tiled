@@ -10,6 +10,7 @@ from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import from_tree
+from ..client.utils import ClientError
 
 data = numpy.random.random((10, 10))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -85,6 +86,14 @@ def test_export_weather_data_var(filename, structure_clients, tmpdir):
 def test_export_weather_all(filename, structure_clients, tmpdir):
     client = from_tree(tree, structure_clients=structure_clients)
     client["structured_data"]["weather"].export(Path(tmpdir, filename))
+
+
+def test_serialization_error_hdf5_metadata(tmpdir):
+    good = MapAdapter({}, metadata={"a": 1})
+    bad = MapAdapter({}, metadata={"a": {"b": 1}})
+    from_tree(good).export(Path(tmpdir, "test.h5"))
+    with pytest.raises(ClientError, match="contains types or structure"):
+        from_tree(bad).export(Path(tmpdir, "test.h5"))
 
 
 def test_path_as_Path_or_string(tmpdir):
