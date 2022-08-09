@@ -13,6 +13,9 @@ ENV PYTHONUNBUFFERED=1
 FROM base as builder
 WORKDIR /app
 
+# for versioneer
+RUN apt-get update && apt-get install -y --no-install-recommends git
+
 # copy requirements over first so this layer is cached and we don't have to reinstall deps when editing src
 COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-compression.txt docker/requirements-docker.txt /tmp/
 RUN pip install --upgrade pip
