@@ -1,7 +1,7 @@
 import io
 
 from ..media_type_registration import serialization_registry
-from ..utils import modules_available
+from ..utils import SerializationError, modules_available
 
 
 def walk(node, pre=None):
@@ -37,9 +37,12 @@ if modules_available("h5py"):
 
         buffer = io.BytesIO()
         root_node = node
+        MSG = "Metadata contains types or structure that does not fit into HDF5."
         with h5py.File(buffer, mode="w") as file:
-            for k, v in metadata.items():
-                file.attrs.create(k, v)
+            try:
+                file.attrs.update(metadata)
+            except TypeError:
+                raise SerializationError(MSG)
             for key_path, array_adapter in walk(node):
                 group = file
                 node = root_node
@@ -49,7 +52,10 @@ if modules_available("h5py"):
                         group = group[key]
                     else:
                         group = group.create_group(key)
-                        group.attrs.update(node.metadata)
+                        try:
+                            group.attrs.update(node.metadata)
+                        except TypeError:
+                            raise SerializationError(MSG)
                 data = array_adapter.read()
                 dataset = group.create_dataset(key_path[-1], data=data)
                 for k, v in array_adapter.metadata.items():
