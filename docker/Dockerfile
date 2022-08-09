@@ -31,6 +31,9 @@ RUN pip install \
 COPY --from=web_builder /app/build /app/share/tiled/ui
 COPY . .
 
+# get tags for versioneer
+RUN git fetch --tags
+
 # note requirements listed here but all deps should be already satisfied
 RUN pip install '.[server, formats, dataframe, array, xarray, compression]'
 
