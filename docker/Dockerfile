@@ -32,7 +32,7 @@ COPY --from=web_builder /app/build /app/share/tiled/ui
 COPY . .
 
 # get tags for versioneer
-RUN git fetch --tags || true
+RUN git fetch --unshallow --tags || true
 RUN git describe || true
 RUN git rev-parse HEAD || true
 
