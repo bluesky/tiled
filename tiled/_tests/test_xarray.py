@@ -45,7 +45,8 @@ EXPECTED = {
         },
     ),
     "wide": xarray.Dataset(
-        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(100)}
+        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(100)},
+        coords={"time": numpy.arange(10)},
     ),
     "ragged": xarray.Dataset(
         {

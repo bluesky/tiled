@@ -31,19 +31,19 @@ def serialize_parquet(df, metadata, preserve_index=True):
     return memoryview(sink.getvalue())
 
 
-def serialize_csv(df, metadata, preserve_index=True):
+def serialize_csv(df, metadata, preserve_index=False):
     file = io.StringIO()
     df.to_csv(file, index=preserve_index)
     return file.getvalue().encode()
 
 
-def serialize_excel(df, metadata, preserve_index=True):
+def serialize_excel(df, metadata, preserve_index=False):
     file = io.BytesIO()
     df.to_excel(file, index=preserve_index)
     return file.getbuffer()
 
 
-def serialize_html(df, metadata, preserve_index=True):
+def serialize_html(df, metadata, preserve_index=False):
     file = io.StringIO()
     df.to_html(file, index=preserve_index)
     return file.getvalue().encode()
