@@ -177,17 +177,19 @@ The profile will be ommitted. Fix this by removing one of the duplicates"""
             _all_paths[-2]
         ):
             msg = (MSG + ".").format(
-                filepaths="\n".join(filepaths), profile_name=profile_name
+                filepaths="\n".join(map(str, filepaths)), profile_name=profile_name
             )
         else:
             msg = (
                 MSG
                 + (
-                    "or by defining a profile with that name in a "
+                    " or by defining a profile with that name in a "
                     f"file in the user config directory {paths[-1]} "
                     "to override them."
                 )
-            ).format(filepaths="\n".join(filepaths), profile_name=profile_name)
+            ).format(
+                filepaths="\n".join(map(str, filepaths)), profile_name=profile_name
+            )
         warnings.warn(msg)
     return combined
 
