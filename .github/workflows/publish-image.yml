@@ -40,6 +40,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
         with:
+          build-args: GIT_FETCH=true
           context: .
           file: docker/Dockerfile
           push: true

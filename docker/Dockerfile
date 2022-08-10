@@ -31,10 +31,10 @@ RUN pip install \
 COPY --from=web_builder /app/build /app/share/tiled/ui
 COPY . .
 
-# get tags for versioneer
-RUN git fetch --unshallow --tags || true
-RUN git describe || true
-RUN git rev-parse HEAD || true
+# run git fetch to unshallow repo and retrieve tags before running pip install so that versioneer can generate the proper version string
+# needed for github actions ci
+ARG GIT_FETCH
+RUN if [ "$GIT_FETCH" = "true" ] ; then git fetch --unshallow --tags ; fi
 
 # note requirements listed here but all deps should be already satisfied
 RUN pip install '.[server, formats, dataframe, array, xarray, compression]'
