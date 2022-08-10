@@ -373,6 +373,9 @@ def tree(tree, max_lines=20):
         └── wolf
 
     """
+    if len(tree) == 0:
+        print("<Empty>")
+        return
     for counter, line in enumerate(gen_tree(tree), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
