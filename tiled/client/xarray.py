@@ -1,3 +1,5 @@
+import threading
+
 import dask
 import dask.array
 import pandas
@@ -12,8 +14,6 @@ LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 
 class DaskDatasetClient(Node):
-    separate_coords_and_data_vars_download = True
-
     def _repr_pretty_(self, p, cycle):
         """
         Provide "pretty" display in IPython/Jupyter.
@@ -43,12 +43,9 @@ class DaskDatasetClient(Node):
         coords_fetcher = _WideTableFetcher(
             self.context.get_content, self.item["links"]["full"]
         )
-        if self.separate_coords_and_data_vars_download:
-            data_vars_fetcher = _WideTableFetcher(
-                self.context.get_content, self.item["links"]["full"]
-            )
-        else:
-            data_vars_fetcher = coords_fetcher
+        data_vars_fetcher = _WideTableFetcher(
+            self.context.get_content, self.item["links"]["full"]
+        )
         array_clients = {}
         array_structures = {}
         first_dims = []
@@ -104,8 +101,6 @@ class DaskDatasetClient(Node):
 
 
 class DatasetClient(DaskDatasetClient):
-    separate_coords_and_data_vars_download = False
-
     def read(self, variables=None, *, optimize_wide_table=True):
         return (
             super()
@@ -131,6 +126,10 @@ class _WideTableFetcher:
         self.link = link
         self.variables = []
         self._dataframe = None
+        # This lock ensures that multiple threads (e.g. dask worker threads)
+        # do not prompts us to re-request the same data. Only the first worker
+        # to ask for the data should trigger a request.
+        self._lock = threading.Lock()
 
     def register(self, name, array_client, array_structure):
         if self._dataframe is not None:
@@ -144,33 +143,34 @@ class _WideTableFetcher:
         )
 
     def dataframe(self):
-        if self._dataframe is None:
-            # If self.variables contains many and/or lengthy names,
-            # we can bump into the URI size limit commonly imposed by
-            # HTTP stacks (e.g. nginx). The HTTP spec does not define a limit,
-            # but a common setting is 4K or 8K (for all the headers together).
-            # As another reference point, Internet Explorer imposes a
-            # 2048-character limit on URLs.
-            variables = []
-            dataframes = []
-            budget = URL_CHARACTER_LIMIT
-            budget -= len(self.link)
-            # Fetch the variables in batches.
-            for variable in self.variables:
-                budget -= _EXTRA_CHARS_PER_ITEM + len(variable)
-                if budget < 0:
-                    # Fetch a batch and then add `variable` to the next batch.
+        with self._lock:
+            if self._dataframe is None:
+                # If self.variables contains many and/or lengthy names,
+                # we can bump into the URI size limit commonly imposed by
+                # HTTP stacks (e.g. nginx). The HTTP spec does not define a limit,
+                # but a common setting is 4K or 8K (for all the headers together).
+                # As another reference point, Internet Explorer imposes a
+                # 2048-character limit on URLs.
+                variables = []
+                dataframes = []
+                budget = URL_CHARACTER_LIMIT
+                budget -= len(self.link)
+                # Fetch the variables in batches.
+                for variable in self.variables:
+                    budget -= _EXTRA_CHARS_PER_ITEM + len(variable)
+                    if budget < 0:
+                        # Fetch a batch and then add `variable` to the next batch.
+                        dataframes.append(self._fetch_variables(variables))
+                        variables.clear()
+                        budget = URL_CHARACTER_LIMIT - (
+                            _EXTRA_CHARS_PER_ITEM + len(variable)
+                        )
+                    variables.append(variable)
+                if variables:
+                    # Fetch the final batch.
                     dataframes.append(self._fetch_variables(variables))
-                    variables.clear()
-                    budget = URL_CHARACTER_LIMIT - (
-                        _EXTRA_CHARS_PER_ITEM + len(variable)
-                    )
-                variables.append(variable)
-            if variables:
-                # Fetch the final batch.
-                dataframes.append(self._fetch_variables(variables))
-            self._dataframe = pandas.concat(dataframes, axis=1)
-        return self._dataframe.reset_index()
+                self._dataframe = pandas.concat(dataframes, axis=1).reset_index()
+        return self._dataframe
 
     def _fetch_variables(self, variables):
         content = self.get(
