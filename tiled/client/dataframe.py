@@ -94,13 +94,8 @@ class DaskDataFrameClient(BaseStructureClient):
             # Note: The singular/plural inconsistency here is due to the fact that
             # ["A", "B"] will be encoded in the URL as field=A&field=B
             params["field"] = columns
-        full_path = (
-            "/dataframe/partition"
-            + "".join(f"/{path}" for path in self.context.path_parts)
-            + "".join(f"/{path}" for path in self._path)
-        )
         content = self.context.get_content(
-            full_path,
+            self.item["links"]["partition"],
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params=params,
         )
@@ -134,11 +129,9 @@ class DaskDataFrameClient(BaseStructureClient):
         structure = self.structure()
         # Build a client-side dask dataframe whose partitions pull from a
         # server-side dask array.
-        name = (
-            "remote-dask-dataframe-" f"{self.context.base_url!s}/{'/'.join(self._path)}"
-        )
+        name = f"remote-dask-dataframe-{self.item['links']['self']}"
         dask_tasks = {
-            (name,) + (partition,): (self._get_partition, partition, columns)
+            (name, partition): (self._get_partition, partition, columns)
             for partition in range(structure.macro.npartitions)
         }
         meta = structure.micro.meta_decoded
@@ -175,9 +168,7 @@ class DaskDataFrameClient(BaseStructureClient):
                 raise KeyError(column)
             raise
         item = content["data"]
-        return client_for_item(
-            self.context, self.structure_clients, item, path=self._path + (item["id"],)
-        )
+        return client_for_item(self.context, self.structure_clients, item)
 
     def __iter__(self):
         yield from self.structure().macro.columns
