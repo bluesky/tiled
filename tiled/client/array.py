@@ -4,7 +4,6 @@ import dask
 import dask.array
 import numpy
 
-from ..media_type_registration import deserialization_registry
 from .base import BaseStructureClient
 from .utils import export_util, params_from_slice
 
@@ -104,7 +103,7 @@ class DaskArrayClient(BaseStructureClient):
                 "expected_shape": expected_shape,
             },
         )
-        return deserialization_registry("array", media_type, content, dtype, shape)
+        return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
     def read_block(self, block, slice=None):
         """
