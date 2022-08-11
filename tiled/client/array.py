@@ -91,13 +91,8 @@ class DaskArrayClient(BaseStructureClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
-        full_path = (
-            "/array/block"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in self._path)
-        )
         content = self.context.get_content(
-            full_path,
+            self.item["links"]["block"],
             headers={"Accept": media_type},
             params={
                 "block": ",".join(map(str, block)),

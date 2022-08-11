@@ -105,7 +105,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         self,
         context,
         *,
-        path,
         item,
         structure_clients,
         queries=None,
@@ -147,7 +146,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         super().__init__(
             context=context,
             item=item,
-            path=path,
             structure_clients=structure_clients,
         )
 
@@ -360,21 +358,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                         raise KeyError(key)
                     raise
                 item = content["data"]
-        return client_for_item(
-            self.context, self.structure_clients, item, path=self._path + (item["id"],)
-        )
+        return client_for_item(self.context, self.structure_clients, item)
 
     def __delitem__(self, key):
         self._cached_len = None
-
-        path = (
-            "/node/metadata"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in self._path)
-            + "/"
-            + key
-        )
-        self.context.delete_content(path, None)
+        self.context.delete_content(f"{self.uri}/{key}", None)
 
     # The following two methods are used by keys(), values(), items().
 
@@ -439,7 +427,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                     self.context,
                     self.structure_clients,
                     item,
-                    path=self._path + (item["id"],),
                 )
             return
         if direction > 0:
@@ -468,7 +455,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                     self.context,
                     self.structure_clients,
                     item,
-                    path=self._path + (item["id"],),
                 )
             next_page_url = content["links"]["next"]
 
@@ -604,7 +590,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.context,
             self.structure_clients,
             item,
-            path=self._path + (item["id"],),
             structure=structure,
         )
 

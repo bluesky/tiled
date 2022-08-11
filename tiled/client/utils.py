@@ -259,7 +259,7 @@ def record_history():
     _history = None
 
 
-def client_for_item(context, structure_clients, item, path, structure=None):
+def client_for_item(context, structure_clients, item, structure=None):
     """
     Create an instance of the appropriate client class for an item.
 
@@ -285,7 +285,6 @@ def client_for_item(context, structure_clients, item, path, structure=None):
     return class_(
         context=context,
         item=item,
-        path=path,
         structure_clients=structure_clients,
         structure=structure,
     )

@@ -5,12 +5,8 @@ from .cache import Revalidate, verify_cache
 
 
 class BaseClient:
-    def __init__(self, context, *, item, path, structure_clients):
+    def __init__(self, context, *, item, structure_clients):
         self._context = context
-        if isinstance(path, str):
-            raise ValueError("path is expected to be a list of segments")
-        # Stash *immutable* copies just to be safe.
-        self._path = tuple(path or [])
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
@@ -72,11 +68,6 @@ class BaseClient:
         return ListView(self.item["attributes"]["specs"])
 
     @property
-    def path(self):
-        "Sequence of entry names from the root Tree to this entry"
-        return ListView(self._path)
-
-    @property
     def uri(self):
         "Direct link to this entry"
         return self.item["links"]["self"]
@@ -93,17 +84,14 @@ class BaseClient:
     def offline(self, value):
         self.context.offline = bool(value)
 
-    def new_variation(self, path=UNCHANGED, structure_clients=UNCHANGED, **kwargs):
+    def new_variation(self, structure_clients=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.
         """
-        if path is UNCHANGED:
-            path = self._path
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
         return type(self)(
             item=self._item,
-            path=path,
             structure_clients=structure_clients,
             **kwargs,
         )

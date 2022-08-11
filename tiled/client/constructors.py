@@ -191,7 +191,7 @@ def from_tree(
     return from_context(context, structure_clients=structure_clients)
 
 
-def from_context(context, structure_clients="numpy", *, path=None):
+def from_context(context, structure_clients="numpy"):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
 
@@ -210,10 +210,9 @@ def from_context(context, structure_clients="numpy", *, path=None):
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
         structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
-    path = path or []
     content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
-    return client_for_item(context, structure_clients, item, path=path)
+    return client_for_item(context, structure_clients, item)
 
 
 def from_profile(name, structure_clients=None, **kwargs):
