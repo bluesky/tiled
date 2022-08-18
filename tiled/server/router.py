@@ -10,6 +10,7 @@ from pydantic import BaseSettings
 
 from .. import __version__
 from ..structures.core import StructureFamily
+from ..validation_registration import ValidationError
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
@@ -29,6 +30,7 @@ from .dependencies import (
     expected_shape,
     get_query_registry,
     get_serialization_registry,
+    get_validation_registry,
     slice_,
 )
 from .settings import get_settings
@@ -554,6 +556,7 @@ def post_metadata(
     request: Request,
     path: str,
     body: schemas.PostMetadataRequest,
+    validation_registry=Depends(get_validation_registry),
     entry=Security(entry, scopes=["write:metadata"]),
 ):
     if body.structure_family == StructureFamily.dataframe:
@@ -562,6 +565,24 @@ def post_metadata(
         body.structure.micro.divisions = base64.b64decode(
             body.structure.micro.divisions
         )
+
+    metadata, structure_family, structure, specs = (
+        body.metadata,
+        body.structure_family,
+        body.structure,
+        body.specs,
+    )
+
+    for spec in specs:
+        if spec in validation_registry:
+            try:
+                metadata = validation_registry(spec)(
+                    metadata, structure_family, structure, spec
+                )
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"failed validation for spec {spec}:\n{e}"
+                )
 
     if hasattr(entry, "post_metadata"):
         key = entry.post_metadata(

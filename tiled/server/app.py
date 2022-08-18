@@ -24,10 +24,16 @@ from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
 from ..utils import SHARE_TILED_PATH
+from ..validation_registration import validation_registry as default_validation_registry
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
 from .core import PatchedStreamingResponse
-from .dependencies import get_query_registry, get_root_tree, get_serialization_registry
+from .dependencies import (
+    get_query_registry,
+    get_root_tree,
+    get_serialization_registry,
+    get_validation_registry,
+)
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
@@ -91,6 +97,7 @@ def build_app(
     query_registry=None,
     serialization_registry=None,
     compression_registry=None,
+    validation_registry=None,
 ):
     """
     Serve a Tree
@@ -113,6 +120,7 @@ def build_app(
     server_settings = server_settings or {}
     query_registry = query_registry or get_query_registry()
     compression_registry = compression_registry or default_compression_registry
+    validation_registry = validation_registry or default_validation_registry
 
     app = FastAPI()
 
@@ -550,6 +558,16 @@ def build_app(
         app.dependency_overrides[
             get_serialization_registry
         ] = override_get_serialization_registry
+
+    if validation_registry is not None:
+
+        @lru_cache(1)
+        def override_get_validation_registry():
+            return validation_registry
+
+        app.dependency_overrides[
+            get_validation_registry
+        ] = override_get_validation_registry
 
     metrics_config = server_settings.get("metrics", {})
     if metrics_config.get("prometheus", False):

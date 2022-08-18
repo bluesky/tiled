@@ -19,6 +19,7 @@ from .media_type_registration import (
 )
 from .query_registration import query_registry as default_query_registry
 from .utils import import_object, parse, prepend_to_sys_path
+from .validation_registration import validation_registry as default_validation_registry
 
 
 @lru_cache(maxsize=1)
@@ -39,6 +40,7 @@ def construct_build_app_kwargs(
     query_registry=None,
     compression_registry=None,
     serialization_registry=None,
+    validation_registry=None,
 ):
     """
     Given parsed configuration, construct arguments for build_app(...).
@@ -55,6 +57,8 @@ def construct_build_app_kwargs(
         serialization_registry = default_serialization_registry
     if compression_registry is None:
         compression_registry = default_compression_registry
+    if validation_registry is None:
+        validation_registry = default_validation_registry
     sys_path_additions = []
     if source_filepath:
         if os.path.isdir(source_filepath):
@@ -191,6 +195,11 @@ def construct_build_app_kwargs(
                 )
         for ext, media_type in config.get("file_extensions", {}).items():
             serialization_registry.register_alias(ext, media_type)
+
+        for spec, validator_path in config.get("validation", {}).items():
+            validator = import_object(validator_path)
+            validation_registry.register(spec, validator)
+
     # TODO Make compression_registry extensible via configuration.
     return {
         "tree": root_tree,
@@ -199,6 +208,7 @@ def construct_build_app_kwargs(
         "query_registry": query_registry,
         "serialization_registry": serialization_registry,
         "compression_registry": compression_registry,
+        "validation_registry": validation_registry,
     }
 
 
@@ -216,12 +226,16 @@ def merge(configs):
     response_bytesize_limit_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
+    validation = {}
     file_extensions = {}
     paths = {}  # map each item's path to config file that specified it
 
     for filepath, config in configs.items():
         for structure_family, values in config.get("media_types", {}).items():
             media_types[structure_family].update(values)
+
+        validation.update(config.get("validation", {}))
+
         file_extensions.update(config.get("file_extensions", {}))
         allow_origins.extend(config.get("allow_origins", []))
         if "access_control" in config:
@@ -301,6 +315,7 @@ def merge(configs):
     merged["media_types"] = dict(media_types)  # convert from defaultdict
     merged["file_extensions"] = file_extensions
     merged["allow_origins"] = allow_origins
+    merged["validation"] = validation
     return merged
 
 
