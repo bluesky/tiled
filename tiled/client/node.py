@@ -598,8 +598,14 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             ).decode()
 
         document = self.context.post_json(self.uri, item["attributes"])
+
+        # if server returned modified metadata update the local copy
+        if "metadata" in document:
+            item["attributes"]["metadata"] = document.pop("metadata")
+
         # Merge in "id" and "links" returned by the server.
         item.update(document)
+
         return client_for_item(
             self.context,
             self.structure_clients,

@@ -13,6 +13,20 @@ from .writable_adapters import WritableMapAdapter
 API_KEY = "secret"
 
 
+def lower_case_dict(d):
+    out = {}
+    modified = False
+
+    for k, v in d.items():
+        if isinstance(k, str) and not k.islower():
+            out[k.lower()] = v
+            modified = True
+        else:
+            out[k] = v
+
+    return out, modified
+
+
 def validate_foo(metadata, structure_family, structure, spec):
     if structure_family != "dataframe":
         raise ValidationError(f"structure family for spec {spec} must be dataframe")
@@ -20,8 +34,13 @@ def validate_foo(metadata, structure_family, structure, spec):
     if list(structure.macro.columns) != ["a", "b"]:
         raise ValidationError(f"structure for spec {spec} must have columns ['a', 'b']")
 
+    metadata, metadata_modified = lower_case_dict(metadata)
+
     if "foo" not in metadata:
         raise ValidationError("metadata for spec {spec} must contain foo")
+
+    if metadata_modified:
+        return metadata
 
 
 def test_validators():
@@ -49,12 +68,16 @@ def test_validators():
         df = pd.DataFrame({"a": np.zeros(100), "b": np.zeros(100)})
         client.write_dataframe(df, metadata={}, specs=["foo"])
 
+    metadata = {"id": 1, "foo": "bar"}
     df = pd.DataFrame({"a": np.zeros(100), "b": np.zeros(100)})
-    client.write_dataframe(df, metadata={"foo": "bar"}, specs=["foo"])
+    result = client.write_dataframe(df, metadata=metadata, specs=["foo"])
+    assert result.metadata == metadata
+    result_df = result.read()
+    pd.testing.assert_frame_equal(result_df, df)
 
-    assert len(client.values()) == 1
-
-    result = client.values().first()
-
+    metadata_upper = {"ID": 2, "FOO": "bar"}
+    metadata_lower, _ = lower_case_dict(metadata_upper)
+    result = client.write_dataframe(df, metadata=metadata_upper, specs=["foo"])
+    assert result.metadata == metadata_lower
     result_df = result.read()
     pd.testing.assert_frame_equal(result_df, df)

@@ -468,5 +468,7 @@ properties:
       ```python
       f(metadata, structure_family, structure, spec)
       ```
-      and return `metadata` (possibly modified) if validation passes
-      and otherwise throw a `tiled.validation_registration.ValidationError` exception.
+      and return `None` or a possibly modified metadata object to indicate
+      success or throw a `tiled.validation_registration.ValidationError`
+      exception to indicate failure. If a metadata object is returned it
+      will be sent back to client in the response to the POST.

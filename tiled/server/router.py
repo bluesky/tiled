@@ -573,12 +573,18 @@ def post_metadata(
         body.specs,
     )
 
+    metadata_modified = False
+
     for spec in specs:
         if spec in validation_registry:
             try:
-                metadata = validation_registry(spec)(
+                result = validation_registry(spec)(
                     metadata, structure_family, structure, spec
                 )
+                if result is not None:
+                    metadata_modified = True
+                    metadata = result
+
             except ValidationError as e:
                 raise HTTPException(
                     status_code=400, detail=f"failed validation for spec {spec}:\n{e}"
@@ -586,10 +592,10 @@ def post_metadata(
 
     if hasattr(entry, "post_metadata"):
         key = entry.post_metadata(
-            metadata=body.metadata,
-            structure_family=body.structure_family,
-            structure=body.structure,
-            specs=body.specs,
+            metadata=metadata,
+            structure_family=structure_family,
+            structure=structure,
+            specs=specs,
         )
         links = {}
         base_url = get_base_url(request)
@@ -620,7 +626,10 @@ def post_metadata(
     else:
         raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
 
-    return json_or_msgpack(request, {"id": key, "links": links})
+    response_data = {"id": key, "links": links}
+    if metadata_modified:
+        response_data["metadata"] = metadata
+    return json_or_msgpack(request, response_data)
 
 
 @router.delete("/node/metadata/{path:path}")
