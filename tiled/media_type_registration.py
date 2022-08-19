@@ -10,6 +10,9 @@ from .utils import (
     modules_available,
 )
 
+# Since we use mimetypes.types_map directly need to manually init here
+mimetypes.init()
+
 
 class SerializationRegistry:
     """

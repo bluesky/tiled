@@ -44,6 +44,7 @@ def serialize_csv(array, metadata):
 
 
 serialization_registry.register("array", "text/csv", serialize_csv)
+serialization_registry.register("array", "text/x-comma-separated-values", serialize_csv)
 serialization_registry.register("array", "text/plain", serialize_csv)
 deserialization_registry.register(
     "array",
