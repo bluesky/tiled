@@ -8,6 +8,7 @@ from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
 from ..query_registration import query_registry as default_query_registry
+from ..validation_registration import validation_registry as default_validation_registry
 from .authentication import get_current_principal
 from .core import NoEntry
 from .utils import record_timing
@@ -23,6 +24,12 @@ def get_query_registry():
 def get_serialization_registry():
     "This may be overridden via dependency_overrides."
     return default_serialization_registry
+
+
+@lru_cache(1)
+def get_validation_registry():
+    "This may be overridden via dependency_overrides."
+    return default_validation_registry
 
 
 def get_root_tree():

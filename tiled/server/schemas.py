@@ -286,6 +286,7 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
+    metadata: Optional[Dict]  # may be None if validators did not alter metadata
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
 
 

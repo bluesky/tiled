@@ -60,6 +60,11 @@ serialization_registry.register(
 )
 serialization_registry.register(
     "xarray_dataset",
+    "text/x-comma-separated-values",
+    lambda node, metadata: serialize_csv(node.as_dataset().to_dataframe(), metadata),
+)
+serialization_registry.register(
+    "xarray_dataset",
     "text/plain",
     lambda node, metadata: serialize_csv(node.as_dataset().to_dataframe(), metadata),
 )

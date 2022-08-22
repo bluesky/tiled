@@ -59,6 +59,9 @@ deserialization_registry.register(
 # https://issues.apache.org/jira/browse/PARQUET-1889
 serialization_registry.register("dataframe", "application/x-parquet", serialize_parquet)
 serialization_registry.register("dataframe", "text/csv", serialize_csv)
+serialization_registry.register(
+    "dataframe", "text/x-comma-separated-values", serialize_csv
+)
 serialization_registry.register("dataframe", "text/plain", serialize_csv)
 serialization_registry.register("dataframe", "text/html", serialize_html)
 if modules_available("openpyxl", "pandas"):

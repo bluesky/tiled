@@ -1,4 +1,3 @@
-import contextlib
 import io
 import time
 from datetime import timedelta
@@ -10,20 +9,13 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_config
 from ..client.context import CannotRefreshAuthentication
-from ..client.utils import ClientError
 from ..server import authentication
+from .utils import fail_with_status_code
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
 
 tree = MapAdapter({"A1": arr, "A2": arr})
-
-
-@contextlib.contextmanager
-def fail_with_status_code(status_code):
-    with pytest.raises(ClientError) as info:
-        yield
-    assert info.value.response.status_code == status_code
 
 
 @pytest.fixture

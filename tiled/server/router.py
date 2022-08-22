@@ -10,6 +10,7 @@ from pydantic import BaseSettings
 
 from .. import __version__
 from ..structures.core import StructureFamily
+from ..validation_registration import ValidationError
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
@@ -29,6 +30,7 @@ from .dependencies import (
     expected_shape,
     get_query_registry,
     get_serialization_registry,
+    get_validation_registry,
     slice_,
 )
 from .settings import get_settings
@@ -554,6 +556,7 @@ def post_metadata(
     request: Request,
     path: str,
     body: schemas.PostMetadataRequest,
+    validation_registry=Depends(get_validation_registry),
     entry=Security(entry, scopes=["write:metadata"]),
 ):
     if body.structure_family == StructureFamily.dataframe:
@@ -563,12 +566,41 @@ def post_metadata(
             body.structure.micro.divisions
         )
 
+    metadata, structure_family, structure, specs = (
+        body.metadata,
+        body.structure_family,
+        body.structure,
+        body.specs,
+    )
+
+    # Known Issue:
+    # When there is more than one spec, it's possible for the validator for
+    # Spec 2 to make a modification that breaks the validation for Spec 1.
+    # For now we leave it to the server maintainer to ensure that validators
+    # won't step on each other in this way, but this may need revisiting.
+    metadata_modified = False
+
+    for spec in specs:
+        if spec in validation_registry:
+            try:
+                result = validation_registry(spec)(
+                    metadata, structure_family, structure, spec
+                )
+                if result is not None:
+                    metadata_modified = True
+                    metadata = result
+
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"failed validation for spec {spec}:\n{e}"
+                )
+
     if hasattr(entry, "post_metadata"):
         key = entry.post_metadata(
-            metadata=body.metadata,
-            structure_family=body.structure_family,
-            structure=body.structure,
-            specs=body.specs,
+            metadata=metadata,
+            structure_family=structure_family,
+            structure=structure,
+            specs=specs,
         )
         links = {}
         base_url = get_base_url(request)
@@ -599,7 +631,10 @@ def post_metadata(
     else:
         raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
 
-    return json_or_msgpack(request, {"id": key, "links": links})
+    response_data = {"id": key, "links": links}
+    if metadata_modified:
+        response_data["metadata"] = metadata
+    return json_or_msgpack(request, response_data)
 
 
 @router.delete("/node/metadata/{path:path}")

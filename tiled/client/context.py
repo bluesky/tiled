@@ -824,6 +824,7 @@ def context_from_tree(
     query_registry=None,
     serialization_registry=None,
     compression_registry=None,
+    validation_registry=None,
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
@@ -863,6 +864,7 @@ def context_from_tree(
         query_registry=query_registry,
         serialization_registry=serialization_registry,
         compression_registry=compression_registry,
+        validation_registry=validation_registry,
     )
 
     # Only an AsyncClient can be used over ASGI.

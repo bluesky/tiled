@@ -452,3 +452,23 @@ properties:
           Enable/Disable prometheus metrics. Default is false.
           If enabled `PROMETHEUS_MULTIPROC_DIR` environment variable
           must be set to the path of a writable directory.
+  validation:
+    type: object
+    additionProperties: true
+    description: |
+      validation functions for specs.
+
+      Given as a spec mapped to an importable function, as in
+
+      ```yaml
+      my-spec: package.module:validator_function
+      ```
+
+      The validation function should have signature
+      ```python
+      f(metadata, structure_family, structure, spec)
+      ```
+      and return `None` or a possibly modified metadata object to indicate
+      success or throw a `tiled.validation_registration.ValidationError`
+      exception to indicate failure. If a metadata object is returned it
+      will be sent back to client in the response to the POST.
