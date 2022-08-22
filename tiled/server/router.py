@@ -573,6 +573,11 @@ def post_metadata(
         body.specs,
     )
 
+    # Known Issue:
+    # When there is more than one spec, it's possible for the validator for
+    # Spec 2 to make a modification that breaks the validation for Spec 1.
+    # For now we leave it to the server maintainer to ensure that validators
+    # won't step on each other in this way, but this may need revisiting.
     metadata_modified = False
 
     for spec in specs:
