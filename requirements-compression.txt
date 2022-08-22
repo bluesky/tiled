@@ -2,3 +2,4 @@
 # They fall back to gzip (which is slower) if these are not installed.
 blosc
 lz4
+zstandard
