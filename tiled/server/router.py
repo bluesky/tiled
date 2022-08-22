@@ -259,6 +259,24 @@ def declare_search_router(query_registry):
     return router
 
 
+@router.get("/node/distinct/{path:path}", response_model=schemas.GetDistinctResponse)
+async def node_distinct(
+    request: Request,
+    metadata_key: Optional[str],
+    counts: bool = False,
+    entry: Any = Security(entry, scopes=["read:metadata"]),
+):
+    if hasattr(entry, "get_distinct"):
+        distinct = entry.get_distinct(metadata_key=metadata_key, counts=counts)
+        return json_or_msgpack(
+            request, schemas.GetDistinctResponse.parse_obj(distinct).dict()
+        )
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path does not support distinct."
+        )
+
+
 @router.get(
     "/node/metadata/{path:path}",
     response_model=schemas.Response[

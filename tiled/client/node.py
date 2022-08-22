@@ -493,6 +493,27 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(queries=self._queries + [query])
 
+    def distinct(self, metadata_key, counts=False):
+        """
+        Get the unique values and optionally counts of metadata_key in this Node's entries
+
+        Examples
+        --------
+
+        >>> tree.distinct("foo", counts=True)
+        """
+
+        path = (
+            "/node/distinct"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in self._path)
+            + "/"
+        )
+        distinct = self.context.get_json(
+            path, params={"metadata_key": metadata_key, "counts": counts}
+        )
+        return distinct
+
     def sort(self, *sorting):
         """
         Make a Node with the same entries but sorted according to `sorting`.

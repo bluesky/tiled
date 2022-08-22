@@ -2,6 +2,7 @@ import collections.abc
 import copy
 import itertools
 import operator
+from collections import Counter
 from datetime import datetime
 
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -218,6 +219,18 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         """
         return self.query_registry(query, self)
 
+    def get_distinct(self, metadata_key, counts):
+        counter = distinct(self, metadata_key)
+
+        if counts:
+            data = [
+                {"value": k, "count": v} for k, v in counter.items() if k is not None
+            ]
+        else:
+            data = [{"value": k} for k in counter if k is not None]
+
+        return {"metadata": {metadata_key: data}}
+
     def sort(self, sorting):
         mapping = copy.copy(self._mapping)
         for key, direction in reversed(sorting):
@@ -292,6 +305,21 @@ def walk_string_values(tree, node=None):
             for item in value:
                 if isinstance(item, str):
                     yield item
+
+
+def distinct(tree, query_key):
+    counter = Counter()
+    for key, value in tree.items():
+        term = value.metadata
+        for subkey in query_key.split("."):
+            if subkey not in term:
+                term = None
+                break
+            term = term[subkey]
+        else:
+            counter.update([term])
+
+    return counter
 
 
 def full_text_search(query, tree):
