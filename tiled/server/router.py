@@ -21,6 +21,7 @@ from .core import (
     construct_data_response,
     construct_entries_response,
     construct_resource,
+    construct_revisions_response,
     json_or_msgpack,
     resolve_media_type,
 )
@@ -756,4 +757,41 @@ async def put_metadata(
         raise HTTPException(
             status_code=405, detail="This path does not support update of metadata."
         )
+    return json_or_msgpack(request, None)
+
+
+@router.get("/node/revisions/{path:path}")
+async def node_revisions(
+    request: Request,
+    path: str,
+    offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+    limit: Optional[int] = Query(
+        DEFAULT_PAGE_SIZE, alias="page[limit]", le=MAX_PAGE_SIZE
+    ),
+    entry=Security(entry, scopes=["read:metadata"]),
+):
+    if not hasattr(entry, "revisions"):
+        raise HTTPException(
+            status_code=405, detail="This path does not support update of metadata."
+        )
+
+    # Look at /node/search call to construct_entries_response.
+    # This takes similar (but fewer) parameters.
+    resource = construct_revisions_response(
+        entry, "/node/revisions", path, offset, limit, resolve_media_type(request)
+    )
+    return json_or_msgpack(request, resource.dict())
+
+
+@router.delete("/node/revisions/{path:path}")
+async def revisions_delitem(
+    request: Request, n: int, entry=Security(entry, scopes=["write:metadata"])
+):
+    if not hasattr(entry, "revisions"):
+        raise HTTPException(
+            status_code=405,
+            detail="This path does not support a del request for revisions.",
+        )
+
+    del entry.revisions[n]
     return json_or_msgpack(request, None)

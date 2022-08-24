@@ -1,7 +1,91 @@
 import importlib
+import time
 
 from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
 from .cache import Revalidate, verify_cache
+
+
+class Metadata_Revisions:
+    def __init__(self, context, path):
+        self._cached_len = None
+        self.context = context
+        self._path = path
+
+    def __len__(self):
+
+        LENGTH_CACHE_TTL = 1  # second
+
+        now = time.monotonic()
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if now < deadline:
+                # Used the cached value and do not make any request.
+                return length
+
+        path = (
+            "/node/revisions"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
+        content = self.context.get_json(
+            path, params={"page[offset]": 0, "page[limit]": 0}
+        )
+        length = content["meta"]["count"]
+        self._cached_len = (length, now + LENGTH_CACHE_TTL)
+        return length
+
+    def __getitem__(self, item_):
+        self._cached_len = None
+
+        path = (
+            "/node/revisions"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
+        sample = []
+        if isinstance(item_, int):
+            offset = item_
+            limit = offset + 1
+
+            content = self.context.get_json(
+                path, params={"page[offset]": offset, "page[limit]": limit}
+            )
+
+            sample = {"key": content["data"][0]["id"]}
+            sample.update(content["data"][0]["attributes"])
+
+        elif isinstance(item_, slice):
+            offset = item_.start
+            if offset is None:
+                offset = 0
+            limit = item_.stop
+            if limit is None:
+                limit = -1
+
+            content = self.context.get_json(
+                path, params={"page[offset]": offset, "page[limit]": limit}
+            )
+
+            for item in content["data"]:
+                rev_document = {"key": item["id"]}
+                rev_document.update(item["attributes"])
+                sample.append(rev_document)
+
+        return sample
+
+    def __delitem__(self, n):
+
+        self._cached_len = None
+
+        path = (
+            "/node/revisions"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
+        self.context.delete_content(path, None, params={"n": n})
 
 
 class BaseClient:
@@ -14,6 +98,7 @@ class BaseClient:
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
+        self._metadata_revisions = None
         super().__init__()
 
     def login(self, provider=None):
@@ -151,6 +236,13 @@ class BaseClient:
         )
 
         self.context.put_json(full_path_meta, data)
+
+    @property
+    def metadata_revisions(self):
+        if self._metadata_revisions is None:
+            self._metadata_revisions = Metadata_Revisions(self.context, self._path)
+
+        return self._metadata_revisions
 
 
 class BaseStructureClient(BaseClient):

@@ -222,6 +222,35 @@ DEFAULT_MEDIA_TYPES = {
 }
 
 
+def construct_revisions_response(
+    entry,
+    route,
+    path,
+    offset,
+    limit,
+    media_type,
+):
+    path_parts = [segment for segment in path.split("/") if segment]
+    revisions = entry.revisions[offset:limit]
+    data = []
+    for revision in revisions:
+        item = {
+            "id": revision["key"],
+            "attributes": {
+                "metadata": revision["metadata"],
+                "specs": revision["specs"],
+                "updated_at": revision["updated_at"],
+                "revision": revision["revision"],
+            },
+        }
+        data.append(item)
+    count = len(entry.revisions)
+    links = pagination_links(
+        route, path_parts, offset, limit, count
+    )  # maybe reuse or maybe make a new pagination_revision_links
+    return schemas.Response(data=data, links=links, meta={"count": count})
+
+
 def construct_data_response(
     structure_family,
     serialization_registry,
