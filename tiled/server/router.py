@@ -766,7 +766,7 @@ async def node_revisions(
     path: str,
     offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
     limit: Optional[int] = Query(
-        DEFAULT_PAGE_SIZE, alias="page[limit]", le=MAX_PAGE_SIZE
+        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
     entry=Security(entry, scopes=["read:metadata"]),
 ):

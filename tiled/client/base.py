@@ -1,3 +1,4 @@
+import copy
 import importlib
 import time
 
@@ -44,36 +45,36 @@ class Metadata_Revisions:
             + "".join(f"/{part}" for part in (self._path or [""]))
         )
 
-        sample = []
         if isinstance(item_, int):
             offset = item_
-            limit = offset + 1
+            limit = 1
 
-            content = self.context.get_json(
+            return self.context.get_json(
                 path, params={"page[offset]": offset, "page[limit]": limit}
             )
-
-            sample = {"key": content["data"][0]["id"]}
-            sample.update(content["data"][0]["attributes"])
 
         elif isinstance(item_, slice):
             offset = item_.start
             if offset is None:
                 offset = 0
-            limit = item_.stop
-            if limit is None:
-                limit = -1
 
-            content = self.context.get_json(
-                path, params={"page[offset]": offset, "page[limit]": limit}
-            )
+            if item_.stop is None:
+                params = f"?page[offset]={offset}"
+            else:
+                limit = item_.stop - offset
+                params = f"page[offset]={offset}&page[limit]={limit}"
 
-            for item in content["data"]:
-                rev_document = {"key": item["id"]}
-                rev_document.update(item["attributes"])
-                sample.append(rev_document)
+            next_page = path + params
+            result = None
+            while next_page is not None:
+                content = self.context.get_json(path)
+                if result is None:
+                    result = copy.deepcopy(content)
+                else:
+                    result["data"].append(content["data"])
+                next_page = content["links"]["next"]
 
-        return sample
+            return result
 
     def __delitem__(self, n):
 

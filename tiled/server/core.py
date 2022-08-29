@@ -235,12 +235,11 @@ def construct_revisions_response(
     data = []
     for revision in revisions:
         item = {
-            "id": revision["key"],
+            "revision": revision["revision"],
             "attributes": {
                 "metadata": revision["metadata"],
                 "specs": revision["specs"],
                 "updated_at": revision["updated_at"],
-                "revision": revision["revision"],
             },
         }
         data.append(item)
