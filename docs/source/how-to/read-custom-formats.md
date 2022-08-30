@@ -55,7 +55,7 @@ We use a configuration file like this:
 ```yaml
 # config.yml
 trees:
-  tree: files
+- tree: files
   args:
     directory: path/to/directory
     mimetypes_by_file_ext:
@@ -130,7 +130,7 @@ it parses the configuration.)
 ```yaml
 # config.yml
 trees:
-  tree: files
+- tree: files
   args:
     directory: path/to/directory
     mimetype_detection_hook: custom:detect_mimetype
@@ -273,7 +273,7 @@ needed.
 ```yaml
 # config.yml
 trees:
-  tree: files
+- tree: files
   args:
     directory: path/to/directory
     mimetype_detection_hook: custom:detect_mimetype
