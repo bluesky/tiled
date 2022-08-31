@@ -1,4 +1,3 @@
-import copy
 import importlib
 import time
 
@@ -6,7 +5,7 @@ from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
 from .cache import Revalidate, verify_cache
 
 
-class Metadata_Revisions:
+class MetadataRevisions:
     def __init__(self, context, path):
         self._cached_len = None
         self.context = context
@@ -49,9 +48,11 @@ class Metadata_Revisions:
             offset = item_
             limit = 1
 
-            return self.context.get_json(
+            content = self.context.get_json(
                 path, params={"page[offset]": offset, "page[limit]": limit}
             )
+
+            return content["data"]
 
         elif isinstance(item_, slice):
             offset = item_.start
@@ -65,20 +66,18 @@ class Metadata_Revisions:
                 params = f"page[offset]={offset}&page[limit]={limit}"
 
             next_page = path + params
-            result = None
+            result = []
             while next_page is not None:
                 content = self.context.get_json(path)
-                if result is None:
-                    result = copy.deepcopy(content)
+                if len(result) == 0:
+                    result = content.copy()
                 else:
                     result["data"].append(content["data"])
                 next_page = content["links"]["next"]
 
-            return result
+            return result["data"]
 
-    def __delitem__(self, n):
-
-        self._cached_len = None
+    def delete_revision(self, n):
 
         path = (
             "/node/revisions"
@@ -241,7 +240,7 @@ class BaseClient:
     @property
     def metadata_revisions(self):
         if self._metadata_revisions is None:
-            self._metadata_revisions = Metadata_Revisions(self.context, self._path)
+            self._metadata_revisions = MetadataRevisions(self.context, self._path)
 
         return self._metadata_revisions
 
