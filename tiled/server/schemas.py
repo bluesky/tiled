@@ -296,7 +296,9 @@ class DistinctValueInfo(pydantic.BaseModel):
 
 
 class GetDistinctResponse(pydantic.BaseModel):
-    metadata: Dict[str, List[DistinctValueInfo]]
+    metadata: Optional[Dict[str, List[DistinctValueInfo]]]
+    structure_families: Optional[List[DistinctValueInfo]]
+    specs: Optional[List[DistinctValueInfo]]
 
 
 NodeStructure.update_forward_refs()

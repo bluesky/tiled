@@ -262,12 +262,19 @@ def declare_search_router(query_registry):
 @router.get("/node/distinct/{path:path}", response_model=schemas.GetDistinctResponse)
 async def node_distinct(
     request: Request,
-    metadata_key: Optional[str],
+    structure_families: Optional[bool],
+    specs: Optional[bool],
+    metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
     entry: Any = Security(entry, scopes=["read:metadata"]),
 ):
     if hasattr(entry, "get_distinct"):
-        distinct = entry.get_distinct(metadata_key=metadata_key, counts=counts)
+        distinct = entry.get_distinct(
+            metadata=metadata,
+            structure_families=structure_families,
+            specs=specs,
+            counts=counts,
+        )
         return json_or_msgpack(
             request, schemas.GetDistinctResponse.parse_obj(distinct).dict()
         )

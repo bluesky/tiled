@@ -493,14 +493,17 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new_variation(queries=self._queries + [query])
 
-    def distinct(self, metadata_key, counts=False):
+    def distinct(
+        self, metadata_keys, structure_families=False, specs=False, counts=False
+    ):
         """
-        Get the unique values and optionally counts of metadata_key in this Node's entries
+        Get the unique values and optionally counts of metadata_keys,
+        structure_families, and specs in this Node's entries
 
         Examples
         --------
 
-        >>> tree.distinct("foo", counts=True)
+        >>> tree.distinct(["foo"], counts=True)
         """
 
         path = (
@@ -510,7 +513,13 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             + "/"
         )
         distinct = self.context.get_json(
-            path, params={"metadata_key": metadata_key, "counts": counts}
+            path,
+            params={
+                "metadata": metadata_keys,
+                "structure_families": structure_families,
+                "specs": specs,
+                "counts": counts,
+            },
         )
         return distinct
 
