@@ -7,10 +7,11 @@ The are encoded into and decoded from URL query parameters.
 
 import enum
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List
 
 from .query_registration import register
+from .structures.core import StructureFamily as StructureFamilyEnum
 
 JSONSerializable = Any  # Feel free to refine this.
 
@@ -349,6 +350,70 @@ class NotIn:
     @classmethod
     def decode(cls, *, key, value):
         return cls(key=key, value=json.loads(value))
+
+
+@register(name="specs")
+@dataclass
+class Specs:
+    """
+    Query if specs list matches all elements in include list and does not match any element in exclude list
+
+    Parameters
+    ----------
+    include : List[str]
+    exclude : List[str]
+
+    Examples
+    --------
+
+    Search for specs ["foo", "bar"] and NOT "baz"
+
+    >>> c.search(Specs(include=["foo", "bar"], exclude=["baz"]))
+    """
+
+    include: List[str]
+    exclude: List[str] = field(default_factory=list)
+
+    def encode(self):
+        return {
+            "include": json.dumps(self.include),
+            "exclude": json.dumps(self.exclude),
+        }
+
+    @classmethod
+    def decode(cls, *, include, exclude):
+        return cls(include=json.loads(include), exclude=json.loads(exclude))
+
+
+@register(name="structure_family")
+@dataclass(init=False)
+class StructureFamily:
+    """
+    Query if structure_families match value
+
+    Parameters
+    ----------
+    value : StructureFamily
+
+    Examples
+    --------
+
+    Search for dataframes
+
+    >>> c.search(StructureFamilies("dataframe"))
+    """
+
+    def __init__(self, value):
+        self.value = StructureFamilyEnum(value)
+
+    value: StructureFamilyEnum
+
+    def encode(self):
+        return {"value": self.value.value}
+
+    @classmethod
+    def decode(cls, *, value):
+        return cls(value=value)
 
 
 class Key:

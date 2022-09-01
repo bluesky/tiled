@@ -6,7 +6,19 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_tree
-from ..queries import Comparison, Contains, Eq, FullText, In, Key, NotEq, NotIn, Regex
+from ..queries import (
+    Comparison,
+    Contains,
+    Eq,
+    FullText,
+    In,
+    Key,
+    NotEq,
+    NotIn,
+    Regex,
+    Specs,
+    StructureFamily,
+)
 
 keys = list(string.ascii_lowercase)
 mapping = {
@@ -21,6 +33,9 @@ mapping["does_contain_z"] = ArrayAdapter.from_array(
 mapping["does_not_contain_z"] = ArrayAdapter.from_array(
     numpy.ones(10), metadata={"letters": list(string.ascii_lowercase[:-1])}
 )
+
+mapping["specs_foo_bar"] = MapAdapter({}, specs=["foo", "bar"])
+mapping["specs_foo_bar_baz"] = MapAdapter({}, specs=["foo", "bar", "baz"])
 tree = MapAdapter(mapping)
 
 
@@ -111,4 +126,26 @@ def test_notin():
 
     assert list(client.search(NotIn("letter", ["a", "k", "z"]))) == sorted(
         list(set(keys) - set(["a", "k", "z"]))
+    )
+
+
+def test_specs():
+    client = from_tree(tree)
+    assert list(client.search(Specs(include=["foo", "bar"]))) == sorted(
+        ["specs_foo_bar", "specs_foo_bar_baz"]
+    )
+
+    assert list(client.search(Specs(include=["foo", "bar"], exclude=["baz"]))) == [
+        "specs_foo_bar"
+    ]
+
+
+def test_structure_families():
+    client = from_tree(tree)
+
+    with pytest.raises(ValueError):
+        StructureFamily("foo")
+
+    assert list(client.search(StructureFamily("node"))) == sorted(
+        ["specs_foo_bar", "specs_foo_bar_baz"]
     )
