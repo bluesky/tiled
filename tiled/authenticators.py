@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import secrets
@@ -569,17 +570,17 @@ class LDAPAuthenticator:
         else:
             return 389  # default plaintext port for LDAP
 
-    def resolve_username(self, username_supplied_by_user):
+    async def resolve_username(self, username_supplied_by_user):
         import ldap3
         import ldap3.utils.conv
 
         search_dn = self.lookup_dn_search_user
         if self.escape_userdn:
             search_dn = ldap3.utils.conv.escape_filter_chars(search_dn)
-        conn = self.get_connection(
-            userdn=search_dn, password=self.lookup_dn_search_password
+        conn = await asyncio.get_running_loop().run_in_executor(
+            None, self.get_connection, search_dn, self.lookup_dn_search_password
         )
-        is_bound = conn.bind()
+        is_bound = await asyncio.get_running_loop().run_in_executor(None, conn.bind)
         if not is_bound:
             msg = "Failed to connect to LDAP server with search user '{search_dn}'"
             self.log.warning(msg.format(search_dn=search_dn))
@@ -705,7 +706,7 @@ class LDAPAuthenticator:
             return None
 
         if self.lookup_dn:
-            username, resolved_dn = self.resolve_username(username)
+            username, resolved_dn = await self.resolve_username(username)
             if not username:
                 return None
             if str(self.lookup_dn_user_dn_attribute).upper() == "CN":
@@ -726,7 +727,9 @@ class LDAPAuthenticator:
             logger.debug(msg.format(username=username, userdn=userdn))
             msg = "Status of user bind {username} with {userdn} : {is_bound}"
             try:
-                conn = self.get_connection(userdn, password)
+                conn = asyncio.get_running_loop().run_in_executor(
+                    None, self.get_connection, userdn, password
+                )
             except ldap3.core.exceptions.LDAPBindError as exc:
                 is_bound = False
                 msg += "\n{exc_type}: {exc_msg}".format(
@@ -734,7 +737,13 @@ class LDAPAuthenticator:
                     exc_msg=exc.args[0] if exc.args else "",
                 )
             else:
-                is_bound = True if conn.bound else conn.bind()
+                is_bound = (
+                    True
+                    if conn.bound
+                    else await asyncio.get_running_loop().run_in_executor(
+                        None, conn.bind
+                    )
+                )
             msg = msg.format(username=username, userdn=userdn, is_bound=is_bound)
             logger.debug(msg)
             if is_bound:
