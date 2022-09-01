@@ -727,7 +727,7 @@ class LDAPAuthenticator:
             logger.debug(msg.format(username=username, userdn=userdn))
             msg = "Status of user bind {username} with {userdn} : {is_bound}"
             try:
-                conn = asyncio.get_running_loop().run_in_executor(
+                conn = await asyncio.get_running_loop().run_in_executor(
                     None, self.get_connection, userdn, password
                 )
             except ldap3.core.exceptions.LDAPBindError as exc:
