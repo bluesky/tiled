@@ -104,6 +104,16 @@ It adds these methods for downloading and refreshing cached data.
    tiled.client.node.Node.refresh
 ```
 
+It adds this method, which returns the unique metadata keys,
+structure_families, and specs of its children along with their counts.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.node.Node.distinct
+```
+
 ## Structure Clients
 
 For each *structure family* ("array", "dataframe", etc.) there is a client

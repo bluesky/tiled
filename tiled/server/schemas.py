@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Dict, Generic, List, Optional, TypeVar, Union
+from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic
 import pydantic.dataclasses
@@ -288,6 +288,17 @@ class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
     metadata: Optional[Dict]  # may be None if validators did not alter metadata
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+
+
+class DistinctValueInfo(pydantic.BaseModel):
+    value: Any
+    count: Optional[int]
+
+
+class GetDistinctResponse(pydantic.BaseModel):
+    metadata: Optional[Dict[str, List[DistinctValueInfo]]]
+    structure_families: Optional[List[DistinctValueInfo]]
+    specs: Optional[List[DistinctValueInfo]]
 
 
 NodeStructure.update_forward_refs()

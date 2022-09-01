@@ -2,6 +2,7 @@ import collections.abc
 import copy
 import itertools
 import operator
+from collections import Counter
 from datetime import datetime
 
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -218,6 +219,28 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         """
         return self.query_registry(query, self)
 
+    def get_distinct(self, metadata, structure_families, specs, counts):
+        data = {}
+
+        if metadata:
+            data["metadata"] = {}
+
+            for metadata_key in metadata:
+                counter = Counter(
+                    term for key, value, term in iter_child_metadata(metadata_key, self)
+                )
+                data["metadata"][metadata_key] = counter_to_dict(counter, counts)
+
+        if structure_families:
+            counter = Counter(value.structure_family for key, value in self.items())
+            data["structure_families"] = counter_to_dict(counter, counts)
+
+        if specs:
+            counter = Counter(tuple(value.specs) for key, value in self.items())
+            data["specs"] = counter_to_dict(counter, counts)
+
+        return data
+
     def sort(self, sorting):
         mapping = copy.copy(self._mapping)
         for key, direction in reversed(sorting):
@@ -294,6 +317,27 @@ def walk_string_values(tree, node=None):
                     yield item
 
 
+def counter_to_dict(counter, counts):
+    if counts:
+        data = [{"value": k, "count": v} for k, v in counter.items() if k is not None]
+    else:
+        data = [{"value": k} for k in counter if k is not None]
+
+    return data
+
+
+def iter_child_metadata(query_key, tree):
+    for key, value in tree.items():
+        term = value.metadata
+        for subkey in query_key.split("."):
+            if subkey not in term:
+                term = None
+                break
+            term = term[subkey]
+        else:
+            yield key, value, term
+
+
 def full_text_search(query, tree):
     matches = {}
     text = query.text
@@ -329,16 +373,10 @@ def regex(query, tree):
     matches = {}
     flags = 0 if query.case_sensitive else re.IGNORECASE
     pattern = re.compile(query.pattern, flags=flags)
-    for key, value in tree.items():
-        # Find the queried key in the metadata.
-        term = value.metadata
-        for subkey in query.key.split("."):
-            if subkey not in term:
-                break
-            term = term[subkey]
-        else:
-            if isinstance(term, str) and pattern.search(term):
-                matches[key] = value
+
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if isinstance(term, str) and pattern.search(term):
+            matches[key] = value
     return tree.new_variation(mapping=matches)
 
 
@@ -347,16 +385,9 @@ MapAdapter.register_query(Regex, regex)
 
 def eq(query, tree):
     matches = {}
-    for key, value in tree.items():
-        # Find the queried key in the metadata.
-        term = value.metadata
-        for subkey in query.key.split("."):
-            if subkey not in term:
-                break
-            term = term[subkey]
-        else:
-            if term == query.value:
-                matches[key] = value
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if term == query.value:
+            matches[key] = value
     return tree.new_variation(mapping=matches)
 
 
@@ -365,16 +396,9 @@ MapAdapter.register_query(Eq, eq)
 
 def noteq(query, tree):
     matches = {}
-    for key, value in tree.items():
-        # Find the queried key in the metadata.
-        term = value.metadata
-        for subkey in query.key.split("."):
-            if subkey not in term:
-                break
-            term = term[subkey]
-        else:
-            if term != query.value:
-                matches[key] = value
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if term != query.value:
+            matches[key] = value
     return tree.new_variation(mapping=matches)
 
 
@@ -383,20 +407,13 @@ MapAdapter.register_query(NotEq, noteq)
 
 def contains(query, tree):
     matches = {}
-    for key, value in tree.items():
-        # Find the queried key in the metadata.
-        term = value.metadata
-        for subkey in query.key.split("."):
-            if subkey not in term:
-                break
-            term = term[subkey]
-        else:
-            if (
-                isinstance(term, collections.abc.Iterable)
-                and (not isinstance(term, str))
-                and (query.value in term)
-            ):
-                matches[key] = value
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if (
+            isinstance(term, collections.abc.Iterable)
+            and (not isinstance(term, str))
+            and (query.value in term)
+        ):
+            matches[key] = value
     return tree.new_variation(mapping=matches)
 
 
@@ -405,19 +422,12 @@ MapAdapter.register_query(Contains, contains)
 
 def comparison(query, tree):
     matches = {}
-    for key, value in tree.items():
-        # Find the queried key in the metadata.
-        term = value.metadata
-        for subkey in query.key.split("."):
-            if subkey not in term:
-                break
-            term = term[subkey]
-        else:
-            if query.operator not in {"le", "lt", "ge", "gt"}:
-                raise ValueError(f"Unexpected operator {query.operator}.")
-            comparison_func = getattr(operator, query.operator)
-            if comparison_func(term, query.value):
-                matches[key] = value
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if query.operator not in {"le", "lt", "ge", "gt"}:
+            raise ValueError(f"Unexpected operator {query.operator}.")
+        comparison_func = getattr(operator, query.operator)
+        if comparison_func(term, query.value):
+            matches[key] = value
     return tree.new_variation(mapping=matches)
 
 
@@ -426,16 +436,9 @@ MapAdapter.register_query(Comparison, comparison)
 
 def _in(query, tree):
     matches = {}
-    for key, value in tree.items():
-        # Find the queried key in the metadata.
-        term = value.metadata
-        for subkey in query.key.split("."):
-            if subkey not in term:
-                break
-            term = term[subkey]
-        else:
-            if term in query.value:
-                matches[key] = value
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if term in query.value:
+            matches[key] = value
     return tree.new_variation(mapping=matches)
 
 
@@ -444,16 +447,9 @@ MapAdapter.register_query(In, _in)
 
 def notin(query, tree):
     matches = {}
-    for key, value in tree.items():
-        # Find the queried key in the metadata.
-        term = value.metadata
-        for subkey in query.key.split("."):
-            if subkey not in term:
-                break
-            term = term[subkey]
-        else:
-            if term not in query.value:
-                matches[key] = value
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if term not in query.value:
+            matches[key] = value
     return tree.new_variation(mapping=matches)
 
 
