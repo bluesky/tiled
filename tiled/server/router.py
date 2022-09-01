@@ -262,8 +262,8 @@ def declare_search_router(query_registry):
 @router.get("/node/distinct/{path:path}", response_model=schemas.GetDistinctResponse)
 async def node_distinct(
     request: Request,
-    structure_families: Optional[bool],
-    specs: Optional[bool],
+    structure_families: bool = False,
+    specs: bool = False,
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
     entry: Any = Security(entry, scopes=["read:metadata"]),
