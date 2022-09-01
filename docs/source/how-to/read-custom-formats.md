@@ -192,7 +192,7 @@ for each structure follow.
 
 ```py
 # custom.py
-from tiled.adpaters.array import ArrayAdapter
+from tiled.adapters.array import ArrayAdapter
 
 def read_custom_format(filepath):
     # Extract an array and an optional dictionary of metadata
@@ -206,7 +206,7 @@ def read_custom_format(filepath):
 
 ```py
 # custom.py
-from tiled.adpaters.dataframe import DataFrameAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
 
 def read_custom_format(filepath):
     # Extract a DataFrame and an optional dictionary of metadata
@@ -220,9 +220,9 @@ def read_custom_format(filepath):
 
 ```py
 # custom.py
-from tiled.adpaters.array import ArrayAdapter
-from tiled.adpaters.dataframe import DataFrameAdapter
-from tiled.adpaters.mapping import MapAdapter
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.mapping import MapAdapter
 
 def read_custom_format(filepath):
 
