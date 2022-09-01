@@ -3,6 +3,7 @@
 codecov
 coverage
 flake8
+ldap3
 pre-commit
 pytest
 pytest-asyncio
