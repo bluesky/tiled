@@ -13,6 +13,7 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl):
     TODO: The test could be extended with enabled TLS or SSL, but it requires configuration
     of the LDAP server.
     """
+    pytest.importorskip("ldap3")
     authenticator = LDAPAuthenticator(
         "localhost",
         1389,
