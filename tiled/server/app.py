@@ -468,6 +468,7 @@ def build_app(
         # Record the overall application time.
         with record_timing(metrics, "app"):
             response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         # Server-Timing specifies times should be in milliseconds.
         # Prometheus specifies times should be in seconds.
         # Therefore, we store as seconds and convert to ms for Server-Timing here.
@@ -484,7 +485,6 @@ def build_app(
             )
             for key, metrics_ in metrics.items()
         )
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
 
     @app.middleware("http")
@@ -578,6 +578,7 @@ def build_app(
         @app.middleware("http")
         async def capture_metrics_prometheus(request: Request, call_next):
             response = await call_next(request)
+            response.__class__ = PatchedStreamingResponse  # tolerate memoryview
             metrics.capture_request_metrics(request, response)
             return response
 
