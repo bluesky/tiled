@@ -567,7 +567,9 @@ class LDAPAuthenticator:
         self.escape_userdn = escape_userdn
         self.search_filter = search_filter
         self.attributes = attributes if attributes else []
-        self.auth_state_attributes = auth_state_attributes if auth_state_attributes else []
+        self.auth_state_attributes = (
+            auth_state_attributes if auth_state_attributes else []
+        )
         self.use_lookup_dn_username = use_lookup_dn_username
 
         if isinstance(server_address, str):
@@ -580,10 +582,14 @@ class LDAPAuthenticator:
                 f"type(server_address)={type(server_address)}"
             )
         if not server_address_list:
-            raise ValueError("No servers are specified: 'server_address' is an empty list")
+            raise ValueError(
+                "No servers are specified: 'server_address' is an empty list"
+            )
 
         self.server_address_list = server_address_list
-        self.server_port = server_port if server_port is not None else self._server_port_default()
+        self.server_port = (
+            server_port if server_port is not None else self._server_port_default()
+        )
 
     def _server_port_default(self):
         if self.use_ssl:
@@ -637,8 +643,15 @@ class LDAPAuthenticator:
 
         response = conn.response
         if len(response) == 0 or "attributes" not in response[0].keys():
-            msg = "No entry found for user '{username}' " "when looking up attribute '{attribute}'"
-            logger.warning(msg.format(username=username_supplied_by_user, attribute=self.user_attribute))
+            msg = (
+                "No entry found for user '{username}' "
+                "when looking up attribute '{attribute}'"
+            )
+            logger.warning(
+                msg.format(
+                    username=username_supplied_by_user, attribute=self.user_attribute
+                )
+            )
             return (None, None)
 
         user_dn = response[0]["attributes"][self.lookup_dn_user_dn_attribute]
@@ -690,14 +703,23 @@ class LDAPAuthenticator:
                 server_port = self.server_port
 
             server = ldap3.Server(
-                server_addr, port=server_port, use_ssl=self.use_ssl, connect_timeout=self.connect_timeout
+                server_addr,
+                port=server_port,
+                use_ssl=self.use_ssl,
+                connect_timeout=self.connect_timeout,
             )
             server_pool.add(server)
 
-        auto_bind_no_ssl = ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
+        auto_bind_no_ssl = (
+            ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
+        )
         auto_bind = ldap3.AUTO_BIND_NO_TLS if self.use_ssl else auto_bind_no_ssl
         conn = ldap3.Connection(
-            server_pool, user=userdn, password=password, auto_bind=auto_bind, receive_timeout=self.receive_timeout
+            server_pool,
+            user=userdn,
+            password=password,
+            auto_bind=auto_bind,
+            receive_timeout=self.receive_timeout,
         )
         return conn
 
@@ -705,7 +727,10 @@ class LDAPAuthenticator:
         attrs = {}
         if self.auth_state_attributes:
             search_func = functools.partial(
-                conn.search, userdn, "(objectClass=*)", attributes=self.auth_state_attributes
+                conn.search,
+                userdn,
+                "(objectClass=*)",
+                attributes=self.auth_state_attributes,
             )
             found = await asyncio.get_running_loop().run_in_executor(None, search_func)
             if found:
@@ -739,7 +764,9 @@ class LDAPAuthenticator:
 
         # sanity check
         if not self.lookup_dn and not bind_dn_template:
-            logger.warning("Login not allowed, please configure 'lookup_dn' or 'bind_dn_template'.")
+            logger.warning(
+                "Login not allowed, please configure 'lookup_dn' or 'bind_dn_template'."
+            )
             return None
 
         if self.lookup_dn:
@@ -777,7 +804,9 @@ class LDAPAuthenticator:
                 if conn.bound:
                     is_bound = True
                 else:
-                    is_bound = await asyncio.get_running_loop().run_in_executor(None, conn.bind)
+                    is_bound = await asyncio.get_running_loop().run_in_executor(
+                        None, conn.bind
+                    )
 
             msg = msg.format(username=username, userdn=userdn, is_bound=is_bound)
             logger.debug(msg)
@@ -790,7 +819,9 @@ class LDAPAuthenticator:
             return None
 
         if self.search_filter:
-            search_filter = self.search_filter.format(userattr=self.user_attribute, username=username)
+            search_filter = self.search_filter.format(
+                userattr=self.user_attribute, username=username
+            )
 
             search_func = functools.partial(
                 conn.search,
@@ -804,18 +835,33 @@ class LDAPAuthenticator:
             n_users = len(conn.response)
             if n_users == 0:
                 msg = "User with '{userattr}={username}' not found in directory"
-                logger.warning(msg.format(userattr=self.user_attribute, username=username))
+                logger.warning(
+                    msg.format(userattr=self.user_attribute, username=username)
+                )
                 return None
             if n_users > 1:
-                msg = "Duplicate users found! " "{n_users} users found with '{userattr}={username}'"
-                logger.warning(msg.format(userattr=self.user_attribute, username=username, n_users=n_users))
+                msg = (
+                    "Duplicate users found! "
+                    "{n_users} users found with '{userattr}={username}'"
+                )
+                logger.warning(
+                    msg.format(
+                        userattr=self.user_attribute, username=username, n_users=n_users
+                    )
+                )
                 return None
 
         if self.allowed_groups:
             logger.debug("username:%s Using dn %s", username, userdn)
             found = False
             for group in self.allowed_groups:
-                group_filter = "(|" "(member={userdn})" "(uniqueMember={userdn})" "(memberUid={uid})" ")"
+                group_filter = (
+                    "(|"
+                    "(member={userdn})"
+                    "(uniqueMember={userdn})"
+                    "(memberUid={uid})"
+                    ")"
+                )
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]
 
@@ -826,7 +872,9 @@ class LDAPAuthenticator:
                     search_filter=group_filter,
                     attributes=group_attributes,
                 )
-                found = await asyncio.get_running_loop().run_in_executor(None, search_func)
+                found = await asyncio.get_running_loop().run_in_executor(
+                    None, search_func
+                )
                 if found:
                     break
 
