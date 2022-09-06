@@ -61,7 +61,7 @@ Searches may be chained to progressively narrow results.
 ```
 
 If you do not need to inspect the intermediate results `results1`,
-you can spell this more succinct with by passing multiple queries
+you can express this more succinctly with by passing multiple queries
 to `search()`:
 
 >>> client.search(FullText("dog"), FullText("red"))
