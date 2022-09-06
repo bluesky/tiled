@@ -1,4 +1,3 @@
-import asyncio
 import enum
 import os
 import threading
@@ -7,6 +6,8 @@ from pathlib import Path
 
 import appdirs
 import httpx
+
+from .utils import handle_error
 
 
 class CannotRefreshAuthentication(Exception):
@@ -24,15 +25,6 @@ DEFAULT_TOKEN_CACHE = os.getenv(
 )
 
 
-def token_directory(token_cache, netloc):
-    return Path(
-        token_cache,
-        urllib.parse.quote_plus(
-            netloc.decode()
-        ),  # Make a valid filename out of hostname:port.
-    )
-
-
 def logout(uri_or_profile, *, token_cache=DEFAULT_TOKEN_CACHE):
     """
     Logout of a given session.
@@ -42,23 +34,30 @@ def logout(uri_or_profile, *, token_cache=DEFAULT_TOKEN_CACHE):
     Parameters
     ----------
     uri_or_profile : str
-    token_directory : str or Path, optional
+    token_cache : str or Path, optional
 
     Returns
     -------
     netloc : str
     """
-    if isinstance(token_cache, (str, Path)):
-        netloc = _netloc_from_uri_or_profile(uri_or_profile)
-        directory = token_directory(token_cache, netloc)
-    else:
-        netloc = None  # unknowable
-    token_cache = TokenCache(directory)
-    token_cache.pop("refresh_token", None)
+    netloc = _netloc_from_uri_or_profile(uri_or_profile)
+    # Find the directory associated with this specific Tiled server.
+    directory = Path(
+        token_cache,
+        urllib.parse.quote_plus(
+            netloc.decode()
+        ),  # Make a valid filename out of hostname:port.
+    )
+    for filepath in [directory / "refresh_token", directory / "access_token"]:
+        # filepath.unlink(missing_ok=False)  # Python 3.8+
+        try:
+            filepath.unlink()
+        except FileNotFoundError:
+            pass
     return netloc
 
 
-def sessions(token_directory=DEFAULT_TOKEN_CACHE):
+def sessions(token_cache=DEFAULT_TOKEN_CACHE):
     """
     List all sessions.
 
@@ -67,7 +66,7 @@ def sessions(token_directory=DEFAULT_TOKEN_CACHE):
 
     Parameters
     ----------
-    token_directory : str or Path, optional
+    token_cache : str or Path, optional
 
     Returns
     -------
@@ -75,7 +74,7 @@ def sessions(token_directory=DEFAULT_TOKEN_CACHE):
         Maps netloc to refresh_token
     """
     tokens = {}
-    for directory in Path(token_directory).iterdir():
+    for directory in Path(token_cache).iterdir():
         if not directory.is_dir():
             # Some stray file. Ignore it.
             continue
@@ -88,7 +87,7 @@ def sessions(token_directory=DEFAULT_TOKEN_CACHE):
     return tokens
 
 
-def logout_all(token_directory=DEFAULT_TOKEN_CACHE):
+def logout_all(token_cache=DEFAULT_TOKEN_CACHE):
     """
     Logout of a all sessions.
 
@@ -96,7 +95,7 @@ def logout_all(token_directory=DEFAULT_TOKEN_CACHE):
 
     Parameters
     ----------
-    token_directory : str or Path, optional
+    token_cache : str or Path, optional
 
     Returns
     -------
@@ -104,15 +103,18 @@ def logout_all(token_directory=DEFAULT_TOKEN_CACHE):
         List of netloc of logged-out sessions
     """
     logged_out_from = []
-    for directory in Path(token_directory).iterdir():
+    for directory in Path(token_cache).iterdir():
         if not directory.is_dir():
             # Some stray file. Ignore it.
             continue
-        refresh_token_file = directory / "refresh_token"
-        if refresh_token_file.is_file():
-            refresh_token_file.unlink()
-            netloc = directory.name
-            logged_out_from.append(netloc)
+        for filepath in [directory / "refresh_token", directory / "access_token"]:
+            try:
+                filepath.unlink()
+            except FileNotFoundError:
+                pass
+            else:
+                netloc = directory.name
+                logged_out_from.append(netloc)
     return logged_out_from
 
 
@@ -145,70 +147,109 @@ def _netloc_from_uri_or_profile(uri_or_profile):
 
 
 class TiledAuth(httpx.Auth):
-    def __init__(self):
+    def __init__(self, refresh_url, csrf_token, token_directory):
+        self.refresh_url = refresh_url
+        self.csrf_token = csrf_token
+        self.token_directory = token_directory
+        self.token_directory.mkdir(exist_ok=True, parents=True)
         self._sync_lock = threading.RLock()
-        self._async_lock = asyncio.Lock()
+        # self._async_lock = asyncio.Lock()
+        self.tokens = {}
 
-    def sync_get_token(self):
+    def sync_get_token(self, key, reload_from_disk=False):
+        if not reload_from_disk:
+            # Use in-memory cached copy.
+            try:
+                return self.tokens[key]
+            except Exception:
+                pass
         with self._sync_lock:
-            ...
+            filepath = self.token_directory / key
+            try:
+                with open(filepath, "r") as file:
+                    token = file.read()
+                    self.tokens[key] = token
+                    return token
+            except FileNotFoundError:
+                return None
 
-    def sync_auth_flow(self, request):
-        token = self.sync_get_token()
-        request.headers["Authorization"] = f"Token {token}"
+    def sync_set_token(self, key, value):
+        with self._sync_lock:
+            if not isinstance(value, str):
+                raise ValueError("Expected string value, got {value!r}")
+            filepath = self.token_directory / key
+            filepath.touch(mode=0o600)  # Set permissions.
+            with open(filepath, "w") as file:
+                file.write(value)
+
+    def sync_clear_token(self, key):
+        with self._sync_lock:
+            self.tokens.pop(key, None)
+            filepath = self.token_directory / key
+            # filepath.unlink(missing_ok=False)  # Python 3.8+
+            try:
+                filepath.unlink()
+            except FileNotFoundError:
+                pass
+
+    def sync_auth_flow(self, request, attempt=0):
+        access_token = self.sync_get_token("access_token")
+        if access_token is not None:
+            request.headers["Authorization"] = f"Bearer {access_token}"
+            response = yield request
+        if (access_token is None) or (response.status_code == 401):
+            # Maybe the token cached in memory is stale.
+            maybe_new_access_token = self.sync_get_token(
+                "access_token", reload_from_disk=True
+            )
+            if (attempt < 2) and (maybe_new_access_token != access_token):
+                return (yield from self.sync_auto_flow(request, attempt=1 + attempt))
+            if access_token is not None:
+                # The access token is stale or otherwise invalid. Discard.
+                self.sync_clear_token("access_token")
+            # Begin refresh flow to get a new access token.
+            refresh_token = self.sync_get_token("refresh_token", reload_from_disk=True)
+            if refresh_token is None:
+                raise CannotRefreshAuthentication(
+                    "No refresh token was found in token cache. "
+                    "Provide fresh credentials. "
+                    "For a given client c, use c.context.authenticate()."
+                )
+            token_request = httpx.Request(
+                "POST",
+                self.refresh_url,
+                json={"refresh_token": refresh_token},
+                # Submit CSRF token in both header and cookie.
+                # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+                headers={"x-csrf": self.csrf_token},
+            )
+            token_response = yield token_request
+            if token_response.status_code == 401:
+                # Refreshing the token failed.
+                # Discard the expired (or otherwise invalid) refresh_token.
+                self.sync_clear_token("refresh_token")
+                raise CannotRefreshAuthentication(
+                    "Server rejected attempt to refresh token. "
+                    "Provide fresh credentials. "
+                    "For a given client c, use c.context.authenticate()."
+                )
+            handle_error(token_response)
+            tokens = token_response.json()
+            # If we get this far, refreshing authentication worked.
+            # Store the new refresh token.
+            self.sync_set_token("refresh_token", tokens["refresh_token"])
+            self.sync_set_token("access_token", tokens["access_token"])
+            request.headers["Authorization"] = f"Bearer {tokens['access_token']}"
         yield request
 
-    async def async_get_token(self):
-        async with self._async_lock:
-            ...
+    async def async_get_token(self, key):
+        raise NotImplementedError("Async support is planned but not yet implemented.")
+
+    async def async_set_token(self, key, token):
+        raise NotImplementedError("Async support is planned but not yet implemented.")
+
+    async def async_clear_token(self, key):
+        raise NotImplementedError("Async support is planned but not yet implemented.")
 
     async def async_auth_flow(self, request):
-        token = await self.async_get_token()
-        request.headers["Authorization"] = f"Token {token}"
-        yield request
-
-
-class TokenCache:
-    "A (partial) dict interface backed by files with restrictive permissions"
-
-    def __init__(self, directory):
-        self._directory = Path(directory)
-        self._directory.mkdir(exist_ok=True, parents=True)
-
-    def __getitem__(self, key):
-        filepath = self._directory / key
-        try:
-            with open(filepath, "r") as file:
-                return file.read()
-        except FileNotFoundError:
-            raise KeyError(key)
-
-    def __setitem__(self, key, value):
-        if not isinstance(value, str):
-            raise ValueError("Expected string value, got {value!r}")
-        filepath = self._directory / key
-        filepath.touch(mode=0o600)  # Set permissions.
-        with open(filepath, "w") as file:
-            file.write(value)
-
-    def __delitem__(self, key):
-        filepath = self._directory / key
-        # filepath.unlink(missing_ok=False)  # Python 3.8+
-        try:
-            filepath.unlink()
-        except FileNotFoundError:
-            pass
-
-    def pop(self, key, fallback=None):
-        filepath = self._directory / key
-        try:
-            with open(filepath, "r") as file:
-                content = file.read()
-        except FileNotFoundError:
-            content = fallback
-        # filepath.unlink(missing_ok=True)  # Python 3.8+
-        try:
-            filepath.unlink()
-        except FileNotFoundError:
-            pass
-        return content
+        raise NotImplementedError("Async support is planned but not yet implemented.")

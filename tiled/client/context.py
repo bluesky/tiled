@@ -2,7 +2,6 @@ import contextlib
 import getpass
 import os
 import secrets
-import threading
 import urllib.parse
 from pathlib import Path, PurePosixPath
 
@@ -15,8 +14,7 @@ from .auth import (
     DEFAULT_TOKEN_CACHE,
     CannotRefreshAuthentication,
     PromptForReauthentication,
-    TokenCache,
-    token_directory,
+    TiledAuth,
 )
 from .cache import Revalidate
 from .utils import (
@@ -59,19 +57,10 @@ class Context:
         self._auth_provider = auth_provider
         self.api_key = api_key  # property setter sets Authorization header
         self._offline = offline
-        self._token_cache_or_root_directory = token_cache
+        self._token_cache = Path(token_cache)
         self._prompt_for_reauthentication = PromptForReauthentication(
             prompt_for_reauthentication
         )
-        self._refresh_lock = threading.Lock()
-        if isinstance(token_cache, (str, Path)):
-            directory = token_directory(token_cache, self._client.base_url.netloc)
-            token_cache = TokenCache(directory)
-        self._token_cache = token_cache
-        # The token *cache* is optional. The tokens attrbiute is always present,
-        # and it isn't actually used for anything internally. It's just a view
-        # of the current tokens.
-        self._tokens = {}
         self._app = app
 
         # Set the User Agent to help the server fail informatively if the client
@@ -141,6 +130,16 @@ Set an api_key as in:
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
         # Strip "/node/metadata"
         self._path_parts = path_parts[2:]
+
+        refresh_url = self._handshake_data["authentication"]["links"]["refresh_session"]
+        csrf_token = self._client.cookies["tiled_csrf"]
+        token_directory = Path(
+            self._token_cache,
+            urllib.parse.quote_plus(
+                url.netloc.decode()
+            ),  # Make a valid filename out of hostname:port.
+        )
+        client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
 
     @property
     def tokens(self):
@@ -312,7 +311,7 @@ Set an api_key as in:
             return content
         if self._cache is None:
             # No cache, so we can use the client straightforwardly.
-            response = self._send(request, stream=stream)
+            response = self._client.send(request, stream=stream)
             handle_error(response)
             if response.headers.get("content-encoding") == "blosc":
                 import blosc
@@ -347,7 +346,7 @@ Set an api_key as in:
                     return reservation.load_content()
                 if not self._disable_cache_read:
                     request.headers["If-None-Match"] = reservation.item.etag
-            response = self._send(request, stream=stream)
+            response = self._client.send(request, stream=stream)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
                 # Update the expiration time.
@@ -404,7 +403,7 @@ Set an api_key as in:
                 "accept": "application/x-msgpack",
             },
         )
-        response = self._send(request)
+        response = self._client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -443,7 +442,7 @@ Set an api_key as in:
             headers=headers,
             params=params,
         )
-        response = self._send(request)
+        response = self._client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -459,30 +458,12 @@ Set an api_key as in:
         request = self._client.build_request(
             "DELETE", path, content=None, headers=headers, params=params
         )
-        response = self._send(request)
+        response = self._client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
-
-    def _send(self, request, stream=False, attempts=0):
-        """
-        If sending results in an authentication error, reauthenticate.
-        """
-        response = self._client.send(request, stream=stream)
-        if (self.api_key is None) and (response.status_code == 401) and (attempts == 0):
-            # Try refreshing the token.
-            tokens = self.reauthenticate()
-            # The line above updated self._client.headers["authorization"]
-            # so we will have a fresh token for the next call to
-            # client.build_request(...), but we need to retroactively patch the
-            # authorization header for this request and then re-send.
-            access_token = tokens["access_token"]
-            auth_header = f"Bearer {access_token}"
-            request.headers["authorization"] = auth_header
-            return self._send(request, stream=stream, attempts=1)
-        return response
 
     def authenticate(self, provider=None):
         "Authenticate. Prompt for password or access code (refresh token)."
@@ -580,12 +561,8 @@ Navigate web browser to this address to obtain access code:
                     break
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-        if self._token_cache is not None:
-            # We are using a token cache. Store the new refresh token.
-            self._token_cache["refresh_token"] = refresh_token
-        self._tokens.update(
-            refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
-        )
+        self.client.auth.sync_set_token("access_token", tokens["access_token"])
+        self.client.auth.sync_set_token("refresh_token", refresh_token)
         if confirmation_message:
             identities = self.whoami()["identities"]
             identities_by_provider = {
@@ -629,9 +606,8 @@ Navigate web browser to this address to obtain access code:
         This method is idempotent.
         """
         self._client.headers.pop("Authorization", None)
-        if self._token_cache is not None:
-            self._token_cache.pop("refresh_token", None)
-        self._tokens.clear()
+        self._client.auth.sync_clear_token("access_token")
+        self._client.auth.sync_clear_token("refresh_token")
 
     def revoke_session(self, session_id):
         """
@@ -648,59 +624,6 @@ Navigate web browser to this address to obtain access code:
         )
         response = self._client.send(request)
         handle_error(response)
-
-    def _refresh(self, refresh_token=None):
-        with self._refresh_lock:
-            if refresh_token is None:
-                if self._token_cache is None:
-                    # We are not using a token cache.
-                    raise CannotRefreshAuthentication(
-                        "No token cache was given. "
-                        "Provide fresh credentials. "
-                        "For a given client c, use c.context.authenticate()."
-                    )
-                # We are using a token_cache.
-                try:
-                    refresh_token = self._token_cache["refresh_token"]
-                except KeyError:
-                    raise CannotRefreshAuthentication(
-                        "No refresh token was found in token cache. "
-                        "Provide fresh credentials. "
-                        "For a given client c, use c.context.authenticate()."
-                    )
-            token_request = self._client.build_request(
-                "POST",
-                self._handshake_data["authentication"]["links"]["refresh_session"],
-                json={"refresh_token": refresh_token},
-                # Submit CSRF token in both header and cookie.
-                # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-                headers={"x-csrf": self._client.cookies["tiled_csrf"]},
-            )
-            token_request.headers.pop("Authorization", None)
-            token_response = self._client.send(token_request)
-            if token_response.status_code == 401:
-                # Refreshing the token failed.
-                # Discard the expired (or otherwise invalid) refresh_token file.
-                self._token_cache.pop("refresh_token", None)
-                raise CannotRefreshAuthentication(
-                    "Server rejected attempt to refresh token. "
-                    "Provide fresh credentials. "
-                    "For a given client c, use c.context.authenticate()."
-                )
-            handle_error(token_response)
-            tokens = token_response.json()
-            # If we get this far, reauthentication worked.
-            # Store the new refresh token.
-            self._token_cache["refresh_token"] = tokens["refresh_token"]
-            # Update the client's Authentication header.
-            access_token = tokens["access_token"]
-            auth_header = f"Bearer {access_token}"
-            self._client.headers["authorization"] = auth_header
-            self._tokens.update(
-                refresh_token=tokens["refresh_token"],
-                access_token=tokens["access_token"],
-            )
-            return tokens
 
 
 def context_from_tree(
