@@ -481,17 +481,18 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     def items(self):
         return ItemsView(lambda: len(self), self._items_slice)
 
-    def search(self, query):
+    def search(self, *query):
         """
         Make a Node with a subset of this Node's entries, filtered by query.
 
         Examples
         --------
 
-        >>> from tiled.queries import FullText
+        >>> from tiled.queries import FullText, Eq
         >>> tree.search(FullText("hello"))
+        >>> tree.search(FullText("hello"), Eq("color", "red"))
         """
-        return self.new_variation(queries=self._queries + [query])
+        return self.new_variation(queries=self._queries + list(query))
 
     def distinct(
         self, metadata_keys, structure_families=False, specs=False, counts=False

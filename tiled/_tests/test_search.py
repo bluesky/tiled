@@ -42,6 +42,8 @@ def test_compound_search():
     client = from_tree(tree)
     results = client.search(FullText("dog")).search(FullText("yellow"))
     assert list(results) == ["b"]
+    results = client.search(FullText("dog"), FullText("yellow"))
+    assert list(results) == ["b"]
 
 
 def test_key_into_results():

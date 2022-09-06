@@ -26,6 +26,13 @@ Follow the links in the table below for examples specific to each query.
 
 ## Query expressions
 
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.queries.Key
+```
+
 The `Key` object can be used to construct queries in a readable way using
 standard Python comparison operators, as in
 
@@ -38,13 +45,28 @@ Key("temperature") > 300
 used in searches like
 
 ```python
-c.search(Key("color") == "red").search(Key("shape") != "circle").search(Key("temperature") > 300)
+c.search(Key("color") == "red", Key("shape") != "circle", Key("temperature") > 300)
 ```
 
-Notice that, to compound searches, you may use repeated calls to `.search()` as in
+Passing _multiple_ queries to `search(...)`, as shown above, compounds them
+(logical AND).  Alternatively, you may progressively narrow results and store
+them in separate variables.
 
 ```python
-c.search(...).search(...).search(...)
+results1 = c.search(...)
+results2 = results1.search(...)
+results3 = results2.search(...)
+```
+
+There is no support for logical OR. You must perform separate queries and
+combine them yourself. It may convenient to combine them like so in a `dict`,
+as long as the results are not too numerous to fit in memory.
+
+```python
+a = c.search(...)
+b = c.search(...)
+c = c.search(...)
+combined_results = dict(**a, **b, **c)
 ```
 
 ````{warning}
@@ -71,13 +93,6 @@ a query with `not`, `in`, `and`, or `or`.
 
 ````
 
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.queries.Key
-```
 
 ## Convenience Functions
 

@@ -1,7 +1,7 @@
 # Search
 
-In this tutorial we will find a dataset in a Node by performing a search
-over the entries' metadata.
+In this tutorial we will find a dataset by performing a search over
+metadata.
 
 To follow along, start the Tiled server with example data from a Terminal.
 
@@ -48,21 +48,23 @@ anywhere in the metadata.
 <Node {'short_table', 'long_table'}>
 ```
 
-The result is another client, with a subset of the entries or the original.
-We might next stash it in a variable and drill further down.
+The result has a subset of the entries or the original.
+
+Searches may be chained to progressively narrow results.
 
 ```python
->>> results = client.search(FullText("dog"))
->>> results['short_table']
-<DataFrameClient>
-```
-
-Searches may be chained:
-
-```python
->>> client.search(FullText("dog")).search(FullText("red"))
+>>> results1 = client.search(FullText("dog"))
+>>> results1
+<Node {'short_table', 'long_table'}>
+>>> results2 = results1.search(FullText("red"))
 <Node {'short_table'}>
 ```
+
+If you do not need to inspect the intermediate results `results1`,
+you can spell this more succinct with by passing multiple queries
+to `search()`:
+
+>>> client.search(FullText("dog"), FullText("red"))
 
 If there no matches, the result is an empty Node:
 
@@ -71,7 +73,7 @@ If there no matches, the result is an empty Node:
 <Node {}>
 ```
 
-## Roadmap
+## More Queries
 
-Currently, ``FullText`` is the only outwardly-useful query supported. More
-will be added, as well as documentation on how to register user-defined ones.
+Above, use the `FullText` query. Tiled supports many queries;
+see {doc}`../reference/queries`.
