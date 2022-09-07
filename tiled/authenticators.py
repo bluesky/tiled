@@ -3,8 +3,8 @@ import functools
 import logging
 import re
 import secrets
-
 from collections.abc import Iterable
+
 from fastapi import APIRouter, Request
 from jose import JWTError, jwk, jwt
 from starlette.responses import RedirectResponse
