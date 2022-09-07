@@ -243,7 +243,7 @@ def construct_revisions_response(
             },
         }
         data.append(item)
-    count = len(entry.revisions)
+    count = len(data)
     links = pagination_links(
         route, path_parts, offset, limit, count
     )  # maybe reuse or maybe make a new pagination_revision_links

@@ -746,18 +746,53 @@ async def put_dataframe_partition(
 async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
+    validation_registry=Depends(get_validation_registry),
     entry=Security(entry, scopes=["write:metadata"]),
 ):
     if hasattr(entry, "put_metadata"):
-        entry.put_metadata(
-            metadata=body.metadata,
-            specs=body.specs,
+        input_metadata = body.metadata if body.metadata is not None else entry.metadata
+        input_specs = body.specs if body.specs is not None else entry.specs
+        metadata, structure_family, structure, specs = (
+            input_metadata,
+            entry.structure_family,
+            entry.structure,
+            input_specs,
         )
+
+        metadata_modified = False
+
+        for spec in specs:
+            if spec in validation_registry:
+                try:
+                    result = validation_registry(spec)(
+                        metadata, structure_family, structure, spec
+                    )
+                    if result is not None:
+                        metadata_modified = True
+                        metadata = result
+
+                except ValidationError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"failed validation for spec {spec}:\n{e}",
+                    )
+
+        entry.put_metadata(
+            metadata=metadata,
+            specs=specs,
+        )
+
+        response_data = {"id": entry.key}
+        if metadata_modified:
+            response_data["metadata"] = metadata
+        else:
+            response_data["metadata"] = {}
+        return json_or_msgpack(request, response_data)
+
     else:
         raise HTTPException(
             status_code=405, detail="This path does not support update of metadata."
         )
-    return json_or_msgpack(request, None)
 
 
 @router.get("/node/revisions/{path:path}")

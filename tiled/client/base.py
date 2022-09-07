@@ -58,17 +58,16 @@ class MetadataRevisions:
             offset = item_.start
             if offset is None:
                 offset = 0
-
             if item_.stop is None:
                 params = f"?page[offset]={offset}"
             else:
                 limit = item_.stop - offset
-                params = f"page[offset]={offset}&page[limit]={limit}"
+                params = f"?page[offset]={offset}&page[limit]={limit}"
 
             next_page = path + params
             result = []
             while next_page is not None:
-                content = self.context.get_json(path)
+                content = self.context.get_json(next_page)
                 if len(result) == 0:
                     result = content.copy()
                 else:
@@ -235,7 +234,17 @@ class BaseClient:
             + "".join(f"/{part}" for part in (self._path or [""]))
         )
 
-        self.context.put_json(full_path_meta, data)
+        content = self.context.put_json(full_path_meta, data)
+
+        if metadata is not None:
+            if len(content["metadata"]) > 0:
+                self._item["attributes"]["metadata"] = content["metadata"]
+            elif len(content["metadata"]) == 0:
+                if len(metadata) > 0:
+                    self._item["attributes"]["metadata"] = metadata
+
+        if specs is not None:
+            self._item["attributes"]["specs"] = specs
 
     @property
     def metadata_revisions(self):
