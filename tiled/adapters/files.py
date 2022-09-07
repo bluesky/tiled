@@ -697,7 +697,7 @@ def _reader_factory_for_file(
         mimetype = mimetype_detection_hook(path, mimetype)
     if mimetype is None:
         msg = (
-            f"The file at {path} has a file extension {ext} this is not "
+            f"The file at {path} has some type that is not "
             "recognized. The file will be skipped. Pass in a mimetype "
             "for this file extension via the parameter "
             "DirectoryAdapter.from_directory(..., mimetypes_by_file_ext={...}) "
