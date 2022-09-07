@@ -1,7 +1,6 @@
 # Search
 
-In this tutorial we will find a dataset in a Node by performing a search
-over the entries' metadata.
+In this tutorial we will find a dataset by performing a search over metadata.
 
 To follow along, start the Tiled server with example data from a Terminal.
 
@@ -48,16 +47,8 @@ anywhere in the metadata.
 <Node {'short_table', 'long_table'}>
 ```
 
-The result is another client, with a subset of the entries or the original.
-We might next stash it in a variable and drill further down.
-
-```python
->>> results = client.search(FullText("dog"))
->>> results['short_table']
-<DataFrameClient>
-```
-
-Searches may be chained:
+The result has a subset of the contents of the original.
+Searches may be chained to progressively narrow results:
 
 ```python
 >>> client.search(FullText("dog")).search(FullText("red"))
