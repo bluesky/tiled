@@ -62,7 +62,7 @@ If there no matches, the result is an empty Node:
 <Node {}>
 ```
 
-## Roadmap
+## More Queries
 
-Currently, ``FullText`` is the only outwardly-useful query supported. More
-will be added, as well as documentation on how to register user-defined ones.
+Above, use the `FullText` query. Tiled supports many queries;
+see {doc}`../reference/queries`.
