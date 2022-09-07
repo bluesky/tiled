@@ -41,10 +41,23 @@ used in searches like
 c.search(Key("color") == "red").search(Key("shape") != "circle").search(Key("temperature") > 300)
 ```
 
-Notice that, to compound searches, you may use repeated calls to `.search()` as in
+Notice that, to progressively narrow results, you may use repeated calls to
+`.search()` as in
 
 ```python
 c.search(...).search(...).search(...)
+```
+
+The above achieves logical `AND`. To achieve logical `OR`, you must perform
+separate queries and combine them yourself. It may be convenient to combine them
+as shown in a `dict`, as long as the results are not too numerous to fit in
+memory.
+
+```python
+a = c.search(...)
+b = c.search(...)
+c = c.search(...)
+combined_results = {**a, **b, **c}  # to handle repeats, must use {...} syntax not dict(...)
 ```
 
 ````{warning}
