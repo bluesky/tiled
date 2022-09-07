@@ -674,11 +674,16 @@ def _reader_factory_for_file(
     readers_by_mimetype, mimetypes_by_file_ext, mimetype_detection_hook, path
 ):
     # First, try to infer the mimetype from the file extension.
-    ext = "".join(path.suffixes)  # e.g. ".h5" or ".tar.gz"
-    # User-specified mapping from file extension to mimetype
-    # gets priority.
-    if ext in mimetypes_by_file_ext:
-        mimetype = mimetypes_by_file_ext[ext]
+    # For compound suffixes like '.u1.strict_disabled.avif' (a real example)
+    # consider in order:
+    # '.u1.strict_disabled.avif'
+    # '.strict_disabled.avif'
+    # '.avif'
+    for i in range(len(path.suffixes)):
+        ext = "".join(path.suffixes[i:])  # e.g. ".h5" or ".tar.gz"
+        if ext in mimetypes_by_file_ext:
+            mimetype = mimetypes_by_file_ext[ext]
+            break
     else:
         # Use the Python's built-in facility for guessing mimetype
         # from file extension. This loads data about mimetypes from
@@ -692,7 +697,7 @@ def _reader_factory_for_file(
         mimetype = mimetype_detection_hook(path, mimetype)
     if mimetype is None:
         msg = (
-            f"The file at {path} has a file extension {ext} this is not "
+            f"The file at {path} has some type that is not "
             "recognized. The file will be skipped. Pass in a mimetype "
             "for this file extension via the parameter "
             "DirectoryAdapter.from_directory(..., mimetypes_by_file_ext={...}) "
