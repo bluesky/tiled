@@ -6,7 +6,18 @@ from collections import Counter
 from datetime import datetime
 
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..queries import Comparison, Contains, Eq, FullText, In, NotEq, NotIn, Regex
+from ..queries import (
+    Comparison,
+    Contains,
+    Eq,
+    FullText,
+    In,
+    NotEq,
+    NotIn,
+    Regex,
+    Specs,
+    StructureFamily,
+)
 from ..query_registration import QueryTranslationRegistry
 from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
 from .utils import IndexersMixin
@@ -454,6 +465,34 @@ def notin(query, tree):
 
 
 MapAdapter.register_query(NotIn, notin)
+
+
+def specs(query, tree):
+    matches = {}
+    include = set(query.include)
+    exclude = set(query.exclude)
+
+    for key, value in tree.items():
+        specs = set(value.specs)
+        if include.issubset(specs) and exclude.isdisjoint(specs):
+            matches[key] = value
+
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(Specs, specs)
+
+
+def structure_family(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        if value.structure_family == query.value:
+            matches[key] = value
+
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(StructureFamily, structure_family)
 
 
 class DummyAccessPolicy:
