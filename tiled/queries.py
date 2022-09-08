@@ -7,7 +7,7 @@ The are encoded into and decoded from URL query parameters.
 
 import enum
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, List
 
 from .query_registration import register
@@ -353,7 +353,7 @@ class NotIn:
 
 
 @register(name="specs")
-@dataclass
+@dataclass(init=False)
 class Specs:
     """
     Query if specs list matches all elements in include list and does not match any element in exclude list
@@ -372,7 +372,19 @@ class Specs:
     """
 
     include: List[str]
-    exclude: List[str] = field(default_factory=list)
+    exclude: List[str]
+
+    def __init__(self, include, exclude=None):
+        exclude = exclude or []
+
+        if isinstance(include, str):
+            raise TypeError("include must be a list not a str")
+
+        if isinstance(exclude, str):
+            raise TypeError("exclude must be a list not a str")
+
+        self.include = list(include)
+        self.exclude = list(exclude)
 
     def encode(self):
         return {
@@ -383,6 +395,27 @@ class Specs:
     @classmethod
     def decode(cls, *, include, exclude):
         return cls(include=json.loads(include), exclude=json.loads(exclude))
+
+
+def Spec(spec):
+    """
+    Convenience function for querying if specs list contains a given spec
+
+    Equivalent to Specs([spec]).
+
+    Parameters
+    ----------
+    spec: str
+
+    Examples
+    --------
+
+    Search for spec "foo"
+
+    >>> c.search(Spec("foo"))
+    """
+
+    return Specs([spec])
 
 
 @register(name="structure_family")

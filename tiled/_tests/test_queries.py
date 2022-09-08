@@ -131,6 +131,10 @@ def test_notin():
 
 def test_specs():
     client = from_tree(tree)
+
+    with pytest.raises(TypeError):
+        Specs("foo")
+
     assert list(client.search(Specs(include=["foo", "bar"]))) == sorted(
         ["specs_foo_bar", "specs_foo_bar_baz"]
     )

@@ -22,6 +22,8 @@ Follow the links in the table below for examples specific to each query.
    tiled.queries.In
    tiled.queries.NotIn
    tiled.queries.Regex
+   tiled.queries.Specs
+   tiled.queries.StructureFamily
 ```
 
 ## Query expressions
