@@ -21,6 +21,7 @@ from .core import (
     construct_data_response,
     construct_entries_response,
     construct_resource,
+    construct_revisions_response,
     json_or_msgpack,
     resolve_media_type,
 )
@@ -682,7 +683,6 @@ async def put_array_full(
     entry=Security(entry, scopes=["write:data"]),
 ):
     data = await request.body()
-
     if hasattr(entry, "put_data"):
         entry.put_data(data)
     else:
@@ -739,4 +739,92 @@ async def put_dataframe_partition(
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."
         )
+    return json_or_msgpack(request, None)
+
+
+@router.put("/node/metadata/{path:path}")
+async def put_metadata(
+    request: Request,
+    body: schemas.PutMetadataRequest,
+    validation_registry=Depends(get_validation_registry),
+    entry=Security(entry, scopes=["write:metadata"]),
+):
+    if hasattr(entry, "put_metadata"):
+        input_metadata = body.metadata if body.metadata is not None else entry.metadata
+        input_specs = body.specs if body.specs is not None else entry.specs
+        metadata, structure_family, structure, specs = (
+            input_metadata,
+            entry.structure_family,
+            entry.structure,
+            input_specs,
+        )
+
+        metadata_modified = False
+
+        for spec in specs:
+            if spec in validation_registry:
+                try:
+                    result = validation_registry(spec)(
+                        metadata, structure_family, structure, spec
+                    )
+                    if result is not None:
+                        metadata_modified = True
+                        metadata = result
+
+                except ValidationError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"failed validation for spec {spec}:\n{e}",
+                    )
+
+        entry.put_metadata(
+            metadata=metadata,
+            specs=specs,
+        )
+
+        response_data = {"id": entry.key}
+        if metadata_modified:
+            response_data["metadata"] = metadata
+        return json_or_msgpack(request, response_data)
+
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path does not support update of metadata."
+        )
+
+
+@router.get("/node/revisions/{path:path}")
+async def node_revisions(
+    request: Request,
+    path: str,
+    offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+    limit: Optional[int] = Query(
+        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+    ),
+    entry=Security(entry, scopes=["read:metadata"]),
+):
+    if not hasattr(entry, "revisions"):
+        raise HTTPException(
+            status_code=405, detail="This path does not support update of metadata."
+        )
+
+    # Look at /node/search call to construct_entries_response.
+    # This takes similar (but fewer) parameters.
+    resource = construct_revisions_response(
+        entry, "/node/revisions", path, offset, limit, resolve_media_type(request)
+    )
+    return json_or_msgpack(request, resource.dict())
+
+
+@router.delete("/node/revisions/{path:path}")
+async def revisions_delitem(
+    request: Request, n: int, entry=Security(entry, scopes=["write:metadata"])
+):
+    if not hasattr(entry, "revisions"):
+        raise HTTPException(
+            status_code=405,
+            detail="This path does not support a del request for revisions.",
+        )
+
+    entry.revisions.delete_revision(n)
     return json_or_msgpack(request, None)

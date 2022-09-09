@@ -1,7 +1,91 @@
 import importlib
+import time
 
 from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
 from .cache import Revalidate, verify_cache
+
+
+class MetadataRevisions:
+    def __init__(self, context, path):
+        self._cached_len = None
+        self.context = context
+        self._path = path
+
+    def __len__(self):
+
+        LENGTH_CACHE_TTL = 1  # second
+
+        now = time.monotonic()
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if now < deadline:
+                # Used the cached value and do not make any request.
+                return length
+
+        path = (
+            "/node/revisions"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
+        content = self.context.get_json(
+            path, params={"page[offset]": 0, "page[limit]": 0}
+        )
+        length = content["meta"]["count"]
+        self._cached_len = (length, now + LENGTH_CACHE_TTL)
+        return length
+
+    def __getitem__(self, item_):
+        self._cached_len = None
+
+        path = (
+            "/node/revisions"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
+        if isinstance(item_, int):
+            offset = item_
+            limit = 1
+
+            content = self.context.get_json(
+                path, params={"page[offset]": offset, "page[limit]": limit}
+            )
+
+            (result,) = content["data"]
+            return result
+
+        elif isinstance(item_, slice):
+            offset = item_.start
+            if offset is None:
+                offset = 0
+            if item_.stop is None:
+                params = f"?page[offset]={offset}"
+            else:
+                limit = item_.stop - offset
+                params = f"?page[offset]={offset}&page[limit]={limit}"
+
+            next_page = path + params
+            result = []
+            while next_page is not None:
+                content = self.context.get_json(next_page)
+                if len(result) == 0:
+                    result = content.copy()
+                else:
+                    result["data"].append(content["data"])
+                next_page = content["links"]["next"]
+
+            return result["data"]
+
+    def delete_revision(self, n):
+
+        path = (
+            "/node/revisions"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
+        self.context.delete_content(path, None, params={"n": n})
 
 
 class BaseClient:
@@ -14,6 +98,7 @@ class BaseClient:
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
+        self._metadata_revisions = None
         super().__init__()
 
     def login(self, provider=None):
@@ -120,6 +205,57 @@ class BaseClient:
             ]
         )
         return sorted(formats)
+
+    def update_metadata(self, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: Update metadata.
+
+        This is subject to change or removal without notice
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+
+        self._cached_len = None
+
+        data = {
+            "metadata": metadata,
+            "specs": specs,
+        }
+
+        full_path_meta = (
+            "/node/metadata"
+            + "".join(f"/{part}" for part in self.context.path_parts)
+            + "".join(f"/{part}" for part in (self._path or [""]))
+        )
+
+        content = self.context.put_json(full_path_meta, data)
+
+        if metadata is not None:
+            if "metadata" in content:
+                # Metadata was accepted and modified by the specs validator on the server side.
+                # It is updated locally using the new version.
+                self._item["attributes"]["metadata"] = content["metadata"]
+            else:
+                # Metadata was accepted as it si by the server.
+                # It is updated locally with the version submitted buy the client.
+                self._item["attributes"]["metadata"] = metadata
+
+        if specs is not None:
+            self._item["attributes"]["specs"] = specs
+
+    @property
+    def metadata_revisions(self):
+        if self._metadata_revisions is None:
+            self._metadata_revisions = MetadataRevisions(self.context, self._path)
+
+        return self._metadata_revisions
 
 
 class BaseStructureClient(BaseClient):

@@ -301,4 +301,9 @@ class GetDistinctResponse(pydantic.BaseModel):
     specs: Optional[List[DistinctValueInfo]]
 
 
+class PutMetadataRequest(pydantic.BaseModel):
+    metadata: Optional[Dict]
+    specs: Optional[List[str]]
+
+
 NodeStructure.update_forward_refs()
