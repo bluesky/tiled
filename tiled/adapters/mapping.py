@@ -5,6 +5,7 @@ import operator
 from collections import Counter
 from datetime import datetime
 
+from ..access_policies import NO_ACCESS
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
     Comparison,
@@ -12,6 +13,7 @@ from ..queries import (
     Eq,
     FullText,
     In,
+    KeysFilter,
     NotEq,
     NotIn,
     Regex,
@@ -19,7 +21,7 @@ from ..queries import (
     StructureFamily,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
+from ..utils import UNCHANGED, DictView
 from .utils import IndexersMixin
 
 
@@ -91,12 +93,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self._sorting = sorting
         self._metadata = metadata or {}
         self.specs = specs or []
-        if (access_policy is not None) and (
-            not access_policy.check_compatibility(self)
-        ):
-            raise ValueError(
-                f"Access policy {access_policy} is not compatible with this Adapter."
-            )
         self._access_policy = access_policy
         self._principal = principal
         self._must_revalidate = must_revalidate
@@ -176,11 +172,17 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     def authenticated_as(self, principal):
         if self._principal is not None:
             raise RuntimeError(f"Already authenticated as {self.principal}")
-        if self._access_policy is not None:
-            tree = self._access_policy.filter_results(self, principal)
-        else:
-            tree = self.new_variation(principal=principal)
-        return tree
+        variation = self.new_variation(principal=principal)
+        if self.access_policy is not None:
+            queries = self.access_policy.filters(
+                self, principal, {"read:metadata", "read:data"}
+            )
+            if queries is NO_ACCESS:
+                variation = variation.new_variation(mapping={})
+            else:
+                for query in queries:
+                    variation = variation.search(query)
+        return variation
 
     def new_variation(
         self,
@@ -495,75 +497,15 @@ def structure_family(query, tree):
 MapAdapter.register_query(StructureFamily, structure_family)
 
 
-class DummyAccessPolicy:
-    "Impose no access restrictions."
-
-    def check_compatibility(self, tree):
-        # This only works on in-memory Adapter or subclases.
-        return isinstance(tree, MapAdapter)
-
-    def modify_queries(self, queries, principal):
-        return queries
-
-    def filter_results(self, tree, principal):
-        return type(tree)(
-            mapping=self._mapping,
-            metadata=tree.metadata,
-            access_policy=tree.access_policy,
-            principal=principal,
-        )
+def keys_filter(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        if key in query.keys:
+            matches[key] = value
+    return tree.new_variation(mapping=matches)
 
 
-class SimpleAccessPolicy:
-    """
-    A mapping of user names to lists of entries they can access.
-
-    >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]}, provider="toy")
-    """
-
-    ALL = object()  # sentinel
-
-    def __init__(self, access_lists, *, provider, public=None):
-        self.access_lists = {}
-        self.provider = provider
-        self.public = set(public or [])
-        for key, value in access_lists.items():
-            if isinstance(value, str):
-                value = import_object(value)
-            self.access_lists[key] = value
-
-    def check_compatibility(self, tree):
-        # This only works on MapAdapter or subclases.
-        return isinstance(tree, MapAdapter)
-
-    def modify_queries(self, queries, principal):
-        return queries
-
-    def filter_results(self, tree, principal):
-        # Get the id (i.e. username) of this Principal for the
-        # associated authentication provider.
-        for identity in principal.identities:
-            if identity.provider == self.provider:
-                id = identity.id
-                break
-        else:
-            raise ValueError(
-                f"Principcal {principal} has no identity from provider {self.provider}. "
-                f"Its identities are: {principal.identities}"
-            )
-        access_list = self.access_lists.get(id, [])
-
-        if (principal is SpecialUsers.admin) or (access_list is self.ALL):
-            mapping = tree._mapping
-        else:
-            allowed = set(access_list or []) | self.public
-            mapping = {k: v for k, v in tree._mapping.items() if k in allowed}
-        return type(tree)(
-            mapping=mapping,
-            metadata=tree.metadata,
-            access_policy=tree.access_policy,
-            principal=principal,
-        )
+MapAdapter.register_query(KeysFilter, keys_filter)
 
 
 class _HIGH_SORTER_CLASS:

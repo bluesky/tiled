@@ -35,7 +35,7 @@ def config(tmpdir):
             "uri": f"sqlite:///{tmpdir}/tiled.sqlite",
         },
         "access_control": {
-            "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
             "args": {"access_lists": {"alice": ["a"]}, "provider": "toy"},
         },
         "trees": [
@@ -43,7 +43,7 @@ def config(tmpdir):
                 "tree": f"{__name__}:tree_a",
                 "path": "/a",
                 "access_control": {
-                    "access_policy": "tiled.adapters.mapping:SimpleAccessPolicy",
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
                     "args": {
                         "provider": "toy",
                         "access_lists": {

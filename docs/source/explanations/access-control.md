@@ -1,29 +1,32 @@
 # Access Control
 
-Tiled offers extensible access control over which users can access
-which entries.
+Tiled uses a programmable Access Control Policy to manage which
+users can access and perform actions on (read, write, delete) which entries.
 
-This is implemented using an "Access Policy" object, which implements
-a given policy for certain types of Tree. It can do this in one of two ways:
+An Access Control Policy answers two questions:
+1. Given a Principal (user or service) and a Node, return a list of the scopes
+   (actions) the Principal is allowed to perform on that Node.
 
-1. Brute-force checking the entries one at a time
-2. Using a query to narrow down search results to those that
-   the authenticated user is allowed to access.
+2. Given a Principal (user or service), a Node, and a list of scopes (actions),
+   return a list of Query objects that, when applied to the Node, filters its
+   children such that the Principal can do all of those actions on the remaining
+   children (if any).
 
-(1) is easier to implement and suitable for small- to medium-sized Trees
-in memory or backed by a modestly-sized directory. (2) is necessary for large
-Trees backed by databases or other external services.
+This determination can be backed by a call to an external service or by a
+static configuration file. We demonstrate both here.
 
-This is an example of (1):
+First, the static configuration file. Consider this simple tree of data:
 
 ```{eval-rst}
 .. literalinclude:: ../../../tiled/examples/toy_authentication.py
    :caption: tiled/examples/toy_authentication.py
 ```
 
+protected by this simple Access Control Policy:
+
 ```{eval-rst}
 .. literalinclude:: ../../../example_configs/toy_authentication.yml
-   :caption: example_configs/toy_authentication.py
+   :caption: example_configs/toy_authentication.yml
 ```
 
 Under `access_lists:` usernames are mapped to the keys of the entries the user may access.
@@ -37,30 +40,20 @@ in the Tree.
 ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/config.yml
 ```
 
-Implementing (2) is highly situation dependent. Here is a sketch of the Access Policy
-used by NSLS-II to integrate with our proposal system and MongoDB database of metadata.
+For large-scale deployment, Tiled typically integrates with an existing access management
+system. This is sketch of the Access Control Policy used by NSLS-II to
+integrate with our proposal system.
 
 ```py
 import cachetools
-from databroker.mongo_normalized import Tree
 import httpx
+from tiled.queries import In
 
-# Use a process-global cache that instances of PASSAccessPolicy share.
+
+# To reduce load on the external service and to expedite repeated lookups, use a
+# process-global cache with a timeout.
 response_cache = cachetools.TTLCache(maxsize=10_000, ttl=60)
 
-if __debug__:
-    import logging
-    import os
-
-    logger = logging.getLogger(__name__)
-    handler = logging.StreamHandler()
-    handler.setLevel("DEBUG")
-    handler.setFormatter(logging.Formatter("PASS ACCESS POLICY: %(message)s"))
-    logger.addHandler(handler)
-
-    log_level = os.getenv("PASS_ACCESS_POLICY_LOG_LEVEL")
-    if log_level:
-        logger.setLevel(log_level.upper())
 
 class PASSAccessPolicy:
     """
@@ -71,41 +64,44 @@ class PASSAccessPolicy:
         beamline: ...
     """
 
-    def __init__(self, url, beamline):
+    def __init__(self, url, beamline, provider):
         self._client = httpx.Client(base_url=url)
         self._beamline = beamline
+        self.provider = provider
 
-    def check_compatibility(self, catalog):
-        return isinstance(catalog, Tree)
-
-    def modify_queries(self, queries, principal):
-        try:
-            response = response_cache[principal]
-        except KeyError:
-            logger.debug("%s: Cache miss", principal)
-            response = self._client.get(f"/data_session/{principal}")
-            response_cache[principal] = response
+    def _get_id(self, principal):
+        for identity in principal.identities:
+            if identity.provider == self.provider:
+                username = identity.id
+                break
         else:
-            logger.debug("%s: Cache hit", principal)
-        if response.status_code != 200:
-            # TODO Fast-path for access policy to say "no access"
-            modified_queries = list(queries)
-            modified_queries.append({"data_session": {"$in": []}})
-            try:
-                response.raise_for_status()
-            except Exception:
-                logger.exception("%s: Failure", principal)
-            return modified_queries
+            raise ValueError(
+                f"Principcal {principal} has no identity from provider {self.provider}. "
+                f"Its identities are: {principal.identities}"
+            )
+
+    def allowed_scopes(self, node, principal):
+        return {"read:metadata", "read:data"}
+
+    def filters(self, node, principal, scopes):
+        queries = []
+        id = self._get_id(principal)
+        if not scopes.issubset({"read:metadata", "read:data"}):
+            return NO_ACCESS
+        try:
+            response = response_cache[id]
+        except KeyError:
+            response = self._client.get(f"/data_session/{id}")
+            response_cache[id] = response
+        if response.is_error:
+            response.raise_for_status()
         data = response.json()
         if ("nsls2" in (data["facility_all_access"] or [])) or (
             self._beamline in (data["beamline_all_access"] or [])
         ):
-            logger.debug("%s: all access", principal)
             return queries
-        modified_queries = list(queries)
-        modified_queries.append(
-            {"data_session": {"$in": (data["data_sessions"] or [])}}
+        queries.append(
+            In("data_session", data["data_sessions"] or [])
         )
-        logger.debug("%s: access to %d data sessions", principal, len(data["data_sessions"]))
-        return modified_queries
+        return queries
 ```

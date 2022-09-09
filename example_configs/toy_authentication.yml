@@ -15,10 +15,18 @@ access_control:
   args:
     provider: toy  # matches provider above
     access_lists:
-      alice: ["A", "B"]
-      bob: ["A", "C"]
+      alice:
+      - A
+      - B
+      bob:
+      - A
+      - C
       cara: tiled.adapters.mapping:SimpleAccessPolicy.ALL
-    public: ["D"]
+    scopes:
+    - "read:metadata"
+    - "read:data"
+    public:
+    - D
 trees:
   - path: /
     tree: tiled.examples.toy_authentication:tree
