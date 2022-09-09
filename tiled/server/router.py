@@ -785,8 +785,6 @@ async def put_metadata(
         response_data = {"id": entry.key}
         if metadata_modified:
             response_data["metadata"] = metadata
-        else:
-            response_data["metadata"] = {}
         return json_or_msgpack(request, response_data)
 
     else:
@@ -828,5 +826,5 @@ async def revisions_delitem(
             detail="This path does not support a del request for revisions.",
         )
 
-    del entry.revisions[n]
+    entry.revisions.delete_revision(n)
     return json_or_msgpack(request, None)

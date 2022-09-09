@@ -231,7 +231,7 @@ def construct_revisions_response(
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    revisions = entry.revisions[offset:limit]
+    revisions = entry.revisions[offset : offset + limit]  # noqa: E203
     data = []
     for revision in revisions:
         item = {

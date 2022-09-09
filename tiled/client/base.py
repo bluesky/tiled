@@ -52,7 +52,8 @@ class MetadataRevisions:
                 path, params={"page[offset]": offset, "page[limit]": limit}
             )
 
-            return content["data"]
+            (result,) = content["data"]
+            return result
 
         elif isinstance(item_, slice):
             offset = item_.start
@@ -237,11 +238,14 @@ class BaseClient:
         content = self.context.put_json(full_path_meta, data)
 
         if metadata is not None:
-            if len(content["metadata"]) > 0:
+            if "metadata" in content:
+                # Metadata was accepted and modified by the specs validator on the server side.
+                # It is updated locally using the new version.
                 self._item["attributes"]["metadata"] = content["metadata"]
-            elif len(content["metadata"]) == 0:
-                if len(metadata) > 0:
-                    self._item["attributes"]["metadata"] = metadata
+            else:
+                # Metadata was accepted as it si by the server.
+                # It is updated locally with the version submitted buy the client.
+                self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
             self._item["attributes"]["specs"] = specs
