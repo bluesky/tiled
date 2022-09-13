@@ -494,7 +494,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         return self.new_variation(queries=self._queries + [query])
 
     def distinct(
-        self, metadata_keys, structure_families=False, specs=False, counts=False
+        self, *metadata_keys, structure_families=False, specs=False, counts=False
     ):
         """
         Get the unique values and optionally counts of metadata_keys,
@@ -503,7 +503,13 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         Examples
         --------
 
-        >>> tree.distinct(["foo"], counts=True)
+        Query all the distinct values of a key.
+
+        >>> tree.distinct("foo", counts=True)
+
+        Query for multiple keys at once.
+
+        >>> tree.distinct("foo", "bar", counts=True)
         """
 
         path = (
