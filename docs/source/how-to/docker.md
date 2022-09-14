@@ -26,22 +26,21 @@ trees:
     tree: tiled.adapters.files:DirectoryAdapter.from_directory
     args:
       directory: "example_files"
-uvicorn:
-  host: 0.0.0.0
-  port: 8000
 authentication:
   allow_anonymous_access: true
+  single_user_api_key: SECRET
 ```
 and serve it using the docker container
 ```
 docker run --rm -p 8000:8000 \
-  --mount type=bind,source="$(pwd)/example_files",target=/deploy/example_files \
-  --mount type=bind,source="$(pwd)/config.yml",target=/deploy/config.yml \
-  --env TILED_CONFIG=/deploy/config.yml tiled
+  --mount type=bind,source="$(pwd)",target=/deploy \
+  --env TILED_CONFIG=/deploy/config.yml ghcr.io/bluesky/tiled:main
 ```
 Note that we make the data and the configuration file available to the
 container via bind mounds and point tiled to the configuration file using the
 `TILED_CONFIG` environment variable.
+We must supply the `single_user_api_key` in the configuration so that all
+workers use the same key.
 
 This invocation can be simplified by writing a `docker-compose.yml` file.
 
@@ -54,11 +53,8 @@ services:
     image: ghcr.io/bluesky/tiled:main
     volumes:
       - type: bind
-        source: ./example_files
-        target: /deploy/example_files
-      - type: bind
-        source: ./config.yml
-        target: /deploy/config.yml
+        source: .
+        target: /deploy
     environment:
       - TILED_CONFIG=/deploy/config.yml
     ports:
@@ -66,3 +62,7 @@ services:
 ```
 
 With this file the tiled server can be brought up by simply running `docker-compose up`.
+
+To change the gunicorn configuration, to for example change the number of
+workers or the port, set the environment variable `GUNICORN_CONF` to point to
+a configuration file accessible in the container.

@@ -9,3 +9,4 @@ uvicorn:
   port: 8000
 authentication:
   allow_anonymous_access: true
+  single_user_api_key: SECRET

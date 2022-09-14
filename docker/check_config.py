@@ -19,7 +19,6 @@ def main():
     config = parse_configs(tiled_config_path)
 
     authentication = config.get("authentication", {})
-    allow_anonymous_access = authentication.get("allow_anonymous_access", False)
 
     if authentication.get("providers"):
         # Even if the deployment allows public, anonymous access, secret
@@ -44,23 +43,15 @@ or via the environment variable TILED_SERVER_SECRET_KEYS.  Exiting...""",
             sys.exit(1)
     else:
         # No authentication provider is configured, so no secret keys are
-        # needed, but a single-user API key must be set unless the deployment
-        # is public.
+        # needed, but a single-user API key must be set.
         if not (
-            allow_anonymous_access
-            or ("single_user_api_key" in authentication)
+            ("single_user_api_key" in authentication)
             or ("TILED_SINGLE_USER_API_KEY" in os.environ)
         ):
             print(
                 """
 When Tiled is configured for single-user access (i.e. without an
-Authenticator), it must either be set to allow anonymous (public) access like
-
-authentication:
-  allow_anonymous_access: true
-  ...
-
-or else a single-user API key must be provided via configuration like
+Authenticator) a single-user API key must be provided via configuration like
 
 authentication:
   single_user_api_key: SECRET
