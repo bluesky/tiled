@@ -17,7 +17,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y git
 
 # copy requirements over first so this layer is cached and we don't have to reinstall deps when editing src
-COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-compression.txt docker/requirements-docker.txt /tmp/
+COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-sparse.txt requirements-compression.txt docker/requirements-docker.txt /tmp/
 RUN pip install --upgrade pip
 RUN pip install \
   -r /tmp/requirements-server.txt \
@@ -25,6 +25,7 @@ RUN pip install \
   -r /tmp/requirements-dataframe.txt \
   -r /tmp/requirements-array.txt \
   -r /tmp/requirements-xarray.txt \
+  -r /tmp/requirements-sparse.txt \
   -r /tmp/requirements-compression.txt \
   -r /tmp/requirements-docker.txt
 
@@ -32,7 +33,7 @@ COPY --from=web_builder /app/build /app/share/tiled/ui
 COPY . .
 
 # note requirements listed here but all deps should be already satisfied
-RUN pip install '.[server, formats, dataframe, array, xarray, compression]'
+RUN pip install '.[server, formats, dataframe, array, xarray, compression, sparse]'
 
 FROM builder as test
 
@@ -42,11 +43,11 @@ RUN pytest -v
 
 FROM base as app
 
-COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
-COPY --from=builder /app /app
-
 WORKDIR /deploy
+
+COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
+COPY --from=builder /app/docker/gunicorn_config.py /app/docker/entrypoint.sh /app/docker/check_config.py /app
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
