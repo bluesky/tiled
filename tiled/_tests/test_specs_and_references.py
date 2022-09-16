@@ -46,11 +46,3 @@ def test_bad_reference():
     tree = MapAdapter({}, references=[{}])
     with pytest.raises(pydantic.error_wrappers.ValidationError):
         from_tree(tree)
-    
-    # Not a dict
-    tree = MapAdapter({}, references=[("ref_test": "https://example.com")])
-    with pytest.raises(pydantic.error_wrappers.ValidationError):
-        from_tree(tree)
-    tree = MapAdapter({}, references=[["ref_test": "https://example.com"]])
-    with pytest.raises(pydantic.error_wrappers.ValidationError):
-        from_tree(tree)

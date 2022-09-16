@@ -59,7 +59,7 @@ class WritableCOOAdapter(_WritableMixin, COOAdapter):
 
 
 class WritableMapAdapter(_WritableMixin, MapAdapter):
-    def post_metadata(self, metadata, structure_family, structure, specs):
+    def post_metadata(self, metadata, structure_family, structure, specs, references):
         key = str(uuid.uuid4())
         if structure_family == StructureFamily.array:
             # Initialize an array of zeros, similar to how chunked storage
@@ -74,6 +74,7 @@ class WritableMapAdapter(_WritableMixin, MapAdapter):
                 metadata=metadata,
                 specs=specs,
                 key=key,
+                references=references,
             )
         elif structure_family == StructureFamily.dataframe:
             # Initialize an empty DataFrame with the right columns/types.
@@ -87,6 +88,7 @@ class WritableMapAdapter(_WritableMixin, MapAdapter):
                 metadata=metadata,
                 specs=specs,
                 key=key,
+                references=references,
             )
         elif structure_family == StructureFamily.sparse:
             self._mapping[key] = WritableCOOAdapter(
@@ -96,6 +98,7 @@ class WritableMapAdapter(_WritableMixin, MapAdapter):
                 metadata=metadata,
                 specs=specs,
                 key=key,
+                references=references,
             )
         else:
             raise NotImplementedError(structure_family)

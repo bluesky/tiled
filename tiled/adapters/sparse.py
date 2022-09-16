@@ -10,7 +10,9 @@ class COOAdapter:
     structure_family = "sparse"
 
     @classmethod
-    def from_arrays(cls, coords, data, shape, dims=None, metadata=None, specs=None):
+    def from_arrays(
+        cls, coords, data, shape, dims=None, metadata=None, specs=None, references=None
+    ):
         """
         Simplest constructor. Single chunk from coords, data arrays.
         """
@@ -21,10 +23,11 @@ class COOAdapter:
             dims=dims,
             metadata=metadata,
             specs=specs,
+            references=references,
         )
 
     @classmethod
-    def from_coo(cls, coo, *, dims=None, metadata=None, specs=None):
+    def from_coo(cls, coo, *, dims=None, metadata=None, specs=None, references=None):
         "Construct from sparse.COO object."
         return cls.from_arrays(
             coords=coo.coords,
@@ -33,11 +36,20 @@ class COOAdapter:
             dims=dims,
             metadata=metadata,
             specs=specs,
+            references=references,
         )
 
     @classmethod
     def from_global_ref(
-        cls, blocks, shape, chunks, *, dims=None, metadata=None, specs=None
+        cls,
+        blocks,
+        shape,
+        chunks,
+        *,
+        dims=None,
+        metadata=None,
+        specs=None,
+        references=None,
     ):
         """
         Construct from blocks with coords given in global reference frame.
@@ -57,9 +69,20 @@ class COOAdapter:
             dims=dims,
             metadata=metadata,
             specs=specs,
+            references=references,
         )
 
-    def __init__(self, blocks, shape, chunks, *, dims=None, metadata=None, specs=None):
+    def __init__(
+        self,
+        blocks,
+        shape,
+        chunks,
+        *,
+        dims=None,
+        metadata=None,
+        specs=None,
+        references=None,
+    ):
         """
         Construct from blocks with coords given in block-local reference frame.
         """
@@ -69,6 +92,7 @@ class COOAdapter:
         self.dims = dims
         self.metadata = metadata or {}
         self.specs = specs or []
+        self.references = references or []
 
     def structure(self):
         return COOStructure(
