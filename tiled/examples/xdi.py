@@ -8,7 +8,6 @@ import collections
 import io
 import re
 
-import dask
 import pandas as pd
 
 from tiled.adapters.dataframe import DataFrameAdapter
@@ -95,9 +94,7 @@ class XDIDataFrameAdapter(DataFrameAdapter):
     @classmethod
     def from_file(cls, file):
         df, metadata = read_xdi(file)
-        return cls.from_dask_dataframe(
-            dask.dataframe.from_pandas(df, npartitions=1), metadata=metadata
-        )
+        return cls.from_pandas(df, npartitions=1, metadata=metadata)
 
 
 def write_xdi(df, metadata):

@@ -189,12 +189,11 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             sorting=sorting,
             metadata=self._metadata,
             specs=self.specs,
+            references=self.references,
             access_policy=self.access_policy,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,
             must_revalidate=must_revalidate,
-            specs=self.specs,
-            references=self.references,
             **kwargs,
         )
 

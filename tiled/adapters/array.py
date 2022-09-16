@@ -1,4 +1,5 @@
 import dask.array
+from dask.array.core import normalize_chunks
 
 from ..server.object_cache import get_object_cache
 from ..structures.array import ArrayMacroStructure, BuiltinDtype, StructDtype
@@ -22,10 +23,33 @@ class ArrayAdapter:
 
     structure_family = "array"
 
-    def __init__(self, data, *, metadata=None, dims=None, specs=None, references=None):
-        if not isinstance(data, dask.array.Array):
-            raise TypeError(f"data must be a dask.array.Array, not a {type(data)}")
-        self._data = data
+    # def __init__(self, data, *, metadata=None, dims=None, specs=None, references=None):
+    #     if not isinstance(data, dask.array.Array):
+    #         raise TypeError(f"data must be a dask.array.Array, not a {type(data)}")
+    #     self._data = data
+    def __init__(
+        self,
+        array,
+        *,
+        chunks=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        references=None,
+    ):
+        if chunks is None:
+            if hasattr(array, "chunks"):
+                chunks = array.chunks  # might be None
+            else:
+                chunks = None
+            if chunks is None:
+                chunks = ("auto",) * len(array.shape)
+        self._chunks = normalize_chunks(
+            chunks,
+            shape=array.shape,
+            dtype=array.dtype,
+        )
+        self._array = array
         self._metadata = metadata or {}
         self._dims = dims
         self.specs = specs or []
