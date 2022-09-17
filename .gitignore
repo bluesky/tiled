@@ -91,3 +91,5 @@ docs/source/reference/api.yml
 
 # placed React bundle
 share/tiled/ui
+
+config.yml
