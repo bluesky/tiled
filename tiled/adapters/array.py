@@ -1,4 +1,5 @@
 import dask.array
+import numpy
 from dask.array.core import normalize_chunks
 
 from ..server.object_cache import get_object_cache
@@ -56,9 +57,19 @@ class ArrayAdapter:
         self.references = references or []
 
     @classmethod
-    def from_array(cls, data, *, metadata=None, dims=None, specs=None, references=None):
+    def from_array(
+        cls,
+        array,
+        *,
+        chunks=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        references=None,
+    ):
         return cls(
-            dask.array.from_array(data),
+            numpy.asarray(array),
+            chunks=chunks,
             metadata=metadata,
             dims=dims,
             specs=specs,
