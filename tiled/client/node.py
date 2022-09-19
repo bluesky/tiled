@@ -601,7 +601,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
-    def new(self, structure_family, structure, *, metadata=None, specs=None, references=None):
+    def new(
+        self, structure_family, structure, *, metadata=None, specs=None, references=None
+    ):
         """
         Create a new item within this Node.
 
@@ -716,7 +718,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             micro=BuiltinDtype.from_numpy_dtype(array.dtype),
         )
         client = self.new(
-            StructureFamily.array, structure, metadata=metadata, specs=specs, references=references,)
+            StructureFamily.array,
+            structure,
+            metadata=metadata,
+            specs=specs,
+            references=references,
+        )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
             client.write(array)
@@ -740,7 +747,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
 
-    def write_sparse(self, coords, data, shape, metadata=None, dims=None, specs=None, references=None):
+    def write_sparse(
+        self, coords, data, shape, metadata=None, dims=None, specs=None, references=None
+    ):
         """
         EXPERIMENTAL: Write a sparse array.
 
@@ -791,7 +800,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             dims=dims,
         )
         client = self.new(
-            StructureFamily.sparse, structure, metadata=metadata, specs=specs, references=references
+            StructureFamily.sparse,
+            structure,
+            metadata=metadata,
+            specs=specs,
+            references=references,
         )
         client.write(coords, data)
         return client
@@ -852,7 +865,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
         client = self.new(
-            StructureFamily.dataframe, structure, metadata=metadata, specs=specs, references=references)
+            StructureFamily.dataframe,
+            structure,
+            metadata=metadata,
+            specs=specs,
+            references=references,
+        )
 
         if hasattr(dataframe, "partitions"):
             if isinstance(dataframe, dask.dataframe.DataFrame):
