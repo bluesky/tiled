@@ -74,7 +74,9 @@ class DataFrameAdapter:
         cache = get_object_cache()
         if cache is not NO_CACHE:
             cache.discard_dask(ddf.__dask_keys__())
-        return cls(ddf, metadata=metadata, specs=specs, references=references)
+        return cls.from_dask_dataframe(
+            ddf, metadata=metadata, specs=specs, references=references
+        )
 
     read_csv.__doc__ = (
         """
