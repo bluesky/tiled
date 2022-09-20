@@ -10,29 +10,28 @@ class ExcelAdapter(MapAdapter):
     @classmethod
     def from_file(cls, file, *, specs=None, references=None):
         """
-                Read the sheets in an Excel file.
-        >>>>>>> a731c70 (Implement 'references'.)
+        Read the sheets in an Excel file.
 
-                This maps the Excel file, which may contain one of more spreadsheets,
-                onto a tree of tabular structures.
+        This maps the Excel file, which may contain one of more spreadsheets,
+        onto a tree of tabular structures.
 
-                Examples
-                --------
+        Examples
+        --------
 
-                Given a file path
+        Given a file path
 
-                >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
+        >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
 
-                Given a file object
+        Given a file object
 
-                >>> file = open("path/to/excel_file.xlsx")
-                >>> ExcelAdapter.from_file(file)
+        >>> file = open("path/to/excel_file.xlsx")
+        >>> ExcelAdapter.from_file(file)
 
-                Given a pandas.ExcelFile object
+        Given a pandas.ExcelFile object
 
-                >>> import pandas
-                >>> ef = pandas.ExcelFile(file)
-                >>> ExcelAdapter.from_file(ef)
+        >>> import pandas
+        >>> ef = pandas.ExcelFile(file)
+        >>> ExcelAdapter.from_file(ef)
         """
         if isinstance(file, pandas.ExcelFile):
             excel_file = file
