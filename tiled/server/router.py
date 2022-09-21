@@ -26,8 +26,8 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
+    SecureEntry,
     block,
-    entry,
     expected_shape,
     get_query_registry,
     get_serialization_registry,
@@ -155,7 +155,7 @@ def declare_search_router(query_registry):
         sort: Optional[str] = Query(None),
         max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
-        entry: Any = Security(entry, scopes=["read:metadata"]),
+        entry: Any = SecureEntry(scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
         **filters,
     ):
@@ -267,7 +267,7 @@ async def node_distinct(
     specs: bool = False,
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
-    entry: Any = Security(entry, scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
 ):
     if hasattr(entry, "get_distinct"):
         distinct = entry.get_distinct(
@@ -298,7 +298,7 @@ async def node_metadata(
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    entry: Any = Security(entry, scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
@@ -335,7 +335,7 @@ async def node_metadata(
 )
 def array_block(
     request: Request,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -403,7 +403,7 @@ def array_block(
 )
 def array_full(
     request: Request,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -469,7 +469,7 @@ def array_full(
 def dataframe_partition(
     request: Request,
     partition: int,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -527,7 +527,7 @@ def dataframe_partition(
 )
 def node_full(
     request: Request,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -583,7 +583,7 @@ def post_metadata(
     path: str,
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    entry=Security(entry, scopes=["write:metadata"]),
+    entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
@@ -666,7 +666,7 @@ def post_metadata(
 @router.delete("/node/metadata/{path:path}")
 async def delete(
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=SecureEntry(scopes=["write:data", "write:metadata"]),
 ):
     if hasattr(entry, "delete"):
         entry.delete()
@@ -680,7 +680,7 @@ async def delete(
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
 ):
     data = await request.body()
     if hasattr(entry, "put_data"):
@@ -695,7 +695,7 @@ async def put_array_full(
 @router.put("/array/block/{path:path}")
 async def put_array_block(
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
     block=Depends(block),
 ):
     data = await request.body()
@@ -712,7 +712,7 @@ async def put_array_block(
 @router.put("/node/full/{path:path}")
 async def put_dataframe_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
 ):
     data = await request.body()
 
@@ -729,7 +729,7 @@ async def put_dataframe_full(
 async def put_dataframe_partition(
     partition: int,
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
 ):
     data = await request.body()
 

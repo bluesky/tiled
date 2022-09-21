@@ -2,8 +2,10 @@ from functools import lru_cache
 from typing import Optional
 
 import pydantic
-from fastapi import Depends, HTTPException, Query, Request
+from fastapi import Depends, HTTPException, Query, Request, Security
 
+from ..access_policies import NO_ACCESS
+from ..adapters.mapping import MapAdapter
 from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
@@ -12,6 +14,8 @@ from ..validation_registration import validation_registry as default_validation_
 from .authentication import get_current_principal
 from .core import NoEntry
 from .utils import record_timing
+
+EMPTY_NODE = MapAdapter({})
 
 
 @lru_cache(1)
@@ -39,29 +43,62 @@ def get_root_tree():
     )
 
 
-def entry(
-    path: str,
-    request: Request,
-    principal: str = Depends(get_current_principal),
-    root_tree: pydantic.BaseSettings = Depends(get_root_tree),
-):
-    path_parts = [segment for segment in path.split("/") if segment]
-    entry = root_tree.authenticated_as(principal)
-    try:
-        # Traverse into sub-tree(s).
-        for segment in path_parts:
-            try:
-                unauthenticated_entry = entry[segment]
-            except (KeyError, TypeError):
-                raise NoEntry(path_parts)
-            if hasattr(unauthenticated_entry, "authenticated_as"):
-                with record_timing(request.state.metrics, "acl"):
-                    entry = unauthenticated_entry.authenticated_as(principal)
-            else:
-                entry = unauthenticated_entry
+def SecureEntry(scopes):
+    def inner(
+        path: str,
+        request: Request,
+        principal: str = Depends(get_current_principal),
+        root_tree: pydantic.BaseSettings = Depends(get_root_tree),
+    ):
+        """
+        Obtain a node in the tree from its path.
+
+        Walk down the path from the root tree, filtering each intermediate node by
+        'read:metadata' and finally filtering by the specified scope.
+        """
+        path_parts = [segment for segment in path.split("/") if segment]
+        entry = root_tree
+        try:
+            # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
+            for segment in path_parts[:-1]:
+                try:
+                    entry = entry[segment]
+                except (KeyError, TypeError):
+                    raise NoEntry(path_parts)
+                access_policy = getattr(entry, "access_policy", None)
+                if access_policy is not None:
+                    with record_timing(request.state.metrics, "acl"):
+                        queries = entry.access_policy.filters(
+                            entry, principal, set(["read:metadata"])
+                        )
+                        if queries is NO_ACCESS:
+                            entry = EMPTY_NODE
+                        else:
+                            for query in queries:
+                                entry = entry.search(query)
+            # Traverse into last entry. Here we apply the specified scopes.
+            if path_parts:
+                segment = path_parts[-1]
+                try:
+                    entry = entry[segment]
+                except (KeyError, TypeError):
+                    raise NoEntry(path_parts)
+                access_policy = getattr(entry, "access_policy", None)
+                if access_policy is not None:
+                    with record_timing(request.state.metrics, "acl"):
+                        queries = entry.access_policy.filters(
+                            entry, principal, set(scopes)
+                        )
+                        if queries is NO_ACCESS:
+                            entry = EMPTY_NODE
+                        else:
+                            for query in queries:
+                                entry = entry.search(query)
+        except NoEntry:
+            raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
         return entry
-    except NoEntry:
-        raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
+
+    return Security(inner, scopes=scopes)
 
 
 def block(

@@ -112,32 +112,31 @@ def construct_build_app_kwargs(
             tree_spec = item["tree"]
             import_path = tree_aliases.get(tree_spec, tree_spec)
             obj = import_object(import_path, accept_live_object=True)
-            if ("args" in item) or (access_policy is not None):
-                if not callable(obj):
-                    raise ValueError(
-                        f"Object imported from {import_path} cannot take args. "
-                        "It is not callable."
-                    )
-                # Interpret obj as tree *factory*.
+            if ("args" in item) or ("access_policy" in item) and (not callable(obj)):
+                raise ValueError(
+                    f"Object imported from {import_path} cannot take args. "
+                    "It is not callable."
+                )
+            if callable(obj):
+                # Interpret obj as a tree *factory*.
+                args = {}
+                args.update(item.get("args", {}))
                 if access_policy is not None:
-                    if "args" not in item:
-                        item["args"] = {}
-                    item["args"]["access_policy"] = access_policy
-                tree = obj(**item["args"])
+                    args["access_policy"] = access_policy
+                tree = obj(**args)
             else:
-                # Interpret obj as tree instance.
+                # Interpret obj as a tree *instance*.
                 tree = obj
-                if root_access_policy is not None:
-                    tree.access_policy = root_access_policy
             if segments in trees:
                 raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
             trees[segments] = tree
         if not len(trees):
             raise ValueError("Configuration contains no trees")
-
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = tree
+            if root_access_policy is not None:
+                tree.access_policy = root_access_policy
         else:
             # There are one or more tree(s) to be served at
             # sub-paths. Merged them into one root MapAdapter.

@@ -8,11 +8,11 @@ from ..client import from_config
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
 
-def tree_a(access_policy):
+def tree_a(access_policy=None):
     return MapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
 
 
-def tree_b(access_policy):
+def tree_b(access_policy=None):
     return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
 
 
@@ -55,7 +55,7 @@ def config(tmpdir):
                     },
                 },
             },
-            {"tree": f"{__name__}:tree_b", "path": "/b"},
+            {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
         ],
     }
 

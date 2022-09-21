@@ -5,7 +5,6 @@ import operator
 from collections import Counter
 from datetime import datetime
 
-from ..access_policies import NO_ACCESS
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
     Comparison,
@@ -32,7 +31,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
     __slots__ = (
         "_access_policy",
-        "_principal",
         "_mapping",
         "_metadata",
         "_sorting",
@@ -59,7 +57,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         specs=None,
         sorting=None,
         access_policy=None,
-        principal=None,
         entries_stale_after=None,
         metadata_stale_after=None,
         must_revalidate=True,
@@ -74,7 +71,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
         sorting : List[Tuple[str, int]], optional
         access_policy : AccessPolicy, optional
-        principal : str, optional
         entries_stale_after: timedelta
             This server uses this to communite to the client how long
             it should rely on a local cache before checking back for changes.
@@ -94,7 +90,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self._metadata = metadata or {}
         self.specs = specs or []
         self._access_policy = access_policy
-        self._principal = principal
         self._must_revalidate = must_revalidate
         self.include_routers = []
         self.background_tasks = []
@@ -117,10 +112,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     @access_policy.setter
     def access_policy(self, value):
         self._access_policy = value
-
-    @property
-    def principal(self):
-        return self._principal
 
     @property
     def metadata(self):
@@ -169,28 +160,12 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             return
         return self.entries_stale_after + datetime.utcnow()
 
-    def authenticated_as(self, principal):
-        if self._principal is not None:
-            raise RuntimeError(f"Already authenticated as {self.principal}")
-        variation = self.new_variation(principal=principal)
-        if self.access_policy is not None:
-            queries = self.access_policy.filters(
-                self, principal, {"read:metadata", "read:data"}
-            )
-            if queries is NO_ACCESS:
-                variation = variation.new_variation(mapping={})
-            else:
-                for query in queries:
-                    variation = variation.search(query)
-        return variation
-
     def new_variation(
         self,
         *args,
         mapping=UNCHANGED,
         metadata=UNCHANGED,
         sorting=UNCHANGED,
-        principal=UNCHANGED,
         must_revalidate=UNCHANGED,
         **kwargs,
     ):
@@ -200,8 +175,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             metadata = self._metadata
         if sorting is UNCHANGED:
             sorting = self._sorting
-        if principal is UNCHANGED:
-            principal = self._principal
         if must_revalidate is UNCHANGED:
             must_revalidate = self.must_revalidate
         return type(self)(
@@ -211,7 +184,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             metadata=self._metadata,
             specs=self.specs,
             access_policy=self.access_policy,
-            principal=self.principal,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,
             must_revalidate=must_revalidate,
