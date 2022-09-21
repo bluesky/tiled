@@ -7,6 +7,7 @@ The are encoded into and decoded from URL query parameters.
 
 import enum
 import json
+import warnings
 from dataclasses import dataclass
 from typing import Any, List
 
@@ -375,6 +376,12 @@ class Specs:
     exclude: List[str]
 
     def __init__(self, include, exclude=None):
+        warnings.warn(
+            """Specs is deprecated. Use 'Spec' (singular).
+
+If you need to filter for multiple specs, chain multiple calls to search().
+If you need to *exclude* specs please open an issue with your use case."""
+        )
         exclude = exclude or []
 
         if isinstance(include, str):
@@ -397,11 +404,14 @@ class Specs:
         return cls(include=json.loads(include), exclude=json.loads(exclude))
 
 
-def Spec(spec):
+@register(name="spec")
+@dataclass
+class Spec:
     """
-    Convenience function for querying if specs list contains a given spec
+    Query for items that are labeled with the given 'spec'.
 
-    Equivalent to Specs([spec]).
+    A spec is used to convey that an item's metadata and/or structure adhere to
+    a certain standard or set of expectations or constraints.
 
     Parameters
     ----------
@@ -415,7 +425,14 @@ def Spec(spec):
     >>> c.search(Spec("foo"))
     """
 
-    return Specs([spec])
+    spec: str
+
+    def encode(self):
+        return {"spec": self.spec}
+
+    @classmethod
+    def decode(cls, *, spec):
+        return cls(spec=spec)
 
 
 @register(name="structure_family")

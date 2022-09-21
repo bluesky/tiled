@@ -23,7 +23,6 @@ Follow the links in the table below for examples specific to each query.
    tiled.queries.NotIn
    tiled.queries.Regex
    tiled.queries.Spec
-   tiled.queries.Specs
    tiled.queries.StructureFamily
 ```
 

@@ -15,6 +15,7 @@ from ..queries import (
     NotEq,
     NotIn,
     Regex,
+    Spec,
     Specs,
     StructureFamily,
 )
@@ -467,6 +468,9 @@ def notin(query, tree):
 MapAdapter.register_query(NotIn, notin)
 
 
+# The 'specs' query is deprecated but supported here for now.
+
+
 def specs(query, tree):
     matches = {}
     include = set(query.include)
@@ -481,6 +485,19 @@ def specs(query, tree):
 
 
 MapAdapter.register_query(Specs, specs)
+
+
+def spec(query, tree):
+    matches = {}
+
+    for key, value in tree.items():
+        if query.spec in value.specs:
+            matches[key] = value
+
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(Spec, spec)
 
 
 def structure_family(query, tree):

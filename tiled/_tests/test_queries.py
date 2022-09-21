@@ -16,6 +16,7 @@ from ..queries import (
     NotEq,
     NotIn,
     Regex,
+    Spec,
     Specs,
     StructureFamily,
 )
@@ -129,19 +130,30 @@ def test_notin():
     )
 
 
+def test_spec():
+    client = from_tree(tree)
+
+    assert list(client.search(Spec("foo")).search(Spec("bar"))) == sorted(
+        ["specs_foo_bar", "specs_foo_bar_baz"]
+    )
+
+
 def test_specs():
     client = from_tree(tree)
 
     with pytest.raises(TypeError):
-        Specs("foo")
+        with pytest.warns(UserWarning):
+            Specs("foo")
 
-    assert list(client.search(Specs(include=["foo", "bar"]))) == sorted(
-        ["specs_foo_bar", "specs_foo_bar_baz"]
-    )
+    with pytest.warns(UserWarning):
+        assert list(client.search(Specs(include=["foo", "bar"]))) == sorted(
+            ["specs_foo_bar", "specs_foo_bar_baz"]
+        )
 
-    assert list(client.search(Specs(include=["foo", "bar"], exclude=["baz"]))) == [
-        "specs_foo_bar"
-    ]
+    with pytest.warns(UserWarning):
+        assert list(client.search(Specs(include=["foo", "bar"], exclude=["baz"]))) == [
+            "specs_foo_bar"
+        ]
 
 
 def test_structure_families():
