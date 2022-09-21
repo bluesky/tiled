@@ -12,16 +12,22 @@ import sparse
 from ..client import from_tree, record_history
 from ..queries import Key
 from ..structures.sparse import COOStructure
+from ..validation_registration import ValidationRegistry
 from .writable_adapters import WritableMapAdapter
 
 API_KEY = "secret"
+validation_registry = ValidationRegistry()
+validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
 def test_write_array_full():
 
     tree = WritableMapAdapter({})
     client = from_tree(
-        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
     )
 
     a = numpy.ones((5, 7))
@@ -49,7 +55,10 @@ def test_write_large_array_full():
 
     tree = WritableMapAdapter({})
     client = from_tree(
-        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
     )
 
     a = numpy.ones(100, dtype=numpy.uint8)
@@ -81,7 +90,10 @@ def test_write_array_chunked():
 
     tree = WritableMapAdapter({})
     client = from_tree(
-        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
     )
 
     a = dask.array.arange(1500).reshape((50, 30)).rechunk((20, 15))
@@ -108,7 +120,10 @@ def test_write_dataframe_full():
 
     tree = WritableMapAdapter({})
     client = from_tree(
-        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
     )
 
     data = {f"Column{i}": (1 + i) * numpy.ones(5) for i in range(5)}
@@ -138,7 +153,10 @@ def test_write_dataframe_partitioned():
 
     tree = WritableMapAdapter({})
     client = from_tree(
-        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
     )
 
     data = {f"Column{i}": (1 + i) * numpy.ones(10) for i in range(5)}
@@ -169,7 +187,10 @@ def test_write_sparse_full():
 
     tree = WritableMapAdapter({})
     client = from_tree(
-        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
     )
 
     coo = sparse.COO(coords=[[0, 1], [2, 3]], data=[3.8, 4.0], shape=(4, 4))
@@ -203,7 +224,10 @@ def test_write_sparse_chunked():
 
     tree = WritableMapAdapter({})
     client = from_tree(
-        tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
     )
 
     metadata = {"scan_id": 1, "method": "A"}

@@ -5,7 +5,7 @@ This tests tiled's validation registry
 import numpy as np
 import pandas as pd
 
-from ..client import from_tree
+from ..client import from_config, from_tree
 from ..validation_registration import ValidationError, ValidationRegistry
 from .utils import fail_with_status_code
 from .writable_adapters import WritableMapAdapter
@@ -81,3 +81,21 @@ def test_validators():
     assert result.metadata == metadata_lower
     result_df = result.read()
     pd.testing.assert_frame_equal(result_df, df)
+
+
+tree = WritableMapAdapter({})
+
+
+def test_unknown_spec():
+    "Test unknown spec rejected for upload."
+    config = {
+        "trees": [{"tree": f"{__name__}:tree", "path": "/"}],
+        "specs": [{"spec": "a"}],
+        "authentication": {"single_user_api_key": API_KEY},
+    }
+    client = from_config(config, api_key=API_KEY)
+    a = np.ones((5, 7))
+    client.write_array(a, metadata={}, specs=["a"])
+
+    with fail_with_status_code(400):
+        client.write_array(a, metadata={}, specs=["b"])

@@ -195,9 +195,13 @@ def construct_build_app_kwargs(
         for ext, media_type in config.get("file_extensions", {}).items():
             serialization_registry.register_alias(ext, media_type)
 
-        for spec, validator_path in config.get("validation", {}).items():
-            validator = import_object(validator_path)
-            validation_registry.register(spec, validator)
+        for item in config.get("specs", []):
+            if "validator" in item:
+                validator = import_object(item["validator"])
+            else:
+                # no-op
+                validator = _no_op_validator
+            validation_registry.register(item["spec"], validator)
 
     # TODO Make compression_registry extensible via configuration.
     return {
@@ -450,3 +454,7 @@ def direct_access_from_profile(name):
 
 class ConfigError(ValueError):
     pass
+
+
+def _no_op_validator(*args, **kwargs):
+    return None
