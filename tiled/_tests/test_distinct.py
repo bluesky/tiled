@@ -39,7 +39,7 @@ def test_distinct():
 
     # test without counts
     distinct = client.distinct(
-        metadata_keys=["foo.bar"], structure_families=True, specs=True, counts=False
+        "foo.bar", structure_families=True, specs=True, counts=False
     )
     expected = {
         "metadata": {"foo.bar": [{"value": v, "count": None} for v in values]},
@@ -61,7 +61,7 @@ def test_distinct():
 
     # test with counts
     distinct = client.distinct(
-        metadata_keys=["foo.bar"], structure_families=True, specs=True, counts=True
+        "foo.bar", structure_families=True, specs=True, counts=True
     )
     expected = {
         "metadata": {
@@ -84,6 +84,6 @@ def test_distinct():
     assert distinct["structure_families"] == expected["structure_families"]
 
     # test with no matches
-    distinct = client.distinct(metadata_keys=["baz"], counts=True)
+    distinct = client.distinct("baz", counts=True)
     expected = {"baz": []}
     assert distinct["metadata"] == expected
