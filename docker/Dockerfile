@@ -46,7 +46,7 @@ FROM base as app
 WORKDIR /deploy
 
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
-COPY --from=builder /app/docker/gunicorn_config.py /app/docker/entrypoint.sh /app/docker/check_config.py /app
+COPY --from=builder /app/docker/gunicorn_config.py /app/docker/entrypoint.sh /app/docker/check_config.py /app/
 
 EXPOSE 8000
 
