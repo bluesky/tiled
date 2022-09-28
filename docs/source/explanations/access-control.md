@@ -72,8 +72,7 @@ class PASSAccessPolicy:
     def _get_id(self, principal):
         for identity in principal.identities:
             if identity.provider == self.provider:
-                username = identity.id
-                break
+                return identity.id
         else:
             raise ValueError(
                 f"Principcal {principal} has no identity from provider {self.provider}. "
