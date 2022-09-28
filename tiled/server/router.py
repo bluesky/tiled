@@ -35,7 +35,7 @@ from .dependencies import (
     slice_,
 )
 from .settings import get_settings
-from .utils import filter_for_access, get_base_url, record_timing
+from .utils import FilteredNode, filter_for_access, get_base_url, record_timing
 
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
@@ -536,6 +536,7 @@ def dataframe_partition(
 def node_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
+    principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -564,10 +565,9 @@ def node_full(
                 "request a smaller chunks."
             ),
         )
-    # With a generic 'node' we cannot know at this point how large it
-    # will be. We rely on the serializers to give up if they discover too
-    # much data. Once we support asynchronous workers, we can default to or
-    # require async packing for generic nodes.
+    if entry.structure_family == "node":
+        data = FilteredNode(data, principal, ["read:data"], request.state.metrics)
+        # TODO Walk node to determine size before handing off to serializer.
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(

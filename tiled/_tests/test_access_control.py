@@ -1,3 +1,6 @@
+import io
+import json
+
 import numpy
 import pytest
 
@@ -77,3 +80,18 @@ def test_top_level_access_control(enter_password, config):
         bob_client["a"]
     with pytest.raises(KeyError):
         bob_client["b"]
+
+
+def test_node_export(enter_password, config):
+    "Exporting a node should include only the children we can see."
+    with enter_password("secret1"):
+        alice_client = from_config(config, username="alice", token_cache={})
+    buffer = io.BytesIO()
+    alice_client.export(buffer, format="application/json")
+    buffer.seek(0)
+    exported_dict = json.loads(buffer.read())
+    assert "a" in exported_dict["contents"]
+    assert "A2" in exported_dict["contents"]["a"]["contents"]
+    assert "A1" not in exported_dict["contents"]["a"]["contents"]
+    assert "b" not in exported_dict
+    exported_dict["contents"]["a"]["contents"]["A2"]
