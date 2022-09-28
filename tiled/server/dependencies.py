@@ -4,8 +4,6 @@ from typing import Optional
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Security
 
-from ..access_policies import NO_ACCESS
-from ..adapters.mapping import MapAdapter
 from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
@@ -13,9 +11,7 @@ from ..query_registration import query_registry as default_query_registry
 from ..validation_registration import validation_registry as default_validation_registry
 from .authentication import get_current_principal
 from .core import NoEntry
-from .utils import record_timing
-
-EMPTY_NODE = MapAdapter({})
+from .utils import filter_for_access, record_timing
 
 
 @lru_cache(1)
@@ -60,40 +56,36 @@ def SecureEntry(scopes):
         entry = root_tree
         try:
             # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
-            for segment in path_parts[:-1]:
+            for segment in path_parts:
+                entry = filter_for_access(
+                    entry, principal, ["read:metadata"], request.state.metrics
+                )
                 try:
                     entry = entry[segment]
                 except (KeyError, TypeError):
                     raise NoEntry(path_parts)
-                access_policy = getattr(entry, "access_policy", None)
-                if access_policy is not None:
-                    with record_timing(request.state.metrics, "acl"):
-                        queries = entry.access_policy.filters(
-                            entry, principal, set(["read:metadata"])
-                        )
-                        if queries is NO_ACCESS:
-                            entry = EMPTY_NODE
+            # Now check that we have the requested scope on the final node.
+            access_policy = getattr(entry, "access_policy", None)
+            if access_policy is not None:
+                with record_timing(request.state.metrics, "acl"):
+                    allowed_scopes = entry.access_policy.allowed_scopes(
+                        entry, principal
+                    )
+                    if not set(scopes).issubset(allowed_scopes):
+                        if "read:metadata" not in allowed_scopes:
+                            # If you can't read metadata, it does not exit for you.
+                            raise NoEntry(path_parts)
                         else:
-                            for query in queries:
-                                entry = entry.search(query)
-            # Traverse into last entry. Here we apply the specified scopes.
-            if path_parts:
-                segment = path_parts[-1]
-                try:
-                    entry = entry[segment]
-                except (KeyError, TypeError):
-                    raise NoEntry(path_parts)
-                access_policy = getattr(entry, "access_policy", None)
-                if access_policy is not None:
-                    with record_timing(request.state.metrics, "acl"):
-                        queries = entry.access_policy.filters(
-                            entry, principal, set(scopes)
-                        )
-                        if queries is NO_ACCESS:
-                            entry = EMPTY_NODE
-                        else:
-                            for query in queries:
-                                entry = entry.search(query)
+                            # You can see this, but you cannot perform the requested
+                            # operation on it.
+                            raise HTTPException(
+                                status_code=401,
+                                detail=(
+                                    "Not enough permissions. "
+                                    f"Requires scopes {scopes}. "
+                                    f"Principal had scopes {list(allowed_scopes)} on this node."
+                                ),
+                            )
         except NoEntry:
             raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
         return entry

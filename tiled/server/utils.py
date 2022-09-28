@@ -1,6 +1,10 @@
 import contextlib
 import time
 
+from ..access_policies import NO_ACCESS
+from ..adapters.mapping import MapAdapter
+
+EMPTY_NODE = MapAdapter({})
 API_KEY_COOKIE_NAME = "tiled_api_key"
 API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
@@ -63,3 +67,16 @@ def get_root_url_low_level(request_headers, scope):
     if root_path.endswith("/"):
         root_path = root_path[:-1]
     return f"{scheme}://{host}{root_path}"
+
+
+def filter_for_access(entry, principal, scopes, metrics):
+    access_policy = getattr(entry, "access_policy", None)
+    if access_policy is not None:
+        with record_timing(metrics, "acl"):
+            queries = entry.access_policy.filters(entry, principal, set(scopes))
+            if queries is NO_ACCESS:
+                entry = EMPTY_NODE
+            else:
+                for query in queries:
+                    entry = entry.search(query)
+    return entry

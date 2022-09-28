@@ -112,8 +112,6 @@ def construct_entries_response(
     max_depth,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    if tree.structure_family != "node":
-        raise WrongTypeForRoute("This is not a Node; it does not have entries.")
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}

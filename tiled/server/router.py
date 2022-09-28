@@ -35,7 +35,7 @@ from .dependencies import (
     slice_,
 )
 from .settings import get_settings
-from .utils import get_base_url, record_timing
+from .utils import filter_for_access, get_base_url, record_timing
 
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
@@ -157,9 +157,17 @@ def declare_search_router(query_registry):
         omit_links: bool = Query(False),
         entry: Any = SecureEntry(scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
+        principal: str = Depends(get_current_principal),
         **filters,
     ):
         request.state.endpoint = "search"
+        if entry.structure_family != "node":
+            raise WrongTypeForRoute(
+                "This is not a Node; it cannot be searched or listed."
+            )
+        entry = filter_for_access(
+            entry, principal, ["read:metadata"], request.state.metrics
+        )
         try:
             resource, metadata_stale_at, must_revalidate = construct_entries_response(
                 query_registry,
