@@ -26,27 +26,6 @@ class DatasetAdapter(MapAdapter):
             )
         super().__init__(mapping, *args, specs=specs, **kwargs)
 
-    def as_dataset(self):
-        # We do not stash the original dataset as state.
-        # We (re)construct one here, ensure that any filtering that was done
-        # is respected.
-        data_vars = {}
-        coords = {}
-        for key, array_adapter in self.items():
-            if "xarray_data_var" in array_adapter.specs:
-                data_vars[key] = (
-                    array_adapter.macrostructure().dims,
-                    array_adapter.read(),
-                )
-            elif "xarray_coord" in array_adapter.specs:
-                coords[key] = (
-                    array_adapter.macrostructure().dims,
-                    array_adapter.read(),
-                )
-        return xarray.Dataset(
-            data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
-        )
-
     def inlined_contents_enabled(self, depth):
         # Tell the server to in-line the description of each array
         # (i.e. data_vars and coords) to avoid latency of a second
