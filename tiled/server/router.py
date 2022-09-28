@@ -755,7 +755,7 @@ async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    entry=Security(entry, scopes=["write:metadata"]),
+    entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if hasattr(entry, "put_metadata"):
         input_metadata = body.metadata if body.metadata is not None else entry.metadata
@@ -809,7 +809,7 @@ async def node_revisions(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    entry=Security(entry, scopes=["read:metadata"]),
+    entry=SecureEntry(scopes=["read:metadata"]),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
@@ -826,7 +826,7 @@ async def node_revisions(
 
 @router.delete("/node/revisions/{path:path}")
 async def revisions_delitem(
-    request: Request, n: int, entry=Security(entry, scopes=["write:metadata"])
+    request: Request, n: int, entry=SecureEntry(scopes=["write:metadata"])
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
