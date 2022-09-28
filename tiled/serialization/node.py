@@ -1,7 +1,7 @@
 import io
 
 from ..media_type_registration import serialization_registry
-from ..utils import SerializationError, modules_available
+from ..utils import SerializationError, modules_available, safe_json_dump
 
 
 def walk(node, pre=None):
@@ -63,3 +63,21 @@ if modules_available("h5py"):
         return buffer.getbuffer()
 
     serialization_registry.register("node", "application/x-hdf5", serialize_hdf5)
+
+if modules_available("orjson"):
+
+    def serialize_json(node, metadata):
+        "Export node to JSON, with each node having a 'contents' and 'metadata' sub-key."
+        root_node = node
+        to_serialize = {"contents": {}, "metadata": dict(root_node.metadata)}
+        for key_path, array_adapter in walk(node):
+            d = to_serialize["contents"]
+            node = root_node
+            for key in key_path:
+                node = node[key]
+                if key not in d:
+                    d[key] = {"contents": {}, "metadata": dict(node.metadata)}
+                d = d[key]["contents"]
+        return safe_json_dump(to_serialize)
+
+    serialization_registry.register("node", "application/json", serialize_json)
