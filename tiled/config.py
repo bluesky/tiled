@@ -112,7 +112,7 @@ def construct_build_app_kwargs(
             tree_spec = item["tree"]
             import_path = tree_aliases.get(tree_spec, tree_spec)
             obj = import_object(import_path, accept_live_object=True)
-            if ("args" in item) or ("access_policy" in item) and (not callable(obj)):
+            if (("args" in item) or ("access_policy" in item)) and (not callable(obj)):
                 raise ValueError(
                     f"Object imported from {import_path} cannot take args. "
                     "It is not callable."
