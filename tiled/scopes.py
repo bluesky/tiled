@@ -1,7 +1,4 @@
 SCOPES = {
-    "inherit": {
-        "description": "Default scope for API keys. Inherit scopes of Principal, resolved at access time."
-    },
     "read:metadata": {"description": "Read metadata."},
     "read:data": {"description": "Read data."},
     "write:metadata": {"description": "Write metadata."},
