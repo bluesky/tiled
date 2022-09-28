@@ -7,6 +7,8 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_config
+from .utils import fail_with_status_code
+from .writable_adapters import WritableMapAdapter
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
@@ -17,6 +19,10 @@ def tree_a(access_policy=None):
 
 def tree_b(access_policy=None):
     return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
+
+
+def writable_tree(access_policy=None):
+    return WritableMapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
 
 
 @pytest.fixture
@@ -39,7 +45,7 @@ def config(tmpdir):
         },
         "access_control": {
             "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-            "args": {"access_lists": {"alice": ["a"]}, "provider": "toy"},
+            "args": {"access_lists": {"alice": ["a", "c", "d"]}, "provider": "toy"},
         },
         "trees": [
             {
@@ -59,6 +65,34 @@ def config(tmpdir):
                 },
             },
             {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
+            {
+                "tree": f"{__name__}:writable_tree",
+                "path": "/c",
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "provider": "toy",
+                        "access_lists": {
+                            "alice": ["A2"],
+                        },
+                    },
+                },
+            },
+            {
+                "tree": f"{__name__}:writable_tree",
+                "path": "/d",
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "provider": "toy",
+                        "access_lists": {
+                            "alice": ["A2"],
+                        },
+                        # Block writing.
+                        "scopes": ["read:metadata", "read:data"],
+                    },
+                },
+            },
         ],
     }
 
@@ -95,3 +129,21 @@ def test_node_export(enter_password, config):
     assert "A1" not in exported_dict["contents"]["a"]["contents"]
     assert "b" not in exported_dict
     exported_dict["contents"]["a"]["contents"]["A2"]
+
+
+def test_writing_allowed(enter_password, config):
+    with enter_password("secret1"):
+        alice_client = from_config(config, username="alice", token_cache={})
+
+    alice_client["c"].metadata
+    alice_client["c"].update_metadata(metadata={"added_key": 3})
+    assert alice_client["c"].metadata["added_key"] == 3
+
+
+def test_writing_blocked_by_access_policy(enter_password, config):
+    with enter_password("secret1"):
+        alice_client = from_config(config, username="alice", token_cache={})
+
+    alice_client["d"].metadata
+    with fail_with_status_code(403):
+        alice_client["d"].update_metadata(metadata={"added_key": 3})

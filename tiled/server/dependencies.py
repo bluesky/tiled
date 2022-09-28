@@ -79,9 +79,9 @@ def SecureEntry(scopes):
                             # You can see this, but you cannot perform the requested
                             # operation on it.
                             raise HTTPException(
-                                status_code=401,
+                                status_code=403,
                                 detail=(
-                                    "Not enough permissions. "
+                                    "Not enough permissions to perform this action on this node. "
                                     f"Requires scopes {scopes}. "
                                     f"Principal had scopes {list(allowed_scopes)} on this node."
                                 ),
