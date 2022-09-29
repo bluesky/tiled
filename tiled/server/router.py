@@ -35,7 +35,13 @@ from .dependencies import (
     slice_,
 )
 from .settings import get_settings
-from .utils import FilteredNode, filter_for_access, get_base_url, record_timing
+from .utils import (
+    FilteredNode,
+    filter_for_access,
+    get_base_url,
+    get_structure,
+    record_timing,
+)
 
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
@@ -763,7 +769,7 @@ async def put_metadata(
         metadata, structure_family, structure, specs = (
             input_metadata,
             entry.structure_family,
-            entry.structure,
+            get_structure(entry),
             input_specs,
         )
 
