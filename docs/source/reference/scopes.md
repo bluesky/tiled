@@ -6,10 +6,9 @@ with restricted scopes.
 
 ## List of Scopes
 
-* `inherit` --- Default scope for API keys. Inherit scopes of the Principal
-  associated with this key, resolved at access time.
 * `read:metadata` --- List and search metadata.
 * `read:data` --- Fetch (array, dataframe) data.
+* `create` --- Create a new node. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
 * `write:metadata` --- Write metadata. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
 * `write:data` --- Write (array, dataframe) data. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
 * `apikeys` --- Manage API keys for the currently-authenticated user or service.
@@ -17,12 +16,16 @@ with restricted scopes.
 * `admin:apikeys` --- Manage API keys on behalf of any user or service.
 * `read:principals` --- Read list of all users and services and their attributes.
 
+Finally, there is the meta-scope `inherit`, the default for API keys. It
+inherits the scopes of the Principal associated with this key, resolved at
+access time.
+
 ## Roles
 
 An authenticated entity ("Principal") may be assigned roles that confer a list
 of scopes.
 
-* `user` --- default role, granted scopes `["read:metadata", "read:data", "apikeys"]`
+* `user` --- default role, granted scopes `["read:metadata", "read:data", "write:metadata", "write:data", "create", "apikeys"]`
 * `admin` --- granted all scopes
 
 There is support for custom roles at the database level, but neither role
