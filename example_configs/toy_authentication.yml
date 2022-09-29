@@ -11,7 +11,7 @@ authentication:
     - provider: toy
       id: alice
 access_control:
-  access_policy: tiled.adapters.mapping:SimpleAccessPolicy
+  access_policy: tiled.access_policies:SimpleAccessPolicy
   args:
     provider: toy  # matches provider above
     access_lists:
@@ -21,7 +21,7 @@ access_control:
       bob:
       - A
       - C
-      cara: tiled.adapters.mapping:SimpleAccessPolicy.ALL
+      cara: tiled.access_policies:SimpleAccessPolicy.ALL
     scopes:
     - "read:metadata"
     - "read:data"

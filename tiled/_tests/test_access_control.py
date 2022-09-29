@@ -45,7 +45,10 @@ def config(tmpdir):
         },
         "access_control": {
             "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-            "args": {"access_lists": {"alice": ["a", "c", "d"]}, "provider": "toy"},
+            "args": {
+                "access_lists": {"alice": ["a", "c", "d", "e"]},
+                "provider": "toy",
+            },
         },
         "trees": [
             {
@@ -73,7 +76,7 @@ def config(tmpdir):
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": ["A2"],
+                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
                         },
                     },
                 },
@@ -86,10 +89,30 @@ def config(tmpdir):
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": ["A2"],
+                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
                         },
                         # Block writing.
                         "scopes": ["read:metadata", "read:data"],
+                    },
+                },
+            },
+            {
+                "tree": f"{__name__}:writable_tree",
+                "path": "/e",
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "provider": "toy",
+                        "access_lists": {
+                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
+                        },
+                        # Block creation.
+                        "scopes": [
+                            "read:metadata",
+                            "read:data",
+                            "write:metadata",
+                            "write:data",
+                        ],
                     },
                 },
             },
@@ -131,13 +154,17 @@ def test_node_export(enter_password, config):
     exported_dict["contents"]["a"]["contents"]["A2"]
 
 
-def test_writing_allowed(enter_password, config):
+def test_create_and_update_allowed(enter_password, config):
     with enter_password("secret1"):
         alice_client = from_config(config, username="alice", token_cache={})
 
+    # Update
     alice_client["c"].metadata
     alice_client["c"].update_metadata(metadata={"added_key": 3})
     assert alice_client["c"].metadata["added_key"] == 3
+
+    # Create
+    alice_client["c"].write_array([1, 2, 3])
 
 
 def test_writing_blocked_by_access_policy(enter_password, config):
@@ -147,3 +174,11 @@ def test_writing_blocked_by_access_policy(enter_password, config):
     alice_client["d"].metadata
     with fail_with_status_code(403):
         alice_client["d"].update_metadata(metadata={"added_key": 3})
+
+
+def test_create_blocked_by_access_policy(enter_password, config):
+    with enter_password("secret1"):
+        alice_client = from_config(config, username="alice", token_cache={})
+
+    with fail_with_status_code(403):
+        alice_client["e"].write_array([1, 2, 3])

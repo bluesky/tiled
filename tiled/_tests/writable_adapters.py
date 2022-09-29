@@ -11,7 +11,22 @@ from ..serialization.dataframe import deserialize_arrow
 from ..structures.core import StructureFamily
 
 
-class WritableArrayAdapter(ArrayAdapter):
+class _WritableMixin:
+    def __init__(self, *args, key="", **kwargs):
+        self.key = key
+        super().__init__(*args, **kwargs)
+
+    def put_metadata(self, metadata, specs):
+        # TODO This skips over validation and has a race condition in it, but
+        # this test harness is not long for this world anyway, so good enough
+        # for now.
+        self._metadata.clear()
+        self._metadata.update(metadata)
+        self.specs.clear()
+        self.specs.extend(specs)
+
+
+class WritableArrayAdapter(_WritableMixin, ArrayAdapter):
     def put_data(self, body, block=None):
         macrostructure = self.macrostructure()
         if block is None:
@@ -27,13 +42,13 @@ class WritableArrayAdapter(ArrayAdapter):
         self._array[slice_] = array
 
 
-class WritableDataFrameAdapter(DataFrameAdapter):
+class WritableDataFrameAdapter(_WritableMixin, DataFrameAdapter):
     def put_data(self, body, partition=0):
         df = deserialize_arrow(body)
         self._partitions[partition] = df
 
 
-class WritableCOOAdapter(COOAdapter):
+class WritableCOOAdapter(_WritableMixin, COOAdapter):
     def put_data(self, body, block=None):
         if not block:
             block = (0,) * len(self.shape)
@@ -43,7 +58,7 @@ class WritableCOOAdapter(COOAdapter):
         self.blocks[block] = (coords, data)
 
 
-class WritableMapAdapter(MapAdapter):
+class WritableMapAdapter(_WritableMixin, MapAdapter):
     def post_metadata(self, metadata, structure_family, structure, specs):
         key = str(uuid.uuid4())
         if structure_family == StructureFamily.array:
@@ -55,7 +70,10 @@ class WritableMapAdapter(MapAdapter):
                 chunks=structure.macro.chunks,
             )
             self._mapping[key] = WritableArrayAdapter(
-                array, metadata=metadata, specs=specs
+                array,
+                metadata=metadata,
+                specs=specs,
+                key=key,
             )
         elif structure_family == StructureFamily.dataframe:
             # Initialize an empty DataFrame with the right columns/types.
@@ -68,6 +86,7 @@ class WritableMapAdapter(MapAdapter):
                 divisions=divisions,
                 metadata=metadata,
                 specs=specs,
+                key=key,
             )
         elif structure_family == StructureFamily.sparse:
             self._mapping[key] = WritableCOOAdapter(
@@ -76,6 +95,7 @@ class WritableMapAdapter(MapAdapter):
                 chunks=structure.chunks,
                 metadata=metadata,
                 specs=specs,
+                key=key,
             )
         else:
             raise NotImplementedError(structure_family)
