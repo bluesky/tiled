@@ -84,16 +84,7 @@ class NodeAttributes(pydantic.BaseModel):
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
-    references: Optional[List[Dict[str, pydantic.AnyUrl]]]
-
-    @pydantic.validator("references")
-    def each_item_is_asingle_item_dict(cls, v):
-        for item in v:
-            if len(item) != 1:
-                raise ValueError(
-                    "Each item in references must be a dict with a single key--value pair."
-                )
-        return v
+    references: Optional[List[ReferenceDocument]]
 
 
 AttributesT = TypeVar("AttributesT")
@@ -293,7 +284,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
     metadata: Dict
     specs: List[str]
-    references: Dict[str, pydantic.AnyUrl]
+    references: List[ReferenceDocument]
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -316,6 +307,19 @@ class GetDistinctResponse(pydantic.BaseModel):
 class PutMetadataRequest(pydantic.BaseModel):
     metadata: Optional[Dict]
     specs: Optional[List[str]]
+    references: Optional[List[ReferenceDocument]]
 
 
+class ReferenceDocument(pydantic.BaseModel):
+    label: str
+    url: pydantic.AnyUrl
+
+    @classmethod
+    def from_json(cls, json_doc):
+        return cls(label=json_doc["label"], url=json_doc["url"])
+
+
+NodeAttributes.update_forward_refs()
 NodeStructure.update_forward_refs()
+PostMetadataRequest.update_forward_refs()
+PutMetadataRequest.update_forward_refs()

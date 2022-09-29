@@ -67,7 +67,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     ):
         if not isinstance(file, h5py.File):
             file = h5py.File(file, "r", swmr=swmr, libver=libver)
-        return cls(file, specs=specs)
+        return cls(file, specs=specs, references=references)
 
     def __repr__(self):
         return node_repr(self, list(self))

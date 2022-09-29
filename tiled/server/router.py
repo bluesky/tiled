@@ -767,11 +767,15 @@ async def put_metadata(
     if hasattr(entry, "put_metadata"):
         input_metadata = body.metadata if body.metadata is not None else entry.metadata
         input_specs = body.specs if body.specs is not None else entry.specs
-        metadata, structure_family, structure, specs = (
+        input_references = (
+            body.references if body.references is not None else entry.references
+        )
+        metadata, structure_family, structure, specs, references = (
             input_metadata,
             entry.structure_family,
             get_structure(entry),
             input_specs,
+            input_references,
         )
 
         metadata_modified = False
@@ -792,10 +796,7 @@ async def put_metadata(
                         detail=f"failed validation for spec {spec}:\n{e}",
                     )
 
-        entry.put_metadata(
-            metadata=metadata,
-            specs=specs,
-        )
+        entry.put_metadata(metadata=metadata, specs=specs, references=references)
 
         response_data = {"id": entry.key}
         if metadata_modified:

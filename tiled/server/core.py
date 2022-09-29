@@ -237,6 +237,7 @@ def construct_revisions_response(
             "attributes": {
                 "metadata": revision["metadata"],
                 "specs": revision["specs"],
+                "references": revision["references"],
                 "updated_at": revision["updated_at"],
             },
         }

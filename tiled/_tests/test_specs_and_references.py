@@ -19,9 +19,11 @@ def test_spec_is_converted_to_str():
 
 
 def test_references():
-    tree = MapAdapter({}, references=[{"ref_test": "https://example.com"}])
+    tree = MapAdapter(
+        {}, references=[{"label": "ref_test", "url": "https://example.com"}]
+    )
     c = from_tree(tree)
-    assert c.references == [{"ref_test": "https://example.com"}]
+    assert c.references == [{"label": "ref_test", "url": "https://example.com"}]
 
 
 def test_bad_reference():
