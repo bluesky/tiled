@@ -28,18 +28,23 @@ def test_references():
 
 def test_bad_reference():
     # an invalid URL
-    tree = MapAdapter({}, references=[{"ref_test": "not a URL"}])
+    tree = MapAdapter({}, references=[{"label": "ref_test", "url": "not a URL"}])
     with pytest.raises(pydantic.error_wrappers.ValidationError):
         from_tree(tree)
 
     # a dict instead of a list of dicts
-    tree = MapAdapter({}, references={"ref_test": "https://example.com"})
+    tree = MapAdapter(
+        {}, references={"label": "ref_test", "url": "https://example.com"}
+    )
     with pytest.raises(pydantic.error_wrappers.ValidationError):
         from_tree(tree)
 
     # dict has too many items
     tree = MapAdapter(
-        {}, references=[{"ref_test": "https://example.com", "extra": "oops"}]
+        {},
+        references=[
+            {"label": "ref_test", "url": "https://example.com", "extra": "oops"}
+        ],
     )
     with pytest.raises(pydantic.error_wrappers.ValidationError):
         from_tree(tree)

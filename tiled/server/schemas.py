@@ -75,6 +75,15 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
+class ReferenceDocument(pydantic.BaseModel):
+    label: str
+    url: pydantic.AnyUrl
+
+    @classmethod
+    def from_json(cls, json_doc):
+        return cls(label=json_doc["label"], url=json_doc["url"])
+
+
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
@@ -310,16 +319,4 @@ class PutMetadataRequest(pydantic.BaseModel):
     references: Optional[List[ReferenceDocument]]
 
 
-class ReferenceDocument(pydantic.BaseModel):
-    label: str
-    url: pydantic.AnyUrl
-
-    @classmethod
-    def from_json(cls, json_doc):
-        return cls(label=json_doc["label"], url=json_doc["url"])
-
-
-NodeAttributes.update_forward_refs()
 NodeStructure.update_forward_refs()
-PostMetadataRequest.update_forward_refs()
-PutMetadataRequest.update_forward_refs()
