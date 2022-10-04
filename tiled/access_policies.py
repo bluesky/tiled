@@ -12,7 +12,7 @@ class DummyAccessPolicy:
     def allowed_scopes(self, node, principal):
         return ALL_SCOPES
 
-    def filers(self, node, principal, scopes):
+    def filters(self, node, principal, scopes):
         return []
 
 
