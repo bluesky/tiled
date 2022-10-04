@@ -12,6 +12,7 @@ from ..queries import (
     Eq,
     FullText,
     In,
+    KeysFilter,
     NotEq,
     NotIn,
     Regex,
@@ -19,7 +20,7 @@ from ..queries import (
     StructureFamily,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..utils import UNCHANGED, DictView, SpecialUsers, import_object
+from ..utils import UNCHANGED, DictView
 from .utils import IndexersMixin
 
 
@@ -30,7 +31,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
     __slots__ = (
         "_access_policy",
-        "_principal",
         "_mapping",
         "_metadata",
         "_sorting",
@@ -57,7 +57,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         specs=None,
         sorting=None,
         access_policy=None,
-        principal=None,
         entries_stale_after=None,
         metadata_stale_after=None,
         must_revalidate=True,
@@ -72,7 +71,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
         sorting : List[Tuple[str, int]], optional
         access_policy : AccessPolicy, optional
-        principal : str, optional
         entries_stale_after: timedelta
             This server uses this to communite to the client how long
             it should rely on a local cache before checking back for changes.
@@ -91,14 +89,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self._sorting = sorting
         self._metadata = metadata or {}
         self.specs = specs or []
-        if (access_policy is not None) and (
-            not access_policy.check_compatibility(self)
-        ):
-            raise ValueError(
-                f"Access policy {access_policy} is not compatible with this Adapter."
-            )
         self._access_policy = access_policy
-        self._principal = principal
         self._must_revalidate = must_revalidate
         self.include_routers = []
         self.background_tasks = []
@@ -121,10 +112,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     @access_policy.setter
     def access_policy(self, value):
         self._access_policy = value
-
-    @property
-    def principal(self):
-        return self._principal
 
     @property
     def metadata(self):
@@ -173,22 +160,12 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             return
         return self.entries_stale_after + datetime.utcnow()
 
-    def authenticated_as(self, principal):
-        if self._principal is not None:
-            raise RuntimeError(f"Already authenticated as {self.principal}")
-        if self._access_policy is not None:
-            tree = self._access_policy.filter_results(self, principal)
-        else:
-            tree = self.new_variation(principal=principal)
-        return tree
-
     def new_variation(
         self,
         *args,
         mapping=UNCHANGED,
         metadata=UNCHANGED,
         sorting=UNCHANGED,
-        principal=UNCHANGED,
         must_revalidate=UNCHANGED,
         **kwargs,
     ):
@@ -198,8 +175,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             metadata = self._metadata
         if sorting is UNCHANGED:
             sorting = self._sorting
-        if principal is UNCHANGED:
-            principal = self._principal
         if must_revalidate is UNCHANGED:
             must_revalidate = self.must_revalidate
         return type(self)(
@@ -209,7 +184,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             metadata=self._metadata,
             specs=self.specs,
             access_policy=self.access_policy,
-            principal=self.principal,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,
             must_revalidate=must_revalidate,
@@ -495,75 +469,15 @@ def structure_family(query, tree):
 MapAdapter.register_query(StructureFamily, structure_family)
 
 
-class DummyAccessPolicy:
-    "Impose no access restrictions."
-
-    def check_compatibility(self, tree):
-        # This only works on in-memory Adapter or subclases.
-        return isinstance(tree, MapAdapter)
-
-    def modify_queries(self, queries, principal):
-        return queries
-
-    def filter_results(self, tree, principal):
-        return type(tree)(
-            mapping=self._mapping,
-            metadata=tree.metadata,
-            access_policy=tree.access_policy,
-            principal=principal,
-        )
+def keys_filter(query, tree):
+    matches = {}
+    for key, value in tree.items():
+        if key in query.keys:
+            matches[key] = value
+    return tree.new_variation(mapping=matches)
 
 
-class SimpleAccessPolicy:
-    """
-    A mapping of user names to lists of entries they can access.
-
-    >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]}, provider="toy")
-    """
-
-    ALL = object()  # sentinel
-
-    def __init__(self, access_lists, *, provider, public=None):
-        self.access_lists = {}
-        self.provider = provider
-        self.public = set(public or [])
-        for key, value in access_lists.items():
-            if isinstance(value, str):
-                value = import_object(value)
-            self.access_lists[key] = value
-
-    def check_compatibility(self, tree):
-        # This only works on MapAdapter or subclases.
-        return isinstance(tree, MapAdapter)
-
-    def modify_queries(self, queries, principal):
-        return queries
-
-    def filter_results(self, tree, principal):
-        # Get the id (i.e. username) of this Principal for the
-        # associated authentication provider.
-        for identity in principal.identities:
-            if identity.provider == self.provider:
-                id = identity.id
-                break
-        else:
-            raise ValueError(
-                f"Principcal {principal} has no identity from provider {self.provider}. "
-                f"Its identities are: {principal.identities}"
-            )
-        access_list = self.access_lists.get(id, [])
-
-        if (principal is SpecialUsers.admin) or (access_list is self.ALL):
-            mapping = tree._mapping
-        else:
-            allowed = set(access_list or []) | self.public
-            mapping = {k: v for k, v in tree._mapping.items() if k in allowed}
-        return type(tree)(
-            mapping=mapping,
-            metadata=tree.metadata,
-            access_policy=tree.access_policy,
-            principal=principal,
-        )
+MapAdapter.register_query(KeysFilter, keys_filter)
 
 
 class _HIGH_SORTER_CLASS:

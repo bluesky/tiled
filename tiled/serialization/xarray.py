@@ -14,6 +14,27 @@ from .dataframe import (
 from .node import walk
 
 
+def as_dataset(self):
+    import xarray
+
+    data_vars = {}
+    coords = {}
+    for key, array_adapter in self.items():
+        if "xarray_data_var" in array_adapter.specs:
+            data_vars[key] = (
+                array_adapter.macrostructure().dims,
+                array_adapter.read(),
+            )
+        elif "xarray_coord" in array_adapter.specs:
+            coords[key] = (
+                array_adapter.macrostructure().dims,
+                array_adapter.read(),
+            )
+    return xarray.Dataset(
+        data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
+    )
+
+
 class _BytesIOThatIgnoresClose(io.BytesIO):
     def close(self):
         # When the netcdf writer tells us to close(), ignore it.
@@ -26,7 +47,7 @@ if modules_available("scipy"):
         file = _BytesIOThatIgnoresClose()
         # Per the xarray.Dataset.to_netcdf documentation,
         # file-like objects are only supported by the scipy engine.
-        node.as_dataset().to_netcdf(file, engine="scipy")
+        as_dataset(node).to_netcdf(file, engine="scipy")
         return file.getbuffer()
 
     # Both application/netcdf and application/x-netcdf are used.
@@ -44,45 +65,43 @@ if modules_available("scipy"):
 serialization_registry.register(
     "xarray_dataset",
     APACHE_ARROW_FILE_MIME_TYPE,
-    lambda node, metadata: serialize_arrow(node.as_dataset().to_dataframe(), metadata),
+    lambda node, metadata: serialize_arrow(as_dataset(node).to_dataframe(), metadata),
 )
 serialization_registry.register(
     "xarray_dataset",
     "application/x-parquet",
-    lambda node, metadata: serialize_parquet(
-        node.as_dataset().to_dataframe(), metadata
-    ),
+    lambda node, metadata: serialize_parquet(as_dataset(node).to_dataframe(), metadata),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/csv",
-    lambda node, metadata: serialize_csv(node.as_dataset().to_dataframe(), metadata),
+    lambda node, metadata: serialize_csv(as_dataset(node).to_dataframe(), metadata),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/x-comma-separated-values",
-    lambda node, metadata: serialize_csv(node.as_dataset().to_dataframe(), metadata),
+    lambda node, metadata: serialize_csv(as_dataset(node).to_dataframe(), metadata),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/plain",
-    lambda node, metadata: serialize_csv(node.as_dataset().to_dataframe(), metadata),
+    lambda node, metadata: serialize_csv(as_dataset(node).to_dataframe(), metadata),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/html",
-    lambda node, metadata: serialize_html(node.as_dataset().to_dataframe(), metadata),
+    lambda node, metadata: serialize_html(as_dataset(node).to_dataframe(), metadata),
 )
 serialization_registry.register(
     "xarray_dataset",
     XLSX_MIME_TYPE,
-    lambda node, metadata: serialize_excel(node.as_dataset().to_dataframe(), metadata),
+    lambda node, metadata: serialize_excel(as_dataset(node).to_dataframe(), metadata),
 )
 if modules_available("orjson"):
     import orjson
 
     def serialize_json(node, metadata):
-        df = node.as_dataset().to_dataframe()
+        df = as_dataset(node).to_dataframe()
         return orjson.dumps(
             {column: df[column].tolist() for column in df},
         )

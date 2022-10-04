@@ -48,7 +48,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
 
     structure_family = "node"
 
-    def __init__(self, node, *, specs=None, access_policy=None, principal=None):
+    def __init__(self, node, *, specs=None, access_policy=None):
         if (access_policy is not None) and (
             not access_policy.check_compatibility(self)
         ):
@@ -57,7 +57,6 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
             )
         self._node = node
         self._access_policy = access_policy
-        self._principal = principal
         self.specs = specs or []
         super().__init__()
 
@@ -73,22 +72,6 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     @property
     def access_policy(self):
         return self._access_policy
-
-    @property
-    def principal(self):
-        return self._principal
-
-    def authenticated_as(self, principal):
-        if self._principal is not None:
-            raise RuntimeError(f"Already authenticated as {self.principal}")
-        if self._access_policy is not None:
-            raise NotImplementedError
-        tree = type(self)(
-            self._node,
-            access_policy=self._access_policy,
-            principal=principal,
-        )
-        return tree
 
     @property
     def metadata(self):

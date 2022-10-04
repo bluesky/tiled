@@ -1,6 +1,13 @@
+import collections
 import contextlib
 import time
 
+from ..access_policies import NO_ACCESS
+from ..adapters.mapping import MapAdapter
+from ..structures.array import ArrayStructure
+from ..structures.dataframe import DataFrameStructure
+
+EMPTY_NODE = MapAdapter({})
 API_KEY_COOKIE_NAME = "tiled_api_key"
 API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
@@ -63,3 +70,66 @@ def get_root_url_low_level(request_headers, scope):
     if root_path.endswith("/"):
         root_path = root_path[:-1]
     return f"{scheme}://{host}{root_path}"
+
+
+def filter_for_access(entry, principal, scopes, metrics):
+    access_policy = getattr(entry, "access_policy", None)
+    if access_policy is not None:
+        with record_timing(metrics, "acl"):
+            queries = entry.access_policy.filters(entry, principal, set(scopes))
+            if queries is NO_ACCESS:
+                entry = EMPTY_NODE
+            else:
+                for query in queries:
+                    entry = entry.search(query)
+    return entry
+
+
+class FilteredNode(collections.abc.Mapping):
+    structure_family = "node"
+
+    "Wrap a node, hiding contents that the principal cannot access."
+
+    def __init__(self, node, principal, scopes, metrics):
+        if not node.structure_family == "node":
+            raise ValueError("Input must have structure_family == 'node'")
+        self._principal = principal
+        self._scopes = scopes
+        self._metrics = metrics
+        self._node = filter_for_access(node, principal, scopes, metrics)
+        self.metadata = self._node.metadata
+        super().__init__()
+
+    def __getitem__(self, key):
+        value = self._node[key]
+        if value.structure_family == "node":
+            return type(self)(value, self._principal, self._scopes, self._metrics)
+        return value
+
+    def __len__(self):
+        return len(self._node)
+
+    def __iter__(self):
+        yield from self._node
+
+
+def get_structure(entry):
+    "Abtract over the fact that some have micro/macrostructure."
+    structure_family = entry.structure_family
+    if structure_family == "node":
+        structure = None
+    elif structure_family == "array":
+        structure = ArrayStructure(
+            macro=entry.macrostructure(),
+            micro=entry.microstructure(),
+        )
+    elif structure_family == "dataframe":
+        structure = DataFrameStructure(
+            macro=entry.macrostructure(),
+            micro=entry.microstructure(),
+        )
+    elif structure_family == "sparse":
+        structure = entry.structure()
+    else:
+        raise ValueError(f"Unrecognized structure family {structure_family}")
+    return structure

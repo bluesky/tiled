@@ -127,7 +127,6 @@ class DirectoryAdapter(MapAdapter):
         sorting=None,
         specs=None,
         access_policy=None,
-        principal=None,
         error_if_missing=True,
         greedy=False,
         poll_interval=DEFAULT_POLL_INTERVAL,
@@ -162,7 +161,6 @@ class DirectoryAdapter(MapAdapter):
             Metadata for the top-level node of this tree.
         specs : List[str]
         access_policy : AccessPolicy, optional
-        principal : str, optional
         error_if_missing : boolean, optional
             If True (default) raise an error if the directory does not exist.
             If False, wait and poll for the directory to be created later.
@@ -357,7 +355,6 @@ class DirectoryAdapter(MapAdapter):
             metadata=metadata,
             sorting=sorting,
             specs=specs,
-            principal=principal,
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
@@ -380,7 +377,6 @@ class DirectoryAdapter(MapAdapter):
         sorting,
         specs,
         access_policy,
-        principal,
         entries_stale_after=None,
         metadata_stale_after=None,
         must_revalidate=True,
@@ -391,7 +387,6 @@ class DirectoryAdapter(MapAdapter):
             sorting=sorting,
             specs=specs,
             access_policy=access_policy,
-            principal=principal,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
             must_revalidate=must_revalidate,

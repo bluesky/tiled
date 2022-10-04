@@ -90,6 +90,29 @@ class KeyLookup(NoBool):
         return cls(key=key)
 
 
+@register(name="keys_filter")
+@dataclass
+class KeysFilter(NoBool):
+    """
+    Filter entries that do not match one of these keys.
+
+    This is used by the SimpleAccessPolicy.
+
+    Parameters
+    ----------
+    keys : List[str]
+    """
+
+    keys: List[str]
+
+    def encode(self):
+        return {"keys": json.dumps(self.keys)}
+
+    @classmethod
+    def decode(cls, *, keys):
+        return cls(keys=json.loads(keys))
+
+
 @register(name="regex")
 @dataclass
 class Regex(NoBool):

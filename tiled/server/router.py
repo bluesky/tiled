@@ -26,8 +26,8 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
+    SecureEntry,
     block,
-    entry,
     expected_shape,
     get_query_registry,
     get_serialization_registry,
@@ -35,7 +35,13 @@ from .dependencies import (
     slice_,
 )
 from .settings import get_settings
-from .utils import get_base_url, record_timing
+from .utils import (
+    FilteredNode,
+    filter_for_access,
+    get_base_url,
+    get_structure,
+    record_timing,
+)
 
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
@@ -155,11 +161,19 @@ def declare_search_router(query_registry):
         sort: Optional[str] = Query(None),
         max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
-        entry: Any = Security(entry, scopes=["read:metadata"]),
+        entry: Any = SecureEntry(scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
+        principal: str = Depends(get_current_principal),
         **filters,
     ):
         request.state.endpoint = "search"
+        if entry.structure_family != "node":
+            raise WrongTypeForRoute(
+                "This is not a Node; it cannot be searched or listed."
+            )
+        entry = filter_for_access(
+            entry, principal, ["read:metadata"], request.state.metrics
+        )
         try:
             resource, metadata_stale_at, must_revalidate = construct_entries_response(
                 query_registry,
@@ -267,7 +281,7 @@ async def node_distinct(
     specs: bool = False,
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
-    entry: Any = Security(entry, scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
 ):
     if hasattr(entry, "get_distinct"):
         distinct = entry.get_distinct(
@@ -298,7 +312,7 @@ async def node_metadata(
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    entry: Any = Security(entry, scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
@@ -335,7 +349,7 @@ async def node_metadata(
 )
 def array_block(
     request: Request,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -403,7 +417,7 @@ def array_block(
 )
 def array_full(
     request: Request,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -469,7 +483,7 @@ def array_full(
 def dataframe_partition(
     request: Request,
     partition: int,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -527,7 +541,8 @@ def dataframe_partition(
 )
 def node_full(
     request: Request,
-    entry=Security(entry, scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"]),
+    principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -556,10 +571,9 @@ def node_full(
                 "request a smaller chunks."
             ),
         )
-    # With a generic 'node' we cannot know at this point how large it
-    # will be. We rely on the serializers to give up if they discover too
-    # much data. Once we support asynchronous workers, we can default to or
-    # require async packing for generic nodes.
+    if entry.structure_family == "node":
+        data = FilteredNode(data, principal, ["read:data"], request.state.metrics)
+        # TODO Walk node to determine size before handing off to serializer.
     try:
         with record_timing(request.state.metrics, "pack"):
             return construct_data_response(
@@ -583,7 +597,7 @@ def post_metadata(
     path: str,
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    entry=Security(entry, scopes=["write:metadata"]),
+    entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
@@ -666,7 +680,7 @@ def post_metadata(
 @router.delete("/node/metadata/{path:path}")
 async def delete(
     request: Request,
-    entry=Security(entry, scopes=["write:data", "write:metadata"]),
+    entry=SecureEntry(scopes=["write:data", "write:metadata"]),
 ):
     if hasattr(entry, "delete"):
         entry.delete()
@@ -680,7 +694,7 @@ async def delete(
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
 ):
     data = await request.body()
     if hasattr(entry, "put_data"):
@@ -695,7 +709,7 @@ async def put_array_full(
 @router.put("/array/block/{path:path}")
 async def put_array_block(
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
     block=Depends(block),
 ):
     data = await request.body()
@@ -712,7 +726,7 @@ async def put_array_block(
 @router.put("/node/full/{path:path}")
 async def put_dataframe_full(
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
 ):
     data = await request.body()
 
@@ -729,7 +743,7 @@ async def put_dataframe_full(
 async def put_dataframe_partition(
     partition: int,
     request: Request,
-    entry=Security(entry, scopes=["write:data"]),
+    entry=SecureEntry(scopes=["write:data"]),
 ):
     data = await request.body()
 
@@ -747,7 +761,7 @@ async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    entry=Security(entry, scopes=["write:metadata"]),
+    entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if hasattr(entry, "put_metadata"):
         input_metadata = body.metadata if body.metadata is not None else entry.metadata
@@ -755,7 +769,7 @@ async def put_metadata(
         metadata, structure_family, structure, specs = (
             input_metadata,
             entry.structure_family,
-            entry.structure,
+            get_structure(entry),
             input_specs,
         )
 
@@ -801,7 +815,7 @@ async def node_revisions(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    entry=Security(entry, scopes=["read:metadata"]),
+    entry=SecureEntry(scopes=["read:metadata"]),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
@@ -818,7 +832,7 @@ async def node_revisions(
 
 @router.delete("/node/revisions/{path:path}")
 async def revisions_delitem(
-    request: Request, n: int, entry=Security(entry, scopes=["write:metadata"])
+    request: Request, n: int, entry=SecureEntry(scopes=["write:metadata"])
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(

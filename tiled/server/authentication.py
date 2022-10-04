@@ -255,6 +255,7 @@ def get_current_principal(
                     "read:data",
                     "write:metadata",
                     "write:data",
+                    "create",
                     "metrics",
                 }
             else:

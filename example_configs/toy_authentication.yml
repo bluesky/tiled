@@ -11,14 +11,22 @@ authentication:
     - provider: toy
       id: alice
 access_control:
-  access_policy: tiled.adapters.mapping:SimpleAccessPolicy
+  access_policy: tiled.access_policies:SimpleAccessPolicy
   args:
     provider: toy  # matches provider above
     access_lists:
-      alice: ["A", "B"]
-      bob: ["A", "C"]
-      cara: tiled.adapters.mapping:SimpleAccessPolicy.ALL
-    public: ["D"]
+      alice:
+      - A
+      - B
+      bob:
+      - A
+      - C
+      cara: tiled.access_policies:SimpleAccessPolicy.ALL
+    scopes:
+    - "read:metadata"
+    - "read:data"
+    public:
+    - D
 trees:
   - path: /
     tree: tiled.examples.toy_authentication:tree
