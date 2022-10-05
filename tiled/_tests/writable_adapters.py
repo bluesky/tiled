@@ -16,7 +16,7 @@ class _WritableMixin:
         self.key = key
         super().__init__(*args, **kwargs)
 
-    def put_metadata(self, metadata, specs):
+    def put_metadata(self, metadata, specs, references):
         # TODO This skips over validation and has a race condition in it, but
         # this test harness is not long for this world anyway, so good enough
         # for now.
@@ -24,6 +24,8 @@ class _WritableMixin:
         self._metadata.update(metadata)
         self.specs.clear()
         self.specs.extend(specs)
+        self.references.clear()
+        self.references.extend(references)
 
 
 class WritableArrayAdapter(_WritableMixin, ArrayAdapter):
