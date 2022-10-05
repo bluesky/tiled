@@ -9,7 +9,7 @@ from ..adapters.xarray import DatasetAdapter
 from ..client import from_tree, record_history
 from ..client import xarray as xarray_client
 
-image = numpy.random.random((11, 13))
+image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
 precip = 10 * numpy.random.rand(2, 2, 3)
 lon = [[-99.83, -99.32], [-99.79, -99.23]]
@@ -45,13 +45,13 @@ EXPECTED = {
         },
     ),
     "wide": xarray.Dataset(
-        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(100)},
-        coords={"time": numpy.arange(10)},
+        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(2)) for i in range(10)},
+        coords={"time": numpy.arange(2)},
     ),
     "ragged": xarray.Dataset(
         {
             f"{i}": xarray.DataArray(i * numpy.ones(2 * i), dims=f"dim{i}")
-            for i in range(10)
+            for i in range(3)
         }
     ),
 }
@@ -59,11 +59,11 @@ EXPECTED = {
 tree = MapAdapter(
     {key: DatasetAdapter.from_dataset(ds) for key, ds in EXPECTED.items()}
 )
+client = from_tree(tree)
 
 
 @pytest.mark.parametrize("key", list(tree))
 def test_xarray_dataset(key):
-    client = from_tree(tree)
     expected = EXPECTED[key]
     actual = client[key].read().load()
     xarray.testing.assert_equal(actual, expected)
@@ -71,7 +71,6 @@ def test_xarray_dataset(key):
 
 @pytest.mark.parametrize("key", ["image", "weather"])
 def test_dataset_column_access(key):
-    client = from_tree(tree)
     expected_dataset = EXPECTED[key]
     actual_dataset = client[key].read().load()
     for col in expected_dataset:
@@ -81,32 +80,26 @@ def test_dataset_column_access(key):
 
 
 def test_wide_table_optimization():
-    client = from_tree(tree)
     wide = client["wide"]
     with record_history() as history:
         wide.read()
     # This should be just a couple requests.
     # This upper bound is somewhat arbitrary to give wiggle room for future
     # minor changes. The point is: it's much less than one request per variable.
-    assert len(history.requests) < 100 / 10
+    assert len(history.requests) < 4
 
 
 def test_wide_table_optimization_off():
-    client = from_tree(tree)
     wide = client["wide"]
     with record_history() as history:
         wide.read(optimize_wide_table=False)
-    assert len(history.requests) >= 100
+    assert len(history.requests) >= 10
 
 
 def test_url_limit_handling():
     "Check that requests and split up to stay below the URL length limit."
-    expected = xarray.Dataset(
-        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(10)) for i in range(500)}
-    )
-    tree = MapAdapter({"very_wide": DatasetAdapter.from_dataset(expected)})
-    client = from_tree(tree)
-    dsc = client["very_wide"]
+    expected = EXPECTED["wide"]
+    dsc = client["wide"]
     dsc.read()  # Dry run to run any one-off state-initializing requests.
     # Accumulate Requests here for later inspection.
     requests = []

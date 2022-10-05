@@ -19,6 +19,7 @@ tree = MapAdapter(
         ),
     }
 )
+client = from_tree(tree)
 
 
 @pytest.mark.parametrize(
@@ -32,20 +33,17 @@ tree = MapAdapter(
     ],
 )
 def test_search(term, expected_keys):
-    client = from_tree(tree)
     query = FullText(term)
     results = client.search(query)
     assert list(results) == expected_keys
 
 
 def test_compound_search():
-    client = from_tree(tree)
     results = client.search(FullText("dog")).search(FullText("yellow"))
     assert list(results) == ["b"]
 
 
 def test_key_into_results():
-    client = from_tree(tree)
     results = client.search(FullText("dog"))
     assert "apple" in results["a"].metadata
     assert "banana" in results["b"].metadata

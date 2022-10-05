@@ -32,11 +32,10 @@ for _ in range(10):
     )
 
 tree = MapAdapter(mapping)
+client = from_tree(tree)
 
 
 def test_distinct():
-    client = from_tree(tree)
-
     # test without counts
     distinct = client.distinct(
         "foo.bar", structure_families=True, specs=True, counts=False

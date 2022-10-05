@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 
 import numpy
@@ -56,53 +57,50 @@ tree = MapAdapter(
         ),
     }
 )
+client = from_tree(tree)
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
+# We test a little bit of actual file export, using the tmpdir fixture,
+# but we mostly export for a buffer in memory because disk access
+# can be very cloud on cloud CI VMs.
+
+
 @pytest.mark.parametrize("filename", ["numbers.csv", "image.png", "image.tiff"])
-def test_export_2d_array(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
+def test_export_2d_array(filename, tmpdir):
     client["A"].export(Path(tmpdir, filename))
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 @pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
-def test_export_table(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
+def test_export_table(filename, tmpdir):
     client["C"].export(Path(tmpdir, filename))
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-@pytest.mark.parametrize("filename", ["numbers.csv"])
-def test_export_weather_data_var(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
+def test_export_weather_data_var(tmpdir):
+    buffer = io.BytesIO()
     client["structured_data"]["weather"]["temperature"].export(
-        Path(tmpdir, filename), slice=(0,)
+        buffer, slice=(0,), format="text/csv"
     )
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-@pytest.mark.parametrize("filename", ["test.h5"])
-def test_export_weather_all(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
-    client["structured_data"]["weather"].export(Path(tmpdir, filename))
+def test_export_weather_all():
+    buffer = io.BytesIO()
+    client["structured_data"]["weather"].export(buffer, format="application/x-hdf5")
 
 
-def test_serialization_error_hdf5_metadata(tmpdir):
+def test_serialization_error_hdf5_metadata():
     good = MapAdapter({}, metadata={"a": 1})
     bad = MapAdapter({}, metadata={"a": {"b": 1}})
-    from_tree(good).export(Path(tmpdir, "test.h5"))
+    buffer = io.BytesIO()
+    from_tree(good).export(buffer, format="application/x-hdf5")
     with pytest.raises(ClientError, match="contains types or structure"):
-        from_tree(bad).export(Path(tmpdir, "test.h5"))
+        from_tree(bad).export(buffer, format="application/x-hdf5")
 
 
 def test_path_as_Path_or_string(tmpdir):
-    client = from_tree(tree)
     client["A"].export(Path(tmpdir, "test_path_as_path.txt"))
     client["A"].export(str(Path(tmpdir, "test_path_as_str.txt")))
 
 
 def test_formats():
-    client = from_tree(tree)
     client.formats
     client["A"].formats

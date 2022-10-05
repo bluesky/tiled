@@ -50,13 +50,11 @@ def test_write_large_array_full():
         tree, api_key=API_KEY, authentication={"single_user_api_key": API_KEY}
     )
 
-    a = numpy.ones(100)
+    a = numpy.ones(100, dtype=numpy.uint8)
     # Low the limit so we can test on small data, for speed.
     original = client._SUGGESTED_MAX_UPLOAD_SIZE
-    client._SUGGESTED_MAX_UPLOAD_SIZE = 50
+    client._SUGGESTED_MAX_UPLOAD_SIZE = a.nbytes - 1
     try:
-        assert a.nbytes > client._SUGGESTED_MAX_UPLOAD_SIZE
-
         metadata = {"scan_id": 1, "method": "A"}
         specs = ["SomeSpec"]
         with record_history() as history:

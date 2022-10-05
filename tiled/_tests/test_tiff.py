@@ -11,8 +11,8 @@ from ..client import from_config, from_tree
 
 @pytest.fixture
 def directory(tmpdir):
-    data = numpy.random.random((100, 100))
-    for i in range(10):
+    data = numpy.random.random((5, 7))
+    for i in range(3):
         tf.imwrite(Path(tmpdir, f"temp{i:05}.tif"), data)
     return str(Path(tmpdir, "*.tif"))
 
@@ -20,11 +20,11 @@ def directory(tmpdir):
 @pytest.mark.parametrize(
     "slice_input, correct_shape",
     [
-        (None, (10, 100, 100)),
-        (0, (100, 100)),
-        (slice(0, 10, 2), (5, 100, 100)),
-        ((1, slice(0, 10), slice(0, 10)), (10, 10)),
-        ((slice(0, 10), slice(0, 10), slice(0, 10)), (10, 10, 10)),
+        (None, (3, 5, 7)),
+        (0, (5, 7)),
+        (slice(0, 3, 2), (2, 5, 7)),
+        ((1, slice(0, 3), slice(0, 3)), (3, 3)),
+        ((slice(0, 3), slice(0, 3), slice(0, 3)), (3, 3, 3)),
     ],
 )
 def test_tiff_sequence(directory, slice_input, correct_shape):
@@ -34,7 +34,7 @@ def test_tiff_sequence(directory, slice_input, correct_shape):
     assert arr.shape == correct_shape
 
 
-@pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0), (1, 100, 100))])
+@pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0), (1, 5, 7))])
 def test_tiff_sequence_block(directory, block_input, correct_shape):
     tree = MapAdapter({"A": TiffSequenceAdapter(tf.TiffSequence(directory))})
     client = from_tree(tree)

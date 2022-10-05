@@ -27,10 +27,10 @@ mapping = {
     ),
 }
 tree = MapAdapter(mapping)
+client = from_tree(tree)
 
 
 def test_sparse_single_chunk():
-    client = from_tree(tree)
     sc = client["single_chunk"]
     actual_via_slice = sc[:]
     actual_via_read = sc.read()
@@ -49,7 +49,6 @@ def test_sparse_single_chunk():
 
 
 def test_sparse_multi_chunk():
-    client = from_tree(tree)
     sc = client["multi_chunk"]
     actual_via_slice = sc[:]
     actual_via_read = sc.read()

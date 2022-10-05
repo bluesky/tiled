@@ -37,6 +37,7 @@ mapping["does_not_contain_z"] = ArrayAdapter.from_array(
 mapping["specs_foo_bar"] = MapAdapter({}, specs=["foo", "bar"])
 mapping["specs_foo_bar_baz"] = MapAdapter({}, specs=["foo", "bar", "baz"])
 tree = MapAdapter(mapping)
+client = from_tree(tree)
 
 
 def test_key():
@@ -50,8 +51,6 @@ def test_key():
 
 
 def test_eq():
-    client = from_tree(tree)
-
     # Test encoding letters and ints.
     assert list(client.search(Eq("letter", "a"))) == ["a"]
     assert list(client.search(Eq("letter", "b"))) == ["b"]
@@ -62,8 +61,6 @@ def test_eq():
 
 
 def test_noteq():
-    client = from_tree(tree)
-
     # Test encoding letters and ints.
     assert list(client.search(NotEq("letter", "a"))) != ["a"]
     assert list(client.search(NotEq("letter", "b"))) != ["b"]
@@ -72,8 +69,6 @@ def test_noteq():
 
 
 def test_comparison():
-    client = from_tree(tree)
-
     assert list(client.search(Comparison("gt", "number", 24))) == ["z"]
     assert list(client.search(Comparison("ge", "number", 24))) == ["y", "z"]
     assert list(client.search(Comparison("lt", "number", 1))) == ["a"]
@@ -81,20 +76,14 @@ def test_comparison():
 
 
 def test_contains():
-    client = from_tree(tree)
-
     assert list(client.search(Contains("letters", "z"))) == ["does_contain_z"]
 
 
 def test_full_text():
-    client = from_tree(tree)
-
     assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
 
 
 def test_regex():
-    client = from_tree(tree)
-
     assert list(client.search(Regex("letter", "^z$"))) == ["z"]
     assert (
         list(client.search(Regex("letter", "^Z$"))) == []
@@ -116,22 +105,16 @@ def test_not_and_and_or():
 
 
 def test_in():
-    client = from_tree(tree)
-
     assert list(client.search(In("letter", ["a", "k", "z"]))) == ["a", "k", "z"]
 
 
 def test_notin():
-    client = from_tree(tree)
-
     assert list(client.search(NotIn("letter", ["a", "k", "z"]))) == sorted(
         list(set(keys) - set(["a", "k", "z"]))
     )
 
 
 def test_specs():
-    client = from_tree(tree)
-
     with pytest.raises(TypeError):
         Specs("foo")
 
@@ -145,8 +128,6 @@ def test_specs():
 
 
 def test_structure_families():
-    client = from_tree(tree)
-
     with pytest.raises(ValueError):
         StructureFamily("foo")
 

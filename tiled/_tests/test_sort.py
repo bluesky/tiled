@@ -31,6 +31,7 @@ tree = MapAdapter(
         for letter, number, repeated_letter in zip(letters, numbers, repeated_letters)
     }
 )
+client = from_tree(tree)
 
 
 @pytest.mark.parametrize(
@@ -41,7 +42,6 @@ tree = MapAdapter(
     ],
 )
 def test_sort(key, sorted_list):
-    client = from_tree(tree)
     unsorted = [node.metadata[key] for node in client.values()]
     assert unsorted != sorted_list
     sorted_ascending = [node.metadata[key] for node in client.sort((key, 1)).values()]
@@ -52,9 +52,9 @@ def test_sort(key, sorted_list):
 
 def test_sort_two_columns():
     # Sort by (repeated) letter, then by number.
-    client = from_tree(tree).sort(("repeated_letter", 1), ("number", 1))
-    letters_ = [node.metadata["repeated_letter"] for node in client.values()]
-    numbers_ = [node.metadata["number"] for node in client.values()]
+    client_sorted = client.sort(("repeated_letter", 1), ("number", 1))
+    letters_ = [node.metadata["repeated_letter"] for node in client_sorted.values()]
+    numbers_ = [node.metadata["number"] for node in client_sorted.values()]
     # Letters are sorted.
     assert letters_ == ["a"] * 5 + ["b"] * 5
     # Numbers *within* each block of letters are sorted
@@ -76,8 +76,9 @@ def test_sort_sparse():
             "no2": ArrayAdapter.from_array(numpy.arange(10), metadata={}),
         }
     )
-    client = from_tree(tree).sort(("stuff", 1))
-    assert list(client)[:2] == ["yes1", "yes2"]
+    client = from_tree(tree)
+    client_sorted = client.sort(("stuff", 1))
+    assert list(client_sorted)[:2] == ["yes1", "yes2"]
 
 
 def test_sort_missing():
@@ -90,5 +91,6 @@ def test_sort_missing():
             "no2": ArrayAdapter.from_array(numpy.arange(10), metadata={}),
         }
     )
-    client = from_tree(tree).sort(("stuff", 1))
-    list(client)  # Just check for no errors.
+    client = from_tree(tree)
+    client_sorted = client.sort(("stuff", 1))
+    list(client_sorted)  # Just check for no errors.

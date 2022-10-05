@@ -335,5 +335,7 @@ def test_mimetype_detection_hook(tmpdir):
             }
         ]
     }
-    client = from_config(config)
+    # Tiled warns about the couple unrecognized files.
+    with pytest.warns(UserWarning):
+        client = from_config(config)
     assert set(client) == {"a0", "a.0.asfwoeijviojefeiofw", "c.csv"}
