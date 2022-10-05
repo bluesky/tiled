@@ -390,7 +390,7 @@ def array_block(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Response would exceed {settings.response_bytesize_limit}. "
+                f"Response would exceed {settings.response_bytesize_limit}. "
                 "Use slicing ('?slice=...') to request smaller chunks."
             ),
         )
