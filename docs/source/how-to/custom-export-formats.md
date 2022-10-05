@@ -216,6 +216,20 @@ In that case, it must be given as a MIME type, in accordance with the standard.
 The file extension alias is not accepted.
 ```
 
+## Advanced: Streaming export
+
+HTTP supports chunked responses, where data is streamed incrementally. This
+is a good fit for streaming-oriented formats such as newline-delimited JSON.
+
+To create a chunked exporter, implement your exporter as a Python generator
+that yields bytes.
+
+```python
+def export(array, metadata):
+    for ... in ...:
+        yield b"..."
+```
+
 ## Further examples
 
 At the bottom of each of the modules in `tiled/structures`, you will
