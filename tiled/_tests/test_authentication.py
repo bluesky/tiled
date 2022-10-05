@@ -326,7 +326,7 @@ def test_api_keys(enter_password, config):
 def test_api_key_limit(enter_password, config):
     # Decrease the limit so this test runs faster.
     original_limit = authentication.API_KEY_LIMIT
-    authentication.API_KEY_LIMIT = 10
+    authentication.API_KEY_LIMIT = 3
     try:
         with enter_password("secret2"):
             user_client = from_config(config, username="bob", token_cache={})
@@ -343,7 +343,7 @@ def test_api_key_limit(enter_password, config):
 def test_session_limit(enter_password, config):
     # Decrease the limit so this test runs faster.
     original_limit = authentication.SESSION_LIMIT
-    authentication.SESSION_LIMIT = 10
+    authentication.SESSION_LIMIT = 3
     try:
         with enter_password("secret1"):
             for _ in range(authentication.SESSION_LIMIT):
