@@ -58,33 +58,29 @@ tree = MapAdapter(
 )
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 @pytest.mark.parametrize("filename", ["numbers.csv", "image.png", "image.tiff"])
-def test_export_2d_array(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
+def test_export_2d_array(filename, tmpdir):
+    client = from_tree(tree)
     client["A"].export(Path(tmpdir, filename))
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 @pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
-def test_export_table(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
+def test_export_table(filename, tmpdir):
+    client = from_tree(tree)
     client["C"].export(Path(tmpdir, filename))
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 @pytest.mark.parametrize("filename", ["numbers.csv"])
-def test_export_weather_data_var(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
+def test_export_weather_data_var(filename, tmpdir):
+    client = from_tree(tree)
     client["structured_data"]["weather"]["temperature"].export(
         Path(tmpdir, filename), slice=(0,)
     )
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
 @pytest.mark.parametrize("filename", ["test.h5"])
-def test_export_weather_all(filename, structure_clients, tmpdir):
-    client = from_tree(tree, structure_clients=structure_clients)
+def test_export_weather_all(filename, tmpdir):
+    client = from_tree(tree)
     client["structured_data"]["weather"].export(Path(tmpdir, filename))
 
 
