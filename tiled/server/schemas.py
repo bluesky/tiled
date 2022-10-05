@@ -75,7 +75,7 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class ReferenceDocument(pydantic.BaseModel):
+class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
     label: str
     url: pydantic.AnyUrl
 
