@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 import numpy
@@ -73,6 +74,17 @@ def test_export_2d_array(filename, tmpdir):
 @pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
 def test_export_table(filename, tmpdir):
     client["C"].export(Path(tmpdir, filename))
+
+
+def test_streaming_export():
+    "The application/json-seq format is streamed via a generator."
+    client = from_tree(tree)
+    buffer = io.BytesIO()
+    client["C"].export(buffer, format="application/json-seq")
+    # Verify that output is valid newline-delimited JSON.
+    buffer.seek(0)
+    for line in buffer.read().decode().splitlines():
+        json.loads(line)
 
 
 def test_export_weather_data_var(tmpdir):
