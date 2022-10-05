@@ -57,6 +57,7 @@ tree = MapAdapter(
         ),
     }
 )
+client = from_tree(tree)
 
 
 # We test a little bit of actual file export, using the tmpdir fixture,
@@ -66,18 +67,15 @@ tree = MapAdapter(
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "image.png", "image.tiff"])
 def test_export_2d_array(filename, tmpdir):
-    client = from_tree(tree)
     client["A"].export(Path(tmpdir, filename))
 
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
 def test_export_table(filename, tmpdir):
-    client = from_tree(tree)
     client["C"].export(Path(tmpdir, filename))
 
 
 def test_export_weather_data_var(tmpdir):
-    client = from_tree(tree)
     buffer = io.BytesIO()
     client["structured_data"]["weather"]["temperature"].export(
         buffer, slice=(0,), format="text/csv"
@@ -85,7 +83,6 @@ def test_export_weather_data_var(tmpdir):
 
 
 def test_export_weather_all():
-    client = from_tree(tree)
     buffer = io.BytesIO()
     client["structured_data"]["weather"].export(buffer, format="application/x-hdf5")
 
@@ -100,12 +97,10 @@ def test_serialization_error_hdf5_metadata():
 
 
 def test_path_as_Path_or_string(tmpdir):
-    client = from_tree(tree)
     client["A"].export(Path(tmpdir, "test_path_as_path.txt"))
     client["A"].export(str(Path(tmpdir, "test_path_as_str.txt")))
 
 
 def test_formats():
-    client = from_tree(tree)
     client.formats
     client["A"].formats

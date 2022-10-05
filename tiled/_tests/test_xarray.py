@@ -59,11 +59,11 @@ EXPECTED = {
 tree = MapAdapter(
     {key: DatasetAdapter.from_dataset(ds) for key, ds in EXPECTED.items()}
 )
+client = from_tree(tree)
 
 
 @pytest.mark.parametrize("key", list(tree))
 def test_xarray_dataset(key):
-    client = from_tree(tree)
     expected = EXPECTED[key]
     actual = client[key].read().load()
     xarray.testing.assert_equal(actual, expected)
@@ -71,7 +71,6 @@ def test_xarray_dataset(key):
 
 @pytest.mark.parametrize("key", ["image", "weather"])
 def test_dataset_column_access(key):
-    client = from_tree(tree)
     expected_dataset = EXPECTED[key]
     actual_dataset = client[key].read().load()
     for col in expected_dataset:
@@ -81,7 +80,6 @@ def test_dataset_column_access(key):
 
 
 def test_wide_table_optimization():
-    client = from_tree(tree)
     wide = client["wide"]
     with record_history() as history:
         wide.read()
@@ -92,7 +90,6 @@ def test_wide_table_optimization():
 
 
 def test_wide_table_optimization_off():
-    client = from_tree(tree)
     wide = client["wide"]
     with record_history() as history:
         wide.read(optimize_wide_table=False)
@@ -101,12 +98,8 @@ def test_wide_table_optimization_off():
 
 def test_url_limit_handling():
     "Check that requests and split up to stay below the URL length limit."
-    expected = xarray.Dataset(
-        {f"column_{i:03}": xarray.DataArray(i * numpy.ones(2)) for i in range(10)}
-    )
-    tree = MapAdapter({"very_wide": DatasetAdapter.from_dataset(expected)})
-    client = from_tree(tree)
-    dsc = client["very_wide"]
+    expected = EXPECTED["wide"]
+    dsc = client["wide"]
     dsc.read()  # Dry run to run any one-off state-initializing requests.
     # Accumulate Requests here for later inspection.
     requests = []
