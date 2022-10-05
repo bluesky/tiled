@@ -58,13 +58,13 @@ external resources. Their usage is open-ended. They may be used as links to:
 * data stored in other data storage systems unrelated to Tiled
 * documents or publications related to the data
 
-References look like this:
+References have a label and a URL. Labels do not need to be unique. Example:
 
 ```py
 references = [
-    {"raw_data": "https://..."},
-    {"raw_data": "https://..."},
-    {"doi:" "https://..."},
+    {"label": "raw_data", "url": "https://..."},
+    {"label": "raw_data", "url": "https://..."},
+    {"label': "doi", "url": "https://..."},
 ]
 ```
 
