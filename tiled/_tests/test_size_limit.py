@@ -37,6 +37,7 @@ config = {
     ],
     "response_bytesize_limit": size_limit,
 }
+client = from_config(config)
 
 
 @contextlib.contextmanager
@@ -58,14 +59,13 @@ def test_array(tmpdir):
     A password that is wrong, empty, or belonging to a different user fails.
     """
 
-    c = from_config(config)
     path = str(tmpdir / "test.csv")
-    c["tiny_array"].read()  # This is fine.
-    c["tiny_array"].export(path)  # This is fine.
+    client["tiny_array"].read()  # This is fine.
+    client["tiny_array"].export(path)  # This is fine.
     with fail_with_status_code(400):
-        c["small_array"].read()  # too big
+        client["small_array"].read()  # too big
     with fail_with_status_code(400):
-        c["small_array"].export(path)  # too big
+        client["small_array"].export(path)  # too big
 
 
 def test_dataframe(tmpdir):
@@ -73,11 +73,10 @@ def test_dataframe(tmpdir):
     A password that is wrong, empty, or belonging to a different user fails.
     """
 
-    c = from_config(config)
     path = str(tmpdir / "test.csv")
-    c["tiny_df"].read()  # This is fine.
-    c["tiny_df"].export(path)
+    client["tiny_df"].read()  # This is fine.
+    client["tiny_df"].export(path)
     with fail_with_status_code(400):
-        c["small_df"].read()  # too big
+        client["small_df"].read()  # too big
     with fail_with_status_code(400):
-        c["small_df"].export(path)  # too big
+        client["small_df"].export(path)  # too big
