@@ -13,18 +13,24 @@ class DatasetAdapter(MapAdapter):
     """
 
     @classmethod
-    def from_dataset(cls, dataset, *, specs=None):
+    def from_dataset(cls, dataset, *, specs=None, references=None):
         mapping = _DatasetMap(dataset)
-        specs = specs or []
-        specs.append("xarray_dataset")
-        return cls(mapping, metadata={"attrs": dataset.attrs}, specs=specs)
+        return cls(
+            mapping,
+            metadata={"attrs": dataset.attrs},
+            specs=specs,
+            references=references,
+        )
 
-    def __init__(self, mapping, *args, specs=None, **kwargs):
+    def __init__(self, mapping, *args, specs=None, references=None, **kwargs):
         if isinstance(mapping, xarray.Dataset):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
             )
-        super().__init__(mapping, *args, specs=specs, **kwargs)
+        specs = specs or []
+        references = references or []
+        specs.append("xarray_dataset")
+        super().__init__(mapping, *args, specs=specs, references=references, **kwargs)
 
     def inlined_contents_enabled(self, depth):
         # Tell the server to in-line the description of each array

@@ -16,7 +16,7 @@ class _WritableMixin:
         self.key = key
         super().__init__(*args, **kwargs)
 
-    def put_metadata(self, metadata, specs):
+    def put_metadata(self, metadata, specs, references):
         # TODO This skips over validation and has a race condition in it, but
         # this test harness is not long for this world anyway, so good enough
         # for now.
@@ -24,6 +24,8 @@ class _WritableMixin:
         self._metadata.update(metadata)
         self.specs.clear()
         self.specs.extend(specs)
+        self.references.clear()
+        self.references.extend(references)
 
 
 class WritableArrayAdapter(_WritableMixin, ArrayAdapter):
@@ -59,7 +61,7 @@ class WritableCOOAdapter(_WritableMixin, COOAdapter):
 
 
 class WritableMapAdapter(_WritableMixin, MapAdapter):
-    def post_metadata(self, metadata, structure_family, structure, specs):
+    def post_metadata(self, metadata, structure_family, structure, specs, references):
         key = str(uuid.uuid4())
         if structure_family == StructureFamily.array:
             # Initialize an array of zeros, similar to how chunked storage
@@ -74,6 +76,7 @@ class WritableMapAdapter(_WritableMixin, MapAdapter):
                 metadata=metadata,
                 specs=specs,
                 key=key,
+                references=references,
             )
         elif structure_family == StructureFamily.dataframe:
             # Initialize an empty DataFrame with the right columns/types.
@@ -87,6 +90,7 @@ class WritableMapAdapter(_WritableMixin, MapAdapter):
                 metadata=metadata,
                 specs=specs,
                 key=key,
+                references=references,
             )
         elif structure_family == StructureFamily.sparse:
             self._mapping[key] = WritableCOOAdapter(
@@ -96,6 +100,7 @@ class WritableMapAdapter(_WritableMixin, MapAdapter):
                 metadata=metadata,
                 specs=specs,
                 key=key,
+                references=references,
             )
         else:
             raise NotImplementedError(structure_family)

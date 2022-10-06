@@ -56,6 +56,7 @@ class EntryFields(str, enum.Enum):
     count = "count"
     sorting = "sorting"
     specs = "specs"
+    references = "references"
     none = ""
 
 
@@ -74,15 +75,25 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
+class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
+    label: str
+    url: pydantic.AnyUrl
+
+    @classmethod
+    def from_json(cls, json_doc):
+        return cls(label=json_doc["label"], url=json_doc["url"])
+
+
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
     specs: Optional[List[str]]
-    metadata: Optional[dict]  # free-form, user-specified dict
+    metadata: Optional[Dict]  # free-form, user-specified dict
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
+    references: Optional[List[ReferenceDocument]]
 
 
 AttributesT = TypeVar("AttributesT")
@@ -190,7 +201,7 @@ class About(pydantic.BaseModel):
     queries: List[str]
     authentication: AboutAuthentication
     links: Dict[str, str]
-    meta: dict
+    meta: Dict
 
 
 class PrincipalType(str, enum.Enum):
@@ -282,6 +293,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
     metadata: Dict
     specs: List[str]
+    references: List[ReferenceDocument]
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -304,6 +316,7 @@ class GetDistinctResponse(pydantic.BaseModel):
 class PutMetadataRequest(pydantic.BaseModel):
     metadata: Optional[Dict]
     specs: Optional[List[str]]
+    references: Optional[List[ReferenceDocument]]
 
 
 NodeStructure.update_forward_refs()

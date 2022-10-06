@@ -28,8 +28,9 @@ def test_write_array_full():
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
+    references = [{"label": "test", "url": "http://www.test.com"}]
     with record_history() as history:
-        client.write_array(a, metadata=metadata, specs=specs)
+        client.write_array(a, metadata=metadata, specs=specs, references=references)
     # one request for metadata, one for data
     assert len(history.requests) == 1 + 1
 
@@ -40,6 +41,7 @@ def test_write_array_full():
     numpy.testing.assert_equal(result_array, a)
     assert result.metadata == metadata
     assert result.specs == specs
+    assert result.references == references
 
 
 def test_write_large_array_full():
@@ -57,8 +59,9 @@ def test_write_large_array_full():
     try:
         metadata = {"scan_id": 1, "method": "A"}
         specs = ["SomeSpec"]
+        references = [{"label": "test", "url": "http://www.test.com"}]
         with record_history() as history:
-            client.write_array(a, metadata=metadata, specs=specs)
+            client.write_array(a, metadata=metadata, specs=specs, references=references)
         # one request for metadata, more than one for data
         assert len(history.requests) > 1 + 1
 
@@ -69,6 +72,7 @@ def test_write_large_array_full():
         numpy.testing.assert_equal(result_array, a)
         assert result.metadata == metadata
         assert result.specs == specs
+        assert result.references == references
     finally:
         client._SUGGESTED_MAX_UPLOAD_SIZE = original
 
@@ -84,8 +88,9 @@ def test_write_array_chunked():
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
+    references = [{"label": "test", "url": "http://www.test.com"}]
     with record_history() as history:
-        client.write_array(a, metadata=metadata, specs=specs)
+        client.write_array(a, metadata=metadata, specs=specs, references=references)
     # one request for metadata, multiple for data
     assert len(history.requests) == 1 + a.npartitions
 
@@ -96,6 +101,7 @@ def test_write_array_chunked():
     numpy.testing.assert_equal(result_array, a.compute())
     assert result.metadata == metadata
     assert result.specs == specs
+    assert result.references == references
 
 
 def test_write_dataframe_full():
@@ -109,9 +115,12 @@ def test_write_dataframe_full():
     df = pandas.DataFrame(data)
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
+    references = [{"label": "test", "url": "http://www.test.com"}]
 
     with record_history() as history:
-        client.write_dataframe(df, metadata=metadata, specs=specs)
+        client.write_dataframe(
+            df, metadata=metadata, specs=specs, references=references
+        )
     # one request for metadata, one for data
     assert len(history.requests) == 1 + 1
 
@@ -121,8 +130,8 @@ def test_write_dataframe_full():
 
     pandas.testing.assert_frame_equal(result_dataframe, df)
     assert result.metadata == metadata
-    # TODO In the future this will be accessible via result.specs.
-    assert result.item["attributes"]["specs"] == specs
+    assert result.specs == specs
+    assert result.references == references
 
 
 def test_write_dataframe_partitioned():
@@ -137,9 +146,12 @@ def test_write_dataframe_partitioned():
     ddf = dask.dataframe.from_pandas(df, npartitions=3)
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
+    references = [{"label": "test", "url": "http://www.test.com"}]
 
     with record_history() as history:
-        client.write_dataframe(ddf, metadata=metadata, specs=specs)
+        client.write_dataframe(
+            ddf, metadata=metadata, specs=specs, references=references
+        )
     # one request for metadata, multiple for data
     assert len(history.requests) == 1 + 3
 
@@ -149,8 +161,8 @@ def test_write_dataframe_partitioned():
 
     pandas.testing.assert_frame_equal(result_dataframe, df)
     assert result.metadata == metadata
-    # TODO In the future this will be accessible via result.specs.
-    assert result.item["attributes"]["specs"] == specs
+    assert result.specs == specs
+    assert result.references == references
 
 
 def test_write_sparse_full():
@@ -164,6 +176,7 @@ def test_write_sparse_full():
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
+    references = [{"label": "test", "url": "http://www.test.com"}]
     with record_history() as history:
         client.write_sparse(
             coords=coo.coords,
@@ -171,6 +184,7 @@ def test_write_sparse_full():
             shape=coo.shape,
             metadata=metadata,
             specs=specs,
+            references=references,
         )
     # one request for metadata, one for data
     assert len(history.requests) == 1 + 1
@@ -182,6 +196,7 @@ def test_write_sparse_full():
     numpy.testing.assert_equal(result_array.todense(), coo.todense())
     assert result.metadata == metadata
     assert result.specs == specs
+    assert result.references == references
 
 
 def test_write_sparse_chunked():
@@ -193,6 +208,7 @@ def test_write_sparse_chunked():
 
     metadata = {"scan_id": 1, "method": "A"}
     specs = ["SomeSpec"]
+    references = [{"label": "test", "url": "http://www.test.com"}]
     N = 5
     with record_history() as history:
         x = client.new(
@@ -200,6 +216,7 @@ def test_write_sparse_chunked():
             COOStructure(shape=(2 * N,), chunks=((N, N),)),
             metadata=metadata,
             specs=specs,
+            references=references,
         )
         x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
         x.write_block(coords=[[0, 1]], data=[6.7, 1.2], block=(1,))
@@ -220,3 +237,4 @@ def test_write_sparse_chunked():
     # numpy.testing.assert_equal(result_array, sparse.COO(coords=[0, 1, ]))
     assert result.metadata == metadata
     assert result.specs == specs
+    assert result.references == references

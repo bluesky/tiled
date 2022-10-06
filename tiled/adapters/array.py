@@ -24,7 +24,16 @@ class ArrayAdapter:
 
     structure_family = "array"
 
-    def __init__(self, array, *, chunks=None, metadata=None, dims=None, specs=None):
+    def __init__(
+        self,
+        array,
+        *,
+        chunks=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        references=None,
+    ):
         if chunks is None:
             if hasattr(array, "chunks"):
                 chunks = array.chunks  # might be None
@@ -41,15 +50,26 @@ class ArrayAdapter:
         self._metadata = metadata or {}
         self._dims = dims
         self.specs = specs or []
+        self.references = references or []
 
     @classmethod
-    def from_array(cls, array, *, chunks=None, metadata=None, dims=None, specs=None):
+    def from_array(
+        cls,
+        array,
+        *,
+        chunks=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        references=None,
+    ):
         return cls(
             numpy.asarray(array),
             chunks=chunks,
             metadata=metadata,
             dims=dims,
             specs=specs,
+            references=references,
         )
 
     def __repr__(self):

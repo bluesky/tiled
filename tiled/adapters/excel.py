@@ -7,34 +7,32 @@ from .dataframe import DataFrameAdapter
 
 
 class ExcelAdapter(MapAdapter):
-    """
-    Read the sheets in an Excel file.
-
-    This maps the Excel file, which may contain one of more spreadsheets,
-    onto a tree of tabular structures.
-
-    Examples
-    --------
-
-    Given a file path
-
-    >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
-
-    Given a file object
-
-    >>> file = open("path/to/excel_file.xlsx")
-    >>> ExcelAdapter.from_file(file)
-
-    Given a pandas.ExcelFile object
-
-    >>> import pandas
-    >>> ef = pandas.ExcelFile(file)
-    >>> ExcelAdapter.from_file(ef)
-    """
-
     @classmethod
-    def from_file(cls, file, specs=None):
+    def from_file(cls, file, *, specs=None, references=None):
+        """
+        Read the sheets in an Excel file.
 
+        This maps the Excel file, which may contain one of more spreadsheets,
+        onto a tree of tabular structures.
+
+        Examples
+        --------
+
+        Given a file path
+
+        >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
+
+        Given a file object
+
+        >>> file = open("path/to/excel_file.xlsx")
+        >>> ExcelAdapter.from_file(file)
+
+        Given a pandas.ExcelFile object
+
+        >>> import pandas
+        >>> ef = pandas.ExcelFile(file)
+        >>> ExcelAdapter.from_file(ef)
+        """
         if isinstance(file, pandas.ExcelFile):
             excel_file = file
         else:
@@ -54,4 +52,4 @@ class ExcelAdapter(MapAdapter):
                 cache.discard(cache_key)  # parsed sheet content
                 cache.discard_dask(ddf.__dask_keys__())  # dask tasks
             mapping[sheet_name] = DataFrameAdapter.from_dask_dataframe(ddf)
-        return cls(mapping, specs=specs)
+        return cls(mapping, specs=specs, references=references)

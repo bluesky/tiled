@@ -154,7 +154,14 @@ class BaseClient:
     @property
     def specs(self):
         "List of specifications describing the structure of the metadata and/or data."
-        return ListView(self.item["attributes"]["specs"])
+        return ListView(self._item["attributes"]["specs"])
+
+    @property
+    def references(self):
+        "References (links) to related context, metadata, or data."
+        # We use .get(...) here for backward-compatibility.
+        # This can be a straight dict lookup once all servers are updated.
+        return ListView(self._item["attributes"].get("references", []))
 
     @property
     def path(self):
@@ -206,7 +213,7 @@ class BaseClient:
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None):
+    def update_metadata(self, metadata=None, specs=None, references=None):
         """
         EXPERIMENTAL: Update metadata.
 
@@ -220,6 +227,10 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        references : List[Dict[str, URL]], optional
+            References (e.g. links) to related information. This may include
+            links into other Tiled data sets, search results, or external
+            resources unrelated to Tiled.
         """
 
         self._cached_len = None
@@ -227,6 +238,7 @@ class BaseClient:
         data = {
             "metadata": metadata,
             "specs": specs,
+            "references": references,
         }
 
         full_path_meta = (
@@ -249,6 +261,9 @@ class BaseClient:
 
         if specs is not None:
             self._item["attributes"]["specs"] = specs
+
+        if references is not None:
+            self._item["attributes"]["references"] = references
 
     @property
     def metadata_revisions(self):

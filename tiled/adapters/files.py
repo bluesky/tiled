@@ -126,6 +126,7 @@ class DirectoryAdapter(MapAdapter):
         metadata=None,
         sorting=None,
         specs=None,
+        references=None,
         access_policy=None,
         error_if_missing=True,
         greedy=False,
@@ -159,7 +160,8 @@ class DirectoryAdapter(MapAdapter):
             By default, this strips off the suffixes, so "a.tif" -> "a".
         metadata : dict, optional,
             Metadata for the top-level node of this tree.
-        specs : List[str]
+        specs : List[str], optional
+        references: List[dict], optional
         access_policy : AccessPolicy, optional
         error_if_missing : boolean, optional
             If True (default) raise an error if the directory does not exist.
@@ -353,8 +355,9 @@ class DirectoryAdapter(MapAdapter):
             watcher_thread_kill_switch=watcher_thread_kill_switch,
             manual_trigger=manual_trigger,
             metadata=metadata,
-            sorting=sorting,
             specs=specs,
+            references=references,
+            sorting=sorting,
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
@@ -374,8 +377,9 @@ class DirectoryAdapter(MapAdapter):
         watcher_thread_kill_switch,
         manual_trigger,
         metadata,
-        sorting,
         specs,
+        references,
+        sorting,
         access_policy,
         entries_stale_after=None,
         metadata_stale_after=None,
@@ -384,8 +388,9 @@ class DirectoryAdapter(MapAdapter):
         super().__init__(
             mapping,
             metadata=metadata,
-            sorting=sorting,
             specs=specs,
+            references=references,
+            sorting=sorting,
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,
             metadata_stale_after=metadata_stale_after,
