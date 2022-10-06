@@ -33,6 +33,9 @@ tree = MapAdapter(
             ),
             npartitions=3,
         ),
+        "empty_table": DataFrameAdapter.from_pandas(
+            pandas.DataFrame({"A": []}), npartitions=1
+        ),
         "structured_data": MapAdapter(
             {
                 "pets": ArrayAdapter.from_array(
@@ -85,6 +88,15 @@ def test_streaming_export():
     buffer.seek(0)
     for line in buffer.read().decode().splitlines():
         json.loads(line)
+
+
+def test_streaming_export_empty():
+    "The application/json-seq format is streamed via a generator."
+    client = from_tree(tree)
+    buffer = io.BytesIO()
+    client["empty_table"].export(buffer, format="application/json-seq")
+    buffer.seek(0)
+    assert buffer.read() == b""
 
 
 def test_export_weather_data_var(tmpdir):
