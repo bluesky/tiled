@@ -769,13 +769,6 @@ async def put_metadata(
             status_code=405, detail="This path does not support update of metadata."
         )
 
-    if body.structure_family == StructureFamily.dataframe:
-        # Decode meta for pydantic validation
-        body.structure.micro.meta = base64.b64decode(body.structure.micro.meta)
-        body.structure.micro.divisions = base64.b64decode(
-            body.structure.micro.divisions
-        )
-
     metadata, structure_family, structure, specs, references = (
         body.metadata if body.metadata is not None else entry.metadata,
         entry.structure_family,
