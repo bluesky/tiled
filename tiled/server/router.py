@@ -599,6 +599,9 @@ def post_metadata(
     validation_registry=Depends(get_validation_registry),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
+    if not hasattr(entry, "post_metadata"):
+        raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
+
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
         body.structure.micro.meta = base64.b64decode(body.structure.micro.meta)
@@ -606,11 +609,12 @@ def post_metadata(
             body.structure.micro.divisions
         )
 
-    metadata, structure_family, structure, specs = (
+    metadata, structure_family, structure, specs, references = (
         body.metadata,
         body.structure_family,
         body.structure,
         body.specs,
+        body.references,
     )
 
     # Known Issue:
@@ -624,7 +628,7 @@ def post_metadata(
         if spec in validation_registry:
             try:
                 result = validation_registry(spec)(
-                    metadata, structure_family, structure, spec
+                    metadata, structure_family, structure, spec, references
                 )
                 if result is not None:
                     metadata_modified = True
@@ -635,43 +639,39 @@ def post_metadata(
                     status_code=400, detail=f"failed validation for spec {spec}:\n{e}"
                 )
 
-    if hasattr(entry, "post_metadata"):
-        key = entry.post_metadata(
-            metadata=body.metadata,
-            structure_family=body.structure_family,
-            structure=body.structure,
-            specs=body.specs,
-            references=body.references,
+    key = entry.post_metadata(
+        metadata=body.metadata,
+        structure_family=body.structure_family,
+        structure=body.structure,
+        specs=body.specs,
+        references=body.references,
+    )
+    links = {}
+    base_url = get_base_url(request)
+    path_parts = [segment for segment in path.split("/") if segment] + [key]
+    path_str = "/".join(path_parts)
+    links["self"] = f"{base_url}/node/metadata/{path_str}"
+    if body.structure_family == StructureFamily.array:
+        block_template = ",".join(
+            f"{{{index}}}" for index in range(len(body.structure.macro.shape))
         )
-        links = {}
-        base_url = get_base_url(request)
-        path_parts = [segment for segment in path.split("/") if segment] + [key]
-        path_str = "/".join(path_parts)
-        links["self"] = f"{base_url}/node/metadata/{path_str}"
-        if body.structure_family == StructureFamily.array:
-            block_template = ",".join(
-                f"{{{index}}}" for index in range(len(body.structure.macro.shape))
-            )
-            links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            links["full"] = f"{base_url}/array/full/{path_str}"
-        elif body.structure_family == StructureFamily.sparse:
-            # Different from array because of structure.macro.shape vs structure.shape
-            # Can be unified if we drop macro/micro namespace.
-            block_template = ",".join(
-                f"{{{index}}}" for index in range(len(body.structure.shape))
-            )
-            links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            links["full"] = f"{base_url}/array/full/{path_str}"
-        elif body.structure_family == StructureFamily.dataframe:
-            links[
-                "partition"
-            ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
-            links["full"] = f"{base_url}/node/full/{path_str}"
-        else:
-            raise NotImplementedError(body.structure_family)
+        links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
+        links["full"] = f"{base_url}/array/full/{path_str}"
+    elif body.structure_family == StructureFamily.sparse:
+        # Different from array because of structure.macro.shape vs structure.shape
+        # Can be unified if we drop macro/micro namespace.
+        block_template = ",".join(
+            f"{{{index}}}" for index in range(len(body.structure.shape))
+        )
+        links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
+        links["full"] = f"{base_url}/array/full/{path_str}"
+    elif body.structure_family == StructureFamily.dataframe:
+        links[
+            "partition"
+        ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
+        links["full"] = f"{base_url}/node/full/{path_str}"
     else:
-        raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
-
+        raise NotImplementedError(body.structure_family)
     response_data = {"id": key, "links": links}
     if metadata_modified:
         response_data["metadata"] = metadata
@@ -764,49 +764,50 @@ async def put_metadata(
     validation_registry=Depends(get_validation_registry),
     entry=SecureEntry(scopes=["write:metadata"]),
 ):
-    if hasattr(entry, "put_metadata"):
-        input_metadata = body.metadata if body.metadata is not None else entry.metadata
-        input_specs = body.specs if body.specs is not None else entry.specs
-        input_references = (
-            body.references if body.references is not None else entry.references
-        )
-        metadata, structure_family, structure, specs, references = (
-            input_metadata,
-            entry.structure_family,
-            get_structure(entry),
-            input_specs,
-            input_references,
-        )
-
-        metadata_modified = False
-
-        for spec in specs:
-            if spec in validation_registry:
-                try:
-                    result = validation_registry(spec)(
-                        metadata, structure_family, structure, spec
-                    )
-                    if result is not None:
-                        metadata_modified = True
-                        metadata = result
-
-                except ValidationError as e:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"failed validation for spec {spec}:\n{e}",
-                    )
-
-        entry.put_metadata(metadata=metadata, specs=specs, references=references)
-
-        response_data = {"id": entry.key}
-        if metadata_modified:
-            response_data["metadata"] = metadata
-        return json_or_msgpack(request, response_data)
-
-    else:
+    if not hasattr(entry, "put_metadata"):
         raise HTTPException(
             status_code=405, detail="This path does not support update of metadata."
         )
+
+    if body.structure_family == StructureFamily.dataframe:
+        # Decode meta for pydantic validation
+        body.structure.micro.meta = base64.b64decode(body.structure.micro.meta)
+        body.structure.micro.divisions = base64.b64decode(
+            body.structure.micro.divisions
+        )
+
+    metadata, structure_family, structure, specs, references = (
+        body.metadata if body.metadata is not None else entry.metadata,
+        entry.structure_family,
+        get_structure(entry),
+        body.specs if body.specs is not None else entry.specs,
+        body.references if body.references is not None else entry.references,
+    )
+
+    metadata_modified = False
+
+    for spec in specs:
+        if spec in validation_registry:
+            try:
+                result = validation_registry(spec)(
+                    metadata, structure_family, structure, spec, references
+                )
+                if result is not None:
+                    metadata_modified = True
+                    metadata = result
+
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"failed validation for spec {spec}:\n{e}",
+                )
+
+    entry.put_metadata(metadata=metadata, specs=specs, references=references)
+
+    response_data = {"id": entry.key}
+    if metadata_modified:
+        response_data["metadata"] = metadata
+    return json_or_msgpack(request, response_data)
 
 
 @router.get("/node/revisions/{path:path}")
