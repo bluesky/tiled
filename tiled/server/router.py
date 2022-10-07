@@ -617,27 +617,29 @@ def post_metadata(
         body.references,
     )
 
+    metadata_modified = False
+
+    # Specs should be ordered from most specific/constrained to least.
+    # Validate them in reverse order, with the least constrained spec first,
+    # because it may do normalization that helps pass the more constrained one.
     # Known Issue:
     # When there is more than one spec, it's possible for the validator for
     # Spec 2 to make a modification that breaks the validation for Spec 1.
     # For now we leave it to the server maintainer to ensure that validators
     # won't step on each other in this way, but this may need revisiting.
-    metadata_modified = False
-
-    for spec in specs:
-        if spec in validation_registry:
-            try:
-                result = validation_registry(spec)(
-                    metadata, structure_family, structure, spec, references
-                )
-                if result is not None:
-                    metadata_modified = True
-                    metadata = result
-
-            except ValidationError as e:
-                raise HTTPException(
-                    status_code=400, detail=f"failed validation for spec {spec}:\n{e}"
-                )
+    for spec in reversed(specs):
+        if spec not in validation_registry:
+            raise HTTPException(status_code=400, detail=f"Unrecognized spec: {spec}")
+        validator = validation_registry(spec)
+        try:
+            result = validator(metadata, structure_family, structure, spec, references)
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=400, detail=f"failed validation for spec {spec}:\n{e}"
+            )
+        if result is not None:
+            metadata_modified = True
+            metadata = result
 
     key = entry.post_metadata(
         metadata=body.metadata,
@@ -779,21 +781,28 @@ async def put_metadata(
 
     metadata_modified = False
 
-    for spec in specs:
-        if spec in validation_registry:
-            try:
-                result = validation_registry(spec)(
-                    metadata, structure_family, structure, spec, references
-                )
-                if result is not None:
-                    metadata_modified = True
-                    metadata = result
-
-            except ValidationError as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"failed validation for spec {spec}:\n{e}",
-                )
+    # Specs should be ordered from most specific/constrained to least.
+    # Validate them in reverse order, with the least constrained spec first,
+    # because it may do normalization that helps pass the more constrained one.
+    # Known Issue:
+    # When there is more than one spec, it's possible for the validator for
+    # Spec 2 to make a modification that breaks the validation for Spec 1.
+    # For now we leave it to the server maintainer to ensure that validators
+    # won't step on each other in this way, but this may need revisiting.
+    for spec in reversed(specs):
+        if spec not in validation_registry:
+            raise HTTPException(status_code=400, detail=f"Unrecognized spec: {spec}")
+        validator = validation_registry(spec)
+        try:
+            result = validator(metadata, structure_family, structure, spec, references)
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"failed validation for spec {spec}:\n{e}",
+            )
+        if result is not None:
+            metadata_modified = True
+            metadata = result
 
     entry.put_metadata(metadata=metadata, specs=specs, references=references)
 
