@@ -1,8 +1,9 @@
-# https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
+import sys
 import prometheus_client.multiprocess
 
 
 def child_exit(server, worker):
+    # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
     try:
         prometheus_client.multiprocess.mark_process_dead(worker.pid)
     except TypeError:
@@ -11,7 +12,8 @@ def child_exit(server, worker):
         print(
             "Gunicorn worker process failed to stop prometheus client."
             "This is likely because of a previous error in starting up the "
-            "tiled worker."
+            "tiled worker.",
+            file=sys.stderr,
         )
 
 
