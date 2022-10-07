@@ -5,8 +5,10 @@ import prometheus_client.multiprocess
 def child_exit(server, worker):
     try:
         prometheus_client.multiprocess.mark_process_dead(worker.pid)
-    except:
-        pass
+    except TypeError:
+        print("Gunicorn worker process failed to stop prometheus client."
+              "This is likely because of a previous error in starting up the "
+              "tiled worker.")
 
 
 bind = "0.0.0.0:8000"
