@@ -3,7 +3,10 @@ import prometheus_client.multiprocess
 
 
 def child_exit(server, worker):
-    prometheus_client.multiprocess.mark_process_dead(worker.pid)
+    try:
+        prometheus_client.multiprocess.mark_process_dead(worker.pid)
+    except:
+        pass
 
 
 bind = "0.0.0.0:8000"
