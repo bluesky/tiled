@@ -333,6 +333,7 @@ class GetDistinctResponse(pydantic.BaseModel):
 
 
 class PutMetadataRequest(pydantic.BaseModel):
+    # These fields are optional because None means "no changes; do not update".
     metadata: Optional[Dict]
     specs: Optional[Specs]
     references: Optional[References]
