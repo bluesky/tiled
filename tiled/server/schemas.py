@@ -76,7 +76,7 @@ class SortingItem(pydantic.BaseModel):
 
 
 class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
-    label: str
+    label: pydantic.constr(max_length=255)
     url: pydantic.AnyUrl
 
     @classmethod
@@ -84,16 +84,21 @@ class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
         return cls(label=json_doc["label"], url=json_doc["url"])
 
 
+References = pydantic.conlist(ReferenceDocument, max_items=20)
+Spec = pydantic.constr(max_length=255)
+Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
+
+
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
-    specs: Optional[List[str]]
+    specs: Optional[Specs]
     metadata: Optional[Dict]  # free-form, user-specified dict
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
-    references: Optional[List[ReferenceDocument]]
+    references: Optional[References]
 
 
 AttributesT = TypeVar("AttributesT")
@@ -292,8 +297,8 @@ class PostMetadataRequest(pydantic.BaseModel):
     structure_family: StructureFamily
     structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
     metadata: Dict
-    specs: List[str]
-    references: List[ReferenceDocument]
+    specs: Specs
+    references: References
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -315,8 +320,8 @@ class GetDistinctResponse(pydantic.BaseModel):
 
 class PutMetadataRequest(pydantic.BaseModel):
     metadata: Optional[Dict]
-    specs: Optional[List[str]]
-    references: Optional[List[ReferenceDocument]]
+    specs: Optional[Specs]
+    references: Optional[References]
 
 
 NodeStructure.update_forward_refs()
