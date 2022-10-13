@@ -7,6 +7,7 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic
 import pydantic.dataclasses
+import pydantic.errors
 import pydantic.generics
 
 from ..structures.core import StructureFamily
@@ -86,7 +87,9 @@ class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
 
 References = pydantic.conlist(ReferenceDocument, max_items=20)
 Spec = pydantic.constr(max_length=255)
-Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
+# Wait for fix https://github.com/pydantic/pydantic/issues/3957
+# Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
+Specs = pydantic.conlist(Spec, max_items=20)
 
 
 class NodeAttributes(pydantic.BaseModel):
@@ -296,9 +299,20 @@ class APIKeyRequestParams(pydantic.BaseModel):
 class PostMetadataRequest(pydantic.BaseModel):
     structure_family: StructureFamily
     structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
-    metadata: Dict
-    specs: Specs
-    references: References
+    metadata: Dict = {}
+    specs: Specs = []
+    references: References = []
+
+    # Wait for fix https://github.com/pydantic/pydantic/issues/3957
+    # to do this with `unique_items` parameters to `pydantic.constr`.
+    @pydantic.validator("specs", always=True)
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        for i, value in enumerate(v, start=1):
+            if value in v[i:]:
+                raise pydantic.errors.ListUniqueItemsError()
+        return v
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -322,6 +336,17 @@ class PutMetadataRequest(pydantic.BaseModel):
     metadata: Optional[Dict]
     specs: Optional[Specs]
     references: Optional[References]
+
+    # Wait for fix https://github.com/pydantic/pydantic/issues/3957
+    # to do this with `unique_items` parameters to `pydantic.constr`.
+    @pydantic.validator("specs", always=True)
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        for i, value in enumerate(v, start=1):
+            if value in v[i:]:
+                raise pydantic.errors.ListUniqueItemsError()
+        return v
 
 
 NodeStructure.update_forward_refs()

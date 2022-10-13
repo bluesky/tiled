@@ -613,7 +613,7 @@ def post_metadata(
         body.metadata,
         body.structure_family,
         body.structure,
-        body.specs,
+        body.specs or [],
         body.references,
     )
 
@@ -775,7 +775,7 @@ async def put_metadata(
         body.metadata if body.metadata is not None else entry.metadata,
         entry.structure_family,
         get_structure(entry),
-        body.specs if body.specs is not None else entry.specs,
+        body.specs if body.specs is not None else (entry.specs or []),
         body.references if body.references is not None else entry.references,
     )
 

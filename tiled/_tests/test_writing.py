@@ -291,15 +291,20 @@ def test_limits():
 
     # Up to 20 specs are allowed.
     max_allowed_specs = [f"spec{i}" for i in range(MAX_ALLOWED_SPECS)]
-    client.write_array([1, 2, 3], specs=max_allowed_specs)
+    x = client.write_array([1, 2, 3], specs=max_allowed_specs)
+    x.update_metadata(specs=max_allowed_specs)  # no-op
     too_many_specs = max_allowed_specs + ["one_too_many"]
     with fail_with_status_code(422):
         client.write_array([1, 2, 3], specs=too_many_specs)
+    with fail_with_status_code(422):
+        x.update_metadata(specs=too_many_specs)
 
     # Specs cannot repeat.
-    has_repeated_spec = ["a", "b", "a"]
+    has_repeated_spec = ["spec0", "spec1", "spec0"]
     with fail_with_status_code(422):
         client.write_array([1, 2, 3], specs=has_repeated_spec)
+    with fail_with_status_code(422):
+        x.update_metadata(specs=has_repeated_spec)
 
     # A given spec cannot be too long.
     max_allowed_chars = ["a" * MAX_SPEC_CHARS]
@@ -307,18 +312,23 @@ def test_limits():
     too_many_chars = ["a" * (1 + MAX_SPEC_CHARS)]
     with fail_with_status_code(422):
         client.write_array([1, 2, 3], specs=too_many_chars)
+    with fail_with_status_code(422):
+        x.update_metadata(specs=too_many_chars)
 
     # Up to 20 references are allowed.
     max_allowed_references = [
         {"label": f"ref{i}", "url": f"https://exmaple.com/{i}"}
         for i in range(MAX_ALLOWED_REFERENCES)
     ]
-    client.write_array([1, 2, 3], references=max_allowed_references)
+    y = client.write_array([1, 2, 3], references=max_allowed_references)
+    y.update_metadata(references=max_allowed_references)  # no-op
     too_many_references = max_allowed_references + [
         {"label": "one_too_many", "url": "https://example.com/one_too_many"}
     ]
     with fail_with_status_code(422):
         client.write_array([1, 2, 3], references=too_many_references)
+    with fail_with_status_code(422):
+        y.update_metadata(references=too_many_references)
 
     # A given referenc label cannot be too long.
     max_allowed_chars = "a" * MAX_LABEL_CHARS
@@ -332,3 +342,5 @@ def test_limits():
             [1, 2, 3],
             references=[{"label": too_many_chars, "url": "https://example.com"}],
         )
+    with fail_with_status_code(422):
+        y.update_metadata(references=too_many_chars)
