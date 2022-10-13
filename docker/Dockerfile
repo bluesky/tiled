@@ -1,3 +1,6 @@
+# to build locally, use:
+#  docker build -t tiled . -f ./docker/Dockerfile
+
 FROM node:16-alpine AS web_builder
 WORKDIR /app
 COPY web-frontend .
@@ -14,11 +17,11 @@ FROM base as builder
 WORKDIR /app
 
 # for versioneer
-RUN apt-get update && apt-get install -y git
+RUN apt-get update && apt-get install -y git gcc python3-dev
 
 # copy requirements over first so this layer is cached and we don't have to reinstall deps when editing src
 COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-sparse.txt requirements-compression.txt docker/requirements-docker.txt /tmp/
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip wheel
 RUN pip install \
   -r /tmp/requirements-server.txt \
   -r /tmp/requirements-formats.txt \
