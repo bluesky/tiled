@@ -1,6 +1,5 @@
 import collections
 import collections.abc
-import urllib.parse
 
 import httpx
 
@@ -13,7 +12,7 @@ from .context import (
     context_from_tree,
 )
 from .node import Node
-from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS, client_for_item
+from .utils import client_for_item
 
 
 def from_uri(
@@ -66,45 +65,16 @@ def from_uri(
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
     """
-    # The uri is expected to reach the root or /node/metadata/[...] route.
-    url = httpx.URL(uri)
-    headers = headers or {}
-    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
-    params = {}
-    # If ?api_key=... is present, move it from the query into a header.
-    # The server would accept it in the query parameter, but using
-    # a header is a little more secure (e.g. not logged) and makes
-    # it is simpler to manage the client.base_url.
-    parsed_query = urllib.parse.parse_qs(url.query.decode())
-    api_key_list = parsed_query.pop("api_key", None)
-    if api_key_list is not None:
-        if len(api_key_list) != 1:
-            raise ValueError("Cannot handle two api_key query parameters")
-        (api_key,) = api_key_list
-        headers["X-TILED-API-KEY"] = api_key
-    params.update(urllib.parse.urlencode(parsed_query, doseq=True))
-    # Construct the URL *without* the params, which we will pass in separately.
-    base_uri = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
-    )
-    if timeout is None:
-        timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
-
-    client = httpx.Client(
-        base_url=base_uri,
-        verify=verify,
-        event_hooks=EVENT_HOOKS,
-        timeout=timeout,
-        headers=headers,
-        params=params,
-    )
     context = Context(
-        client,
+        uri,
         username=username,
         auth_provider=auth_provider,
         api_key=api_key,
         cache=cache,
         offline=offline,
+        headers=headers,
+        timeout=timeout,
+        verify=verify,
         token_cache=token_cache,
         prompt_for_reauthentication=prompt_for_reauthentication,
     )

@@ -21,6 +21,7 @@ from .utils import (
     ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
     DEFAULT_TIMEOUT_PARAMS,
+    EVENT_HOOKS,
     NotAvailableOffline,
     handle_error,
 )
@@ -33,17 +34,52 @@ class Context:
 
     def __init__(
         self,
-        client,
+        uri,
         *,
+        headers=None,
         username=None,
         auth_provider=None,
         api_key=None,
         cache=None,
         offline=False,
+        timeout=None,
+        verify=True,
         token_cache=DEFAULT_TOKEN_CACHE,
         prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
+        # The uri is expected to reach the root or /node/metadata/[...] route.
+        url = httpx.URL(uri)
+        headers = headers or {}
+        headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
+        params = {}
+        # If ?api_key=... is present, move it from the query into a header.
+        # The server would accept it in the query parameter, but using
+        # a header is a little more secure (e.g. not logged) and makes
+        # it is simpler to manage the client.base_url.
+        parsed_query = urllib.parse.parse_qs(url.query.decode())
+        api_key_list = parsed_query.pop("api_key", None)
+        if api_key_list is not None:
+            if len(api_key_list) != 1:
+                raise ValueError("Cannot handle two api_key query parameters")
+            (api_key,) = api_key_list
+            headers["X-TILED-API-KEY"] = api_key
+        params.update(urllib.parse.urlencode(parsed_query, doseq=True))
+        # Construct the URL *without* the params, which we will pass in separately.
+        base_uri = urllib.parse.urlunsplit(
+            (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
+        )
+        if timeout is None:
+            timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
+
+        client = httpx.Client(
+            base_url=base_uri,
+            verify=verify,
+            event_hooks=EVENT_HOOKS,
+            timeout=timeout,
+            headers=headers,
+            params=params,
+        )
         if (username is not None) or (auth_provider is not None):
             if api_key is not None:
                 raise ValueError("Use api_key or username/auth_provider, not both.")
