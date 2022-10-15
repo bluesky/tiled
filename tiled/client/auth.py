@@ -1,13 +1,12 @@
 import enum
 import os
-import threading
 import urllib.parse
 from pathlib import Path
 
 import appdirs
 import httpx
 
-from .utils import handle_error
+from .utils import SerializableLock, handle_error
 
 
 class CannotRefreshAuthentication(Exception):
@@ -152,7 +151,7 @@ class TiledAuth(httpx.Auth):
         self.csrf_token = csrf_token
         self.token_directory = Path(token_directory)
         self.token_directory.mkdir(exist_ok=True, parents=True)
-        self._sync_lock = threading.RLock()
+        self._sync_lock = SerializableLock()
         # self._async_lock = asyncio.Lock()
         self.tokens = {}
 
