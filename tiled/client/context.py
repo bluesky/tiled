@@ -115,7 +115,7 @@ class Context:
         # of the Tiled application, which may or may not be the same as the URL that
         # the user provided.
         if offline:
-            self._handshake_data = self.get_json("/", params={"root_path": True})
+            self.server_info = self.get_json("/", params={"root_path": True})
         else:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
@@ -132,17 +132,16 @@ class Context:
                 if response.status_code == 401:
                     self.http_client.base_url = response.headers["x-tiled-root"]
                 # Now try again.
-                self._handshake_data = self.get_json("/", params={"root_path": True})
+                self.server_info = self.get_json("/", params={"root_path": True})
 
         if (
             (not offline)
             and (api_key is None)
             and (
-                self._handshake_data["authentication"]["required"]
-                or (username is not None)
+                self.server_info["authentication"]["required"] or (username is not None)
             )
         ):
-            if not self._handshake_data["authentication"]["providers"]:
+            if not self.server_info["authentication"]["providers"]:
                 raise RuntimeError(
                     """This server requires API key authentication.
 Set an api_key as in:
@@ -160,7 +159,7 @@ Set an api_key as in:
             tokens = self.reauthenticate(prompt=prompt)
             access_token = tokens["access_token"]
             client.headers["Authorization"] = f"Bearer {access_token}"
-        base_path = self._handshake_data["meta"]["root_path"]
+        base_path = self.server_info["meta"]["root_path"]
         base_url = urllib.parse.urlunsplit(
             (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
         )
@@ -169,7 +168,7 @@ Set an api_key as in:
         # Strip "/node/metadata"
         self._path_parts = path_parts[2:]
 
-        refresh_url = self._handshake_data["authentication"]["links"]["refresh_session"]
+        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
         csrf_token = self.http_client.cookies["tiled_csrf"]
         token_directory = Path(
             self._token_cache,
@@ -220,7 +219,7 @@ Set an api_key as in:
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self._handshake_data = self.get_json("/")
+                self.server_info = self.get_json("/")
 
     def which_api_key(self):
         """
@@ -228,7 +227,7 @@ Set an api_key as in:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        return self.get_json(self._handshake_data["authentication"]["links"]["apikey"])
+        return self.get_json(self.server_info["authentication"]["links"]["apikey"])
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
@@ -247,14 +246,14 @@ Set an api_key as in:
             Description (for humans).
         """
         return self.post_json(
-            self._handshake_data["authentication"]["links"]["apikey"],
+            self.server_info["authentication"]["links"]["apikey"],
             {"scopes": scopes, "expires_in": expires_in, "note": note},
         )
 
     def revoke_api_key(self, first_eight):
         request = self.http_client.build_request(
             "DELETE",
-            self._handshake_data["authentication"]["links"]["apikey"],
+            self.server_info["authentication"]["links"]["apikey"],
             headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
             params={"first_eight": first_eight},
         )
@@ -507,7 +506,7 @@ Set an api_key as in:
         "Authenticate. Prompt for password or access code (refresh token)."
         if self.api_key is not None:
             raise RuntimeError("API key authentication is being used.")
-        providers = self._handshake_data["authentication"]["providers"]
+        providers = self.server_info["authentication"]["providers"]
         if len(providers) == 0:
             raise RuntimeError(
                 "The authenticate() method is not applicable. "
@@ -641,7 +640,7 @@ Navigate web browser to this address to obtain access code:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])
+        return self.get_json(self.server_info["authentication"]["links"]["whoami"])
 
     def logout(self):
         """
@@ -661,7 +660,7 @@ Navigate web browser to this address to obtain access code:
         """
         request = self.http_client.build_request(
             "DELETE",
-            self._handshake_data["authentication"]["links"]["revoke_session"].format(
+            self.server_info["authentication"]["links"]["revoke_session"].format(
                 session_id=session_id
             ),
             headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
