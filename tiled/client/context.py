@@ -134,6 +134,24 @@ class Context:
                 # Now try again.
                 self.server_info = self.get_json("/", params={"root_path": True})
 
+        base_path = self.server_info["meta"]["root_path"]
+        base_url = urllib.parse.urlunsplit(
+            (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
+        )
+        client.base_url = base_url
+        path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
+        # Strip "/node/metadata"
+        self._path_parts = path_parts[2:]
+
+        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+        token_directory = Path(
+            self._token_cache,
+            urllib.parse.quote_plus(
+                url.netloc.decode()
+            ),  # Make a valid filename out of hostname:port.
+        )
+        client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
         if (
             (not offline)
             and (api_key is None)
@@ -159,24 +177,6 @@ Set an api_key as in:
             tokens = self.reauthenticate(prompt=prompt)
             access_token = tokens["access_token"]
             client.headers["Authorization"] = f"Bearer {access_token}"
-        base_path = self.server_info["meta"]["root_path"]
-        base_url = urllib.parse.urlunsplit(
-            (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
-        )
-        client.base_url = base_url
-        path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-        # Strip "/node/metadata"
-        self._path_parts = path_parts[2:]
-
-        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
-        csrf_token = self.http_client.cookies["tiled_csrf"]
-        token_directory = Path(
-            self._token_cache,
-            urllib.parse.quote_plus(
-                url.netloc.decode()
-            ),  # Make a valid filename out of hostname:port.
-        )
-        client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
 
     @property
     def tokens(self):
@@ -564,10 +564,9 @@ Set an api_key as in:
                 headers={},
             )
             token_request.headers.pop("Authorization", None)
-            token_response = self.http_client.send(token_request)
+            token_response = self.http_client.send(token_request, auth=None)
             handle_error(token_response)
             tokens = token_response.json()
-            refresh_token = tokens["refresh_token"]
         elif mode == "external":
             print(
                 f"""
@@ -605,7 +604,7 @@ Navigate web browser to this address to obtain access code:
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
         self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
-        self.http_client.auth.sync_set_token("refresh_token", refresh_token)
+        self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
         if confirmation_message:
             identities = self.whoami()["identities"]
             identities_by_provider = {
@@ -627,16 +626,31 @@ Navigate web browser to this address to obtain access code:
             tokens fails. If False raise an error. If None, fall back
             to default `prompt_for_reauthentication` set in Context.__init__.
         """
-        if self.api_key is not None:
-            raise RuntimeError("API key authentication is being used.")
-        try:
-            return self._refresh()
-        except CannotRefreshAuthentication:
-            if prompt is None:
-                prompt = self._prompt_for_reauthentication
+        if self.http_client.auth is None:
+            raise RuntimeError(
+                "No authentication has been set up. Cannot reauthenticate."
+            )
+        if prompt is None:
+            prompt = self._prompt_for_reauthentication
+        refresh_token = self.http_client.auth.sync_get_token(
+            "refresh_token", reload_from_disk=True
+        )
+        if refresh_token is None:
             if prompt:
                 return self.authenticate()
-            raise
+            raise CannotRefreshAuthentication
+        refresh_request = self.http_client.auth.build_refresh_request(
+            refresh_token,
+        )
+        token_response = self.http_client.send(refresh_request, auth=None)
+        if token_response.status_code == 401:
+            if prompt:
+                return self.authenticate()
+            raise CannotRefreshAuthentication
+        handle_error(token_response)
+        tokens = token_response.json()
+        self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
+        self.http_client.auth.sync_set_token("refresh_token", refresh_token)
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
