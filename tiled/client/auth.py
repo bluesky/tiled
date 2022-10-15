@@ -150,7 +150,7 @@ class TiledAuth(httpx.Auth):
     def __init__(self, refresh_url, csrf_token, token_directory):
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
-        self.token_directory = token_directory
+        self.token_directory = Path(token_directory)
         self.token_directory.mkdir(exist_ok=True, parents=True)
         self._sync_lock = threading.RLock()
         # self._async_lock = asyncio.Lock()
@@ -215,14 +215,7 @@ class TiledAuth(httpx.Auth):
                     "Provide fresh credentials. "
                     "For a given client c, use c.context.authenticate()."
                 )
-            token_request = httpx.Request(
-                "POST",
-                self.refresh_url,
-                json={"refresh_token": refresh_token},
-                # Submit CSRF token in both header and cookie.
-                # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-                headers={"x-csrf": self.csrf_token},
-            )
+            token_request = self.build_refresh_request(refresh_token)
             token_response = yield token_request
             if token_response.status_code == 401:
                 # Refreshing the token failed.
@@ -241,6 +234,16 @@ class TiledAuth(httpx.Auth):
             self.sync_set_token("access_token", tokens["access_token"])
             request.headers["Authorization"] = f"Bearer {tokens['access_token']}"
         yield request
+
+    def build_refresh_request(self, refresh_token):
+        return httpx.Request(
+            "POST",
+            self.refresh_url,
+            json={"refresh_token": refresh_token},
+            # Submit CSRF token in both header and cookie.
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+            headers={"x-csrf": self.csrf_token},
+        )
 
     async def async_get_token(self, key):
         raise NotImplementedError("Async support is planned but not yet implemented.")

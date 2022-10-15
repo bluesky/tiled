@@ -86,7 +86,7 @@ class Context:
         elif api_key is None:
             # Check for an API key from the environment.
             api_key = os.getenv("TILED_API_KEY")
-        self._client = client
+        self.http_client = client
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._username = username
@@ -101,11 +101,13 @@ class Context:
 
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
-        self._client.headers["user-agent"] = f"python-tiled/{get_versions()['version']}"
+        self.http_client.headers[
+            "user-agent"
+        ] = f"python-tiled/{get_versions()['version']}"
 
         # Stash the URL of the original request. We will alter the base_url below
         # if it is not aligned with root_path of the tiled server.
-        url = httpx.URL(self._client.base_url)
+        url = httpx.URL(self.http_client.base_url)
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
@@ -118,17 +120,17 @@ class Context:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
                 # Make this request manually to inject custom error handling.
-                request = self._client.build_request(
+                request = self.http_client.build_request(
                     "GET", "/", params={"root_path": True}
                 )
-                response = self._client.send(request)
+                response = self.http_client.send(request)
                 # Handle case where user pastes in a link like
                 # https://example.com/some/subpath/node/metadata/a/b/c
                 # and it requires authentication. The 401 response includes a header
                 # that points us to https://examples.com/some/subpath where we
                 # can see the authentication providers and their endpoints.
                 if response.status_code == 401:
-                    self._client.base_url = response.headers["x-tiled-root"]
+                    self.http_client.base_url = response.headers["x-tiled-root"]
                 # Now try again.
                 self._handshake_data = self.get_json("/", params={"root_path": True})
 
@@ -168,7 +170,7 @@ Set an api_key as in:
         self._path_parts = path_parts[2:]
 
         refresh_url = self._handshake_data["authentication"]["links"]["refresh_session"]
-        csrf_token = self._client.cookies["tiled_csrf"]
+        csrf_token = self.http_client.cookies["tiled_csrf"]
         token_directory = Path(
             self._token_cache,
             urllib.parse.quote_plus(
@@ -189,10 +191,10 @@ Set an api_key as in:
     @api_key.setter
     def api_key(self, api_key):
         if api_key is None:
-            if self._client.headers.get("Authorization", "").startswith("Apikey"):
-                self._client.headers.pop("Authorization")
+            if self.http_client.headers.get("Authorization", "").startswith("Apikey"):
+                self.http_client.headers.pop("Authorization")
         else:
-            self._client.headers["Authorization"] = f"Apikey {api_key}"
+            self.http_client.headers["Authorization"] = f"Apikey {api_key}"
         self._api_key = api_key
 
     @property
@@ -250,13 +252,13 @@ Set an api_key as in:
         )
 
     def revoke_api_key(self, first_eight):
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "DELETE",
             self._handshake_data["authentication"]["links"]["apikey"],
-            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
             params={"first_eight": first_eight},
         )
-        response = self._client.send(request)
+        response = self.http_client.send(request)
         handle_error(response)
 
     @property
@@ -269,12 +271,12 @@ Set an api_key as in:
 
     @property
     def base_url(self):
-        return self._client.base_url
+        return self.http_client.base_url
 
     @property
     def event_hooks(self):
         "httpx.Client event hooks. This is exposed for testing."
-        return self._client.event_hooks
+        return self.http_client.event_hooks
 
     @property
     def revalidate(self):
@@ -326,7 +328,7 @@ Set an api_key as in:
         if revalidate is None:
             # Fallback to context default.
             revalidate = self.revalidate
-        request = self._client.build_request("GET", path, **kwargs)
+        request = self.http_client.build_request("GET", path, **kwargs)
         if accept:
             request.headers["Accept"] = accept
         url = request.url
@@ -347,7 +349,7 @@ Set an api_key as in:
             return content
         if self._cache is None:
             # No cache, so we can use the client straightforwardly.
-            response = self._client.send(request, stream=stream)
+            response = self.http_client.send(request, stream=stream)
             handle_error(response)
             if response.headers.get("content-encoding") == "blosc":
                 import blosc
@@ -382,7 +384,7 @@ Set an api_key as in:
                     return reservation.load_content()
                 if not self._disable_cache_read:
                     request.headers["If-None-Match"] = reservation.item.etag
-            response = self._client.send(request, stream=stream)
+            response = self.http_client.send(request, stream=stream)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
                 # Update the expiration time.
@@ -428,18 +430,18 @@ Set an api_key as in:
         )
 
     def post_json(self, path, content):
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "POST",
             path,
             json=content,
             # Submit CSRF token in both header and cookie.
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             headers={
-                "x-csrf": self._client.cookies["tiled_csrf"],
+                "x-csrf": self.http_client.cookies["tiled_csrf"],
                 "accept": "application/x-msgpack",
             },
         )
-        response = self._client.send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -447,14 +449,14 @@ Set an api_key as in:
         )
 
     def put_json(self, path, content):
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "PUT",
             path,
             json=content,
             # Submit CSRF token in both header and cookie.
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             headers={
-                "x-csrf": self._client.cookies["tiled_csrf"],
+                "x-csrf": self.http_client.cookies["tiled_csrf"],
                 "accept": "application/x-msgpack",
             },
         )
@@ -469,16 +471,16 @@ Set an api_key as in:
         # Submit CSRF token in both header and cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         headers = headers or {}
-        headers.setdefault("x-csrf", self._client.cookies["tiled_csrf"])
+        headers.setdefault("x-csrf", self.http_client.cookies["tiled_csrf"])
         headers.setdefault("accept", "application/x-msgpack")
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "PUT",
             path,
             content=content,
             headers=headers,
             params=params,
         )
-        response = self._client.send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -489,12 +491,12 @@ Set an api_key as in:
         # Submit CSRF token in both header and cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         headers = headers or {}
-        headers.setdefault("x-csrf", self._client.cookies["tiled_csrf"])
+        headers.setdefault("x-csrf", self.http_client.cookies["tiled_csrf"])
         headers.setdefault("accept", "application/x-msgpack")
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "DELETE", path, content=None, headers=headers, params=params
         )
-        response = self._client.send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -556,14 +558,14 @@ Set an api_key as in:
                 "username": username,
                 "password": password,
             }
-            token_request = self._client.build_request(
+            token_request = self.http_client.build_request(
                 "POST",
                 auth_endpoint,
                 data=form_data,
                 headers={},
             )
             token_request.headers.pop("Authorization", None)
-            token_response = self._client.send(token_request)
+            token_response = self.http_client.send(token_request)
             handle_error(token_response)
             tokens = token_response.json()
             refresh_token = tokens["refresh_token"]
@@ -576,6 +578,9 @@ Navigate web browser to this address to obtain access code:
 
 """
             )
+            import webbrowser
+
+            webbrowser.open(auth_endpoint)
             while True:
                 # The proper term for this is 'refresh token' but that may be
                 # confusing jargon to the end user, so we say "access code".
@@ -587,18 +592,21 @@ Navigate web browser to this address to obtain access code:
                 refresh_token = raw_refresh_token.replace('"', "")
                 # Immediately refresh to (1) check that the copy/paste worked and
                 # (2) obtain an access token as well.
-                try:
-                    tokens = self._refresh(refresh_token=refresh_token)
-                except CannotRefreshAuthentication:
+                refresh_request = self.http_client.auth.build_refresh_request(
+                    refresh_token
+                )
+                token_response = self.http_client.send(refresh_request, auth=None)
+                if token_response.status_code == 401:
                     print(
                         "That didn't work. Try pasting the access code again, or press Enter to escape."
                     )
                 else:
+                    tokens = token_response.json()
                     break
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-        self.client.auth.sync_set_token("access_token", tokens["access_token"])
-        self.client.auth.sync_set_token("refresh_token", refresh_token)
+        self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
+        self.http_client.auth.sync_set_token("refresh_token", refresh_token)
         if confirmation_message:
             identities = self.whoami()["identities"]
             identities_by_provider = {
@@ -641,9 +649,9 @@ Navigate web browser to this address to obtain access code:
 
         This method is idempotent.
         """
-        self._client.headers.pop("Authorization", None)
-        self._client.auth.sync_clear_token("access_token")
-        self._client.auth.sync_clear_token("refresh_token")
+        self.http_client.headers.pop("Authorization", None)
+        self.http_client.auth.sync_clear_token("access_token")
+        self.http_client.auth.sync_clear_token("refresh_token")
 
     def revoke_session(self, session_id):
         """
@@ -651,14 +659,14 @@ Navigate web browser to this address to obtain access code:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "DELETE",
             self._handshake_data["authentication"]["links"]["revoke_session"].format(
                 session_id=session_id
             ),
-            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
         )
-        response = self._client.send(request)
+        response = self.http_client.send(request)
         handle_error(response)
 
 
