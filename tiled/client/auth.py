@@ -180,6 +180,7 @@ class TiledAuth(httpx.Auth):
             filepath.touch(mode=0o600)  # Set permissions.
             with open(filepath, "w") as file:
                 file.write(value)
+            self.tokens[key] = value  # Update cached value.
 
     def sync_clear_token(self, key):
         with self._sync_lock:
@@ -190,6 +191,7 @@ class TiledAuth(httpx.Auth):
                 filepath.unlink()
             except FileNotFoundError:
                 pass
+            self.tokens.pop(key, None)  # Clear cached value.
 
     def sync_auth_flow(self, request, attempt=0):
         access_token = self.sync_get_token("access_token")
@@ -226,6 +228,7 @@ class TiledAuth(httpx.Auth):
                     "For a given client c, use c.context.authenticate()."
                 )
             handle_error(token_response)
+            token_response.read()
             tokens = token_response.json()
             # If we get this far, refreshing authentication worked.
             # Store the new refresh token.
