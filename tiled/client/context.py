@@ -26,6 +26,8 @@ from .utils import (
     handle_error,
 )
 
+USER_AGENT = f"python-tiled/{get_versions()['version']}"
+
 
 class Context:
     """
@@ -52,7 +54,11 @@ class Context:
         url = httpx.URL(uri)
         headers = headers or {}
         headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
+        # Set the User Agent to help the server fail informatively if the client
+        # version is too old.
+        headers.setdefault("user-agent", USER_AGENT)
         params = {}
+
         # If ?api_key=... is present, move it from the query into a header.
         # The server would accept it in the query parameter, but using
         # a header is a little more secure (e.g. not logged) and makes
@@ -60,10 +66,22 @@ class Context:
         parsed_query = urllib.parse.parse_qs(url.query.decode())
         api_key_list = parsed_query.pop("api_key", None)
         if api_key_list is not None:
+            if api_key is not None:
+                raise ValueError(
+                    "api_key was provided as query parameter in URI and as keyword argument. Pick one."
+                )
             if len(api_key_list) != 1:
                 raise ValueError("Cannot handle two api_key query parameters")
             (api_key,) = api_key_list
-            headers["X-TILED-API-KEY"] = api_key
+        if api_key is None:
+            # Check for an API key from the environment.
+            api_key = os.getenv("TILED_API_KEY")
+        if (username is not None) or (auth_provider is not None):
+            if api_key is not None:
+                raise ValueError("Use api_key or username/auth_provider, not both.")
+        # We will set the API key via the `api_key` property below,
+        # after constructing the Client object.
+
         params.update(urllib.parse.urlencode(parsed_query, doseq=True))
         # Construct the URL *without* the params, which we will pass in separately.
         base_uri = urllib.parse.urlunsplit(
@@ -96,30 +114,17 @@ class Context:
             )
             client.__enter__()
             atexit.register(client.__exit__)
-        if (username is not None) or (auth_provider is not None):
-            if api_key is not None:
-                raise ValueError("Use api_key or username/auth_provider, not both.")
-        elif api_key is None:
-            # Check for an API key from the environment.
-            api_key = os.getenv("TILED_API_KEY")
         self.http_client = client
+        self.api_key = api_key  # property setter sets Authorization header
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._username = username
         self._auth_provider = auth_provider
-        self.api_key = api_key  # property setter sets Authorization header
         self._offline = offline
         self._token_cache = Path(token_cache)
         self._prompt_for_reauthentication = PromptForReauthentication(
             prompt_for_reauthentication
         )
-        self._app = app
-
-        # Set the User Agent to help the server fail informatively if the client
-        # version is too old.
-        self.http_client.headers[
-            "user-agent"
-        ] = f"python-tiled/{get_versions()['version']}"
 
         # Stash the URL of the original request. We will alter the base_url below
         # if it is not aligned with root_path of the tiled server.

@@ -176,6 +176,7 @@ def from_context(context, structure_clients="numpy"):
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
     """
+    context.reauthenticate()
     # Do entrypoint discovery if it hasn't yet been done.
     if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
         Node.discover_clients_from_entrypoints()
