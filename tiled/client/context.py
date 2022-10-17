@@ -672,7 +672,7 @@ Navigate web browser to this address to obtain access code:
         handle_error(token_response)
         tokens = token_response.json()
         self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
-        self.http_client.auth.sync_set_token("refresh_token", refresh_token)
+        self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
         return tokens
 
     def whoami(self):
