@@ -51,67 +51,66 @@ def config(tmpdir):
     }
 
 
-def test_password_auth(enter_password, config):
+def test_password_auth(enter_password, config, tmpdir):
     """
     A password that is wrong, empty, or belonging to a different user fails.
     """
 
     with enter_password("secret1"):
-        from_config(config, username="alice", token_cache={})
+        from_config(config, username="alice", token_cache=tmpdir)
     with enter_password("secret2"):
-        from_config(config, username="bob", token_cache={})
+        from_config(config, username="bob", token_cache=tmpdir)
 
     # Bob's password should not work for alice
     with fail_with_status_code(401):
         with enter_password("secret2"):
-            from_config(config, username="alice", token_cache={})
+            from_config(config, username="alice", token_cache=tmpdir)
 
     # Empty password should not work.
     with fail_with_status_code(422):
         with enter_password(""):
-            from_config(config, username="alice", token_cache={})
+            from_config(config, username="alice", token_cache=tmpdir)
 
 
-def test_key_rotation(enter_password, config):
+def test_key_rotation(enter_password, config, tmpdir):
     """
     Rotate in a new secret used to sign keys.
     Confirm that clients experience a smooth transition.
     """
 
     # Obtain refresh token.
-    token_cache = {}
     with enter_password("secret1"):
-        from_config(config, username="alice", token_cache=token_cache)
+        from_config(config, username="alice", token_cache=tmpdir)
     # Use refresh token (no prompt to reauthenticate).
-    from_config(config, username="alice", token_cache=token_cache)
+    from_config(config, username="alice", token_cache=tmpdir)
 
     # Rotate in a new key.
     config["authentication"]["secret_keys"].insert(0, "NEW_SECRET")
     assert config["authentication"]["secret_keys"] == ["NEW_SECRET", "SECRET"]
     # The refresh token from the old key is still valid.
     # We reauthenticate and receive a refresh token for the new key.
-    from_config(config, username="alice", token_cache=token_cache)
+    from_config(config, username="alice", token_cache=tmpdir)
 
     # Rotate out the old key.
     del config["authentication"]["secret_keys"][1]
     assert config["authentication"]["secret_keys"] == ["NEW_SECRET"]
     # New refresh token works with the new key.
-    from_config(config, username="alice", token_cache=token_cache)
+    from_config(config, username="alice", token_cache=tmpdir)
 
 
-def test_refresh_flow(enter_password, config):
+def test_refresh_flow(enter_password, config, tmpdir):
     """
     Run a server with an artificially short max access token age
     to force a refresh.
     """
 
     # Normal default configuration: a refresh is not immediately required.
-    token_cache = {}
     with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=token_cache)
+        client = from_config(config, username="alice", token_cache=tmpdir)
     token1 = client.context.tokens["access_token"]
     client["A1"]
     assert token1 is client.context.tokens["access_token"]
+    tmpdir.cleanup()
 
     # Forcing a refresh gives us a new token.
     client.context.reauthenticate()
@@ -120,31 +119,31 @@ def test_refresh_flow(enter_password, config):
 
     # Pathological configuration: a refresh is almost immediately required
     config["authentication"]["access_token_max_age"] = timedelta(seconds=1)
-    token_cache = {}
     with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=token_cache)
+        client = from_config(config, username="alice", token_cache=tmpdir)
     token3 = client.context.tokens["access_token"]
     time.sleep(2)
     # A refresh should happen automatically now.
     client["A1"]
     token4 = client.context.tokens["access_token"]
     assert token3 is not token4
+    tmpdir.cleanup()
 
     # Pathological configuration: sessions do not last
     config["authentication"]["session_max_age"] = timedelta(seconds=1)
-    token_cache = {}
     with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=token_cache)
+        client = from_config(config, username="alice", token_cache=tmpdir)
     time.sleep(2)
     # Refresh should fail because the session is too old.
     with pytest.raises(CannotRefreshAuthentication):
         # Set prompt=False so that this raises instead of interactively prompting.
         client.context.reauthenticate(prompt=False)
+    tmpdir.cleanup()
 
 
-def test_revoke_session(enter_password, config):
+def test_revoke_session(enter_password, config, tmpdir):
     with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache={})
+        client = from_config(config, username="alice", token_cache=tmpdir)
     # Get the current session ID.
     info = client.context.whoami()
     (session,) = info["sessions"]
@@ -161,7 +160,7 @@ def test_revoke_session(enter_password, config):
         client.context.reauthenticate(prompt=False)
 
 
-def test_multiple_providers(enter_password, config, monkeypatch):
+def test_multiple_providers(enter_password, config, monkeypatch, tmpdir):
     """
     Test a configuration with multiple identity providers.
 
@@ -186,14 +185,14 @@ def test_multiple_providers(enter_password, config, monkeypatch):
     )
     monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
     with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache={})
+        client = from_config(config, username="alice", token_cache=tmpdir)
     client.context.whoami()
     monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
     with enter_password("secret3"):
-        client = from_config(config, username="cara", token_cache={})
+        client = from_config(config, username="cara", token_cache=tmpdir)
     monkeypatch.setattr("sys.stdin", io.StringIO("3\n"))
     with enter_password("secret5"):
-        client = from_config(config, username="cara", token_cache={})
+        client = from_config(config, username="cara", token_cache=tmpdir)
     client.context.whoami()
 
 
@@ -220,7 +219,7 @@ def test_multiple_providers_name_collision(config):
         from_config(config)
 
 
-def test_admin(enter_password, config):
+def test_admin(enter_password, config, tmpdir):
     """
     Test that the 'tiled_admin' config confers the 'admin' Role on a Principal.
     """
@@ -228,10 +227,10 @@ def test_admin(enter_password, config):
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
 
     with enter_password("secret1"):
-        admin_client = from_config(config, username="alice", token_cache={})
+        admin_client = from_config(config, username="alice", token_cache=tmpdir)
 
     with enter_password("secret2"):
-        user_client = from_config(config, username="bob", token_cache={})
+        user_client = from_config(config, username="bob", token_cache=tmpdir)
 
     user_roles = user_client.context.whoami()["roles"]
     assert [role["name"] for role in user_roles] == ["user"]
@@ -240,7 +239,7 @@ def test_admin(enter_password, config):
     assert "admin" in [role["name"] for role in adming_roles]
 
 
-def test_api_keys(enter_password, config):
+def test_api_keys(enter_password, config, tmpdir):
     """
     Test creating, revoking, expiring API keys.
     Test that they have appropriate scope-limited access.
@@ -249,10 +248,10 @@ def test_api_keys(enter_password, config):
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
 
     with enter_password("secret1"):
-        admin_client = from_config(config, username="alice", token_cache={})
+        admin_client = from_config(config, username="alice", token_cache=tmpdir)
 
     with enter_password("secret2"):
-        user_client = from_config(config, username="bob", token_cache={})
+        user_client = from_config(config, username="bob", token_cache=tmpdir)
 
     # Make and use an API key. Check that latest_activity is updated.
     user_key_info = user_client.context.create_api_key()
@@ -323,13 +322,13 @@ def test_api_keys(enter_password, config):
         from_config(config, api_key=user_key_info["secret"])
 
 
-def test_api_key_limit(enter_password, config):
+def test_api_key_limit(enter_password, config, tmpdir):
     # Decrease the limit so this test runs faster.
     original_limit = authentication.API_KEY_LIMIT
     authentication.API_KEY_LIMIT = 3
     try:
         with enter_password("secret2"):
-            user_client = from_config(config, username="bob", token_cache={})
+            user_client = from_config(config, username="bob", token_cache=tmpdir)
 
         for i in range(authentication.API_KEY_LIMIT):
             user_client.context.create_api_key(note=f"key {i}")
@@ -340,16 +339,16 @@ def test_api_key_limit(enter_password, config):
         authentication.API_KEY_LIMIT = original_limit
 
 
-def test_session_limit(enter_password, config):
+def test_session_limit(enter_password, config, tmpdir):
     # Decrease the limit so this test runs faster.
     original_limit = authentication.SESSION_LIMIT
     authentication.SESSION_LIMIT = 3
     try:
         with enter_password("secret1"):
             for _ in range(authentication.SESSION_LIMIT):
-                from_config(config, username="alice", token_cache={})
+                from_config(config, username="alice", token_cache=tmpdir)
             # Hit Session limit.
             with fail_with_status_code(400):
-                from_config(config, username="alice", token_cache={})
+                from_config(config, username="alice", token_cache=tmpdir)
     finally:
         authentication.SESSION_LIMIT = original_limit
