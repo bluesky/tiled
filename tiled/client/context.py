@@ -18,7 +18,6 @@ from .auth import (
 )
 from .cache import Revalidate
 from .utils import (
-    ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
     DEFAULT_TIMEOUT_PARAMS,
     EVENT_HOOKS,
@@ -71,15 +70,31 @@ class Context:
         )
         if timeout is None:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
+        if app is None:
+            client = httpx.Client(
+                base_url=base_uri,
+                verify=verify,
+                event_hooks=EVENT_HOOKS,
+                timeout=timeout,
+                headers=headers,
+                params=params,
+            )
+        else:
+            import atexit
 
-        client = httpx.Client(
-            base_url=base_uri,
-            verify=verify,
-            event_hooks=EVENT_HOOKS,
-            timeout=timeout,
-            headers=headers,
-            params=params,
-        )
+            from ._testclient import TestClient
+
+            # verify parameter is dropped, as there is no SSL in ASGI mode
+            client = TestClient(
+                app=app,
+                base_url=base_uri,
+                event_hooks=EVENT_HOOKS,
+                timeout=timeout,
+                headers=headers,
+                params=params,
+            )
+            client.__enter__()
+            atexit.register(client.__exit__)
         if (username is not None) or (auth_provider is not None):
             if api_key is not None:
                 raise ValueError("Use api_key or username/auth_provider, not both.")
@@ -143,7 +158,6 @@ class Context:
         # Strip "/node/metadata"
         self._path_parts = path_parts[2:]
 
-        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
         csrf_token = self.http_client.cookies["tiled_csrf"]
         token_directory = Path(
             self._token_cache,
@@ -151,7 +165,9 @@ class Context:
                 url.netloc.decode()
             ),  # Make a valid filename out of hostname:port.
         )
-        client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        if self.server_info["authentication"]["providers"]:
+            refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
+            client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
         if (
             (not offline)
             and (api_key is None)
@@ -651,6 +667,7 @@ Navigate web browser to this address to obtain access code:
         tokens = token_response.json()
         self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
         self.http_client.auth.sync_set_token("refresh_token", refresh_token)
+        return tokens
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
@@ -701,6 +718,7 @@ def context_from_tree(
     api_key=None,
     headers=None,
     timeout=None,
+    verify=True,
 ):
     from ..server.app import build_app
 
@@ -734,45 +752,17 @@ def context_from_tree(
         validation_registry=validation_registry,
     )
 
-    # Only an AsyncClient can be used over ASGI.
-    # We wrap all the async methods in a call to asyncio.run(...).
-    # Someday we should explore asynchronous Tiled Client objects.
-    from ._async_bridge import AsyncClientBridge
-
-    async def startup():
-        # Note: This is important. The Tiled server routes are defined lazily on
-        # startup.
-        await app.router.startup()
-
-    if timeout is None:
-        timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
-
-    client = AsyncClientBridge(
-        base_url="http://local-tiled-app/api/",
-        params=params,
-        app=app,
-        _startup_hook=startup,
-        event_hooks=ASYNC_EVENT_HOOKS,
-        headers=headers,
-        timeout=timeout,
-    )
-    # Block for application startup.
-    try:
-        client.wait_until_ready(10)
-    except TimeoutError:
-        raise TimeoutError("Application startup has timed out.")
-    # TODO How to close the httpx.AsyncClient more cleanly?
-    import atexit
-
-    atexit.register(client.close)
     return Context(
-        client,
-        cache=cache,
-        offline=offline,
-        token_cache=token_cache,
+        uri="http://local-tiled-app/api",
+        headers=headers,
         username=username,
         auth_provider=auth_provider,
         api_key=api_key,
+        cache=cache,
+        offline=offline,
+        timeout=timeout,
+        verify=verify,
+        token_cache=token_cache,
         prompt_for_reauthentication=prompt_for_reauthentication,
         app=app,
     )
