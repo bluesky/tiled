@@ -1,4 +1,5 @@
 import io
+import tempfile
 import time
 from datetime import timedelta
 
@@ -51,25 +52,28 @@ def config(tmpdir):
     }
 
 
-def test_password_auth(enter_password, config, tmpdir):
+def test_password_auth(enter_password, config):
     """
     A password that is wrong, empty, or belonging to a different user fails.
     """
 
-    with enter_password("secret1"):
-        from_config(config, username="alice", token_cache=tmpdir)
-    with enter_password("secret2"):
-        from_config(config, username="bob", token_cache=tmpdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with enter_password("secret1"):
+            from_config(config, username="alice", token_cache=tmpdir)
+        with enter_password("secret2"):
+            from_config(config, username="bob", token_cache=tmpdir)
 
     # Bob's password should not work for alice
-    with fail_with_status_code(401):
-        with enter_password("secret2"):
-            from_config(config, username="alice", token_cache=tmpdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with fail_with_status_code(401):
+            with enter_password("secret2"):
+                from_config(config, username="alice", token_cache=tmpdir)
 
     # Empty password should not work.
-    with fail_with_status_code(422):
-        with enter_password(""):
-            from_config(config, username="alice", token_cache=tmpdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with fail_with_status_code(422):
+            with enter_password(""):
+                from_config(config, username="alice", token_cache=tmpdir)
 
 
 def test_key_rotation(enter_password, config, tmpdir):
@@ -98,47 +102,47 @@ def test_key_rotation(enter_password, config, tmpdir):
     from_config(config, username="alice", token_cache=tmpdir)
 
 
-def test_refresh_flow(enter_password, config, tmpdir):
+def test_refresh_flow(enter_password, config):
     """
     Run a server with an artificially short max access token age
     to force a refresh.
     """
 
-    # Normal default configuration: a refresh is not immediately required.
-    with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=tmpdir)
-    token1 = client.context.tokens["access_token"]
-    client["A1"]
-    assert token1 is client.context.tokens["access_token"]
-    tmpdir.cleanup()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Normal default configuration: a refresh is not immediately required.
+        with enter_password("secret1"):
+            client = from_config(config, username="alice", token_cache=tmpdir)
+        token1 = client.context.tokens["access_token"]
+        client["A1"]
+        assert token1 is client.context.tokens["access_token"]
 
-    # Forcing a refresh gives us a new token.
-    client.context.reauthenticate()
-    token2 = client.context.tokens["access_token"]
-    assert token2 is not token1
+        # Forcing a refresh gives us a new token.
+        client.context.reauthenticate()
+        token2 = client.context.tokens["access_token"]
+        assert token2 is not token1
 
     # Pathological configuration: a refresh is almost immediately required
-    config["authentication"]["access_token_max_age"] = timedelta(seconds=1)
-    with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=tmpdir)
-    token3 = client.context.tokens["access_token"]
-    time.sleep(2)
-    # A refresh should happen automatically now.
-    client["A1"]
-    token4 = client.context.tokens["access_token"]
-    assert token3 is not token4
-    tmpdir.cleanup()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config["authentication"]["access_token_max_age"] = timedelta(seconds=1)
+        with enter_password("secret1"):
+            client = from_config(config, username="alice", token_cache=tmpdir)
+        token3 = client.context.tokens["access_token"]
+        time.sleep(2)
+        # A refresh should happen automatically now.
+        client["A1"]
+        token4 = client.context.tokens["access_token"]
+        assert token3 is not token4
 
     # Pathological configuration: sessions do not last
-    config["authentication"]["session_max_age"] = timedelta(seconds=1)
-    with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=tmpdir)
-    time.sleep(2)
-    # Refresh should fail because the session is too old.
-    with pytest.raises(CannotRefreshAuthentication):
-        # Set prompt=False so that this raises instead of interactively prompting.
-        client.context.reauthenticate(prompt=False)
-    tmpdir.cleanup()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config["authentication"]["session_max_age"] = timedelta(seconds=1)
+        with enter_password("secret1"):
+            client = from_config(config, username="alice", token_cache=tmpdir)
+        time.sleep(2)
+        # Refresh should fail because the session is too old.
+        with pytest.raises(CannotRefreshAuthentication):
+            # Set prompt=False so that this raises instead of interactively prompting.
+            client.context.reauthenticate(prompt=False)
 
 
 def test_revoke_session(enter_password, config, tmpdir):
