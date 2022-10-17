@@ -3,6 +3,7 @@ import getpass
 import os
 import secrets
 import urllib.parse
+import warnings
 from pathlib import Path, PurePosixPath
 
 import httpx
@@ -183,21 +184,11 @@ Set an api_key as in:
 >>> c = from_uri("...", api_key="...")
 """
                 )
-            # Authenticate. If a valid refresh_token is available in the token_cache,
-            # it will be used. Otherwise, this will prompt for input from the stdin
-            # or raise CannotRefreshAuthentication.
-            prompt = (
-                prompt_for_reauthentication == PromptForReauthentication.AT_INIT
-                or prompt_for_reauthentication == PromptForReauthentication.ALWAYS
-            )
-            tokens = self.reauthenticate(prompt=prompt)
-            access_token = tokens["access_token"]
-            client.headers["Authorization"] = f"Bearer {access_token}"
 
     @property
     def tokens(self):
         "A view of the current access and refresh tokens."
-        return DictView(self._tokens)
+        return DictView(self.http_client.auth.tokens)
 
     @property
     def api_key(self):
@@ -278,7 +269,12 @@ Set an api_key as in:
 
     @property
     def app(self):
-        return self._app
+        warnings.warn(
+            "The 'app' accessor on Context is deprecated. Use Context.http_client.app.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.http_client.app
 
     @property
     def path_parts(self):
@@ -286,11 +282,21 @@ Set an api_key as in:
 
     @property
     def base_url(self):
+        warnings.warn(
+            "The 'base_url' accessor on Context is deprecated. Use Context.http_client.base_url.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.http_client.base_url
 
     @property
     def event_hooks(self):
         "httpx.Client event hooks. This is exposed for testing."
+        warnings.warn(
+            "The 'event_hooks' accessor on Context is deprecated. Use Context.http_client.event_hooks.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.http_client.event_hooks
 
     @property
