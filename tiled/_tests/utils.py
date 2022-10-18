@@ -13,7 +13,7 @@ def force_update(client):
     but this makes the tests take longer to run, and it can be flaky on CI services
     where things can take longer than they do in normal use.
     """
-    client.context.app.state.root_tree.update_now()
+    client.context.http_client.app.state.root_tree.update_now()
 
 
 @contextlib.contextmanager
