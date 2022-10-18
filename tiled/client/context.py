@@ -453,7 +453,7 @@ class Context:
                 "accept": "application/x-msgpack",
             },
         )
-        response = self._send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,

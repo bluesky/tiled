@@ -6,10 +6,10 @@ from .cache import Revalidate, verify_cache
 
 
 class MetadataRevisions:
-    def __init__(self, context, path):
+    def __init__(self, context, link):
         self._cached_len = None
         self.context = context
-        self._path = path
+        self._link = link
 
     def __len__(self):
 
@@ -22,14 +22,8 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        path = (
-            "/node/revisions"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
         content = self.context.get_json(
-            path, params={"page[offset]": 0, "page[limit]": 0}
+            self._link, params={"page[offset]": 0, "page[limit]": 0}
         )
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
@@ -38,18 +32,12 @@ class MetadataRevisions:
     def __getitem__(self, item_):
         self._cached_len = None
 
-        path = (
-            "/node/revisions"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
         if isinstance(item_, int):
             offset = item_
             limit = 1
 
             content = self.context.get_json(
-                path, params={"page[offset]": offset, "page[limit]": limit}
+                self._link, params={"page[offset]": offset, "page[limit]": limit}
             )
 
             (result,) = content["data"]
@@ -65,7 +53,7 @@ class MetadataRevisions:
                 limit = item_.stop - offset
                 params = f"?page[offset]={offset}&page[limit]={limit}"
 
-            next_page = path + params
+            next_page = self._link + params
             result = []
             while next_page is not None:
                 content = self.context.get_json(next_page)
@@ -78,14 +66,7 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-
-        path = (
-            "/node/revisions"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
-        self.context.delete_content(path, None, params={"n": n})
+        self.context.delete_content(self._link, None, params={"n": n})
 
 
 class BaseClient:
@@ -229,13 +210,7 @@ class BaseClient:
             "references": references,
         }
 
-        full_path_meta = (
-            "/node/metadata"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
-        content = self.context.put_json(full_path_meta, data)
+        content = self.context.put_json(self.item["links"]["self"], data)
 
         if metadata is not None:
             if "metadata" in content:
@@ -256,7 +231,10 @@ class BaseClient:
     @property
     def metadata_revisions(self):
         if self._metadata_revisions is None:
-            self._metadata_revisions = MetadataRevisions(self.context, self._path)
+            link = self.item["links"]["self"].replace(
+                "/node/metadata/", "/node/revisions", 1
+            )
+            self._metadata_revisions = MetadataRevisions(self.context, link)
 
         return self._metadata_revisions
 
