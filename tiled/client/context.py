@@ -2,7 +2,6 @@ import contextlib
 import getpass
 import os
 import re
-import secrets
 import urllib.parse
 import warnings
 from pathlib import Path
@@ -105,6 +104,7 @@ class Context:
             client.follow_redirects = True
             client.__enter__()
             atexit.register(client.__exit__)
+
         self.http_client = client
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
@@ -631,68 +631,6 @@ Navigate web browser to this address to obtain access code:
         )
         response = self.http_client.send(request)
         handle_error(response)
-
-
-def context_from_tree(
-    tree,
-    authentication,
-    server_settings,
-    *,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-    validation_registry=None,
-    cache=None,
-    offline=False,
-    token_cache=DEFAULT_TOKEN_CACHE,
-    api_key=None,
-    headers=None,
-    timeout=None,
-    verify=True,
-):
-    from ..server.app import build_app
-
-    # By default make it "public" because there is no way to
-    # secure access from inside the same process anyway.
-    authentication = authentication or {"allow_anonymous_access": True}
-    server_settings = server_settings or {}
-    params = {}
-    headers = headers or {}
-    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
-    # If a single-user API key will be used, generate the key here instead of
-    # letting build_app do it for us, so that we can give it to the client
-    # below.
-    if (
-        (not authentication.get("providers"))
-        and (not authentication.get("allow_anonymous_access", False))
-        and (authentication.get("single_user_api_key") is None)
-    ):
-        single_user_api_key = os.getenv(
-            "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
-        )
-        authentication["single_user_api_key"] = single_user_api_key
-        params["api_key"] = single_user_api_key
-    app = build_app(
-        tree,
-        authentication,
-        server_settings,
-        query_registry=query_registry,
-        serialization_registry=serialization_registry,
-        compression_registry=compression_registry,
-        validation_registry=validation_registry,
-    )
-
-    return Context(
-        uri="http://local-tiled-app/api",
-        headers=headers,
-        api_key=api_key,
-        cache=cache,
-        offline=offline,
-        timeout=timeout,
-        verify=verify,
-        token_cache=token_cache,
-        app=app,
-    )
 
 
 def _choose_identity_provider(providers, provider=None):

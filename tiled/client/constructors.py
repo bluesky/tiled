@@ -5,12 +5,7 @@ import sys
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
-from .context import (
-    DEFAULT_TIMEOUT_PARAMS,
-    DEFAULT_TOKEN_CACHE,
-    Context,
-    context_from_tree,
-)
+from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, Context
 from .node import Node
 from .utils import client_for_item
 
@@ -159,23 +154,30 @@ def from_tree(
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
     """
-    context = context_from_tree(
-        tree=tree,
-        authentication=authentication,
-        server_settings=server_settings,
+    from ..server.app import build_app, get_settings
+
+    app = build_app(
+        tree,
+        authentication,
+        server_settings,
         query_registry=query_registry,
         serialization_registry=serialization_registry,
         compression_registry=compression_registry,
         validation_registry=validation_registry,
-        # The cache and "offline" mode do not make much sense when we have an
-        # in-process connection, but we support it for the sake of testing and
-        # making direct access a drop in replacement for the normal service.
+    )
+    if (api_key is None) and (username is None):
+        # Extract the API key that the server is running on.
+        settings = app.dependency_overrides[get_settings]()
+        api_key = settings.single_user_api_key or None
+    context = Context(
+        uri="http://local-tiled-app/api",
+        headers=headers,
+        api_key=api_key,
         cache=cache,
         offline=offline,
-        token_cache=token_cache,
-        api_key=api_key,
-        headers=headers,
         timeout=timeout,
+        token_cache=token_cache,
+        app=app,
     )
     return from_context(
         context,
@@ -364,6 +366,8 @@ def from_config(
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
     prompt_for_reauthentication=None,
+    headers=None,
+    timeout=None,
 ):
     """
     Build Nodes directly, running the app in this same process.
@@ -405,14 +409,23 @@ def from_config(
     """
 
     from ..config import construct_build_app_kwargs
+    from ..server.app import build_app, get_settings
 
     build_app_kwargs = construct_build_app_kwargs(config)
-    context = context_from_tree(
+    app = build_app(**build_app_kwargs)
+    if (api_key is None) and (username is None):
+        # Extract the API key that the server is running on.
+        settings = app.dependency_overrides[get_settings]()
+        api_key = settings.single_user_api_key or None
+    context = Context(
+        uri="http://local-tiled-app/api",
+        headers=headers,
         api_key=api_key,
         cache=cache,
         offline=offline,
+        timeout=timeout,
         token_cache=token_cache,
-        **build_app_kwargs,
+        app=app,
     )
     return from_context(
         context,
