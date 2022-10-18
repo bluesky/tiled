@@ -106,7 +106,6 @@ class Context:
             client.__enter__()
             atexit.register(client.__exit__)
         self.http_client = client
-        self.api_key = api_key  # property setter sets Authorization header
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._offline = offline
@@ -117,6 +116,7 @@ class Context:
         url = httpx.URL(self.http_client.base_url)
 
         # Make an initial "safe" request to let the server set the CSRF cookie.
+        # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         # And, at the same time, obtain the 'root_path', the path to the root route
         # of the Tiled application, which may or may not be the same as the URL that
@@ -138,8 +138,10 @@ class Context:
                 # can see the authentication providers and their endpoints.
                 if response.status_code == 401:
                     self.http_client.base_url = response.headers["x-tiled-root"]
-                # Now try again.
-                self.server_info = self.get_json("/", params={"root_path": True})
+                    # Now try again.
+                    self.server_info = self.get_json("/", params={"root_path": True})
+                else:
+                    self.server_info = response.json()
 
         base_path = self.server_info["meta"]["root_path"]
         base_url = urllib.parse.urlunsplit(
@@ -149,6 +151,7 @@ class Context:
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
         # Strip "/node/metadata"
         self._path_parts = path_parts[2:]
+        self.api_key = api_key  # property setter sets Authorization header
 
     @property
     def tokens(self):
