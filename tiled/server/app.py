@@ -123,6 +123,16 @@ def build_app(
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
 
+    # Guard against something we will probably never see but would be bad if
+    # we did: someone trying to serve Tiled on a prefix that contains
+    # '/node/metadata'.
+    if "/node/metadata" in global_prefix:
+        raise Exception(
+            "Tiled cannot be served on a prefix that contains the string '/node/metadata' "
+            f"because this may confused clients. The prefix set to {global_prefix}. "
+            "Use a different prefix."
+        )
+
     app = FastAPI()
 
     if SHARE_TILED_PATH:
