@@ -827,10 +827,15 @@ async def node_revisions(
             status_code=405, detail="This path does not support update of metadata."
         )
 
-    # Look at /node/search call to construct_entries_response.
-    # This takes similar (but fewer) parameters.
+    base_url = get_base_url(request)
     resource = construct_revisions_response(
-        entry, "/node/revisions", path, offset, limit, resolve_media_type(request)
+        entry,
+        base_url,
+        "/node/revisions",
+        path,
+        offset,
+        limit,
+        resolve_media_type(request),
     )
     return json_or_msgpack(request, resource.dict())
 

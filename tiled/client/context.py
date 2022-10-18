@@ -169,7 +169,7 @@ class Context:
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self.server_info = self.get_json("/")
+                self.server_info = self.get_json(self.api_uri)
 
     def which_api_key(self):
         """
