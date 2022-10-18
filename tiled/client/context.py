@@ -5,7 +5,7 @@ import re
 import secrets
 import urllib.parse
 import warnings
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import httpx
 import msgpack
@@ -44,21 +44,19 @@ class Context:
         token_cache=DEFAULT_TOKEN_CACHE,
         app=None,
     ):
-        # The uri is expected to reach the root or /node/metadata/[...] route.
-        url = httpx.URL(uri)
+        # The uri is expected to reach the root API route.
+        uri = httpx.URL(uri)
         headers = headers or {}
         headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
         headers.setdefault("user-agent", USER_AGENT)
-        params = {}
 
         # If ?api_key=... is present, move it from the query into a header.
         # The server would accept it in the query parameter, but using
-        # a header is a little more secure (e.g. not logged) and makes
-        # it is simpler to manage the client.base_url.
-        parsed_query = urllib.parse.parse_qs(url.query.decode())
-        api_key_list = parsed_query.pop("api_key", None)
+        # a header is a little more secure (e.g. not logged).
+        parsed_params = urllib.parse.parse_qs(uri.query.decode())
+        api_key_list = parsed_params.pop("api_key", None)
         if api_key_list is not None:
             if api_key is not None:
                 raise ValueError(
@@ -73,21 +71,24 @@ class Context:
         # We will set the API key via the `api_key` property below,
         # after constructing the Client object.
 
-        params.update(urllib.parse.urlencode(parsed_query, doseq=True))
-        # Construct the URL *without* the params, which we will pass in separately.
-        base_uri = urllib.parse.urlunsplit(
-            (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
+        # FastAPI redirects /api -> /api/ so add it here to save a request.
+        path = uri.path
+        if not path.endswith("/"):
+            path = f"{path}/"
+        # Construct the uri *without* api_key param.
+        # Drop any params/fragments.
+        self.api_uri = httpx.URL(
+            urllib.parse.urlunsplit((uri.scheme, uri.netloc.decode(), path, {}, ""))
         )
         if timeout is None:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
         if app is None:
             client = httpx.Client(
-                base_url=base_uri,
                 verify=verify,
                 event_hooks=EVENT_HOOKS,
                 timeout=timeout,
                 headers=headers,
-                params=params,
+                follow_redirects=True,
             )
         else:
             import atexit
@@ -97,12 +98,11 @@ class Context:
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
                 app=app,
-                base_url=base_uri,
                 event_hooks=EVENT_HOOKS,
                 timeout=timeout,
                 headers=headers,
-                params=params,
             )
+            client.follow_redirects = True
             client.__enter__()
             atexit.register(client.__exit__)
         self.http_client = client
@@ -111,46 +111,17 @@ class Context:
         self._offline = offline
         self._token_cache = Path(token_cache)
 
-        # Stash the URL of the original request. We will alter the base_url below
-        # if it is not aligned with root_path of the tiled server.
-        url = httpx.URL(self.http_client.base_url)
-
-        # Make an initial "safe" request to let the server set the CSRF cookie.
+        # Make an initial "safe" request to:
+        # (1) Get the server_info.
+        # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        # And, at the same time, obtain the 'root_path', the path to the root route
-        # of the Tiled application, which may or may not be the same as the URL that
-        # the user provided.
         if offline:
-            self.server_info = self.get_json("/", params={"root_path": True})
+            self.server_info = self.get_json(self.api_uri)
         else:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                # Make this request manually to inject custom error handling.
-                request = self.http_client.build_request(
-                    "GET", "/", params={"root_path": True}
-                )
-                response = self.http_client.send(request)
-                # Handle case where user pastes in a link like
-                # https://example.com/some/subpath/node/metadata/a/b/c
-                # and it requires authentication. The 401 response includes a header
-                # that points us to https://examples.com/some/subpath where we
-                # can see the authentication providers and their endpoints.
-                if response.status_code == 401:
-                    self.http_client.base_url = response.headers["x-tiled-root"]
-                    # Now try again.
-                    self.server_info = self.get_json("/", params={"root_path": True})
-                else:
-                    self.server_info = response.json()
-
-        base_path = self.server_info["meta"]["root_path"]
-        base_url = urllib.parse.urlunsplit(
-            (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
-        )
-        client.base_url = base_url
-        path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-        # Strip "/node/metadata"
-        self._path_parts = path_parts[2:]
+                self.server_info = self.get_json(self.api_uri)
         self.api_key = api_key  # property setter sets Authorization header
 
     @property
@@ -247,10 +218,6 @@ class Context:
             stacklevel=2,
         )
         return self.http_client.app
-
-    @property
-    def path_parts(self):
-        return self._path_parts
 
     @property
     def base_url(self):
@@ -518,7 +485,7 @@ class Context:
         # with each templated element URL-encoded so it is a valid filename.
         token_directory = Path(
             self._token_cache,
-            urllib.parse.quote_plus(self.http_client.base_url.netloc.decode()),
+            urllib.parse.quote_plus(self.api_uri.netloc.decode()),
             urllib.parse.quote_plus(provider),
             urllib.parse.quote_plus(username),
         )

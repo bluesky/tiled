@@ -68,8 +68,16 @@ def from_uri(
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
     """
+    uri = httpx.URL(uri)
+    node_path_parts = []
+    if "/node/metadata" in uri.path:
+        api_path, _, node_path = uri.path.partition("/node/metadata")
+        api_uri = uri.copy_with(path=api_path)
+        node_path_parts.extend([segment for segment in node_path.split("/") if segment])
+    else:
+        api_uri = uri
     context = Context(
-        uri,
+        api_uri,
         api_key=api_key,
         cache=cache,
         offline=offline,
@@ -84,6 +92,7 @@ def from_uri(
         prompt_for_reauthentication=prompt_for_reauthentication,
         username=username,
         auth_provider=auth_provider,
+        node_path_parts=node_path_parts,
     )
 
 
@@ -183,6 +192,7 @@ def from_context(
     prompt_for_reauthentication=None,
     username=None,
     auth_provider=None,
+    node_path_parts=None,
 ):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -205,6 +215,7 @@ def from_context(
             raise ValueError("Use api_key or username/auth_provider, not both.")
     if prompt_for_reauthentication is None:
         prompt_for_reauthentication = sys.__stdin__.isatty()
+    node_path_parts = node_path_parts or []
     # Do entrypoint discovery if it hasn't yet been done.
     if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
         Node.discover_clients_from_entrypoints()
@@ -226,7 +237,10 @@ Set an api_key as in:
         )
     if username is not None:
         context.authenticate(username=username, provider=auth_provider)
-    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
+    # Context ensures that context.api_uri has a trailing slash.
+    content = context.get_json(
+        f"{context.api_uri}node/metadata/{'/'.join(node_path_parts)}"
+    )
     item = content["data"]
     return client_for_item(context, structure_clients, item)
 
