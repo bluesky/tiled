@@ -1,6 +1,7 @@
 import contextlib
 import getpass
 import os
+import re
 import secrets
 import urllib.parse
 import warnings
@@ -11,12 +12,7 @@ import msgpack
 
 from .._version import get_versions
 from ..utils import DictView
-from .auth import (
-    DEFAULT_TOKEN_CACHE,
-    CannotRefreshAuthentication,
-    PromptForReauthentication,
-    TiledAuth,
-)
+from .auth import DEFAULT_TOKEN_CACHE, CannotRefreshAuthentication, TiledAuth
 from .cache import Revalidate
 from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
@@ -27,6 +23,7 @@ from .utils import (
 )
 
 USER_AGENT = f"python-tiled/{get_versions()['version']}"
+API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w)$")
 
 
 class Context:
@@ -39,15 +36,12 @@ class Context:
         uri,
         *,
         headers=None,
-        username=None,
-        auth_provider=None,
         api_key=None,
         cache=None,
         offline=False,
         timeout=None,
         verify=True,
         token_cache=DEFAULT_TOKEN_CACHE,
-        prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
         # The uri is expected to reach the root or /node/metadata/[...] route.
@@ -76,9 +70,6 @@ class Context:
         if api_key is None:
             # Check for an API key from the environment.
             api_key = os.getenv("TILED_API_KEY")
-        if (username is not None) or (auth_provider is not None):
-            if api_key is not None:
-                raise ValueError("Use api_key or username/auth_provider, not both.")
         # We will set the API key via the `api_key` property below,
         # after constructing the Client object.
 
@@ -118,13 +109,8 @@ class Context:
         self.api_key = api_key  # property setter sets Authorization header
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
-        self._username = username
-        self._auth_provider = auth_provider
         self._offline = offline
         self._token_cache = Path(token_cache)
-        self._prompt_for_reauthentication = PromptForReauthentication(
-            prompt_for_reauthentication
-        )
 
         # Stash the URL of the original request. We will alter the base_url below
         # if it is not aligned with root_path of the tiled server.
@@ -174,21 +160,6 @@ class Context:
         if self.server_info["authentication"]["providers"]:
             refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
             client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
-        if (
-            (not offline)
-            and (api_key is None)
-            and (
-                self.server_info["authentication"]["required"] or (username is not None)
-            )
-        ):
-            if not self.server_info["authentication"]["providers"]:
-                raise RuntimeError(
-                    """This server requires API key authentication.
-Set an api_key as in:
-
->>> c = from_uri("...", api_key="...")
-"""
-                )
 
     @property
     def tokens(self):
@@ -197,16 +168,20 @@ Set an api_key as in:
 
     @property
     def api_key(self):
-        return self._api_key
+        # Extract from header to ensure that there is one "ground truth" here
+        # and no possibility of state getting out of sync.
+        header = self.http_client.headers.get("Authorization", "")
+        match = API_KEY_AUTH_HEADER_PATTERN.match(header)
+        if match is not None:
+            return match.group(1)
 
     @api_key.setter
     def api_key(self, api_key):
         if api_key is None:
-            if self.http_client.headers.get("Authorization", "").startswith("Apikey"):
+            if self.http_client.headers.get("Authorization", "").startswith("Apikey "):
                 self.http_client.headers.pop("Authorization")
         else:
             self.http_client.headers["Authorization"] = f"Apikey {api_key}"
-        self._api_key = api_key
 
     @property
     def cache(self):
@@ -529,7 +504,7 @@ Set an api_key as in:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def authenticate(self, provider=None):
+    def authenticate(self, username=None, provider=None):
         "Authenticate. Prompt for password or access code (refresh token)."
         if self.api_key is not None:
             raise RuntimeError("API key authentication is being used.")
@@ -577,7 +552,7 @@ Set an api_key as in:
         auth_endpoint = spec["links"]["auth_endpoint"]
         confirmation_message = spec["confirmation_message"]
         if mode == "password":
-            username = self._username or input("Username: ")
+            username = username or input("Username: ")
             password = getpass.getpass()
             form_data = {
                 "grant_type": "password",
@@ -642,7 +617,7 @@ Navigate web browser to this address to obtain access code:
             )
         return tokens
 
-    def reauthenticate(self, prompt=None):
+    def reauthenticate(self, prompt=True):
         """
         Refresh authentication.
 
@@ -650,15 +625,12 @@ Navigate web browser to this address to obtain access code:
         ----------
         prompt : bool
             If True, give interactive prompt for authentication when refreshing
-            tokens fails. If False raise an error. If None, fall back
-            to default `prompt_for_reauthentication` set in Context.__init__.
+            tokens fails. If False raise an error.
         """
         if self.http_client.auth is None:
             raise RuntimeError(
                 "No authentication has been set up. Cannot reauthenticate."
             )
-        if prompt is None:
-            prompt = self._prompt_for_reauthentication
         refresh_token = self.http_client.auth.sync_get_token(
             "refresh_token", reload_from_disk=True
         )
@@ -723,9 +695,6 @@ def context_from_tree(
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
-    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
-    username=None,
-    auth_provider=None,
     api_key=None,
     headers=None,
     timeout=None,
@@ -766,14 +735,11 @@ def context_from_tree(
     return Context(
         uri="http://local-tiled-app/api",
         headers=headers,
-        username=username,
-        auth_provider=auth_provider,
         api_key=api_key,
         cache=cache,
         offline=offline,
         timeout=timeout,
         verify=verify,
         token_cache=token_cache,
-        prompt_for_reauthentication=prompt_for_reauthentication,
         app=app,
     )

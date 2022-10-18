@@ -1,4 +1,3 @@
-import enum
 import os
 import urllib.parse
 from pathlib import Path
@@ -11,12 +10,6 @@ from .utils import SerializableLock, handle_error
 
 class CannotRefreshAuthentication(Exception):
     pass
-
-
-class PromptForReauthentication(enum.Enum):
-    AT_INIT = "at_init"
-    NEVER = "never"
-    ALWAYS = "always"
 
 
 DEFAULT_TOKEN_CACHE = os.getenv(

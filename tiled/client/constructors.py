@@ -1,14 +1,15 @@
 import collections
 import collections.abc
+import sys
 
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
+from .auth import CannotRefreshAuthentication
 from .context import (
     DEFAULT_TIMEOUT_PARAMS,
     DEFAULT_TOKEN_CACHE,
     Context,
-    PromptForReauthentication,
     context_from_tree,
 )
 from .node import Node
@@ -26,7 +27,7 @@ def from_uri(
     api_key=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     verify=True,
-    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
+    prompt_for_reauthentication=None,
     headers=None,
     timeout=None,
 ):
@@ -58,7 +59,10 @@ def from_uri(
     verify : bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
-    prompt_for_reauthentication : {"at_init", "always", "never"}
+    prompt_for_reauthentication : bool, optional
+        If True, prompt interactively for credentials if needed. If False,
+        raise an error. By default, attempt to detect whether terminal is
+        interactive (is a TTY).
     headers : dict, optional
         Extra HTTP headers.
     timeout : httpx.Timeout, optional
@@ -67,8 +71,6 @@ def from_uri(
     """
     context = Context(
         uri,
-        username=username,
-        auth_provider=auth_provider,
         api_key=api_key,
         cache=cache,
         offline=offline,
@@ -76,9 +78,14 @@ def from_uri(
         timeout=timeout,
         verify=verify,
         token_cache=token_cache,
-        prompt_for_reauthentication=prompt_for_reauthentication,
     )
-    return from_context(context, structure_clients=structure_clients)
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        prompt_for_reauthentication=prompt_for_reauthentication,
+        username=username,
+        auth_provider=auth_provider,
+    )
 
 
 def from_tree(
@@ -99,6 +106,7 @@ def from_tree(
     token_cache=DEFAULT_TOKEN_CACHE,
     headers=None,
     timeout=None,
+    prompt_for_reauthentication=None,
 ):
     """
     Connect to a Node directly, running the app in this same process.
@@ -135,7 +143,10 @@ def from_tree(
         False by default. If True, rely on cache only.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
-    prompt_for_reauthentication : {"at_init", "always", "never"}
+    prompt_for_reauthentication : bool, optional
+        If True, prompt interactively for credentials if needed. If False,
+        raise an error. By default, attempt to detect whether terminal is
+        interactive (is a TTY).
     timeout : httpx.Timeout, optional
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
@@ -154,16 +165,26 @@ def from_tree(
         cache=cache,
         offline=offline,
         token_cache=token_cache,
-        username=username,
-        auth_provider=auth_provider,
         api_key=api_key,
         headers=headers,
         timeout=timeout,
     )
-    return from_context(context, structure_clients=structure_clients)
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        prompt_for_reauthentication=prompt_for_reauthentication,
+        username=username,
+        auth_provider=auth_provider,
+    )
 
 
-def from_context(context, structure_clients="numpy"):
+def from_context(
+    context,
+    structure_clients="numpy",
+    prompt_for_reauthentication=None,
+    username=None,
+    auth_provider=None,
+):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
 
@@ -175,15 +196,43 @@ def from_context(context, structure_clients="numpy"):
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
+    prompt_for_reauthentication : bool, optional
+        If True, prompt interactively for credentials if needed. If False,
+        raise an error. By default, attempt to detect whether terminal is
+        interactive (is a TTY).
     """
-    context.reauthenticate()
+    if (username is not None) or (auth_provider is not None):
+        if context.api_key is not None:
+            raise ValueError("Use api_key or username/auth_provider, not both.")
+    if prompt_for_reauthentication is None:
+        prompt_for_reauthentication = sys.__stdin__.isatty()
     # Do entrypoint discovery if it hasn't yet been done.
     if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
         Node.discover_clients_from_entrypoints()
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
         structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
-    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
+    if (
+        (not context.offline)
+        and (context.api_key is None)
+        and context.server_info["authentication"]["required"]
+        and (not context.server_info["authentication"]["providers"])
+    ):
+        raise RuntimeError(
+            """This server requires API key authentication.
+Set an api_key as in:
+
+>>> c = from_uri("...", api_key="...")
+"""
+        )
+    try:
+        content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
+    except CannotRefreshAuthentication:
+        if prompt_for_reauthentication:
+            context.authenticate(username=username, provider=auth_provider)
+            content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
+        else:
+            raise
     item = content["data"]
     return client_for_item(context, structure_clients, item)
 
@@ -298,6 +347,7 @@ def from_profile(name, structure_clients=None, **kwargs):
 
 def from_config(
     config,
+    structure_clients="numpy",
     *,
     username=None,
     auth_provider=None,
@@ -305,8 +355,7 @@ def from_config(
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
-    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
-    **kwargs,
+    prompt_for_reauthentication=None,
 ):
     """
     Build Nodes directly, running the app in this same process.
@@ -351,13 +400,16 @@ def from_config(
 
     build_app_kwargs = construct_build_app_kwargs(config)
     context = context_from_tree(
-        username=username,
-        auth_provider=auth_provider,
         api_key=api_key,
         cache=cache,
         offline=offline,
         token_cache=token_cache,
-        prompt_for_reauthentication=prompt_for_reauthentication,
         **build_app_kwargs,
     )
-    return from_context(context, **kwargs)
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        prompt_for_reauthentication=prompt_for_reauthentication,
+        username=username,
+        auth_provider=auth_provider,
+    )

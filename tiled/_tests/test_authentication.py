@@ -9,7 +9,7 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_config
-from ..client.context import CannotRefreshAuthentication
+from ..client.auth import CannotRefreshAuthentication
 from ..server import authentication
 from .utils import fail_with_status_code
 
@@ -59,21 +59,41 @@ def test_password_auth(enter_password, config):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         with enter_password("secret1"):
-            from_config(config, username="alice", token_cache=tmpdir)
+            from_config(
+                config,
+                username="alice",
+                token_cache=tmpdir,
+                prompt_for_reauthentication=True,
+            )
         with enter_password("secret2"):
-            from_config(config, username="bob", token_cache=tmpdir)
+            from_config(
+                config,
+                username="bob",
+                token_cache=tmpdir,
+                prompt_for_reauthentication=True,
+            )
 
     # Bob's password should not work for alice
     with tempfile.TemporaryDirectory() as tmpdir:
         with fail_with_status_code(401):
             with enter_password("secret2"):
-                from_config(config, username="alice", token_cache=tmpdir)
+                from_config(
+                    config,
+                    username="alice",
+                    token_cache=tmpdir,
+                    prompt_for_reauthentication=True,
+                )
 
     # Empty password should not work.
     with tempfile.TemporaryDirectory() as tmpdir:
         with fail_with_status_code(422):
             with enter_password(""):
-                from_config(config, username="alice", token_cache=tmpdir)
+                from_config(
+                    config,
+                    username="alice",
+                    token_cache=tmpdir,
+                    prompt_for_reauthentication=True,
+                )
 
 
 def test_key_rotation(enter_password, config, tmpdir):
@@ -84,22 +104,36 @@ def test_key_rotation(enter_password, config, tmpdir):
 
     # Obtain refresh token.
     with enter_password("secret1"):
-        from_config(config, username="alice", token_cache=tmpdir)
+        from_config(
+            config,
+            username="alice",
+            token_cache=tmpdir,
+            prompt_for_reauthentication=True,
+        )
     # Use refresh token (no prompt to reauthenticate).
-    from_config(config, username="alice", token_cache=tmpdir)
+    from_config(
+        config, username="alice", token_cache=tmpdir, prompt_for_reauthentication=True
+    )
 
     # Rotate in a new key.
     config["authentication"]["secret_keys"].insert(0, "NEW_SECRET")
     assert config["authentication"]["secret_keys"] == ["NEW_SECRET", "SECRET"]
     # The refresh token from the old key is still valid.
+    c = from_config(
+        config, username="alice", token_cache=tmpdir, prompt_for_reauthentication=True
+    )
     # We reauthenticate and receive a refresh token for the new key.
-    from_config(config, username="alice", token_cache=tmpdir)
+    # (This would happen on its own with the passage of time, but we force it
+    # for the sake of a quick test.)
+    c.context.reauthenticate()
 
     # Rotate out the old key.
     del config["authentication"]["secret_keys"][1]
     assert config["authentication"]["secret_keys"] == ["NEW_SECRET"]
     # New refresh token works with the new key.
-    from_config(config, username="alice", token_cache=tmpdir)
+    from_config(
+        config, username="alice", token_cache=tmpdir, prompt_for_reauthentication=True
+    )
 
 
 def test_refresh_flow(enter_password, config):
@@ -111,7 +145,12 @@ def test_refresh_flow(enter_password, config):
     with tempfile.TemporaryDirectory() as tmpdir:
         # Normal default configuration: a refresh is not immediately required.
         with enter_password("secret1"):
-            client = from_config(config, username="alice", token_cache=tmpdir)
+            client = from_config(
+                config,
+                username="alice",
+                token_cache=tmpdir,
+                prompt_for_reauthentication=True,
+            )
         token1 = client.context.tokens["access_token"]
         client["A1"]
         assert token1 is client.context.tokens["access_token"]
@@ -125,7 +164,12 @@ def test_refresh_flow(enter_password, config):
     with tempfile.TemporaryDirectory() as tmpdir:
         config["authentication"]["access_token_max_age"] = timedelta(seconds=1)
         with enter_password("secret1"):
-            client = from_config(config, username="alice", token_cache=tmpdir)
+            client = from_config(
+                config,
+                username="alice",
+                token_cache=tmpdir,
+                prompt_for_reauthentication=True,
+            )
         token3 = client.context.tokens["access_token"]
         time.sleep(2)
         # A refresh should happen automatically now.
@@ -137,7 +181,12 @@ def test_refresh_flow(enter_password, config):
     with tempfile.TemporaryDirectory() as tmpdir:
         config["authentication"]["session_max_age"] = timedelta(seconds=1)
         with enter_password("secret1"):
-            client = from_config(config, username="alice", token_cache=tmpdir)
+            client = from_config(
+                config,
+                username="alice",
+                token_cache=tmpdir,
+                prompt_for_reauthentication=True,
+            )
         time.sleep(2)
         # Refresh should fail because the session is too old.
         with pytest.raises(CannotRefreshAuthentication):
@@ -147,7 +196,12 @@ def test_refresh_flow(enter_password, config):
 
 def test_revoke_session(enter_password, config, tmpdir):
     with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=tmpdir)
+        client = from_config(
+            config,
+            username="alice",
+            token_cache=tmpdir,
+            prompt_for_reauthentication=True,
+        )
     # Get the current session ID.
     info = client.context.whoami()
     (session,) = info["sessions"]
@@ -189,14 +243,29 @@ def test_multiple_providers(enter_password, config, monkeypatch, tmpdir):
     )
     monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
     with enter_password("secret1"):
-        client = from_config(config, username="alice", token_cache=tmpdir)
+        client = from_config(
+            config,
+            username="alice",
+            token_cache=tmpdir,
+            prompt_for_reauthentication=True,
+        )
     client.context.whoami()
     monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
     with enter_password("secret3"):
-        client = from_config(config, username="cara", token_cache=tmpdir)
+        client = from_config(
+            config,
+            username="cara",
+            token_cache=tmpdir,
+            prompt_for_reauthentication=True,
+        )
     monkeypatch.setattr("sys.stdin", io.StringIO("3\n"))
     with enter_password("secret5"):
-        client = from_config(config, username="cara", token_cache=tmpdir)
+        client = from_config(
+            config,
+            username="cara",
+            token_cache=tmpdir,
+            prompt_for_reauthentication=True,
+        )
     client.context.whoami()
 
 
@@ -220,7 +289,7 @@ def test_multiple_providers_name_collision(config):
         },
     ]
     with pytest.raises(ValueError):
-        from_config(config)
+        from_config(config, prompt_for_reauthentication=True)
 
 
 def test_admin(enter_password, config, tmpdir):
@@ -231,10 +300,17 @@ def test_admin(enter_password, config, tmpdir):
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
 
     with enter_password("secret1"):
-        admin_client = from_config(config, username="alice", token_cache=tmpdir)
+        admin_client = from_config(
+            config,
+            username="alice",
+            token_cache=tmpdir,
+            prompt_for_reauthentication=True,
+        )
 
     with enter_password("secret2"):
-        user_client = from_config(config, username="bob", token_cache=tmpdir)
+        user_client = from_config(
+            config, username="bob", token_cache=tmpdir, prompt_for_reauthentication=True
+        )
 
     user_roles = user_client.context.whoami()["roles"]
     assert [role["name"] for role in user_roles] == ["user"]
@@ -252,15 +328,24 @@ def test_api_keys(enter_password, config, tmpdir):
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
 
     with enter_password("secret1"):
-        admin_client = from_config(config, username="alice", token_cache=tmpdir)
+        admin_client = from_config(
+            config,
+            username="alice",
+            token_cache=tmpdir,
+            prompt_for_reauthentication=True,
+        )
 
     with enter_password("secret2"):
-        user_client = from_config(config, username="bob", token_cache=tmpdir)
+        user_client = from_config(
+            config, username="bob", token_cache=tmpdir, prompt_for_reauthentication=True
+        )
 
     # Make and use an API key. Check that latest_activity is updated.
     user_key_info = user_client.context.create_api_key()
     assert user_key_info["latest_activity"] is None  # never used
-    user_client_from_key = from_config(config, api_key=user_key_info["secret"])
+    user_client_from_key = from_config(
+        config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
+    )
     # Check that api_key property is set.
     assert user_client_from_key.context.api_key == user_key_info["secret"]
     # Use the key for a couple requests and see that latest_activity becomes set and then increases.
@@ -289,11 +374,15 @@ def test_api_keys(enter_password, config, tmpdir):
     # Request a key with reduced scope that cannot read metadata.
     admin_key_info = admin_client.context.create_api_key(scopes=["metrics"])
     with fail_with_status_code(401):
-        from_config(config, api_key=admin_key_info["secret"])
+        from_config(
+            config, api_key=admin_key_info["secret"], prompt_for_reauthentication=True
+        )
 
     # Request a key with reduced scope that can *only* read metadata.
     admin_key_info = admin_client.context.create_api_key(scopes=["read:metadata"])
-    restricted_client = from_config(config, api_key=admin_key_info["secret"])
+    restricted_client = from_config(
+        config, api_key=admin_key_info["secret"], prompt_for_reauthentication=True
+    )
     restricted_client["A1"]
     with fail_with_status_code(401):
         restricted_client["A1"].read()  # no 'read:data' scope
@@ -314,7 +403,9 @@ def test_api_keys(enter_password, config, tmpdir):
     # Revoke the new key.
     user_client_from_key.context.revoke_api_key(user_key_info["first_eight"])
     with fail_with_status_code(401):
-        from_config(config, api_key=user_key_info["secret"])
+        from_config(
+            config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
+        )
     assert len(user_client_from_key.context.whoami()["api_keys"]) == 1
 
     # Create a key with a very short lifetime.
@@ -323,7 +414,9 @@ def test_api_keys(enter_password, config, tmpdir):
     )  # units: seconds
     time.sleep(2)
     with fail_with_status_code(401):
-        from_config(config, api_key=user_key_info["secret"])
+        from_config(
+            config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
+        )
 
 
 def test_api_key_limit(enter_password, config, tmpdir):
@@ -332,7 +425,12 @@ def test_api_key_limit(enter_password, config, tmpdir):
     authentication.API_KEY_LIMIT = 3
     try:
         with enter_password("secret2"):
-            user_client = from_config(config, username="bob", token_cache=tmpdir)
+            user_client = from_config(
+                config,
+                username="bob",
+                token_cache=tmpdir,
+                prompt_for_reauthentication=True,
+            )
 
         for i in range(authentication.API_KEY_LIMIT):
             user_client.context.create_api_key(note=f"key {i}")
@@ -350,9 +448,19 @@ def test_session_limit(enter_password, config, tmpdir):
     try:
         with enter_password("secret1"):
             for _ in range(authentication.SESSION_LIMIT):
-                from_config(config, username="alice", token_cache=tmpdir)
+                from_config(
+                    config,
+                    username="alice",
+                    token_cache=tmpdir,
+                    prompt_for_reauthentication=True,
+                )
             # Hit Session limit.
             with fail_with_status_code(400):
-                from_config(config, username="alice", token_cache=tmpdir)
+                from_config(
+                    config,
+                    username="alice",
+                    token_cache=tmpdir,
+                    prompt_for_reauthentication=True,
+                )
     finally:
         authentication.SESSION_LIMIT = original_limit
