@@ -197,7 +197,7 @@ class TiledAuth(httpx.Auth):
                 "access_token", reload_from_disk=True
             )
             if (attempt < 2) and (maybe_new_access_token != access_token):
-                return (yield from self.sync_auto_flow(request, attempt=1 + attempt))
+                return (yield from self.sync_auth_flow(request, attempt=1 + attempt))
             if access_token is not None:
                 # The access token is stale or otherwise invalid. Discard.
                 self.sync_clear_token("access_token")
