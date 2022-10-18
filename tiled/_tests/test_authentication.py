@@ -2,6 +2,7 @@ import io
 import tempfile
 import time
 from datetime import timedelta
+from pathlib import Path
 
 import numpy
 import pytest
@@ -443,16 +444,21 @@ def test_session_limit(enter_password, config, tmpdir):
     # Decrease the limit so this test runs faster.
     original_limit = authentication.SESSION_LIMIT
     authentication.SESSION_LIMIT = 3
+    # Use separate token caches to de-couple login attempts into separate sessions.
     try:
         with enter_password("secret1"):
-            for _ in range(authentication.SESSION_LIMIT):
+            for i in range(authentication.SESSION_LIMIT):
+                token_cache = Path(str(tmpdir)) / str(i)
+                token_cache.mkdir()
                 from_config(
                     config,
                     username="alice",
-                    token_cache=tmpdir,
+                    token_cache=token_cache,
                     prompt_for_reauthentication=True,
                 )
             # Hit Session limit.
+            token_cache = Path(str(tmpdir)) / str(1 + i)
+            token_cache.mkdir()
             with fail_with_status_code(400):
                 from_config(
                     config,
