@@ -228,7 +228,7 @@ class TiledAuth(httpx.Auth):
             self.sync_set_token("refresh_token", tokens["refresh_token"])
             self.sync_set_token("access_token", tokens["access_token"])
             request.headers["Authorization"] = f"Bearer {tokens['access_token']}"
-        yield request
+            yield request
 
     def build_refresh_request(self, refresh_token):
         return httpx.Request(
