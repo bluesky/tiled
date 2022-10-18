@@ -67,7 +67,7 @@ async def about(
     # imports of the underlying I/O libraries themselves (openpyxl, pillow,
     # etc.) can remain lazy.
     request.state.endpoint = "about"
-    base_url = get_base_url(request)
+    base_url = get_base_url(request, settings.prefix)
     authentication = {
         "required": not settings.allow_anonymous_access,
     }
@@ -164,6 +164,7 @@ def declare_search_router(query_registry):
         entry: Any = SecureEntry(scopes=["read:metadata"]),
         query_registry=Depends(get_query_registry),
         principal: str = Depends(get_current_principal),
+        settings: BaseSettings = Depends(get_settings),
         **filters,
     ):
         request.state.endpoint = "search"
@@ -187,7 +188,7 @@ def declare_search_router(query_registry):
                 omit_links,
                 filters,
                 sort,
-                get_base_url(request),
+                get_base_url(request, settings.prefix),
                 resolve_media_type(request),
                 max_depth=max_depth,
             )
@@ -314,11 +315,12 @@ async def node_metadata(
     omit_links: bool = Query(False),
     entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
+    settings: BaseSettings = Depends(get_settings),
 ):
     "Fetch the metadata and structure information for one entry."
 
     request.state.endpoint = "metadata"
-    base_url = get_base_url(request)
+    base_url = get_base_url(request, settings.prefix)
     path_parts = [segment for segment in path.split("/") if segment]
     try:
         resource = construct_resource(
@@ -598,6 +600,7 @@ def post_metadata(
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
+    settings: BaseSettings = Depends(get_settings),
 ):
     if not hasattr(entry, "post_metadata"):
         raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
@@ -649,7 +652,7 @@ def post_metadata(
         references=body.references,
     )
     links = {}
-    base_url = get_base_url(request)
+    base_url = get_base_url(request, settings.prefix)
     path_parts = [segment for segment in path.split("/") if segment] + [key]
     path_str = "/".join(path_parts)
     links["self"] = f"{base_url}/node/metadata/{path_str}"
@@ -821,13 +824,14 @@ async def node_revisions(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
     entry=SecureEntry(scopes=["read:metadata"]),
+    settings: BaseSettings = Depends(get_settings),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
             status_code=405, detail="This path does not support update of metadata."
         )
 
-    base_url = get_base_url(request)
+    base_url = get_base_url(request, settings.prefix)
     resource = construct_revisions_response(
         entry,
         base_url,

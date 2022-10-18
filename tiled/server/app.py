@@ -118,6 +118,7 @@ def build_app(
         for spec in authentication.get("providers", [])
     }
     server_settings = server_settings or {}
+    global_prefix = server_settings.get("prefix", "")
     query_registry = query_registry or get_query_registry()
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
@@ -177,30 +178,30 @@ def build_app(
                 # http://localhost:8000/api not http://localhost:8000/?root_path=true
                 raise HTTPException(
                     status_code=400,
-                    detail=f"To connect from a Python client, use {get_base_url(request)} not",
+                    detail=f"To connect from a Python client, use {get_base_url(request, global_prefix)} not",
                 )
             return templates.TemplateResponse(
                 "index.html",
                 {
                     "request": request,
                     # This is used to fill in the Python code sample with the API URL.
-                    "api_url": get_base_url(request),
+                    "api_url": get_base_url(request, global_prefix),
                     # This is used to construct the link to the React UI.
-                    "root_url": get_root_url(request),
+                    "root_url": get_root_url(request) + global_prefix,
                     # If defined, this adds a Binder link to the page.
                     "binder_link": os.getenv("TILED_BINDER_LINK"),
                 },
             )
 
     app.state.allow_origins = []
-    app.include_router(router, prefix="/api")
+    app.include_router(router, prefix=f"{global_prefix}/api")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
     for custom_router in getattr(tree, "include_routers", []):
-        app.include_router(custom_router, prefix="/api")
+        app.include_router(custom_router, prefix=f"{global_prefix}/api")
 
     if authentication.get("providers", []):
         # Delay this imports to avoid delaying startup with the SQL and cryptography
@@ -215,7 +216,7 @@ def build_app(
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
         oauth2_scheme.model.flows.password.tokenUrl = (
-            f"/api/auth/provider/{first_provider}/token"
+            f"{global_prefix}/api/auth/provider/{first_provider}/token"
         )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
@@ -245,7 +246,7 @@ def build_app(
                     custom_router, prefix=f"/provider/{provider}"
                 )
         # And add this authentication_router itself to the app.
-        app.include_router(authentication_router, prefix="/api/auth")
+        app.include_router(authentication_router, prefix=f"{global_prefix}/api/auth")
 
     @lru_cache(1)
     def override_get_authenticators():
@@ -268,7 +269,7 @@ def build_app(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        for item in ["allow_origins", "response_bytesize_limit"]:
+        for item in ["allow_origins", "response_bytesize_limit", "prefix"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         database = server_settings.get("database", {})
@@ -330,7 +331,9 @@ def build_app(
 
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
-        app.include_router(declare_search_router(query_registry), prefix="/api")
+        app.include_router(
+            declare_search_router(query_registry), prefix=f"{global_prefix}/api"
+        )
 
         app.state.allow_origins.extend(settings.allow_origins)
         app.add_middleware(
@@ -573,7 +576,7 @@ def build_app(
     if metrics_config.get("prometheus", False):
         from . import metrics
 
-        app.include_router(metrics.router, prefix="/api")
+        app.include_router(metrics.router, prefix=f"{global_prefix}/api")
 
         @app.middleware("http")
         async def capture_metrics_prometheus(request: Request, call_next):
@@ -645,11 +648,11 @@ def print_admin_api_key_if_generated(web_app, host, port):
             f"""
     Navigate a web browser to:
 
-    http://{host}:{port}?api_key={settings.single_user_api_key}
+    http://{host}:{port}{settings.prefix}?api_key={settings.single_user_api_key}
 
     or connect a Tiled client to:
 
-    http://{host}:{port}/api?api_key={settings.single_user_api_key}
+    http://{host}:{port}/{settings.prefix}api?api_key={settings.single_user_api_key}
 
 """,
             file=sys.stderr,

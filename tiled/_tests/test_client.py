@@ -11,3 +11,8 @@ def test_configurable_timeout():
     assert c.context.http_client.timeout.connect != 17
     c = from_tree(tree, timeout=httpx.Timeout(17))
     assert c.context.http_client.timeout.connect == 17
+
+
+def test_prefix():
+    c = from_tree(tree, server_settings={"prefix": "/a/b/c"})
+    list(c)

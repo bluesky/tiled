@@ -30,3 +30,4 @@ access_control:
 trees:
   - path: /
     tree: tiled.examples.toy_authentication:tree
+prefix: /a/b/c

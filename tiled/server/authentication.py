@@ -202,7 +202,7 @@ def get_current_principal(
         authenticate_value = "Bearer"
     headers_for_401 = {
         "WWW-Authenticate": authenticate_value,
-        "X-Tiled-Root": get_base_url(request),
+        "X-Tiled-Root": get_base_url(request, settings.prefix),
     }
     if api_key is not None:
         if authenticators:

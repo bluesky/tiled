@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     database_max_overflow: Optional[int] = int(
         os.getenv("TILED_DATABASE_MAX_OVERFLOW", 5)
     )
+    prefix: str = ""
 
     @property
     def database_settings(self):

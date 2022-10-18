@@ -387,6 +387,12 @@ properties:
         from Mozilla's web developer documentation.
 
         https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+  prefix:
+    type: string
+    description: |
+      Serve the Tiled application on a sub-path. By default, Tiled is served at
+      `/`. If this is set to a path like `/a/b/c`, it will be served at `/a/b/c/`.
+      This must have a leading slash and it must _not_ have a trailing slash.
   uvicorn:
     type: object
     properties:

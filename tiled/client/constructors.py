@@ -170,7 +170,7 @@ def from_tree(
         settings = app.dependency_overrides[get_settings]()
         api_key = settings.single_user_api_key or None
     context = Context(
-        uri="http://local-tiled-app/api",
+        uri=f"http://local-tiled-app{(server_settings or {}).get('prefix', '')}/api",
         headers=headers,
         api_key=api_key,
         cache=cache,
@@ -418,7 +418,7 @@ def from_config(
         settings = app.dependency_overrides[get_settings]()
         api_key = settings.single_user_api_key or None
     context = Context(
-        uri="http://local-tiled-app/api",
+        uri=f"http://local-tiled-app{config.get('prefix', '')}/api",
         headers=headers,
         api_key=api_key,
         cache=cache,

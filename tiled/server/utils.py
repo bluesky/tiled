@@ -37,11 +37,11 @@ def get_root_url(request):
     return f"{get_root_url_low_level(request.headers, request.scope)}"
 
 
-def get_base_url(request):
+def get_base_url(request, global_prefix):
     """
     Base URL for the API
     """
-    return f"{get_root_url(request)}/api"
+    return f"{get_root_url(request)}{global_prefix}/api"
 
 
 def get_root_url_low_level(request_headers, scope):

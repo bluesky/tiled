@@ -162,6 +162,7 @@ def construct_build_app_kwargs(
             root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
+        server_settings["prefix"] = config.get("prefix", "")
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["object_cache"] = config.get("object_cache", {})
         server_settings["response_bytesize_limit"] = config.get(
@@ -223,6 +224,7 @@ def merge(configs):
     authentication_config_source = None
     access_control_config_source = None
     uvicorn_config_source = None
+    prefix_config_source = None
     object_cache_config_source = None
     metrics_config_source = None
     database_config_source = None
@@ -268,6 +270,15 @@ def merge(configs):
                 )
             uvicorn_config_source = filepath
             merged["uvicorn"] = config["uvicorn"]
+        if "prefix" in config:
+            if "prefix" in merged:
+                raise ConfigError(
+                    "prefix can only be specified in one file. "
+                    f"It was found in both {prefix_config_source} and "
+                    f"{filepath}"
+                )
+            uvicorn_config_source = filepath
+            merged["prefix"] = config["prefix"]
         if "object_cache" in config:
             if "object_cache" in merged:
                 raise ConfigError(
