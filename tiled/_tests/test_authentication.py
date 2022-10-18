@@ -119,13 +119,13 @@ def test_key_rotation(enter_password, config, tmpdir):
     config["authentication"]["secret_keys"].insert(0, "NEW_SECRET")
     assert config["authentication"]["secret_keys"] == ["NEW_SECRET", "SECRET"]
     # The refresh token from the old key is still valid.
-    c = from_config(
+    client = from_config(
         config, username="alice", token_cache=tmpdir, prompt_for_reauthentication=True
     )
     # We reauthenticate and receive a refresh token for the new key.
     # (This would happen on its own with the passage of time, but we force it
     # for the sake of a quick test.)
-    c.context.reauthenticate()
+    client.context.force_auth_refresh()
 
     # Rotate out the old key.
     del config["authentication"]["secret_keys"][1]
@@ -156,7 +156,7 @@ def test_refresh_flow(enter_password, config):
         assert token1 is client.context.tokens["access_token"]
 
         # Forcing a refresh gives us a new token.
-        client.context.reauthenticate()
+        client.context.force_auth_refresh()
         token2 = client.context.tokens["access_token"]
         assert token2 is not token1
 
@@ -190,8 +190,7 @@ def test_refresh_flow(enter_password, config):
         time.sleep(2)
         # Refresh should fail because the session is too old.
         with pytest.raises(CannotRefreshAuthentication):
-            # Set prompt=False so that this raises instead of interactively prompting.
-            client.context.reauthenticate(prompt=False)
+            client.context.force_auth_refresh()
 
 
 def test_revoke_session(enter_password, config, tmpdir):
@@ -214,8 +213,7 @@ def test_revoke_session(enter_password, config, tmpdir):
     assert updated_session["revoked"]
     # Confirm it cannot be refreshed.
     with pytest.raises(CannotRefreshAuthentication):
-        # Set prompt=False so that this raises instead of interactively prompting.
-        client.context.reauthenticate(prompt=False)
+        client.context.force_auth_refresh()
 
 
 def test_multiple_providers(enter_password, config, monkeypatch, tmpdir):

@@ -23,7 +23,7 @@ from .utils import (
 )
 
 USER_AGENT = f"python-tiled/{get_versions()['version']}"
-API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w)$")
+API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 
 
 class Context:
@@ -149,17 +149,6 @@ class Context:
         path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
         # Strip "/node/metadata"
         self._path_parts = path_parts[2:]
-
-        csrf_token = self.http_client.cookies["tiled_csrf"]
-        token_directory = Path(
-            self._token_cache,
-            urllib.parse.quote_plus(
-                url.netloc.decode()
-            ),  # Make a valid filename out of hostname:port.
-        )
-        if self.server_info["authentication"]["providers"]:
-            refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
-            client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
 
     @property
     def tokens(self):
@@ -506,48 +495,41 @@ class Context:
 
     def authenticate(self, username=None, provider=None):
         "Authenticate. Prompt for password or access code (refresh token)."
-        if self.api_key is not None:
-            raise RuntimeError("API key authentication is being used.")
         providers = self.server_info["authentication"]["providers"]
-        if len(providers) == 0:
+        spec = _choose_identity_provider(providers, provider)
+        provider = spec["provider"]
+        if self.api_key is not None:
+            # Check that API key authenticates us as this user,
+            # and then either return or raise.
+            identities = self.whoami()["identities"]
+            for identity in identities:
+                if (identity["provider"] == provider) and (identity["id"] == username):
+                    return
             raise RuntimeError(
-                "The authenticate() method is not applicable. "
-                "This server does not support any authentication providers."
+                "An API key is set, and it is not associated with the username/provider "
+                f"{username}/{provider}. Unset the API key first."
             )
-        if provider is not None:
-            for spec in providers:
-                if spec["provider"] == provider:
-                    break
-            else:
-                raise ValueError(
-                    f"No such provider {provider}. Choices are {[spec['provider'] for spec in providers]}"
-                )
+
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+        # ~/.config/tiled/tokens/{host:port}/{provider}/{username}
+        # with each templated element URL-encoded so it is a valid filename.
+        token_directory = Path(
+            self._token_cache,
+            urllib.parse.quote_plus(self.http_client.base_url.netloc.decode()),
+            urllib.parse.quote_plus(provider),
+            urllib.parse.quote_plus(username),
+        )
+        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
+        self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        try:
+            self.whoami()
+        except CannotRefreshAuthentication:
+            # Continue below, where we will prompt for log in.
+            pass
         else:
-            if len(providers) == 1:
-                # There is only one choice, so no need to prompt the user.
-                (spec,) = providers
-            else:
-                while True:
-                    print("Authenticaiton providers:")
-                    for i, spec in enumerate(providers, start=1):
-                        print(f"{i} - {spec['provider']}")
-                    raw_choice = input(
-                        "Choose an authentication provider (or press Enter to escape): "
-                    )
-                    if not raw_choice:
-                        print("No authentication provider chosen. Failed.")
-                        break
-                    try:
-                        choice = int(raw_choice)
-                    except TypeError:
-                        print("Choice must be a number.")
-                        continue
-                    try:
-                        spec = providers[choice - 1]
-                    except IndexError:
-                        print(f"Choice must be a number 1 through {len(providers)}.")
-                        continue
-                    break
+            # We have a live session already. No need to log in again.
+            return
+
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         confirmation_message = spec["confirmation_message"]
@@ -617,15 +599,15 @@ Navigate web browser to this address to obtain access code:
             )
         return tokens
 
-    def reauthenticate(self, prompt=True):
+    def force_auth_refresh(self):
         """
-        Refresh authentication.
+        Execute refresh flow.
 
-        Parameters
-        ----------
-        prompt : bool
-            If True, give interactive prompt for authentication when refreshing
-            tokens fails. If False raise an error.
+        This method is exposed for testing and debugging uses.
+
+        It should never be necessary for the user to call. Refresh flow is
+        automatically executed by tiled.client.auth.TiledAuth when the current
+        access_token expires.
         """
         if self.http_client.auth is None:
             raise RuntimeError(
@@ -635,17 +617,15 @@ Navigate web browser to this address to obtain access code:
             "refresh_token", reload_from_disk=True
         )
         if refresh_token is None:
-            if prompt:
-                return self.authenticate()
-            raise CannotRefreshAuthentication
+            raise CannotRefreshAuthentication("There is no refresh_token.")
         refresh_request = self.http_client.auth.build_refresh_request(
             refresh_token,
         )
         token_response = self.http_client.send(refresh_request, auth=None)
         if token_response.status_code == 401:
-            if prompt:
-                return self.authenticate()
-            raise CannotRefreshAuthentication
+            raise CannotRefreshAuthentication(
+                "Session cannot be refreshed. Log in again."
+            )
         handle_error(token_response)
         tokens = token_response.json()
         self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
@@ -743,3 +723,41 @@ def context_from_tree(
         token_cache=token_cache,
         app=app,
     )
+
+
+def _choose_identity_provider(providers, provider=None):
+    if provider is not None:
+        for spec in providers:
+            if spec["provider"] == provider:
+                break
+        else:
+            raise ValueError(
+                f"No such provider {provider}. Choices are {[spec['provider'] for spec in providers]}"
+            )
+    else:
+        if len(providers) == 1:
+            # There is only one choice, so no need to prompt the user.
+            (spec,) = providers
+        else:
+            while True:
+                print("Authenticaiton providers:")
+                for i, spec in enumerate(providers, start=1):
+                    print(f"{i} - {spec['provider']}")
+                raw_choice = input(
+                    "Choose an authentication provider (or press Enter to escape): "
+                )
+                if not raw_choice:
+                    print("No authentication provider chosen. Failed.")
+                    break
+                try:
+                    choice = int(raw_choice)
+                except TypeError:
+                    print("Choice must be a number.")
+                    continue
+                try:
+                    spec = providers[choice - 1]
+                except IndexError:
+                    print(f"Choice must be a number 1 through {len(providers)}.")
+                    continue
+                break
+    return spec

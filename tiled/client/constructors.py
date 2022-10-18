@@ -5,7 +5,6 @@ import sys
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
-from .auth import CannotRefreshAuthentication
 from .context import (
     DEFAULT_TIMEOUT_PARAMS,
     DEFAULT_TOKEN_CACHE,
@@ -225,14 +224,9 @@ Set an api_key as in:
 >>> c = from_uri("...", api_key="...")
 """
         )
-    try:
-        content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
-    except CannotRefreshAuthentication:
-        if prompt_for_reauthentication:
-            context.authenticate(username=username, provider=auth_provider)
-            content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
-        else:
-            raise
+    if username is not None:
+        context.authenticate(username=username, provider=auth_provider)
+    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
     item = content["data"]
     return client_for_item(context, structure_clients, item)
 

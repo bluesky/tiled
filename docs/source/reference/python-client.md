@@ -81,7 +81,6 @@ Beyond the Mapping interface, Node adds the following attributes
    tiled.client.node.Node.metadata
    tiled.client.node.Node.references
    tiled.client.node.Node.sorting
-   tiled.client.node.Node.path
    tiled.client.node.Node.uri
    tiled.client.node.Node.specs
 ```
@@ -139,7 +138,6 @@ Tiled currently includes two clients for each structure family:
 
    tiled.client.base.BaseClient
    tiled.client.base.BaseClient.metadata
-   tiled.client.base.BaseClient.path
    tiled.client.base.BaseClient.uri
    tiled.client.base.BaseClient.username
    tiled.client.base.BaseClient.item
@@ -260,13 +258,18 @@ the same source directory as the `tiled.client.cache` module. (Cachey itself
    tiled.client.context.Context
    tiled.client.context.Context.offline
    tiled.client.context.Context.authenticate
-   tiled.client.context.Context.reauthenticate
+   tiled.client.context.Context.force_auth_refresh
    tiled.client.context.Context.logout
    tiled.client.context.Context.tokens
-   tiled.client.context.Context.get_json
-   tiled.client.context.Context.get_content
-   tiled.client.context.Context.base_url
-   tiled.client.context.Context.path_parts
-   tiled.client.context.logout_all
-   tiled.client.context.sessions
+```
+
+## Authentication
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.auth.sessions
+   tiled.client.auth.logout
+   tiled.client.auth.logout_all
 ```
