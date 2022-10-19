@@ -78,7 +78,7 @@ class BaseClient:
         self._metadata_revisions = None
         super().__init__()
 
-    def login(self, provider=None):
+    def login(self, username=None, provider=None):
         """
         Depending on the server's authentication method, this will prompt for username/password
 
@@ -97,10 +97,10 @@ class BaseClient:
 
         See also c.context.authenticate() and c.context.reauthenticate().
         """
-        self.context.authenticate(provider=provider)
-        # Do NOT return the tokens that are returned by authenticate().
-        # This avoids displaying valid refresh tokens into places they might persist,
-        # like Jupyter notebooks.
+        provider_spec, username = self.context.authenticate(provider=provider)
+        confirmation_message = provider_spec.get("confirmation_message")
+        if confirmation_message:
+            print(confirmation_message.format(id=username))
 
     def logout(self):
         """

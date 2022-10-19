@@ -63,16 +63,8 @@ def from_uri(
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
     """
-    uri = httpx.URL(uri)
-    node_path_parts = []
-    if "/node/metadata" in uri.path:
-        api_path, _, node_path = uri.path.partition("/node/metadata")
-        api_uri = uri.copy_with(path=api_path)
-        node_path_parts.extend([segment for segment in node_path.split("/") if segment])
-    else:
-        api_uri = uri
-    context = Context(
-        api_uri,
+    context, node_path_parts = Context.from_any_uri(
+        uri,
         api_key=api_key,
         cache=cache,
         offline=offline,

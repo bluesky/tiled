@@ -11,7 +11,12 @@ import msgpack
 
 from .._version import get_versions
 from ..utils import DictView
-from .auth import DEFAULT_TOKEN_CACHE, CannotRefreshAuthentication, TiledAuth
+from .auth import (
+    DEFAULT_TOKEN_CACHE,
+    CannotRefreshAuthentication,
+    TiledAuth,
+    build_refresh_request,
+)
 from .cache import Revalidate
 from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
@@ -123,6 +128,50 @@ class Context:
             with self.disable_cache(allow_read=False, allow_write=True):
                 self.server_info = self.get_json(self.api_uri)
         self.api_key = api_key  # property setter sets Authorization header
+
+    @classmethod
+    def from_any_uri(
+        cls,
+        uri,
+        *,
+        headers=None,
+        api_key=None,
+        cache=None,
+        offline=False,
+        timeout=None,
+        verify=True,
+        token_cache=DEFAULT_TOKEN_CACHE,
+        app=None,
+    ):
+        """
+        Accept a URI to a specific node.
+
+        For example, given URI "https://example.com/api/node/metadata/a/b/c"
+        return a Context connected to "https://examples/api/" and the list
+        ["a", "b", "c"].
+        """
+        uri = httpx.URL(uri)
+        node_path_parts = []
+        if "/node/metadata" in uri.path:
+            api_path, _, node_path = uri.path.partition("/node/metadata")
+            api_uri = uri.copy_with(path=api_path)
+            node_path_parts.extend(
+                [segment for segment in node_path.split("/") if segment]
+            )
+        else:
+            api_uri = uri
+        context = cls(
+            api_uri,
+            headers=headers,
+            api_key=api_key,
+            cache=cache,
+            offline=offline,
+            timeout=timeout,
+            verify=verify,
+            token_cache=token_cache,
+            app=app,
+        )
+        return context, node_path_parts
 
     @property
     def tokens(self):
@@ -285,6 +334,9 @@ class Context:
         self._disable_cache_write = False
 
     def get_content(self, path, accept=None, stream=False, revalidate=None, **kwargs):
+        send_kwargs = {}
+        if "auth" in kwargs:
+            send_kwargs["auth"] = kwargs.pop("auth")
         if revalidate is None:
             # Fallback to context default.
             revalidate = self.revalidate
@@ -344,7 +396,7 @@ class Context:
                     return reservation.load_content()
                 if not self._disable_cache_read:
                     request.headers["If-None-Match"] = reservation.item.etag
-            response = self.http_client.send(request, stream=stream)
+            response = self.http_client.send(request, stream=stream, **send_kwargs)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
                 # Update the expiration time.
@@ -480,31 +532,32 @@ class Context:
                 f"{username}/{provider}. Unset the API key first."
             )
 
-        csrf_token = self.http_client.cookies["tiled_csrf"]
-        # ~/.config/tiled/tokens/{host:port}/{provider}/{username}
-        # with each templated element URL-encoded so it is a valid filename.
-        token_directory = Path(
-            self._token_cache,
-            urllib.parse.quote_plus(self.api_uri.netloc.decode()),
-            urllib.parse.quote_plus(provider),
-            urllib.parse.quote_plus(username),
-        )
         refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
-        self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
-        try:
-            self.whoami()
-        except CannotRefreshAuthentication:
-            # Continue below, where we will prompt for log in.
-            pass
-        else:
-            # We have a live session already. No need to log in again.
-            return
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+
+        # If we are passed a username, we can check whether we already have
+        # tokens stashed.
+        if username is not None:
+            token_directory = self._token_directory(provider, username)
+            self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
+            # This will either:
+            # * Use an access_token and succeed.
+            # * Use a refresh_token to attempt refresh flow and succeed.
+            # * Use a refresh_token to attempt refresh flow and fail, raise.
+            # * Find no tokens and raise.
+            try:
+                self.whoami()
+            except CannotRefreshAuthentication:
+                # Continue below, where we will prompt for log in.
+                self.http_client.auth = None
+            else:
+                # We have a live session for the specified provider and username already.
+                # No need to log in again.
+                return
 
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
-        confirmation_message = spec["confirmation_message"]
         if mode == "password":
-            username = username or input("Username: ")
             password = getpass.getpass()
             form_data = {
                 "grant_type": "password",
@@ -544,8 +597,10 @@ Navigate web browser to this address to obtain access code:
                 refresh_token = raw_refresh_token.replace('"', "")
                 # Immediately refresh to (1) check that the copy/paste worked and
                 # (2) obtain an access token as well.
-                refresh_request = self.http_client.auth.build_refresh_request(
-                    refresh_token
+                refresh_request = build_refresh_request(
+                    refresh_url,
+                    refresh_token,
+                    csrf_token,
                 )
                 token_response = self.http_client.send(refresh_request, auth=None)
                 if token_response.status_code == 401:
@@ -557,17 +612,36 @@ Navigate web browser to this address to obtain access code:
                     break
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-        self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
-        self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
-        if confirmation_message:
-            identities = self.whoami()["identities"]
-            identities_by_provider = {
-                identity["provider"]: identity["id"] for identity in identities
-            }
-            print(
-                confirmation_message.format(id=identities_by_provider[spec["provider"]])
-            )
-        return tokens
+        # We need to know the username in order to set the token_directory,
+        # so we manually build an authenticated request to "whoami" to get
+        # the username, and then configure TiledAuth to handle authentication
+        # going forward.
+        whoami = self.get_json(
+            self.server_info["authentication"]["links"]["whoami"],
+            auth=None,
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        identities = whoami["identities"]
+        identities_by_provider = {
+            identity["provider"]: identity["id"] for identity in identities
+        }
+        username = identities_by_provider[provider]
+        token_directory = self._token_directory(provider, username)
+        auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        auth.sync_set_token("access_token", tokens["access_token"])
+        auth.sync_set_token("refresh_token", tokens["refresh_token"])
+        self.http_client.auth = auth
+        return spec, username
+
+    def _token_directory(self, provider, username):
+        # ~/.config/tiled/tokens/{host:port}/{provider}/{username}
+        # with each templated element URL-encoded so it is a valid filename.
+        return Path(
+            self._token_cache,
+            urllib.parse.quote_plus(self.api_uri.netloc.decode()),
+            urllib.parse.quote_plus(provider),
+            urllib.parse.quote_plus(username),
+        )
 
     def force_auth_refresh(self):
         """
@@ -588,8 +662,11 @@ Navigate web browser to this address to obtain access code:
         )
         if refresh_token is None:
             raise CannotRefreshAuthentication("There is no refresh_token.")
-        refresh_request = self.http_client.auth.build_refresh_request(
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+        refresh_request = build_refresh_request(
+            self.http_client.auth.refresh_url,
             refresh_token,
+            csrf_token,
         )
         token_response = self.http_client.send(refresh_request, auth=None)
         if token_response.status_code == 401:

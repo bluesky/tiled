@@ -17,7 +17,7 @@ DEFAULT_TOKEN_CACHE = os.getenv(
 )
 
 
-def logout(uri_or_profile, *, token_cache=DEFAULT_TOKEN_CACHE):
+def logout(netloc, provider, username, *, token_cache=DEFAULT_TOKEN_CACHE):
     """
     Logout of a given session.
 
@@ -32,110 +32,26 @@ def logout(uri_or_profile, *, token_cache=DEFAULT_TOKEN_CACHE):
     -------
     netloc : str
     """
-    netloc = _netloc_from_uri_or_profile(uri_or_profile)
-    # Find the directory associated with this specific Tiled server.
-    directory = Path(
+    if isinstance(netloc, bytes):
+        netloc = netloc.decode()
+    # ~/.config/tiled/tokens/{host:port}/{provider}/{username}
+    # with each templated element URL-encoded so it is a valid filename.
+    token_directory = Path(
         token_cache,
-        urllib.parse.quote_plus(
-            netloc.decode()
-        ),  # Make a valid filename out of hostname:port.
+        urllib.parse.quote_plus(netloc),
+        urllib.parse.quote_plus(provider),
+        urllib.parse.quote_plus(username),
     )
-    for filepath in [directory / "refresh_token", directory / "access_token"]:
+    for filepath in [
+        token_directory / "refresh_token",
+        token_directory / "access_token",
+    ]:
         # filepath.unlink(missing_ok=False)  # Python 3.8+
         try:
             filepath.unlink()
         except FileNotFoundError:
             pass
     return netloc
-
-
-def sessions(token_cache=DEFAULT_TOKEN_CACHE):
-    """
-    List all sessions.
-
-    Note that this may include expired sessions. It does not confirm that
-    any cached tokens are still valid.
-
-    Parameters
-    ----------
-    token_cache : str or Path, optional
-
-    Returns
-    -------
-    tokens : dict
-        Maps netloc to refresh_token
-    """
-    tokens = {}
-    for directory in Path(token_cache).iterdir():
-        if not directory.is_dir():
-            # Some stray file. Ignore it.
-            continue
-        refresh_token_file = directory / "refresh_token"
-        netloc = directory.name
-        if refresh_token_file.is_file():
-            with open(refresh_token_file) as file:
-                token = file.read()
-            tokens[netloc] = token
-    return tokens
-
-
-def logout_all(token_cache=DEFAULT_TOKEN_CACHE):
-    """
-    Logout of a all sessions.
-
-    If not logged in to any sessions, calling this function has no effect.
-
-    Parameters
-    ----------
-    token_cache : str or Path, optional
-
-    Returns
-    -------
-    logged_out_from : list
-        List of netloc of logged-out sessions
-    """
-    logged_out_from = []
-    for directory in Path(token_cache).iterdir():
-        if not directory.is_dir():
-            # Some stray file. Ignore it.
-            continue
-        for filepath in [directory / "refresh_token", directory / "access_token"]:
-            try:
-                filepath.unlink()
-            except FileNotFoundError:
-                pass
-            else:
-                netloc = directory.name
-                logged_out_from.append(netloc)
-    return logged_out_from
-
-
-def _netloc_from_uri_or_profile(uri_or_profile):
-    if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
-        # This looks like a URI.
-        uri = uri_or_profile
-    else:
-        # Is this a profile name?
-        from ..profiles import load_profiles
-
-        profiles = load_profiles()
-        if uri_or_profile in profiles:
-            profile_name = uri_or_profile
-            _, profile_content = profiles[profile_name]
-            if "uri" in profile_content:
-                uri = profile_content["uri"]
-            else:
-                raise ValueError(
-                    "Logout does not apply to profiles with inline ('direct') "
-                    "server configuration."
-                )
-        else:
-            raise ValueError(
-                f"Not sure what to do with tree {uri_or_profile!r}. "
-                "It does not look like a URI (it does not start with http[s]://) "
-                "and it does not match any profiles."
-            )
-    return httpx.URL(uri).netloc
 
 
 class TiledAuth(httpx.Auth):
@@ -147,6 +63,33 @@ class TiledAuth(httpx.Auth):
         self._sync_lock = SerializableLock()
         # self._async_lock = asyncio.Lock()
         self.tokens = {}
+        self._check_writable_token_directory()
+
+    def _check_writable_token_directory(self):
+        if not os.access(self.token_directory, os.W_OK | os.X_OK):
+            raise ValueError(
+                f"The token_directory {self.token_directory} is not writable."
+            )
+
+    def __getstate__(self):
+        return (
+            self.refresh_url,
+            self.csrf_token,
+            self.token_directory,
+            self._sync_lock,
+        )
+
+    def __setstate__(self, state):
+        # Omit the cached tokens (self.tokens) from the pickled bundle because:
+        # 1. Sometimes users persist pickled data and handle it insecurely.
+        # 2. The un-serialized instance of TiledAuth will need to be able to
+        #    read/write from token_directory anyway.
+        (refresh_url, csrf_token, token_directory, sync_lock) = state
+        self.refresh_url = refresh_url
+        self.csrf_token = csrf_token
+        self.token_directory = token_directory
+        self._sync_look = sync_lock
+        self._check_writable_token_directory()
 
     def sync_get_token(self, key, reload_from_disk=False):
         if not reload_from_disk:
@@ -209,7 +152,9 @@ class TiledAuth(httpx.Auth):
                     "Provide fresh credentials. "
                     "For a given client c, use c.context.authenticate()."
                 )
-            token_request = self.build_refresh_request(refresh_token)
+            token_request = build_refresh_request(
+                self.refresh_url, refresh_token, self.csrf_token
+            )
             token_response = yield token_request
             if token_response.status_code == 401:
                 # Refreshing the token failed.
@@ -230,16 +175,6 @@ class TiledAuth(httpx.Auth):
             request.headers["Authorization"] = f"Bearer {tokens['access_token']}"
             yield request
 
-    def build_refresh_request(self, refresh_token):
-        return httpx.Request(
-            "POST",
-            self.refresh_url,
-            json={"refresh_token": refresh_token},
-            # Submit CSRF token in both header and cookie.
-            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-            headers={"x-csrf": self.csrf_token},
-        )
-
     async def async_get_token(self, key):
         raise NotImplementedError("Async support is planned but not yet implemented.")
 
@@ -251,3 +186,14 @@ class TiledAuth(httpx.Auth):
 
     async def async_auth_flow(self, request):
         raise NotImplementedError("Async support is planned but not yet implemented.")
+
+
+def build_refresh_request(refresh_url, refresh_token, csrf_token):
+    return httpx.Request(
+        "POST",
+        refresh_url,
+        json={"refresh_token": refresh_token},
+        # Submit CSRF token in both header and cookie.
+        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+        headers={"x-csrf": csrf_token},
+    )
