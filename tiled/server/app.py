@@ -662,7 +662,7 @@ def print_admin_api_key_if_generated(web_app, host, port):
 
     or connect a Tiled client to:
 
-    http://{host}:{port}/{settings.prefix}api?api_key={settings.single_user_api_key}
+    http://{host}:{port}{settings.prefix}/api?api_key={settings.single_user_api_key}
 
 """,
             file=sys.stderr,
