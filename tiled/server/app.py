@@ -138,7 +138,7 @@ def build_app(
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
 
-        @app.get("/ui/{path:path}")
+        @app.get(f"{global_prefix}/ui/{{path:path}}")
         async def ui(path):
             response = await lookup_file(path)
             return response
@@ -169,13 +169,13 @@ def build_app(
             )
 
         app.mount(
-            "/static",
+            f"{global_prefix}/static",
             StaticFiles(directory=Path(SHARE_TILED_PATH, "static")),
             name="ui",
         )
         templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
 
-        @app.get("/", response_class=HTMLResponse)
+        @app.get(f"{global_prefix}/", response_class=HTMLResponse)
         async def index(
             request: Request,
             # This dependency is here because it runs the code that moves
