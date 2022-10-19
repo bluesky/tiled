@@ -460,6 +460,7 @@ def serve_directory(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    prefix: Optional[str] = typer.Option(None, help="Serve Tiled on a sub-path."),
     object_cache_available_bytes: Optional[float] = typer.Option(
         None,
         "--data-cache",
@@ -476,7 +477,7 @@ def serve_directory(
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     tree_kwargs = {}
-    server_settings = {}
+    server_settings = {"prefix": prefix or ""}
     if keep_ext:
         from ..adapters.files import identity
 
@@ -520,6 +521,7 @@ def serve_pyobject(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    prefix: Optional[str] = typer.Option(None, help="Serve Tiled on a sub-path."),
     object_cache_available_bytes: Optional[float] = typer.Option(
         None,
         "--data-cache",
@@ -536,7 +538,7 @@ def serve_pyobject(
     from ..utils import import_object
 
     tree = import_object(object_path)
-    server_settings = {}
+    server_settings = {"prefix": prefix or ""}
     if object_cache_available_bytes is not None:
         server_settings["object_cache"] = {}
         server_settings["object_cache"][
@@ -580,6 +582,7 @@ def serve_config(
     port: int = typer.Option(
         None, help="Bind to a socket with this port. Uses value in config by default."
     ),
+    prefix: Optional[str] = typer.Option(None, help="Serve Tiled on a sub-path."),
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
@@ -598,6 +601,10 @@ def serve_config(
         if "authentication" not in parsed_config:
             parsed_config["authentication"] = {}
         parsed_config["authentication"]["allow_anonymous_access"] = True
+
+    # Let prefix option override config.
+    if prefix is not None:
+        parsed_config["prefix"] = prefix
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
