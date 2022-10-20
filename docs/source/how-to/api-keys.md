@@ -42,7 +42,7 @@ is useful when:
 To follow along, you may start a Tiled server with a simple authentication provider,
 as shown. Alternatively, you may use an existing authenticated Tiled server, such as
 `https://tiled-demo.blueskyproject.io/api`; if you do, replace `http://localhost:8000/api`
-in the examples below with that address.
+in the example below with that address.
 
 ```
 # You can find example_configs/ in the root of the tiled source code repository.
@@ -52,7 +52,8 @@ ALICE_PASSWORD=secret1 tiled serve config example_configs/toy_authentication.yml
 Using the Tiled commandline interface, log in as `alice` using the password `secret1`.
 
 ```
-$ tiled login http://localhost:8000/api
+$ tiled connect http://localhost:8000/api
+$ tiled login
 Username: alice
 Password:
 ```
@@ -60,18 +61,11 @@ Password:
 Create a new API key.
 
 ```
-$ tiled api_key create http://localhost:8000/api
+$ tiled api_key create
 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318
 ```
 
 This text is the API key. **It should be handled as a secret.**
-
-```{note}
-
-When typing out `http://localhost:8000/api` into each command grows tedious,
-follow {doc}`profiles` to make a convenient alias. The command accepts URL _or_
-a profile name.
-```
 
 ## Use the API Key in Python
 
@@ -162,7 +156,7 @@ Commands:
 We can see the key that we made above in the list.
 
 ```
-$ tiled api_key list http://localhost:8000/api
+$ tiled api_key list
 First 8   Expires at (UTC)     Latest activity      Note                Scopes
 48e8f859  -                    2022-01-31T18:32:33                      inherit
 
@@ -177,14 +171,14 @@ command creates an API key that will expire in 10 minutes (600 seconds) and can
 search/list metadata but cannot download array data.
 
 ```
-$ tiled api_key create http://localhost:8000/api --expires-in 600 --scopes read:metadata
+$ tiled api_key create --expires-in 600 --scopes read:metadata
 ba9af604023a829ab22edb786168d6e1b97cef68c54c6d95d7fad5e3e6347fa131263581
 ```
 
 See {doc}`../reference/scopes` for the full list of scopes and their capabilities.
 
 ```
-$ tiled api_key list http://localhost:8000/api
+$ tiled api_key list
 First 8   Expires at (UTC)     Latest activity      Note                Scopes
 48e8f859  -                    2022-01-31T18:32:33                      inherit
 ba9af604  2022-01-31T23:03:57  -                                        read:metadata
@@ -194,9 +188,9 @@ Finally, the `--note` option can be used to label an API key as a reminder of
 where or how it is being used.
 
 ```
-$ tiled api_key create http://localhost:8000/api --note="Data validation pipeline" --scopes read:metadata read:data
+$ tiled api_key create --note="Data validation pipeline" --scopes read:metadata read:data
 573928c62e53096321fb874847bcc6a90ea636eebd8acbd7c5e9d18d2859847b3bfb4f19
-$ tiled api_key list http://localhost:8000/api
+$ tiled api_key list
 First 8   Expires at (UTC)     Latest activity      Note                      Scopes
 48e8f859  -                    2022-01-31T18:32:33                            inherit
 ba9af604  2022-01-31T23:03:57  -                                              read:metadata
@@ -208,8 +202,8 @@ can be identified by its first eight characters, as shown in the the output of
 `tiled api_key list`.
 
 ```
-$ tiled api_key revoke http://localhost:8000/api 573928c6
-$ tiled api_key list http://localhost:8000/api
+$ tiled api_key revoke 573928c6
+$ tiled api_key list
 First 8   Expires at (UTC)     Latest activity      Note                      Scopes
 48e8f859  -                    2022-01-31T18:32:33                            inherit
 ba9af604  2022-01-31T23:03:57  -                                              read:metadata
