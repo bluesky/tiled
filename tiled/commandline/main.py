@@ -86,19 +86,19 @@ auto:
                     f"Profile {profile} uses in a direct (in-process) Tiled server "
                     "and cannot be connected to from the CLI."
                 )
-            typer.echo(f"Tiled deployment {profile} is set as the default.")
             options = {"verify": profile.get("verify", True)}
             if no_verify:
                 options["verify"] = False
             Context.from_any_uri(profile["uri"], **options)
-        typer.echo(
-            f"Not sure what to do with tree {uri_or_profile!r}. "
-            "It does not look like a URI (it does not start with http[s]://) "
-            "and it does not match any profiles. Use `tiled profiles list` to "
-            "see profiles.",
-            err=True,
-        )
-        raise typer.Abort()
+        else:
+            typer.echo(
+                f"Not sure what to do with tree {uri_or_profile!r}. "
+                "It does not look like a URI (it does not start with http[s]://) "
+                "and it does not match any profiles. Use `tiled profiles list` to "
+                "see profiles.",
+                err=True,
+            )
+            raise typer.Abort()
     with open(user_profiles_dir / ".default", "w") as file:
         file.write(name)
     typer.echo(f"Tiled profile {name!r} is set as the default.")
