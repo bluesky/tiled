@@ -6,6 +6,7 @@ import math
 import operator
 import re
 import sys
+import types
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -334,8 +335,12 @@ def construct_data_response(
         raise UnsupportedMediaTypes(
             f"This type is supported in general but there was an error packing this specific data: {err.args[0]}",
         )
-    return PatchedResponse(
-        content=content,
+    if isinstance(content, types.GeneratorType):
+        response_class = PatchedStreamingResponse
+    else:
+        response_class = PatchedResponse
+    return response_class(
+        content,
         media_type=media_type,
         headers=headers,
     )

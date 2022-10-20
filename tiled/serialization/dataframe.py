@@ -91,12 +91,25 @@ if modules_available("orjson"):
     # {'a': 1, 'b': 4}
     # {'a': 2, 'b': 5}
     # {'a': 3, 'b': 6}
+    def json_sequence(df, metadata):
+        rows = df.iterrows()
+        # The first row is a special case; the rest start with a newline.
+        try:
+            # Emit the first row with no newline.
+            _, row = next(rows)
+        except StopIteration:
+            # No rows
+            yield b""
+        else:
+            # Emit the remaining rows, prepending newline.
+            yield orjson.dumps(row.to_dict())
+            for _, row in rows:
+                yield b"\n" + orjson.dumps(row.to_dict())
+
     serialization_registry.register(
         "dataframe",
         "application/json-seq",  # official mimetype for newline-delimited JSON
-        lambda df, metadata: b"\n".join(
-            [orjson.dumps(row.to_dict()) for _, row in df.iterrows()]
-        ),
+        json_sequence,
     )
 
 if modules_available("h5py"):
