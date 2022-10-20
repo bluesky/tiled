@@ -558,6 +558,7 @@ class Context:
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         if mode == "password":
+            username = input(f"Username [{username}]: ") or username
             password = getpass.getpass()
             form_data = {
                 "grant_type": "password",
