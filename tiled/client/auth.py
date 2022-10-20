@@ -13,7 +13,7 @@ class CannotRefreshAuthentication(Exception):
 
 
 DEFAULT_TOKEN_CACHE = os.getenv(
-    "TILED_TOKEN_CACHE", os.path.join(appdirs.user_config_dir("tiled"), "tokens")
+    "TILED_TOKEN_CACHE", os.path.join(appdirs.user_cache_dir("tiled"), "tokens")
 )
 
 
