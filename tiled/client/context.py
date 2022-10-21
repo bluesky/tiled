@@ -131,6 +131,7 @@ class Context:
                 threading._register_atexit(client.__exit__)
 
         self.http_client = client
+        self._verify = verify
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._offline = offline
@@ -150,34 +151,56 @@ class Context:
         self.api_key = api_key  # property setter sets Authorization header
 
     def __getstate__(self):
-        if self.http_client.app is not None:
+        if getattr(self.http_client, "app", None):
             raise TypeError(
                 "Cannot pickle a Tiled Context built around an ASGI. "
                 "Only Tiled Context connected to remote servers can be pickled."
             )
-        # Do not put secrets in the pickle output.
-        headers = self.http_client.headers
-        headers.pop("Authorization", None)
         return (
-            headers,
-            self.api_key,
-            self.offline,
+            self.api_uri,
+            self.http_client.headers,
+            list(self.http_client.cookies.jar),
             self.http_client.timeout,
-            self.http_client.verify,
+            self._verify,
+            self.offline,
+            self._revalidate,
             self._token_cache,
             self.server_info,
+            self.cache,
         )
 
     def __setstate__(self, state):
         (
+            api_uri,
             headers,
-            self.api_key,
-            self.offline,
+            cookies_list,
             timeout,
             verify,
+            offline,
+            revalidate,
             token_cache,
             server_info,
+            cache,
         ) = state
+        self.api_uri = api_uri
+        cookies = httpx.Cookies()
+        for cookie in cookies_list:
+            cookies.set(
+                cookie.name, cookie.value, domain=cookie.domain, path=cookie.path
+            )
+        self.http_client = httpx.Client(
+            verify=verify,
+            event_hooks=EVENT_HOOKS,
+            cookies=cookies,
+            timeout=timeout,
+            headers=headers,
+            follow_redirects=True,
+        )
+        self._revalidate = revalidate
+        self._token_cache = token_cache
+        self._cache = cache
+        self.server_info = server_info
+        self.offline = offline
 
     @classmethod
     def from_any_uri(
@@ -255,7 +278,8 @@ class Context:
 
     @offline.setter
     def offline(self, value):
-        if self._cache is None:
+        offline = bool(value)
+        if offline and (self._cache is None):
             raise RuntimeError(
                 """To use offline mode,  Tiled must be configured with a Cache, as in
 
@@ -264,7 +288,7 @@ class Context:
 >>> client = from_uri("...", cache=Cache.on_disk("my_cache"))
 """
             )
-        self._offline = bool(value)
+        self._offline = offline
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
