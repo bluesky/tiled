@@ -79,10 +79,10 @@ def gather_profiles(paths, strict=True):
                     with open(filepath) as file:
                         content = parse(file)
                         if content is None:
-                            raise ProfileError("File {filepath!s} is empty.")
+                            raise ProfileError(f"File {filepath!s} is empty.")
                         if not isinstance(content, collections.abc.Mapping):
                             raise ProfileError(
-                                "File {filepath!s} does not have the expected structure."
+                                f"File {filepath!s} does not have the expected structure."
                             )
                         for profile_name, profile_content in content.items():
                             try:

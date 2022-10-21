@@ -104,11 +104,11 @@ def test_url_limit_handling():
     # Accumulate Requests here for later inspection.
     requests = []
 
-    async def accumulate(request):
+    def accumulate(request):
         # httpx.AsyncClient requires event hooks to be async functions.
         requests.append(request)
 
-    client.context.event_hooks["request"].append(accumulate)
+    client.context.http_client.event_hooks["request"].append(accumulate)
     actual = dsc.read()
     xarray.testing.assert_equal(actual, expected)
     normal_request_count = len(requests)

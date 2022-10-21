@@ -120,11 +120,11 @@ def config(tmpdir):
     }
 
 
-def test_top_level_access_control(enter_password, config):
+def test_top_level_access_control(enter_password, config, tmpdir):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache={})
+        alice_client = from_config(config, username="alice", token_cache=tmpdir)
     with enter_password("secret2"):
-        bob_client = from_config(config, username="bob", token_cache={})
+        bob_client = from_config(config, username="bob", token_cache=tmpdir)
     assert "a" in alice_client
     assert "A2" in alice_client["a"]
     assert "A1" not in alice_client["a"]
@@ -139,10 +139,10 @@ def test_top_level_access_control(enter_password, config):
         bob_client["b"]
 
 
-def test_node_export(enter_password, config):
+def test_node_export(enter_password, config, tmpdir):
     "Exporting a node should include only the children we can see."
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache={})
+        alice_client = from_config(config, username="alice", token_cache=tmpdir)
     buffer = io.BytesIO()
     alice_client.export(buffer, format="application/json")
     buffer.seek(0)
@@ -154,9 +154,9 @@ def test_node_export(enter_password, config):
     exported_dict["contents"]["a"]["contents"]["A2"]
 
 
-def test_create_and_update_allowed(enter_password, config):
+def test_create_and_update_allowed(enter_password, config, tmpdir):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache={})
+        alice_client = from_config(config, username="alice", token_cache=tmpdir)
 
     # Update
     alice_client["c"].metadata
@@ -167,18 +167,18 @@ def test_create_and_update_allowed(enter_password, config):
     alice_client["c"].write_array([1, 2, 3])
 
 
-def test_writing_blocked_by_access_policy(enter_password, config):
+def test_writing_blocked_by_access_policy(enter_password, config, tmpdir):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache={})
+        alice_client = from_config(config, username="alice", token_cache=tmpdir)
 
     alice_client["d"].metadata
     with fail_with_status_code(403):
         alice_client["d"].update_metadata(metadata={"added_key": 3})
 
 
-def test_create_blocked_by_access_policy(enter_password, config):
+def test_create_blocked_by_access_policy(enter_password, config, tmpdir):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache={})
+        alice_client = from_config(config, username="alice", token_cache=tmpdir)
 
     with fail_with_status_code(403):
         alice_client["e"].write_array([1, 2, 3])

@@ -1,19 +1,13 @@
 import collections
 import collections.abc
-import urllib.parse
+import sys
 
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
-from .context import (
-    DEFAULT_TIMEOUT_PARAMS,
-    DEFAULT_TOKEN_CACHE,
-    Context,
-    PromptForReauthentication,
-    context_from_tree,
-)
+from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, Context
 from .node import Node
-from .utils import DEFAULT_ACCEPTED_ENCODINGS, EVENT_HOOKS, client_for_item
+from .utils import client_for_item
 
 
 def from_uri(
@@ -27,7 +21,7 @@ def from_uri(
     api_key=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     verify=True,
-    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
+    prompt_for_reauthentication=None,
     headers=None,
     timeout=None,
 ):
@@ -59,56 +53,34 @@ def from_uri(
     verify : bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
-    prompt_for_reauthentication : {"at_init", "always", "never"}
+    prompt_for_reauthentication : bool, optional
+        If True, prompt interactively for credentials if needed. If False,
+        raise an error. By default, attempt to detect whether terminal is
+        interactive (is a TTY).
     headers : dict, optional
         Extra HTTP headers.
     timeout : httpx.Timeout, optional
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
     """
-    # The uri is expected to reach the root or /node/metadata/[...] route.
-    url = httpx.URL(uri)
-    headers = headers or {}
-    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
-    params = {}
-    # If ?api_key=... is present, move it from the query into a header.
-    # The server would accept it in the query parameter, but using
-    # a header is a little more secure (e.g. not logged) and makes
-    # it is simpler to manage the client.base_url.
-    parsed_query = urllib.parse.parse_qs(url.query.decode())
-    api_key_list = parsed_query.pop("api_key", None)
-    if api_key_list is not None:
-        if len(api_key_list) != 1:
-            raise ValueError("Cannot handle two api_key query parameters")
-        (api_key,) = api_key_list
-        headers["X-TILED-API-KEY"] = api_key
-    params.update(urllib.parse.urlencode(parsed_query, doseq=True))
-    # Construct the URL *without* the params, which we will pass in separately.
-    base_uri = urllib.parse.urlunsplit(
-        (url.scheme, url.netloc.decode(), url.path, {}, url.fragment)
-    )
-    if timeout is None:
-        timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
-
-    client = httpx.Client(
-        base_url=base_uri,
-        verify=verify,
-        event_hooks=EVENT_HOOKS,
-        timeout=timeout,
-        headers=headers,
-        params=params,
-    )
-    context = Context(
-        client,
-        username=username,
-        auth_provider=auth_provider,
+    context, node_path_parts = Context.from_any_uri(
+        uri,
         api_key=api_key,
         cache=cache,
         offline=offline,
+        headers=headers,
+        timeout=timeout,
+        verify=verify,
         token_cache=token_cache,
-        prompt_for_reauthentication=prompt_for_reauthentication,
     )
-    return from_context(context, structure_clients=structure_clients)
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        prompt_for_reauthentication=prompt_for_reauthentication,
+        username=username,
+        auth_provider=auth_provider,
+        node_path_parts=node_path_parts,
+    )
 
 
 def from_tree(
@@ -129,6 +101,7 @@ def from_tree(
     token_cache=DEFAULT_TOKEN_CACHE,
     headers=None,
     timeout=None,
+    prompt_for_reauthentication=None,
 ):
     """
     Connect to a Node directly, running the app in this same process.
@@ -165,35 +138,56 @@ def from_tree(
         False by default. If True, rely on cache only.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
-    prompt_for_reauthentication : {"at_init", "always", "never"}
+    prompt_for_reauthentication : bool, optional
+        If True, prompt interactively for credentials if needed. If False,
+        raise an error. By default, attempt to detect whether terminal is
+        interactive (is a TTY).
     timeout : httpx.Timeout, optional
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
     """
-    context = context_from_tree(
-        tree=tree,
-        authentication=authentication,
-        server_settings=server_settings,
+    from ..server.app import build_app, get_settings
+
+    app = build_app(
+        tree,
+        authentication,
+        server_settings,
         query_registry=query_registry,
         serialization_registry=serialization_registry,
         compression_registry=compression_registry,
         validation_registry=validation_registry,
-        # The cache and "offline" mode do not make much sense when we have an
-        # in-process connection, but we support it for the sake of testing and
-        # making direct access a drop in replacement for the normal service.
+    )
+    if (api_key is None) and (username is None):
+        # Extract the API key that the server is running on.
+        settings = app.dependency_overrides[get_settings]()
+        api_key = settings.single_user_api_key or None
+    context = Context(
+        uri="http://local-tiled-app/api",
+        headers=headers,
+        api_key=api_key,
         cache=cache,
         offline=offline,
+        timeout=timeout,
         token_cache=token_cache,
+        app=app,
+    )
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        prompt_for_reauthentication=prompt_for_reauthentication,
         username=username,
         auth_provider=auth_provider,
-        api_key=api_key,
-        headers=headers,
-        timeout=timeout,
     )
-    return from_context(context, structure_clients=structure_clients)
 
 
-def from_context(context, structure_clients="numpy", *, path=None):
+def from_context(
+    context,
+    structure_clients="numpy",
+    prompt_for_reauthentication=None,
+    username=None,
+    auth_provider=None,
+    node_path_parts=None,
+):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
 
@@ -205,17 +199,44 @@ def from_context(context, structure_clients="numpy", *, path=None):
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
+    prompt_for_reauthentication : bool, optional
+        If True, prompt interactively for credentials if needed. If False,
+        raise an error. By default, attempt to detect whether terminal is
+        interactive (is a TTY).
     """
+    if (username is not None) or (auth_provider is not None):
+        if context.api_key is not None:
+            raise ValueError("Use api_key or username/auth_provider, not both.")
+    if prompt_for_reauthentication is None:
+        prompt_for_reauthentication = sys.__stdin__.isatty()
+    node_path_parts = node_path_parts or []
     # Do entrypoint discovery if it hasn't yet been done.
     if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
         Node.discover_clients_from_entrypoints()
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
         structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
-    path = path or []
-    content = context.get_json(f"/node/metadata/{'/'.join(context.path_parts)}")
+    if (
+        (not context.offline)
+        and (context.api_key is None)
+        and context.server_info["authentication"]["required"]
+        and (not context.server_info["authentication"]["providers"])
+    ):
+        raise RuntimeError(
+            """This server requires API key authentication.
+Set an api_key as in:
+
+>>> c = from_uri("...", api_key="...")
+"""
+        )
+    if username is not None:
+        context.authenticate(username=username, provider=auth_provider)
+    # Context ensures that context.api_uri has a trailing slash.
+    content = context.get_json(
+        f"{context.api_uri}node/metadata/{'/'.join(node_path_parts)}"
+    )
     item = content["data"]
-    return client_for_item(context, structure_clients, item, path=path)
+    return client_for_item(context, structure_clients, item)
 
 
 def from_profile(name, structure_clients=None, **kwargs):
@@ -328,6 +349,7 @@ def from_profile(name, structure_clients=None, **kwargs):
 
 def from_config(
     config,
+    structure_clients="numpy",
     *,
     username=None,
     auth_provider=None,
@@ -335,8 +357,9 @@ def from_config(
     cache=None,
     offline=False,
     token_cache=DEFAULT_TOKEN_CACHE,
-    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
-    **kwargs,
+    prompt_for_reauthentication=None,
+    headers=None,
+    timeout=None,
 ):
     """
     Build Nodes directly, running the app in this same process.
@@ -378,16 +401,28 @@ def from_config(
     """
 
     from ..config import construct_build_app_kwargs
+    from ..server.app import build_app, get_settings
 
     build_app_kwargs = construct_build_app_kwargs(config)
-    context = context_from_tree(
-        username=username,
-        auth_provider=auth_provider,
+    app = build_app(**build_app_kwargs)
+    if (api_key is None) and (username is None):
+        # Extract the API key that the server is running on.
+        settings = app.dependency_overrides[get_settings]()
+        api_key = settings.single_user_api_key or None
+    context = Context(
+        uri="http://local-tiled-app/api",
+        headers=headers,
         api_key=api_key,
         cache=cache,
         offline=offline,
+        timeout=timeout,
         token_cache=token_cache,
-        prompt_for_reauthentication=prompt_for_reauthentication,
-        **build_app_kwargs,
+        app=app,
     )
-    return from_context(context, **kwargs)
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        prompt_for_reauthentication=prompt_for_reauthentication,
+        username=username,
+        auth_provider=auth_provider,
+    )

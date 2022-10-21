@@ -67,10 +67,10 @@ def len_or_approx(tree):
         return len(tree)
 
 
-def pagination_links(route, path_parts, offset, limit, length_hint):
+def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
     path_str = "/".join(path_parts)
     links = {
-        "self": f"{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
+        "self": f"{base_url}{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
         # These are conditionally overwritten below.
         "first": None,
         "last": None,
@@ -81,18 +81,18 @@ def pagination_links(route, path_parts, offset, limit, length_hint):
         last_page = math.floor(length_hint / limit) * limit
         links.update(
             {
-                "first": f"{route}/{path_str}?page[offset]={0}&page[limit]={limit}",
-                "last": f"{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
+                "first": f"{base_url}{route}/{path_str}?page[offset]={0}&page[limit]={limit}",
+                "last": f"{base_url}{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
             }
         )
     if offset + limit < length_hint:
         links[
             "next"
-        ] = f"{route}/{path_str}?page[offset]={offset + limit}&page[limit]={limit}"
+        ] = f"{base_url}{route}/{path_str}?page[offset]={offset + limit}&page[limit]={limit}"
     if offset > 0:
         links[
             "prev"
-        ] = f"{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
+        ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
@@ -173,7 +173,7 @@ def construct_entries_response(
             except KeyError:
                 tree = MapAdapter({})
     count = len_or_approx(tree)
-    links = pagination_links(route, path_parts, offset, limit, count)
+    links = pagination_links(base_url, route, path_parts, offset, limit, count)
     data = []
     if fields != [schemas.EntryFields.none]:
         # Pull a page of items into memory.
@@ -223,6 +223,7 @@ DEFAULT_MEDIA_TYPES = {
 
 def construct_revisions_response(
     entry,
+    base_url,
     route,
     path,
     offset,
@@ -245,7 +246,7 @@ def construct_revisions_response(
         data.append(item)
     count = len(data)
     links = pagination_links(
-        route, path_parts, offset, limit, count
+        base_url, route, path_parts, offset, limit, count
     )  # maybe reuse or maybe make a new pagination_revision_links
     return schemas.Response(data=data, links=links, meta={"count": count})
 

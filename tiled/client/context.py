@@ -1,160 +1,33 @@
 import contextlib
-import enum
 import getpass
 import os
-import secrets
-import threading
+import re
 import urllib.parse
-from pathlib import Path, PurePosixPath
+import warnings
+from pathlib import Path
 
-import appdirs
 import httpx
 import msgpack
 
 from .._version import get_versions
 from ..utils import DictView
+from .auth import (
+    DEFAULT_TOKEN_CACHE,
+    CannotRefreshAuthentication,
+    TiledAuth,
+    build_refresh_request,
+)
 from .cache import Revalidate
 from .utils import (
-    ASYNC_EVENT_HOOKS,
     DEFAULT_ACCEPTED_ENCODINGS,
     DEFAULT_TIMEOUT_PARAMS,
+    EVENT_HOOKS,
     NotAvailableOffline,
     handle_error,
 )
 
-DEFAULT_TOKEN_CACHE = os.getenv(
-    "TILED_TOKEN_CACHE", os.path.join(appdirs.user_config_dir("tiled"), "tokens")
-)
-
-
-def _token_directory(token_cache, netloc):
-    return Path(
-        token_cache,
-        urllib.parse.quote_plus(
-            netloc.decode()
-        ),  # Make a valid filename out of hostname:port.
-    )
-
-
-def logout(uri_or_profile, *, token_cache=DEFAULT_TOKEN_CACHE):
-    """
-    Logout of a given session.
-
-    If not logged in, calling this function has no effect.
-
-    Parameters
-    ----------
-    uri_or_profile : str
-    token_directory : str or Path, optional
-
-    Returns
-    -------
-    netloc : str
-    """
-    if isinstance(token_cache, (str, Path)):
-        netloc = _netloc_from_uri_or_profile(uri_or_profile)
-        directory = _token_directory(token_cache, netloc)
-    else:
-        netloc = None  # unknowable
-    token_cache = TokenCache(directory)
-    token_cache.pop("refresh_token", None)
-    return netloc
-
-
-def sessions(token_directory=DEFAULT_TOKEN_CACHE):
-    """
-    List all sessions.
-
-    Note that this may include expired sessions. It does not confirm that
-    any cached tokens are still valid.
-
-    Parameters
-    ----------
-    token_directory : str or Path, optional
-
-    Returns
-    -------
-    tokens : dict
-        Maps netloc to refresh_token
-    """
-    tokens = {}
-    for directory in Path(token_directory).iterdir():
-        if not directory.is_dir():
-            # Some stray file. Ignore it.
-            continue
-        refresh_token_file = directory / "refresh_token"
-        netloc = directory.name
-        if refresh_token_file.is_file():
-            with open(refresh_token_file) as file:
-                token = file.read()
-            tokens[netloc] = token
-    return tokens
-
-
-def logout_all(token_directory=DEFAULT_TOKEN_CACHE):
-    """
-    Logout of a all sessions.
-
-    If not logged in to any sessions, calling this function has no effect.
-
-    Parameters
-    ----------
-    token_directory : str or Path, optional
-
-    Returns
-    -------
-    logged_out_from : list
-        List of netloc of logged-out sessions
-    """
-    logged_out_from = []
-    for directory in Path(token_directory).iterdir():
-        if not directory.is_dir():
-            # Some stray file. Ignore it.
-            continue
-        refresh_token_file = directory / "refresh_token"
-        if refresh_token_file.is_file():
-            refresh_token_file.unlink()
-            netloc = directory.name
-            logged_out_from.append(netloc)
-    return logged_out_from
-
-
-def _netloc_from_uri_or_profile(uri_or_profile):
-    if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
-        # This looks like a URI.
-        uri = uri_or_profile
-    else:
-        # Is this a profile name?
-        from ..profiles import load_profiles
-
-        profiles = load_profiles()
-        if uri_or_profile in profiles:
-            profile_name = uri_or_profile
-            _, profile_content = profiles[profile_name]
-            if "uri" in profile_content:
-                uri = profile_content["uri"]
-            else:
-                raise ValueError(
-                    "Logout does not apply to profiles with inline ('direct') "
-                    "server configuration."
-                )
-        else:
-            raise ValueError(
-                f"Not sure what to do with tree {uri_or_profile!r}. "
-                "It does not look like a URI (it does not start with http[s]://) "
-                "and it does not match any profiles."
-            )
-    return httpx.URL(uri).netloc
-
-
-class CannotRefreshAuthentication(Exception):
-    pass
-
-
-class PromptForReauthentication(enum.Enum):
-    AT_INIT = "at_init"
-    NEVER = "never"
-    ALWAYS = "always"
+USER_AGENT = f"python-tiled/{get_versions()['version']}"
+API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 
 
 class Context:
@@ -164,130 +37,163 @@ class Context:
 
     def __init__(
         self,
-        client,
+        uri,
         *,
-        username=None,
-        auth_provider=None,
+        headers=None,
         api_key=None,
         cache=None,
         offline=False,
+        timeout=None,
+        verify=True,
         token_cache=DEFAULT_TOKEN_CACHE,
-        prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
         app=None,
     ):
-        if (username is not None) or (auth_provider is not None):
-            if api_key is not None:
-                raise ValueError("Use api_key or username/auth_provider, not both.")
-        elif api_key is None:
-            # Check for an API key from the environment.
-            api_key = os.getenv("TILED_API_KEY")
-        self._client = client
-        self._cache = cache
-        self._revalidate = Revalidate.IF_WE_MUST
-        self._username = username
-        self._auth_provider = auth_provider
-        self.api_key = api_key  # property setter sets Authorization header
-        self._offline = offline
-        self._token_cache_or_root_directory = token_cache
-        self._prompt_for_reauthentication = PromptForReauthentication(
-            prompt_for_reauthentication
-        )
-        self._refresh_lock = threading.Lock()
-        if isinstance(token_cache, (str, Path)):
-            directory = _token_directory(token_cache, self._client.base_url.netloc)
-            token_cache = TokenCache(directory)
-        self._token_cache = token_cache
-        # The token *cache* is optional. The tokens attrbiute is always present,
-        # and it isn't actually used for anything internally. It's just a view
-        # of the current tokens.
-        self._tokens = {}
-        self._app = app
-
+        # The uri is expected to reach the root API route.
+        uri = httpx.URL(uri)
+        headers = headers or {}
+        headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
-        self._client.headers["user-agent"] = f"python-tiled/{get_versions()['version']}"
+        headers.setdefault("user-agent", USER_AGENT)
 
-        # Stash the URL of the original request. We will alter the base_url below
-        # if it is not aligned with root_path of the tiled server.
-        url = httpx.URL(self._client.base_url)
+        # If ?api_key=... is present, move it from the query into a header.
+        # The server would accept it in the query parameter, but using
+        # a header is a little more secure (e.g. not logged).
+        parsed_params = urllib.parse.parse_qs(uri.query.decode())
+        api_key_list = parsed_params.pop("api_key", None)
+        if api_key_list is not None:
+            if api_key is not None:
+                raise ValueError(
+                    "api_key was provided as query parameter in URI and as keyword argument. Pick one."
+                )
+            if len(api_key_list) != 1:
+                raise ValueError("Cannot handle two api_key query parameters")
+            (api_key,) = api_key_list
+        if api_key is None:
+            # Check for an API key from the environment.
+            api_key = os.getenv("TILED_API_KEY")
+        # We will set the API key via the `api_key` property below,
+        # after constructing the Client object.
 
-        # Make an initial "safe" request to let the server set the CSRF cookie.
+        # FastAPI redirects /api -> /api/ so add it here to save a request.
+        path = uri.path
+        if not path.endswith("/"):
+            path = f"{path}/"
+        # Construct the uri *without* api_key param.
+        # Drop any params/fragments.
+        self.api_uri = httpx.URL(
+            urllib.parse.urlunsplit((uri.scheme, uri.netloc.decode(), path, {}, ""))
+        )
+        if timeout is None:
+            timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
+        if app is None:
+            client = httpx.Client(
+                verify=verify,
+                event_hooks=EVENT_HOOKS,
+                timeout=timeout,
+                headers=headers,
+                follow_redirects=True,
+            )
+        else:
+            import atexit
+
+            from ._testclient import TestClient
+
+            # verify parameter is dropped, as there is no SSL in ASGI mode
+            client = TestClient(
+                app=app,
+                event_hooks=EVENT_HOOKS,
+                timeout=timeout,
+                headers=headers,
+            )
+            client.follow_redirects = True
+            client.__enter__()
+            atexit.register(client.__exit__)
+
+        self.http_client = client
+        self._cache = cache
+        self._revalidate = Revalidate.IF_WE_MUST
+        self._offline = offline
+        self._token_cache = Path(token_cache)
+
+        # Make an initial "safe" request to:
+        # (1) Get the server_info.
+        # (2) Let the server set the CSRF cookie.
+        # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        # And, at the same time, obtain the 'root_path', the path to the root route
-        # of the Tiled application, which may or may not be the same as the URL that
-        # the user provided.
         if offline:
-            self._handshake_data = self.get_json("/", params={"root_path": True})
+            self.server_info = self.get_json(self.api_uri)
         else:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                # Make this request manually to inject custom error handling.
-                request = self._client.build_request(
-                    "GET", "/", params={"root_path": True}
-                )
-                response = self._client.send(request)
-                # Handle case where user pastes in a link like
-                # https://example.com/some/subpath/node/metadata/a/b/c
-                # and it requires authentication. The 401 response includes a header
-                # that points us to https://examples.com/some/subpath where we
-                # can see the authentication providers and their endpoints.
-                if response.status_code == 401:
-                    self._client.base_url = response.headers["x-tiled-root"]
-                # Now try again.
-                self._handshake_data = self.get_json("/", params={"root_path": True})
+                self.server_info = self.get_json(self.api_uri)
+        self.api_key = api_key  # property setter sets Authorization header
 
-        if (
-            (not offline)
-            and (api_key is None)
-            and (
-                self._handshake_data["authentication"]["required"]
-                or (username is not None)
-            )
-        ):
-            if not self._handshake_data["authentication"]["providers"]:
-                raise RuntimeError(
-                    """This server requires API key authentication.
-Set an api_key as in:
+    @classmethod
+    def from_any_uri(
+        cls,
+        uri,
+        *,
+        headers=None,
+        api_key=None,
+        cache=None,
+        offline=False,
+        timeout=None,
+        verify=True,
+        token_cache=DEFAULT_TOKEN_CACHE,
+        app=None,
+    ):
+        """
+        Accept a URI to a specific node.
 
->>> c = from_uri("...", api_key="...")
-"""
-                )
-            # Authenticate. If a valid refresh_token is available in the token_cache,
-            # it will be used. Otherwise, this will prompt for input from the stdin
-            # or raise CannotRefreshAuthentication.
-            prompt = (
-                prompt_for_reauthentication == PromptForReauthentication.AT_INIT
-                or prompt_for_reauthentication == PromptForReauthentication.ALWAYS
+        For example, given URI "https://example.com/api/node/metadata/a/b/c"
+        return a Context connected to "https://examples/api/" and the list
+        ["a", "b", "c"].
+        """
+        uri = httpx.URL(uri)
+        node_path_parts = []
+        if "/node/metadata" in uri.path:
+            api_path, _, node_path = uri.path.partition("/node/metadata")
+            api_uri = uri.copy_with(path=api_path)
+            node_path_parts.extend(
+                [segment for segment in node_path.split("/") if segment]
             )
-            tokens = self.reauthenticate(prompt=prompt)
-            access_token = tokens["access_token"]
-            client.headers["Authorization"] = f"Bearer {access_token}"
-        base_path = self._handshake_data["meta"]["root_path"]
-        base_url = urllib.parse.urlunsplit(
-            (url.scheme, url.netloc.decode(), base_path, {}, url.fragment)
+        else:
+            api_uri = uri
+        context = cls(
+            api_uri,
+            headers=headers,
+            api_key=api_key,
+            cache=cache,
+            offline=offline,
+            timeout=timeout,
+            verify=verify,
+            token_cache=token_cache,
+            app=app,
         )
-        client.base_url = base_url
-        path_parts = list(PurePosixPath(url.path).relative_to(base_path).parts)
-        # Strip "/node/metadata"
-        self._path_parts = path_parts[2:]
+        return context, node_path_parts
 
     @property
     def tokens(self):
         "A view of the current access and refresh tokens."
-        return DictView(self._tokens)
+        return DictView(self.http_client.auth.tokens)
 
     @property
     def api_key(self):
-        return self._api_key
+        # Extract from header to ensure that there is one "ground truth" here
+        # and no possibility of state getting out of sync.
+        header = self.http_client.headers.get("Authorization", "")
+        match = API_KEY_AUTH_HEADER_PATTERN.match(header)
+        if match is not None:
+            return match.group(1)
 
     @api_key.setter
     def api_key(self, api_key):
         if api_key is None:
-            if self._client.headers.get("Authorization", "").startswith("Apikey"):
-                self._client.headers.pop("Authorization")
+            if self.http_client.headers.get("Authorization", "").startswith("Apikey "):
+                self.http_client.headers.pop("Authorization")
         else:
-            self._client.headers["Authorization"] = f"Apikey {api_key}"
-        self._api_key = api_key
+            self.http_client.headers["Authorization"] = f"Apikey {api_key}"
 
     @property
     def cache(self):
@@ -312,7 +218,7 @@ Set an api_key as in:
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
-                self._handshake_data = self.get_json("/")
+                self.server_info = self.get_json(self.api_uri)
 
     def which_api_key(self):
         """
@@ -320,7 +226,7 @@ Set an api_key as in:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        return self.get_json(self._handshake_data["authentication"]["links"]["apikey"])
+        return self.get_json(self.server_info["authentication"]["links"]["apikey"])
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
@@ -339,36 +245,47 @@ Set an api_key as in:
             Description (for humans).
         """
         return self.post_json(
-            self._handshake_data["authentication"]["links"]["apikey"],
+            self.server_info["authentication"]["links"]["apikey"],
             {"scopes": scopes, "expires_in": expires_in, "note": note},
         )
 
     def revoke_api_key(self, first_eight):
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "DELETE",
-            self._handshake_data["authentication"]["links"]["apikey"],
-            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+            self.server_info["authentication"]["links"]["apikey"],
+            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
             params={"first_eight": first_eight},
         )
-        response = self._client.send(request)
+        response = self.http_client.send(request)
         handle_error(response)
 
     @property
     def app(self):
-        return self._app
-
-    @property
-    def path_parts(self):
-        return self._path_parts
+        warnings.warn(
+            "The 'app' accessor on Context is deprecated. Use Context.http_client.app.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.http_client.app
 
     @property
     def base_url(self):
-        return self._client.base_url
+        warnings.warn(
+            "The 'base_url' accessor on Context is deprecated. Use Context.http_client.base_url.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.http_client.base_url
 
     @property
     def event_hooks(self):
         "httpx.Client event hooks. This is exposed for testing."
-        return self._client.event_hooks
+        warnings.warn(
+            "The 'event_hooks' accessor on Context is deprecated. Use Context.http_client.event_hooks.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.http_client.event_hooks
 
     @property
     def revalidate(self):
@@ -417,10 +334,13 @@ Set an api_key as in:
         self._disable_cache_write = False
 
     def get_content(self, path, accept=None, stream=False, revalidate=None, **kwargs):
+        send_kwargs = {}
+        if "auth" in kwargs:
+            send_kwargs["auth"] = kwargs.pop("auth")
         if revalidate is None:
             # Fallback to context default.
             revalidate = self.revalidate
-        request = self._client.build_request("GET", path, **kwargs)
+        request = self.http_client.build_request("GET", path, **kwargs)
         if accept:
             request.headers["Accept"] = accept
         url = request.url
@@ -441,7 +361,7 @@ Set an api_key as in:
             return content
         if self._cache is None:
             # No cache, so we can use the client straightforwardly.
-            response = self._send(request, stream=stream)
+            response = self.http_client.send(request, stream=stream)
             handle_error(response)
             if response.headers.get("content-encoding") == "blosc":
                 import blosc
@@ -476,7 +396,7 @@ Set an api_key as in:
                     return reservation.load_content()
                 if not self._disable_cache_read:
                     request.headers["If-None-Match"] = reservation.item.etag
-            response = self._send(request, stream=stream)
+            response = self.http_client.send(request, stream=stream, **send_kwargs)
             handle_error(response)
             if response.status_code == 304:  # HTTP 304 Not Modified
                 # Update the expiration time.
@@ -522,18 +442,18 @@ Set an api_key as in:
         )
 
     def post_json(self, path, content):
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "POST",
             path,
             json=content,
             # Submit CSRF token in both header and cookie.
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             headers={
-                "x-csrf": self._client.cookies["tiled_csrf"],
+                "x-csrf": self.http_client.cookies["tiled_csrf"],
                 "accept": "application/x-msgpack",
             },
         )
-        response = self._send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -541,18 +461,18 @@ Set an api_key as in:
         )
 
     def put_json(self, path, content):
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "PUT",
             path,
             json=content,
             # Submit CSRF token in both header and cookie.
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             headers={
-                "x-csrf": self._client.cookies["tiled_csrf"],
+                "x-csrf": self.http_client.cookies["tiled_csrf"],
                 "accept": "application/x-msgpack",
             },
         )
-        response = self._send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -563,16 +483,16 @@ Set an api_key as in:
         # Submit CSRF token in both header and cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         headers = headers or {}
-        headers.setdefault("x-csrf", self._client.cookies["tiled_csrf"])
+        headers.setdefault("x-csrf", self.http_client.cookies["tiled_csrf"])
         headers.setdefault("accept", "application/x-msgpack")
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "PUT",
             path,
             content=content,
             headers=headers,
             params=params,
         )
-        response = self._send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
@@ -583,102 +503,81 @@ Set an api_key as in:
         # Submit CSRF token in both header and cookie.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         headers = headers or {}
-        headers.setdefault("x-csrf", self._client.cookies["tiled_csrf"])
+        headers.setdefault("x-csrf", self.http_client.cookies["tiled_csrf"])
         headers.setdefault("accept", "application/x-msgpack")
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "DELETE", path, content=None, headers=headers, params=params
         )
-        response = self._send(request)
+        response = self.http_client.send(request)
         handle_error(response)
         return msgpack.unpackb(
             response.content,
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def _send(self, request, stream=False, attempts=0):
-        """
-        If sending results in an authentication error, reauthenticate.
-        """
-        response = self._client.send(request, stream=stream)
-        if (self.api_key is None) and (response.status_code == 401) and (attempts == 0):
-            # Try refreshing the token.
-            tokens = self.reauthenticate()
-            # The line above updated self._client.headers["authorization"]
-            # so we will have a fresh token for the next call to
-            # client.build_request(...), but we need to retroactively patch the
-            # authorization header for this request and then re-send.
-            access_token = tokens["access_token"]
-            auth_header = f"Bearer {access_token}"
-            request.headers["authorization"] = auth_header
-            return self._send(request, stream=stream, attempts=1)
-        return response
-
-    def authenticate(self, provider=None):
+    def authenticate(self, username=None, provider=None):
         "Authenticate. Prompt for password or access code (refresh token)."
+        providers = self.server_info["authentication"]["providers"]
+        spec = _choose_identity_provider(providers, provider)
+        provider = spec["provider"]
         if self.api_key is not None:
-            raise RuntimeError("API key authentication is being used.")
-        providers = self._handshake_data["authentication"]["providers"]
-        if len(providers) == 0:
+            # Check that API key authenticates us as this user,
+            # and then either return or raise.
+            identities = self.whoami()["identities"]
+            for identity in identities:
+                if (identity["provider"] == provider) and (identity["id"] == username):
+                    return
             raise RuntimeError(
-                "The authenticate() method is not applicable. "
-                "This server does not support any authentication providers."
+                "An API key is set, and it is not associated with the username/provider "
+                f"{username}/{provider}. Unset the API key first."
             )
-        if provider is not None:
-            for spec in providers:
-                if spec["provider"] == provider:
-                    break
+
+        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+
+        # If we are passed a username, we can check whether we already have
+        # tokens stashed.
+        if username is not None:
+            token_directory = self._token_directory(provider, username)
+            self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
+            # This will either:
+            # * Use an access_token and succeed.
+            # * Use a refresh_token to attempt refresh flow and succeed.
+            # * Use a refresh_token to attempt refresh flow and fail, raise.
+            # * Find no tokens and raise.
+            try:
+                self.whoami()
+            except CannotRefreshAuthentication:
+                # Continue below, where we will prompt for log in.
+                self.http_client.auth = None
             else:
-                raise ValueError(
-                    f"No such provider {provider}. Choices are {[spec['provider'] for spec in providers]}"
-                )
-        else:
-            if len(providers) == 1:
-                # There is only one choice, so no need to prompt the user.
-                (spec,) = providers
-            else:
-                while True:
-                    print("Authenticaiton providers:")
-                    for i, spec in enumerate(providers, start=1):
-                        print(f"{i} - {spec['provider']}")
-                    raw_choice = input(
-                        "Choose an authentication provider (or press Enter to escape): "
-                    )
-                    if not raw_choice:
-                        print("No authentication provider chosen. Failed.")
-                        break
-                    try:
-                        choice = int(raw_choice)
-                    except TypeError:
-                        print("Choice must be a number.")
-                        continue
-                    try:
-                        spec = providers[choice - 1]
-                    except IndexError:
-                        print(f"Choice must be a number 1 through {len(providers)}.")
-                        continue
-                    break
+                # We have a live session for the specified provider and username already.
+                # No need to log in again.
+                return
+
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
-        confirmation_message = spec["confirmation_message"]
         if mode == "password":
-            username = self._username or input("Username: ")
+            if username:
+                print(f"Username {username}")
+            else:
+                username = input("Username: ")
             password = getpass.getpass()
             form_data = {
                 "grant_type": "password",
                 "username": username,
                 "password": password,
             }
-            token_request = self._client.build_request(
+            token_request = self.http_client.build_request(
                 "POST",
                 auth_endpoint,
                 data=form_data,
                 headers={},
             )
             token_request.headers.pop("Authorization", None)
-            token_response = self._client.send(token_request)
+            token_response = self.http_client.send(token_request, auth=None)
             handle_error(token_response)
             tokens = token_response.json()
-            refresh_token = tokens["refresh_token"]
         elif mode == "external":
             print(
                 f"""
@@ -688,6 +587,9 @@ Navigate web browser to this address to obtain access code:
 
 """
             )
+            import webbrowser
+
+            webbrowser.open(auth_endpoint)
             while True:
                 # The proper term for this is 'refresh token' but that may be
                 # confusing jargon to the end user, so we say "access code".
@@ -699,68 +601,111 @@ Navigate web browser to this address to obtain access code:
                 refresh_token = raw_refresh_token.replace('"', "")
                 # Immediately refresh to (1) check that the copy/paste worked and
                 # (2) obtain an access token as well.
-                try:
-                    tokens = self._refresh(refresh_token=refresh_token)
-                except CannotRefreshAuthentication:
+                refresh_request = build_refresh_request(
+                    refresh_url,
+                    refresh_token,
+                    csrf_token,
+                )
+                token_response = self.http_client.send(refresh_request, auth=None)
+                if token_response.status_code == 401:
                     print(
                         "That didn't work. Try pasting the access code again, or press Enter to escape."
                     )
                 else:
+                    tokens = token_response.json()
                     break
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-        if self._token_cache is not None:
-            # We are using a token cache. Store the new refresh token.
-            self._token_cache["refresh_token"] = refresh_token
-        self._tokens.update(
-            refresh_token=tokens["refresh_token"], access_token=tokens["access_token"]
+        # We need to know the username in order to set the token_directory,
+        # so we manually build an authenticated request to "whoami" to get
+        # the username, and then configure TiledAuth to handle authentication
+        # going forward.
+        whoami = self.get_json(
+            self.server_info["authentication"]["links"]["whoami"],
+            auth=None,
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
         )
-        if confirmation_message:
-            identities = self.whoami()["identities"]
-            identities_by_provider = {
-                identity["provider"]: identity["id"] for identity in identities
-            }
-            print(
-                confirmation_message.format(id=identities_by_provider[spec["provider"]])
+        identities = whoami["identities"]
+        identities_by_provider = {
+            identity["provider"]: identity["id"] for identity in identities
+        }
+        username = identities_by_provider[provider]
+        token_directory = self._token_directory(provider, username)
+        auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        auth.sync_set_token("access_token", tokens["access_token"])
+        auth.sync_set_token("refresh_token", tokens["refresh_token"])
+        self.http_client.auth = auth
+        return spec, username
+
+    def _token_directory(self, provider, username):
+        # ~/.config/tiled/tokens/{host:port}/{provider}/{username}
+        # with each templated element URL-encoded so it is a valid filename.
+        return Path(
+            self._token_cache,
+            urllib.parse.quote_plus(str(self.api_uri)),
+            urllib.parse.quote_plus(provider),
+            urllib.parse.quote_plus(username),
+        )
+
+    def force_auth_refresh(self):
+        """
+        Execute refresh flow.
+
+        This method is exposed for testing and debugging uses.
+
+        It should never be necessary for the user to call. Refresh flow is
+        automatically executed by tiled.client.auth.TiledAuth when the current
+        access_token expires.
+        """
+        if self.http_client.auth is None:
+            raise RuntimeError(
+                "No authentication has been set up. Cannot reauthenticate."
             )
+        refresh_token = self.http_client.auth.sync_get_token(
+            "refresh_token", reload_from_disk=True
+        )
+        if refresh_token is None:
+            raise CannotRefreshAuthentication("There is no refresh_token.")
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+        refresh_request = build_refresh_request(
+            self.http_client.auth.refresh_url,
+            refresh_token,
+            csrf_token,
+        )
+        token_response = self.http_client.send(refresh_request, auth=None)
+        if token_response.status_code == 401:
+            raise CannotRefreshAuthentication(
+                "Session cannot be refreshed. Log in again."
+            )
+        handle_error(token_response)
+        tokens = token_response.json()
+        self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
+        self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
         return tokens
-
-    def reauthenticate(self, prompt=None):
-        """
-        Refresh authentication.
-
-        Parameters
-        ----------
-        prompt : bool
-            If True, give interactive prompt for authentication when refreshing
-            tokens fails. If False raise an error. If None, fall back
-            to default `prompt_for_reauthentication` set in Context.__init__.
-        """
-        if self.api_key is not None:
-            raise RuntimeError("API key authentication is being used.")
-        try:
-            return self._refresh()
-        except CannotRefreshAuthentication:
-            if prompt is None:
-                prompt = self._prompt_for_reauthentication
-            if prompt:
-                return self.authenticate()
-            raise
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return self.get_json(self._handshake_data["authentication"]["links"]["whoami"])
+        return self.get_json(self.server_info["authentication"]["links"]["whoami"])
 
     def logout(self):
         """
-        Clear the access token and the cached refresh token.
+        Log out of the current session (if any).
 
         This method is idempotent.
         """
-        self._client.headers.pop("Authorization", None)
-        if self._token_cache is not None:
-            self._token_cache.pop("refresh_token", None)
-        self._tokens.clear()
+        if self.http_client.auth is None:
+            return
+
+        # Revoke the current session.
+        self.http_client.post(f"{self.api_uri}auth/logout")
+
+        # Clear on-disk state.
+        self.http_client.auth.sync_clear_token("access_token")
+        self.http_client.auth.sync_clear_token("refresh_token")
+
+        # Clear in-memory state.
+        self.http_client.headers.pop("Authorization", None)
+        self.http_client.auth = None
 
     def revoke_session(self, session_id):
         """
@@ -768,206 +713,50 @@ Navigate web browser to this address to obtain access code:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        request = self._client.build_request(
+        request = self.http_client.build_request(
             "DELETE",
-            self._handshake_data["authentication"]["links"]["revoke_session"].format(
+            self.server_info["authentication"]["links"]["revoke_session"].format(
                 session_id=session_id
             ),
-            headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
         )
-        response = self._client.send(request)
+        response = self.http_client.send(request)
         handle_error(response)
 
-    def _refresh(self, refresh_token=None):
-        with self._refresh_lock:
-            if refresh_token is None:
-                if self._token_cache is None:
-                    # We are not using a token cache.
-                    raise CannotRefreshAuthentication(
-                        "No token cache was given. "
-                        "Provide fresh credentials. "
-                        "For a given client c, use c.context.authenticate()."
-                    )
-                # We are using a token_cache.
-                try:
-                    refresh_token = self._token_cache["refresh_token"]
-                except KeyError:
-                    raise CannotRefreshAuthentication(
-                        "No refresh token was found in token cache. "
-                        "Provide fresh credentials. "
-                        "For a given client c, use c.context.authenticate()."
-                    )
-            token_request = self._client.build_request(
-                "POST",
-                self._handshake_data["authentication"]["links"]["refresh_session"],
-                json={"refresh_token": refresh_token},
-                # Submit CSRF token in both header and cookie.
-                # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-                headers={"x-csrf": self._client.cookies["tiled_csrf"]},
+
+def _choose_identity_provider(providers, provider=None):
+    if provider is not None:
+        for spec in providers:
+            if spec["provider"] == provider:
+                break
+        else:
+            raise ValueError(
+                f"No such provider {provider}. Choices are {[spec['provider'] for spec in providers]}"
             )
-            token_request.headers.pop("Authorization", None)
-            token_response = self._client.send(token_request)
-            if token_response.status_code == 401:
-                # Refreshing the token failed.
-                # Discard the expired (or otherwise invalid) refresh_token file.
-                self._token_cache.pop("refresh_token", None)
-                raise CannotRefreshAuthentication(
-                    "Server rejected attempt to refresh token. "
-                    "Provide fresh credentials. "
-                    "For a given client c, use c.context.authenticate()."
+    else:
+        if len(providers) == 1:
+            # There is only one choice, so no need to prompt the user.
+            (spec,) = providers
+        else:
+            while True:
+                print("Authenticaiton providers:")
+                for i, spec in enumerate(providers, start=1):
+                    print(f"{i} - {spec['provider']}")
+                raw_choice = input(
+                    "Choose an authentication provider (or press Enter to escape): "
                 )
-            handle_error(token_response)
-            tokens = token_response.json()
-            # If we get this far, reauthentication worked.
-            # Store the new refresh token.
-            self._token_cache["refresh_token"] = tokens["refresh_token"]
-            # Update the client's Authentication header.
-            access_token = tokens["access_token"]
-            auth_header = f"Bearer {access_token}"
-            self._client.headers["authorization"] = auth_header
-            self._tokens.update(
-                refresh_token=tokens["refresh_token"],
-                access_token=tokens["access_token"],
-            )
-            return tokens
-
-
-def context_from_tree(
-    tree,
-    authentication,
-    server_settings,
-    *,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-    validation_registry=None,
-    cache=None,
-    offline=False,
-    token_cache=DEFAULT_TOKEN_CACHE,
-    prompt_for_reauthentication=PromptForReauthentication.AT_INIT,
-    username=None,
-    auth_provider=None,
-    api_key=None,
-    headers=None,
-    timeout=None,
-):
-    from ..server.app import build_app
-
-    # By default make it "public" because there is no way to
-    # secure access from inside the same process anyway.
-    authentication = authentication or {"allow_anonymous_access": True}
-    server_settings = server_settings or {}
-    params = {}
-    headers = headers or {}
-    headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
-    # If a single-user API key will be used, generate the key here instead of
-    # letting build_app do it for us, so that we can give it to the client
-    # below.
-    if (
-        (not authentication.get("providers"))
-        and (not authentication.get("allow_anonymous_access", False))
-        and (authentication.get("single_user_api_key") is None)
-    ):
-        single_user_api_key = os.getenv(
-            "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
-        )
-        authentication["single_user_api_key"] = single_user_api_key
-        params["api_key"] = single_user_api_key
-    app = build_app(
-        tree,
-        authentication,
-        server_settings,
-        query_registry=query_registry,
-        serialization_registry=serialization_registry,
-        compression_registry=compression_registry,
-        validation_registry=validation_registry,
-    )
-
-    # Only an AsyncClient can be used over ASGI.
-    # We wrap all the async methods in a call to asyncio.run(...).
-    # Someday we should explore asynchronous Tiled Client objects.
-    from ._async_bridge import AsyncClientBridge
-
-    async def startup():
-        # Note: This is important. The Tiled server routes are defined lazily on
-        # startup.
-        await app.router.startup()
-
-    if timeout is None:
-        timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
-
-    client = AsyncClientBridge(
-        base_url="http://local-tiled-app/api/",
-        params=params,
-        app=app,
-        _startup_hook=startup,
-        event_hooks=ASYNC_EVENT_HOOKS,
-        headers=headers,
-        timeout=timeout,
-    )
-    # Block for application startup.
-    try:
-        client.wait_until_ready(10)
-    except TimeoutError:
-        raise TimeoutError("Application startup has timed out.")
-    # TODO How to close the httpx.AsyncClient more cleanly?
-    import atexit
-
-    atexit.register(client.close)
-    return Context(
-        client,
-        cache=cache,
-        offline=offline,
-        token_cache=token_cache,
-        username=username,
-        auth_provider=auth_provider,
-        api_key=api_key,
-        prompt_for_reauthentication=prompt_for_reauthentication,
-        app=app,
-    )
-
-
-class TokenCache:
-    "A (partial) dict interface backed by files with restrictive permissions"
-
-    def __init__(self, directory):
-        self._directory = Path(directory)
-        self._directory.mkdir(exist_ok=True, parents=True)
-
-    def __getitem__(self, key):
-        filepath = self._directory / key
-        try:
-            with open(filepath, "r") as file:
-                return file.read()
-        except FileNotFoundError:
-            raise KeyError(key)
-
-    def __setitem__(self, key, value):
-        if not isinstance(value, str):
-            raise ValueError("Expected string value, got {value!r}")
-        filepath = self._directory / key
-        filepath.touch(mode=0o600)  # Set permissions.
-        with open(filepath, "w") as file:
-            file.write(value)
-
-    def __delitem__(self, key):
-        filepath = self._directory / key
-        # filepath.unlink(missing_ok=False)  # Python 3.8+
-        try:
-            filepath.unlink()
-        except FileNotFoundError:
-            pass
-
-    def pop(self, key, fallback=None):
-        filepath = self._directory / key
-        try:
-            with open(filepath, "r") as file:
-                content = file.read()
-        except FileNotFoundError:
-            content = fallback
-        # filepath.unlink(missing_ok=True)  # Python 3.8+
-        try:
-            filepath.unlink()
-        except FileNotFoundError:
-            pass
-        return content
+                if not raw_choice:
+                    print("No authentication provider chosen. Failed.")
+                    break
+                try:
+                    choice = int(raw_choice)
+                except TypeError:
+                    print("Choice must be a number.")
+                    continue
+                try:
+                    spec = providers[choice - 1]
+                except IndexError:
+                    print(f"Choice must be a number 1 through {len(providers)}.")
+                    continue
+                break
+    return spec

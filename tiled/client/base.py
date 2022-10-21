@@ -6,10 +6,10 @@ from .cache import Revalidate, verify_cache
 
 
 class MetadataRevisions:
-    def __init__(self, context, path):
+    def __init__(self, context, link):
         self._cached_len = None
         self.context = context
-        self._path = path
+        self._link = link
 
     def __len__(self):
 
@@ -22,14 +22,8 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        path = (
-            "/node/revisions"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
         content = self.context.get_json(
-            path, params={"page[offset]": 0, "page[limit]": 0}
+            self._link, params={"page[offset]": 0, "page[limit]": 0}
         )
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
@@ -38,18 +32,12 @@ class MetadataRevisions:
     def __getitem__(self, item_):
         self._cached_len = None
 
-        path = (
-            "/node/revisions"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
         if isinstance(item_, int):
             offset = item_
             limit = 1
 
             content = self.context.get_json(
-                path, params={"page[offset]": offset, "page[limit]": limit}
+                self._link, params={"page[offset]": offset, "page[limit]": limit}
             )
 
             (result,) = content["data"]
@@ -65,7 +53,7 @@ class MetadataRevisions:
                 limit = item_.stop - offset
                 params = f"?page[offset]={offset}&page[limit]={limit}"
 
-            next_page = path + params
+            next_page = self._link + params
             result = []
             while next_page is not None:
                 content = self.context.get_json(next_page)
@@ -78,30 +66,19 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-
-        path = (
-            "/node/revisions"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
-        self.context.delete_content(path, None, params={"n": n})
+        self.context.delete_content(self._link, None, params={"n": n})
 
 
 class BaseClient:
-    def __init__(self, context, *, item, path, structure_clients):
+    def __init__(self, context, *, item, structure_clients):
         self._context = context
-        if isinstance(path, str):
-            raise ValueError("path is expected to be a list of segments")
-        # Stash *immutable* copies just to be safe.
-        self._path = tuple(path or [])
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
         self._metadata_revisions = None
         super().__init__()
 
-    def login(self, provider=None):
+    def login(self, username=None, provider=None):
         """
         Depending on the server's authentication method, this will prompt for username/password
 
@@ -120,10 +97,10 @@ class BaseClient:
 
         See also c.context.authenticate() and c.context.reauthenticate().
         """
-        self.context.authenticate(provider=provider)
-        # Do NOT return the tokens that are returned by authenticate().
-        # This avoids displaying valid refresh tokens into places they might persist,
-        # like Jupyter notebooks.
+        provider_spec, username = self.context.authenticate(provider=provider)
+        confirmation_message = provider_spec.get("confirmation_message")
+        if confirmation_message:
+            print(confirmation_message.format(id=username))
 
     def logout(self):
         """
@@ -164,11 +141,6 @@ class BaseClient:
         return ListView(self._item["attributes"].get("references", []))
 
     @property
-    def path(self):
-        "Sequence of entry names from the root Tree to this entry"
-        return ListView(self._path)
-
-    @property
     def uri(self):
         "Direct link to this entry"
         return self.item["links"]["self"]
@@ -185,17 +157,14 @@ class BaseClient:
     def offline(self, value):
         self.context.offline = bool(value)
 
-    def new_variation(self, path=UNCHANGED, structure_clients=UNCHANGED, **kwargs):
+    def new_variation(self, structure_clients=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.
         """
-        if path is UNCHANGED:
-            path = self._path
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
         return type(self)(
             item=self._item,
-            path=path,
             structure_clients=structure_clients,
             **kwargs,
         )
@@ -205,9 +174,9 @@ class BaseClient:
         "List formats that the server can export this data as."
         formats = set()
         for spec in self.item["attributes"]["specs"]:
-            formats.update(self.context.get_json("")["formats"].get(spec, []))
+            formats.update(self.context.server_info["formats"].get(spec, []))
         formats.update(
-            self.context.get_json("")["formats"][
+            self.context.server_info["formats"][
                 self.item["attributes"]["structure_family"]
             ]
         )
@@ -241,13 +210,7 @@ class BaseClient:
             "references": references,
         }
 
-        full_path_meta = (
-            "/node/metadata"
-            + "".join(f"/{part}" for part in self.context.path_parts)
-            + "".join(f"/{part}" for part in (self._path or [""]))
-        )
-
-        content = self.context.put_json(full_path_meta, data)
+        content = self.context.put_json(self.item["links"]["self"], data)
 
         if metadata is not None:
             if "metadata" in content:
@@ -268,7 +231,10 @@ class BaseClient:
     @property
     def metadata_revisions(self):
         if self._metadata_revisions is None:
-            self._metadata_revisions = MetadataRevisions(self.context, self._path)
+            link = self.item["links"]["self"].replace(
+                "/node/metadata/", "/node/revisions", 1
+            )
+            self._metadata_revisions = MetadataRevisions(self.context, link)
 
         return self._metadata_revisions
 
