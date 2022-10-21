@@ -149,6 +149,36 @@ class Context:
                 self.server_info = self.get_json(self.api_uri)
         self.api_key = api_key  # property setter sets Authorization header
 
+    def __getstate__(self):
+        if self.http_client.app is not None:
+            raise TypeError(
+                "Cannot pickle a Tiled Context built around an ASGI. "
+                "Only Tiled Context connected to remote servers can be pickled."
+            )
+        # Do not put secrets in the pickle output.
+        headers = self.http_client.headers
+        headers.pop("Authorization", None)
+        return (
+            headers,
+            self.api_key,
+            self.offline,
+            self.http_client.timeout,
+            self.http_client.verify,
+            self._token_cache,
+            self.server_info,
+        )
+
+    def __setstate__(self, state):
+        (
+            headers,
+            self.api_key,
+            self.offline,
+            timeout,
+            verify,
+            token_cache,
+            server_info,
+        ) = state
+
     @classmethod
     def from_any_uri(
         cls,
