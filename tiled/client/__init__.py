@@ -1,4 +1,3 @@
-from .auth import logout  # noqa: F401
 from .constructors import from_context  # noqa: F401
 from .constructors import from_config, from_profile, from_tree, from_uri  # noqa: F401
 from .node import ASCENDING, DESCENDING  # noqa: F401

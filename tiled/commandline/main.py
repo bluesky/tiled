@@ -32,7 +32,12 @@ from ._admin import admin_app  # noqa: E402
 from ._api_key import api_key_app  # noqa: E402
 from ._profile import profile_app  # noqa: E402
 from ._serve import serve_app  # noqa: E402
-from ._utils import get_default_profile_name, get_profile  # noqa E402
+from ._utils import (  # noqa E402
+    CLI_CACHE_DIR,
+    get_context,
+    get_default_profile_name,
+    get_profile,
+)
 
 cli_app.add_typer(serve_app, name="serve", help="Launch a Tiled server.")
 cli_app.add_typer(
@@ -67,6 +72,7 @@ def connect(
         uri = uri_or_profile
         name = "auto"
         Context.from_any_uri(uri, verify=not no_verify)
+        user_profiles_dir.mkdir(parents=True, exist_ok=True)
         with open(user_profiles_dir / "auto.yml", "w") as file:
             file.write(
                 f"""# This file is managed by the Tiled CLI.
@@ -99,7 +105,8 @@ auto:
                 err=True,
             )
             raise typer.Abort()
-    with open(user_profiles_dir / ".default", "w") as file:
+    CLI_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CLI_CACHE_DIR / "active_profile", "w") as file:
         file.write(name)
     typer.echo(f"Tiled profile {name!r} is set as the default.")
 
@@ -132,11 +139,13 @@ def disconnect():
     import httpx
 
     from ..client.auth import logout
-    from ..profiles import paths
 
-    user_profiles_dir = paths[-1]
-    filepath = user_profiles_dir / ".default"
-    filepath.unlink()
+    filepath = CLI_CACHE_DIR / "active_profile"
+    # filepath.unlink(missing_ok=False)  # Python 3.8+
+    try:
+        filepath.unlink()
+    except FileNotFoundError:
+        pass
     _, profile_content = get_profile(profile)
 
     if ("username" in profile_content) and ("auth_provider" in profile_content):
@@ -158,30 +167,20 @@ def login(
     """
     Log in to an authenticated Tiled server.
     """
+    import json
+
     from ..client.context import Context
-    from ..profiles import paths
 
     profile_name, profile_content = get_profile(profile)
     options = {"verify": profile_content.get("verify", True)}
-    ctx, _ = Context.from_any_uri(profile_content["uri"], **options)
-    provider_spec, username = ctx.authenticate()
-    user_profiles_dir = paths[-1]
-    with open(user_profiles_dir / "auto.yml", "w") as file:
-        file.write(
-            f"""# This file is managed by the Tiled CLI.
-# Any edits made by hand may be discarded.
-auto:
-  uri: {profile_content['uri']}
-  verify: {profile_content['verify']}
-  username: {username}
-  auth_provider: {provider_spec['provider']}
-"""
-        )
-
+    context, _ = Context.from_any_uri(profile_content["uri"], **options)
+    provider_spec, username = context.authenticate()
+    filepath = CLI_CACHE_DIR / "profile_auths"
+    filepath.mkdir(parents=True, exist_ok=True)
+    with open(filepath / profile_name, "w") as file:
+        json.dump({"provider": provider_spec["provider"], "username": username}, file)
     if show_secret_tokens:
-        import json
-
-        typer.echo(json.dumps(dict(ctx.tokens), indent=4))
+        typer.echo(json.dumps(dict(context.tokens), indent=4))
 
 
 @cli_app.command("logout")
@@ -193,14 +192,25 @@ def logout(
     """
     Log out from one or all authenticated Tiled servers.
     """
-    import httpx
+    import json
 
-    from tiled.client.auth import logout
+    from ..client.context import Context
 
-    _, profile_content = get_profile(profile)
-
-    uri = httpx.URL(profile_content["uri"])
-    logout(uri.netloc, profile_content["auth_provider"], profile_content["username"])
+    profile_name, profile_content = get_profile(profile)
+    filepath = CLI_CACHE_DIR / "profile_auths" / profile_name
+    context, _ = Context.from_any_uri(
+        profile_content["uri"], verify=profile_content.get("verify", True)
+    )
+    if filepath.is_file():
+        with open(filepath, "r") as file:
+            auth = json.load(file)
+        context.authenticate(auth["username"], auth["provider"])
+    context.logout()
+    # filepath.unlink(missing_ok=False)  # Python 3.8+
+    try:
+        filepath.unlink()
+    except FileNotFoundError:
+        pass
 
 
 @cli_app.command("tree")
@@ -215,11 +225,11 @@ def tree(
 
     This is similar to the UNIX utility `tree` for listing nested directories.
     """
-    from ..client.constructors import from_profile
+    from ..client.constructors import from_context
     from ..utils import gen_tree
 
-    profile_name, _ = get_profile(profile)
-    client = from_profile(profile_name)
+    context = get_context(profile)
+    client = from_context(context)
     for counter, line in enumerate(gen_tree(client), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(

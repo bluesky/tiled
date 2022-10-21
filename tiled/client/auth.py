@@ -1,5 +1,4 @@
 import os
-import urllib.parse
 from pathlib import Path
 
 import appdirs
@@ -15,43 +14,6 @@ class CannotRefreshAuthentication(Exception):
 DEFAULT_TOKEN_CACHE = os.getenv(
     "TILED_TOKEN_CACHE", os.path.join(appdirs.user_cache_dir("tiled"), "tokens")
 )
-
-
-def logout(netloc, provider, username, *, token_cache=DEFAULT_TOKEN_CACHE):
-    """
-    Logout of a given session.
-
-    If not logged in, calling this function has no effect.
-
-    Parameters
-    ----------
-    uri_or_profile : str
-    token_cache : str or Path, optional
-
-    Returns
-    -------
-    netloc : str
-    """
-    if isinstance(netloc, bytes):
-        netloc = netloc.decode()
-    # ~/.config/tiled/tokens/{host:port}/{provider}/{username}
-    # with each templated element URL-encoded so it is a valid filename.
-    token_directory = Path(
-        token_cache,
-        urllib.parse.quote_plus(netloc),
-        urllib.parse.quote_plus(provider),
-        urllib.parse.quote_plus(username),
-    )
-    for filepath in [
-        token_directory / "refresh_token",
-        token_directory / "access_token",
-    ]:
-        # filepath.unlink(missing_ok=False)  # Python 3.8+
-        try:
-            filepath.unlink()
-        except FileNotFoundError:
-            pass
-    return netloc
 
 
 class TiledAuth(httpx.Auth):

@@ -2,7 +2,7 @@ from typing import List, Optional
 
 import typer
 
-from ._utils import get_profile
+from ._utils import get_context
 
 api_key_app = typer.Typer()
 
@@ -30,15 +30,8 @@ def create_api_key(
     note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
     no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
 ):
-    from tiled.client.context import Context
 
-    _, profile_content = get_profile(profile)
-    context, _ = Context.from_any_uri(
-        profile_content["uri"], verify=profile_content.get("verify", True)
-    )
-    context.authenticate(
-        profile_content.get("username"), profile_content.get("provider")
-    )
+    context = get_context(profile)
     if not scopes:
         # This is how typer interprets unspecified scopes.
         # Replace with None to get default scopes.
@@ -54,15 +47,7 @@ def list_api_keys(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
 ):
-    from tiled.client.context import Context
-
-    _, profile_content = get_profile(profile)
-    context, _ = Context.from_any_uri(
-        profile_content["uri"], verify=profile_content.get("verify", True)
-    )
-    context.authenticate(
-        profile_content.get("username"), profile_content.get("provider")
-    )
+    context = get_context(profile)
     info = context.whoami()
     if not info["api_keys"]:
         typer.echo("No API keys found", err=True)
@@ -108,13 +93,5 @@ def revoke_api_key(
         ..., help="First eight characters of API key (or the whole key)"
     ),
 ):
-    from tiled.client.context import Context
-
-    _, profile_content = get_profile(profile)
-    context, _ = Context.from_any_uri(
-        profile_content["uri"], verify=profile_content.get("verify", True)
-    )
-    context.authenticate(
-        profile_content.get("username"), profile_content.get("provider")
-    )
+    context = get_context(profile)
     context.revoke_api_key(first_eight[:8])

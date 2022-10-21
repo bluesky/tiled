@@ -642,7 +642,7 @@ Navigate web browser to this address to obtain access code:
         # with each templated element URL-encoded so it is a valid filename.
         return Path(
             self._token_cache,
-            urllib.parse.quote_plus(self.api_uri.netloc.decode()),
+            urllib.parse.quote_plus(str(self.api_uri)),
             urllib.parse.quote_plus(provider),
             urllib.parse.quote_plus(username),
         )
@@ -689,13 +689,23 @@ Navigate web browser to this address to obtain access code:
 
     def logout(self):
         """
-        Clear the access token and the cached refresh token.
+        Log out of the current session (if any).
 
         This method is idempotent.
         """
-        self.http_client.headers.pop("Authorization", None)
+        if self.http_client.auth is None:
+            return
+
+        # Revoke the current session.
+        self.http_client.post(f"{self.api_uri}auth/logout")
+
+        # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
         self.http_client.auth.sync_clear_token("refresh_token")
+
+        # Clear in-memory state.
+        self.http_client.headers.pop("Authorization", None)
+        self.http_client.auth = None
 
     def revoke_session(self, session_id):
         """
