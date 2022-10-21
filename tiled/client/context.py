@@ -27,7 +27,8 @@ from .utils import (
     handle_error,
 )
 
-USER_AGENT = f"python-tiled/{get_versions()['version']}"
+tiled_version = get_versions()["version"]
+USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 
 
@@ -157,10 +158,12 @@ class Context:
                 "Only Tiled Context connected to remote servers can be pickled."
             )
         return (
+            tiled_version,
             self.api_uri,
             self.http_client.headers,
             list(self.http_client.cookies.jar),
             self.http_client.timeout,
+            self.http_client.auth,
             self._verify,
             self.offline,
             self._revalidate,
@@ -171,10 +174,12 @@ class Context:
 
     def __setstate__(self, state):
         (
+            state_tiled_version,
             api_uri,
             headers,
             cookies_list,
             timeout,
+            auth,
             verify,
             offline,
             revalidate,
@@ -182,6 +187,12 @@ class Context:
             server_info,
             cache,
         ) = state
+        if state_tiled_version != tiled_version:
+            raise TypeError(
+                f"Cannot unpickle {type(self).__name__} from tiled version {state_tiled_version} "
+                f"using tiled version {tiled_version}. Pickle should only be used to short-term "
+                "transfer between identical versions of tiled."
+            )
         self.api_uri = api_uri
         cookies = httpx.Cookies()
         for cookie in cookies_list:
@@ -195,6 +206,7 @@ class Context:
             timeout=timeout,
             headers=headers,
             follow_redirects=True,
+            auth=auth,
         )
         self._revalidate = revalidate
         self._token_cache = token_cache

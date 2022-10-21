@@ -6,7 +6,7 @@ import httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, Context
-from .node import Node
+from .node import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Node
 from .utils import client_for_item
 
 
@@ -215,7 +215,7 @@ def from_context(
         Node.discover_clients_from_entrypoints()
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
-        structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
+        structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     if (
         (not context.offline)
         and (context.api_key is None)

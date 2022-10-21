@@ -46,11 +46,12 @@ class TiledAuth(httpx.Auth):
         # 1. Sometimes users persist pickled data and handle it insecurely.
         # 2. The un-serialized instance of TiledAuth will need to be able to
         #    read/write from token_directory anyway.
+        self.tokens = {}
         (refresh_url, csrf_token, token_directory, sync_lock) = state
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
         self.token_directory = token_directory
-        self._sync_look = sync_lock
+        self._sync_lock = sync_lock
         self._check_writable_token_directory()
 
     def sync_get_token(self, key, reload_from_disk=False):

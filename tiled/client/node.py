@@ -25,42 +25,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
     # defer imports.
-    DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
-        "numpy": OneShotCachedMap(
-            {
-                "node": lambda: Node,
-                "array": lambda: importlib.import_module(
-                    "..array", Node.__module__
-                ).ArrayClient,
-                "dataframe": lambda: importlib.import_module(
-                    "..dataframe", Node.__module__
-                ).DataFrameClient,
-                "sparse": lambda: importlib.import_module(
-                    "..sparse", Node.__module__
-                ).SparseClient,
-                "xarray_dataset": lambda: importlib.import_module(
-                    "..xarray", Node.__module__
-                ).DatasetClient,
-            }
-        ),
-        "dask": OneShotCachedMap(
-            {
-                "node": lambda: Node,
-                "array": lambda: importlib.import_module(
-                    "..array", Node.__module__
-                ).DaskArrayClient,
-                "dataframe": lambda: importlib.import_module(
-                    "..dataframe", Node.__module__
-                ).DaskDataFrameClient,
-                "sparse": lambda: importlib.import_module(
-                    "..sparse", Node.__module__
-                ).SparseClient,
-                "xarray_dataset": lambda: importlib.import_module(
-                    "..xarray", Node.__module__
-                ).DaskDatasetClient,
-            }
-        ),
-    }
 
     # This is populated when the first instance is created.
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
@@ -96,10 +60,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 entrypoint_name
             ).items():
                 cls.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS.set(name, entrypoint.load)
-                cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH["numpy"].set(
-                    name, entrypoint.load
-                )
-                cls.DEFAULT_STRUCTURE_CLIENT_DISPATCH["dask"].set(name, entrypoint.load)
+                DEFAULT_STRUCTURE_CLIENT_DISPATCH["numpy"].set(name, entrypoint.load)
+                DEFAULT_STRUCTURE_CLIENT_DISPATCH["dask"].set(name, entrypoint.load)
 
     def __init__(
         self,
@@ -209,9 +171,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         This is intended primarily for internal use and use by subclasses.
         """
         if isinstance(structure_clients, str):
-            structure_clients = Node.DEFAULT_STRUCTURE_CLIENT_DISPATCH[
-                structure_clients
-            ]
+            structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
         if queries is UNCHANGED:
@@ -905,3 +865,50 @@ ASCENDING = Ascending("ASCENDING")
 "Ascending sort order. An alias for 1."
 DESCENDING = Descending("DESCENDING")
 "Decending sort order. An alias for -1."
+
+
+class _LazyLoad:
+    # This exists because lambdas and closures cannot be pickled.
+    def __init__(self, import_module_args, attr_name):
+        self.import_module_args = import_module_args
+        self.attr_name = attr_name
+
+    def __call__(self):
+        return getattr(
+            importlib.import_module(*self.import_module_args), self.attr_name
+        )
+
+
+class _Wrap:
+    # This exists because lambdas and closures cannot be pickled.
+    def __init__(self, obj):
+        self.obj = obj
+
+    def __call__(self):
+        return self.obj
+
+
+DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
+    "numpy": OneShotCachedMap(
+        {
+            "node": _Wrap(Node),
+            "array": _LazyLoad(("..array", Node.__module__), "ArrayClient"),
+            "dataframe": _LazyLoad(("..dataframe", Node.__module__), "DataFrameClient"),
+            "sparse": _LazyLoad(("..sparse", Node.__module__), "SparseClient"),
+            "xarray_dataset": _LazyLoad(("..xarray", Node.__module__), "DatasetClient"),
+        }
+    ),
+    "dask": OneShotCachedMap(
+        {
+            "node": _Wrap(Node),
+            "array": _LazyLoad(("..array", Node.__module__), "DaskArrayClient"),
+            "dataframe": _LazyLoad(
+                ("..dataframe", Node.__module__), "DaskDataFrameClient"
+            ),
+            "sparse": _LazyLoad(("..sparse", Node.__module__), "SparseClient"),
+            "xarray_dataset": _LazyLoad(
+                ("..xarray", Node.__module__), "DaskDatasetClient"
+            ),
+        }
+    ),
+}
