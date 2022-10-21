@@ -132,27 +132,12 @@ def disconnect():
     """
     "Disconnect" from the default Tiled server.
     """
-    profile = get_default_profile_name()
-    if profile is None:
-        return
-
-    import httpx
-
-    from ..client.auth import logout
-
     filepath = CLI_CACHE_DIR / "active_profile"
     # filepath.unlink(missing_ok=False)  # Python 3.8+
     try:
         filepath.unlink()
     except FileNotFoundError:
         pass
-    _, profile_content = get_profile(profile)
-
-    if ("username" in profile_content) and ("auth_provider" in profile_content):
-        uri = httpx.URL(profile_content["uri"])
-        logout(
-            uri.netloc, profile_content["auth_provider"], profile_content["username"]
-        )
 
 
 @cli_app.command("login")
