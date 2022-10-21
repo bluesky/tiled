@@ -262,14 +262,3 @@ the same source directory as the `tiled.client.cache` module. (Cachey itself
    tiled.client.context.Context.logout
    tiled.client.context.Context.tokens
 ```
-
-## Authentication
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.auth.sessions
-   tiled.client.auth.logout
-   tiled.client.auth.logout_all
-```
