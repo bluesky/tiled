@@ -14,9 +14,9 @@ from .orm import APIKey, Identity, Principal, Role, Session
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
-REQUIRED_REVISION = "56809bcbfcb0"
+REQUIRED_REVISION = "4a9dfaba4a98"
 # This is list of all valid revisions (from current to oldest).
-ALL_REVISIONS = ["56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
+ALL_REVISIONS = ["4a9dfaba4a98", "56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
 
 
 def create_default_roles(engine):

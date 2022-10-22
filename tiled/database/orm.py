@@ -203,3 +203,17 @@ class Session(Timestamped, Base):
     revoked = Column(Boolean, default=False, nullable=False)
 
     principal = relationship("Principal", back_populates="sessions")
+
+
+class PendingSession(Base):
+    """
+    This is used only in Device Code Flow.
+    """
+
+    __tablename__ = "pending_sessions"
+
+    hashed_device_code = Column(
+        LargeBinary(32), primary_key=True, index=True, nullable=False
+    )
+    user_code = Column(Unicode(8), index=True, nullable=False)
+    expiration_time = Column(DateTime(timezone=False), nullable=False)
