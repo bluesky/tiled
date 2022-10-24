@@ -13,6 +13,7 @@ from ..client import from_tree, record_history
 from ..queries import Key
 from ..structures.sparse import COOStructure
 from ..validation_registration import ValidationRegistry
+from .utils import fail_with_status_code
 from .writable_adapters import WritableMapAdapter
 
 API_KEY = "secret"
@@ -262,3 +263,84 @@ def test_write_sparse_chunked():
     assert result.metadata == metadata
     assert result.specs == specs
     assert result.references == references
+
+
+def test_limits():
+    "Test various limits on uploaded metadata."
+
+    MAX_ALLOWED_SPECS = 20
+    MAX_SPEC_CHARS = 255
+    MAX_ALLOWED_REFERENCES = 20
+    MAX_LABEL_CHARS = 255
+
+    tree = WritableMapAdapter({})
+    validation_registry = ValidationRegistry()
+    for i in range(101):
+        validation_registry.register(f"spec{i}", lambda *args, **kwargs: None)
+    validation_registry.register("one_too_many", lambda *args, **kwargs: None)
+    validation_registry.register("a" * MAX_SPEC_CHARS, lambda *args, **kwargs: None)
+    validation_registry.register(
+        "a" * (1 + MAX_SPEC_CHARS), lambda *args, **kwargs: None
+    )
+    client = from_tree(
+        tree,
+        api_key=API_KEY,
+        authentication={"single_user_api_key": API_KEY},
+        validation_registry=validation_registry,
+    )
+
+    # Up to 20 specs are allowed.
+    max_allowed_specs = [f"spec{i}" for i in range(MAX_ALLOWED_SPECS)]
+    x = client.write_array([1, 2, 3], specs=max_allowed_specs)
+    x.update_metadata(specs=max_allowed_specs)  # no-op
+    too_many_specs = max_allowed_specs + ["one_too_many"]
+    with fail_with_status_code(422):
+        client.write_array([1, 2, 3], specs=too_many_specs)
+    with fail_with_status_code(422):
+        x.update_metadata(specs=too_many_specs)
+
+    # Specs cannot repeat.
+    has_repeated_spec = ["spec0", "spec1", "spec0"]
+    with fail_with_status_code(422):
+        client.write_array([1, 2, 3], specs=has_repeated_spec)
+    with fail_with_status_code(422):
+        x.update_metadata(specs=has_repeated_spec)
+
+    # A given spec cannot be too long.
+    max_allowed_chars = ["a" * MAX_SPEC_CHARS]
+    client.write_array([1, 2, 3], specs=max_allowed_chars)
+    too_many_chars = ["a" * (1 + MAX_SPEC_CHARS)]
+    with fail_with_status_code(422):
+        client.write_array([1, 2, 3], specs=too_many_chars)
+    with fail_with_status_code(422):
+        x.update_metadata(specs=too_many_chars)
+
+    # Up to 20 references are allowed.
+    max_allowed_references = [
+        {"label": f"ref{i}", "url": f"https://exmaple.com/{i}"}
+        for i in range(MAX_ALLOWED_REFERENCES)
+    ]
+    y = client.write_array([1, 2, 3], references=max_allowed_references)
+    y.update_metadata(references=max_allowed_references)  # no-op
+    too_many_references = max_allowed_references + [
+        {"label": "one_too_many", "url": "https://example.com/one_too_many"}
+    ]
+    with fail_with_status_code(422):
+        client.write_array([1, 2, 3], references=too_many_references)
+    with fail_with_status_code(422):
+        y.update_metadata(references=too_many_references)
+
+    # A given referenc label cannot be too long.
+    max_allowed_chars = "a" * MAX_LABEL_CHARS
+    client.write_array(
+        [1, 2, 3],
+        references=[{"label": max_allowed_chars, "url": "https://example.com"}],
+    )
+    too_many_chars = max_allowed_chars + "a"
+    with fail_with_status_code(422):
+        client.write_array(
+            [1, 2, 3],
+            references=[{"label": too_many_chars, "url": "https://example.com"}],
+        )
+    with fail_with_status_code(422):
+        y.update_metadata(references=too_many_chars)

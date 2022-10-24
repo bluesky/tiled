@@ -7,6 +7,7 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic
 import pydantic.dataclasses
+import pydantic.errors
 import pydantic.generics
 
 from ..structures.core import StructureFamily
@@ -76,7 +77,7 @@ class SortingItem(pydantic.BaseModel):
 
 
 class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
-    label: str
+    label: pydantic.constr(max_length=255)
     url: pydantic.AnyUrl
 
     @classmethod
@@ -84,16 +85,23 @@ class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
         return cls(label=json_doc["label"], url=json_doc["url"])
 
 
+References = pydantic.conlist(ReferenceDocument, max_items=20)
+Spec = pydantic.constr(max_length=255)
+# Wait for fix https://github.com/pydantic/pydantic/issues/3957
+# Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
+Specs = pydantic.conlist(Spec, max_items=20)
+
+
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
-    specs: Optional[List[str]]
+    specs: Optional[Specs]
     metadata: Optional[Dict]  # free-form, user-specified dict
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
-    references: Optional[List[ReferenceDocument]]
+    references: Optional[References]
 
 
 AttributesT = TypeVar("AttributesT")
@@ -291,9 +299,20 @@ class APIKeyRequestParams(pydantic.BaseModel):
 class PostMetadataRequest(pydantic.BaseModel):
     structure_family: StructureFamily
     structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
-    metadata: Dict
-    specs: List[str]
-    references: List[ReferenceDocument]
+    metadata: Dict = {}
+    specs: Specs = []
+    references: References = []
+
+    # Wait for fix https://github.com/pydantic/pydantic/issues/3957
+    # to do this with `unique_items` parameters to `pydantic.constr`.
+    @pydantic.validator("specs", always=True)
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        for i, value in enumerate(v, start=1):
+            if value in v[i:]:
+                raise pydantic.errors.ListUniqueItemsError()
+        return v
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -314,9 +333,21 @@ class GetDistinctResponse(pydantic.BaseModel):
 
 
 class PutMetadataRequest(pydantic.BaseModel):
+    # These fields are optional because None means "no changes; do not update".
     metadata: Optional[Dict]
-    specs: Optional[List[str]]
-    references: Optional[List[ReferenceDocument]]
+    specs: Optional[Specs]
+    references: Optional[References]
+
+    # Wait for fix https://github.com/pydantic/pydantic/issues/3957
+    # to do this with `unique_items` parameters to `pydantic.constr`.
+    @pydantic.validator("specs", always=True)
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        for i, value in enumerate(v, start=1):
+            if value in v[i:]:
+                raise pydantic.errors.ListUniqueItemsError()
+        return v
 
 
 NodeStructure.update_forward_refs()
