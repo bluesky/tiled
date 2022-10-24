@@ -12,7 +12,7 @@ import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
 
 const Browse = lazy(() => import("./routes/browse"));
-import UserContext, {userObjectContext, userUpdateFunctionTemplate} from './context/user';
+import UserContext, {userObjectContext} from './context/user';
 
 
 
@@ -62,6 +62,17 @@ function App() {
     initSettingsContext()
   } , []);
   return (
+    <Container>
+      {/* <UserContext.Provider value={user.user} > */}
+        <AxiosInterceptor>
+          <TiledAppBar />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </AxiosInterceptor>
+        {/* </UserContext.Provider> */}
+      </Container>
+  );
     <UserContext.Provider value={userContext} >
       <AxiosInterceptor>
         <SettingsContext.Provider value={settings}>

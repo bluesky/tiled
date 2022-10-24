@@ -1,11 +1,11 @@
 import React from 'react';
 
-// required to compare function by reference when context changes
-export const userUpdateFunctionTemplate = () => {}
+// // required to compare function by reference when context changes
+// export const userUpdateFunctionTemplate = () => {}
 
 export const userObjectContext = {
-    name: "Ford Prefect",
-    updateUser: userUpdateFunctionTemplate,
+    user: "Ford Prefect",
+    setUser: (user: string) => {console.log( user)}
   }
 
 

@@ -8,6 +8,7 @@ import Typography from "@mui/material/Typography";
 import UserContext from '../context/user';
 const TiledAppBar = () => {
   const user = React.useContext(UserContext);
+
   return (
     <AppBar position="static">
       <Container maxWidth="xl">
@@ -31,7 +32,7 @@ const TiledAppBar = () => {
             </Button>
           </Typography>
           <Typography>
-            {user}
+            {user.user}
           </Typography>
         </Toolbar>
       </Container>

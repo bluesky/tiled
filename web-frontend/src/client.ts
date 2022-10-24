@@ -64,25 +64,37 @@ interface Props {
 const AxiosInterceptor = ({children}: Props) => {
 
   const navigate = useNavigate();
-  const userContext = useContext(UserContext);
+  const {user, setUser} = useContext(UserContext);
 
   useEffect(() => {
 
-      const responseInterceptor = (response: AxiosResponse) => {
+      const responseInterceptor = async (response: AxiosResponse) => {
           // if 401, delete local toke
 
           // looku
-          const refreshToken = response.data.access_token;
+          const refreshToken = response.data.refresh_token;
           if (refreshToken){
             localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
             localStorage.setItem(ACCESS_TOKEN_KEY, response.data.access_token);
+            // follow up request to /api/whoami to get user info
+            const whomiResponse = await axiosInstance.get("/auth/whoami");
+            //what provider was this? this is ugly
+            const provider = response.config.url!.split("/")[2];
+            //now find the identity for this provider
+            // I guess a types file for tiled would be could, we could avoid the any here
+            const identity = whomiResponse.data.identities.find((identity: any) => identity.provider === provider);
+            //update user context
+            setUser(identity.id);
           }
 
-          //uddate user
+
+
+
+
           return response;
       }
 
-      const requestInterceptor = (requestConfig: AxiosRequestConfig) => {
+      const requestInterceptor =  (requestConfig: AxiosRequestConfig) => {
         // for all requests, lookup refresh token in local storage
         // if found, add to the reqeust
         const storedAccessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -90,7 +102,7 @@ const AxiosInterceptor = ({children}: Props) => {
           if (!requestConfig.headers){
             requestConfig.headers = {};
           }
-          requestConfig.headers["Authorization"] = "Bearer: " + storedAccessToken;
+          requestConfig.headers["Authorization"] = "Bearer " + storedAccessToken;
         }
         return requestConfig;
     }
