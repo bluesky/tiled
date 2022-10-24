@@ -107,6 +107,15 @@ class Context:
             )
             client.follow_redirects = True
             client.__enter__()
+            # The TestClient is meant to be used only as a context manager,
+            # where the context starts and stops and the wrapped ASGI app.
+            # We are abusing it slightly to enable interactive use of the
+            # TestClient.
+            #
+            # Given a blank slate, we may not have chosen to support this at
+            # all; we may insist on using this only within a context manager.
+            # But for now it is necessary to suppot a smooth transition for
+            # databroker. We may revisit it later.
             if sys.version_info < (3, 9):
                 import atexit
 
