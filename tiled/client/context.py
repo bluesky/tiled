@@ -2,6 +2,7 @@ import contextlib
 import getpass
 import os
 import re
+import sys
 import urllib.parse
 import warnings
 from pathlib import Path
@@ -95,8 +96,6 @@ class Context:
                 follow_redirects=True,
             )
         else:
-            import atexit
-
             from ._testclient import TestClient
 
             # verify parameter is dropped, as there is no SSL in ASGI mode
@@ -108,7 +107,28 @@ class Context:
             )
             client.follow_redirects = True
             client.__enter__()
-            atexit.register(client.__exit__)
+            # The TestClient is meant to be used only as a context manager,
+            # where the context starts and stops and the wrapped ASGI app.
+            # We are abusing it slightly to enable interactive use of the
+            # TestClient.
+            #
+            # Given a blank slate, we may not have chosen to support this at
+            # all; we may insist on using this only within a context manager.
+            # But for now it is necessary to suppot a smooth transition for
+            # databroker. We may revisit it later.
+            if sys.version_info < (3, 9):
+                import atexit
+
+                atexit.register(client.__exit__)
+            else:
+                # The threading module has its own (internal) atexit
+                # mechanism that runs at thread shutdown, prior to the atexit
+                # mechanism that runs at interpreter shutdown.
+                # We need to intervene at that layer to close the portal, or else
+                # we will wait forever for a thread run by the portal to join().
+                import threading
+
+                threading._register_atexit(client.__exit__)
 
         self.http_client = client
         self._cache = cache
