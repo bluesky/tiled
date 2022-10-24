@@ -27,7 +27,8 @@ from .utils import (
     handle_error,
 )
 
-USER_AGENT = f"python-tiled/{get_versions()['version']}"
+tiled_version = get_versions()["version"]
+USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 
 
@@ -131,6 +132,7 @@ class Context:
                 threading._register_atexit(client.__exit__)
 
         self.http_client = client
+        self._verify = verify
         self._cache = cache
         self._revalidate = Revalidate.IF_WE_MUST
         self._offline = offline
@@ -148,6 +150,69 @@ class Context:
             with self.disable_cache(allow_read=False, allow_write=True):
                 self.server_info = self.get_json(self.api_uri)
         self.api_key = api_key  # property setter sets Authorization header
+
+    def __getstate__(self):
+        if getattr(self.http_client, "app", None):
+            raise TypeError(
+                "Cannot pickle a Tiled Context built around an ASGI. "
+                "Only Tiled Context connected to remote servers can be pickled."
+            )
+        return (
+            tiled_version,
+            self.api_uri,
+            self.http_client.headers,
+            list(self.http_client.cookies.jar),
+            self.http_client.timeout,
+            self.http_client.auth,
+            self._verify,
+            self.offline,
+            self._revalidate,
+            self._token_cache,
+            self.server_info,
+            self.cache,
+        )
+
+    def __setstate__(self, state):
+        (
+            state_tiled_version,
+            api_uri,
+            headers,
+            cookies_list,
+            timeout,
+            auth,
+            verify,
+            offline,
+            revalidate,
+            token_cache,
+            server_info,
+            cache,
+        ) = state
+        if state_tiled_version != tiled_version:
+            raise TypeError(
+                f"Cannot unpickle {type(self).__name__} from tiled version {state_tiled_version} "
+                f"using tiled version {tiled_version}. Pickle should only be used to short-term "
+                "transfer between identical versions of tiled."
+            )
+        self.api_uri = api_uri
+        cookies = httpx.Cookies()
+        for cookie in cookies_list:
+            cookies.set(
+                cookie.name, cookie.value, domain=cookie.domain, path=cookie.path
+            )
+        self.http_client = httpx.Client(
+            verify=verify,
+            event_hooks=EVENT_HOOKS,
+            cookies=cookies,
+            timeout=timeout,
+            headers=headers,
+            follow_redirects=True,
+            auth=auth,
+        )
+        self._revalidate = revalidate
+        self._token_cache = token_cache
+        self._cache = cache
+        self.server_info = server_info
+        self.offline = offline
 
     @classmethod
     def from_any_uri(
@@ -225,7 +290,8 @@ class Context:
 
     @offline.setter
     def offline(self, value):
-        if self._cache is None:
+        offline = bool(value)
+        if offline and (self._cache is None):
             raise RuntimeError(
                 """To use offline mode,  Tiled must be configured with a Cache, as in
 
@@ -234,7 +300,7 @@ class Context:
 >>> client = from_uri("...", cache=Cache.on_disk("my_cache"))
 """
             )
-        self._offline = bool(value)
+        self._offline = offline
         if not self._offline:
             # We need a CSRF token.
             with self.disable_cache(allow_read=False, allow_write=True):
