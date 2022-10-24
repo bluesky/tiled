@@ -72,7 +72,7 @@ const AxiosInterceptor = ({children}: Props) => {
           // if 401, delete local toke
 
           // looku
-          const refreshToken = response.data.refresh_token;
+          const refreshToken = response.data.access_token;
           if (refreshToken){
             localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
             localStorage.setItem(ACCESS_TOKEN_KEY, response.data.access_token);
@@ -85,12 +85,12 @@ const AxiosInterceptor = ({children}: Props) => {
       const requestInterceptor = (requestConfig: AxiosRequestConfig) => {
         // for all requests, lookup refresh token in local storage
         // if found, add to the reqeust
-        const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-        if (storedRefreshToken){
+        const storedAccessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+        if (storedAccessToken){
           if (!requestConfig.headers){
             requestConfig.headers = {};
           }
-          requestConfig.headers["Authorization"] = "Bearer: " + storedRefreshToken;
+          requestConfig.headers["Authorization"] = "Bearer: " + storedAccessToken;
         }
         return requestConfig;
     }
