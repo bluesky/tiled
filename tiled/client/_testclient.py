@@ -15,6 +15,7 @@ import queue
 import sys
 import typing
 import warnings
+import weakref
 from concurrent.futures import Future
 from types import GeneratorType
 from urllib.parse import unquote, urljoin
@@ -756,12 +757,18 @@ class TestClient(httpx.Client):
             def wait_shutdown() -> None:
                 portal.call(self.wait_shutdown)
 
-            self.exit_stack = stack.pop_all()
+            exit_stack = self.exit_stack = stack.pop_all()
 
+        # The finalizer is a customization designed to support use
+        # outside a context manager, i.e.
+        # >>> tc = TestClient(...)
+        # >>> tc.__enter___()
+        self._finalizer = weakref.finalize(self, exit_stack.close)
         return self
 
     def __exit__(self, *args: typing.Any) -> None:
         self.exit_stack.close()
+        self._finalizer.detach()
 
     async def lifespan(self) -> None:
         scope = {"type": "lifespan"}

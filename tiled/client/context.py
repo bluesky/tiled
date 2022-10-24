@@ -95,8 +95,6 @@ class Context:
                 follow_redirects=True,
             )
         else:
-            import atexit
-
             from ._testclient import TestClient
 
             # verify parameter is dropped, as there is no SSL in ASGI mode
@@ -108,7 +106,7 @@ class Context:
             )
             client.follow_redirects = True
             client.__enter__()
-            atexit.register(client.__exit__)
+            # A weakref finalizer calls __exit__().
 
         self.http_client = client
         self._cache = cache
