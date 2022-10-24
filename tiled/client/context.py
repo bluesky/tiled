@@ -2,6 +2,7 @@ import contextlib
 import getpass
 import os
 import re
+import sys
 import urllib.parse
 import warnings
 from pathlib import Path
@@ -95,8 +96,6 @@ class Context:
                 follow_redirects=True,
             )
         else:
-            import atexit
-
             from ._testclient import TestClient
 
             # verify parameter is dropped, as there is no SSL in ASGI mode
@@ -108,7 +107,19 @@ class Context:
             )
             client.follow_redirects = True
             client.__enter__()
-            atexit.register(client.__exit__)
+            if sys.version_info < (3, 9):
+                import atexit
+
+                atexit.register(client.__exit__)
+            else:
+                # The threading module has its own (internal) atexit
+                # mechanism that runs at thread shutdown, prior to the atexit
+                # mechanism that runs at interpreter shutdown.
+                # We need to intervene at that layer to close the portal, or else
+                # we will wait forever for a thread run by the portal to join().
+                import threading
+
+                threading._register_atexit(client.__exit__)
 
         self.http_client = client
         self._cache = cache
