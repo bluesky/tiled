@@ -1,11 +1,13 @@
+import React from 'react';
 import AppBar from "@mui/material/AppBar";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
 import { Link } from "react-router-dom";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
-
+import UserContext from '../context/user';
 const TiledAppBar = () => {
+  const user = React.useContext(UserContext);
   return (
     <AppBar position="static">
       <Container maxWidth="xl">
@@ -27,6 +29,9 @@ const TiledAppBar = () => {
             <Button component={Link} color="inherit" to="/browse/">
               Browse
             </Button>
+          </Typography>
+          <Typography>
+            {user}
           </Typography>
         </Toolbar>
       </Container>
