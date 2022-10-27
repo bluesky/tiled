@@ -5,9 +5,11 @@ import secrets
 import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
+import sqlalchemy.exc
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, Security
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.security import (
     OAuth2PasswordBearer,
@@ -16,6 +18,7 @@ from fastapi.security import (
 )
 from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
+from fastapi.templating import Jinja2Templates
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -31,9 +34,11 @@ from ..database.core import (
     create_user,
     latest_principal_activity,
     lookup_valid_api_key,
+    lookup_valid_pending_session_by_device_code,
+    lookup_valid_pending_session_by_user_code,
     lookup_valid_session,
 )
-from ..utils import SpecialUsers
+from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import json_or_msgpack
 from .settings import get_sessionmaker, get_settings
@@ -54,6 +59,9 @@ UNIT_SECOND = timedelta(seconds=1)
 # 2. Avoid unintentional or intentional abuse.
 API_KEY_LIMIT = 100
 SESSION_LIMIT = 200
+
+DEVICE_CODE_MAX_AGE = timedelta(minutes=15)
+DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
 
 
 def utcnow():
@@ -325,6 +333,44 @@ def get_current_principal(
     return principal
 
 
+def create_pending_session(settings):
+    device_code = secrets.token_bytes(32)
+    hashed_device_code = hashlib.sha256(device_code).digest()
+    with get_sessionmaker(settings.database_settings)() as db:
+        for _ in range(3):
+            user_code = secrets.token_hex(4).upper()  # 8 digit code
+            pending_session = orm.PendingSession(
+                user_code=user_code,
+                hashed_device_code=hashed_device_code,
+                expiration_time=utcnow() + DEVICE_CODE_MAX_AGE,
+            )
+            db.add(pending_session)
+            try:
+                db.commit()
+            except sqlalchemy.exc.IntegrityError:
+                # Since the user_code is short, we cannot completely dismiss the
+                # possibility of a collission. Retry.
+                continue
+            break
+    return {
+        "user_code": user_code,
+        "device_code": device_code.hex(),
+    }
+
+
+def authorize_pending_session(settings, user_code, session_id):
+    with get_sessionmaker(settings.database_settings)() as db:
+        pending_session = lookup_valid_pending_session_by_user_code(db, user_code)
+        if pending_session is None:
+            raise HTTPException(
+                400,
+                detail="Invalid user_code. The pending request may have expired.",
+            )
+        pending_session.session_id = session_id
+        db.commit()
+        return Response(status_code=204)
+
+
 def create_session(settings, identity_provider, id):
     with get_sessionmaker(settings.database_settings)() as db:
         # Have we seen this Identity before?
@@ -365,35 +411,39 @@ def create_session(settings, identity_provider, id):
         db.add(session)
         db.commit()
         db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
-        # Provide enough information in the access token to reconstruct Principal
-        # and its Identities sufficient for access policy enforcement without a
-        # database hit.
-        data = {
-            "sub": principal.uuid.hex,
-            "sub_typ": principal.type.value,
-            "scp": list(set().union(*[role.scopes for role in principal.roles])),
-            "ids": [
-                {"id": identity.id, "idp": identity.provider}
-                for identity in principal.identities
-            ],
-        }
-        access_token = create_access_token(
-            data=data,
-            expires_delta=settings.access_token_max_age,
-            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-        )
-        refresh_token = create_refresh_token(
-            session_id=session.uuid.hex,
-            expires_delta=settings.refresh_token_max_age,
-            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-        )
-        return {
-            "access_token": access_token,
-            "expires_in": settings.access_token_max_age / UNIT_SECOND,
-            "refresh_token": refresh_token,
-            "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
-            "token_type": "bearer",
-        }
+
+
+def create_tokens_from_session(settings, session):
+    # Provide enough information in the access token to reconstruct Principal
+    # and its Identities sufficient for access policy enforcement without a
+    # database hit.
+    principal = session.principal
+    data = {
+        "sub": principal.uuid.hex,
+        "sub_typ": principal.type.value,
+        "scp": list(set().union(*[role.scopes for role in principal.roles])),
+        "ids": [
+            {"id": identity.id, "idp": identity.provider}
+            for identity in principal.identities
+        ],
+    }
+    access_token = create_access_token(
+        data=data,
+        expires_delta=settings.access_token_max_age,
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    refresh_token = create_refresh_token(
+        session_id=session.uuid.hex,
+        expires_delta=settings.refresh_token_max_age,
+        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+    )
+    return {
+        "access_token": access_token,
+        "expires_in": settings.access_token_max_age / UNIT_SECOND,
+        "refresh_token": refresh_token,
+        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+        "token_type": "bearer",
+    }
 
 
 def build_auth_code_route(authenticator, provider):
@@ -407,9 +457,10 @@ def build_auth_code_route(authenticator, provider):
         username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        tokens = await asyncio.get_running_loop().run_in_executor(
+        session = await asyncio.get_running_loop().run_in_executor(
             None, create_session, settings, provider, username
         )
+        tokens = create_tokens_from_session(settings, session)
         # Show only the refresh_token, which is what the user should
         # paste into a terminal-based client.
         # In the future for web apps we may want this to be optional,
@@ -417,6 +468,121 @@ def build_auth_code_route(authenticator, provider):
         return tokens["refresh_token"]
 
     return auth_code
+
+
+def build_device_code_authorize_route(authenticator, provider, verification_uri):
+    "Build an /authorize route function for this Authenticator."
+
+    async def authorize(
+        request: Request,
+        settings: BaseSettings = Depends(get_settings),
+    ):
+        request.state.endpoint = "auth"
+        pending_session = await asyncio.get_running_loop().run_in_executor(
+            None, create_pending_session, settings
+        )
+        return {
+            "authorization_uri": authenticator.authorization_endpoint,  # URL that user should visit in browser
+            "verification_uri": verification_uri,  # URL that terminal client will poll
+            "interval": DEVICE_CODE_POLLING_INTERVAL,  # suggested polling interval
+            "device_code": pending_session["device_code"],
+            "expires_in": DEVICE_CODE_MAX_AGE,  # seconds
+            "user_code": pending_session["user_code"],
+        }
+
+    return authorize
+
+
+def build_device_code_user_code_form_route(authentication, provider, action):
+
+    if not SHARE_TILED_PATH:
+        raise Exception(
+            "Static assets could not be found and are required for "
+            "setting up external OAuth authentication."
+        )
+    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
+
+    async def route(
+        request: Request,
+        code: str,
+    ):
+        return templates.TemplateResponse(
+            "device_code_form.html",
+            {
+                "request": request,
+                "code": code,
+                "action": action,
+            },
+        )
+
+    return route
+
+
+def build_device_code_user_code_submit_route(authenticator, provider):
+    "Build an /authorize route function for this Authenticator."
+
+    async def redirect(
+        request: Request,
+        code: str = Form(),
+        user_code: str = Form(),
+        state: Optional[str] = None,
+        settings: BaseSettings = Depends(get_settings),
+    ):
+        request.state.endpoint = "auth"
+        if not username:
+            raise HTTPException(status_code=401, detail="Authentication failure")
+        session = await asyncio.get_running_loop().run_in_executor(
+            None, create_session, settings, provider, username
+        )
+        await asyncio.get_running_loop().run_in_executor(
+            None, authorize_pending_session, settings, user_code, session.id
+        )
+
+    return redirect
+
+
+import pydantic
+
+
+class DeviceCode(pydantic.BaseModel):
+    device_code: str
+    grant_type: str
+
+
+def build_device_code_token_route(authenticator, provider):
+    "Build an /authorize route function for this Authenticator."
+
+    async def token(
+        request: Request,
+        body: DeviceCode,
+        settings: BaseSettings = Depends(get_settings),
+    ):
+        request.state.endpoint = "auth"
+        device_code_hex = body.device_code
+        try:
+            device_code = bytes.fromhex(device_code_hex)
+        except Exception:
+            # Not valid hex, therefore not a valid device_code
+            raise HTTPException(status_code=401, detail="Invalid device code")
+        with get_sessionmaker(settings.database_settings)() as db:
+            pending_session = lookup_valid_pending_session_by_device_code(
+                db, device_code
+            )
+        if pending_session is None:
+            raise HTTPException(
+                404,
+                detail="No such device_code. The pending request may have expired.",
+            )
+        if pending_session.session_id is None:
+            raise HTTPException(400, {"error": "authorization_pending"})
+        # The pending session can only be used once.
+        db.delete(pending_session)
+        db.commit()
+        session = lookup_valid_session(db, pending_session.session_id)
+        tokens = create_tokens_from_session(settings, session)
+        return tokens
+
+    return token
 
 
 def build_handle_credentials_route(authenticator, provider):

@@ -3,6 +3,7 @@ import getpass
 import os
 import re
 import sys
+import time
 import urllib.parse
 import warnings
 from pathlib import Path
@@ -654,52 +655,53 @@ class Context:
                 "username": username,
                 "password": password,
             }
-            token_request = self.http_client.build_request(
-                "POST",
-                auth_endpoint,
-                data=form_data,
-                headers={},
+            token_response = self.http_client.post(
+                auth_endpoint, data=form_data, auth=None
             )
-            token_request.headers.pop("Authorization", None)
-            token_response = self.http_client.send(token_request, auth=None)
             handle_error(token_response)
             tokens = token_response.json()
         elif mode == "external":
+            verification_response = self.http_client.post(
+                auth_endpoint, json={}, auth=None
+            )
+            handle_error(verification_response)
+            verification = verification_response.json()
+            authorization_uri = verification["authorization_uri"]
             print(
                 f"""
-Navigate web browser to this address to obtain access code:
+You have {verification['expires_in'] // 60} minutes visit this URL
 
-{auth_endpoint}
+{authorization_uri}
+
+and enter the code: {verification['user_code']}
 
 """
             )
             import webbrowser
 
-            webbrowser.open(auth_endpoint)
+            webbrowser.open(authorization_uri)
+            deadline = verification["expires_in"] + time.monotonic()
+            print("Waiting...", end="", flush=True)
             while True:
-                # The proper term for this is 'refresh token' but that may be
-                # confusing jargon to the end user, so we say "access code".
-                raw_refresh_token = getpass.getpass("Access code (quotes optional): ")
-                if not raw_refresh_token:
-                    print("No access token given. Failed.")
-                    break
-                # Remove any accidentally-included quotes.
-                refresh_token = raw_refresh_token.replace('"', "")
-                # Immediately refresh to (1) check that the copy/paste worked and
-                # (2) obtain an access token as well.
-                refresh_request = build_refresh_request(
-                    refresh_url,
-                    refresh_token,
-                    csrf_token,
+                time.sleep(verification["interval"])
+                if time.monotonic() > deadline:
+                    raise Exception("Deadline expired.")
+                access_response = self.http_client.post(
+                    verification["verification_uri"],
+                    json={
+                        "device_code": verification["device_code"],
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                    auth=None,
                 )
-                token_response = self.http_client.send(refresh_request, auth=None)
-                if token_response.status_code == 401:
-                    print(
-                        "That didn't work. Try pasting the access code again, or press Enter to escape."
-                    )
-                else:
-                    tokens = token_response.json()
-                    break
+                if (access_response.status_code == 400) and (
+                    access_response.json()["detail"]["error"] == "authorization_pending"
+                ):
+                    continue
+                handle_error(access_response)
+                print(access_response.json())
+                print(".", end="", flush=True)
+
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
         # We need to know the username in order to set the token_directory,

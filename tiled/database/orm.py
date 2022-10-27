@@ -217,3 +217,6 @@ class PendingSession(Base):
     )
     user_code = Column(Unicode(8), index=True, nullable=False)
     expiration_time = Column(DateTime(timezone=False), nullable=False)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+
+    session = relationship("Session")

@@ -6,7 +6,7 @@ Create Date: 2022-10-22 19:11:37.926595
 
 """
 from alembic import op
-from sqlalchemy import Column, DateTime, LargeBinary, Unicode
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, Unicode
 
 # revision identifiers, used by Alembic.
 revision = "4a9dfaba4a98"
@@ -27,6 +27,9 @@ def upgrade():
         ),
         Column("user_code", Unicode(8), index=True, nullable=False),
         Column("expiration_time", DateTime(timezone=False), nullable=True),
+        session_id=Column(
+            "session_id", Integer, ForeignKey("session.id"), nullable=True
+        ),
     )
 
 
