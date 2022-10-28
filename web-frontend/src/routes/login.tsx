@@ -10,21 +10,10 @@ login providers
     Basic
 */
 
-
-
-
 const Login = () => {
-      // Extract from path from react-router.
-    const params = useParams<{ "*": string }>();
-    // Transform "/a/b/c" to ["a", "b", "c"].
-    const segments = (params["*"] || "").split("/").filter(function (segment) {
-        return segment;
-    });
-    console.log(`segments: ${segments}`)
     return (
         // list of buttons of providers to choose from
         <Auth/>
-
     );
 }
 

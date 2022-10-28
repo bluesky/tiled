@@ -5,8 +5,8 @@ import { useNavigate } from 'react-router-dom'
 import UserContext from "./context/user";
 
 
-const  REFRESH_TOKEN_KEY = "refresh_token";
-const  ACCESS_TOKEN_KEY = "access_token";
+export const REFRESH_TOKEN_KEY = "refresh_token";
+export const ACCESS_TOKEN_KEY = "access_token";
 
 var axiosInstance = axios.create();
 
@@ -68,32 +68,6 @@ const AxiosInterceptor = ({children}: Props) => {
 
   useEffect(() => {
 
-      const responseInterceptor = async (response: AxiosResponse) => {
-          // if 401, delete local toke
-
-          // looku
-          const refreshToken = response.data.refresh_token;
-          if (refreshToken){
-            localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
-            localStorage.setItem(ACCESS_TOKEN_KEY, response.data.access_token);
-            // follow up request to /api/whoami to get user info
-            const whomiResponse = await axiosInstance.get("/auth/whoami");
-            //what provider was this? this is ugly
-            const provider = response.config.url!.split("/")[2];
-            //now find the identity for this provider
-            // I guess a types file for tiled would be could, we could avoid the any here
-            const identity = whomiResponse.data.identities.find((identity: any) => identity.provider === provider);
-            //update user context
-            setUser(identity.id);
-          }
-
-
-
-
-
-          return response;
-      }
-
       const requestInterceptor =  (requestConfig: AxiosRequestConfig) => {
         // for all requests, lookup refresh token in local storage
         // if found, add to the reqeust
@@ -107,26 +81,24 @@ const AxiosInterceptor = ({children}: Props) => {
         return requestConfig;
     }
 
-      const errInterceptor = (error: any) => {
+      // const errInterceptor = (error: any) => {
 
-          if (error.response.status === 401) {
-              navigate('/login');
-          }
+      //     if (error.response.status === 401) {
+      //         navigate('/login');
+      //     }
 
-          return Promise.reject(error);
-      }
+      //     return Promise.reject(error);
+      // }
 
       const reqInterceptor = axiosInstance.interceptors.request.use(requestInterceptor);
-      const interceptor = axiosInstance.interceptors.response.use(responseInterceptor, errInterceptor);
+      // const interceptor = axiosInstance.interceptors.response.use(errInterceptor);
 
       // Why does the article do this and do I need to eject the request intereptor?
-      return () => axiosInstance.interceptors.response.eject(interceptor);
+      // return () => axiosInstance.interceptors.response.eject(interceptor);
 
   }, [navigate])
 
   return children;
 }
-
-
 
 export { axiosInstance, AxiosInterceptor };
