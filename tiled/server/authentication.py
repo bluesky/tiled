@@ -449,7 +449,7 @@ def create_tokens_from_session(settings, session):
 def build_auth_code_route(authenticator, provider):
     "Build an auth_code route function for this Authenticator."
 
-    async def auth_code(
+    async def route(
         request: Request,
         settings: BaseSettings = Depends(get_settings),
     ):
@@ -467,13 +467,13 @@ def build_auth_code_route(authenticator, provider):
         # controlled by a query parameter (if it's possible to inject that).
         return tokens["refresh_token"]
 
-    return auth_code
+    return route
 
 
 def build_device_code_authorize_route(authenticator, provider, verification_uri):
     "Build an /authorize route function for this Authenticator."
 
-    async def authorize(
+    async def route(
         request: Request,
         settings: BaseSettings = Depends(get_settings),
     ):
@@ -490,7 +490,7 @@ def build_device_code_authorize_route(authenticator, provider, verification_uri)
             "user_code": pending_session["user_code"],
         }
 
-    return authorize
+    return route
 
 
 def build_device_code_user_code_form_route(authentication, provider, action):
@@ -511,7 +511,7 @@ def build_device_code_user_code_form_route(authentication, provider, action):
             {
                 "request": request,
                 "code": code,
-                "action": action,
+                "action": f"{action}?code={code}",
             },
         )
 
@@ -521,7 +521,7 @@ def build_device_code_user_code_form_route(authentication, provider, action):
 def build_device_code_user_code_submit_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
-    async def redirect(
+    async def route(
         request: Request,
         code: str = Form(),
         user_code: str = Form(),
@@ -529,6 +529,7 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         settings: BaseSettings = Depends(get_settings),
     ):
         request.state.endpoint = "auth"
+        username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
         session = await asyncio.get_running_loop().run_in_executor(
@@ -538,7 +539,7 @@ def build_device_code_user_code_submit_route(authenticator, provider):
             None, authorize_pending_session, settings, user_code, session.id
         )
 
-    return redirect
+    return route
 
 
 import pydantic
@@ -552,7 +553,7 @@ class DeviceCode(pydantic.BaseModel):
 def build_device_code_token_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
-    async def token(
+    async def route(
         request: Request,
         body: DeviceCode,
         settings: BaseSettings = Depends(get_settings),
@@ -582,13 +583,13 @@ def build_device_code_token_route(authenticator, provider):
         tokens = create_tokens_from_session(settings, session)
         return tokens
 
-    return token
+    return route
 
 
 def build_handle_credentials_route(authenticator, provider):
     "Register a handle_credentials route function for this Authenticator."
 
-    async def handle_credentials(
+    async def route(
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: BaseSettings = Depends(get_settings),
@@ -607,7 +608,7 @@ def build_handle_credentials_route(authenticator, provider):
             None, create_session, settings, provider, username
         )
 
-    return handle_credentials
+    return route
 
 
 def generate_apikey(db, principal, apikey_params, request):
