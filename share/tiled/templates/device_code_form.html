@@ -1,17 +1,24 @@
 {% extends "page.html" %}
-{% block stylesheet %}
-{{ super() }}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
-{% endblock %}
 {% block main %}
 <div class = "container">
   <section class="section">
     <h1 class="title">Authorize Tiled Session</h1>
+		{% if message %}
+		  <article class="message is-danger">
+				<div class="message-header">
+					<p>Error</p>
+					<button class="delete" aria-label="delete"></button>
+				</div>
+				<div class="message-body">
+					{{ message }}
+				</div>
+			</article>
+		{% endif %}
     <form action="{{ action }}" method="post">
       <label for="user_code">Enter code</label>
       <input type="text" id="user_code" name="user_code" />
       <input type="hidden" id="code" name="code" value="{{ code }}" />
-      <submit>Submit</submit>
+      <input type="submit" value="Enter" />
     </form>
   </section>
 </div>

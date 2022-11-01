@@ -7,7 +7,7 @@ import httpx
 from ..utils import import_object, prepend_to_sys_path
 from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, Context
 from .node import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Node
-from .utils import client_for_item
+from .utils import ClientError, client_for_item
 
 
 def from_uri(
@@ -232,9 +232,19 @@ Set an api_key as in:
     if username is not None:
         context.authenticate(username=username, provider=auth_provider)
     # Context ensures that context.api_uri has a trailing slash.
-    content = context.get_json(
-        f"{context.api_uri}node/metadata/{'/'.join(node_path_parts)}"
-    )
+    item_uri = f"{context.api_uri}node/metadata/{'/'.join(node_path_parts)}"
+    try:
+        content = context.get_json(item_uri)
+    except ClientError as err:
+        if (
+            (err.response.status_code == 401)
+            and (context.api_key is None)
+            and (context.http_client.auth is None)
+        ):
+            context.authenticate()
+            content = context.get_json(item_uri)
+        else:
+            raise
     item = content["data"]
     return client_for_item(context, structure_clients, item)
 

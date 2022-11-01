@@ -175,6 +175,11 @@ class RefreshToken(pydantic.BaseModel):
     refresh_token: str
 
 
+class DeviceCode(pydantic.BaseModel):
+    device_code: str
+    grant_type: str
+
+
 class AuthenticationMode(str, enum.Enum):
     password = "password"
     external = "external"

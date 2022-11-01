@@ -352,23 +352,11 @@ def create_pending_session(settings):
                 # possibility of a collission. Retry.
                 continue
             break
+    formatted_user_code = f"{user_code[:4]}-{user_code[4:]}"
     return {
-        "user_code": user_code,
+        "user_code": formatted_user_code,
         "device_code": device_code.hex(),
     }
-
-
-def authorize_pending_session(settings, user_code, session_id):
-    with get_sessionmaker(settings.database_settings)() as db:
-        pending_session = lookup_valid_pending_session_by_user_code(db, user_code)
-        if pending_session is None:
-            raise HTTPException(
-                400,
-                detail="Invalid user_code. The pending request may have expired.",
-            )
-        pending_session.session_id = session_id
-        db.commit()
-        return Response(status_code=204)
 
 
 def create_session(settings, identity_provider, id):
@@ -411,6 +399,7 @@ def create_session(settings, identity_provider, id):
         db.add(session)
         db.commit()
         db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
+    return session
 
 
 def create_tokens_from_session(settings, session):
@@ -518,8 +507,15 @@ def build_device_code_user_code_form_route(authentication, provider, action):
     return route
 
 
-def build_device_code_user_code_submit_route(authenticator, provider):
+def build_device_code_user_code_submit_route(authenticator, provider, action):
     "Build an /authorize route function for this Authenticator."
+
+    if not SHARE_TILED_PATH:
+        raise Exception(
+            "Static assets could not be found and are required for "
+            "setting up external OAuth authentication."
+        )
+    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
 
     async def route(
         request: Request,
@@ -529,25 +525,51 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         settings: BaseSettings = Depends(get_settings),
     ):
         request.state.endpoint = "auth"
-        username = await authenticator.authenticate(request)
-        if not username:
-            raise HTTPException(status_code=401, detail="Authentication failure")
-        session = await asyncio.get_running_loop().run_in_executor(
-            None, create_session, settings, provider, username
-        )
-        await asyncio.get_running_loop().run_in_executor(
-            None, authorize_pending_session, settings, user_code, session.id
+        with get_sessionmaker(settings.database_settings)() as db:
+            normalized_user_code = user_code.upper().replace("-", "")
+            pending_session = lookup_valid_pending_session_by_user_code(
+                db, normalized_user_code
+            )
+            if pending_session is None:
+                message = "Invalid user_code. It may have been mistyped, or the pending request may have expired."
+                return templates.TemplateResponse(
+                    "device_code_form.html",
+                    {
+                        "request": request,
+                        "code": code,
+                        "action": f"{action}?code={code}",
+                        "message": message,
+                    },
+                    status_code=401,
+                )
+            username = await authenticator.authenticate(request)
+            if not username:
+                return templates.TemplateResponse(
+                    "device_code_failure.html",
+                    {
+                        "request": request,
+                        "message": (
+                            "User code was correct but authentication with third party failed. "
+                            "Ask administrator to see logs for details."
+                        ),
+                    },
+                    status_code=401,
+                )
+            session = await asyncio.get_running_loop().run_in_executor(
+                None, create_session, settings, provider, username
+            )
+            pending_session.session_id = session.id
+            db.add(pending_session)
+            db.commit()
+        return templates.TemplateResponse(
+            "device_code_success.html",
+            {
+                "request": request,
+                "interval": DEVICE_CODE_POLLING_INTERVAL,
+            },
         )
 
     return route
-
-
-import pydantic
-
-
-class DeviceCode(pydantic.BaseModel):
-    device_code: str
-    grant_type: str
 
 
 def build_device_code_token_route(authenticator, provider):
@@ -555,7 +577,7 @@ def build_device_code_token_route(authenticator, provider):
 
     async def route(
         request: Request,
-        body: DeviceCode,
+        body: schemas.DeviceCode,
         settings: BaseSettings = Depends(get_settings),
     ):
         request.state.endpoint = "auth"
@@ -569,18 +591,18 @@ def build_device_code_token_route(authenticator, provider):
             pending_session = lookup_valid_pending_session_by_device_code(
                 db, device_code
             )
-        if pending_session is None:
-            raise HTTPException(
-                404,
-                detail="No such device_code. The pending request may have expired.",
-            )
-        if pending_session.session_id is None:
-            raise HTTPException(400, {"error": "authorization_pending"})
-        # The pending session can only be used once.
-        db.delete(pending_session)
-        db.commit()
-        session = lookup_valid_session(db, pending_session.session_id)
-        tokens = create_tokens_from_session(settings, session)
+            if pending_session is None:
+                raise HTTPException(
+                    404,
+                    detail="No such device_code. The pending request may have expired.",
+                )
+            if pending_session.session_id is None:
+                raise HTTPException(400, {"error": "authorization_pending"})
+            session = pending_session.session
+            # The pending session can only be used once.
+            db.delete(pending_session)
+            db.commit()
+            tokens = create_tokens_from_session(settings, session)
         return tokens
 
     return route

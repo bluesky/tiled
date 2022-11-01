@@ -257,7 +257,9 @@ def build_app(
                 )
                 # User code and auth code are submitted here.
                 authentication_router.post(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_submit_route(authenticator, provider)
+                    build_device_code_user_code_submit_route(
+                        authenticator, provider, action
+                    )
                 )
                 # Client polls here for token.
                 authentication_router.post(f"/provider/{provider}/token")(

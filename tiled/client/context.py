@@ -642,6 +642,7 @@ class Context:
                 # No need to log in again.
                 return
 
+        self.http_client.auth = None
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         if mode == "password":
@@ -697,10 +698,11 @@ and enter the code: {verification['user_code']}
                 if (access_response.status_code == 400) and (
                     access_response.json()["detail"]["error"] == "authorization_pending"
                 ):
+                    print(".", end="", flush=True)
                     continue
                 handle_error(access_response)
-                print(access_response.json())
-                print(".", end="", flush=True)
+                break
+            tokens = access_response.json()
 
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
