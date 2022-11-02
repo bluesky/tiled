@@ -11,6 +11,7 @@ import sparse
 
 from ..client import from_tree, record_history
 from ..queries import Key
+from ..structures.core import Spec
 from ..structures.sparse import COOStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
@@ -34,7 +35,7 @@ def test_write_array_full():
     a = numpy.ones((5, 7))
 
     metadata = {"scan_id": 1, "method": "A"}
-    specs = ["SomeSpec"]
+    specs = [Spec("SomeSpec")]
     references = [{"label": "test", "url": "http://www.test.com"}]
     with record_history() as history:
         client.write_array(a, metadata=metadata, specs=specs, references=references)
@@ -68,7 +69,7 @@ def test_write_large_array_full():
     client._SUGGESTED_MAX_UPLOAD_SIZE = a.nbytes - 1
     try:
         metadata = {"scan_id": 1, "method": "A"}
-        specs = ["SomeSpec"]
+        specs = [Spec("SomeSpec")]
         references = [{"label": "test", "url": "http://www.test.com"}]
         with record_history() as history:
             client.write_array(a, metadata=metadata, specs=specs, references=references)
@@ -100,7 +101,7 @@ def test_write_array_chunked():
     a = dask.array.arange(1500).reshape((50, 30)).rechunk((20, 15))
 
     metadata = {"scan_id": 1, "method": "A"}
-    specs = ["SomeSpec"]
+    specs = [Spec("SomeSpec")]
     references = [{"label": "test", "url": "http://www.test.com"}]
     with record_history() as history:
         client.write_array(a, metadata=metadata, specs=specs, references=references)
@@ -130,7 +131,7 @@ def test_write_dataframe_full():
     data = {f"Column{i}": (1 + i) * numpy.ones(5) for i in range(5)}
     df = pandas.DataFrame(data)
     metadata = {"scan_id": 1, "method": "A"}
-    specs = ["SomeSpec"]
+    specs = [Spec("SomeSpec")]
     references = [{"label": "test", "url": "http://www.test.com"}]
 
     with record_history() as history:
@@ -164,7 +165,7 @@ def test_write_dataframe_partitioned():
     df = pandas.DataFrame(data)
     ddf = dask.dataframe.from_pandas(df, npartitions=3)
     metadata = {"scan_id": 1, "method": "A"}
-    specs = ["SomeSpec"]
+    specs = [Spec("SomeSpec")]
     references = [{"label": "test", "url": "http://www.test.com"}]
 
     with record_history() as history:
@@ -197,7 +198,7 @@ def test_write_sparse_full():
     coo = sparse.COO(coords=[[0, 1], [2, 3]], data=[3.8, 4.0], shape=(4, 4))
 
     metadata = {"scan_id": 1, "method": "A"}
-    specs = ["SomeSpec"]
+    specs = [Spec("SomeSpec")]
     references = [{"label": "test", "url": "http://www.test.com"}]
     with record_history() as history:
         client.write_sparse(
@@ -232,7 +233,7 @@ def test_write_sparse_chunked():
     )
 
     metadata = {"scan_id": 1, "method": "A"}
-    specs = ["SomeSpec"]
+    specs = [Spec("SomeSpec")]
     references = [{"label": "test", "url": "http://www.test.com"}]
     N = 5
     with record_history() as history:

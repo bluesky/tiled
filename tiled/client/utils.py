@@ -277,7 +277,7 @@ def client_for_item(context, structure_clients, item, structure=None):
     # the default for this structure family.
     specs = item["attributes"].get("specs", []) or []
     for spec in specs:
-        class_ = structure_clients.get(spec)
+        class_ = structure_clients.get(spec["name"])
         if class_ is not None:
             break
     else:

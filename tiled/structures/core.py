@@ -5,6 +5,8 @@ the server and the client.
 """
 
 import enum
+from dataclasses import dataclass
+from typing import Optional
 
 
 class StructureFamily(str, enum.Enum):
@@ -12,3 +14,24 @@ class StructureFamily(str, enum.Enum):
     array = "array"
     dataframe = "dataframe"
     sparse = "sparse"
+
+
+@dataclass(frozen=True)
+class Spec:
+
+    name: str
+    version: Optional[str] = None
+
+    def __init__(self, name, version=None):
+        # Enable the name to be passed as a position argument.
+        # The setattr stuff is necessary to make this work with a frozen dataclass.
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "version", version)
+
+    def __repr__(self):
+        # Display the name as a positional argument, for conciseness.
+        if self.version is None:
+            output = f"{type(self).__name__}({self.name!r})"
+        else:
+            output = f"{type(self).__name__}({self.name!r}, version={self.version!r})"
+        return output

@@ -13,7 +13,7 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
@@ -560,13 +560,18 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         metadata = metadata or {}
         specs = specs or []
+        normalized_specs = []
+        for spec in specs:
+            if isinstance(spec, str):
+                spec = Spec(spec)
+            normalized_specs.append(asdict(spec))
         references = references or []
         item = {
             "attributes": {
                 "metadata": metadata,
                 "structure": asdict(structure),
                 "structure_family": StructureFamily(structure_family),
-                "specs": specs,
+                "specs": normalized_specs,
                 "references": references,
             }
         }
@@ -612,7 +617,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
         dims : List[str], optional
             A label for each dimension of the array.
-        specs : List[str], optional
+        specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
         references : List[Dict[str, URL]], optional
@@ -724,7 +729,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
         dims : List[str], optional
             A label for each dimension of the array.
-        specs : List[str], optional
+        specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
         references : Dict[str, URL], optional
@@ -763,7 +768,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        specs : List[str], optional
+        specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
         references : List[Dict[str, URL]], optional

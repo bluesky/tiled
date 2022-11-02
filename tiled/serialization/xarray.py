@@ -14,24 +14,30 @@ from .dataframe import (
 from .node import walk
 
 
-def as_dataset(self):
+def as_dataset(node):
     import xarray
 
     data_vars = {}
     coords = {}
-    for key, array_adapter in self.items():
-        if "xarray_data_var" in array_adapter.specs:
+    for key, array_adapter in node.items():
+        spec_names = set(spec.name for spec in array_adapter.specs)
+        if "xarray_data_var" in spec_names:
             data_vars[key] = (
                 array_adapter.macrostructure().dims,
                 array_adapter.read(),
             )
-        elif "xarray_coord" in array_adapter.specs:
+        elif "xarray_coord" in spec_names:
             coords[key] = (
                 array_adapter.macrostructure().dims,
                 array_adapter.read(),
             )
+        else:
+            raise ValueError(
+                "Child nodes of xarray_dataset should include spec "
+                "'xarray_coord' or 'xarray_data_var'."
+            )
     return xarray.Dataset(
-        data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
+        data_vars=data_vars, coords=coords, attrs=node.metadata["attrs"]
     )
 
 

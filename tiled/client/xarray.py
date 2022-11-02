@@ -65,6 +65,7 @@ class DaskDatasetClient(Node):
         for name, array_client in array_clients.items():
             array_structure = array_structures[name]
             shape = array_structure.macro.shape
+            spec_names = set(spec.name for spec in array_client.specs)
             if optimize_wide_table and (
                 (not shape)  # empty
                 or (
@@ -72,25 +73,31 @@ class DaskDatasetClient(Node):
                     and (len(shape) < 2)
                 )
             ):
-                if "xarray_coord" in array_client.specs:
+                if "xarray_coord" in spec_names:
                     coords[name] = (
                         array_client.dims,
                         coords_fetcher.register(name, array_client, array_structure),
                     )
-                elif "xarray_data_var" in array_client.specs:
+                elif "xarray_data_var" in spec_names:
                     data_vars[name] = (
                         array_client.dims,
                         data_vars_fetcher.register(name, array_client, array_structure),
                     )
                 else:
-                    assert False, "Expected a spec"
+                    raise ValueError(
+                        "Child nodes of xarray_dataset should include spec "
+                        "'xarray_coord' or 'xarray_data_var'."
+                    )
             else:
-                if "xarray_coord" in array_client.specs:
+                if "xarray_coord" in spec_names:
                     coords[name] = (array_client.dims, array_client.read())
-                elif "xarray_data_var" in array_client.specs:
+                elif "xarray_data_var" in spec_names:
                     data_vars[name] = (array_client.dims, array_client.read())
                 else:
-                    assert False, "Expected a spec"
+                    raise ValueError(
+                        "Child nodes of xarray_dataset should include spec "
+                        "'xarray_coord' or 'xarray_data_var'."
+                    )
         return data_vars, coords
 
     def read(self, variables=None, *, optimize_wide_table=True):
