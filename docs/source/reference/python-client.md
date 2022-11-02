@@ -137,11 +137,14 @@ Tiled currently includes two clients for each structure family:
    :toctree: generated
 
    tiled.client.base.BaseClient
+   tiled.client.base.BaseClient.formats
    tiled.client.base.BaseClient.metadata
    tiled.client.base.BaseClient.uri
-   tiled.client.base.BaseClient.username
    tiled.client.base.BaseClient.item
+   tiled.client.base.BaseClient.login
+   tiled.client.base.BaseClient.logout
    tiled.client.base.BaseClient.new_variation
+   tiled.client.base.BaseClient.specs
    tiled.client.base.BaseStructureClient.download
    tiled.client.base.BaseStructureClient.refresh
    tiled.client.base.BaseStructureClient.structure
@@ -158,7 +161,6 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.DaskArrayClient.read_block
    tiled.client.array.DaskArrayClient.read
    tiled.client.array.DaskArrayClient.export
-   tiled.client.array.DaskArrayClient.formats
 ```
 
 ```{eval-rst}
@@ -169,7 +171,6 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.ArrayClient.read_block
    tiled.client.array.ArrayClient.read
    tiled.client.array.DaskArrayClient.export
-   tiled.client.array.DaskArrayClient.formats
 ```
 
 ### Sparse Array
@@ -181,7 +182,6 @@ Tiled currently includes two clients for each structure family:
    tiled.client.sparse.SparseClient
    tiled.client.sparse.SparseClient.read
    tiled.client.sparse.SparseClient.export
-   tiled.client.sparse.SparseClient.formats
 ```
 
 ### DataFrame
@@ -256,9 +256,10 @@ the same source directory as the `tiled.client.cache` module. (Cachey itself
    :toctree: generated
 
    tiled.client.context.Context
-   tiled.client.context.Context.offline
    tiled.client.context.Context.authenticate
+   tiled.client.context.Context.offline
    tiled.client.context.Context.force_auth_refresh
+   tiled.client.context.Context.login
    tiled.client.context.Context.logout
    tiled.client.context.Context.tokens
 ```

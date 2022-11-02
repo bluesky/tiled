@@ -10,13 +10,13 @@ from sqlalchemy.sql import func
 
 from .alembic_utils import temp_alembic_ini
 from .base import Base
-from .orm import APIKey, Identity, Principal, Role, Session
+from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
-REQUIRED_REVISION = "56809bcbfcb0"
+REQUIRED_REVISION = "4a9dfaba4a98"
 # This is list of all valid revisions (from current to oldest).
-ALL_REVISIONS = ["56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
+ALL_REVISIONS = ["4a9dfaba4a98", "56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
 
 
 def create_default_roles(engine):
@@ -205,6 +205,41 @@ def lookup_valid_session(db, session_id):
         db.commit()
         return None
     return session
+
+
+def lookup_valid_pending_session_by_device_code(db, device_code):
+    hashed_device_code = hashlib.sha256(device_code).digest()
+    pending_session = (
+        db.query(PendingSession)
+        .filter(PendingSession.hashed_device_code == hashed_device_code)
+        .first()
+    )
+    if pending_session is None:
+        return None
+    if (
+        pending_session.expiration_time is not None
+        and pending_session.expiration_time < datetime.utcnow()
+    ):
+        db.delete(pending_session)
+        db.commit()
+        return None
+    return pending_session
+
+
+def lookup_valid_pending_session_by_user_code(db, user_code):
+    pending_session = (
+        db.query(PendingSession).filter(PendingSession.user_code == user_code).first()
+    )
+    if pending_session is None:
+        return None
+    if (
+        pending_session.expiration_time is not None
+        and pending_session.expiration_time < datetime.utcnow()
+    ):
+        db.delete(pending_session)
+        db.commit()
+        return None
+    return pending_session
 
 
 def make_admin_by_identity(db, identity_provider, id):

@@ -6,6 +6,7 @@ See profiles.py for client configuration.
 import copy
 import os
 from collections import defaultdict
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 
@@ -68,6 +69,9 @@ def construct_build_app_kwargs(
         sys_path_additions.append(directory)
     with prepend_to_sys_path(*sys_path_additions):
         auth_spec = config.get("authentication", {}) or {}
+        for age in ["refresh_token_max_age", "session_max_age", "access_token_max_age"]:
+            if age in auth_spec:
+                auth_spec[age] = timedelta(seconds=auth_spec[age])
         root_access_control = config.get("access_control", {}) or {}
         auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
         providers = list(auth_spec.get("providers", []))

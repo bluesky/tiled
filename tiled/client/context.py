@@ -3,6 +3,7 @@ import getpass
 import os
 import re
 import sys
+import time
 import urllib.parse
 import warnings
 from pathlib import Path
@@ -602,7 +603,9 @@ class Context:
         )
 
     def authenticate(self, username=None, provider=None):
-        "Authenticate. Prompt for password or access code (refresh token)."
+        """
+        See login. This is for programmatic use.
+        """
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
@@ -641,6 +644,7 @@ class Context:
                 # No need to log in again.
                 return
 
+        self.http_client.auth = None
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         if mode == "password":
@@ -654,74 +658,89 @@ class Context:
                 "username": username,
                 "password": password,
             }
-            token_request = self.http_client.build_request(
-                "POST",
-                auth_endpoint,
-                data=form_data,
-                headers={},
+            token_response = self.http_client.post(
+                auth_endpoint, data=form_data, auth=None
             )
-            token_request.headers.pop("Authorization", None)
-            token_response = self.http_client.send(token_request, auth=None)
             handle_error(token_response)
             tokens = token_response.json()
         elif mode == "external":
+            verification_response = self.http_client.post(
+                auth_endpoint, json={}, auth=None
+            )
+            handle_error(verification_response)
+            verification = verification_response.json()
+            authorization_uri = verification["authorization_uri"]
             print(
                 f"""
-Navigate web browser to this address to obtain access code:
+You have {int(verification['expires_in']) // 60} minutes visit this URL
 
-{auth_endpoint}
+{authorization_uri}
+
+and enter the code: {verification['user_code']}
 
 """
             )
             import webbrowser
 
-            webbrowser.open(auth_endpoint)
+            webbrowser.open(authorization_uri)
+            deadline = verification["expires_in"] + time.monotonic()
+            print("Waiting...", end="", flush=True)
             while True:
-                # The proper term for this is 'refresh token' but that may be
-                # confusing jargon to the end user, so we say "access code".
-                raw_refresh_token = getpass.getpass("Access code (quotes optional): ")
-                if not raw_refresh_token:
-                    print("No access token given. Failed.")
-                    break
-                # Remove any accidentally-included quotes.
-                refresh_token = raw_refresh_token.replace('"', "")
-                # Immediately refresh to (1) check that the copy/paste worked and
-                # (2) obtain an access token as well.
-                refresh_request = build_refresh_request(
-                    refresh_url,
-                    refresh_token,
-                    csrf_token,
+                time.sleep(verification["interval"])
+                if time.monotonic() > deadline:
+                    raise Exception("Deadline expired.")
+                access_response = self.http_client.post(
+                    verification["verification_uri"],
+                    json={
+                        "device_code": verification["device_code"],
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                    auth=None,
                 )
-                token_response = self.http_client.send(refresh_request, auth=None)
-                if token_response.status_code == 401:
-                    print(
-                        "That didn't work. Try pasting the access code again, or press Enter to escape."
-                    )
-                else:
-                    tokens = token_response.json()
-                    break
+                if (access_response.status_code == 400) and (
+                    access_response.json()["detail"]["error"] == "authorization_pending"
+                ):
+                    print(".", end="", flush=True)
+                    continue
+                handle_error(access_response)
+                print("")
+                break
+            tokens = access_response.json()
+
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-        # We need to know the username in order to set the token_directory,
-        # so we manually build an authenticated request to "whoami" to get
-        # the username, and then configure TiledAuth to handle authentication
-        # going forward.
-        whoami = self.get_json(
-            self.server_info["authentication"]["links"]["whoami"],
-            auth=None,
-            headers={"Authorization": f"Bearer {tokens['access_token']}"},
-        )
-        identities = whoami["identities"]
-        identities_by_provider = {
-            identity["provider"]: identity["id"] for identity in identities
-        }
-        username = identities_by_provider[provider]
+        username = tokens["identity"]["id"]
         token_directory = self._token_directory(provider, username)
         auth = TiledAuth(refresh_url, csrf_token, token_directory)
         auth.sync_set_token("access_token", tokens["access_token"])
         auth.sync_set_token("refresh_token", tokens["refresh_token"])
         self.http_client.auth = auth
+        confirmation_message = spec.get("confirmation_message")
+        if confirmation_message:
+            print(confirmation_message.format(id=username))
         return spec, username
+
+    def login(self, username=None, provider=None):
+        """
+        Depending on the server's authentication method, this will prompt for username/password:
+
+        >>> c.login()
+        Username: USERNAME
+        Password: <input is hidden>
+
+        or prompt you to open a link in a web browser to login with a third party:
+
+        >>> c.login()
+        You have ... minutes visit this URL
+
+        https://...
+
+        and enter the code: XXXX-XXXX
+        """
+        self.authenticate(username, provider)
+        # For programmatic access to the return values, use authenticate().
+        # This returns None in order to provide a clean UX in an interpreter.
+        return None
 
     def _token_directory(self, provider, username):
         # ~/.config/tiled/tokens/{host:port}/{provider}/{username}

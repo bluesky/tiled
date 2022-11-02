@@ -85,14 +85,12 @@ async def about(
                 ),
             }
         elif authenticator.mode == Mode.external:
-            endpoint = authenticator.authorization_endpoint
-            if endpoint.startswith("/"):
-                # This is relative.
-                endpoint = f"{base_url}/auth/provider/{provider}{endpoint}"
             spec = {
                 "provider": provider,
                 "mode": authenticator.mode.value,
-                "links": {"auth_endpoint": endpoint},
+                "links": {
+                    "auth_endpoint": f"{base_url}/auth/provider/{provider}/authorize"
+                },
                 "confirmation_message": getattr(
                     authenticator, "confirmation_message", None
                 ),
