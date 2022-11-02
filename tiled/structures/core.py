@@ -5,7 +5,7 @@ the server and the client.
 """
 
 import enum
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Optional
 
 
@@ -35,3 +35,6 @@ class Spec:
         else:
             output = f"{type(self).__name__}({self.name!r}, version={self.version!r})"
         return output
+
+    def dict(self):
+        return asdict(self)
