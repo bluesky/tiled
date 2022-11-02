@@ -26,7 +26,7 @@ def upgrade():
             nullable=False,
         ),
         Column("user_code", Unicode(8), index=True, nullable=False),
-        Column("expiration_time", DateTime(timezone=False), nullable=True),
+        Column("expiration_time", DateTime(timezone=False), nullable=False),
         session_id=Column(
             "session_id", Integer, ForeignKey("session.id"), nullable=True
         ),
