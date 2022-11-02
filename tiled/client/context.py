@@ -603,7 +603,9 @@ class Context:
         )
 
     def authenticate(self, username=None, provider=None):
-        "Authenticate. Prompt for password or access code (refresh token)."
+        """
+        See login. This is for programmatic use.
+        """
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
@@ -670,7 +672,7 @@ class Context:
             authorization_uri = verification["authorization_uri"]
             print(
                 f"""
-You have {verification['expires_in'] // 60} minutes visit this URL
+You have {int(verification['expires_in']) // 60} minutes visit this URL
 
 {authorization_uri}
 
@@ -701,31 +703,44 @@ and enter the code: {verification['user_code']}
                     print(".", end="", flush=True)
                     continue
                 handle_error(access_response)
+                print("")
                 break
             tokens = access_response.json()
 
         else:
             raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-        # We need to know the username in order to set the token_directory,
-        # so we manually build an authenticated request to "whoami" to get
-        # the username, and then configure TiledAuth to handle authentication
-        # going forward.
-        whoami = self.get_json(
-            self.server_info["authentication"]["links"]["whoami"],
-            auth=None,
-            headers={"Authorization": f"Bearer {tokens['access_token']}"},
-        )
-        identities = whoami["identities"]
-        identities_by_provider = {
-            identity["provider"]: identity["id"] for identity in identities
-        }
-        username = identities_by_provider[provider]
+        username = tokens["identity"]["id"]
         token_directory = self._token_directory(provider, username)
         auth = TiledAuth(refresh_url, csrf_token, token_directory)
         auth.sync_set_token("access_token", tokens["access_token"])
         auth.sync_set_token("refresh_token", tokens["refresh_token"])
         self.http_client.auth = auth
+        confirmation_message = spec.get("confirmation_message")
+        if confirmation_message:
+            print(confirmation_message.format(id=username))
         return spec, username
+
+    def login(self, username=None, provider=None):
+        """
+        Depending on the server's authentication method, this will prompt for username/password:
+
+        >>> c.login()
+        Username: USERNAME
+        Password: <input is hidden>
+
+        or prompt you to open a link in a web browser to login with a third party:
+
+        >>> c.login()
+        You have ... minutes visit this URL
+
+        https://...
+
+        and enter the code: XXXX-XXXX
+        """
+        self.authenticate(username, provider)
+        # For programmatic access to the return values, use authenticate().
+        # This returns None in order to provide a clean UX in an interpreter.
+        return None
 
     def _token_directory(self, provider, username):
         # ~/.config/tiled/tokens/{host:port}/{provider}/{username}

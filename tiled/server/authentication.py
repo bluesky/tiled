@@ -359,50 +359,49 @@ def create_pending_session(settings):
     }
 
 
-def create_session(settings, identity_provider, id):
-    with get_sessionmaker(settings.database_settings)() as db:
-        # Have we seen this Identity before?
-        identity = (
-            db.query(orm.Identity)
-            .filter(orm.Identity.id == id)
-            .filter(orm.Identity.provider == identity_provider)
-            .first()
+def create_session(settings, db, identity_provider, id):
+    # Have we seen this Identity before?
+    identity = (
+        db.query(orm.Identity)
+        .filter(orm.Identity.id == id)
+        .filter(orm.Identity.provider == identity_provider)
+        .first()
+    )
+    now = utcnow()
+    if identity is None:
+        # We have not. Make a new Principal and link this new Identity to it.
+        # TODO Confirm that the user intends to create a new Principal here.
+        # Give them the opportunity to link an existing Principal instead.
+        principal = create_user(db, identity_provider, id)
+        (new_identity,) = principal.identities
+        new_identity.latest_login = now
+    else:
+        identity.latest_login = now
+        principal = identity.principal
+    session_count = (
+        db.query(orm.Session)
+        .join(orm.Principal)
+        .filter(orm.Principal.id == principal.id)
+        .count()
+    )
+    if session_count >= SESSION_LIMIT:
+        raise HTTPException(
+            400,
+            f"This Principal already has {session_count} sessions which is greater "
+            f"than or equal to the maximum number allowed, {SESSION_LIMIT}. "
+            "Some Sessions must be closed before creating new ones.",
         )
-        now = utcnow()
-        if identity is None:
-            # We have not. Make a new Principal and link this new Identity to it.
-            # TODO Confirm that the user intends to create a new Principal here.
-            # Give them the opportunity to link an existing Principal instead.
-            principal = create_user(db, identity_provider, id)
-            (new_identity,) = principal.identities
-            new_identity.latest_login = now
-        else:
-            identity.latest_login = now
-            principal = identity.principal
-        session_count = (
-            db.query(orm.Session)
-            .join(orm.Principal)
-            .filter(orm.Principal.id == principal.id)
-            .count()
-        )
-        if session_count >= SESSION_LIMIT:
-            raise HTTPException(
-                400,
-                f"This Principal already has {session_count} sessions which is greater "
-                f"than or equal to the maximum number allowed, {SESSION_LIMIT}. "
-                "Some Sessions must be closed before creating new ones.",
-            )
-        session = orm.Session(
-            principal_id=principal.id,
-            expiration_time=utcnow() + settings.session_max_age,
-        )
-        db.add(session)
-        db.commit()
-        db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
+    session = orm.Session(
+        principal_id=principal.id,
+        expiration_time=utcnow() + settings.session_max_age,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)  # Refresh to sync back the auto-generated session.uuid.
     return session
 
 
-def create_tokens_from_session(settings, session):
+def create_tokens_from_session(settings, db, session, provider):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -426,12 +425,24 @@ def create_tokens_from_session(settings, session):
         expires_delta=settings.refresh_token_max_age,
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
+    # Include the identity. This is not stored as part of the session.
+    # Once you are logged in, it does not matter *how* you logged in.
+    # But in order to enable UIs to display a sensible username we provide
+    # this information alongside the tokens only when the session is first created.
+    identity = (
+        db.query(orm.Identity)
+        .filter(orm.Identity.principal == principal)
+        .filter(orm.Identity.provider == provider)
+        .first()
+    )
     return {
         "access_token": access_token,
         "expires_in": settings.access_token_max_age / UNIT_SECOND,
         "refresh_token": refresh_token,
         "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
         "token_type": "bearer",
+        "identity": {"id": identity.id, "provider": provider},
+        "principal": principal,
     }
 
 
@@ -446,15 +457,15 @@ def build_auth_code_route(authenticator, provider):
         username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        session = await asyncio.get_running_loop().run_in_executor(
-            None, create_session, settings, provider, username
-        )
-        tokens = create_tokens_from_session(settings, session)
-        # Show only the refresh_token, which is what the user should
-        # paste into a terminal-based client.
-        # In the future for web apps we may want this to be optional,
-        # controlled by a query parameter (if it's possible to inject that).
-        return tokens["refresh_token"]
+        with get_sessionmaker(settings.database_settings)() as db:
+            loop = asyncio.get_running_loop()
+            session = await loop.run_in_executor(
+                None, create_session, settings, db, provider, username
+            )
+            tokens = await loop.run_in_executor(
+                None, create_tokens_from_session, settings, db, session, provider
+            )
+        return tokens
 
     return route
 
@@ -525,10 +536,14 @@ def build_device_code_user_code_submit_route(authenticator, provider, action):
         settings: BaseSettings = Depends(get_settings),
     ):
         request.state.endpoint = "auth"
+        loop = asyncio.get_running_loop()
         with get_sessionmaker(settings.database_settings)() as db:
             normalized_user_code = user_code.upper().replace("-", "")
-            pending_session = lookup_valid_pending_session_by_user_code(
-                db, normalized_user_code
+            pending_session = await loop.run_in_executor(
+                None,
+                lookup_valid_pending_session_by_user_code,
+                db,
+                normalized_user_code,
             )
             if pending_session is None:
                 message = "Invalid user_code. It may have been mistyped, or the pending request may have expired."
@@ -555,12 +570,12 @@ def build_device_code_user_code_submit_route(authenticator, provider, action):
                     },
                     status_code=401,
                 )
-            session = await asyncio.get_running_loop().run_in_executor(
-                None, create_session, settings, provider, username
+            session = await loop.run_in_executor(
+                None, create_session, settings, db, provider, username
             )
             pending_session.session_id = session.id
-            db.add(pending_session)
-            db.commit()
+            await loop.run_in_executor(None, db.add, pending_session)
+            await loop.run_in_executor(None, db.commit)
         return templates.TemplateResponse(
             "device_code_success.html",
             {
@@ -575,7 +590,7 @@ def build_device_code_user_code_submit_route(authenticator, provider, action):
 def build_device_code_token_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
-    async def route(
+    def route(
         request: Request,
         body: schemas.DeviceCode,
         settings: BaseSettings = Depends(get_settings),
@@ -602,7 +617,7 @@ def build_device_code_token_route(authenticator, provider):
             # The pending session can only be used once.
             db.delete(pending_session)
             db.commit()
-            tokens = create_tokens_from_session(settings, session)
+            tokens = create_tokens_from_session(settings, db, session, provider)
         return tokens
 
     return route
@@ -626,9 +641,15 @@ def build_handle_credentials_route(authenticator, provider):
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return await asyncio.get_running_loop().run_in_executor(
-            None, create_session, settings, provider, username
-        )
+        with get_sessionmaker(settings.database_settings)() as db:
+            loop = asyncio.get_running_loop()
+            session = await loop.run_in_executor(
+                None, create_session, settings, db, provider, username
+            )
+            tokens = await loop.run_in_executor(
+                None, create_tokens_from_session, settings, db, session, provider
+            )
+        return tokens
 
     return route
 

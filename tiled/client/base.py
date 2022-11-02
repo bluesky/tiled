@@ -80,31 +80,28 @@ class BaseClient:
 
     def login(self, username=None, provider=None):
         """
-        Depending on the server's authentication method, this will prompt for username/password
+        Depending on the server's authentication method, this will prompt for username/password:
 
         >>> c.login()
         Username: USERNAME
         Password: <input is hidden>
 
-        or prompt you to open a link in a web browser to login with a third party and paste in a access code
+        or prompt you to open a link in a web browser to login with a third party:
 
         >>> c.login()
-        Navigate your web browser to this address to obtain access code:
+        You have ... minutes visit this URL
 
-        ...
+        https://...
 
-        Access code (quotes optional): <input is hidden>
-
-        See also c.context.authenticate() and c.context.reauthenticate().
+        and enter the code: XXXX-XXXX
         """
-        provider_spec, username = self.context.authenticate(provider=provider)
-        confirmation_message = provider_spec.get("confirmation_message")
-        if confirmation_message:
-            print(confirmation_message.format(id=username))
+        self.context.login(username=username, provider=provider)
 
     def logout(self):
         """
         Log out.
+
+        This method is idempotent: if you are already logged out, it will do nothing.
         """
         self.context.logout()
 
@@ -144,10 +141,6 @@ class BaseClient:
     def uri(self):
         "Direct link to this entry"
         return self.item["links"]["self"]
-
-    @property
-    def username(self):
-        return self.context.username
 
     @property
     def offline(self):
