@@ -193,14 +193,14 @@ def build_app(
             )
 
     app.state.allow_origins = []
-    app.include_router(router, prefix="/api")
+    app.include_router(router, prefix="/api/v1")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
     for custom_router in getattr(tree, "include_routers", []):
-        app.include_router(custom_router, prefix="/api")
+        app.include_router(custom_router, prefix="/api/v1")
 
     if authentication.get("providers", []):
         # Delay this imports to avoid delaying startup with the SQL and cryptography
@@ -266,7 +266,7 @@ def build_app(
                     custom_router, prefix=f"/provider/{provider}"
                 )
         # And add this authentication_router itself to the app.
-        app.include_router(authentication_router, prefix="/api/auth")
+        app.include_router(authentication_router, prefix="/api/v1/auth")
 
     @lru_cache(1)
     def override_get_authenticators():
@@ -351,7 +351,7 @@ def build_app(
 
         # The /search route is defined at server startup so that the user has the
         # opporunity to register custom query types before startup.
-        app.include_router(declare_search_router(query_registry), prefix="/api")
+        app.include_router(declare_search_router(query_registry), prefix="/api/v1")
 
         app.state.allow_origins.extend(settings.allow_origins)
         app.add_middleware(
@@ -594,7 +594,7 @@ def build_app(
     if metrics_config.get("prometheus", False):
         from . import metrics
 
-        app.include_router(metrics.router, prefix="/api")
+        app.include_router(metrics.router, prefix="/api/v1")
 
         @app.middleware("http")
         async def capture_metrics_prometheus(request: Request, call_next):

@@ -31,7 +31,7 @@ def from_uri(
     Parameters
     ----------
     uri : str
-        e.g. "http://localhost:8000/api"
+        e.g. "http://localhost:8000/api/v1"
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas
@@ -162,7 +162,7 @@ def from_tree(
         settings = app.dependency_overrides[get_settings]()
         api_key = settings.single_user_api_key or None
     context = Context(
-        uri="http://local-tiled-app/api",
+        uri="http://local-tiled-app/api/v1",
         headers=headers,
         api_key=api_key,
         cache=cache,
@@ -420,7 +420,7 @@ def from_config(
         settings = app.dependency_overrides[get_settings]()
         api_key = settings.single_user_api_key or None
     context = Context(
-        uri="http://local-tiled-app/api",
+        uri="http://local-tiled-app/api/v1",
         headers=headers,
         api_key=api_key,
         cache=cache,

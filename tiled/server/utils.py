@@ -41,7 +41,7 @@ def get_base_url(request):
     """
     Base URL for the API
     """
-    return f"{get_root_url(request)}/api"
+    return f"{get_root_url(request)}/api/v1"
 
 
 def get_root_url_low_level(request_headers, scope):
