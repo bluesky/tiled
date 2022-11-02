@@ -226,7 +226,7 @@ class BaseClient:
                 self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
-            self._item["attributes"]["specs"] = specs
+            self._item["attributes"]["specs"] = normalized_specs
 
         if references is not None:
             self._item["attributes"]["references"] = references
@@ -235,7 +235,7 @@ class BaseClient:
     def metadata_revisions(self):
         if self._metadata_revisions is None:
             link = self.item["links"]["self"].replace(
-                "/node/metadata/", "/node/revisions", 1
+                "/node/metadata", "/node/revisions", 1
             )
             self._metadata_revisions = MetadataRevisions(self.context, link)
 

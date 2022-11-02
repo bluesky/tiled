@@ -375,7 +375,9 @@ def construct_resource(
             if isinstance(spec, str):
                 spec = Spec(spec)
             # Convert from dataclass to pydantic.
-            specs.append(schemas.Spec(**dataclasses.asdict(spec)))
+            # The dataclass implementation of Spec supports dict() method
+            # for ease of going between dataclass and pydantic.
+            specs.append(schemas.Spec(**spec.dict()))
         attributes["specs"] = specs
     if schemas.EntryFields.references in fields:
         attributes["references"] = getattr(entry, "references", [])

@@ -458,9 +458,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> tree.distinct("foo", "bar", counts=True)
         """
 
-        link = self.item["links"]["self"].replace(
-            "/node/metadata/", "/node/distinct", 1
-        )
+        link = self.item["links"]["self"].replace("/node/metadata", "/node/distinct", 1)
         distinct = self.context.get_json(
             link,
             params={
