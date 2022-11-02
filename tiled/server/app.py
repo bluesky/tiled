@@ -236,30 +236,17 @@ def build_app(
                     build_handle_credentials_route(authenticator, provider)
                 )
             elif mode == Mode.external:
-                # HACK
-                verification_uri = (
-                    f"http://localhost:8000/api/auth/provider/{provider}/token"
-                )
-                action = (
-                    f"http://localhost:8000/api/auth/provider/{provider}/device_code"
-                )
                 # Client starts here to create a PendingSession.
                 authentication_router.post(f"/provider/{provider}/authorize")(
-                    build_device_code_authorize_route(
-                        authenticator, provider, verification_uri
-                    )
+                    build_device_code_authorize_route(authenticator, provider)
                 )
                 # External OAuth redirects here with code, presenting form for user code.
                 authentication_router.get(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_form_route(
-                        authenticator, provider, action
-                    )
+                    build_device_code_user_code_form_route(authenticator, provider)
                 )
                 # User code and auth code are submitted here.
                 authentication_router.post(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_submit_route(
-                        authenticator, provider, action
-                    )
+                    build_device_code_user_code_submit_route(authenticator, provider)
                 )
                 # Client polls here for token.
                 authentication_router.post(f"/provider/{provider}/token")(

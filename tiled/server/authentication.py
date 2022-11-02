@@ -470,7 +470,7 @@ def build_auth_code_route(authenticator, provider):
     return route
 
 
-def build_device_code_authorize_route(authenticator, provider, verification_uri):
+def build_device_code_authorize_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
     async def route(
@@ -481,6 +481,7 @@ def build_device_code_authorize_route(authenticator, provider, verification_uri)
         pending_session = await asyncio.get_running_loop().run_in_executor(
             None, create_pending_session, settings
         )
+        verification_uri = f"{get_base_url(request)}/auth/provider/{provider}/token"
         return {
             "authorization_uri": authenticator.authorization_endpoint,  # URL that user should visit in browser
             "verification_uri": verification_uri,  # URL that terminal client will poll
@@ -493,7 +494,7 @@ def build_device_code_authorize_route(authenticator, provider, verification_uri)
     return route
 
 
-def build_device_code_user_code_form_route(authentication, provider, action):
+def build_device_code_user_code_form_route(authentication, provider):
 
     if not SHARE_TILED_PATH:
         raise Exception(
@@ -506,19 +507,22 @@ def build_device_code_user_code_form_route(authentication, provider, action):
         request: Request,
         code: str,
     ):
+        action = (
+            f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
+        )
         return templates.TemplateResponse(
             "device_code_form.html",
             {
                 "request": request,
                 "code": code,
-                "action": f"{action}?code={code}",
+                "action": action,
             },
         )
 
     return route
 
 
-def build_device_code_user_code_submit_route(authenticator, provider, action):
+def build_device_code_user_code_submit_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
     if not SHARE_TILED_PATH:
@@ -537,6 +541,9 @@ def build_device_code_user_code_submit_route(authenticator, provider, action):
     ):
         request.state.endpoint = "auth"
         loop = asyncio.get_running_loop()
+        action = (
+            f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
+        )
         with get_sessionmaker(settings.database_settings)() as db:
             normalized_user_code = user_code.upper().replace("-", "")
             pending_session = await loop.run_in_executor(
@@ -552,7 +559,7 @@ def build_device_code_user_code_submit_route(authenticator, provider, action):
                     {
                         "request": request,
                         "code": code,
-                        "action": f"{action}?code={code}",
+                        "action": action,
                         "message": message,
                     },
                     status_code=401,
