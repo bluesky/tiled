@@ -39,7 +39,10 @@ clients. Clients that recognize a spec can use it to provide a fine-tuned user
 experience, such as more useful displays, specialized conveniences, and
 performance optimizations.
 
-Specs are given as a list of strings, meant to be ordered from most specific to
+Each spec has a `name` (a string) and an optional `version` (also a string, or
+None).
+
+Specs are given as a list, meant to be ordered from most specific to
 list specific. A spec may refer to a formally published specification or an
 _ad hoc_ local convention. It is not necessary for every Tiled client to
 understand every spec in use. A client can walk the list of specs in order and

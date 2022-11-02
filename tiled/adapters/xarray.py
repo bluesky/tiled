@@ -3,8 +3,9 @@ import itertools
 
 import xarray
 
-from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MapAdapter
+from ..structures.core import Spec
+from .array import ArrayAdapter
+from .mapping import MapAdapter
 
 
 class DatasetAdapter(MapAdapter):
@@ -29,7 +30,7 @@ class DatasetAdapter(MapAdapter):
             )
         specs = specs or []
         references = references or []
-        specs.append("xarray_dataset")
+        specs.append(Spec("xarray_dataset"))
         super().__init__(mapping, *args, specs=specs, references=references, **kwargs)
 
     def inlined_contents_enabled(self, depth):
@@ -52,9 +53,9 @@ class _DatasetMap(collections.abc.Mapping):
     def __getitem__(self, key):
         data_array = self._dataset[key]
         if key in self._dataset.coords:
-            spec = "xarray_coord"
+            spec = Spec("xarray_coord")
         else:
-            spec = "xarray_data_var"
+            spec = Spec("xarray_data_var")
         return ArrayAdapter(
             data_array.data,
             metadata={"attrs": data_array.attrs},

@@ -3,19 +3,25 @@ import pytest
 
 from ..adapters.mapping import MapAdapter
 from ..client import from_tree
+from ..structures.core import Spec
 
 
 def test_specs():
+    tree = MapAdapter({}, specs=[Spec("spec_test")])
+    c = from_tree(tree)
+    assert c.specs == [Spec("spec_test")]
+
+
+def test_specs_give_as_str():
     tree = MapAdapter({}, specs=["spec_test"])
     c = from_tree(tree)
-    assert c.specs == ["spec_test"]
+    assert c.specs == [Spec("spec_test")]
 
 
-def test_spec_is_converted_to_str():
-    # Interesting pydantic behavior here: it converts rather than raises.
-    tree = MapAdapter({}, specs=[1])
+def test_specs_with_version():
+    tree = MapAdapter({}, specs=[Spec("spec_test", version="1.1")])
     c = from_tree(tree)
-    assert c.specs == ["1"]
+    assert c.specs == [Spec("spec_test", version="1.1")]
 
 
 def test_references():

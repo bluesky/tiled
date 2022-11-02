@@ -85,8 +85,12 @@ class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
         return cls(label=json_doc["label"], url=json_doc["url"])
 
 
+class Spec(pydantic.BaseModel, extra=pydantic.Extra.forbid, frozen=True):
+    name: pydantic.constr(max_length=255)
+    version: Optional[pydantic.constr(max_length=255)]
+
+
 References = pydantic.conlist(ReferenceDocument, max_items=20)
-Spec = pydantic.constr(max_length=255)
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
 # Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
 Specs = pydantic.conlist(Spec, max_items=20)

@@ -1,6 +1,8 @@
 import importlib
 import time
+from dataclasses import asdict
 
+from ..structures.core import Spec
 from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
 from .cache import Revalidate, verify_cache
 
@@ -128,7 +130,7 @@ class BaseClient:
     @property
     def specs(self):
         "List of specifications describing the structure of the metadata and/or data."
-        return ListView(self._item["attributes"]["specs"])
+        return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
 
     @property
     def references(self):
@@ -197,9 +199,17 @@ class BaseClient:
 
         self._cached_len = None
 
+        if specs is None:
+            normalized_specs = None
+        else:
+            normalized_specs = []
+            for spec in specs:
+                if isinstance(spec, str):
+                    spec = Spec(spec)
+                normalized_specs.append(asdict(spec))
         data = {
             "metadata": metadata,
-            "specs": specs,
+            "specs": normalized_specs,
             "references": references,
         }
 

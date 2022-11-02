@@ -8,13 +8,14 @@ from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..adapters.sparse import COOAdapter
 from ..serialization.dataframe import deserialize_arrow
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 
 
 class _WritableMixin:
-    def __init__(self, *args, key="", **kwargs):
+    def __init__(self, *args, key="", specs=None, **kwargs):
         self.key = key
-        super().__init__(*args, **kwargs)
+        specs = [Spec(**dict(s)) for s in (specs or [])]
+        super().__init__(*args, specs=specs, **kwargs)
 
     def put_metadata(self, metadata, specs, references):
         # TODO This skips over validation and has a race condition in it, but
@@ -23,7 +24,7 @@ class _WritableMixin:
         self._metadata.clear()
         self._metadata.update(metadata)
         self.specs.clear()
-        self.specs.extend(specs)
+        self.specs.extend(Spec(**dict(s)) for s in specs)
         self.references.clear()
         self.references.extend(references)
 

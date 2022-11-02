@@ -24,6 +24,7 @@ from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
+from ..structures.core import Spec
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
@@ -293,8 +294,8 @@ def construct_data_response(
         elif structure_family == "array" and media_type == "image/*":
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["image/*"]
         # Compare the request formats to the formats supported by each spec
-        # and, finally, by the structure family.
-        for spec in specs + [structure_family]:
+        # name and, finally, by the structure family.
+        for spec in [spec.name for spec in specs] + [structure_family]:
             media_types_for_spec = serialization_registry.media_types(spec)
             if media_type in media_types_for_spec:
                 break
@@ -368,7 +369,14 @@ def construct_resource(
         else:
             attributes["metadata"] = entry.metadata
     if schemas.EntryFields.specs in fields:
-        attributes["specs"] = getattr(entry, "specs", [])
+        specs = []
+        for spec in getattr(entry, "specs", []):
+            # back-compat for when a spec was just a string
+            if isinstance(spec, str):
+                spec = Spec(spec)
+            # Convert from dataclass to pydantic.
+            specs.append(schemas.Spec(**dataclasses.asdict(spec)))
+        attributes["specs"] = specs
     if schemas.EntryFields.references in fields:
         attributes["references"] = getattr(entry, "references", [])
     if (entry is not None) and entry.structure_family == "node":

@@ -626,14 +626,16 @@ def post_metadata(
     # For now we leave it to the server maintainer to ensure that validators
     # won't step on each other in this way, but this may need revisiting.
     for spec in reversed(specs):
-        if spec not in validation_registry:
-            raise HTTPException(status_code=400, detail=f"Unrecognized spec: {spec}")
-        validator = validation_registry(spec)
+        if spec.name not in validation_registry:
+            raise HTTPException(
+                status_code=400, detail=f"Unrecognized spec: {spec.name}"
+            )
+        validator = validation_registry(spec.name)
         try:
             result = validator(metadata, structure_family, structure, spec, references)
         except ValidationError as e:
             raise HTTPException(
-                status_code=400, detail=f"failed validation for spec {spec}:\n{e}"
+                status_code=400, detail=f"failed validation for spec {spec.name}:\n{e}"
             )
         if result is not None:
             metadata_modified = True
@@ -788,15 +790,17 @@ async def put_metadata(
     # For now we leave it to the server maintainer to ensure that validators
     # won't step on each other in this way, but this may need revisiting.
     for spec in reversed(specs):
-        if spec not in validation_registry:
-            raise HTTPException(status_code=400, detail=f"Unrecognized spec: {spec}")
-        validator = validation_registry(spec)
+        if spec.name not in validation_registry:
+            raise HTTPException(
+                status_code=400, detail=f"Unrecognized spec: {spec.name}"
+            )
+        validator = validation_registry(spec.name)
         try:
             result = validator(metadata, structure_family, structure, spec, references)
         except ValidationError as e:
             raise HTTPException(
                 status_code=400,
-                detail=f"failed validation for spec {spec}:\n{e}",
+                detail=f"failed validation for spec {spec.name}:\n{e}",
             )
         if result is not None:
             metadata_modified = True
