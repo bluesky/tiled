@@ -140,7 +140,6 @@ Tiled currently includes two clients for each structure family:
    tiled.client.base.BaseClient.formats
    tiled.client.base.BaseClient.metadata
    tiled.client.base.BaseClient.uri
-   tiled.client.base.BaseClient.username
    tiled.client.base.BaseClient.item
    tiled.client.base.BaseClient.login
    tiled.client.base.BaseClient.logout
