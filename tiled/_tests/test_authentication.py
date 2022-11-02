@@ -1,7 +1,6 @@
 import io
 import tempfile
 import time
-from datetime import timedelta
 from pathlib import Path
 
 import numpy
@@ -163,7 +162,7 @@ def test_refresh_flow(enter_password, config):
 
     # Pathological configuration: a refresh is almost immediately required
     with tempfile.TemporaryDirectory() as tmpdir:
-        config["authentication"]["access_token_max_age"] = timedelta(seconds=1)
+        config["authentication"]["access_token_max_age"] = 1
         with enter_password("secret1"):
             client = from_config(
                 config,
@@ -180,7 +179,7 @@ def test_refresh_flow(enter_password, config):
 
     # Pathological configuration: sessions do not last
     with tempfile.TemporaryDirectory() as tmpdir:
-        config["authentication"]["session_max_age"] = timedelta(seconds=1)
+        config["authentication"]["session_max_age"] = 1
         with enter_password("secret1"):
             client = from_config(
                 config,
