@@ -13,7 +13,7 @@ import packaging.version
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
@@ -545,13 +545,15 @@ def build_app(
             agent, _, raw_version = user_agent.partition("/")
             parsed_version = packaging.version.parse(raw_version)
             if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
-                raise HTTPException(
+                return JSONResponse(
                     status_code=400,
-                    detail=(
-                        f"Python Tiled client is version {parsed_version}. "
-                        f"Version {MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION} or higher "
-                        "is needed to communicate with this Tiled server."
-                    ),
+                    content={
+                        "detail": (
+                            f"Python Tiled client is version {parsed_version}. "
+                            f"Version {MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION} or higher "
+                            "is needed to communicate with this Tiled server."
+                        ),
+                    },
                 )
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
