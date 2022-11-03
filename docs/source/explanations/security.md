@@ -227,7 +227,8 @@ pip install httpx
 
 1. Deploy Tiled with HTTPS.
 2. Register your application with the OIDC Provider. You will be asked to
-   provide a Redirect URI. Give `https://.../auth/code`. You will be given a
+   provide redirect URIs. Enter two: `https://.../api/v1/auth/provider/SOME_NAME_HERE/code`
+   and `https://.../api/v1/auth/provider/SOME_NAME_HERE/device_code`. You will be given a
    Client ID and Client Secret.
 3. It is recommended to set the Client Secret as an environment variable, such
    as `OIDC_CLIENT_SECRET`, and reference that from configuration file as shown
@@ -236,6 +237,7 @@ pip install httpx
    Starting from a URL like:
 
    * [https://accounts.google.com/.well-known/openid-configuration](https://accounts.google.com/.well-known/openid-configuration)
+   * [https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration](https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration)
    * [https://orcid.org/.well-known/openid-configuration](https://orcid.org/.well-known/openid-configuration)
 
    Navigate to the link under the key `jwks_uri`. These public key(s) are designed
@@ -246,17 +248,16 @@ The configuration file(s) must include the following.
 ```yaml
 authentication:
   providers:
-  - provider: some-oidc-service
+  - provider: SOME_NAME_HERE
     authenticator: tiled.authenticators:OIDCAuthenticator
     args:
       # All of these are given by the OIDC provider you register
       # your application.
       client_id: ...
       client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
+      # These come from the OIDC provider as described above.
       token_uri: ...
       authorization_endpoint: ...
-      redirect_uri: ...  # https://{YOUR_TILED_SERVER_ADDRESS}/provider/{some-oidc-service}/auth/code
-      # These come from the OIDC provider as described above.
       public_keys:
         - kty: ...
           e: ...
@@ -267,31 +268,8 @@ authentication:
       confirmation_message: "You have logged in with ... as {id}."
 ```
 
-Here is an example for ORCID authentication running at
-`https://tiled-demo.blueskyproject.io`.
-
-```yaml
-authentication:
-  providers:
-  - provider: orcid
-    authenticator: tiled.authenticators:OIDCAuthenticator
-    args:
-      client_id: APP-0ROS9DU5F717F7XN  # obtained from ORCID for tiled-demo.blueskyproject.io; not secret
-      client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
-      redirect_uri: https://tiled-demo.blueskyproject.io/api/auth/provider/orcid/code
-      token_uri: "https://orcid.org/oauth/token"
-      authorization_endpoint: "https://orcid.org/oauth/authorize?client_id={client_id}&response_type=code&scope=openid&redirect_uri={redirect_uri}"
-      # These values come from https://orcid.org/.well-known/openid-configuration.
-      # Obtain them directly from ORCID. They may change over time.
-      public_keys:
-        - kty: ...
-          e: ...
-          use: ...
-          kid: ...
-          n: ...
-          alg: RS256
-      confirmation_message: "You have logged in with ORCID as {id}."
-```
+There are example configurations for ORCID and Google in the directory
+`example_configs/` in the Tiled source repository.
 
 ### Toy examples for testing and development
 
