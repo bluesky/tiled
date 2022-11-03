@@ -232,8 +232,8 @@ class Context:
         """
         Accept a URI to a specific node.
 
-        For example, given URI "https://example.com/api/node/metadata/a/b/c"
-        return a Context connected to "https://examples/api/" and the list
+        For example, given URI "https://example.com/api/v1/node/metadata/a/b/c"
+        return a Context connected to "https://examples/api/v1" and the list
         ["a", "b", "c"].
         """
         uri = httpx.URL(uri)
@@ -244,6 +244,10 @@ class Context:
             node_path_parts.extend(
                 [segment for segment in node_path.split("/") if segment]
             )
+        # Below we handle the case where we are given *less* than the full URI
+        # to the root endpoint. Here we are taking some care to plan for the case
+        # where tiled is served at a sub-path, even though that is not yet supported
+        # on the server side.
         elif "/api" not in uri.path:
             # Looks like we were given the root path (to the HTML landing page).
             path = uri.path
