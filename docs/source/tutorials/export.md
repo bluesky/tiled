@@ -14,7 +14,7 @@ Now, in a Python interpreter, connect, with the Python client.
 ```python
 from tiled.client import from_uri
 
-client = from_uri("http://localhost:8000/api")
+client = from_uri("http://localhost:8000")
 ```
 
 The Tiled server can encode its structures structures in various formats.
@@ -86,9 +86,12 @@ DataFrame:
 * JSON `application/json`
 * HTML `text/html`
 * Excel (xlsx) `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+* JSON `application/json`
+* Newline-delimited JSON `application/json-seq`
 
 Xarray Dataset:
 * NetCDF `application/netcdf`
+* HDF5 `application/x-hdf`
 * The DataFrame formats, by transforming `to_dataframe()`, which may or may not
   be an appropriate transformation depending on your data.
 

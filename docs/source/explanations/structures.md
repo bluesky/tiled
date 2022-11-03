@@ -352,9 +352,9 @@ In certain cases, it is efficient to in-line all the information about the node'
       },
       "id": "lat",
       "links": {
-        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/lat?block={index_0},{index_1}",
-        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/lat",
-        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/lat"
+        "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/lat?block={index_0},{index_1}",
+        "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/lat",
+        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/lat"
       },
       "meta": null
     },
@@ -399,9 +399,9 @@ In certain cases, it is efficient to in-line all the information about the node'
       },
       "id": "lon",
       "links": {
-        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/lon?block={index_0},{index_1}",
-        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/lon",
-        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/lon"
+        "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/lon?block={index_0},{index_1}",
+        "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/lon",
+        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/lon"
       },
       "meta": null
     },
@@ -451,9 +451,9 @@ In certain cases, it is efficient to in-line all the information about the node'
       },
       "id": "precipitation",
       "links": {
-        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/precipitation?block={index_0},{index_1},{index_2}",
-        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/precipitation",
-        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/precipitation"
+        "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/precipitation?block={index_0},{index_1},{index_2}",
+        "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/precipitation",
+        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/precipitation"
       },
       "meta": null
     },
@@ -503,9 +503,9 @@ In certain cases, it is efficient to in-line all the information about the node'
       },
       "id": "temperature",
       "links": {
-        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/temperature?block={index_0},{index_1},{index_2}",
-        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/temperature",
-        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/temperature"
+        "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/temperature?block={index_0},{index_1},{index_2}",
+        "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/temperature",
+        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/temperature"
       },
       "meta": null
     },
@@ -545,9 +545,9 @@ In certain cases, it is efficient to in-line all the information about the node'
       },
       "id": "time",
       "links": {
-        "block": "http://localhost:8000/api/array/block/structured_data/xarray_dataset/time?block={index_0}",
-        "full": "http://localhost:8000/api/array/full/structured_data/xarray_dataset/time",
-        "self": "http://localhost:8000/api/node/metadata/structured_data/xarray_dataset/time"
+        "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/time?block={index_0}",
+        "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/time",
+        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/time"
       },
       "meta": null
     }

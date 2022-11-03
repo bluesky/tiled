@@ -42,7 +42,7 @@ basic) password authentication. The `auth_endpoint` tells us where to POST our
 credentials.
 
 ```
-$ http :8000/api/ | jq .authentication
+$ http :8000/api/v1/ | jq .authentication
 {
   "required": true,
   "providers": [
@@ -50,17 +50,17 @@ $ http :8000/api/ | jq .authentication
       "provider": "toy",
       "mode": "password",
       "links": {
-        "auth_endpoint": "http://localhost:8000/api/auth/provider/toy/token"
+        "auth_endpoint": "http://localhost:8000/api/v1/auth/provider/toy/token"
       },
       "confirmation_message": null
     }
   ],
   "links": {
-    "whoami": "http://localhost:8000/api/auth/whoami",
-    "apikey": "http://localhost:8000/api/auth/apikey",
-    "refresh_session": "http://localhost:8000/api/auth/session/refresh",
-    "revoke_session": "http://localhost:8000/api/auth/session/revoke/{session_id}",
-    "logout": "http://localhost:8000/api/auth/logout"
+    "whoami": "http://localhost:8000/api/v1/auth/whoami",
+    "apikey": "http://localhost:8000/api/v1/auth/apikey",
+    "refresh_session": "http://localhost:8000/api/v1/auth/session/refresh",
+    "revoke_session": "http://localhost:8000/api/v1/auth/session/revoke/{session_id}",
+    "logout": "http://localhost:8000/api/v1/auth/logout"
   }
 }
 ```
@@ -68,7 +68,7 @@ $ http :8000/api/ | jq .authentication
 Exchange username/password credentials for "access" and "refresh" tokens.
 
 ```
-$ http --form POST :8000/api/auth/provider/toy/token username=alice password=secret1 > tokens.json
+$ http --form POST :8000/api/v1/auth/provider/toy/token username=alice password=secret1 > tokens.json
 ```
 
 The content of `tokens.json` looks like
@@ -85,7 +85,7 @@ The content of `tokens.json` looks like
 Make an authenticated request using that access token.
 
 ```
-$ http GET :8000/api/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+$ http GET :8000/api/v1/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
 HTTP/1.1 200 OK
 content-length: 239
 content-type: application/json
@@ -105,8 +105,8 @@ set-cookie: tiled_csrf=1-Cpa1WcwggakZ91FtNsscjM8VO1N1znmuILlL5hGY8; HttpOnly; Pa
         },
         "id": "",
         "links": {
-            "search": "http://localhost:8000/api/node/search/",
-            "self": "http://localhost:8000/api/node/metadata/"
+            "search": "http://localhost:8000/api/v1/node/search/",
+            "self": "http://localhost:8000/api/v1/node/metadata/"
         },
         "meta": null,
         "type": "tree"
@@ -121,7 +121,7 @@ When the access token expires (after 15 minutes, by default) requests will be
 rejected like this.
 
 ```
-$ http GET :8000/api/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+$ http GET :8000/api/v1/node/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
 HTTP/1.1 401 Unauthorized
 content-length: 53
 content-type: application/json
@@ -138,7 +138,7 @@ set-cookie: tiled_csrf=6sPHOrjBRzZOiSuXOXNtaDNyNNeqQj86nPIXf7X3C1M; HttpOnly; Pa
 Exchange the refresh token for a fresh pair of access and refresh tokens.
 
 ```
-$ http POST :8000/api/auth/session/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
+$ http POST :8000/api/v1/auth/session/refresh refresh_token=`jq -r .refresh_token tokens.json` > tokens.json
 ```
 
 And resume making requests with the new access token.
@@ -153,7 +153,7 @@ An initial handshake with the `/` route tells us that this server uses
 `"external"` authentication.
 
 ```
-$ http https://tiled-demo.blueskyproject.io/api/ | jq .authentication.type
+$ http https://tiled-demo.blueskyproject.io/api/v1/ | jq .authentication.type
 "external"
 ```
 
@@ -161,7 +161,7 @@ Elsewhere in this same response, we can find the authentication endpoint for
 this external identity provider.
 
 ```
-$ http https://tiled-demo.blueskyproject.io/api/ | jq .authentication.endpoint
+$ http https://tiled-demo.blueskyproject.io/api/v1/ | jq .authentication.endpoint
 "https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/auth/code",
 ```
 
@@ -172,7 +172,7 @@ a valid refresh token from Tiled that encodes your ORCID username. Exchange the
 refresh token for an access token and a fresh refresh token like so.
 
 ```
-$ http POST https://tiled-demo.blueskyproject.io/api/auth/session/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
+$ http POST https://tiled-demo.blueskyproject.io/api/v1/auth/session/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
 ```
 
 From here, everything follows the same as in Scenario 1, above.

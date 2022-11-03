@@ -14,7 +14,7 @@ Now, in a Python interpreter, connect, with the Python client.
 ```python
 from tiled.client import from_uri
 
-client = from_uri("http://localhost:8000/api")
+client = from_uri("http://localhost:8000")
 ```
 
 This holds a nested structure of data. Conceptually, it corresponds well to

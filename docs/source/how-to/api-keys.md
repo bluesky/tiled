@@ -14,7 +14,7 @@ randomly generated and printed to the console at server startup, like so:
 
         Use the following URL to connect to Tiled:
 
-        "http://127.0.0.1:8000/api?api_key=8df0146c93e9add287d0e7f84a165ba4bd3517bbb3c7c6b4d963c3e1549d0311"
+        "http://127.0.0.1:8000?api_key=8df0146c93e9add287d0e7f84a165ba4bd3517bbb3c7c6b4d963c3e1549d0311"
 
 This guide does not apply to single-user deployments like this.
 ```
@@ -41,7 +41,7 @@ is useful when:
 
 To follow along, you may start a Tiled server with a simple authentication provider,
 as shown. Alternatively, you may use an existing authenticated Tiled server, such as
-`https://tiled-demo.blueskyproject.io/api`; if you do, replace `http://localhost:8000/api`
+`https://tiled-demo.blueskyproject.io`; if you do, replace `http://localhost:8000`
 in the example below with that address.
 
 ```
@@ -52,7 +52,7 @@ ALICE_PASSWORD=secret1 tiled serve config example_configs/toy_authentication.yml
 Using the Tiled commandline interface, log in as `alice` using the password `secret1`.
 
 ```
-$ tiled connect http://localhost:8000/api
+$ tiled connect http://localhost:8000
 $ tiled login
 Username: alice
 Password:
@@ -74,7 +74,7 @@ We can use it in the Python client:
 ```py
 >>> from tiled.client import from_url
 >>> API_KEY = "YOUR_KEY_HERE"
->>> c = from_uri("http://localhost:8000/api", api_key=API_KEY)
+>>> c = from_uri("http://localhost:8000", api_key=API_KEY)
 ```
 
 API keys should never be placed directly in scripts or notebooks.
@@ -89,7 +89,7 @@ use that, unless it is explicitly passed different credentials.
 
 ```py
 >>> from tiled.client import from_url
->>> c = from_uri("http://localhost:8000/api")  # uses TILED_API_KEY, if set
+>>> c = from_uri("http://localhost:8000")  # uses TILED_API_KEY, if set
 ```
 
 ## Use the API Key in other web clients
@@ -98,7 +98,7 @@ We can use in other web clients as well. For example, using [HTTPie](https://htt
 we can see that unauthenticated requests are refused
 
 ```
-$ http http://localhost:8000/api/node/metadata/
+$ http http://localhost:8000/api/v1/node/metadata/
 HTTP/1.1 401 Unauthorized
 content-length: 30
 content-type: application/json
@@ -106,7 +106,7 @@ date: Mon, 31 Jan 2022 17:30:06 GMT
 server: uvicorn
 server-timing: app;dur=2.6
 set-cookie: tiled_csrf=bZLhKsXVE2VirgXQncHsHn4Y0Wwwr66U0T0hqarJyfw; HttpOnly; Path=/; SameSite=lax
-x-tiled-root: http://localhost:8000/api
+x-tiled-root: http://localhost:8000/api/v1
 
 {
     "detail": "Not authenticated"
@@ -117,7 +117,7 @@ but passing the API key in the `Authorization` header as `Apikey YOUR_KEY_HERE` 
 (Note the use of `'` quotes.)
 
 ```
-$ http http://localhost:8000/api/node/metadata/ 'Authorization:Apikey 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318'
+$ http http://localhost:8000/api/v1/node/metadata/ 'Authorization:Apikey 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318'
 HTTP/1.1 200 OK
 content-length: 320
 content-type: application/json
@@ -130,7 +130,7 @@ set-cookie: tiled_csrf=InE4mplUO0goPxf4V07tVuLSLUvDqhgtALTHYoC3T3s; HttpOnly; Pa
 ```
 
 The API key can also be passed in the URL like
-`http://localhost:8000/api/node/metadata/?api_key=YOUR_KEY_HERE`. Using the
+`http://localhost:8000/api/v1/node/metadata/?api_key=YOUR_KEY_HERE`. Using the
 `Authorization` header is preferred (more secure) but in some situations, as in
 pasting a link into a web browser, the URL is the only option.
 

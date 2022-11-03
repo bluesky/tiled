@@ -9,7 +9,7 @@ From Python, connect as usual.
 
 ```python
 >>> from tiled.client import from_uri
->>> c = from_uri("https://tiled-demo.blueskyproject.io/api")
+>>> c = from_uri("https://tiled-demo.blueskyproject.io")
 ```
 
 Now, ask to log in.
@@ -21,15 +21,14 @@ Now, ask to log in.
 You will see this prompt.
 
 ```
-Navigate web browser to this address to obtain access code:
+You have 15 minutes visit this URL
 
-https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/auth/code
+https://...
 
-
-Access code (quotes optional):
+and enter the code: XXXX-XXXX
 ```
 
-Copy/paste that link into a web browser.
+A browser tab may opened automatically. Or, you can copy/paste that link into a web browser.
 
 You will prompted to log in to ORCID, unless you are already logged in in
 another browser tab.
@@ -42,22 +41,10 @@ websites that prompt you to "Log in to ___ with Google," for example.
 
 ![ORCID Authorization Prompt](../_static/orcid-authorize.png)
 
-From here, you will be redirected to a page showing a (long!) access code. Copy
-the whole thing.
+From here, you will be redirected to form asking you enter that access code
+of the form `XXXX-XXXX`. This completes the handshake between Tiled and ORCID.
 
-Back in Python, paste it in to the prompt and press enter.
-**You will not see any characters when you paste because the access code input is hidden.**
-
-```
-Navigate web browser to this address to obtain access code:
-
-https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/api/auth/provider/orcid/code
-
-
-Access code (quotes optional): <--- Paste and press Enter. Input is hidden.
-```
-
-After a couple seconds, you will see a confirmation message:
+Back in Python, after a couple seconds, you will see a confirmation message:
 
 ```
 You have logged with ORCID as XXXX-XXXX-XXXX-XXXX.
@@ -74,7 +61,7 @@ Next, quit Python and start it fresh.
 
 ```python
 >>> from tiled.client import from_uri
->>> c = from_uri("https://tiled-demo.blueskyproject.io/api")
+>>> c = from_uri("https://tiled-demo.blueskyproject.io")
 >>> c
 <Node {'big_image', 'small_image', 'medium_image', ...} ~13 entries>
 ```

@@ -61,7 +61,7 @@ any HTTP client.
 ```python
 >>> from tiled.client import from_uri
 
->>> client = from_uri("http://localhost:8000/api")
+>>> client = from_uri("http://localhost:8000")
 
 >>> client
 <Node {'short_table', 'long_table', 'structured_data', ...} ~10 entries>
@@ -141,19 +141,19 @@ data in whole or in efficiently-chunked parts in the format of your choice:
 
 ```
 # Download tabular data as CSV
-http://localhost:8000/api/node/full/long_table?format=csv
+http://localhost:8000/api/v1/node/full/long_table?format=csv
 
 # or XLSX (Excel)
-http://localhost:8000/api/node/full/long_table?format=xslx
+http://localhost:8000/api/v1/node/full/long_table?format=xslx
 
 # and subselect columns.
-http://localhost:8000/api/node/full/long_table?format=xslx&field=A&field=B
+http://localhost:8000/api/v1/node/full/long_table?format=xslx&field=A&field=B
 
 # View or download (2D) array data as PNG
-http://localhost:8000/api/array/full/medium_image?format=png
+http://localhost:8000/api/v1/array/full/medium_image?format=png
 
 # and slice regions of interest.
-http://localhost:8000/api/array/full/medium_image?format=png&slice=:50,100:200
+http://localhost:8000/api/v1/array/full/medium_image?format=png&slice=:50,100:200
 ```
 
 Web-based data access usually involves downloading complete files, in the
