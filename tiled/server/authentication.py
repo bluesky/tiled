@@ -482,9 +482,21 @@ def build_device_code_authorize_route(authenticator, provider):
             None, create_pending_session, settings
         )
         verification_uri = f"{get_base_url(request)}/auth/provider/{provider}/token"
+        authorization_uri = authenticator.authorization_endpoint.copy_with(
+            params={
+                "client_id": authenticator.client_id,
+                "response_type": "code",
+                "scope": "openid",
+                "redirect_uri": f"{get_base_url(request)}/auth/provider/{provider}/device_code",
+            }
+        )
         return {
-            "authorization_uri": authenticator.authorization_endpoint,  # URL that user should visit in browser
-            "verification_uri": verification_uri,  # URL that terminal client will poll
+            "authorization_uri": str(
+                authorization_uri
+            ),  # URL that user should visit in browser
+            "verification_uri": str(
+                verification_uri
+            ),  # URL that terminal client will poll
             "interval": DEVICE_CODE_POLLING_INTERVAL,  # suggested polling interval
             "device_code": pending_session["device_code"],
             "expires_in": DEVICE_CODE_MAX_AGE,  # seconds

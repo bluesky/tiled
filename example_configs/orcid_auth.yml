@@ -1,0 +1,26 @@
+# Must set environment variables ORCID_CLIENT_ID and ORCID_CLIENT_SECRET to run.
+authentication:
+  providers:
+  - provider: orcid
+    authenticator: tiled.authenticators:OIDCAuthenticator
+    args:
+      # These values come from https://orcid.org/developer-tools
+      client_id: ${ORCID_CLIENT_ID}
+      client_secret: ${ORCID_CLIENT_SECRET}
+      # These values come from https://orcid.org/.well-known/openid-configuration
+      # Obtain them directly from ORCID. They may change over time.
+      token_uri: "https://orcid.org/oauth/token"
+      authorization_endpoint: "https://orcid.org/oauth/authorize"
+      public_keys:
+        - kty: "RSA"
+          e: "AQAB"
+          use: "sig"
+          kid: "production-orcid-org-7hdmdswarosg3gjujo8agwtazgkp1ojs"
+          n: "jxTIntA7YvdfnYkLSN4wk__E2zf_wbb0SV_HLHFvh6a9ENVRD1_rHK0EijlBzikb-1rgDQihJETcgBLsMoZVQqGj8fDUUuxnVHsuGav_bf41PA7E_58HXKPrB2C0cON41f7K3o9TStKpVJOSXBrRWURmNQ64qnSSryn1nCxMzXpaw7VUo409ohybbvN6ngxVy4QR2NCC7Fr0QVdtapxD7zdlwx6lEwGemuqs_oG5oDtrRuRgeOHmRps2R6gG5oc-JqVMrVRv6F9h4ja3UgxCDBQjOVT1BFPWmMHnHCsVYLqbbXkZUfvP2sO1dJiYd_zrQhi-FtNth9qrLLv3gkgtwQ"
+          alg: RS256
+      confirmation_message: "You have logged in with ORCID as {id}."
+trees:
+ # Just some arbitrary example data...
+ # The point of this example is the authenticaiton above.
+ - tree: tiled.examples.generated_minimal:tree
+   path: /

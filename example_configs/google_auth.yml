@@ -1,0 +1,32 @@
+# Must set environment variables GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to run.
+authentication:
+  providers:
+  - provider: google
+    authenticator: tiled.authenticators:OIDCAuthenticator
+    args:
+      # These values come from https://console.cloud.google.com/apis/credential
+      client_id: ${GOOGLE_CLIENT_ID}
+      client_secret: ${GOOGLE_CLIENT_SECRET}
+      # These values come from https://accounts.google.com/.well-known/openid-configuration
+      # Obtain them directly from Google. They may change over time.
+      token_uri: "https://oauth2.googleapis.com/token"
+      authorization_endpoint: "https://accounts.google.com/o/oauth2/v2/auth"
+      public_keys:
+      - alg: RS256
+        e: AQAB
+        kid: ee1b9f88cfe3151ddd284a61bf8cecf659b130cf
+        kty: RSA
+        n: rTOxVQCdPMM6n3XRW7VW5e8bGCoimxT-m4cUyaTtLCIf1IqFJRhzc3rgdxsdpg5fjj1Ln2yG_r-3FbkFYJw1ebOCwJ_xlrIeL7FZWqKHl2u5tPKhYkBpPsh-SFZrlEv6X6W2tLcXaFs_8qeHbEasW3A7S6SiS6vMLvcEgufvHSHM1W61U6R9wzOo0lr3rBBOahZFr2Vym8P3eZZ9u_i07RFEqUEFhHXnHYHMLY2Ch9-JbZlCRVbBOfTxCPdOqOkZyFQfGOMj5XLbPHXLSBlmsNzFSv3KgPhZgvmfK113VUN3RFgnDZ5q_-4FK82j_L0FrYZUPRGBA9Crlvtxg_LJWQ
+        use: sig
+      - alg: RS256
+        e: AQAB
+        kid: 77cc0ef4c7181cf4c0dcef7b60ae28cc9022c76b
+        kty: RSA
+        n: yCR1Za9HjpT49GymRQlYSsNg8z7PZGFh5a26IaCo86xPuAcf6VumrKYG6aK9Y1Bh9qJ9MBV1oajmatTuXtc-FtqwqH9Jzbb_-mCYGylx08Mqr83ydV_fIa64ilpVlBz_LHDeDKIYNepQLGqlMNQ6iVuM9MX9NesN3_twudqgz_Ll3FZkpi0DsVOIwV-fOP3zH6h_e0YPbIIjIcxCUs3Pe0rkcjUVRf3yDfPQTjaNtUh9Qg6DGIi1xe5DU0egLvQv6CdbR3wMxNDp8unhForCaenlD8ulzB_tZT0ft6uxPOHEx29FpH6mzfIsbcTZ7VaBfw6KYUaPsZOCcspY14exow
+        use: sig
+      confirmation_message: "You have logged in with Google as {id}."
+trees:
+ # Just some arbitrary example data...
+ # The point of this example is the authenticaiton above.
+ - tree: tiled.examples.generated_minimal:tree
+   path: /
