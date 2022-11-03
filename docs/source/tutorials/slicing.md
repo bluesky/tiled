@@ -14,7 +14,7 @@ Now, in a Python interpreter, connect with the Python client.
 ```python
 from tiled.client import from_uri
 
-client = from_uri("http://localhost:8000/api")
+client = from_uri("http://localhost:8000")
 ```
 
 ## Slicing Arrays
@@ -138,7 +138,7 @@ advanced parallelism and delayed computation. Configure Tiled to use dask
 by passing ``"dask"`` as the second parameter to ``from_uri``.
 
 ```python
->>> client = from_uri("http://localhost:8000/api", "dask")
+>>> client = from_uri("http://localhost:8000", "dask")
 ```
 
 Now use ``client`` the same as above. It will return dask arrays and dataframes.

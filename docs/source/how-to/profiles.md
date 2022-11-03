@@ -98,12 +98,12 @@ As an example, use the content:
 ```yaml
 # profiles.yml
 local:
-   uri: "http://localhost:8000/api"
+   uri: "http://localhost:8000"
    cache:
        memory:
            available_bytes: 2_000_000_000  # 2 GB
 local_dask:
-   uri: "http://localhost:8000/api"
+   uri: "http://localhost:8000"
    structure_clients: "dask"
    cache:
        memory:

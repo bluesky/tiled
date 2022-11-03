@@ -182,7 +182,7 @@ Start the server again
 tiled serve config --public config.yml
 ```
 
-and navigate a web browser to `http://localhost:8000/api/array/full/A?format=image/jpeg`.
+and navigate a web browser to `http://localhost:8000/api/v1/array/full/A?format=image/jpeg`.
 Since the example data is just an array of ones, this will appear as a white square image.
 
 ## File extensions as convenience aliases
@@ -198,14 +198,14 @@ file_extensions:
 to the configuration enables
 
 ```
-http://localhost:8000/api/array/full/A?format=jpeg
-http://localhost:8000/api/array/full/A?format=jpg
+http://localhost:8000/api/v1/array/full/A?format=jpeg
+http://localhost:8000/api/v1/array/full/A?format=jpg
 ```
 
 as equivalent to
 
 ```
-http://localhost:8000/api/array/full/A?format=image/jpeg
+http://localhost:8000/api/v1/array/full/A?format=image/jpeg
 ```
 
 ```{note}

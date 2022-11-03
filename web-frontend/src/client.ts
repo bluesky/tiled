@@ -1,7 +1,7 @@
 import axios from "axios";
 import { components } from "./openapi_schemas";
 
-const apiURL = process.env.REACT_APP_API_PREFIX || "../api";
+const apiURL = process.env.REACT_APP_API_PREFIX || "../api/v1";
 
 var axiosInstance = axios.create({
   baseURL: apiURL,
