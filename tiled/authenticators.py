@@ -5,6 +5,7 @@ import re
 import secrets
 from collections.abc import Iterable
 
+import httpx
 from fastapi import APIRouter, Request
 from jose import JWTError, jwk, jwt
 from starlette.responses import RedirectResponse
@@ -106,8 +107,6 @@ properties:
     type: string
   client_secret:
     type: string
-  redirect_uri:
-    type: string
   token_uri:
     type: string
   authorization_endpoint:
@@ -142,7 +141,6 @@ properties:
         self,
         client_id,
         client_secret,
-        redirect_uri,
         public_keys,
         token_uri,
         authorization_endpoint,
@@ -151,17 +149,15 @@ properties:
         self.client_id = client_id
         self.client_secret = client_secret
         self.confirmation_message = confirmation_message
-        self.redirect_uri = redirect_uri
         self.public_keys = public_keys
         self.token_uri = token_uri
-        self.authorization_endpoint = authorization_endpoint.format(
-            client_id=client_id, redirect_uri=redirect_uri
-        )
+        self.authorization_endpoint = httpx.URL(authorization_endpoint)
 
     async def authenticate(self, request):
         code = request.query_params["code"]
+        redirect_uri = str(httpx.URL(str(request.url)).copy_with(params=[]))
         response = await exchange_code(
-            self.token_uri, code, self.client_id, self.client_secret, self.redirect_uri
+            self.token_uri, code, self.client_id, self.client_secret, redirect_uri
         )
         response_body = response.json()
         if response.is_error:
@@ -227,12 +223,6 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
         token_url ([type]): [description]
         auth_code ([type]): [description]
     """
-    if not modules_available("httpx"):
-        raise ModuleNotFoundError(
-            "This authenticator requires 'httpx'. (pip install httpx)"
-        )
-    import httpx
-
     response = httpx.post(
         url=token_uri,
         data={

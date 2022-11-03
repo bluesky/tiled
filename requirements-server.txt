@@ -7,6 +7,7 @@ cachetools
 click !=8.1.0
 dask
 fastapi
+httpx >=0.20.0
 jinja2
 jmespath
 jsonschema
