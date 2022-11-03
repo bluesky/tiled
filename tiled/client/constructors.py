@@ -31,7 +31,7 @@ def from_uri(
     Parameters
     ----------
     uri : str
-        e.g. "http://localhost:8000/api/v1"
+        e.g. "http://localhost:8000"
     structure_clients : str or dict, optional
         Use "dask" for delayed data loading and "numpy" for immediate
         in-memory structures (e.g. normal numpy arrays, pandas

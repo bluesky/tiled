@@ -244,6 +244,18 @@ class Context:
             node_path_parts.extend(
                 [segment for segment in node_path.split("/") if segment]
             )
+        elif "/api" not in uri.path:
+            # Looks like we were given the root path (to the HTML landing page).
+            path = uri.path
+            if path.endswith("/"):
+                path = path[:-1]
+            api_uri = uri.copy_with(path=f"{path}/api/v1")
+        elif "/v1" not in uri.path:
+            # Looks like we were given the /api but no version.
+            path = uri.path
+            if path.endswith("/"):
+                path = path[:-1]
+            api_uri = uri.copy_with(path=f"{path}/v1")
         else:
             api_uri = uri
         context = cls(

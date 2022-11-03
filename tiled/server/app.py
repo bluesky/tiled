@@ -9,6 +9,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 import anyio
+import packaging.version
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -43,7 +44,6 @@ from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     get_authenticators,
-    get_base_url,
     get_root_url,
     record_timing,
 )
@@ -54,6 +54,8 @@ SENSITIVE_COOKIES = {
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
+
+MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a78")
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -171,20 +173,10 @@ def build_app(
             # API key from the query parameter to a cookie (if it is valid).
             principal=Security(get_current_principal, scopes=[]),
         ):
-            if request.headers.get("user-agent", "").startswith("python-tiled"):
-                # This results in an error message like
-                # ClientError: 400: To connect from a Python client, use
-                # http://localhost:8000/api not http://localhost:8000/?root_path=true
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"To connect from a Python client, use {get_base_url(request)} not",
-                )
             return templates.TemplateResponse(
                 "index.html",
                 {
                     "request": request,
-                    # This is used to fill in the Python code sample with the API URL.
-                    "api_url": get_base_url(request),
                     # This is used to construct the link to the React UI.
                     "root_url": get_root_url(request),
                     # If defined, this adds a Binder link to the page.
@@ -547,6 +539,25 @@ def build_app(
         return response
 
     @app.middleware("http")
+    async def client_compatibility_check(request: Request, call_next):
+        user_agent = request.headers.get("user-agent", "")
+        if user_agent.startswith("python-tiled/"):
+            agent, _, raw_version = user_agent.partition("/")
+            parsed_version = packaging.version.parse(raw_version)
+            if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Python Tiled client is version {parsed_version}. "
+                        f"Version {MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION} or higher "
+                        "is needed to communicate with this Tiled server."
+                    ),
+                )
+        response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        return response
+
+    @app.middleware("http")
     async def set_cookies(request: Request, call_next):
         "This enables dependencies to inject cookies that they want to be set."
         # Create some Request state, to be (possibly) populated by dependencies.
@@ -664,13 +675,9 @@ def print_admin_api_key_if_generated(web_app, host, port):
     if (not authenticators) and settings.single_user_api_key_generated:
         print(
             f"""
-    Navigate a web browser to:
+    Navigate a web browser or connect a Tiled client to:
 
     http://{host}:{port}?api_key={settings.single_user_api_key}
-
-    or connect a Tiled client to:
-
-    http://{host}:{port}/api?api_key={settings.single_user_api_key}
 
 """,
             file=sys.stderr,
