@@ -26,7 +26,7 @@ authentication:
         use: sig
       confirmation_message: "You have logged in with Google as {id}."
 trees:
- # Just some example data...
- # The point of this tutorial is the authenticaiton above.
+ # Just some arbitrary example data...
+ # The point of this example is the authenticaiton above.
  - tree: tiled.examples.generated_minimal:tree
    path: /
