@@ -2,6 +2,7 @@
 aiofiles
 alembic
 anyio
+appdirs
 cachey
 cachetools
 click !=8.1.0
