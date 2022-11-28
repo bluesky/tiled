@@ -136,6 +136,32 @@ def serve_pyobject(
     uvicorn.run(web_app, host=host, port=port)
 
 
+@serve_app.command("demo")
+def serve_demo(
+    host: str = typer.Option(
+        "127.0.0.1",
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`."
+        ),
+    ),
+    port: int = typer.Option(8000, help="Bind to a socket with this port."),
+):
+    "Start a public server with example data."
+    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..utils import import_object
+
+    EXAMPLE = "tiled.examples.generated:tree"
+    tree = import_object(EXAMPLE)
+    web_app = build_app(tree, {"allow_anonymous_access": True}, {})
+    print_admin_api_key_if_generated(web_app, host=host, port=port)
+
+    import uvicorn
+
+    uvicorn.run(web_app, host=host, port=port)
+
+
 @serve_app.command("config")
 def serve_config(
     config_path: Path = typer.Argument(
