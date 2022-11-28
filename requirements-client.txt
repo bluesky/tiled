@@ -3,7 +3,7 @@ appdirs
 click !=8.1.0
 entrypoints
 heapdict
-httpx >=0.20.0
+httpx >=0.20.0,!=0.23.1
 jsonschema
 msgpack >=1.0.0
 pyyaml
