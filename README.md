@@ -52,7 +52,9 @@ memory.  Alternatively, it could be read on demand from a directory of files,
 network resource, database, or some combination of these.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:tree
+tiled serve demo
+# equivalent to:
+# tiled serve pyobject --public tiled.examples.generated:tree
 ```
 
 And then access the data efficiently via the Python client, a web browser, or
