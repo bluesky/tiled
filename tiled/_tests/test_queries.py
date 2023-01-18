@@ -136,7 +136,7 @@ def test_notin(query_values):
     "include_values,exclude_values",
     [
         (["foo", "bar"], ["baz"]),
-        (("foo", "bar"), ("baz")),
+        (("foo", "bar"), ("baz",)),
         ({"foo", "bar"}, {"baz"}),
         ({"foo", "bar", "foo", "bar", "bar"}, {"baz", "baz", "baz"}),
     ],
