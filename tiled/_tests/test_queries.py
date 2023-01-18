@@ -149,9 +149,9 @@ def test_specs(include_values, exclude_values):
         ["specs_foo_bar", "specs_foo_bar_baz"]
     )
 
-    assert list(client.search(Specs(include=include_values, exclude=exclude_values))) == [
-        "specs_foo_bar"
-    ]
+    assert list(
+        client.search(Specs(include=include_values, exclude=exclude_values))
+    ) == ["specs_foo_bar"]
 
 
 def test_structure_families():
