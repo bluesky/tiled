@@ -114,7 +114,7 @@ def test_not_and_and_or():
     ],
 )
 def test_in(query_values):
-    assert list(client.search(In("letter", query_values))) == ["a", "k", "z"]
+    assert sorted(list(client.search(In("letter", query_values)))) == ["a", "k", "z"]
 
 
 @pytest.mark.parametrize(
@@ -127,7 +127,7 @@ def test_in(query_values):
     ],
 )
 def test_notin(query_values):
-    assert list(client.search(NotIn("letter", query_values))) == sorted(
+    assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
         list(set(keys) - set(["a", "k", "z"]))
     )
 
@@ -145,7 +145,7 @@ def test_specs(include_values, exclude_values):
     with pytest.raises(TypeError):
         Specs("foo")
 
-    assert list(client.search(Specs(include=include_values))) == sorted(
+    assert sorted(list(client.search(Specs(include=include_values)))) == sorted(
         ["specs_foo_bar", "specs_foo_bar_baz"]
     )
 
