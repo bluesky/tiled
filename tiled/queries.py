@@ -315,7 +315,7 @@ class Contains(NoBool):
 @dataclass
 class In:
     """
-    Query if a given key's value is present in the specified list of values.
+    Query if a given key's value is present in the specified sequence of values.
 
     Parameters
     ----------
@@ -335,6 +335,9 @@ class In:
     key: str
     value: List[JSONSerializable]
 
+    def __post_init__(self):
+        self.value = list(self.value)
+
     def encode(self):
         return {"key": self.key, "value": json.dumps(self.value)}
 
@@ -347,7 +350,7 @@ class In:
 @dataclass
 class NotIn:
     """
-    Query if a given key's value is not present in the specified list of values.
+    Query if a given key's value is not present in the specified sequence of values.
 
     Parameters
     ----------
@@ -366,6 +369,9 @@ class NotIn:
 
     key: str
     value: List[JSONSerializable]
+
+    def __post_init__(self):
+        self.value = list(self.value)
 
     def encode(self):
         return {"key": self.key, "value": json.dumps(self.value)}
