@@ -104,27 +104,54 @@ def test_not_and_and_or():
         (Key("color") == "red") or (Key("sample") == "Ni")
 
 
-def test_in():
-    assert list(client.search(In("letter", ["a", "k", "z"]))) == ["a", "k", "z"]
+@pytest.mark.parametrize(
+    "query_values",
+    [
+        ["a", "k", "z"],
+        ("a", "k", "z"),
+        {"a", "k", "z"},
+        {"a", "k", "z", "a", "z", "z"},
+    ],
+)
+def test_in(query_values):
+    assert sorted(list(client.search(In("letter", query_values)))) == ["a", "k", "z"]
 
 
-def test_notin():
-    assert list(client.search(NotIn("letter", ["a", "k", "z"]))) == sorted(
+@pytest.mark.parametrize(
+    "query_values",
+    [
+        ["a", "k", "z"],
+        ("a", "k", "z"),
+        {"a", "k", "z"},
+        {"a", "k", "z", "a", "z", "z"},
+    ],
+)
+def test_notin(query_values):
+    assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
         list(set(keys) - set(["a", "k", "z"]))
     )
 
 
-def test_specs():
+@pytest.mark.parametrize(
+    "include_values,exclude_values",
+    [
+        (["foo", "bar"], ["baz"]),
+        (("foo", "bar"), ("baz",)),
+        ({"foo", "bar"}, {"baz"}),
+        ({"foo", "bar", "foo", "bar", "bar"}, {"baz", "baz", "baz"}),
+    ],
+)
+def test_specs(include_values, exclude_values):
     with pytest.raises(TypeError):
         Specs("foo")
 
-    assert list(client.search(Specs(include=["foo", "bar"]))) == sorted(
+    assert sorted(list(client.search(Specs(include=include_values)))) == sorted(
         ["specs_foo_bar", "specs_foo_bar_baz"]
     )
 
-    assert list(client.search(Specs(include=["foo", "bar"], exclude=["baz"]))) == [
-        "specs_foo_bar"
-    ]
+    assert list(
+        client.search(Specs(include=include_values, exclude=exclude_values))
+    ) == ["specs_foo_bar"]
 
 
 def test_structure_families():
