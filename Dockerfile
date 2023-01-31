@@ -1,6 +1,3 @@
-# to build locally, use:
-#  docker build -t tiled . -f ./docker/Dockerfile
-
 FROM node:16-alpine AS web_frontend_builder
 WORKDIR /code
 COPY web-frontend .
@@ -42,12 +39,6 @@ FROM base as app
 
 WORKDIR /deploy
 
-COPY ./docker/entrypoint /usr/local/bin/entrypoint
-COPY ./docker/check_config.py /usr/local/bin/check_config.py
-RUN chmod +x /usr/local/bin/entrypoint
-RUN chmod +x /usr/local/bin/check_config.py
-ENTRYPOINT ["/usr/local/bin/entrypoint"]
-
 EXPOSE 8000
 
-CMD ["tiled", "serve", "config", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["tiled", "serve", "config", "--host", "0.0.0.0", "--port", "8000", "--scalable"]

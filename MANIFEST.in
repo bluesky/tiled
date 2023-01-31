@@ -19,6 +19,7 @@ recursive-include docs *.yml *.rst conf.py Makefile make.bat
 include versioneer.py
 include tiled/_version.py
 include tiled/config_schemas/*.yml
+include tiled/_tests/test_configs/*.yml
 prune web-frontend/node_modules
 
 # If including data files in the package, add them like:
