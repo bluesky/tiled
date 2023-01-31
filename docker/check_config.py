@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 
+"""
+Containers are often used to build scaled (multi-process) deployments. This
+script ensures that the config is compatible with multi-process deployments.
+
+Specifically, it avoids an issue where each process generates its own random
+secret, resulting in workers minting mutually incompatible tokens.
+"""
+
 import os
 import sys
 
