@@ -4,6 +4,7 @@ conventions for metrics & labels. We generally prefer naming them
 `tiled_<noun>_<verb>_<type_suffix>`.
 """
 
+import os
 from functools import lru_cache
 
 from fastapi import APIRouter, Request, Response, Security
@@ -140,13 +141,17 @@ def prometheus_registry():
 
     This is run the first time the /metrics endpoint is used.
     """
-    # The multiprocess configuration makes it compatible with gunicorn.
-    # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
-    from prometheus_client import CollectorRegistry
-    from prometheus_client.multiprocess import MultiProcessCollector
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        # The multiprocess configuration makes it compatible with gunicorn.
+        # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
+        from prometheus_client.multiprocess import MultiProcessCollector
+        from prometheus_client import CollectorRegistry
 
-    registry = CollectorRegistry()
-    MultiProcessCollector(registry)  # This has a side effect, apparently.
+        registry = CollectorRegistry()
+        MultiProcessCollector(registry)  # This has a side effect.
+    else:
+        from prometheus_client import REGISTRY as registry
+
     return registry
 
 

@@ -605,6 +605,24 @@ def build_app(
 
     metrics_config = server_settings.get("metrics", {})
     if metrics_config.get("prometheus", True):
+
+        # PROMETHEUS_MULTIRPOC_DIR puts prometheus_client in multiprocess mode
+        # (for e.g. gunicorn) which uses a directory of memory-mapped files.
+        # If that environment variable is set, check that the directory exists
+        # and is writable.
+        prometheus_multiproc_dir = os.getenv("PROMETHEUS_MULTIPROC_DIR", None)
+        if prometheus_multiproc_dir:
+            if not Path(prometheus_multiproc_dir).is_dir():
+                raise ValueError(
+                    "prometheus enabled and PROMETHEUS_MULTIPROC_DIR is set but "
+                    f"({prometheus_multiproc_dir}) is not a directory"
+                )
+            if not os.access(prometheus_multiproc_dir, os.W_OK):
+                raise ValueError(
+                    "prometheus enabled and PROMETHEUS_MULTIPROC_DIR is set but "
+                    f"({prometheus_multiproc_dir}) is not writable"
+                )
+
         from . import metrics
 
         app.include_router(metrics.router, prefix="/api/v1")
