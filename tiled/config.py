@@ -172,6 +172,9 @@ def construct_build_app_kwargs(
             "response_bytesize_limit"
         )
         server_settings["database"] = config.get("database", {})
+        server_settings["reject_undeclared_specs"] = config.get(
+            "reject_undeclared_specs"
+        )
         server_settings["metrics"] = config.get("metrics", {})
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
@@ -216,15 +219,14 @@ def merge(configs):
     response_bytesize_limit_config_source = None
     allow_origins = []
     media_types = defaultdict(dict)
-    validation = {}
+    specs = []
+    reject_undeclared_specs_source = None
     file_extensions = {}
     paths = {}  # map each item's path to config file that specified it
 
     for filepath, config in configs.items():
         for structure_family, values in config.get("media_types", {}).items():
             media_types[structure_family].update(values)
-
-        validation.update(config.get("validation", {}))
 
         file_extensions.update(config.get("file_extensions", {}))
         allow_origins.extend(config.get("allow_origins", []))
@@ -291,6 +293,15 @@ def merge(configs):
                 )
             database_config_source = filepath
             merged["database"] = config["database"]
+        if "reject_undeclared_specs" in config:
+            if "reject_undeclared_specs" in merged:
+                raise ConfigError(
+                    "'reject_undeclared_specs' can only be specified in one file. "
+                    f"It was found in both {reject_undeclared_specs_source} and "
+                    f"{filepath}"
+                )
+            reject_undeclared_specs_source = filepath
+            merged["reject_undeclared_specs"] = config["reject_undeclared_specs"]
         for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
@@ -302,10 +313,11 @@ def merge(configs):
                 raise ConfigError(msg)
             paths[item["path"]] = filepath
             merged["trees"].append(item)
+        specs.extend(config.get("specs", []))
     merged["media_types"] = dict(media_types)  # convert from defaultdict
     merged["file_extensions"] = file_extensions
     merged["allow_origins"] = allow_origins
-    merged["validation"] = validation
+    merged["specs"] = specs
     return merged
 
 

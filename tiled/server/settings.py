@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     response_bytesize_limit = int(
         os.getenv("TILED_RESPONSE_BYTESIZE_LIMIT", 300_000_000)
     )  # 300 MB
+    reject_undeclared_specs = bool(int(os.getenv("TILED_REJECT_UNDECLARED_SPECS", 0)))
     database_uri: Optional[str] = os.getenv("TILED_DATABASE_URI")
     database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 5))
     database_pool_pre_ping: Optional[bool] = bool(

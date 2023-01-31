@@ -323,7 +323,11 @@ def build_app(
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        for item in ["allow_origins", "response_bytesize_limit"]:
+        for item in [
+            "allow_origins",
+            "response_bytesize_limit",
+            "reject_undeclared_specs",
+        ]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         database = server_settings.get("database", {})

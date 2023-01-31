@@ -5,8 +5,9 @@ This tests tiled's validation registry
 import numpy as np
 import pandas as pd
 
-from ..client import from_config, from_tree
-from ..validation_registration import ValidationError, ValidationRegistry
+from ..client import from_config
+from ..config import merge
+from ..validation_registration import ValidationError
 from .utils import fail_with_status_code
 from .writable_adapters import WritableMapAdapter
 
@@ -43,33 +44,42 @@ def validate_foo(metadata, structure_family, structure, spec, references):
         return metadata
 
 
+tree = WritableMapAdapter({})
+
+
 def test_validators():
 
-    validation_registry = ValidationRegistry()
-    validation_registry.register("foo", validate_foo)
+    config = {
+        "trees": [{"tree": f"{__name__}:tree", "path": "/"}],
+        "specs": [{"spec": "foo", "validator": f"{__name__}:validate_foo"}],
+        "authentication": {"single_user_api_key": API_KEY},
+    }
+    # Check that specs propagate correctly through merging configs.
+    merged_config = merge({"filepath_placeholder": config})
+    assert merged_config["specs"]
+    client = from_config(merged_config)
 
-    tree = WritableMapAdapter({})
-    client = from_tree(
-        tree,
-        api_key=API_KEY,
-        authentication={"single_user_api_key": API_KEY},
-        validation_registry=validation_registry,
-    )
+    # valid example
+    df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
+    client.write_dataframe(df, metadata={"foo": 1}, specs=["foo"])
 
     with fail_with_status_code(400):
+        # not expected structure family
         a = np.ones((5, 7))
         client.write_array(a, metadata={}, specs=["foo"])
 
     with fail_with_status_code(400):
-        df = pd.DataFrame({"x": np.zeros(100), "y": np.zeros(100)})
+        # column names are not expected
+        df = pd.DataFrame({"x": np.zeros(10), "y": np.zeros(10)})
         client.write_dataframe(df, metadata={}, specs=["foo"])
 
     with fail_with_status_code(400):
-        df = pd.DataFrame({"a": np.zeros(100), "b": np.zeros(100)})
+        # missing expected metadata
+        df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
         client.write_dataframe(df, metadata={}, specs=["foo"])
 
     metadata = {"id": 1, "foo": "bar"}
-    df = pd.DataFrame({"a": np.zeros(100), "b": np.zeros(100)})
+    df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
     result = client.write_dataframe(df, metadata=metadata, specs=["foo"])
     assert result.metadata == metadata
     result_df = result.read()
@@ -83,19 +93,33 @@ def test_validators():
     pd.testing.assert_frame_equal(result_df, df)
 
 
-tree = WritableMapAdapter({})
-
-
-def test_unknown_spec():
+def test_unknown_spec_strict():
     "Test unknown spec rejected for upload."
     config = {
         "trees": [{"tree": f"{__name__}:tree", "path": "/"}],
         "specs": [{"spec": "a"}],
         "authentication": {"single_user_api_key": API_KEY},
+        "reject_undeclared_specs": True,
     }
     client = from_config(config, api_key=API_KEY)
     a = np.ones((5, 7))
     client.write_array(a, metadata={}, specs=["a"])
 
     with fail_with_status_code(400):
+        # unknown spec 'b' should be rejected
         client.write_array(a, metadata={}, specs=["b"])
+
+
+def test_unknown_spec_permissive():
+    "Test unknown spec rejected for upload."
+    config = {
+        "trees": [{"tree": f"{__name__}:tree", "path": "/"}],
+        "specs": [{"spec": "a"}],
+        "authentication": {"single_user_api_key": API_KEY},
+        #  "reject_undeclared_specs": false,  # the default
+    }
+    client = from_config(config, api_key=API_KEY)
+    a = np.ones((5, 7))
+    client.write_array(a, metadata={}, specs=["a"])
+    # unknown spec 'b' should be accepted
+    client.write_array(a, metadata={}, specs=["b"])
