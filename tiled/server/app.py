@@ -604,7 +604,7 @@ def build_app(
         ] = override_get_validation_registry
 
     metrics_config = server_settings.get("metrics", {})
-    if metrics_config.get("prometheus", False):
+    if metrics_config.get("prometheus", True):
         from . import metrics
 
         app.include_router(metrics.router, prefix="/api/v1")
