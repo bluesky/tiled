@@ -6,28 +6,37 @@ RUN npm install && npm run build
 # We cannot upgrade to Python 3.11 until numba supports it.
 # The `sparse` library relies on numba.
 FROM python:3.10 as base
-ENV PYTHONUNBUFFERED=1
 WORKDIR /code
 
-# Copy requirements over first so this layer is cached
-# and we don't have to reinstall deps when only the tiled
-# source has changed.
+# Ensure logs and error messages do not get stuck in a buffer.
+ENV PYTHONUNBUFFERED=1
+
+# Use a venv to avoid interfering with system Python.
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+# This is equivalent to `source $VIRTUAL_ENV/bin/activate` but it
+# persists into the runtime so we avoid the need to account for it
+# in ENTRYPOINT or CMD.
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Copy requirements over first so this layer is cached and we don't have to
+# reinstall dependencies when only the tiled source has changed.
 COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-sparse.txt requirements-compression.txt /code/
 RUN pip install --upgrade --no-cache-dir pip wheel
 RUN pip install --upgrade --no-cache-dir \
-  -r /code/requirements-server.txt \
-  -r /code/requirements-formats.txt \
-  -r /code/requirements-dataframe.txt \
   -r /code/requirements-array.txt \
-  -r /code/requirements-xarray.txt \
+  -r /code/requirements-compression.txt \
+  -r /code/requirements-dataframe.txt \
+  -r /code/requirements-formats.txt \
+  -r /code/requirements-server.txt \
   -r /code/requirements-sparse.txt \
-  -r /code/requirements-compression.txt
+  -r /code/requirements-xarray.txt
 
 COPY --from=web_frontend_builder /code/build /code/share/tiled/ui
 COPY . .
 
 # note requirements listed here but all deps should be already satisfied
-RUN pip install '.[server, formats, dataframe, array, xarray, compression, sparse]'
+RUN pip install '.[array, compression, dataframe, formats, server, sparse, xarray]'
 
 # FROM base as test
 #
