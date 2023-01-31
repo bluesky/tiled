@@ -144,8 +144,8 @@ def prometheus_registry():
     if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
         # The multiprocess configuration makes it compatible with gunicorn.
         # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
-        from prometheus_client.multiprocess import MultiProcessCollector
         from prometheus_client import CollectorRegistry
+        from prometheus_client.multiprocess import MultiProcessCollector
 
         registry = CollectorRegistry()
         MultiProcessCollector(registry)  # This has a side effect.

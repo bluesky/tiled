@@ -1,8 +1,9 @@
 """
 This tests the feature that is exercised by the --scalable CLI option.
 """
-import pytest
 from pathlib import Path
+
+import pytest
 
 from ..config import construct_build_app_kwargs, parse_configs
 from ..server.app import UnscalableConfig, build_app

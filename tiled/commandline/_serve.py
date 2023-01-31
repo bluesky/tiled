@@ -82,7 +82,9 @@ def serve_directory(
             "available_bytes"
         ] = object_cache_available_bytes
     tree = DirectoryAdapter.from_directory(directory, **tree_kwargs)
-    web_app = build_app(tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable)
+    web_app = build_app(
+        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+    )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -142,7 +144,9 @@ def serve_pyobject(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    web_app = build_app(tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable)
+    web_app = build_app(
+        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+    )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn

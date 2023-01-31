@@ -748,4 +748,3 @@ def print_admin_api_key_if_generated(web_app, host, port):
 
 class UnscalableConfig(Exception):
     pass
-
