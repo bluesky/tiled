@@ -595,6 +595,7 @@ def post_metadata(
     path: str,
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
+    settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
     if not hasattr(entry, "post_metadata"):
@@ -627,19 +628,24 @@ def post_metadata(
     # won't step on each other in this way, but this may need revisiting.
     for spec in reversed(specs):
         if spec.name not in validation_registry:
-            raise HTTPException(
-                status_code=400, detail=f"Unrecognized spec: {spec.name}"
-            )
-        validator = validation_registry(spec.name)
-        try:
-            result = validator(metadata, structure_family, structure, spec, references)
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=400, detail=f"failed validation for spec {spec.name}:\n{e}"
-            )
-        if result is not None:
-            metadata_modified = True
-            metadata = result
+            if settings.reject_undeclared_specs:
+                raise HTTPException(
+                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
+                )
+        else:
+            validator = validation_registry(spec.name)
+            try:
+                result = validator(
+                    metadata, structure_family, structure, spec, references
+                )
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"failed validation for spec {spec.name}:\n{e}",
+                )
+            if result is not None:
+                metadata_modified = True
+                metadata = result
 
     key = entry.post_metadata(
         metadata=body.metadata,
@@ -764,6 +770,7 @@ async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
     validation_registry=Depends(get_validation_registry),
+    settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if not hasattr(entry, "put_metadata"):
@@ -791,20 +798,24 @@ async def put_metadata(
     # won't step on each other in this way, but this may need revisiting.
     for spec in reversed(specs):
         if spec.name not in validation_registry:
-            raise HTTPException(
-                status_code=400, detail=f"Unrecognized spec: {spec.name}"
-            )
-        validator = validation_registry(spec.name)
-        try:
-            result = validator(metadata, structure_family, structure, spec, references)
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"failed validation for spec {spec.name}:\n{e}",
-            )
-        if result is not None:
-            metadata_modified = True
-            metadata = result
+            if settings.reject_undeclared_specs:
+                raise HTTPException(
+                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
+                )
+        else:
+            validator = validation_registry(spec.name)
+            try:
+                result = validator(
+                    metadata, structure_family, structure, spec, references
+                )
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"failed validation for spec {spec.name}:\n{e}",
+                )
+            if result is not None:
+                metadata_modified = True
+                metadata = result
 
     entry.put_metadata(metadata=metadata, specs=specs, references=references)
 
