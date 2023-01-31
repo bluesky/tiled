@@ -56,6 +56,13 @@ def serve_directory(
             "0.15 (15%) of RAM."
         ),
     ),
+    scalable: bool = typer.Option(
+        False,
+        "--scalable",
+        help=(
+            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
+        ),
+    ),
 ):
     "Serve a Tree instance from a directory of files."
     from ..adapters.files import DirectoryAdapter
@@ -75,7 +82,9 @@ def serve_directory(
             "available_bytes"
         ] = object_cache_available_bytes
     tree = DirectoryAdapter.from_directory(directory, **tree_kwargs)
-    web_app = build_app(tree, {"allow_anonymous_access": public}, server_settings)
+    web_app = build_app(
+        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+    )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -116,6 +125,13 @@ def serve_pyobject(
             "0.15 (15%) of RAM."
         ),
     ),
+    scalable: bool = typer.Option(
+        False,
+        "--scalable",
+        help=(
+            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
+        ),
+    ),
 ):
     "Serve a Tree instance from a Python module."
     from ..server.app import build_app, print_admin_api_key_if_generated
@@ -128,7 +144,9 @@ def serve_pyobject(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    web_app = build_app(tree, {"allow_anonymous_access": public}, server_settings)
+    web_app = build_app(
+        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+    )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
@@ -192,6 +210,13 @@ def serve_config(
     port: int = typer.Option(
         None, help="Bind to a socket with this port. Uses value in config by default."
     ),
+    scalable: bool = typer.Option(
+        False,
+        "--scalable",
+        help=(
+            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
+        ),
+    ),
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
@@ -224,7 +249,7 @@ def serve_config(
     # This config was already validated when it was parsed. Do not re-validate.
     kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
-    web_app = build_app(**kwargs)
+    web_app = build_app(scalable=scalable, **kwargs)
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
     )

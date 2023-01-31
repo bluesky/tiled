@@ -34,7 +34,8 @@ and serve it using the docker container
 ```
 docker run --rm -p 8000:8000 \
   --mount type=bind,source="$(pwd)",target=/deploy \
-  --env TILED_CONFIG=/deploy/config.yml ghcr.io/bluesky/tiled:main
+  --env TILED_CONFIG=/deploy/config.yml \
+  ghcr.io/bluesky/tiled:main
 ```
 Note that we make the data and the configuration file available to the
 container via bind mounds and point tiled to the configuration file using the
@@ -62,7 +63,3 @@ services:
 ```
 
 With this file the tiled server can be brought up by simply running `docker-compose up`.
-
-To change the gunicorn configuration, to for example change the number of
-workers or the port, set the environment variable `GUNICORN_CONF` to point to
-a configuration file accessible in the container.

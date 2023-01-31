@@ -1,9 +1,7 @@
 # config.yml
 trees:
   - path: /
-    tree: tiled.adapters.files:DirectoryAdapter.from_directory
-    args:
-      directory: "example_files"
+    tree: tiled.examples.generated_minimal:tree
 uvicorn:
   host: 0.0.0.0
   port: 8000
