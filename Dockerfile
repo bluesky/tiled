@@ -6,6 +6,12 @@ RUN npm install && npm run build
 # We cannot upgrade to Python 3.11 until numba supports it.
 # The `sparse` library relies on numba.
 FROM python:3.10-slim as builder
+
+# We need git at build time in order for versioneer to work, which in turn is
+# needed for the server to correctly report the library_version in the /api/v1/
+# route.
+RUN apt-get -y update && apt-get install -y git
+
 WORKDIR /code
 
 # Ensure logs and error messages do not get stuck in a buffer.
