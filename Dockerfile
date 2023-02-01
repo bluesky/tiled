@@ -5,7 +5,7 @@ RUN npm install && npm run build
 
 # We cannot upgrade to Python 3.11 until numba supports it.
 # The `sparse` library relies on numba.
-FROM python:3.10 as base
+FROM python:3.10-slim as builder
 WORKDIR /code
 
 # Ensure logs and error messages do not get stuck in a buffer.
@@ -44,7 +44,11 @@ RUN pip install '.[array, compression, dataframe, formats, server, sparse, xarra
 # RUN pip install -r requirements-dev.txt
 # RUN pytest -v
 
-FROM base as app
+FROM python:3.10-slim as runner
+
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 
 WORKDIR /deploy
 
