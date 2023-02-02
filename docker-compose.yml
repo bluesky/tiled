@@ -1,7 +1,8 @@
-version: "3.2" # higher config versions may also work; lower will not
+version: "3.2"
 services:
   tiled:
-    image: tiled
+    build:
+      contenxt: .
     volumes:
       - type: bind
         source: .
