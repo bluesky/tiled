@@ -11,3 +11,46 @@ services:
       - TILED_CONFIG=/deploy/config.yml
     ports:
       - 8000:8000
+    restart: unless-stopped
+
+  # Below we additionally configure monitoring with Prometheus and Grafana.
+  # This is optional; it is not required for Tiled to function.
+
+  prometheus:
+    image: docker.io/prom/prometheus:v2.42.0
+    volumes:
+      - ./monitoring_example/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - backend
+    restart: unless-stopped
+
+  grafana:
+    image: docker.io/grafana/grafana:8.2.6
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    volumes:
+      - ./monitoring_example/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring_example/grafana/main.yml:/etc/grafana/provisioning/dashboards/main.yml
+      - ./monitoring_example/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - backend
+    restart: unless-stopped
+
+    # Disable Grafana login screen for dev/demo.
+    # DO NOT USE THESE SETTINGS IN PRODUCTION.
+    environment:
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_SIGNOUT_MENU: "true"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+
+networks:
+  backend: {}
