@@ -1,0 +1,27 @@
+version: 1
+disable_existing_loggers: False
+formatters:
+  default:
+    (): 'tiled.json_log_formatter.JSONFormatter'
+  access:
+    (): 'tiled.json_log_formatter.JSONFormatter'
+handlers:
+  default:
+    formatter: default
+    class: logging.StreamHandler
+    stream: ext://sys.stderr
+  access:
+    formatter: access
+    class: logging.StreamHandler
+    stream: ext://sys.stdout
+loggers:
+  uvicorn.error:
+    level: INFO
+    handlers:
+      - default
+    propagate: no
+  uvicorn.access:
+    level: INFO
+    handlers:
+      - access
+    propagate: no
