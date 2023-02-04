@@ -28,6 +28,7 @@
   "panels": [
     {
       "datasource": "Prometheus",
+      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -98,25 +99,10 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(rate(tiled_request_duration_seconds_bucket{}[1m]))",
-          "interval": "",
-          "legendFormat": "Total",
-          "refId": "A"
-        },
-        {
-          "exemplar": true,
-          "expr": "sum(rate(tiled_request_duration_seconds_bucket{code=\"200\"}[1m]))",
+          "expr": "sum by (code) (rate(tiled_request_duration_seconds_count[1m]))",
           "hide": false,
           "interval": "",
-          "legendFormat": "200",
-          "refId": "C"
-        },
-        {
-          "exemplar": true,
-          "expr": "sum(rate(tiled_request_duration_seconds_bucket{code=\"304\"}[1m]))",
-          "hide": false,
-          "interval": "",
-          "legendFormat": "304",
+          "legendFormat": "",
           "refId": "B"
         }
       ],
@@ -195,10 +181,17 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "histogram_quantile(0.95, sum(rate(tiled_request_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(tiled_request_duration_seconds_bucket[5m])) by (le))",
           "interval": "",
           "legendFormat": "95th percentile",
           "refId": "95th"
+        },
+        {
+          "exemplar": true,
+          "expr": "histogram_quantile(0.50, sum(rate(tiled_request_duration_seconds_bucket[5m])) by (le))",
+          "interval": "",
+          "legendFormat": "50th percentile",
+          "refId": "50th"
         }
       ],
       "title": "Response Time",
