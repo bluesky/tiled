@@ -1,3 +1,6 @@
+import builtins
+import collections
+import re
 from functools import lru_cache
 from typing import Optional
 
@@ -116,20 +119,53 @@ def expected_shape(
     return tuple(map(int, expected_shape.split(",")))
 
 
-def slice_(
-    slice: str = Query(None, regex="^[-0-9,:]*$"),
-):
-    "Specify and parse a block index parameter."
-    import numpy
+# Accept numpy-style mutlidimesional slices and special constructs 'a:b:mean'
+# and 'a:b:mean(c)' to represent downsampling, inspired by
+# https://uhi.readthedocs.io/en/latest/
+# Note: if you need to debug this, the interactive tool at https://regex101.com/ is your friend!
+DIM_REGEX = r"(?:(-?[0-9]+)|(?:([0-9]*|-[0-9]+):(?:([0-9]*|-[0-9]+))?(?::(mean|mean\([0-9]+\)|[0-9]*|-[0-9]+))?))"
+SLICE_REGEX = rf"^{DIM_REGEX}(,{DIM_REGEX})*$"
+DIM_PATTERN = re.compile(rf"^{DIM_REGEX}$")
+MEAN_PATTERN = re.compile(r"(mean|mean\(([0-9]+)\))")
 
-    # IMPORTANT We are eval-ing a user-provider string here so we need to be
-    # very careful about locking down what can be in it. The regex above
-    # excludes any letters or operators, so it is not possible to execute
-    # functions or expensive arithmetic.
-    return tuple(
-        [
-            eval(f"numpy.s_[{dim!s}]", {"numpy": numpy})
-            for dim in (slice or "").split(",")
-            if dim
-        ]
-    )
+
+# This object is meant to be placed at slice.step and used by the consumer to
+# detect that it should agggregate, using
+# numpy.mean or skimage.transform.downscale_local_mean.
+Mean = collections.namedtuple("Mean", ["parameter"])
+
+
+def _int_or_none(s):
+    return int(s) if s else None
+
+
+def _mean_int_or_none(s):
+    if s is None:
+        return None
+    m = MEAN_PATTERN.match(s)
+    if m.group(0):
+        return Mean(m.group(1))
+    return _int_or_none(s)
+
+
+def slice_(
+    slice: str = Query("", regex=SLICE_REGEX),
+):
+    "Specify and parse a slice parameter."
+    slices = []
+    for dim in slice.split(","):
+        if dim:
+            match = DIM_PATTERN.match(dim)
+            # Group 1 matches an int, as in arr[i].
+            if match.group(1) is not None:
+                s = int(match.group(1))
+            else:
+                # Groups 2 through 4 match a slice, as in arr[i:j:k].
+                s = builtins.slice(
+                    _int_or_none(match.group(2)),
+                    _int_or_none(match.group(3)),
+                    _mean_int_or_none(match.group(4)),
+                )
+            slices.append(s)
+    print("slices", slices)
+    return tuple(slices)
