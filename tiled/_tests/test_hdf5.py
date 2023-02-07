@@ -51,8 +51,8 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
-    client = from_tree(tree)
     with pytest.warns(UserWarning):
+        client = from_tree(tree)
         arr = client["a"]["b"]["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
     buffer = io.BytesIO()
