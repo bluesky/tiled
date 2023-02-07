@@ -397,8 +397,13 @@ class Sentinel:
 UNCHANGED = Sentinel("UNCHANGED")
 
 
-def import_object(colon_separated_string, accept_live_object=False):
+def import_object(colon_separated_string, accept_live_object=True):
     if not isinstance(colon_separated_string, str):
+        if not accept_live_object:
+            raise ValueError(
+                "accept_live_object is False, but live object has been passed"
+            )
+
         # We have been handed the live object itself.
         # Nothing to import. Pass it through.
         return colon_separated_string
