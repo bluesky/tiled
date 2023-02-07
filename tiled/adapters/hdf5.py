@@ -11,6 +11,7 @@ from ..utils import DictView, node_repr
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
+INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
 class HDF5DatasetAdapter(ArrayAdapter):
@@ -150,3 +151,6 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         if direction < 0:
             items = reversed(items)
         return items[start:stop]
+
+    def inlined_contents_enabled(self, depth):
+        return depth < INLINED_DEPTH
