@@ -397,7 +397,7 @@ class Sentinel:
 UNCHANGED = Sentinel("UNCHANGED")
 
 
-def import_object(colon_separated_string, accept_live_object=False):
+def import_object(colon_separated_string, accept_live_object=True):
     if not isinstance(colon_separated_string, str):
         if not accept_live_object:
             raise ValueError(
