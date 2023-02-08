@@ -5,6 +5,8 @@ from datetime import datetime
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
 
@@ -19,77 +21,79 @@ REQUIRED_REVISION = "4a9dfaba4a98"
 ALL_REVISIONS = ["4a9dfaba4a98", "56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
 
 
-def create_default_roles(engine):
+async def create_default_roles(session):
 
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
-
-    db.add(
-        Role(
-            name="user",
-            description="Default Role for users.",
-            scopes=[
-                "read:metadata",
-                "read:data",
-                "create",
-                "write:metadata",
-                "write:data",
-                "apikeys",
-            ],
-        ),
+    session.add_all(
+        [
+            Role(
+                name="user",
+                description="Default Role for users.",
+                scopes=[
+                    "read:metadata",
+                    "read:data",
+                    "create",
+                    "write:metadata",
+                    "write:data",
+                    "apikeys",
+                ],
+            ),
+            Role(
+                name="admin",
+                description="Role with elevated privileges.",
+                scopes=[
+                    "read:metadata",
+                    "read:data",
+                    "create",
+                    "write:metadata",
+                    "write:data",
+                    "admin:apikeys",
+                    "read:principals",
+                    "metrics",
+                ],
+            ),
+        ]
     )
-    db.add(
-        Role(
-            name="admin",
-            description="Role with elevated privileges.",
-            scopes=[
-                "read:metadata",
-                "read:data",
-                "create",
-                "write:metadata",
-                "write:data",
-                "admin:apikeys",
-                "read:principals",
-                "metrics",
-            ],
-        ),
-    )
-    db.commit()
+    await session.commit()
 
 
-def initialize_database(engine):
+async def initialize_database(engine):
 
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 
     # Create all tables.
-    Base.metadata.create_all(engine)
+    async with engine.connect() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     # Initialize Roles table.
-    create_default_roles(engine)
+    async with AsyncSession(engine) as session:
+        await create_default_roles(session)
 
     # Mark current revision.
     with temp_alembic_ini(engine.url) as alembic_ini:
-        alembic_cfg = Config(alembic_ini)
-        command.stamp(alembic_cfg, "head")
+        async with engine.connect() as conn:
+            alembic_cfg = Config(alembic_ini)
+            await conn.run_sync(lambda conn: command.stamp(alembic_cfg, "head"))
 
 
-def upgrade(engine, revision):
+async def upgrade(engine, revision):
     """
     Upgrade schema to the specified revision.
     """
     with temp_alembic_ini(engine.url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
-        command.upgrade(alembic_cfg, revision)
+        async with engine.connect() as conn:
+            await conn.run_sync(lambda conn: command.upgrade(alembic_cfg, revision))
 
 
-def downgrade(engine, revision):
+async def downgrade(engine, revision):
     """
     Downgrade schema to the specified revision.
     """
     with temp_alembic_ini(engine.url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
-        command.downgrade(alembic_cfg, revision)
+        async with engine.connect() as conn:
+            await conn.run_sync(lambda conn: command.downgrade(alembic_cfg, revision))
 
 
 class UnrecognizedDatabase(Exception):
@@ -104,12 +108,13 @@ class DatabaseUpgradeNeeded(Exception):
     pass
 
 
-def get_current_revision(engine):
+async def get_current_revision(engine):
 
     redacted_url = engine.url._replace(password="[redacted]")
-    with engine.begin() as conn:
-        context = migration.MigrationContext.configure(conn)
-        heads = context.get_current_heads()
+    async with engine.connect() as conn:
+        context = await conn.run_sync(migration.MigrationContext.configure)
+        heads = await conn.run_sync(lambda conn: context.get_current_heads)
+        heads = ()
     if heads == ():
         return None
     elif len(heads) != 1:
@@ -128,8 +133,8 @@ def get_current_revision(engine):
     return revision
 
 
-def check_database(engine):
-    revision = get_current_revision(engine)
+async def check_database(engine):
+    revision = await get_current_revision(engine)
     redacted_url = engine.url._replace(password="[redacted]")
     if revision is None:
         raise UninitializedDatabase(
@@ -167,20 +172,22 @@ def purge_expired(engine, cls):
     return cls
 
 
-def create_user(db, identity_provider, id):
-    principal = Principal(type="user")
-    user_role = db.query(Role).filter(Role.name == "user").first()
-    principal.roles.append(user_role)
-    db.add(principal)
-    db.commit()
-    db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
+async def create_user(session, identity_provider, id):
+    user_role = (
+        await session.execute(select(Role).filter(Role.name == "user"))
+    ).scalar()
+    assert user_role is not None, "User role is missing from Roles table"
+    principal = Principal(type="user", roles=[user_role])
+    session.add(principal)
+    await session.commit()
+    # db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
     identity = Identity(
         provider=identity_provider,
         id=id,
         principal_id=principal.id,
     )
-    db.add(identity)
-    db.commit()
+    session.add(identity)
+    await session.commit()
     return principal
 
 
@@ -242,20 +249,24 @@ def lookup_valid_pending_session_by_user_code(db, user_code):
     return pending_session
 
 
-def make_admin_by_identity(db, identity_provider, id):
+async def make_admin_by_identity(session, identity_provider, id):
     identity = (
-        db.query(Identity)
-        .filter(Identity.id == id)
-        .filter(Identity.provider == identity_provider)
-        .first()
-    )
+        await session.execute(
+            select(Identity)
+            .filter(Identity.id == id)
+            .filter(Identity.provider == identity_provider)
+        )
+    ).first()
     if identity is None:
-        principal = create_user(db, identity_provider, id)
+        principal = await create_user(session, identity_provider, id)
     else:
         principal = identity.principal
-    admin_role = db.query(Role).filter(Role.name == "admin").first()
+    admin_role = (
+        await session.execute(select(Role).filter(Role.name == "admin"))
+    ).scalar()
+    assert admin_role is not None, "Admin role is missing from Roles table"
     principal.roles.append(admin_role)
-    db.commit()
+    await session.commit()
     return principal
 
 

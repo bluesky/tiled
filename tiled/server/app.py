@@ -358,7 +358,9 @@ def build_app(
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in the current working directory.
-            settings.database_uri = settings.database_uri or "sqlite:///./tiled.sqlite"
+            settings.database_uri = (
+                settings.database_uri or "sqlite+aiosqlite:///./tiled.sqlite"
+            )
         return settings
 
     @app.on_event("startup")
@@ -435,41 +437,44 @@ def build_app(
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_uri is not None:
-            with get_sessionmaker(settings.database_settings)() as db:
-                from ..database import orm
-                from ..database.core import (
-                    REQUIRED_REVISION,
-                    DatabaseUpgradeNeeded,
-                    UninitializedDatabase,
-                    check_database,
-                    initialize_database,
-                    make_admin_by_identity,
-                )
+            from sqlalchemy.ext.asyncio.engine import AsyncEngine
 
-                engine = db.get_bind()
+            from ..database import orm
+            from ..database.core import (
+                REQUIRED_REVISION,
+                DatabaseUpgradeNeeded,
+                UninitializedDatabase,
+                check_database,
+                initialize_database,
+                make_admin_by_identity,
+            )
+
+            async with get_sessionmaker(settings.database_settings)() as session:
+                sync_engine = session.get_bind()
+                engine = AsyncEngine(sync_engine)
                 redacted_url = engine.url._replace(password="[redacted]")
                 try:
-                    check_database(engine)
+                    await check_database(engine)
                 except UninitializedDatabase:
                     # Create tables and stamp (alembic) revision.
                     logger.info(
                         f"Database {redacted_url} is new. "
                         f"Creating tables and marking revision {REQUIRED_REVISION}."
                     )
-                    initialize_database(engine)
+                    await initialize_database(engine)
                     logger.info("Database initialized.")
                 except DatabaseUpgradeNeeded as err:
                     print(
                         f"""
 
-    The database used by Tiled to store authentication-related information
-    was created using an older version of Tiled. It needs to be upgraded to
-    work with this version of Tiled.
+The database used by Tiled to store authentication-related information
+was created using an older version of Tiled. It needs to be upgraded to
+work with this version of Tiled.
 
-    Back up the database, and then run:
+Back up the database, and then run:
 
-        tiled admin upgrade-database {redacted_url}
-    """,
+    tiled admin upgrade-database {redacted_url}
+""",
                         file=sys.stderr,
                     )
                     raise err from None
@@ -479,8 +484,8 @@ def build_app(
                     logger.info(
                         f"Ensuring that principal with identity {admin} has role 'admin'"
                     )
-                    make_admin_by_identity(
-                        db,
+                    await make_admin_by_identity(
+                        session,
                         identity_provider=admin["provider"],
                         id=admin["id"],
                     )

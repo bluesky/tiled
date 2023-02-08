@@ -79,6 +79,8 @@ class Timestamped:
     forensics.
     """
 
+    __mapper_args__ = {"eager_defaults": True}
+
     time_created = Column(DateTime(timezone=False), server_default=func.now())
     time_updated = Column(
         DateTime(timezone=False), onupdate=func.now()

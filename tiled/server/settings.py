@@ -80,22 +80,16 @@ def get_settings():
 
 @lru_cache(1)
 def get_sessionmaker(database_settings):
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import scoped_session, sessionmaker
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.ext.asyncio import create_async_engine
+
 
     connect_args = {}
     kwargs = {}  # extra kwargs passed to create_engine
-    kwargs["pool_size"] = database_settings.pool_size
-    kwargs["pool_pre_ping"] = database_settings.pool_pre_ping
-    kwargs["max_overflow"] = database_settings.max_overflow
-    if database_settings.uri.startswith("sqlite"):
-        from sqlalchemy.pool import QueuePool
-
-        kwargs["poolclass"] = QueuePool
-        connect_args.update({"check_same_thread": False})
-    engine = create_engine(database_settings.uri, connect_args=connect_args, **kwargs)
-    sm = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    if database_settings.uri.startswith("sqlite"):
-        # Scope to a session per thread.
-        return scoped_session(sm)
+    # kwargs["pool_size"] = database_settings.pool_size
+    # kwargs["pool_pre_ping"] = database_settings.pool_pre_ping
+    # kwargs["max_overflow"] = database_settings.max_overflow
+    engine = create_async_engine(database_settings.uri, connect_args=connect_args, **kwargs)
+    sm = sessionmaker(engine, autocommit=False, autoflush=False, expire_on_commit=False, class_=AsyncSession)
     return sm

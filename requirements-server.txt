@@ -1,5 +1,6 @@
 # These are the requirements needed for basic server functionality.
 aiofiles
+aiosqlite
 alembic
 anyio
 appdirs
