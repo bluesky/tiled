@@ -153,4 +153,4 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         return items[start:stop]
 
     def inlined_contents_enabled(self, depth):
-        return depth < INLINED_DEPTH
+        return depth <= INLINED_DEPTH
