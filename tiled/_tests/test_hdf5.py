@@ -3,9 +3,11 @@ import io
 import numpy
 import pytest
 
+from ..adapters import hdf5 as hdf5_adapters
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import from_tree, record_history
+from ..utils import tree as tree_util
 
 
 @pytest.fixture
@@ -51,8 +53,8 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
-    client = from_tree(tree)
     with pytest.warns(UserWarning):
+        client = from_tree(tree)
         arr = client["a"]["b"]["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
     buffer = io.BytesIO()
@@ -94,3 +96,20 @@ def test_from_multiple(example_file):
     file = h5py.File(buffer, "r")
     file["A"]["a"]["b"]["c"]["d"]
     file["B"]["a"]["b"]["c"]["d"]
+
+
+def test_inlined_contents(example_file):
+    """Serve a Group within an HDF5 file."""
+    tree = HDF5Adapter(example_file["a"]["b"])
+    assert hdf5_adapters.INLINED_DEPTH > 0
+    original = hdf5_adapters.INLINED_DEPTH
+    try:
+        hdf5_adapters.INLINED_DEPTH = 1
+        with record_history() as h1:
+            tree_util(from_tree(tree))
+        hdf5_adapters.INLINED_DEPTH = 0
+        with record_history() as h0:
+            tree_util(from_tree(tree))
+        assert len(h0.requests) > len(h1.requests)
+    finally:
+        hdf5_adapters.INLINED_DEPTH = original
