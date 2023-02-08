@@ -8,7 +8,7 @@ from .base import BaseStructureClient
 from .utils import export_util, params_from_slice
 
 
-class DaskArrayClient(BaseStructureClient):
+class _DaskArrayClient(BaseStructureClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     def __init__(self, *args, item, **kwargs):
@@ -233,6 +233,17 @@ class DaskArrayClient(BaseStructureClient):
             self.item["links"][link].format(**template_vars),
             params=params,
         )
+
+
+# Subclass with a public class that adds the dask-specific methods.
+
+
+class DaskArrayClient(_DaskArrayClient):
+    "Client-side wrapper around an array-like that returns dask arrays"
+
+    def compute(self):
+        "Alias to client.read().compute()"
+        return self.read().compute()
 
 
 class ArrayClient(DaskArrayClient):

@@ -7,8 +7,8 @@ from .base import BaseStructureClient
 from .utils import ClientError, client_for_item, export_util
 
 
-class DaskDataFrameClient(BaseStructureClient):
-    "Client-side wrapper around an array-like that returns dask arrays"
+class _DaskDataFrameClient(BaseStructureClient):
+    "Client-side wrapper around an dataframe-like that returns dask dataframes"
 
     def new_variation(self, structure=UNCHANGED, **kwargs):
         if structure is UNCHANGED:
@@ -217,7 +217,18 @@ class DaskDataFrameClient(BaseStructureClient):
         )
 
 
-class DataFrameClient(DaskDataFrameClient):
+# Subclass with a public class that adds the dask-specific methods.
+
+
+class DaskDataFrameClient(_DaskDataFrameClient):
+    "Client-side wrapper around an dataframe-like that returns dask dataframes"
+
+    def compute(self):
+        "Alias to client.read().compute()"
+        return self.read().compute()
+
+
+class DataFrameClient(_DaskDataFrameClient):
     "Client-side wrapper around a dataframe-like that returns in-memory dataframes"
 
     def read_partition(self, partition, columns=None):
