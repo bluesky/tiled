@@ -1,6 +1,9 @@
+import yaml
+
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_config
+from ..config import parse_configs
 
 tree = MapAdapter({"example": ArrayAdapter.from_array([1, 2, 3])})
 
@@ -90,3 +93,12 @@ def test_many_nested():
     assert list(client["a"]["d"]["f"]) == ["example"]
     assert list(client["a"]["d"]["g"]["h"]) == ["example"]
     assert list(client["a"]["d"]["g"]["i"]) == ["example"]
+
+
+def test_extra_files(tmpdir):
+    config = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
+    with open(tmpdir / "config.yml", "w") as config_file:
+        yaml.dump(config, config_file)
+    with open(tmpdir / "README.md", "w") as extra_file:
+        extra_file.write("# Example")
+    parse_configs(str(tmpdir))

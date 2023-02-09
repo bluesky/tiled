@@ -325,19 +325,18 @@ def parse_configs(config_path):
     """
     Parse configuration file or directory of configuration files.
 
-    If a directory is given it is expected to contain only valid
-    configuration files, except for the following which are ignored:
-
-    * Hidden files or directories (starting with .)
-    * Python scripts (ending in .py)
-    * The __pycache__ directory
+    If a directory is given, any files not ending in `.yml` or `.yaml` are
+    ignored. Therefore, the directory may also contain a README file and
+    supporting Python scripts with custom objects.
     """
     if isinstance(config_path, str):
         config_path = Path(config_path)
     if config_path.is_file():
         filepaths = [config_path]
     elif config_path.is_dir():
-        filepaths = list(config_path.iterdir())
+        filepaths = [
+            fn for fn in config_path.iterdir() if fn.suffix in (".yml", ".yaml")
+        ]
     elif not config_path.exists():
         raise ValueError(f"The config path {config_path!s} doesn't exist.")
     else:
