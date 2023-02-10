@@ -20,9 +20,9 @@ REQUIRED_REVISION = "4a9dfaba4a98"
 ALL_REVISIONS = ["4a9dfaba4a98", "56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
 
 
-async def create_default_roles(session):
+async def create_default_roles(db_session):
 
-    session.add_all(
+    db_session.add_all(
         [
             Role(
                 name="user",
@@ -52,7 +52,7 @@ async def create_default_roles(session):
             ),
         ]
     )
-    await session.commit()
+    await db_session.commit()
 
 
 async def initialize_database(engine):
@@ -65,8 +65,8 @@ async def initialize_database(engine):
         await conn.run_sync(Base.metadata.create_all)
 
         # Initialize Roles table.
-        async with AsyncSession(engine) as session:
-            await create_default_roles(session)
+        async with AsyncSession(engine) as db_session:
+            await create_default_roles(db_session)
 
         # Mark current revision.
         with temp_alembic_ini(engine.url) as alembic_ini:
@@ -166,105 +166,109 @@ async def purge_expired(db_session, cls):
     return num_expired
 
 
-async def create_user(session, identity_provider, id):
+async def create_user(db_session, identity_provider, id):
     user_role = (
-        await session.execute(select(Role).filter(Role.name == "user"))
+        await db_session.execute(select(Role).filter(Role.name == "user"))
     ).scalar()
     assert user_role is not None, "User role is missing from Roles table"
     principal = Principal(type="user", roles=[user_role])
-    session.add(principal)
-    await session.commit()
+    db_session.add(principal)
+    await db_session.commit()
     # db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
     identity = Identity(
         provider=identity_provider,
         id=id,
         principal_id=principal.id,
     )
-    session.add(identity)
-    await session.commit()
+    db_session.add(identity)
+    await db_session.commit()
     return principal
 
 
-def lookup_valid_session(db, session_id):
+async def lookup_valid_session(db_session, session_id):
     if isinstance(session_id, int):
         # Old versions of tiled used an integer sid.
         # Reject any of those old sessions and force reauthentication.
         return None
 
     session = (
-        db.query(Session)
-        .filter(Session.uuid == uuid_module.UUID(hex=session_id))
-        .first()
-    )
+        await db_session.execute(
+            select(Session).filter(Session.uuid == uuid_module.UUID(hex=session_id))
+        )
+    ).scalar()
     if session is None:
         return None
     if (
         session.expiration_time is not None
         and session.expiration_time < datetime.utcnow()
     ):
-        db.delete(session)
-        db.commit()
+        db_session.delete(session)
+        await db_session.commit()
         return None
     return session
 
 
-def lookup_valid_pending_session_by_device_code(db, device_code):
+async def lookup_valid_pending_session_by_device_code(db_session, device_code):
     hashed_device_code = hashlib.sha256(device_code).digest()
     pending_session = (
-        db.query(PendingSession)
-        .filter(PendingSession.hashed_device_code == hashed_device_code)
-        .first()
-    )
+        await db_session.execute(
+            select(PendingSession).filter(
+                PendingSession.hashed_device_code == hashed_device_code
+            )
+        )
+    ).scalar()
     if pending_session is None:
         return None
     if (
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db.delete(pending_session)
-        db.commit()
+        db_session.delete(pending_session)
+        await db_session.commit()
         return None
     return pending_session
 
 
-def lookup_valid_pending_session_by_user_code(db, user_code):
+async def lookup_valid_pending_session_by_user_code(db_session, user_code):
     pending_session = (
-        db.query(PendingSession).filter(PendingSession.user_code == user_code).first()
-    )
+        await db_session.execute(
+            select(PendingSession).filter(PendingSession.user_code == user_code)
+        )
+    ).scalar()
     if pending_session is None:
         return None
     if (
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db.delete(pending_session)
-        db.commit()
+        db_session.delete(pending_session)
+        await db_session.commit()
         return None
     return pending_session
 
 
-async def make_admin_by_identity(session, identity_provider, id):
+async def make_admin_by_identity(db_session, identity_provider, id):
     identity = (
-        await session.execute(
+        await db_session.execute(
             select(Identity)
             .filter(Identity.id == id)
             .filter(Identity.provider == identity_provider)
         )
     ).first()
     if identity is None:
-        principal = await create_user(session, identity_provider, id)
+        principal = await create_user(db_session, identity_provider, id)
     else:
         principal = identity.principal
     admin_role = (
-        await session.execute(select(Role).filter(Role.name == "admin"))
+        await db_session.execute(select(Role).filter(Role.name == "admin"))
     ).scalar()
     assert admin_role is not None, "Admin role is missing from Roles table"
     principal.roles.append(admin_role)
-    await session.commit()
+    await db_session.commit()
     return principal
 
 
-def lookup_valid_api_key(db, secret):
+async def lookup_valid_api_key(db_session, secret):
     """
     Look up an API key. Ensure that it is valid.
     """
@@ -272,30 +276,31 @@ def lookup_valid_api_key(db, secret):
     now = datetime.utcnow()
     hashed_secret = hashlib.sha256(secret).digest()
     api_key = (
-        db.query(APIKey)
-        .filter(APIKey.first_eight == secret.hex()[:8])
-        .filter(APIKey.hashed_secret == hashed_secret)
-        .first()
-    )
+        await db_session.execute(
+            select(APIKey)
+            .filter(APIKey.first_eight == secret.hex()[:8])
+            .filter(APIKey.hashed_secret == hashed_secret)
+        )
+    ).scalar()
     if api_key is None:
         # No match
         validated_api_key = None
     elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
         # Match is expired. Delete it.
-        db.delete(api_key)
-        db.commit()
+        db_session.delete(api_key)
+        await db_session.commit()
         validated_api_key = None
     elif api_key.principal is None:
         # The Principal for the API key no longer exists. Delete it.
-        db.delete(api_key)
-        db.commit()
+        db_session.delete(api_key)
+        await db_session.commit()
         validated_api_key = None
     else:
         validated_api_key = api_key
     return validated_api_key
 
 
-def latest_principal_activity(db, principal):
+async def latest_principal_activity(db_session, principal):
     """
     The most recent time this Principal has logged in with an Identity,
     refreshed a Session, or used an APIKey.
@@ -307,20 +312,20 @@ def latest_principal_activity(db, principal):
     minutes).
     """
     latest_identity_activity = (
-        db.query(func.max(Identity.latest_login))
-        .filter(Identity.principal_id == principal.id)
-        .scalar()
-    )
+        await db_session.execute(func.max(Identity.latest_login)).filter(
+            Identity.principal_id == principal.id
+        )
+    ).scalar()
     latest_session_activity = (
-        db.query(func.max(Session.time_last_refreshed))
-        .filter(Session.principal_id == principal.id)
-        .scalar()
-    )
+        await db_session.execute(func.max(Session.time_last_refreshed)).filter(
+            Session.principal_id == principal.id
+        )
+    ).scalar()
     latest_api_key_activity = (
-        db.query(func.max(APIKey.latest_activity))
-        .filter(APIKey.principal_id == principal.id)
-        .scalar()
-    )
+        await db_session.execute(func.max(APIKey.latest_activity)).filter(
+            APIKey.principal_id == principal.id
+        )
+    ).scalar()
     all_activity = [
         latest_identity_activity,
         latest_api_key_activity,
