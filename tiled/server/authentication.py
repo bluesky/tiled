@@ -403,6 +403,7 @@ async def create_session(settings, db, identity_provider, id):
     )
     db.add(session)
     await db.commit()
+    await db.refresh(session)
     return session
 
 
@@ -413,7 +414,7 @@ async def create_tokens_from_session(settings, db, session, provider):
     principal = session.principal
     data = {
         "sub": principal.uuid.hex,
-        "sub_typ": principal.type.value,
+        "sub_typ": principal.type,  # Why is this str and not Enum?
         "scp": list(set().union(*[role.scopes for role in principal.roles])),
         "ids": [
             {"id": identity.id, "idp": identity.provider}
@@ -861,7 +862,7 @@ async def slide_session(refresh_token, settings, db):
     principal = schemas.Principal.from_orm(session.principal)
     data = {
         "sub": principal.uuid.hex,
-        "sub_typ": principal.type.value,
+        "sub_typ": principal.type,  # Why is this str and not Enum?
         "scp": list(set().union(*[role.scopes for role in principal.roles])),
         "ids": [
             {"id": identity.id, "idp": identity.provider}

@@ -121,7 +121,7 @@ class Principal(Timestamped, Base):
     type = Column(Enum(PrincipalType), nullable=False)
     # In the future we may add other information.
 
-    identities = relationship("Identity", back_populates="principal", lazy="joined")
+    identities = relationship("Identity", back_populates="principal")
     api_keys = relationship("APIKey", back_populates="principal")
     roles = relationship(
         "Role",
@@ -142,7 +142,7 @@ class Identity(Timestamped, Base):
     latest_login = Column(DateTime(timezone=False), nullable=True)
     # In the future we may add a notion of "primary" identity.
 
-    principal = relationship("Principal", back_populates="identities", lazy="joined")
+    principal = relationship("Principal", back_populates="identities")
 
 
 class Role(Timestamped, Base):
