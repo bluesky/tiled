@@ -363,7 +363,7 @@ def build_app(
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in the current working directory.
             settings.database_uri = (
-                settings.database_uri or "sqlite+aiosqlite:///./tiled.sqlite"
+                settings.database_uri or "sqlite+aiosqlite+aiosqlite:///./tiled.sqlite"
             )
         return settings
 
