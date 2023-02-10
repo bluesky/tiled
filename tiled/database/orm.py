@@ -121,10 +121,13 @@ class Principal(Timestamped, Base):
     type = Column(Enum(PrincipalType), nullable=False)
     # In the future we may add other information.
 
-    identities = relationship("Identity", back_populates="principal")
+    identities = relationship("Identity", back_populates="principal", lazy="joined")
     api_keys = relationship("APIKey", back_populates="principal")
     roles = relationship(
-        "Role", secondary=principal_role_association_table, back_populates="principals"
+        "Role",
+        secondary=principal_role_association_table,
+        back_populates="principals",
+        lazy="joined",
     )
     sessions = relationship("Session", back_populates="principal")
 
@@ -139,7 +142,7 @@ class Identity(Timestamped, Base):
     latest_login = Column(DateTime(timezone=False), nullable=True)
     # In the future we may add a notion of "primary" identity.
 
-    principal = relationship("Principal", back_populates="identities")
+    principal = relationship("Principal", back_populates="identities", lazy="joined")
 
 
 class Role(Timestamped, Base):
@@ -175,7 +178,7 @@ class APIKey(Timestamped, Base):
     # without deleting them from the database, for forensics and
     # record-keeping.
 
-    principal = relationship("Principal", back_populates="api_keys")
+    principal = relationship("Principal", back_populates="api_keys", lazy="joined")
 
 
 class Session(Timestamped, Base):
@@ -204,7 +207,7 @@ class Session(Timestamped, Base):
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
 
-    principal = relationship("Principal", back_populates="sessions")
+    principal = relationship("Principal", back_populates="sessions", lazy="joined")
 
 
 class PendingSession(Base):
@@ -221,4 +224,4 @@ class PendingSession(Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
 
-    session = relationship("Session")
+    session = relationship("Session", lazy="joined")
