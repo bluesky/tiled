@@ -7,6 +7,7 @@ from alembic.config import Config
 from alembic.runtime import migration
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
 
 from .alembic_utils import temp_alembic_ini
@@ -174,7 +175,6 @@ async def create_user(db_session, identity_provider, id):
     principal = Principal(type="user", roles=[user_role])
     db_session.add(principal)
     await db_session.commit()
-    # db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
     identity = Identity(
         provider=identity_provider,
         id=id,
@@ -182,7 +182,14 @@ async def create_user(db_session, identity_provider, id):
     )
     db_session.add(identity)
     await db_session.commit()
-    return principal
+    refreshed_principal = (
+        await db_session.execute(
+            select(Principal)
+            .filter(Principal.id == principal.id)
+            .options(selectinload(Principal.identities))
+        )
+    ).scalar()
+    return refreshed_principal
 
 
 async def lookup_valid_session(db_session, session_id):

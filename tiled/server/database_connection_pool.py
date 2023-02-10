@@ -1,6 +1,8 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from .settings import get_settings
+
 # A given process probably only has one of these at a time, but we
 # key on database_settings just case in some testing context or something
 # we have two servers running in the same process.
@@ -28,16 +30,15 @@ async def close_database_connection_pool(database_settings):
     await engine.dispose()
 
 
-async def get_database_engine(database_settings):
+async def get_database_engine(settings=Depends(get_settings)):
     try:
-        return _connection_pools[database_settings]
+        return _connection_pools[settings.database_settings]
     except KeyError:
-        raise RuntimeError(f"Could not find connection pool for {database_settings}")
+        raise RuntimeError(
+            f"Could not find connection pool for {settings.database_settings}"
+        )
 
 
-async def get_database_session(database_settings, engine=Depends(get_database_engine)):
-    session = AsyncSession(engine, autoflush=False, expire_on_commit=False)
-    try:
+async def get_database_session(engine=Depends(get_database_engine)):
+    async with AsyncSession(engine, autoflush=False, expire_on_commit=False) as session:
         yield session
-    finally:
-        await session.close()

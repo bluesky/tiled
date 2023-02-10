@@ -195,6 +195,7 @@ async def get_current_principal(
     api_key: str = Depends(get_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
+    db=Depends(get_database_session),
 ):
     """
     Get current Principal from:
@@ -218,45 +219,44 @@ async def get_current_principal(
     if api_key is not None:
         if authenticators:
             # Tiled is in a multi-user configuration with authentication providers.
-            async with get_database_session(settings.database_settings) as db:
-                # We store the hashed value of the API key secret.
-                # By comparing hashes we protect against timing attacks.
-                # By storing only the hash of the (high-entropy) secret
-                # we reduce the value of that an attacker can extracted from a
-                # stolen database backup.
-                try:
-                    secret = bytes.fromhex(api_key)
-                except Exception:
-                    # Not valid hex, therefore not a valid API key
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Invalid API key",
-                        headers=headers_for_401,
-                    )
-                api_key_orm = await lookup_valid_api_key(db, secret)
-                if api_key_orm is not None:
-                    principal = schemas.Principal.from_orm(api_key_orm.principal)
-                    principal_scopes = set().union(
-                        *[role.scopes for role in principal.roles]
-                    )
-                    # This intersection addresses the case where the Principal has
-                    # lost a scope that they had when this key was created.
-                    scopes = set(api_key_orm.scopes).intersection(
-                        principal_scopes | {"inherit"}
-                    )
-                    if "inherit" in scopes:
-                        # The scope "inherit" is a metascope that confers all the
-                        # scopes for the Principal associated with this API,
-                        # resolved at access time.
-                        scopes.update(principal_scopes)
-                    api_key_orm.latest_activity = utcnow()
-                    await db.commit()
-                else:
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Invalid API key",
-                        headers=headers_for_401,
-                    )
+            # We store the hashed value of the API key secret.
+            # By comparing hashes we protect against timing attacks.
+            # By storing only the hash of the (high-entropy) secret
+            # we reduce the value of that an attacker can extracted from a
+            # stolen database backup.
+            try:
+                secret = bytes.fromhex(api_key)
+            except Exception:
+                # Not valid hex, therefore not a valid API key
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid API key",
+                    headers=headers_for_401,
+                )
+            api_key_orm = await lookup_valid_api_key(db, secret)
+            if api_key_orm is not None:
+                principal = schemas.Principal.from_orm(api_key_orm.principal)
+                principal_scopes = set().union(
+                    *[role.scopes for role in principal.roles]
+                )
+                # This intersection addresses the case where the Principal has
+                # lost a scope that they had when this key was created.
+                scopes = set(api_key_orm.scopes).intersection(
+                    principal_scopes | {"inherit"}
+                )
+                if "inherit" in scopes:
+                    # The scope "inherit" is a metascope that confers all the
+                    # scopes for the Principal associated with this API,
+                    # resolved at access time.
+                    scopes.update(principal_scopes)
+                api_key_orm.latest_activity = utcnow()
+                await db.commit()
+            else:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid API key",
+                    headers=headers_for_401,
+                )
         else:
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
@@ -336,25 +336,24 @@ async def get_current_principal(
     return principal
 
 
-async def create_pending_session(settings):
+async def create_pending_session(db):
     device_code = secrets.token_bytes(32)
     hashed_device_code = hashlib.sha256(device_code).digest()
-    async with get_database_session(settings.database_settings) as db:
-        for _ in range(3):
-            user_code = secrets.token_hex(4).upper()  # 8 digit code
-            pending_session = orm.PendingSession(
-                user_code=user_code,
-                hashed_device_code=hashed_device_code,
-                expiration_time=utcnow() + DEVICE_CODE_MAX_AGE,
-            )
-            db.add(pending_session)
-            try:
-                await db.commit()
-            except sqlalchemy.exc.IntegrityError:
-                # Since the user_code is short, we cannot completely dismiss the
-                # possibility of a collission. Retry.
-                continue
-            break
+    for _ in range(3):
+        user_code = secrets.token_hex(4).upper()  # 8 digit code
+        pending_session = orm.PendingSession(
+            user_code=user_code,
+            hashed_device_code=hashed_device_code,
+            expiration_time=utcnow() + DEVICE_CODE_MAX_AGE,
+        )
+        db.add(pending_session)
+        try:
+            await db.commit()
+        except sqlalchemy.exc.IntegrityError:
+            # Since the user_code is short, we cannot completely dismiss the
+            # possibility of a collission. Retry.
+            continue
+        break
     formatted_user_code = f"{user_code[:4]}-{user_code[4:]}"
     return {
         "user_code": formatted_user_code,
@@ -385,11 +384,10 @@ async def create_session(settings, db, identity_provider, id):
     # selectinload Principal?
     session_count = (
         await db.execute(
-            select(
-                func.count(orm.Session)
-                .join(orm.Principal)
-                .filter(orm.Principal.id == principal.id)
-            )
+            select(func.count())
+            .select_from(orm.Session)
+            .join(orm.Principal)
+            .filter(orm.Principal.id == principal.id)
         )
     ).scalar()
     if session_count >= SESSION_LIMIT:
@@ -460,14 +458,14 @@ def build_auth_code_route(authenticator, provider):
     async def route(
         request: Request,
         settings: BaseSettings = Depends(get_settings),
+        db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(request)
         if not username:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        async with get_database_session(settings.database_settings) as db:
-            session = await create_session(settings, db, provider, username)
-            tokens = await create_tokens_from_session(settings, db, session, provider)
+        session = await create_session(settings, db, provider, username)
+        tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
     return route
@@ -551,49 +549,49 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         user_code: str = Form(),
         state: Optional[str] = None,
         settings: BaseSettings = Depends(get_settings),
+        db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         loop = asyncio.get_running_loop()
         action = (
             f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
         )
-        async with get_database_session(settings.database_settings) as db:
-            normalized_user_code = user_code.upper().replace("-", "")
-            pending_session = await loop.run_in_executor(
-                None,
-                lookup_valid_pending_session_by_user_code,
-                db,
-                normalized_user_code,
+        normalized_user_code = user_code.upper().replace("-", "")
+        pending_session = await loop.run_in_executor(
+            None,
+            lookup_valid_pending_session_by_user_code,
+            db,
+            normalized_user_code,
+        )
+        if pending_session is None:
+            message = "Invalid user_code. It may have been mistyped, or the pending request may have expired."
+            return templates.TemplateResponse(
+                "device_code_form.html",
+                {
+                    "request": request,
+                    "code": code,
+                    "action": action,
+                    "message": message,
+                },
+                status_code=401,
             )
-            if pending_session is None:
-                message = "Invalid user_code. It may have been mistyped, or the pending request may have expired."
-                return templates.TemplateResponse(
-                    "device_code_form.html",
-                    {
-                        "request": request,
-                        "code": code,
-                        "action": action,
-                        "message": message,
-                    },
-                    status_code=401,
-                )
-            username = await authenticator.authenticate(request)
-            if not username:
-                return templates.TemplateResponse(
-                    "device_code_failure.html",
-                    {
-                        "request": request,
-                        "message": (
-                            "User code was correct but authentication with third party failed. "
-                            "Ask administrator to see logs for details."
-                        ),
-                    },
-                    status_code=401,
-                )
-            session = await create_session(settings, db, provider, username)
-            pending_session.session_id = session.id
-            db.add(pending_session)
-            await db.commit()
+        username = await authenticator.authenticate(request)
+        if not username:
+            return templates.TemplateResponse(
+                "device_code_failure.html",
+                {
+                    "request": request,
+                    "message": (
+                        "User code was correct but authentication with third party failed. "
+                        "Ask administrator to see logs for details."
+                    ),
+                },
+                status_code=401,
+            )
+        session = await create_session(settings, db, provider, username)
+        pending_session.session_id = session.id
+        db.add(pending_session)
+        await db.commit()
         return templates.TemplateResponse(
             "device_code_success.html",
             {
@@ -612,6 +610,7 @@ def build_device_code_token_route(authenticator, provider):
         request: Request,
         body: schemas.DeviceCode,
         settings: BaseSettings = Depends(get_settings),
+        db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         device_code_hex = body.device_code
@@ -620,22 +619,19 @@ def build_device_code_token_route(authenticator, provider):
         except Exception:
             # Not valid hex, therefore not a valid device_code
             raise HTTPException(status_code=401, detail="Invalid device code")
-        async with get_database_session(settings.database_settings) as db:
-            pending_session = lookup_valid_pending_session_by_device_code(
-                db, device_code
+        pending_session = lookup_valid_pending_session_by_device_code(db, device_code)
+        if pending_session is None:
+            raise HTTPException(
+                404,
+                detail="No such device_code. The pending request may have expired.",
             )
-            if pending_session is None:
-                raise HTTPException(
-                    404,
-                    detail="No such device_code. The pending request may have expired.",
-                )
-            if pending_session.session_id is None:
-                raise HTTPException(400, {"error": "authorization_pending"})
-            session = pending_session.session
-            # The pending session can only be used once.
-            db.delete(pending_session)
-            await db.commit()
-            tokens = create_tokens_from_session(settings, db, session, provider)
+        if pending_session.session_id is None:
+            raise HTTPException(400, {"error": "authorization_pending"})
+        session = pending_session.session
+        # The pending session can only be used once.
+        db.delete(pending_session)
+        await db.commit()
+        tokens = create_tokens_from_session(settings, db, session, provider)
         return tokens
 
     return route
@@ -648,6 +644,7 @@ def build_handle_credentials_route(authenticator, provider):
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: BaseSettings = Depends(get_settings),
+        db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(
@@ -659,9 +656,8 @@ def build_handle_credentials_route(authenticator, provider):
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        async with get_database_session(settings.database_settings) as db:
-            session = await create_session(settings, db, provider, username)
-            tokens = await create_tokens_from_session(settings, db, session, provider)
+        session = await create_session(settings, db, provider, username)
+        tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
     return route
@@ -691,7 +687,8 @@ async def generate_apikey(db, principal, apikey_params, request):
     hashed_secret = hashlib.sha256(secret).digest()
     keys_count = (
         await db.execute(
-            select(func.count(orm.APIKey))
+            select(func.count())
+            .select_from(orm.APIKey)
             .join(orm.Principal)
             .filter(orm.Principal.id == principal.id)
         )
@@ -729,23 +726,22 @@ base_authentication_router = APIRouter()
 )
 async def principal_list(
     request: Request,
-    settings: BaseSettings = Depends(get_settings),
     principal=Security(get_current_principal, scopes=["read:principals"]),
+    db=Depends(get_database_session),
 ):
     "List Principals (users and services)."
     # TODO Pagination
     request.state.endpoint = "auth"
-    async with get_database_session(settings.database_settings) as db:
-        principal_orms = (await db.execute(select(orm.Principal))).all()
+    principal_orms = (await db.execute(select(orm.Principal))).all()
 
-        principals = [
-            schemas.Principal.from_orm(
-                principal_orm, latest_principal_activity(db, principal_orm)
-            ).dict()
-            for principal_orm in principal_orms
-        ]
+    principals = [
+        schemas.Principal.from_orm(
+            principal_orm, latest_principal_activity(db, principal_orm)
+        ).dict()
+        for principal_orm in principal_orms
+    ]
 
-        return json_or_msgpack(request, principals)
+    return json_or_msgpack(request, principals)
 
 
 @base_authentication_router.get(
@@ -755,21 +751,20 @@ async def principal_list(
 async def principal(
     request: Request,
     uuid: uuid_module.UUID,
-    settings: BaseSettings = Depends(get_settings),
     principal=Security(get_current_principal, scopes=["read:principals"]),
+    db=Depends(get_database_session),
 ):
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
-    async with get_database_session(settings.database_settings) as db:
-        principal_orm = (
-            await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
-        ).scalar()
-        return json_or_msgpack(
-            request,
-            schemas.Principal.from_orm(
-                principal_orm, latest_principal_activity(db, principal_orm)
-            ).dict(),
-        )
+    principal_orm = (
+        await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
+    ).scalar()
+    return json_or_msgpack(
+        request,
+        schemas.Principal.from_orm(
+            principal_orm, latest_principal_activity(db, principal_orm)
+        ).dict(),
+    )
 
 
 @base_authentication_router.post(
@@ -781,19 +776,18 @@ async def apikey_for_principal(
     uuid: uuid_module.UUID,
     apikey_params: schemas.APIKeyRequestParams,
     principal=Security(get_current_principal, scopes=["admin:apikeys"]),
-    settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
 ):
     "Generate an API key for a Principal."
     request.state.endpoint = "auth"
-    async with get_database_session(settings.database_settings) as db:
-        principal = (
-            await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
-        ).scalar()
-        if principal is None:
-            raise HTTPException(
-                404, f"Principal {uuid} does not exist or insufficient permissions."
-            )
-        return await generate_apikey(db, principal, apikey_params, request)
+    principal = (
+        await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
+    ).scalar()
+    if principal is None:
+        raise HTTPException(
+            404, f"Principal {uuid} does not exist or insufficient permissions."
+        )
+    return await generate_apikey(db, principal, apikey_params, request)
 
 
 @base_authentication_router.post(
@@ -803,12 +797,12 @@ async def refresh_session(
     request: Request,
     refresh_token: schemas.RefreshToken,
     settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
 ):
     "Obtain a new access token and refresh token."
     request.state.endpoint = "auth"
-    async with get_database_session(settings.database_settings) as db:
-        new_tokens = await slide_session(refresh_token.refresh_token, settings, db)
-        return new_tokens
+    new_tokens = await slide_session(refresh_token.refresh_token, settings, db)
+    return new_tokens
 
 
 @base_authentication_router.delete("/session/revoke/{session_id}")
@@ -816,25 +810,24 @@ async def revoke_session(
     session_id: str,  # from path parameter
     request: Request,
     principal: schemas.Principal = Security(get_current_principal, scopes=[]),
-    settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
-    async with get_database_session(settings.database_settings) as db:
-        # Find this session in the database.
-        session = await lookup_valid_session(db, session_id)
-        if session is None:
-            raise HTTPException(404, detail=f"No session {session_id}")
-        if principal.uuid != session.principal.uuid:
-            # TODO Add a scope for doing this for other users.
-            raise HTTPException(
-                404,
-                detail="Sessions does not exist or requester has insufficient permissions",
-            )
-        session.revoked = True
-        db.add(session)
-        await db.commit()
-        return Response(status_code=204)
+    # Find this session in the database.
+    session = await lookup_valid_session(db, session_id)
+    if session is None:
+        raise HTTPException(404, detail=f"No session {session_id}")
+    if principal.uuid != session.principal.uuid:
+        # TODO Add a scope for doing this for other users.
+        raise HTTPException(
+            404,
+            detail="Sessions does not exist or requester has insufficient permissions",
+        )
+    session.revoked = True
+    db.add(session)
+    await db.commit()
+    return Response(status_code=204)
 
 
 async def slide_session(refresh_token, settings, db):
@@ -902,7 +895,7 @@ async def new_apikey(
     request: Request,
     apikey_params: schemas.APIKeyRequestParams,
     principal=Security(get_current_principal, scopes=["apikeys"]),
-    settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
 ):
     """
     Generate an API for the currently-authenticated user or service."""
@@ -910,23 +903,22 @@ async def new_apikey(
     request.state.endpoint = "auth"
     if principal is None:
         return None
-    async with get_database_session(settings.database_settings) as db:
-        # The principal from get_current_principal tells us everything that the
-        # access_token carries around, but the database knows more than that.
-        principal_orm = (
-            await db.execute(
-                select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
-            )
-        ).scalar()
-        apikey = await generate_apikey(db, principal_orm, apikey_params, request)
-        return apikey
+    # The principal from get_current_principal tells us everything that the
+    # access_token carries around, but the database knows more than that.
+    principal_orm = (
+        await db.execute(
+            select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
+        )
+    ).scalar()
+    apikey = await generate_apikey(db, principal_orm, apikey_params, request)
+    return apikey
 
 
 @base_authentication_router.get("/apikey", response_model=schemas.APIKey)
 async def current_apikey_info(
     request: Request,
     api_key: str = Depends(get_api_key),
-    settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
 ):
     """
     Give info about the API key used to authentication the current request.
@@ -944,11 +936,10 @@ async def current_apikey_info(
     except Exception:
         # Not valid hex, therefore not a valid API key
         raise HTTPException(status_code=401, detail="Invalid API key")
-    async with get_database_session(settings.database_settings) as db:
-        api_key_orm = await lookup_valid_api_key(db, secret)
-        if api_key_orm is None:
-            raise HTTPException(status_code=401, detail="Invalid API key")
-        return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm).dict())
+    api_key_orm = await lookup_valid_api_key(db, secret)
+    if api_key_orm is None:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm).dict())
 
 
 @base_authentication_router.delete("/apikey")
@@ -956,7 +947,7 @@ async def revoke_apikey(
     request: Request,
     first_eight: str,
     principal=Security(get_current_principal, scopes=["apikeys"]),
-    settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
 ):
     """
     Revoke an API belonging to the currently-authenticated user or service."""
@@ -964,20 +955,19 @@ async def revoke_apikey(
     request.state.endpoint = "auth"
     if principal is None:
         return None
-    async with get_database_session(settings.database_settings) as db:
-        api_key_orm = (
-            await db.execute(
-                select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
-            )
-        ).scalar()
-        if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
-            raise HTTPException(
-                404,
-                f"The currently-authenticated {principal.type} has no such API key.",
-            )
-        db.delete(api_key_orm)
-        await db.commit()
-        return Response(status_code=204)
+    api_key_orm = (
+        await db.execute(
+            select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
+        )
+    ).scalar()
+    if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
+        raise HTTPException(
+            404,
+            f"The currently-authenticated {principal.type} has no such API key.",
+        )
+    db.delete(api_key_orm)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @base_authentication_router.get(
@@ -987,7 +977,7 @@ async def revoke_apikey(
 async def whoami(
     request: Request,
     principal=Security(get_current_principal, scopes=[]),
-    settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
 ):
 
     # TODO Permit filtering the fields of the response.
@@ -996,18 +986,17 @@ async def whoami(
         return json_or_msgpack(request, None)
     # The principal from get_current_principal tells us everything that the
     # access_token carries around, but the database knows more than that.
-    async with get_database_session(settings.database_settings) as db:
-        principal_orm = (
-            await db.execute(
-                select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
-            )
-        ).scalar()
-        return json_or_msgpack(
-            request,
-            schemas.Principal.from_orm(
-                principal_orm, latest_principal_activity(db, principal_orm)
-            ).dict(),
+    principal_orm = (
+        await db.execute(
+            select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
         )
+    ).scalar()
+    return json_or_msgpack(
+        request,
+        schemas.Principal.from_orm(
+            principal_orm, latest_principal_activity(db, principal_orm)
+        ).dict(),
+    )
 
 
 @base_authentication_router.post("/logout")
