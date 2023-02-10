@@ -7,7 +7,6 @@ from alembic.config import Config
 from alembic.runtime import migration
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
 
 from .alembic_utils import temp_alembic_ini
@@ -147,28 +146,24 @@ async def check_database(engine):
         )
 
 
-def purge_expired(engine, cls):
+async def purge_expired(db_session, cls):
     """
     Remove expired entries.
-
-    Return reference to cls, supporting usage like
-
-    >>> db.query(purge_expired(engine, orm.APIKey))
     """
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
     now = datetime.utcnow()
-    deleted = False
-    for obj in (
-        db.query(cls)
+    num_expired = 0
+    statement = (
+        select(cls)
         .filter(cls.expiration_time.is_not(None))
         .filter(cls.expiration_time < now)
-    ):
-        deleted = True
-        db.delete(obj)
-    if deleted:
-        db.commit()
-    return cls
+    )
+    result = await db_session.execute(statement)
+    for obj in result.scalars():
+        num_expired += 1
+        db_session.delete(obj)
+    if num_expired:
+        await db_session.commit()
+    return num_expired
 
 
 async def create_user(session, identity_provider, id):

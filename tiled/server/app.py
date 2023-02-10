@@ -29,6 +29,10 @@ from ..validation_registration import validation_registry as default_validation_
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
 from .core import PatchedStreamingResponse
+from .database_connection_pool import (
+    close_database_connection_pool,
+    open_database_connection_pool,
+)
 from .dependencies import (
     get_query_registry,
     get_root_tree,
@@ -39,7 +43,7 @@ from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
-from .settings import get_sessionmaker, get_settings
+from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
@@ -437,7 +441,7 @@ def build_app(
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_uri is not None:
-            from sqlalchemy.ext.asyncio.engine import AsyncEngine
+            from sqlalchemy.ext.asyncio import AsyncSession
 
             from ..database import orm
             from ..database.core import (
@@ -449,9 +453,13 @@ def build_app(
                 make_admin_by_identity,
             )
 
-            async with get_sessionmaker(settings.database_settings)() as session:
-                sync_engine = session.get_bind()
-                engine = AsyncEngine(sync_engine)
+            # This creates a connection pool and stashes it in a module-global
+            # registry, keyed on database_settings, where can be retrieved by
+            # the Dependency get_database_session.
+            engine = open_database_connection_pool(settings.database_settings)
+            async with AsyncSession(
+                engine, autoflush=False, expire_on_commit=False
+            ) as session:
                 redacted_url = engine.url._replace(password="[redacted]")
                 try:
                     await check_database(engine)
@@ -491,15 +499,25 @@ Back up the database, and then run:
                     )
 
             async def purge_expired_sessions_and_api_keys():
-                logger.info("Purging expired Sessions and API keys from the database.")
                 while True:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, purge_expired(engine, orm.Session)
-                    )
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, purge_expired(engine, orm.APIKey)
-                    )
-                    await asyncio.sleep(600)
+                    async with AsyncSession(
+                        engine, autoflush=False, expire_on_commit=False
+                    ) as db_session:
+                        num_expired_sessions = await purge_expired(
+                            db_session, orm.Session
+                        )
+                        if num_expired_sessions:
+                            logger.info(
+                                f"Purged {num_expired_sessions} expired Sessions from the database."
+                            )
+                        num_expired_api_keys = await purge_expired(
+                            db_session, orm.APIKey
+                        )
+                        if num_expired_api_keys:
+                            logger.info(
+                                f"Purged {num_expired_api_keys} expired API keys from the database."
+                            )
+                    await asyncio.sleep(1)
 
             app.state.tasks.append(
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
@@ -509,6 +527,8 @@ Back up the database, and then run:
     async def shutdown_event():
         for task in app.state.tasks:
             task.cancel()
+        settings = app.dependency_overrides[get_settings]()
+        await close_database_connection_pool(settings.database_settings)
 
     app.add_middleware(
         CompressionMiddleware,
