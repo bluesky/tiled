@@ -61,17 +61,16 @@ async def initialize_database(engine):
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 
-    # Create all tables.
     async with engine.connect() as conn:
+        # Create all tables.
         await conn.run_sync(Base.metadata.create_all)
 
-    # Initialize Roles table.
-    async with AsyncSession(engine) as session:
-        await create_default_roles(session)
+        # Initialize Roles table.
+        async with AsyncSession(engine) as session:
+            await create_default_roles(session)
 
-    # Mark current revision.
-    with temp_alembic_ini(engine.url) as alembic_ini:
-        async with engine.connect() as conn:
+        # Mark current revision.
+        with temp_alembic_ini(engine.url) as alembic_ini:
             alembic_cfg = Config(alembic_ini)
             await conn.run_sync(lambda conn: command.stamp(alembic_cfg, "head"))
 
