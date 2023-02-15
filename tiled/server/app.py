@@ -226,7 +226,16 @@ def build_app(
                 },
             )
 
+    # This list will be mutated when settings are processed at app startup.
     app.state.allow_origins = []
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=app.state.allow_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(router, prefix="/api/v1")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
@@ -392,14 +401,6 @@ def build_app(
         app.include_router(declare_search_router(query_registry), prefix="/api/v1")
 
         app.state.allow_origins.extend(settings.allow_origins)
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=app.state.allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
         object_cache_logger.setLevel(settings.object_cache_log_level.upper())
         object_cache_available_bytes = settings.object_cache_available_bytes
         import psutil
