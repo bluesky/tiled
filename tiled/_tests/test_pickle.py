@@ -9,7 +9,7 @@ import pytest
 from ..client import from_uri
 from ..client.context import Context
 
-API_URL = "https://tiled-demo.blueskyproject.io/api/"
+API_URL = "https://tiled-demo.blueskyproject.io/api/v1/"
 
 
 def test_pickle_context():

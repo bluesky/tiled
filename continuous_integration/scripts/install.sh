@@ -9,7 +9,8 @@ source start_LDAP.sh
 # installation problems if out of date.
 python -m pip install --upgrade pip setuptools wheel numpy
 # Versioneer uses the most recent git tag to generate __version__, which appears
-# in the published documentation.
-git fetch --tags
+# in the published documentation and is declared by the client when it
+# connects to a server.
+git fetch --tags --unshallow
 python -m pip install '.[complete]'
 python -m pip list
