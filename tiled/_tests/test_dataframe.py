@@ -57,3 +57,10 @@ def test_dataframe_single_partition():
     actual = client["single_partition"].read()
     assert client["single_partition"].structure().macro.npartitions == 1
     pandas.testing.assert_frame_equal(actual, expected)
+
+
+def test_dask():
+    client = from_tree(tree, "dask")["basic"]
+    expected = tree["basic"].read()
+    pandas.testing.assert_frame_equal(client.read().compute(), expected)
+    pandas.testing.assert_frame_equal(client.compute(), expected)

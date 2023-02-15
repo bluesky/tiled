@@ -106,6 +106,14 @@ def test_nan_infinity_handler(tmpdir):
     assert open_json == expected_list
 
 
+def test_dask():
+    expected = cube_cases["tiny_cube"]
+    client = from_tree(cube_tree, "dask")["tiny_cube"]
+    assert numpy.array_equal(client.read().compute(), expected)
+    assert numpy.array_equal(client.compute(), expected)
+    assert numpy.array_equal(client[:].compute(), expected)
+
+
 def test_array_format_shape_from_cube():
     client = from_tree(cube_tree)
 
