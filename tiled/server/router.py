@@ -452,7 +452,7 @@ def array_full(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Response would exceed {settings.response_bytesize_limit}. "
+                f"Response would exceed {settings.response_bytesize_limit}. "
                 "Use slicing ('?slice=...') to request smaller chunks."
             ),
         )
@@ -510,7 +510,7 @@ def dataframe_partition(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Response would exceed {settings.response_bytesize_limit}. "
+                f"Response would exceed {settings.response_bytesize_limit}. "
                 "Select a subset of the columns ('?field=...') to "
                 "request a smaller chunks."
             ),
@@ -564,7 +564,7 @@ def node_full(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Response would exceed {settings.response_bytesize_limit}. "
+                f"Response would exceed {settings.response_bytesize_limit}. "
                 "Select a subset of the columns ('?field=...') to "
                 "request a smaller chunks."
             ),
