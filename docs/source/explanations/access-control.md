@@ -3,7 +3,29 @@
 Tiled uses a programmable Access Control Policy to manage which
 users can access and perform actions on (read, write, delete) which entries.
 
-An Access Control Policy answers two questions:
+For use background on how to think about access control generally, we
+recommend the talk
+[Why Authorization Is Hard](https://www.youtube.com/watch?v=2BN96ON48U8),
+(Sam Scott, PyCon 2022).
+
+A key point is that if a user cannot access something, it should be as if it
+does not exist. In a user interface built on Tiled, whether graphical or
+terminal-based, we don't want to even _show_ the user buttons or options that
+they are not allowed to use.
+
+In support of this, a Tiled Access Control Policy answers two questions:
+
+1. Given one specific dataset, what is the user allowed to do with it (read,
+   write, etc.)?
+2. Given a hierarchical dataset, which of the "children" is the user allowed to
+   {read, read and write, ...}?
+
+The first one lets us efficiently ask which "buttons" to show for a given data
+set. The second one lets us efficiently ask which items to show (or hide...) in
+a list of contents.
+
+Rephrasing these two items now using the jargon of entities in Tiled:
+
 1. Given a Principal (user or service) and a Node, return a list of the scopes
    (actions) the Principal is allowed to perform on that Node.
 
