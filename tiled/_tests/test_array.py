@@ -128,11 +128,9 @@ def test_dask():
 def test_array_format_shape_from_cube():
     client = from_tree(cube_tree)
 
-    with pytest.raises(httpx.HTTPStatusError) as err:
+    with fail_with_status_code(406):
         # export...
         hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
-    # Check that the error is 406 (Not Acceptable).
-    assert err.match("406")
 
 
 def test_array_interface():
