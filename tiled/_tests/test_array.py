@@ -11,6 +11,7 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import from_tree
+from .utils import fail_with_status_code
 
 array_cases = {
     "b": (numpy.arange(10) % 2).astype("b"),
@@ -104,6 +105,16 @@ def test_nan_infinity_handler(tmpdir):
 
     expected_list = [0.0, 1.0, None, None, None]
     assert open_json == expected_list
+
+
+def test_block_validation():
+    "Verify that block must be fully specified."
+    client = from_tree(cube_tree, "dask")["tiny_cube"]
+    block_url = httpx.URL(client.item["links"]["block"])
+    # Malformed because it has only 2 dimensions, not 3.
+    malformed_block_url = block_url.copy_with(params={"block": "0,0"})
+    with fail_with_status_code(400):
+        client.context.http_client.get(malformed_block_url).raise_for_status()
 
 
 def test_dask():
