@@ -364,6 +364,7 @@ def array_block(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
         )
+    # Check that block dimensionality matches array dimensionality.
     shape = entry.macrostructure().shape
     ndim = len(shape)
     if len(block) != ndim:
