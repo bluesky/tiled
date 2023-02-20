@@ -359,14 +359,28 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family not in {"array", "sparse"}:
+    if entry.structure_family == "array":
+        shape = entry.macrostructure().shape
+    elif entry.structure_family == "sparse":
+        shape = entry.structure().shape
+    else:
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
         )
+    # Check that block dimensionality matches array dimensionality.
+    ndim = len(shape)
+    if len(block) != ndim:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Block parameter must have {ndim} comma-separated parameters, "
+                f"corresponding to the dimensions of this {ndim}-dimensional array."
+            ),
+        )
     if block == ():
         # Handle special case of numpy scalar.
-        if entry.macrostructure().shape != ():
+        if shape != ():
             raise HTTPException(
                 status_code=400,
                 detail=f"Requested scalar but shape is {entry.macrostructure().shape}",

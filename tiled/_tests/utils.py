@@ -1,8 +1,7 @@
 import contextlib
 
+import httpx
 import pytest
-
-from ..client.utils import ClientError
 
 
 def force_update(client):
@@ -18,6 +17,6 @@ def force_update(client):
 
 @contextlib.contextmanager
 def fail_with_status_code(status_code):
-    with pytest.raises(ClientError) as info:
+    with pytest.raises(httpx.HTTPStatusError) as info:
         yield
     assert info.value.response.status_code == status_code
