@@ -359,13 +359,16 @@ def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family not in {"array", "sparse"}:
+    if entry.structure_family == "array":
+        shape = entry.macrostructure().shape
+    elif entry.structure_family == "sparse":
+        shape = entry.structure().shape
+    else:
         raise HTTPException(
             status_code=404,
             detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
         )
     # Check that block dimensionality matches array dimensionality.
-    shape = entry.macrostructure().shape
     ndim = len(shape)
     if len(block) != ndim:
         raise HTTPException(
