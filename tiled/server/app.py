@@ -445,7 +445,6 @@ def build_app(
 
             from ..database import orm
             from ..database.core import (
-                REQUIRED_REVISION,
                 DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
@@ -457,20 +456,28 @@ def build_app(
             # registry, keyed on database_settings, where can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
-            async with AsyncSession(
-                engine, autoflush=False, expire_on_commit=False
-            ) as session:
+            # Special-case for in-memory SQLite: Because it is transient we can
+            # skip over anything related to migrations.
+            if not engine.url.database:
+                await initialize_database(engine)
+                logger.info("Transient in-memory database initialized.")
+            else:
                 redacted_url = engine.url._replace(password="[redacted]")
                 try:
                     await check_database(engine)
                 except UninitializedDatabase:
-                    # Create tables and stamp (alembic) revision.
-                    logger.info(
-                        f"Database {redacted_url} is new. "
-                        f"Creating tables and marking revision {REQUIRED_REVISION}."
+                    print(
+                        f"""
+
+No database found at {redacted_url}
+
+To create one, run:
+
+    tiled admin init-database {redacted_url}
+""",
+                        file=sys.stderr,
                     )
-                    await initialize_database(engine)
-                    logger.info("Database initialized.")
+                    raise
                 except DatabaseUpgradeNeeded as err:
                     print(
                         f"""
@@ -492,11 +499,14 @@ Back up the database, and then run:
                     logger.info(
                         f"Ensuring that principal with identity {admin} has role 'admin'"
                     )
-                    await make_admin_by_identity(
-                        session,
-                        identity_provider=admin["provider"],
-                        id=admin["id"],
-                    )
+                    async with AsyncSession(
+                        engine, autoflush=False, expire_on_commit=False
+                    ) as session:
+                        await make_admin_by_identity(
+                            session,
+                            identity_provider=admin["provider"],
+                            id=admin["id"],
+                        )
 
             async def purge_expired_sessions_and_api_keys():
                 while True:

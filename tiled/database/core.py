@@ -69,30 +69,32 @@ async def initialize_database(engine):
         async with AsyncSession(engine) as db_session:
             await create_default_roles(db_session)
 
-        # Mark current revision.
-        with temp_alembic_ini(engine.url) as alembic_ini:
-            alembic_cfg = Config(alembic_ini)
-            await conn.run_sync(lambda conn: command.stamp(alembic_cfg, "head"))
 
-
-async def upgrade(engine, revision):
+def stamp_head(engine_url):
     """
     Upgrade schema to the specified revision.
     """
-    with temp_alembic_ini(engine.url) as alembic_ini:
+    with temp_alembic_ini(engine_url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
-        async with engine.connect() as conn:
-            await conn.run_sync(lambda conn: command.upgrade(alembic_cfg, revision))
+        command.stamp(alembic_cfg, "head")
 
 
-async def downgrade(engine, revision):
+def upgrade(engine_url, revision):
+    """
+    Upgrade schema to the specified revision.
+    """
+    with temp_alembic_ini(engine_url) as alembic_ini:
+        alembic_cfg = Config(alembic_ini)
+        command.upgrade(alembic_cfg, revision)
+
+
+def downgrade(engine_url, revision):
     """
     Downgrade schema to the specified revision.
     """
-    with temp_alembic_ini(engine.url) as alembic_ini:
+    with temp_alembic_ini(engine_url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
-        async with engine.connect() as conn:
-            await conn.run_sync(lambda conn: command.downgrade(alembic_cfg, revision))
+        command.downgrade(alembic_cfg, revision)
 
 
 class UnrecognizedDatabase(Exception):
@@ -112,8 +114,7 @@ async def get_current_revision(engine):
     redacted_url = engine.url._replace(password="[redacted]")
     async with engine.connect() as conn:
         context = await conn.run_sync(migration.MigrationContext.configure)
-        heads = await conn.run_sync(lambda conn: context.get_current_heads)
-        heads = ()
+        heads = await conn.run_sync(lambda conn: context.get_current_heads())
     if heads == ():
         return None
     elif len(heads) != 1:

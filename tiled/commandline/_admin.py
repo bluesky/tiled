@@ -11,30 +11,38 @@ def initialize_database(database_uri: str):
     """
     Initialize a SQL database for use by Tiled.
     """
-    from sqlalchemy import create_engine
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..database.core import (
         REQUIRED_REVISION,
         UninitializedDatabase,
         check_database,
         initialize_database,
+        stamp_head,
     )
 
-    engine = create_engine(database_uri)
-    redacted_url = engine.url._replace(password="[redacted]")
-    try:
-        check_database(engine)
-    except UninitializedDatabase:
-        # Create tables and stamp (alembic) revision.
-        typer.echo(
-            f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
-            err=True,
-        )
-        initialize_database(engine)
-        typer.echo("Database initialized.", err=True)
-    else:
-        typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
-        raise typer.Abort()
+    async def do_setup():
+        engine = create_async_engine(database_uri)
+        redacted_url = engine.url._replace(password="[redacted]")
+        try:
+            await check_database(engine)
+        except UninitializedDatabase:
+            # Create tables and stamp (alembic) revision.
+            typer.echo(
+                f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
+                err=True,
+            )
+            await initialize_database(engine)
+            typer.echo("Database initialized.", err=True)
+        else:
+            typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
+            raise typer.Abort()
+        await engine.dispose()
+
+    asyncio.run(do_setup())
+    stamp_head(database_uri)
 
 
 @admin_app.command("upgrade-database")
@@ -62,7 +70,7 @@ def upgrade_database(
             err=True,
         )
         raise typer.Abort()
-    upgrade(engine, revision or "head")
+    upgrade(engine.url, revision or "head")
 
 
 @admin_app.command("downgrade-database")
@@ -87,7 +95,7 @@ def downgrade_database(
             err=True,
         )
         raise typer.Abort()
-    downgrade(engine, revision)
+    downgrade(engine.url, revision)
 
 
 @admin_app.command("check-config")

@@ -41,7 +41,7 @@ def config(tmpdir):
             ],
         },
         "database": {
-            "uri": f"sqlite+aiosqlite:///{tmpdir}/tiled.sqlite",
+            "uri": "sqlite+aiosqlite://",  # in-memory
         },
         "trees": [
             {
