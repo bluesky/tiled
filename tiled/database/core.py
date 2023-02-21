@@ -320,18 +320,24 @@ async def latest_principal_activity(db_session, principal):
     minutes).
     """
     latest_identity_activity = (
-        await db_session.execute(func.max(Identity.latest_login)).filter(
-            Identity.principal_id == principal.id
+        await db_session.execute(
+            select(func.max(Identity.latest_login)).filter(
+                Identity.principal_id == principal.id
+            )
         )
     ).scalar()
     latest_session_activity = (
-        await db_session.execute(func.max(Session.time_last_refreshed)).filter(
-            Session.principal_id == principal.id
+        await db_session.execute(
+            select(func.max(Session.time_last_refreshed)).filter(
+                Session.principal_id == principal.id
+            )
         )
     ).scalar()
     latest_api_key_activity = (
-        await db_session.execute(func.max(APIKey.latest_activity)).filter(
-            APIKey.principal_id == principal.id
+        await db_session.execute(
+            select(func.max(APIKey.latest_activity)).filter(
+                APIKey.principal_id == principal.id
+            )
         )
     ).scalar()
     all_activity = [

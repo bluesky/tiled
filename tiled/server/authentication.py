@@ -734,14 +734,11 @@ async def principal_list(
     # TODO Pagination
     request.state.endpoint = "auth"
     principal_orms = (await db.execute(select(orm.Principal))).all()
-
-    principals = [
-        schemas.Principal.from_orm(
-            principal_orm, latest_principal_activity(db, principal_orm)
-        ).dict()
-        for principal_orm in principal_orms
-    ]
-
+    principals = []
+    for principal_orm in principal_orms:
+        latest_activity = await latest_principal_activity(db, principal_orm)
+        principal = schemas.Principal.from_orm(principal_orm, latest_activity).dict()
+        principals.append(principal)
     return json_or_msgpack(request, principals)
 
 
@@ -760,11 +757,10 @@ async def principal(
     principal_orm = (
         await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
     ).scalar()
+    latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
-        schemas.Principal.from_orm(
-            principal_orm, latest_principal_activity(db, principal_orm)
-        ).dict(),
+        schemas.Principal.from_orm(principal_orm, latest_activity).dict(),
     )
 
 
@@ -992,11 +988,10 @@ async def whoami(
             select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
         )
     ).scalar()
+    latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
-        schemas.Principal.from_orm(
-            principal_orm, latest_principal_activity(db, principal_orm)
-        ).dict(),
+        schemas.Principal.from_orm(principal_orm, latest_activity).dict(),
     )
 
 
