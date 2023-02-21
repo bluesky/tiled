@@ -139,15 +139,29 @@ def build_app(
             ):
                 raise UnscalableConfig(
                     """
-    In a scaled (multi-process) deployment, when Tiled is configured with an
-    Authenticator, secret keys must be provided via configuration like
+In a scaled (multi-process) deployment, when Tiled is configured with an
+Authenticator, secret keys must be provided via configuration like
 
-    authentication:
-      secret_keys:
-        - SECRET
-      ...
+authentication:
+  secret_keys:
+    - SECRET
+  ...
 
-    or via the environment variable TILED_SERVER_SECRET_KEYS.""",
+or via the environment variable TILED_SERVER_SECRET_KEYS.""",
+                )
+            # Multi-user authentication requires a database. We cannot fall
+            # back to the default of an in-memory SQLite database in a
+            # horizontally scaled deployment.
+            if not server_settings.get("database", {}).get("uri"):
+                raise UnscalableConfig(
+                    """
+In a scaled (multi-process) deployment, when Tiled is configured with an
+Authenticator, a persistent database must be provided via configuration like
+
+database:
+  uri: sqlite+aiosqlite:////path/to/database.sqlite
+
+"""
                 )
         else:
             # No authentication provider is configured, so no secret keys are
@@ -158,15 +172,15 @@ def build_app(
             ):
                 raise UnscalableConfig(
                     """
-    In a scaled (multi-process) deployment, when Tiled is configured for
-    single-user access (i.e. without an Authenticator) a single-user API key must
-    be provided via configuration like
+In a scaled (multi-process) deployment, when Tiled is configured for
+single-user access (i.e. without an Authenticator) a single-user API key must
+be provided via configuration like
 
-    authentication:
-      single_user_api_key: SECRET
-      ...
+authentication:
+  single_user_api_key: SECRET
+  ...
 
-    or via the environment variable TILED_SINGLE_USER_API_KEY.""",
+or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # If we reach here, the no configuration problems were found.
 
@@ -361,10 +375,9 @@ def build_app(
             )
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
-            # not set, use a SQLite database in the current working directory.
-            settings.database_uri = (
-                settings.database_uri or "sqlite+aiosqlite+aiosqlite:///./tiled.sqlite"
-            )
+            # not set, use a SQLite database in memory. Horizontally scaled deployments
+            # must specify a persistent database.
+            settings.database_uri = settings.database_uri or "sqlite+aiosqlite://"
         return settings
 
     @app.on_event("startup")
