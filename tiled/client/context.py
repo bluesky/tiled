@@ -50,6 +50,7 @@ class Context:
         verify=True,
         token_cache=DEFAULT_TOKEN_CACHE,
         app=None,
+        raise_server_exceptions=True,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -106,6 +107,7 @@ class Context:
                 event_hooks=EVENT_HOOKS,
                 timeout=timeout,
                 headers=headers,
+                raise_server_exceptions=raise_server_exceptions,
             )
             client.follow_redirects = True
             client.__enter__()

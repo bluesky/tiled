@@ -83,6 +83,87 @@ def from_uri(
     )
 
 
+def from_app(
+    app,
+    structure_clients="numpy",
+    *,
+    cache=None,
+    offline=False,
+    username=None,
+    auth_provider=None,
+    api_key=None,
+    token_cache=DEFAULT_TOKEN_CACHE,
+    headers=None,
+    timeout=None,
+    prompt_for_reauthentication=None,
+    raise_server_exceptions=True,
+):
+    """
+    Connect to a Node directly, running the app in this same process.
+
+    NOTE: This is experimental. It may need to be re-designed or even removed.
+
+    In this configuration, we are using the server, but we are communicating
+    with it directly within this process, not over a local network. It is
+    generally faster.
+
+    Specifically, we are using HTTP over ASGI rather than HTTP over TCP.
+    There are no sockets or network-related syscalls.
+
+    Parameters
+    ----------
+    structure_clients : str or dict, optional
+        Use "dask" for delayed data loading and "numpy" for immediate
+        in-memory structures (e.g. normal numpy arrays, pandas
+        DataFrames). For advanced use, provide dict mapping a
+        structure_family or a spec to a client object.
+    username : str, optional
+        Username for authenticated access.
+    auth_provider : str, optional
+        Name of an authentication provider. If None and the server supports
+        multiple provides, the user will be interactively prompted to
+        choose from a list.
+    api_key : str, optional
+        API key based authentication. Cannot mix with username/auth_provider.
+    cache : Cache, optional
+    offline : bool, optional
+        False by default. If True, rely on cache only.
+    token_cache : str, optional
+        Path to directory for storing refresh tokens.
+    prompt_for_reauthentication : bool, optional
+        If True, prompt interactively for credentials if needed. If False,
+        raise an error. By default, attempt to detect whether terminal is
+        interactive (is a TTY).
+    timeout : httpx.Timeout, optional
+        If None, use Tiled default settings.
+        (To disable timeouts, use httpx.Timeout(None)).
+    """
+    from ..server.app import get_settings
+
+    if (api_key is None) and (username is None):
+        # Extract the API key that the server is running on.
+        settings = app.dependency_overrides[get_settings]()
+        api_key = settings.single_user_api_key or None
+    context = Context(
+        uri="http://local-tiled-app/api/v1",
+        headers=headers,
+        api_key=api_key,
+        cache=cache,
+        offline=offline,
+        timeout=timeout,
+        token_cache=token_cache,
+        app=app,
+        raise_server_exceptions=raise_server_exceptions,
+    )
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        prompt_for_reauthentication=prompt_for_reauthentication,
+        username=username,
+        auth_provider=auth_provider,
+    )
+
+
 def from_tree(
     tree,
     structure_clients="numpy",

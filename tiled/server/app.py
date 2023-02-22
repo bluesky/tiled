@@ -676,9 +676,17 @@ def build_app(
 
         @app.middleware("http")
         async def capture_metrics_prometheus(request: Request, call_next):
-            response = await call_next(request)
-            response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-            metrics.capture_request_metrics(request, response)
+            try:
+                response = await call_next(request)
+            except Exception:
+                # Make a placeholder to feed to capture_request_metrics.
+                # The actual error response will be created by FastAPI/Starlette
+                # further up the call stack, where this exception will propagate.
+                response = Response(status_code=500)
+                raise
+            finally:
+                response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+                metrics.capture_request_metrics(request, response)
             return response
 
     return app

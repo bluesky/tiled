@@ -8,7 +8,7 @@ import os
 from functools import lru_cache
 
 from fastapi import APIRouter, Request, Response, Security
-from prometheus_client import Histogram
+from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 
 from .authentication import get_current_principal
 
@@ -162,7 +162,6 @@ async def metrics(
     """
     Prometheus metrics
     """
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     request.state.endpoint = "metrics"
     data = generate_latest(prometheus_registry())
