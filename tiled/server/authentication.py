@@ -988,6 +988,8 @@ async def whoami(
             select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
         )
     ).scalar()
+    if principal_orm is None:
+        raise HTTPException("Principal no longer exists.")
     latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
