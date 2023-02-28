@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     @property
     def database_settings(self):
         # The point of this alias is to return a hashable cache key for use in
-        # the module tiled.server.database_connection_pool.
+        # the module tiled.database.connection_pool.
         return DatabaseSettings(
             uri=self.database_uri,
             pool_size=self.database_pool_size,

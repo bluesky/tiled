@@ -32,6 +32,7 @@ with warnings.catch_warnings():
 from pydantic import BaseModel, BaseSettings
 
 from ..database import orm
+from ..database.connection_pool import get_database_session
 from ..database.core import (
     create_user,
     latest_principal_activity,
@@ -43,7 +44,6 @@ from ..database.core import (
 from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import json_or_msgpack
-from .database_connection_pool import get_database_session
 from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
@@ -235,8 +235,9 @@ async def get_current_principal(
                 )
             api_key_orm = await lookup_valid_api_key(db, secret)
             if api_key_orm is not None:
+                principal = api_key_orm.principal
                 principal_scopes = set().union(
-                    *[role.scopes for role in api_key_orm.principal.roles]
+                    *[role.scopes for role in principal.roles]
                 )
                 # This intersection addresses the case where the Principal has
                 # lost a scope that they had when this key was created.
@@ -409,7 +410,7 @@ async def create_session(settings, db, identity_provider, id):
             .options(
                 selectinload(orm.Session.principal).selectinload(
                     orm.Principal.identities
-                )
+                ),
             )
             .filter(orm.Session.id == session.id)
         )
@@ -459,7 +460,7 @@ async def create_tokens_from_session(settings, db, session, provider):
         "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
         "token_type": "bearer",
         "identity": {"id": identity.id, "provider": provider},
-        "principal": principal,
+        "principal": principal.uuid.hex,
     }
 
 
@@ -636,7 +637,7 @@ def build_device_code_token_route(authenticator, provider):
             raise HTTPException(400, {"error": "authorization_pending"})
         session = pending_session.session
         # The pending session can only be used once.
-        db.delete(pending_session)
+        await db.delete(pending_session)
         await db.commit()
         tokens = create_tokens_from_session(settings, db, session, provider)
         return tokens
@@ -970,7 +971,7 @@ async def revoke_apikey(
             404,
             f"The currently-authenticated {principal.type} has no such API key.",
         )
-    db.delete(api_key_orm)
+    await db.delete(api_key_orm)
     await db.commit()
     return Response(status_code=204)
 

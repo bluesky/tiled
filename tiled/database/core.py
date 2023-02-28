@@ -162,7 +162,7 @@ async def purge_expired(db, cls):
     result = await db.execute(statement)
     for obj in result.scalars():
         num_expired += 1
-        db.delete(obj)
+        await db.delete(obj)
     if num_expired:
         await db.commit()
     return num_expired
@@ -213,7 +213,7 @@ async def lookup_valid_session(db, session_id):
         session.expiration_time is not None
         and session.expiration_time < datetime.utcnow()
     ):
-        db.delete(session)
+        await db.delete(session)
         await db.commit()
         return None
     return session
@@ -234,7 +234,7 @@ async def lookup_valid_pending_session_by_device_code(db, device_code):
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db.delete(pending_session)
+        await db.delete(pending_session)
         await db.commit()
         return None
     return pending_session
@@ -252,7 +252,7 @@ async def lookup_valid_pending_session_by_user_code(db, user_code):
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db.delete(pending_session)
+        await db.delete(pending_session)
         await db.commit()
         return None
     return pending_session
@@ -262,10 +262,11 @@ async def make_admin_by_identity(db, identity_provider, id):
     identity = (
         await db.execute(
             select(Identity)
+            .options(selectinload(Identity.principal).selectinload(Principal.roles))
             .filter(Identity.id == id)
             .filter(Identity.provider == identity_provider)
         )
-    ).first()
+    ).scalar()
     if identity is None:
         principal = await create_user(db, identity_provider, id)
     else:
@@ -287,7 +288,7 @@ async def lookup_valid_api_key(db, secret):
     api_key = (
         await db.execute(
             select(APIKey)
-            .options(selectinload(APIKey.prinicpal.roles))
+            .options(selectinload(APIKey.principal).selectinload(Principal.roles))
             .filter(APIKey.first_eight == secret.hex()[:8])
             .filter(APIKey.hashed_secret == hashed_secret)
         )
@@ -297,12 +298,12 @@ async def lookup_valid_api_key(db, secret):
         validated_api_key = None
     elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
         # Match is expired. Delete it.
-        db.delete(api_key)
+        await db.delete(api_key)
         await db.commit()
         validated_api_key = None
     elif api_key.principal is None:
         # The Principal for the API key no longer exists. Delete it.
-        db.delete(api_key)
+        await db.delete(api_key)
         await db.commit()
         validated_api_key = None
     else:

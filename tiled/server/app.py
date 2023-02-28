@@ -29,10 +29,6 @@ from ..validation_registration import validation_registry as default_validation_
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
 from .core import PatchedStreamingResponse
-from .database_connection_pool import (
-    close_database_connection_pool,
-    open_database_connection_pool,
-)
 from .dependencies import (
     get_query_registry,
     get_root_tree,
@@ -457,6 +453,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             from sqlalchemy.ext.asyncio import AsyncSession
 
             from ..database import orm
+            from ..database.connection_pool import open_database_connection_pool
             from ..database.core import (
                 DatabaseUpgradeNeeded,
                 UninitializedDatabase,
@@ -548,6 +545,8 @@ Back up the database, and then run:
 
     @app.on_event("shutdown")
     async def shutdown_event():
+        from ..database.connection_pool import close_database_connection_pool
+
         for task in app.state.tasks:
             task.cancel()
         settings = app.dependency_overrides[get_settings]()
