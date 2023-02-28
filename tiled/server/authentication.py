@@ -1,4 +1,3 @@
-import asyncio
 import enum
 import hashlib
 import secrets
@@ -20,6 +19,7 @@ from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
 
 # To hide third-party warning
@@ -235,9 +235,8 @@ async def get_current_principal(
                 )
             api_key_orm = await lookup_valid_api_key(db, secret)
             if api_key_orm is not None:
-                principal = schemas.Principal.from_orm(api_key_orm.principal)
                 principal_scopes = set().union(
-                    *[role.scopes for role in principal.roles]
+                    *[role.scopes for role in api_key_orm.principal.roles]
                 )
                 # This intersection addresses the case where the Principal has
                 # lost a scope that they had when this key was created.
@@ -366,6 +365,7 @@ async def create_session(settings, db, identity_provider, id):
     identity = (
         await db.execute(
             select(orm.Identity)
+            .options(selectinload(orm.Identity.principal))
             .filter(orm.Identity.id == id)
             .filter(orm.Identity.provider == identity_provider)
         )
@@ -381,7 +381,6 @@ async def create_session(settings, db, identity_provider, id):
     else:
         identity.latest_login = now
         principal = identity.principal
-    # selectinload Principal?
     session_count = (
         await db.execute(
             select(func.count())
@@ -403,8 +402,19 @@ async def create_session(settings, db, identity_provider, id):
     )
     db.add(session)
     await db.commit()
-    await db.refresh(session)
-    return session
+    # Relaod to select Principal and Identiies.
+    fully_loaded_session = (
+        await db.execute(
+            select(orm.Session)
+            .options(
+                selectinload(orm.Session.principal).selectinload(
+                    orm.Principal.identities
+                )
+            )
+            .filter(orm.Session.id == session.id)
+        )
+    ).scalar()
+    return fully_loaded_session
 
 
 async def create_tokens_from_session(settings, db, session, provider):
@@ -553,16 +563,12 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        loop = asyncio.get_running_loop()
         action = (
             f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
         )
         normalized_user_code = user_code.upper().replace("-", "")
-        pending_session = await loop.run_in_executor(
-            None,
-            lookup_valid_pending_session_by_user_code,
-            db,
-            normalized_user_code,
+        pending_session = await lookup_valid_pending_session_by_user_code(
+            db, normalized_user_code
         )
         if pending_session is None:
             message = "Invalid user_code. It may have been mistyped, or the pending request may have expired."
@@ -832,7 +838,10 @@ async def slide_session(refresh_token, settings, db):
         payload = decode_token(refresh_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
-            status_code=401, detail="Session has expired. Please re-authenticate."
+            status_code=401,
+            detail="Session has expired. Please re-authenticate.".options(
+                selectinload(orm.APIKey.prinicpal).selectinload(orm.Principal.roles)
+            ),
         )
     # Find this session in the database.
     session = await lookup_valid_session(db, payload["sid"])
@@ -855,14 +864,13 @@ async def slide_session(refresh_token, settings, db):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
-    principal = schemas.Principal.from_orm(session.principal)
     data = {
-        "sub": principal.uuid.hex,
-        "sub_typ": principal.type,  # Why is this str and not Enum?
-        "scp": list(set().union(*[role.scopes for role in principal.roles])),
+        "sub": session.principal.uuid.hex,
+        "sub_typ": session.principal.type,  # Why is this str and not Enum?
+        "scp": list(set().union(*[role.scopes for role in session.principal.roles])),
         "ids": [
             {"id": identity.id, "idp": identity.provider}
-            for identity in principal.identities
+            for identity in session.principal.identities
         ],
     }
     access_token = create_access_token(
@@ -985,7 +993,14 @@ async def whoami(
     # access_token carries around, but the database knows more than that.
     principal_orm = (
         await db.execute(
-            select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
+            select(orm.Principal)
+            .options(
+                selectinload(orm.Principal.identities),
+                selectinload(orm.Principal.roles),
+                selectinload(orm.Principal.api_keys),
+                selectinload(orm.Principal.sessions),
+            )
+            .filter(orm.Principal.uuid == principal.uuid)
         )
     ).scalar()
     if principal_orm is None:

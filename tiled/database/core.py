@@ -21,9 +21,9 @@ REQUIRED_REVISION = "4a9dfaba4a98"
 ALL_REVISIONS = ["4a9dfaba4a98", "56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
 
 
-async def create_default_roles(db_session):
+async def create_default_roles(db):
 
-    db_session.add_all(
+    db.add_all(
         [
             Role(
                 name="user",
@@ -53,7 +53,7 @@ async def create_default_roles(db_session):
             ),
         ]
     )
-    await db_session.commit()
+    await db.commit()
 
 
 async def initialize_database(engine):
@@ -66,8 +66,8 @@ async def initialize_database(engine):
         await conn.run_sync(Base.metadata.create_all)
 
         # Initialize Roles table.
-        async with AsyncSession(engine) as db_session:
-            await create_default_roles(db_session)
+        async with AsyncSession(engine) as db:
+            await create_default_roles(db)
 
 
 def stamp_head(engine_url):
@@ -148,7 +148,7 @@ async def check_database(engine):
         )
 
 
-async def purge_expired(db_session, cls):
+async def purge_expired(db, cls):
     """
     Remove expired entries.
     """
@@ -159,32 +159,30 @@ async def purge_expired(db_session, cls):
         .filter(cls.expiration_time.is_not(None))
         .filter(cls.expiration_time < now)
     )
-    result = await db_session.execute(statement)
+    result = await db.execute(statement)
     for obj in result.scalars():
         num_expired += 1
-        db_session.delete(obj)
+        db.delete(obj)
     if num_expired:
-        await db_session.commit()
+        await db.commit()
     return num_expired
 
 
-async def create_user(db_session, identity_provider, id):
-    user_role = (
-        await db_session.execute(select(Role).filter(Role.name == "user"))
-    ).scalar()
+async def create_user(db, identity_provider, id):
+    user_role = (await db.execute(select(Role).filter(Role.name == "user"))).scalar()
     assert user_role is not None, "User role is missing from Roles table"
     principal = Principal(type="user", roles=[user_role])
-    db_session.add(principal)
-    await db_session.commit()
+    db.add(principal)
+    await db.commit()
     identity = Identity(
         provider=identity_provider,
         id=id,
         principal_id=principal.id,
     )
-    db_session.add(identity)
-    await db_session.commit()
+    db.add(identity)
+    await db.commit()
     refreshed_principal = (
-        await db_session.execute(
+        await db.execute(
             select(Principal)
             .filter(Principal.id == principal.id)
             .options(selectinload(Principal.identities))
@@ -193,15 +191,20 @@ async def create_user(db_session, identity_provider, id):
     return refreshed_principal
 
 
-async def lookup_valid_session(db_session, session_id):
+async def lookup_valid_session(db, session_id):
     if isinstance(session_id, int):
         # Old versions of tiled used an integer sid.
         # Reject any of those old sessions and force reauthentication.
         return None
 
     session = (
-        await db_session.execute(
-            select(Session).filter(Session.uuid == uuid_module.UUID(hex=session_id))
+        await db.execute(
+            select(Session)
+            .options(
+                selectinload(Session.principal).selectinload(Principal.roles),
+                selectinload(Session.principal).selectinload(Principal.identities),
+            )
+            .filter(Session.uuid == uuid_module.UUID(hex=session_id))
         )
     ).scalar()
     if session is None:
@@ -210,16 +213,16 @@ async def lookup_valid_session(db_session, session_id):
         session.expiration_time is not None
         and session.expiration_time < datetime.utcnow()
     ):
-        db_session.delete(session)
-        await db_session.commit()
+        db.delete(session)
+        await db.commit()
         return None
     return session
 
 
-async def lookup_valid_pending_session_by_device_code(db_session, device_code):
+async def lookup_valid_pending_session_by_device_code(db, device_code):
     hashed_device_code = hashlib.sha256(device_code).digest()
     pending_session = (
-        await db_session.execute(
+        await db.execute(
             select(PendingSession).filter(
                 PendingSession.hashed_device_code == hashed_device_code
             )
@@ -231,15 +234,15 @@ async def lookup_valid_pending_session_by_device_code(db_session, device_code):
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db_session.delete(pending_session)
-        await db_session.commit()
+        db.delete(pending_session)
+        await db.commit()
         return None
     return pending_session
 
 
-async def lookup_valid_pending_session_by_user_code(db_session, user_code):
+async def lookup_valid_pending_session_by_user_code(db, user_code):
     pending_session = (
-        await db_session.execute(
+        await db.execute(
             select(PendingSession).filter(PendingSession.user_code == user_code)
         )
     ).scalar()
@@ -249,34 +252,32 @@ async def lookup_valid_pending_session_by_user_code(db_session, user_code):
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db_session.delete(pending_session)
-        await db_session.commit()
+        db.delete(pending_session)
+        await db.commit()
         return None
     return pending_session
 
 
-async def make_admin_by_identity(db_session, identity_provider, id):
+async def make_admin_by_identity(db, identity_provider, id):
     identity = (
-        await db_session.execute(
+        await db.execute(
             select(Identity)
             .filter(Identity.id == id)
             .filter(Identity.provider == identity_provider)
         )
     ).first()
     if identity is None:
-        principal = await create_user(db_session, identity_provider, id)
+        principal = await create_user(db, identity_provider, id)
     else:
         principal = identity.principal
-    admin_role = (
-        await db_session.execute(select(Role).filter(Role.name == "admin"))
-    ).scalar()
+    admin_role = (await db.execute(select(Role).filter(Role.name == "admin"))).scalar()
     assert admin_role is not None, "Admin role is missing from Roles table"
     principal.roles.append(admin_role)
-    await db_session.commit()
+    await db.commit()
     return principal
 
 
-async def lookup_valid_api_key(db_session, secret):
+async def lookup_valid_api_key(db, secret):
     """
     Look up an API key. Ensure that it is valid.
     """
@@ -284,8 +285,9 @@ async def lookup_valid_api_key(db_session, secret):
     now = datetime.utcnow()
     hashed_secret = hashlib.sha256(secret).digest()
     api_key = (
-        await db_session.execute(
+        await db.execute(
             select(APIKey)
+            .options(selectinload(APIKey.prinicpal.roles))
             .filter(APIKey.first_eight == secret.hex()[:8])
             .filter(APIKey.hashed_secret == hashed_secret)
         )
@@ -295,20 +297,20 @@ async def lookup_valid_api_key(db_session, secret):
         validated_api_key = None
     elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
         # Match is expired. Delete it.
-        db_session.delete(api_key)
-        await db_session.commit()
+        db.delete(api_key)
+        await db.commit()
         validated_api_key = None
     elif api_key.principal is None:
         # The Principal for the API key no longer exists. Delete it.
-        db_session.delete(api_key)
-        await db_session.commit()
+        db.delete(api_key)
+        await db.commit()
         validated_api_key = None
     else:
         validated_api_key = api_key
     return validated_api_key
 
 
-async def latest_principal_activity(db_session, principal):
+async def latest_principal_activity(db, principal):
     """
     The most recent time this Principal has logged in with an Identity,
     refreshed a Session, or used an APIKey.
@@ -320,21 +322,21 @@ async def latest_principal_activity(db_session, principal):
     minutes).
     """
     latest_identity_activity = (
-        await db_session.execute(
+        await db.execute(
             select(func.max(Identity.latest_login)).filter(
                 Identity.principal_id == principal.id
             )
         )
     ).scalar()
     latest_session_activity = (
-        await db_session.execute(
+        await db.execute(
             select(func.max(Session.time_last_refreshed)).filter(
                 Session.principal_id == principal.id
             )
         )
     ).scalar()
     latest_api_key_activity = (
-        await db_session.execute(
+        await db.execute(
             select(func.max(APIKey.latest_activity)).filter(
                 APIKey.principal_id == principal.id
             )
