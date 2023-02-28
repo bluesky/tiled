@@ -1,4 +1,6 @@
 import io
+import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -27,6 +29,12 @@ def config(tmpdir):
     - a unique temporary sqlite database location
     - a unique nested dict instance that the test can mutate
     """
+    database_uri = f"sqlite+aiosqlite:///{tmpdir}/tiled.sqlite"
+    subprocess.run(
+        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
+        check=True,
+        capture_output=True,
+    )
     return {
         "authentication": {
             "secret_keys": ["SECRET"],
@@ -41,7 +49,7 @@ def config(tmpdir):
             ],
         },
         "database": {
-            "uri": "sqlite+aiosqlite://",  # in-memory
+            "uri": database_uri,
         },
         "trees": [
             {
