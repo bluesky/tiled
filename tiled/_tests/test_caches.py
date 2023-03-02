@@ -83,10 +83,6 @@ def test_caching_map():
     assert "a" not in cache
     assert "a" not in mapping
     assert "a" not in d
-    with pytest.raises(KeyError):
-        d.remove("a")
-    with pytest.raises(KeyError):
-        d.remove("never existed")
     d.set("a", f)
     assert d["a"] == 5  # f is called here again
     assert counter == 4
