@@ -5,7 +5,7 @@ services:
       contenxt: .
     volumes:
       - type: bind
-        source: .
+        source: ./config
         target: /deploy
     environment:
       - TILED_CONFIG=/deploy/config.yml
