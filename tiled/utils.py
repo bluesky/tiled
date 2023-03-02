@@ -145,9 +145,9 @@ class OneShotCachedMap(collections.abc.Mapping):
 
     def remove(self, key):
         """
-        Remove a key. Raises KeyError if key not present.
+        Remove a key.
         """
-        del self.__mapping[key]
+        self.__mapping.pop(key, None)
         self.evict(key)
 
     def __len__(self):
@@ -227,9 +227,9 @@ class CachingMap(collections.abc.Mapping):
 
     def remove(self, key):
         """
-        Remove a key. Raises KeyError if key not present.
+        Remove a key.
         """
-        del self.__mapping[key]
+        self.__mapping.pop(key, None)
         self.evict(key)
 
     def evict(self, key):
