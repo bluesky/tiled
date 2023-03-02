@@ -7,7 +7,7 @@ To do this run
 docker pull ghcr.io/bluesky/tiled:main
 ```
 
-In this example we will use the docker image to serve a directory of files as explained [here](../../tutorials/serving-files.md).
+In this example we will use the docker image to serve a directory of files as explained [here](../tutorials/serving-files.md).
 
 First generate a directory of example files using a utility provided by Tiled.
 
