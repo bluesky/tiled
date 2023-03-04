@@ -23,15 +23,15 @@ def open_database_connection_pool(database_settings):
 
 
 async def close_database_connection_pool(database_settings):
-    try:
-        engine = _connection_pools.pop(database_settings)
-    except KeyError:
-        pass
-    else:
+    engine = _connection_pools.pop(database_settings, None)
+    if engine is not None:
         await engine.dispose()
 
 
 async def get_database_engine(settings=Depends(get_settings)):
+    # Special case for single-user mode
+    if settings.database_uri is None:
+        return None
     try:
         return _connection_pools[settings.database_settings]
     except KeyError:
@@ -41,5 +41,9 @@ async def get_database_engine(settings=Depends(get_settings)):
 
 
 async def get_database_session(engine=Depends(get_database_engine)):
-    async with AsyncSession(engine, autoflush=False, expire_on_commit=False) as session:
-        yield session
+    # Special case for single-user mode
+    if engine is None:
+        yield None
+    else:
+        async with AsyncSession(engine, autoflush=False, expire_on_commit=False) as session:
+            yield session

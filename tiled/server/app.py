@@ -18,8 +18,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
 
-from tiled.database.core import purge_expired
-
 from ..authenticators import Mode
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
@@ -460,15 +458,16 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 check_database,
                 initialize_database,
                 make_admin_by_identity,
+                purge_expired,
             )
 
             # This creates a connection pool and stashes it in a module-global
             # registry, keyed on database_settings, where can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
-            # Special-case for in-memory SQLite: Because it is transient we can
-            # skip over anything related to migrations.
             if not engine.url.database:
+                # Special-case for in-memory SQLite: Because it is transient we can
+                # skip over anything related to migrations.
                 await initialize_database(engine)
                 logger.info("Transient in-memory database initialized.")
             else:
@@ -519,6 +518,7 @@ Back up the database, and then run:
                         )
 
             async def purge_expired_sessions_and_api_keys():
+                PURGE_INTERVAL = 600  # seconds
                 while True:
                     async with AsyncSession(
                         engine, autoflush=False, expire_on_commit=False
@@ -537,7 +537,7 @@ Back up the database, and then run:
                             logger.info(
                                 f"Purged {num_expired_api_keys} expired API keys from the database."
                             )
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(PURGE_INTERVAL)
 
             app.state.tasks.append(
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
@@ -545,12 +545,13 @@ Back up the database, and then run:
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        from ..database.connection_pool import close_database_connection_pool
-
-        for task in app.state.tasks:
-            task.cancel()
         settings = app.dependency_overrides[get_settings]()
-        await close_database_connection_pool(settings.database_settings)
+        if settings.database_uri is not None:
+            from ..database.connection_pool import close_database_connection_pool
+
+            for task in app.state.tasks:
+                task.cancel()
+            await close_database_connection_pool(settings.database_settings)
 
     app.add_middleware(
         CompressionMiddleware,
