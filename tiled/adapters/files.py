@@ -310,6 +310,7 @@ class DirectoryAdapter(MapAdapter):
                 ):
                     valid_files.append(f)
             files[:] = valid_files
+
             for filename in files:
                 if (ignore_re_files is not None) and compiled_ignore_re_files.match(
                     str(Path(*parts))
@@ -327,7 +328,7 @@ class DirectoryAdapter(MapAdapter):
                             key=key,
                         )
                     )
-                    index[parts].remove(key)
+                    index[parts].discard(key)
                 else:
                     try:
                         reader_factory = _reader_factory_for_file(
