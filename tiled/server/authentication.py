@@ -45,12 +45,7 @@ from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import json_or_msgpack
 from .settings import get_settings
-from .utils import (
-    API_KEY_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    get_authenticators,
-    get_base_url,
-)
+from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -1021,5 +1016,4 @@ async def logout(
 ):
     request.state.endpoint = "auth"
     response.delete_cookie(API_KEY_COOKIE_NAME)
-    response.delete_cookie(CSRF_COOKIE_NAME)
     return {}

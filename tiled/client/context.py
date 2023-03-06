@@ -32,6 +32,7 @@ tiled_version = get_versions()["version"]
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 UNSET = Sentinel("UNSET")
+PROMPT_FOR_REAUTHENTICATION = None
 
 
 class Context:
@@ -668,10 +669,16 @@ class Context:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def authenticate(self, username=None, provider=None):
+    def authenticate(
+        self, username=None, provider=None, prompt_for_reauthentication=UNSET
+    ):
         """
         See login. This is for programmatic use.
         """
+        if prompt_for_reauthentication is UNSET:
+            prompt_for_reauthentication = PROMPT_FOR_REAUTHENTICATION
+        if prompt_for_reauthentication is None:
+            prompt_for_reauthentication = sys.__stdin__.isatty()
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
@@ -705,6 +712,8 @@ class Context:
             except CannotRefreshAuthentication:
                 # Continue below, where we will prompt for log in.
                 self.http_client.auth = None
+                if not prompt_for_reauthentication:
+                    raise
             else:
                 # We have a live session for the specified provider and username already.
                 # No need to log in again.

@@ -1,11 +1,10 @@
 import collections
 import collections.abc
-import sys
 
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
-from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, Context
+from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, UNSET, Context
 from .node import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Node
 from .utils import ClientError, client_for_item
 
@@ -21,7 +20,7 @@ def from_uri(
     api_key=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     verify=True,
-    prompt_for_reauthentication=None,
+    prompt_for_reauthentication=UNSET,
     headers=None,
     timeout=None,
 ):
@@ -86,7 +85,7 @@ def from_uri(
 def from_context(
     context,
     structure_clients="numpy",
-    prompt_for_reauthentication=None,
+    prompt_for_reauthentication=UNSET,
     username=None,
     auth_provider=None,
     node_path_parts=None,
@@ -110,8 +109,6 @@ def from_context(
     if (username is not None) or (auth_provider is not None):
         if context.api_key is not None:
             raise ValueError("Use api_key or username/auth_provider, not both.")
-    if prompt_for_reauthentication is None:
-        prompt_for_reauthentication = sys.__stdin__.isatty()
     node_path_parts = node_path_parts or []
     # Do entrypoint discovery if it hasn't yet been done.
     if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
@@ -133,7 +130,11 @@ Set an api_key as in:
 """
         )
     if username is not None:
-        context.authenticate(username=username, provider=auth_provider)
+        context.authenticate(
+            username=username,
+            provider=auth_provider,
+            prompt_for_reauthentication=prompt_for_reauthentication,
+        )
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}node/metadata/{'/'.join(node_path_parts)}"
     try:

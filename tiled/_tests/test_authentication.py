@@ -68,18 +68,25 @@ def test_password_auth(enter_password, config, tmpdir):
     with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
         # Log in as Alice.
         with enter_password("secret1"):
-            from_context(context, username="alice", prompt_for_reauthentication=True)
+            from_context(context, username="alice")
+        # Reuse token from cache.
+        client = from_context(context, username="alice")
+        client.logout()
+
         # Log in as Bob.
         with enter_password("secret2"):
-            from_context(context, username="bob", prompt_for_reauthentication=True)
+            client = from_context(context, username="bob")
+        client.logout()
+
         # Bob's password should not work for Alice.
         with fail_with_status_code(401):
             with enter_password("secret2"):
-                from_context(context, username="alice", prompt_for_reauthentication=True)
+                from_context(context, username="alice")
+
         # Empty password should not work.
         with fail_with_status_code(422):
             with enter_password(""):
-                from_context(context, username="alice", prompt_for_reauthentication=True)
+                from_context(context, username="alice")
 
 
 def test_key_rotation(enter_password, config, tmpdir):
@@ -88,28 +95,20 @@ def test_key_rotation(enter_password, config, tmpdir):
     Confirm that clients experience a smooth transition.
     """
 
-    # Obtain refresh token.
-    with enter_password("secret1"):
-        with from_config(
-            config,
-            username="alice",
-            token_cache=tmpdir,
-            prompt_for_reauthentication=True,
-        ):
-            pass
-    # Use refresh token (no prompt to reauthenticate).
-    with from_config(
-        config, username="alice", token_cache=tmpdir, prompt_for_reauthentication=True
-    ):
-        pass
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
+        # Obtain refresh token.
+        with enter_password("secret1"):
+            from_context(context, username="alice")
+        # Use refresh token (no prompt to reauthenticate).
+        client = from_context(context, username="alice")
 
     # Rotate in a new key.
     config["authentication"]["secret_keys"].insert(0, "NEW_SECRET")
     assert config["authentication"]["secret_keys"] == ["NEW_SECRET", "SECRET"]
-    # The refresh token from the old key is still valid.
-    with from_config(
-        config, username="alice", token_cache=tmpdir, prompt_for_reauthentication=True
-    ) as client:
+
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
+        # The refresh token from the old key is still valid. No login prompt here.
+        client = from_context(context, username="alice")
         # We reauthenticate and receive a refresh token for the new key.
         # (This would happen on its own with the passage of time, but we force it
         # for the sake of a quick test.)
@@ -118,11 +117,10 @@ def test_key_rotation(enter_password, config, tmpdir):
     # Rotate out the old key.
     del config["authentication"]["secret_keys"][1]
     assert config["authentication"]["secret_keys"] == ["NEW_SECRET"]
-    # New refresh token works with the new key.
-    with from_config(
-        config, username="alice", token_cache=tmpdir, prompt_for_reauthentication=True
-    ):
-        pass
+
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
+        # New refresh token works with the new key
+        from_context(context, username="alice")
 
 
 def test_refresh_flow(enter_password, config):
@@ -277,7 +275,7 @@ def test_multiple_providers_name_collision(config):
         },
     ]
     with pytest.raises(ValueError):
-        with from_config(config, prompt_for_reauthentication=True):
+        with from_config(config):
             pass
 
 
@@ -299,9 +297,7 @@ def test_admin(enter_password, config, tmpdir):
             assert "admin" in [role["name"] for role in admin_roles]
 
     with enter_password("secret2"):
-        with from_config(
-            config, username="bob", token_cache=tmpdir, prompt_for_reauthentication=True
-        ) as user_client:
+        with from_config(config, username="bob", token_cache=tmpdir) as user_client:
             user_roles = user_client.context.whoami()["roles"]
             assert [role["name"] for role in user_roles] == ["user"]
 
@@ -315,18 +311,14 @@ def test_api_keys(enter_password, config, tmpdir):
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
 
     with enter_password("secret2"):
-        with from_config(
-            config, username="bob", token_cache=tmpdir, prompt_for_reauthentication=True
-        ) as user_client:
+        with from_config(config, username="bob", token_cache=tmpdir) as user_client:
             # Try to request a key with more scopes that the user has.
             with fail_with_status_code(400):
                 user_client.context.create_api_key(scopes=["admin:apikeys"])
             # Make and use an API key. Check that latest_activity is updated.
             user_key_info = user_client.context.create_api_key()
             assert user_key_info["latest_activity"] is None  # never used
-    with from_config(
-        config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
-    ) as user_client_from_key:
+    with from_config(config, api_key=user_key_info["secret"]) as user_client_from_key:
         # Check that api_key property is set.
         assert user_client_from_key.context.api_key == user_key_info["secret"]
         # Use the key for a couple requests and see that latest_activity becomes set and then increases.
@@ -352,7 +344,6 @@ def test_api_keys(enter_password, config, tmpdir):
         # Now this works again.
         user_client_from_key.context.which_api_key()
 
-
         # Create and revoke key.
         user_key_info = user_client.context.create_api_key(note="will revoke soon")
         assert len(user_client_from_key.context.whoami()["api_keys"]) == 2
@@ -365,9 +356,7 @@ def test_api_keys(enter_password, config, tmpdir):
         # Revoke the new key.
         user_client_from_key.context.revoke_api_key(user_key_info["first_eight"])
         with fail_with_status_code(401):
-            from_config(
-                config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
-            )
+            from_config(config, api_key=user_key_info["secret"])
         assert len(user_client_from_key.context.whoami()["api_keys"]) == 1
 
         # Create a key with a very short lifetime.
@@ -376,9 +365,7 @@ def test_api_keys(enter_password, config, tmpdir):
         )  # units: seconds
         time.sleep(2)
         with fail_with_status_code(401):
-            with from_config(
-                config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
-            ):
+            with from_config(config, api_key=user_key_info["secret"]):
                 pass
     with enter_password("secret1"):
         with from_config(
@@ -390,14 +377,14 @@ def test_api_keys(enter_password, config, tmpdir):
             # Request a key with reduced scope that cannot read metadata.
             admin_key_info = admin_client.context.create_api_key(scopes=["metrics"])
             with fail_with_status_code(401):
-                from_config(
-                    config, api_key=admin_key_info["secret"], prompt_for_reauthentication=True
-                )
+                from_config(config, api_key=admin_key_info["secret"])
 
             # Request a key with reduced scope that can *only* read metadata.
-            admin_key_info = admin_client.context.create_api_key(scopes=["read:metadata"])
+            admin_key_info = admin_client.context.create_api_key(
+                scopes=["read:metadata"]
+            )
             with from_config(
-                config, api_key=admin_key_info["secret"], prompt_for_reauthentication=True
+                config, api_key=admin_key_info["secret"]
             ) as restricted_client:
                 restricted_client["A1"]
                 with fail_with_status_code(401):
