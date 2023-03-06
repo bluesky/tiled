@@ -130,13 +130,18 @@ def from_app(
         False by default. If True, rely on cache only.
     token_cache : str, optional
         Path to directory for storing refresh tokens.
+    headers : dict, optional
+        Extra HTTP headers.
+    timeout : httpx.Timeout, optional
+        If None, use Tiled default settings.
+        (To disable timeouts, use httpx.Timeout(None)).
     prompt_for_reauthentication : bool, optional
         If True, prompt interactively for credentials if needed. If False,
         raise an error. By default, attempt to detect whether terminal is
         interactive (is a TTY).
-    timeout : httpx.Timeout, optional
-        If None, use Tiled default settings.
-        (To disable timeouts, use httpx.Timeout(None)).
+    raise_server_exceptions: boolean, optional
+        Used for testing. False by default.
+        Passed to starlette.testclient.TestClient.
     """
     from ..server.app import get_settings
 
