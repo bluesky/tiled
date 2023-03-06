@@ -175,6 +175,14 @@ class TiffSequenceAdapter:
         )
 
 
+class SubdirectoryError(Exception):
+    """
+    Raised when checking a path for tiffs will raise and error
+    """
+
+    pass
+
+
 def subdirectory_handler(path):
     """
     Sniff a subdirectory for TIFF sequences.
@@ -198,7 +206,12 @@ def subdirectory_handler(path):
             continue
         outliers += 1
 
-    fraction = outliers / (outliers + len(filepaths))
+    # Avoid divide by zero error and raise with a hint about the offending path
+    total_files = outliers + len(filepaths)
+    if total_files == 0:
+        raise SubdirectoryError(f"No files found in {str(path)}")
+
+    fraction = outliers / total_files
     if (outliers <= ABSOLUTE_THRESHOLD) and (fraction <= RELATIVE_THRESHOLD):
         # This looks like a TIFF sequence directory.
         import tifffile
