@@ -302,13 +302,7 @@ class Context:
         """
         Construct a Context around a FastAPI app. Primarily for testing.
         """
-        from ..server.settings import get_settings
-
-        if api_key is UNSET:
-            # If app uses single-user API key, extact it and set it in the Context.
-            settings = app.dependency_overrides[get_settings]()
-            api_key = settings.single_user_api_key or None
-        return cls(
+        context = cls(
             uri="http://local-tiled-app/api/v1",
             headers=headers,
             api_key=api_key,
@@ -318,6 +312,18 @@ class Context:
             token_cache=token_cache,
             app=app,
         )
+        if (
+            (not context.offline)
+            and (api_key is UNSET)
+            and (not context.server_info["authentication"]["providers"])
+        ):
+            # Extract the API key from the app and set it.
+            from ..server.settings import get_settings
+
+            settings = app.dependency_overrides[get_settings]()
+            api_key = settings.single_user_api_key or None
+            context.api_key = api_key
+        return context
 
     @property
     def tokens(self):

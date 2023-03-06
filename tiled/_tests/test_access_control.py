@@ -120,7 +120,7 @@ def context(tmpdir_module):
         ],
     }
     app = build_app_from_config(config)
-    with Context.from_app(app, token_cache=tmpdir_module, api_key=None) as context:
+    with Context.from_app(app, token_cache=tmpdir_module) as context:
         yield context
 
 
