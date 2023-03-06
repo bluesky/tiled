@@ -10,9 +10,10 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_config
+from ..client import Context, from_context
 from ..client.auth import CannotRefreshAuthentication
 from ..server import authentication
+from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
@@ -60,52 +61,25 @@ def config(tmpdir):
     }
 
 
-def test_password_auth(enter_password, config):
+def test_password_auth(enter_password, config, tmpdir):
     """
     A password that is wrong, empty, or belonging to a different user fails.
     """
-
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
+        # Log in as Alice.
         with enter_password("secret1"):
-            with from_config(
-                config,
-                username="alice",
-                token_cache=tmpdir,
-                prompt_for_reauthentication=True,
-            ):
-                pass
+            from_context(context, username="alice", prompt_for_reauthentication=True)
+        # Log in as Bob.
         with enter_password("secret2"):
-            with from_config(
-                config,
-                username="bob",
-                token_cache=tmpdir,
-                prompt_for_reauthentication=True,
-            ):
-                pass
-
-    # Bob's password should not work for alice
-    with tempfile.TemporaryDirectory() as tmpdir:
+            from_context(context, username="bob", prompt_for_reauthentication=True)
+        # Bob's password should not work for Alice.
         with fail_with_status_code(401):
             with enter_password("secret2"):
-                with from_config(
-                    config,
-                    username="alice",
-                    token_cache=tmpdir,
-                    prompt_for_reauthentication=True,
-                ):
-                    pass
-
-    # Empty password should not work.
-    with tempfile.TemporaryDirectory() as tmpdir:
+                from_context(context, username="alice", prompt_for_reauthentication=True)
+        # Empty password should not work.
         with fail_with_status_code(422):
             with enter_password(""):
-                with from_config(
-                    config,
-                    username="alice",
-                    token_cache=tmpdir,
-                    prompt_for_reauthentication=True,
-                ):
-                    pass
+                from_context(context, username="alice", prompt_for_reauthentication=True)
 
 
 def test_key_rotation(enter_password, config, tmpdir):
@@ -379,33 +353,33 @@ def test_api_keys(enter_password, config, tmpdir):
         user_client_from_key.context.which_api_key()
 
 
-            # Create and revoke key.
-            user_key_info = user_client.context.create_api_key(note="will revoke soon")
-            assert len(user_client_from_key.context.whoami()["api_keys"]) == 2
-            # There should now be two keys, one from above and this new one, with our note.
-            for api_key in user_client_from_key.context.whoami()["api_keys"]:
-                if api_key["note"] == "will revoke soon":
-                    break
-            else:
-                assert False, "No api keys had a matching note."
-            # Revoke the new key.
-            user_client_from_key.context.revoke_api_key(user_key_info["first_eight"])
-            with fail_with_status_code(401):
-                from_config(
-                    config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
-                )
-            assert len(user_client_from_key.context.whoami()["api_keys"]) == 1
+        # Create and revoke key.
+        user_key_info = user_client.context.create_api_key(note="will revoke soon")
+        assert len(user_client_from_key.context.whoami()["api_keys"]) == 2
+        # There should now be two keys, one from above and this new one, with our note.
+        for api_key in user_client_from_key.context.whoami()["api_keys"]:
+            if api_key["note"] == "will revoke soon":
+                break
+        else:
+            assert False, "No api keys had a matching note."
+        # Revoke the new key.
+        user_client_from_key.context.revoke_api_key(user_key_info["first_eight"])
+        with fail_with_status_code(401):
+            from_config(
+                config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
+            )
+        assert len(user_client_from_key.context.whoami()["api_keys"]) == 1
 
-            # Create a key with a very short lifetime.
-            user_key_info = user_client.context.create_api_key(
-                note="will expire very soon", expires_in=1
-            )  # units: seconds
-            time.sleep(2)
-            with fail_with_status_code(401):
-                with from_config(
-                    config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
-                ):
-                    pass
+        # Create a key with a very short lifetime.
+        user_key_info = user_client.context.create_api_key(
+            note="will expire very soon", expires_in=1
+        )  # units: seconds
+        time.sleep(2)
+        with fail_with_status_code(401):
+            with from_config(
+                config, api_key=user_key_info["secret"], prompt_for_reauthentication=True
+            ):
+                pass
     with enter_password("secret1"):
         with from_config(
             config,
