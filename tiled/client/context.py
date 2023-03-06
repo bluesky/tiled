@@ -12,7 +12,7 @@ import httpx
 import msgpack
 
 from .._version import get_versions
-from ..utils import DictView
+from ..utils import DictView, Sentinel
 from .auth import (
     DEFAULT_TOKEN_CACHE,
     CannotRefreshAuthentication,
@@ -31,6 +31,7 @@ from .utils import (
 tiled_version = get_versions()["version"]
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
+UNSET = Sentinel("UNSET")
 
 
 class Context:
@@ -125,13 +126,13 @@ class Context:
 
                 atexit.register(client.__exit__)
             else:
+                import threading
+
                 # The threading module has its own (internal) atexit
                 # mechanism that runs at thread shutdown, prior to the atexit
                 # mechanism that runs at interpreter shutdown.
                 # We need to intervene at that layer to close the portal, or else
                 # we will wait forever for a thread run by the portal to join().
-                import threading
-
                 threading._register_atexit(client.__exit__)
 
         self.http_client = client
@@ -153,6 +154,15 @@ class Context:
             with self.disable_cache(allow_read=False, allow_write=True):
                 self.server_info = self.get_json(self.api_uri)
         self.api_key = api_key  # property setter sets Authorization header
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def close(self):
+        self.http_client.__exit__()
 
     def __getstate__(self):
         if getattr(self.http_client, "app", None):
@@ -276,6 +286,38 @@ class Context:
             app=app,
         )
         return context, node_path_parts
+
+    @classmethod
+    def from_app(
+        cls,
+        app,
+        *,
+        cache=None,
+        offline=False,
+        token_cache=DEFAULT_TOKEN_CACHE,
+        headers=None,
+        timeout=None,
+        api_key=UNSET,
+    ):
+        """
+        Construct a Context around a FastAPI app. Primarily for testing.
+        """
+        from ..server.settings import get_settings
+
+        if api_key is UNSET:
+            # If app uses single-user API key, extact it and set it in the Context.
+            settings = app.dependency_overrides[get_settings]()
+            api_key = settings.single_user_api_key or None
+        return cls(
+            uri="http://local-tiled-app/api/v1",
+            headers=headers,
+            api_key=api_key,
+            cache=cache,
+            offline=offline,
+            timeout=timeout,
+            token_cache=token_cache,
+            app=app,
+        )
 
     @property
     def tokens(self):

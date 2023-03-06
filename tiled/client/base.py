@@ -80,6 +80,12 @@ class BaseClient:
         self._metadata_revisions = None
         super().__init__()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self._context.__exit__()
+
     def login(self, username=None, provider=None):
         """
         Depending on the server's authentication method, this will prompt for username/password:

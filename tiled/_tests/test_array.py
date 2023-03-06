@@ -10,7 +10,8 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context, from_context
+from ..server.app import build_app
 from .utils import fail_with_status_code
 
 array_cases = {
@@ -43,11 +44,45 @@ cube_cases = {
     "tiny_hypercube": numpy.random.random((10, 10, 10, 10, 10)),
 }
 cube_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in cube_cases.items()})
+inf_tree = MapAdapter(
+    {"example": ArrayAdapter.from_array(
+        numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf]),
+        metadata={"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
+    )},
+    metadata={"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
+)
+arr_with_zero_dim = numpy.array([]).reshape((0, 100, 1, 10))
+# Suppress RuntimeWarning: divide by zero encountered in true_divide
+# from dask.array.core.
+with warnings.catch_warnings():
+    zero_tree = MapAdapter(
+        {
+            "example": ArrayAdapter(
+                dask.array.from_array(arr_with_zero_dim, chunks=arr_with_zero_dim.shape)
+            )
+        }
+    )
+
+
+@pytest.fixture(scope="module")
+def context():
+    tree = MapAdapter(
+        {
+            "array": array_tree,
+            "cube": cube_tree,
+            "inf": inf_tree,
+            "scalar": scalar_tree,
+            "zero": zero_tree,
+        }
+    )
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        yield context
 
 
 @pytest.mark.parametrize("kind", list(array_cases))
-def test_array_dtypes(kind):
-    client = from_tree(array_tree)
+def test_array_dtypes(kind, context):
+    client = from_context(context)["array"]
     expected = array_cases[kind]
     actual_via_slice = client[kind][:]
     actual_via_read = client[kind].read()
@@ -56,38 +91,21 @@ def test_array_dtypes(kind):
 
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
-def test_scalar_dtypes(kind):
-    client = from_tree(scalar_tree)
+def test_scalar_dtypes(kind, context):
+    client = from_context(context)["scalar"]
     expected = scalar_cases[kind]
     actual = client[kind].read()
     assert numpy.array_equal(actual, expected)
 
 
-def test_shape_with_zero():
-    expected = numpy.array([]).reshape((0, 100, 1, 10))
-    # Suppress RuntimeWarning: divide by zero encountered in true_divide
-    # from dask.array.core.
-    with warnings.catch_warnings():
-        tree = MapAdapter(
-            {
-                "test": ArrayAdapter(
-                    dask.array.from_array(expected, chunks=expected.shape)
-                )
-            }
-        )
-    client = from_tree(tree)
-    actual = client["test"].read()
-    assert numpy.array_equal(actual, expected)
+def test_shape_with_zero(context):
+    client = from_context(context)["zero"]
+    actual = client["example"].read()
+    assert numpy.array_equal(actual, arr_with_zero_dim)
 
 
-def test_nan_infinity_handler(tmpdir):
-    data = numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf])
-    metadata = {"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
-    inf_tree = MapAdapter(
-        {"example": ArrayAdapter.from_array(data, metadata=metadata)}, metadata=metadata
-    )
-
-    client = from_tree(inf_tree)
+def test_nan_infinity_handler(tmpdir, context):
+    client = from_context(context)["inf"]
     print(f"Metadata: {client['example'].metadata}")
     print(f"Data: {client['example'].read()}")
     Path(tmpdir, "testjson").mkdir()
@@ -107,9 +125,9 @@ def test_nan_infinity_handler(tmpdir):
     assert open_json == expected_list
 
 
-def test_block_validation():
+def test_block_validation(context):
     "Verify that block must be fully specified."
-    client = from_tree(cube_tree, "dask")["tiny_cube"]
+    client = from_context(context, "dask")["cube"]["tiny_cube"]
     block_url = httpx.URL(client.item["links"]["block"])
     # Malformed because it has only 2 dimensions, not 3.
     malformed_block_url = block_url.copy_with(params={"block": "0,0"})
@@ -117,24 +135,22 @@ def test_block_validation():
         client.context.http_client.get(malformed_block_url).raise_for_status()
 
 
-def test_dask():
+def test_dask(context):
     expected = cube_cases["tiny_cube"]
-    client = from_tree(cube_tree, "dask")["tiny_cube"]
+    client = from_context(context, "dask")["cube"]["tiny_cube"]
     assert numpy.array_equal(client.read().compute(), expected)
     assert numpy.array_equal(client.compute(), expected)
     assert numpy.array_equal(client[:].compute(), expected)
 
 
-def test_array_format_shape_from_cube():
-    client = from_tree(cube_tree)
-
+def test_array_format_shape_from_cube(context):
+    client = from_context(context)["cube"]
     with fail_with_status_code(406):
-        # export...
         hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
 
 
-def test_array_interface():
-    client = from_tree(array_tree)
+def test_array_interface(context):
+    client = from_context(context)["array"]
     for k, v in client.items():
         assert v.shape == array_cases[k].shape
         assert v.ndim == array_cases[k].ndim

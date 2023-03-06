@@ -7,7 +7,7 @@ tree = MapAdapter({})
 
 
 def test_configurable_timeout():
-    c = from_tree(tree)
-    assert c.context.http_client.timeout.connect != 17
-    c = from_tree(tree, timeout=httpx.Timeout(17))
-    assert c.context.http_client.timeout.connect == 17
+    with from_tree(tree) as c:
+        assert c.context.http_client.timeout.connect != 17
+    with from_tree(tree, timeout=httpx.Timeout(17)) as c:
+        assert c.context.http_client.timeout.connect == 17

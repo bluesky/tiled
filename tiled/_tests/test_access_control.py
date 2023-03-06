@@ -6,7 +6,8 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_config
+from ..client import Context, from_context
+from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
 from .writable_adapters import WritableMapAdapter
 
@@ -25,9 +26,9 @@ def writable_tree(access_policy=None):
     return WritableMapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
 
 
-@pytest.fixture
-def config(tmpdir):
-    return {
+@pytest.fixture(scope="module")
+def context(tmpdir_module):
+    config = {
         "authentication": {
             "secret_keys": ["SECRET"],
             "providers": [
@@ -118,13 +119,14 @@ def config(tmpdir):
             },
         ],
     }
+    app = build_app_from_config(config)
+    with Context.from_app(app, token_cache=tmpdir_module, api_key=None) as context:
+        yield context
 
 
-def test_top_level_access_control(enter_password, config, tmpdir):
+def test_top_level_access_control(context, enter_password, tmpdir):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache=tmpdir)
-    with enter_password("secret2"):
-        bob_client = from_config(config, username="bob", token_cache=tmpdir)
+        alice_client = from_context(context, username="alice")
     assert "a" in alice_client
     assert "A2" in alice_client["a"]
     assert "A1" not in alice_client["a"]
@@ -132,6 +134,9 @@ def test_top_level_access_control(enter_password, config, tmpdir):
     alice_client["a"]["A2"]
     with pytest.raises(KeyError):
         alice_client["b"]
+
+    with enter_password("secret2"):
+        bob_client = from_context(context, username="bob")
     assert not list(bob_client)
     with pytest.raises(KeyError):
         bob_client["a"]
@@ -139,10 +144,10 @@ def test_top_level_access_control(enter_password, config, tmpdir):
         bob_client["b"]
 
 
-def test_node_export(enter_password, config, tmpdir):
+def test_node_export(enter_password, context):
     "Exporting a node should include only the children we can see."
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache=tmpdir)
+        alice_client = from_context(context, username="alice")
     buffer = io.BytesIO()
     alice_client.export(buffer, format="application/json")
     buffer.seek(0)
@@ -154,9 +159,9 @@ def test_node_export(enter_password, config, tmpdir):
     exported_dict["contents"]["a"]["contents"]["A2"]
 
 
-def test_create_and_update_allowed(enter_password, config, tmpdir):
+def test_create_and_update_allowed(enter_password, context):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache=tmpdir)
+        alice_client = from_context(context, username="alice")
 
     # Update
     alice_client["c"].metadata
@@ -167,18 +172,16 @@ def test_create_and_update_allowed(enter_password, config, tmpdir):
     alice_client["c"].write_array([1, 2, 3])
 
 
-def test_writing_blocked_by_access_policy(enter_password, config, tmpdir):
+def test_writing_blocked_by_access_policy(enter_password, context):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache=tmpdir)
-
+        alice_client = from_context(context, username="alice")
     alice_client["d"].metadata
     with fail_with_status_code(403):
         alice_client["d"].update_metadata(metadata={"added_key": 3})
 
 
-def test_create_blocked_by_access_policy(enter_password, config, tmpdir):
+def test_create_blocked_by_access_policy(enter_password, context):
     with enter_password("secret1"):
-        alice_client = from_config(config, username="alice", token_cache=tmpdir)
-
+        alice_client = from_context(context, username="alice")
     with fail_with_status_code(403):
         alice_client["e"].write_array([1, 2, 3])

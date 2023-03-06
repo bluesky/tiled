@@ -18,8 +18,8 @@ def test_root():
             },
         ]
     }
-    client = from_config(config)
-    assert list(client) == ["example"]
+    with from_config(config) as client:
+        assert list(client) == ["example"]
 
 
 def test_single_nested():
@@ -32,10 +32,10 @@ def test_single_nested():
             },
         ]
     }
-    client = from_config(config)
-    assert list(client) == ["a"]
-    assert list(client["a"]) == ["b"]
-    assert list(client["a"]["b"]) == ["example"]
+    with from_config(config) as client:
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b"]
+        assert list(client["a"]["b"]) == ["example"]
 
 
 def test_single_deeply_nested():
@@ -48,13 +48,13 @@ def test_single_deeply_nested():
             },
         ]
     }
-    client = from_config(config)
-    assert list(client) == ["a"]
-    assert list(client["a"]) == ["b"]
-    assert list(client["a"]["b"]) == ["c"]
-    assert list(client["a"]["b"]["c"]) == ["d"]
-    assert list(client["a"]["b"]["c"]["d"]) == ["e"]
-    assert list(client["a"]["b"]["c"]["d"]["e"]) == ["example"]
+    with from_config(config) as client:
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b"]
+        assert list(client["a"]["b"]) == ["c"]
+        assert list(client["a"]["b"]["c"]) == ["d"]
+        assert list(client["a"]["b"]["c"]["d"]) == ["e"]
+        assert list(client["a"]["b"]["c"]["d"]["e"]) == ["example"]
 
 
 def test_many_nested():
@@ -86,13 +86,13 @@ def test_many_nested():
             },
         ],
     }
-    client = from_config(config)
-    assert list(client["a"]["b"]) == ["example"]
-    assert list(client["a"]["c"]) == ["example"]
-    assert list(client["a"]["d"]["e"]) == ["example"]
-    assert list(client["a"]["d"]["f"]) == ["example"]
-    assert list(client["a"]["d"]["g"]["h"]) == ["example"]
-    assert list(client["a"]["d"]["g"]["i"]) == ["example"]
+    with from_config(config) as client:
+        assert list(client["a"]["b"]) == ["example"]
+        assert list(client["a"]["c"]) == ["example"]
+        assert list(client["a"]["d"]["e"]) == ["example"]
+        assert list(client["a"]["d"]["f"]) == ["example"]
+        assert list(client["a"]["d"]["g"]["h"]) == ["example"]
+        assert list(client["a"]["d"]["g"]["i"]) == ["example"]
 
 
 def test_extra_files(tmpdir):

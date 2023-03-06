@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
 
 from ..authenticators import Mode
+from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
@@ -552,6 +553,7 @@ Back up the database, and then run:
             for task in app.state.tasks:
                 task.cancel()
             await close_database_connection_pool(settings.database_settings)
+        print('shutdown complete')
 
     app.add_middleware(
         CompressionMiddleware,
@@ -738,6 +740,11 @@ Back up the database, and then run:
             return response
 
     return app
+
+
+def build_app_from_config(config):
+    kwargs = construct_build_app_kwargs(config)
+    return build_app(**kwargs)
 
 
 def app_factory():

@@ -35,3 +35,10 @@ def enter_password(monkeypatch):
         monkeypatch.setattr("getpass.getpass", original)
 
     return f
+
+
+@pytest.fixture(scope='module')
+def tmpdir_module(request, tmpdir_factory):
+    """A tmpdir fixture for the module scope. Persists throughout the module."""
+    # Source: https://stackoverflow.com/a/31889843
+    return tmpdir_factory.mktemp(request.module.__name__)

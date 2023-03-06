@@ -4,27 +4,12 @@
 
 These are functions for constructing a client object.
 
-### Standard constructors
-
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
    tiled.client.from_uri
    tiled.client.from_profile
-```
-
-### Special constructors
-
-These are typically used for development and debugging only.
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.from_tree
-   tiled.client.from_config
-   tiled.client.from_context
 ```
 
 ## Client Node
@@ -256,6 +241,8 @@ the same source directory as the `tiled.client.cache` module. (Cachey itself
    :toctree: generated
 
    tiled.client.context.Context
+   tiled.client.context.Context.from_any_uri
+   tiled.client.context.Context.from_app
    tiled.client.context.Context.authenticate
    tiled.client.context.Context.offline
    tiled.client.context.Context.force_auth_refresh
