@@ -19,6 +19,17 @@ def reset_settings():
     yield
 
 
+@pytest.fixture(autouse=True)
+def set_auth_token_cache_dir(tmpdir):
+    """
+    Use a tmpdir instead of ~/.cache/tiled/tokens
+    """
+    original = context.DEFAULT_TOKEN_CACHE
+    context.DEFAULT_TOKEN_CACHE = str(tmpdir)
+    yield
+    context.DEFAULT_TOKEN_CACHE = original
+
+
 @pytest.fixture
 def enter_password(monkeypatch):
     """

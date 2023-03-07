@@ -50,7 +50,7 @@ class Context:
         offline=False,
         timeout=None,
         verify=True,
-        token_cache=DEFAULT_TOKEN_CACHE,
+        token_cache=None,
         app=None,
         raise_server_exceptions=True,
     ):
@@ -61,6 +61,8 @@ class Context:
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
         headers.setdefault("user-agent", USER_AGENT)
+        if token_cache is None:
+            token_cache = DEFAULT_TOKEN_CACHE
 
         # If ?api_key=... is present, move it from the query into a header.
         # The server would accept it in the query parameter, but using
@@ -239,7 +241,7 @@ class Context:
         offline=False,
         timeout=None,
         verify=True,
-        token_cache=DEFAULT_TOKEN_CACHE,
+        token_cache=None,
         app=None,
     ):
         """
@@ -295,7 +297,7 @@ class Context:
         *,
         cache=None,
         offline=False,
-        token_cache=DEFAULT_TOKEN_CACHE,
+        token_cache=None,
         headers=None,
         timeout=None,
         api_key=UNSET,

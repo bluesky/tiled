@@ -27,7 +27,7 @@ def writable_tree(access_policy=None):
 
 
 @pytest.fixture(scope="module")
-def context(tmpdir_module):
+def context():
     config = {
         "authentication": {
             "secret_keys": ["SECRET"],
@@ -120,11 +120,11 @@ def context(tmpdir_module):
         ],
     }
     app = build_app_from_config(config)
-    with Context.from_app(app, token_cache=tmpdir_module) as context:
+    with Context.from_app(app) as context:
         yield context
 
 
-def test_top_level_access_control(context, enter_password, tmpdir):
+def test_top_level_access_control(context, enter_password):
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
     assert "a" in alice_client
