@@ -8,8 +8,9 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_config
-from ..client.utils import ClientError
+from ..client import Context, from_context
+from ..server.app import build_app_from_config
+from .utils import fail_with_status_code
 
 tiny_array = numpy.ones(5)
 tiny_df = pandas.DataFrame({"a": tiny_array})
@@ -39,11 +40,12 @@ config = {
 }
 
 
-@contextlib.contextmanager
-def fail_with_status_code(status_code):
-    with pytest.raises(ClientError) as info:
-        yield
-    assert info.value.response.status_code == status_code
+@pytest.fixture(scope="module")
+def client():
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
 
 
 @contextlib.contextmanager
@@ -53,31 +55,30 @@ def low_size_limit():
     os.environ.pop("TILED_RESPONSE_BYTESIZE_LIMIT")
 
 
-def test_array(tmpdir):
+def test_array(client, tmpdir):
     """
-    A password that is wrong, empty, or belonging to a different user fails.
+    Download an array over the size limit.
+    """
+    with low_size_limit():
+        path = str(tmpdir / "test.csv")
+        client["tiny_array"].read()  # This is fine.
+        client["tiny_array"].export(path)  # This is fine.
+        with fail_with_status_code(400):
+            client["small_array"].read()  # too big
+        with fail_with_status_code(400):
+            client["small_array"].export(path)  # too big
+
+
+def test_dataframe(client, tmpdir):
+    """
+    Download an dataframe over the size limit.
     """
 
-    c = from_config(config)
-    path = str(tmpdir / "test.csv")
-    c["tiny_array"].read()  # This is fine.
-    c["tiny_array"].export(path)  # This is fine.
-    with fail_with_status_code(400):
-        c["small_array"].read()  # too big
-    with fail_with_status_code(400):
-        c["small_array"].export(path)  # too big
-
-
-def test_dataframe(tmpdir):
-    """
-    A password that is wrong, empty, or belonging to a different user fails.
-    """
-
-    c = from_config(config)
-    path = str(tmpdir / "test.csv")
-    c["tiny_df"].read()  # This is fine.
-    c["tiny_df"].export(path)
-    with fail_with_status_code(400):
-        c["small_df"].read()  # too big
-    with fail_with_status_code(400):
-        c["small_df"].export(path)  # too big
+    with low_size_limit():
+        path = str(tmpdir / "test.csv")
+        client["tiny_df"].read()  # This is fine.
+        client["tiny_df"].export(path)
+        with fail_with_status_code(400):
+            client["small_df"].read()  # too big
+        with fail_with_status_code(400):
+            client["small_df"].export(path)  # too big

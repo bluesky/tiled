@@ -5,7 +5,7 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context, from_context
 from ..queries import (
     Comparison,
     Contains,
@@ -19,6 +19,7 @@ from ..queries import (
     Specs,
     StructureFamily,
 )
+from ..server.app import build_app
 
 keys = list(string.ascii_lowercase)
 mapping = {
@@ -37,10 +38,17 @@ mapping["does_not_contain_z"] = ArrayAdapter.from_array(
 mapping["specs_foo_bar"] = MapAdapter({}, specs=["foo", "bar"])
 mapping["specs_foo_bar_baz"] = MapAdapter({}, specs=["foo", "bar", "baz"])
 tree = MapAdapter(mapping)
-client = from_tree(tree)
 
 
-def test_key():
+@pytest.fixture(scope="module")
+def client():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
+
+
+def test_key(client):
     "Binary operators with Key create query objects."
     assert (Key("a") == 1) == Eq("a", 1)
     assert (Key("a") != 2) == NotEq("a", 2)
@@ -50,7 +58,7 @@ def test_key():
     assert (Key("a") <= 1) == Comparison("le", "a", 1)
 
 
-def test_eq():
+def test_eq(client):
     # Test encoding letters and ints.
     assert list(client.search(Eq("letter", "a"))) == ["a"]
     assert list(client.search(Eq("letter", "b"))) == ["b"]
@@ -60,7 +68,7 @@ def test_eq():
     assert list(client.search(Eq("number", "0"))) == []
 
 
-def test_noteq():
+def test_noteq(client):
     # Test encoding letters and ints.
     assert list(client.search(NotEq("letter", "a"))) != ["a"]
     assert list(client.search(NotEq("letter", "b"))) != ["b"]
@@ -68,22 +76,22 @@ def test_noteq():
     assert list(client.search(NotEq("number", 1))) != ["b"]
 
 
-def test_comparison():
+def test_comparison(client):
     assert list(client.search(Comparison("gt", "number", 24))) == ["z"]
     assert list(client.search(Comparison("ge", "number", 24))) == ["y", "z"]
     assert list(client.search(Comparison("lt", "number", 1))) == ["a"]
     assert list(client.search(Comparison("le", "number", 1))) == ["a", "b"]
 
 
-def test_contains():
+def test_contains(client):
     assert list(client.search(Contains("letters", "z"))) == ["does_contain_z"]
 
 
-def test_full_text():
+def test_full_text(client):
     assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
 
 
-def test_regex():
+def test_regex(client):
     assert list(client.search(Regex("letter", "^z$"))) == ["z"]
     assert (
         list(client.search(Regex("letter", "^Z$"))) == []
@@ -95,7 +103,7 @@ def test_regex():
     assert list(client.search(Regex("letters", "anything"))) == []
 
 
-def test_not_and_and_or():
+def test_not_and_and_or(client):
     with pytest.raises(TypeError):
         not (Key("color") == "red")
     with pytest.raises(TypeError):
@@ -113,7 +121,7 @@ def test_not_and_and_or():
         {"a", "k", "z", "a", "z", "z"},
     ],
 )
-def test_in(query_values):
+def test_in(client, query_values):
     assert sorted(list(client.search(In("letter", query_values)))) == ["a", "k", "z"]
 
 
@@ -126,7 +134,7 @@ def test_in(query_values):
         {"a", "k", "z", "a", "z", "z"},
     ],
 )
-def test_notin(query_values):
+def test_notin(client, query_values):
     assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
         list(set(keys) - set(["a", "k", "z"]))
     )
@@ -141,7 +149,7 @@ def test_notin(query_values):
         ({"foo", "bar", "foo", "bar", "bar"}, {"baz", "baz", "baz"}),
     ],
 )
-def test_specs(include_values, exclude_values):
+def test_specs(client, include_values, exclude_values):
     with pytest.raises(TypeError):
         Specs("foo")
 
@@ -154,7 +162,7 @@ def test_specs(include_values, exclude_values):
     ) == ["specs_foo_bar"]
 
 
-def test_structure_families():
+def test_structure_families(client):
     with pytest.raises(ValueError):
         StructureFamily("foo")
 

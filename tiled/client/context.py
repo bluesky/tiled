@@ -301,6 +301,7 @@ class Context:
         headers=None,
         timeout=None,
         api_key=UNSET,
+        raise_server_exceptions=True,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -314,6 +315,7 @@ class Context:
             timeout=timeout,
             token_cache=token_cache,
             app=app,
+            raise_server_exceptions=raise_server_exceptions,
         )
         if (
             (not context.offline)
