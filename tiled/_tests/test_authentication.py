@@ -1,9 +1,7 @@
 import io
 import subprocess
 import sys
-import tempfile
 import time
-from pathlib import Path
 
 import numpy
 import pytest
@@ -123,84 +121,71 @@ def test_key_rotation(enter_password, config, tmpdir):
         from_context(context, username="alice")
 
 
-def test_refresh_flow(enter_password, config):
-    """
-    Run a server with an artificially short max access token age
-    to force a refresh.
-    """
+def test_refresh_forced(enter_password, config, tmpdir):
+    "Forcing refresh obtains new token."
+    from tiled.client import show_logs
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    show_logs()
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
         # Normal default configuration: a refresh is not immediately required.
         with enter_password("secret1"):
-            with from_config(
-                config,
-                username="alice",
-                token_cache=tmpdir,
-                prompt_for_reauthentication=True,
-            ) as client:
-                token1 = client.context.tokens["access_token"]
-                client["A1"]
-                assert token1 is client.context.tokens["access_token"]
+            client = from_context(context, username="alice")
+        tokens1 = dict(client.context.tokens)
+        # Wait for a moment or we will get a new token that happens to be identical
+        # to the old token. This advances the expiration time to make a distinct token.
+        time.sleep(2)
+        # Forcing a refresh gives us a new token.
+        client.context.force_auth_refresh()
+        tokens2 = dict(client.context.tokens)
+        assert tokens1 != tokens2
+        client.logout()
 
-                # Forcing a refresh gives us a new token.
-                client.context.force_auth_refresh()
-                token2 = client.context.tokens["access_token"]
-                assert token2 is not token1
 
+def test_refresh_transparent(enter_password, config, tmpdir):
+    "When access token expired, refresh happens transparently."
     # Pathological configuration: a refresh is almost immediately required
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config["authentication"]["access_token_max_age"] = 1
+    config["authentication"]["access_token_max_age"] = 1
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
         with enter_password("secret1"):
-            with from_config(
-                config,
-                username="alice",
-                token_cache=tmpdir,
-                prompt_for_reauthentication=True,
-            ) as client:
-                token3 = client.context.tokens["access_token"]
-                time.sleep(2)
-                # A refresh should happen automatically now.
-                client["A1"]
-                token4 = client.context.tokens["access_token"]
-                assert token3 is not token4
+            client = from_context(context, username="alice")
+        tokens1 = dict(client.context.tokens)
+        time.sleep(2)
+        # A refresh should happen automatically now.
+        client["A1"]
+        tokens2 = dict(client.context.tokens)
+        assert tokens2 != tokens1
+        client.logout()
 
+
+def test_expired_session(enter_password, config, tmpdir):
     # Pathological configuration: sessions do not last
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config["authentication"]["session_max_age"] = 1
+    config["authentication"]["session_max_age"] = 1
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
         with enter_password("secret1"):
-            with from_config(
-                config,
-                username="alice",
-                token_cache=tmpdir,
-                prompt_for_reauthentication=True,
-            ) as client:
-                time.sleep(2)
-                # Refresh should fail because the session is too old.
-                with pytest.raises(CannotRefreshAuthentication):
-                    client.context.force_auth_refresh()
+            client = from_context(context, username="alice")
+        time.sleep(2)
+        # Refresh should fail because the session is too old.
+        with pytest.raises(CannotRefreshAuthentication):
+            client.context.force_auth_refresh()
 
 
 def test_revoke_session(enter_password, config, tmpdir):
-    with enter_password("secret1"):
-        with from_config(
-            config,
-            username="alice",
-            token_cache=tmpdir,
-            prompt_for_reauthentication=True,
-        ) as client:
-            # Get the current session ID.
-            info = client.context.whoami()
-            (session,) = info["sessions"]
-            assert not session["revoked"]
-            # Revoke it.
-            client.context.revoke_session(session["uuid"])
-            # Update info and confirm it is listed as revoked.
-            updated_info = client.context.whoami()
-            (updated_session,) = updated_info["sessions"]
-            assert updated_session["revoked"]
-            # Confirm it cannot be refreshed.
-            with pytest.raises(CannotRefreshAuthentication):
-                client.context.force_auth_refresh()
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
+        with enter_password("secret1"):
+            client = from_context(context, username="alice")
+        # Get the current session ID.
+        info = client.context.whoami()
+        (session,) = info["sessions"]
+        assert not session["revoked"]
+        # Revoke it.
+        client.context.revoke_session(session["uuid"])
+        # Update info and confirm it is listed as revoked.
+        updated_info = client.context.whoami()
+        (updated_session,) = updated_info["sessions"]
+        assert updated_session["revoked"]
+        # Confirm it cannot be refreshed.
+        with pytest.raises(CannotRefreshAuthentication):
+            client.context.force_auth_refresh()
 
 
 def test_multiple_providers(enter_password, config, monkeypatch, tmpdir):
@@ -226,33 +211,16 @@ def test_multiple_providers(enter_password, config, monkeypatch, tmpdir):
             },
         ],
     )
-    monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
-    with enter_password("secret1"):
-        with from_config(
-            config,
-            username="alice",
-            token_cache=tmpdir,
-            prompt_for_reauthentication=True,
-        ) as client:
-            client.context.whoami()
-    monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
-    with enter_password("secret3"):
-        with from_config(
-            config,
-            username="cara",
-            token_cache=tmpdir,
-            prompt_for_reauthentication=True,
-        ) as client:
-            client.context.whoami()
-    monkeypatch.setattr("sys.stdin", io.StringIO("3\n"))
-    with enter_password("secret5"):
-        with from_config(
-            config,
-            username="cara",
-            token_cache=tmpdir,
-            prompt_for_reauthentication=True,
-        ) as client:
-            client.context.whoami()
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
+        monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
+        with enter_password("secret1"):
+            from_context(context, username="alice")
+        monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
+        with enter_password("secret3"):
+            from_context(context, username="cara")
+        monkeypatch.setattr("sys.stdin", io.StringIO("3\n"))
+        with enter_password("secret5"):
+            from_context(context, username="cara")
 
 
 def test_multiple_providers_name_collision(config):
@@ -275,8 +243,7 @@ def test_multiple_providers_name_collision(config):
         },
     ]
     with pytest.raises(ValueError):
-        with from_config(config):
-            pass
+        build_app_from_config(config)
 
 
 def test_admin(enter_password, config, tmpdir):
@@ -286,20 +253,15 @@ def test_admin(enter_password, config, tmpdir):
     # Make alice an admin. Leave bob as a user.
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
 
-    with enter_password("secret1"):
-        with from_config(
-            config,
-            username="alice",
-            token_cache=tmpdir,
-            prompt_for_reauthentication=True,
-        ) as admin_client:
-            admin_roles = admin_client.context.whoami()["roles"]
-            assert "admin" in [role["name"] for role in admin_roles]
-
-    with enter_password("secret2"):
-        with from_config(config, username="bob", token_cache=tmpdir) as user_client:
-            user_roles = user_client.context.whoami()["roles"]
-            assert [role["name"] for role in user_roles] == ["user"]
+    with Context.from_app(build_app_from_config(config), token_cache=tmpdir) as context:
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+        admin_roles = context.whoami()["roles"]
+        assert "admin" in [role["name"] for role in admin_roles]
+        with enter_password("secret2"):
+            context.authenticate(username="bob")
+        user_roles = context.whoami()["roles"]
+        assert [role["name"] for role in user_roles] == ["user"]
 
 
 def test_api_keys(enter_password, config, tmpdir):
@@ -396,19 +358,16 @@ def test_api_key_limit(enter_password, config, tmpdir):
     original_limit = authentication.API_KEY_LIMIT
     authentication.API_KEY_LIMIT = 3
     try:
-        with enter_password("secret2"):
-            with from_config(
-                config,
-                username="bob",
-                token_cache=tmpdir,
-                prompt_for_reauthentication=True,
-            ) as user_client:
-
-                for i in range(authentication.API_KEY_LIMIT):
-                    user_client.context.create_api_key(note=f"key {i}")
-                # Hit API key limit.
-                with fail_with_status_code(400):
-                    user_client.context.create_api_key(note="one key too many")
+        with Context.from_app(
+            build_app_from_config(config), token_cache=tmpdir
+        ) as context:
+            with enter_password("secret2"):
+                context.authenticate(username="bob")
+            for i in range(authentication.API_KEY_LIMIT):
+                context.create_api_key(note=f"key {i}")
+            # Hit API key limit.
+            with fail_with_status_code(400):
+                context.create_api_key(note="one key too many")
     finally:
         authentication.API_KEY_LIMIT = original_limit
 
@@ -419,27 +378,15 @@ def test_session_limit(enter_password, config, tmpdir):
     authentication.SESSION_LIMIT = 3
     # Use separate token caches to de-couple login attempts into separate sessions.
     try:
-        with enter_password("secret1"):
-            for i in range(authentication.SESSION_LIMIT):
-                token_cache = Path(str(tmpdir)) / str(i)
-                token_cache.mkdir()
-                with from_config(
-                    config,
-                    username="alice",
-                    token_cache=token_cache,
-                    prompt_for_reauthentication=True,
-                ):
-                    pass
-            # Hit Session limit.
-            token_cache = Path(str(tmpdir)) / str(1 + i)
-            token_cache.mkdir()
-            with fail_with_status_code(400):
-                with from_config(
-                    config,
-                    username="alice",
-                    token_cache=tmpdir,
-                    prompt_for_reauthentication=True,
-                ):
-                    pass
+        with Context.from_app(
+            build_app_from_config(config), token_cache=tmpdir
+        ) as context:
+            with enter_password("secret1"):
+                for i in range(authentication.SESSION_LIMIT):
+                    context.authenticate(username="alice")
+                    context.logout()
+                # Hit Session limit.
+                with fail_with_status_code(400):
+                    context.authenticate(username="alice")
     finally:
         authentication.SESSION_LIMIT = original_limit
