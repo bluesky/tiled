@@ -45,11 +45,13 @@ cube_cases = {
 }
 cube_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in cube_cases.items()})
 inf_tree = MapAdapter(
-    {"example": ArrayAdapter.from_array(
-        numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf]),
-        metadata={"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
-    )},
-    metadata={"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN}
+    {
+        "example": ArrayAdapter.from_array(
+            numpy.array([0, 1, numpy.NAN, -numpy.Inf, numpy.Inf]),
+            metadata={"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN},
+        )
+    },
+    metadata={"infinity": math.inf, "-infinity": -math.inf, "nan": numpy.NAN},
 )
 arr_with_zero_dim = numpy.array([]).reshape((0, 100, 1, 10))
 # Suppress RuntimeWarning: divide by zero encountered in true_divide

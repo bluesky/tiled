@@ -269,18 +269,12 @@ def test_api_key_activity(enter_password, config):
             context.authenticate(username="alice")
         # Make and use an API key. Check that latest_activity is not set.
         key_info = context.create_api_key()
-        assert key_info["latest_activity"] is None  # never used
-        # Try to request a key with more scopes that the user has.
-        with fail_with_status_code(400):
-            context.create_api_key(scopes=["admin:apikeys"])
         context.logout()
+        assert key_info["latest_activity"] is None  # never used
         context.api_key = key_info["secret"]
 
-        # Authenticate as user using API key.
-        client = from_context(context)
-        assert client.context.api_key == key_info["secret"]
-
         # Use the key for a couple requests and see that latest_activity becomes set and then increases.
+        client = from_context(context)
         client["A1"]
         key_activity1 = context.which_api_key()["latest_activity"]
         principal_activity1 = context.whoami()["latest_activity"]
@@ -304,7 +298,7 @@ def test_api_key_activity(enter_password, config):
         context.which_api_key()
 
 
-def test_api_key_stuff(enter_password, config):
+def test_api_key_scopes(enter_password, config):
     # Make alice an admin. Leave bob as a user.
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
     with Context.from_app(build_app_from_config(config)) as context:
@@ -312,37 +306,58 @@ def test_api_key_stuff(enter_password, config):
         with enter_password("secret1"):
             context.authenticate(username="alice")
         # Request a key with reduced scope that cannot read metadata.
-        admin_key_info = context.create_api_key(scopes=["metrics"])
+        metrics_key_info = context.create_api_key(scopes=["metrics"])
         context.logout()
-        context.api_key = admin_key_info["secret"]
+        context.api_key = metrics_key_info["secret"]
         with fail_with_status_code(401):
             from_context(context)
+        context.api_key = None
 
-        # Log in as admin.
-        with enter_password("secret1"):
-            context.authenticate(username="alice")
+        # Log in as ordinary user.
+        with enter_password("secret2"):
+            context.authenticate(username="bob")
+        # Try to request a key with more scopes that the user has.
+        with fail_with_status_code(400):
+            context.create_api_key(scopes=["admin:apikeys"])
         # Request a key with reduced scope that can *only* read metadata.
-        admin_key_info = context.create_api_key(scopes=["read:metadata"])
+        metadata_key_info = context.create_api_key(scopes=["read:metadata"])
         context.logout()
-        restricted_client = from_context(config, api_key=admin_key_info["secret"])
+        context.api_key = metadata_key_info["secret"]
+        restricted_client = from_context(context)
         restricted_client["A1"]
         with fail_with_status_code(401):
             restricted_client["A1"].read()  # no 'read:data' scope
+        context.api_key = None
 
-        # Create and revoke key.
-        user_key_info = context.create_api_key(note="will revoke soon")
-        assert len(context.whoami()["api_keys"]) == 2
-        # There should now be two keys, one from above and this new one, with our note.
-        for api_key in context.whoami()["api_keys"]:
-            if api_key["note"] == "will revoke soon":
-                break
-        else:
-            assert False, "No api keys had a matching note."
-        # Revoke the new key.
-        context.revoke_api_key(user_key_info["first_eight"])
-        with fail_with_status_code(401):
-            from_context(context, api_key=user_key_info["secret"])
+
+def test_api_key_revoked(enter_password, config):
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+
+        # Create a key with a note.
+        NOTE = "will revoke soon"
+        key_info = context.create_api_key(note=NOTE)
         assert len(context.whoami()["api_keys"]) == 1
+        (api_key,) = context.whoami()["api_keys"]
+        assert api_key["note"] == key_info["note"] == NOTE
+        assert api_key["first_eight"] == key_info["first_eight"]
+        context.logout()
+
+        # Use it.
+        context.api_key = key_info["secret"]
+        from_context(context)
+        context.api_key = None
+
+        # Revoke the new key.
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+        context.revoke_api_key(key_info["first_eight"])
+        assert len(context.whoami()["api_keys"]) == 0
+        context.logout()
+        context.api_key = key_info["secret"]
+        with fail_with_status_code(401):
+            from_context(context)
 
 
 def test_api_key_expiration(enter_password, config):

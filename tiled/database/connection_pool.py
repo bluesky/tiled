@@ -45,5 +45,7 @@ async def get_database_session(engine=Depends(get_database_engine)):
     if engine is None:
         yield None
     else:
-        async with AsyncSession(engine, autoflush=False, expire_on_commit=False) as session:
+        async with AsyncSession(
+            engine, autoflush=False, expire_on_commit=False
+        ) as session:
             yield session
