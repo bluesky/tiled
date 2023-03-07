@@ -130,8 +130,6 @@ See {doc}`../explanations/structures` for more context.
    :toctree: generated
 
    tiled.config.parse_configs
-   tiled.config.direct_access
-   tiled.config.direct_access_from_profile
    tiled.config.construct_build_app_kwargs
 ```
 ## HTTP Server Application
@@ -141,6 +139,7 @@ See {doc}`../explanations/structures` for more context.
    :toctree: generated
 
    tiled.server.app.build_app
+   tiled.server.app.build_app_from_config
 ```
 
 ## Object Cache

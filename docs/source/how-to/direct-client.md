@@ -15,15 +15,16 @@ In these situations, you may run the service and the client in the same process.
 ## From a (service-side) Tree instance
 
 ```py
-from tiled.examples.generated_minimal import tree as service_side_tree
-from tiled.client import from_tree
+from tiled.client import from_context
+from tiled.examples.generated_minimal import tree
+from tiled.server import build_app
 
-client = from_tree(service_side_tree)
+app = build_app(tree)
+context = Context.from_app(app)
+client = from_context(context)
 ```
 
-This ``service_side_tree`` is *not* generally meant to be used directly,
-so we "connect" to it with a client. But, unlike with ``tiled serve ...``
-the communication is all in-process and does not incur network overhead
+The communication is all in-process and does not incur network overhead
 or the debugging complexity of working with inter-process communication.
 
 ## From configuration
@@ -37,7 +38,9 @@ The configuration may be given as:
 From a dict of configuration:
 
 ```py
-from tiled.client import from_config
+from tiled.client import from_context
+from tiled.examples.generated_minimal import tree
+from tiled.server import build_app_from_config
 
 config = {
     "trees": [
@@ -46,41 +49,52 @@ config = {
              "tree": "tiled.examples.generated_minimal:tree",
         }
 }
-client = from_config(config)
+app = build_app_from_config(config)
+context = Context.from_app(app)
+client = from_context(context)
 ```
 
 From a configuration file:
 
 ```py
-client = from_config("path/to/config.yml")
+config = parse_configs("path/to/config.yml")
+app = build_app_from_config(config)
+context = Context.from_app(app)
+client = from_context(context)
 ```
 
 From a directory of configuration files:
 
 ```py
-client = from_config("path/to/directory/")
+config = parse_configs("path/to/directory/")
+app = build_app_from_config(config)
+context = Context.from_app(app)
+client = from_context(context)
+```
+
+## Cleanup
+
+The server's event loop runs on a background thread. To stop that thread, close
+the Context:
+
+```py
+context.close()
+```
+
+Contexts can also be used as context managers:
+
+```py
+with Context.from_app(app) as context:
+    client = from_context(context)
+    ...
 ```
 
 ## Direct access to the service-side object
 
 For advanced debugging, it is sometimes useful to set aside the client
 entirely and working directly with the "service-side" Tree object.
-To construct one from configuration:
+The following invocation will get you there.
 
 ```py
-
-from tiled.config import direct_access
-
-service_side_tree = direct_access(config)
-```
-
-where, as in the section above, ``config`` may be a dictionary of configuration
-or filepath.
-
-To construct one from a profile name:
-
-```py
-from tiled.config import direct_access_from_profile
-
-service_side_tree = direct_access_from_profile("profile_name")
+client.context.http_client.app.state.root_tree
 ```
