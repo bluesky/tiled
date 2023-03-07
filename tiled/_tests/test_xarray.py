@@ -6,8 +6,9 @@ import xarray.testing
 
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
-from ..client import from_tree, record_history
+from ..client import Context, from_context, record_history
 from ..client import xarray as xarray_client
+from ..server.app import build_app
 
 image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -59,18 +60,25 @@ EXPECTED = {
 tree = MapAdapter(
     {key: DatasetAdapter.from_dataset(ds) for key, ds in EXPECTED.items()}
 )
-client = from_tree(tree)
+
+
+@pytest.fixture(scope="module")
+def client():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
 
 
 @pytest.mark.parametrize("key", list(tree))
-def test_xarray_dataset(key):
+def test_xarray_dataset(client, key):
     expected = EXPECTED[key]
     actual = client[key].read().load()
     xarray.testing.assert_equal(actual, expected)
 
 
 @pytest.mark.parametrize("key", ["image", "weather"])
-def test_dataset_column_access(key):
+def test_dataset_column_access(client, key):
     expected_dataset = EXPECTED[key]
     actual_dataset = client[key].read().load()
     for col in expected_dataset:
@@ -79,7 +87,7 @@ def test_dataset_column_access(key):
         xarray.testing.assert_equal(actual, expected)
 
 
-def test_wide_table_optimization():
+def test_wide_table_optimization(client):
     wide = client["wide"]
     with record_history() as history:
         wide.read()
@@ -89,14 +97,14 @@ def test_wide_table_optimization():
     assert len(history.requests) < 4
 
 
-def test_wide_table_optimization_off():
+def test_wide_table_optimization_off(client):
     wide = client["wide"]
     with record_history() as history:
         wide.read(optimize_wide_table=False)
     assert len(history.requests) >= 10
 
 
-def test_url_limit_handling():
+def test_url_limit_handling(client):
     "Check that requests and split up to stay below the URL length limit."
     expected = EXPECTED["wide"]
     dsc = client["wide"]

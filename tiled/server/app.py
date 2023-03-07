@@ -553,7 +553,6 @@ Back up the database, and then run:
             for task in app.state.tasks:
                 task.cancel()
             await close_database_connection_pool(settings.database_settings)
-        print("shutdown complete")
 
     app.add_middleware(
         CompressionMiddleware,
