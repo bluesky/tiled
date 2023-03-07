@@ -1000,7 +1000,7 @@ async def whoami(
         )
     ).scalar()
     if principal_orm is None:
-        raise HTTPException("Principal no longer exists.")
+        raise HTTPException(status_code=401, detail="Principal no longer exists.")
     latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
