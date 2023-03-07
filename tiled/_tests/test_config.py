@@ -2,8 +2,9 @@ import yaml
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_config
+from ..client import Context, from_context
 from ..config import parse_configs
+from ..server.app import build_app_from_config
 
 tree = MapAdapter({"example": ArrayAdapter.from_array([1, 2, 3])})
 
@@ -18,7 +19,8 @@ def test_root():
             },
         ]
     }
-    with from_config(config) as client:
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
         assert list(client) == ["example"]
 
 
@@ -32,7 +34,8 @@ def test_single_nested():
             },
         ]
     }
-    with from_config(config) as client:
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
         assert list(client) == ["a"]
         assert list(client["a"]) == ["b"]
         assert list(client["a"]["b"]) == ["example"]
@@ -48,7 +51,8 @@ def test_single_deeply_nested():
             },
         ]
     }
-    with from_config(config) as client:
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
         assert list(client) == ["a"]
         assert list(client["a"]) == ["b"]
         assert list(client["a"]["b"]) == ["c"]
@@ -86,7 +90,8 @@ def test_many_nested():
             },
         ],
     }
-    with from_config(config) as client:
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
         assert list(client["a"]["b"]) == ["example"]
         assert list(client["a"]["c"]) == ["example"]
         assert list(client["a"]["d"]["e"]) == ["example"]

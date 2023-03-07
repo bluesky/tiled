@@ -1,9 +1,11 @@
 import numpy
 import pandas.testing
+import pytest
 
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context, from_context
+from ..server.app import build_app
 
 tree = MapAdapter(
     {
@@ -33,8 +35,15 @@ tree = MapAdapter(
 )
 
 
-def test_dataframe_basic():
-    client = from_tree(tree)
+@pytest.fixture(scope="module")
+def context():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        yield context
+
+
+def test_dataframe_basic(context):
+    client = from_context(context)
     expected = tree["basic"].read()
     actual = client["basic"].read()
     assert client["basic"].structure().macro.npartitions == 3
@@ -42,8 +51,8 @@ def test_dataframe_basic():
     assert client["basic"].columns == list(expected.columns) == list(actual.columns)
 
 
-def test_dataframe_column_access():
-    client = from_tree(tree)
+def test_dataframe_column_access(context):
+    client = from_context(context)
     expected_df = tree["basic"].read()
     for col in expected_df.columns:
         expected = expected_df[col].values
@@ -51,16 +60,16 @@ def test_dataframe_column_access():
         numpy.testing.assert_equal(actual, expected)
 
 
-def test_dataframe_single_partition():
-    client = from_tree(tree)
+def test_dataframe_single_partition(context):
+    client = from_context(context)
     expected = tree["single_partition"].read()
     actual = client["single_partition"].read()
     assert client["single_partition"].structure().macro.npartitions == 1
     pandas.testing.assert_frame_equal(actual, expected)
 
 
-def test_dask():
-    client = from_tree(tree, "dask")["basic"]
+def test_dask(context):
+    client = from_context(context, "dask")["basic"]
     expected = tree["basic"].read()
     pandas.testing.assert_frame_equal(client.read().compute(), expected)
     pandas.testing.assert_frame_equal(client.compute(), expected)

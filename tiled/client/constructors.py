@@ -224,9 +224,12 @@ def from_profile(name, structure_clients=None, **kwargs):
         merged["cache"] = cache
     timeout_config = merged.pop("timeout", None)
     if timeout_config is not None:
-        timeout_params = DEFAULT_TIMEOUT_PARAMS.copy()
-        timeout_params.update(timeout_config)
-        timeout = httpx.Timeout(**timeout_params)
+        if isinstance(timeout_config, httpx.Timeout):
+            timeout = timeout_config
+        else:
+            timeout_params = DEFAULT_TIMEOUT_PARAMS.copy()
+            timeout_params.update(timeout_config)
+            timeout = httpx.Timeout(**timeout_params)
         merged["timeout"] = timeout
     # Below, we may convert importable strings like
     # "package.module:obj" to live objects. Include the profile's
@@ -249,13 +252,12 @@ def from_profile(name, structure_clients=None, **kwargs):
                     result[key] = class_
                 merged["structure_clients"] = result
     if "direct" in merged:
-        # The profiles specifies that there is no server. We should create
-        # an app ourselves and use it directly via ASGI.
-        from ..config import construct_build_app_kwargs
+        # The profile specifies the server in-line.
+        # Create an app and use it directly via ASGI.
+        from ..server import build_app_from_config
 
-        build_app_kwargs = construct_build_app_kwargs(
-            merged.pop("direct", None), source_filepath=filepath
-        )
-        return Context.from_tree(**build_app_kwargs, **merged)
+        config = merged.pop("direct", None)
+        context = Context.from_app(build_app_from_config(config), **merged)
+        return from_context(context)
     else:
         return from_uri(**merged)

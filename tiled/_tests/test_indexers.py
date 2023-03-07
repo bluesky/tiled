@@ -5,7 +5,8 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context, from_context
+from ..server.app import build_app
 
 keys = list(string.ascii_lowercase)
 tree = MapAdapter(
@@ -15,11 +16,25 @@ tree = MapAdapter(
     }
 )
 empty_tree = MapAdapter({})
-client = from_tree(tree)
-empty_client = from_tree(empty_tree)
 
 
-def test_indexers():
+@pytest.fixture(scope="module")
+def client():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
+
+
+@pytest.fixture(scope="module")
+def empty_client():
+    app = build_app(empty_tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
+
+
+def test_indexers(client, empty_client):
     assert client.keys()[0] == client.keys().first() == keys[0] == "a"
     assert client.keys()[-1] == client.keys().last() == keys[-1] == "z"
     assert client.keys()[:3] == client.keys().head(3) == keys[:3] == list("abc")
@@ -62,7 +77,7 @@ def test_indexers():
     client.items()[1:3]
 
 
-def test_deprecated_indexer_accessors():
+def test_deprecated_indexer_accessors(client):
     with pytest.warns(DeprecationWarning):
         assert client.keys_indexer[:3] == keys[:3] == list("abc")
     # smoke test the others

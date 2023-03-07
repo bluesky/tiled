@@ -2,11 +2,13 @@ import uuid
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context, from_context
+from ..server.app import build_app
 
 values = ["a", "b", "c"]
 counts = [10, 5, 7]
@@ -32,10 +34,17 @@ for _ in range(10):
     )
 
 tree = MapAdapter(mapping)
-client = from_tree(tree)
 
 
-def test_distinct():
+@pytest.fixture(scope="module")
+def context():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        yield context
+
+
+def test_distinct(context):
+    client = from_context(context)
     # test without counts
     distinct = client.distinct(
         "foo.bar", structure_families=True, specs=True, counts=False
