@@ -23,7 +23,7 @@ python-dateutil
 python-jose[cryptography]
 python-multipart
 pyyaml
-sqlalchemy
+sqlalchemy >=2
 starlette
 toolz
 typer
