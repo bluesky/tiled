@@ -221,7 +221,7 @@ def serve_config(
     "Serve a Tree as specified in configuration file(s)."
     import os
 
-    from ..config import construct_build_app_kwargs, parse_configs
+    from ..config import parse_configs
 
     config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
     try:
@@ -238,7 +238,11 @@ def serve_config(
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
-    from ..server.app import build_app, logger, print_admin_api_key_if_generated
+    from ..server.app import (
+        build_app_from_config,
+        logger,
+        print_admin_api_key_if_generated,
+    )
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
@@ -247,9 +251,8 @@ def serve_config(
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
-    web_app = build_app(scalable=scalable, **kwargs)
+    web_app = build_app_from_config(parsed_config, scalable=scalable)
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
     )

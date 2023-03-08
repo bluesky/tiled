@@ -57,6 +57,9 @@ INLINED_CONTENTS_LIMIT = 500
 # opt in to this behavior and decide on a reasonable depth.
 DEPTH_LIMIT = 5
 
+DEFAULT_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 300
+
 
 def len_or_approx(tree):
     """

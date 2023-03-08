@@ -14,7 +14,9 @@ from ..validation_registration import ValidationError
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
+    DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
+    MAX_PAGE_SIZE,
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
@@ -42,10 +44,6 @@ from .utils import (
     get_structure,
     record_timing,
 )
-
-DEFAULT_PAGE_SIZE = 100
-MAX_PAGE_SIZE = 300
-
 
 router = APIRouter()
 

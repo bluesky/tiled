@@ -3,6 +3,8 @@ from typing import Optional
 
 import typer
 
+from ._utils import get_context, get_default_profile_name, get_profile  # noqa E402
+
 admin_app = typer.Typer()
 
 
@@ -121,3 +123,38 @@ def check_config(
         typer.echo(str(err), err=True)
         raise typer.Exit(1)
     typer.echo("No errors found in configuration.")
+
+
+@admin_app.command("list-principals")
+def list_principals(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    page_offset: int = typer.Argument(0),
+    page_limit: int = typer.Argument(100, help="Max items to show"),
+):
+    """
+    List information about all Principals (users or services) that have ever logged in.
+    """
+    import json
+
+    context = get_context(profile)
+    result = context.admin.list_principals(offset=page_offset, limit=page_limit)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@admin_app.command("show-principal")
+def show_principal(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    uuid: str = typer.Argument(..., help="UUID identifying Principal of interest"),
+):
+    """
+    Show information about one Principal (user or service).
+    """
+    import json
+
+    context = get_context(profile)
+    result = context.admin.show_principal(uuid)
+    typer.echo(json.dumps(result, indent=2))

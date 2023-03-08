@@ -253,10 +253,22 @@ def test_admin(enter_password, config):
             context.authenticate(username="alice")
         admin_roles = context.whoami()["roles"]
         assert "admin" in [role["name"] for role in admin_roles]
+
+        # Exercise admin functions.
+        principals = context.admin.list_principals()
+        some_principal_uuid = principals[0]["uuid"]
+        context.admin.show_principal(some_principal_uuid)
+
         with enter_password("secret2"):
             context.authenticate(username="bob")
         user_roles = context.whoami()["roles"]
         assert [role["name"] for role in user_roles] == ["user"]
+
+        # As bob, admin functions should be disallowed.
+        with fail_with_status_code(401):
+            context.admin.list_principals()
+        with fail_with_status_code(401):
+            context.admin.show_principal(some_principal_uuid)
 
 
 def test_api_key_activity(enter_password, config):

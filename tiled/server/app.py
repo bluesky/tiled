@@ -505,18 +505,18 @@ Back up the database, and then run:
                     raise err from None
                 else:
                     logger.info(f"Connected to existing database at {redacted_url}.")
-                for admin in authentication.get("tiled_admins", []):
-                    logger.info(
-                        f"Ensuring that principal with identity {admin} has role 'admin'"
+            for admin in authentication.get("tiled_admins", []):
+                logger.info(
+                    f"Ensuring that principal with identity {admin} has role 'admin'"
+                )
+                async with AsyncSession(
+                    engine, autoflush=False, expire_on_commit=False
+                ) as session:
+                    await make_admin_by_identity(
+                        session,
+                        identity_provider=admin["provider"],
+                        id=admin["id"],
                     )
-                    async with AsyncSession(
-                        engine, autoflush=False, expire_on_commit=False
-                    ) as session:
-                        await make_admin_by_identity(
-                            session,
-                            identity_provider=admin["provider"],
-                            id=admin["id"],
-                        )
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
@@ -741,9 +741,10 @@ Back up the database, and then run:
     return app
 
 
-def build_app_from_config(config):
+def build_app_from_config(config, scalable=False):
+    "Convenience function that calls build_app(...) given config as dict."
     kwargs = construct_build_app_kwargs(config)
-    return build_app(**kwargs)
+    return build_app(scalable=scalable, **kwargs)
 
 
 def app_factory():

@@ -8,7 +8,16 @@ from pathlib import Path
 from typing import Optional
 
 import sqlalchemy.exc
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, Security
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    Security,
+)
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.security import (
     OAuth2PasswordBearer,
@@ -43,7 +52,7 @@ from ..database.core import (
 )
 from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
-from .core import json_or_msgpack
+from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
 from .settings import get_settings
 from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
@@ -729,15 +738,34 @@ base_authentication_router = APIRouter()
 )
 async def principal_list(
     request: Request,
+    offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+    limit: Optional[int] = Query(
+        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+    ),
     principal=Security(get_current_principal, scopes=["read:principals"]),
     db=Depends(get_database_session),
 ):
     "List Principals (users and services)."
-    # TODO Pagination
     request.state.endpoint = "auth"
-    principal_orms = (await db.execute(select(orm.Principal))).all()
+    principal_orms = (
+        (
+            await db.execute(
+                select(orm.Principal)
+                .offset(offset)
+                .limit(limit)
+                .options(
+                    selectinload(orm.Principal.identities),
+                    selectinload(orm.Principal.roles),
+                    selectinload(orm.Principal.api_keys),
+                    selectinload(orm.Principal.sessions),
+                )
+            )
+        )
+        .unique()
+        .all()
+    )
     principals = []
-    for principal_orm in principal_orms:
+    for (principal_orm,) in principal_orms:
         latest_activity = await latest_principal_activity(db, principal_orm)
         principal = schemas.Principal.from_orm(principal_orm, latest_activity).dict()
         principals.append(principal)
@@ -757,8 +785,19 @@ async def principal(
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
     principal_orm = (
-        await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
+        await db.execute(
+            select(orm.Principal)
+            .filter(orm.Principal.uuid == uuid)
+            .options(
+                selectinload(orm.Principal.identities),
+                selectinload(orm.Principal.roles),
+                selectinload(orm.Principal.api_keys),
+                selectinload(orm.Principal.sessions),
+            )
+        )
     ).scalar()
+    if principal_orm is None:
+        raise HTTPException(status_code=404, detail=f"No such Principal {uuid}")
     latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
@@ -834,10 +873,7 @@ async def slide_session(refresh_token, settings, db):
         payload = decode_token(refresh_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
-            status_code=401,
-            detail="Session has expired. Please re-authenticate.".options(
-                selectinload(orm.APIKey.prinicpal).selectinload(orm.Principal.roles)
-            ),
+            status_code=401, detail="Session has expired. Please re-authenticate."
         )
     # Find this session in the database.
     session = await lookup_valid_session(db, payload["sid"])
