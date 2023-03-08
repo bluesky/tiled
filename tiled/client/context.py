@@ -317,10 +317,8 @@ class Context:
             app=app,
             raise_server_exceptions=raise_server_exceptions,
         )
-        if (
-            (not context.offline)
-            and (api_key is UNSET)
-            and (not context.server_info["authentication"]["providers"])
+        if (api_key is UNSET) and (
+            not context.server_info["authentication"]["providers"]
         ):
             # Extract the API key from the app and set it.
             from ..server.settings import get_settings

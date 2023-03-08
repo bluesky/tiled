@@ -70,7 +70,7 @@ a,b,c
 """
         )
     config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
-    with Context(build_app_from_config(config)) as context:
+    with Context.from_app(build_app_from_config(config)) as context:
         client = from_context(context)
         cache = get_object_cache()
         assert cache.hits == cache.misses == 0
@@ -102,7 +102,7 @@ a,b,c
         "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 0},
     }
-    with Context(build_app_from_config(config)) as context:
+    with Context.from_app(build_app_from_config(config)) as context:
         client = from_context(context)
         cache = get_object_cache()
         assert cache is NO_CACHE
@@ -119,7 +119,7 @@ a,b,c
 """
         )
     config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
-    with Context(build_app_from_config(config)) as context:
+    with Context.from_app(build_app_from_config(config)) as context:
         client = from_context(context)
         cache = get_object_cache()
         assert cache.hits == cache.misses == 0
@@ -158,7 +158,7 @@ def test_cache_size_absolute(tmpdir):
         "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 1000},
     }
-    with Context(build_app_from_config(config)):
+    with Context.from_app(build_app_from_config(config)):
         cache = get_object_cache()
         assert cache.available_bytes == 1000
 
@@ -169,7 +169,7 @@ def test_cache_size_relative(tmpdir):
         "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 0.1},
     }
-    with Context(build_app_from_config(config)):
+    with Context.from_app(build_app_from_config(config)):
         cache = get_object_cache()
         actual = cache.available_bytes
         expected = psutil.virtual_memory().total * 0.1
