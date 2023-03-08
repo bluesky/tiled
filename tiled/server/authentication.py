@@ -522,7 +522,6 @@ def build_device_code_authorize_route(authenticator, provider):
 
 
 def build_device_code_user_code_form_route(authentication, provider):
-
     if not SHARE_TILED_PATH:
         raise Exception(
             "Static assets could not be found and are required for "
@@ -1016,7 +1015,6 @@ async def whoami(
     principal=Security(get_current_principal, scopes=[]),
     db=Depends(get_database_session),
 ):
-
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
     if principal is SpecialUsers.public:

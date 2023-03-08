@@ -47,7 +47,6 @@ tree = WritableMapAdapter({})
 
 
 def test_validators():
-
     config = {
         "trees": [{"tree": f"{__name__}:tree", "path": "/"}],
         "specs": [{"spec": "foo", "validator": f"{__name__}:validate_foo"}],

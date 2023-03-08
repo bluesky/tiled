@@ -215,14 +215,12 @@ def test_same_filename_separate_directory(tmpdir):
 
 
 def test_subdirectory_handler(tmpdir):
-
     changes = []  # accumulate (kind, path) changes
 
     def get_changes_callback():
         return changes.append
 
     def example_subdirectory_handler(path):
-
         if "separately_managed" == path.name:
             # In this dummy example, ignore the files in this directory
             # and just return a constant array.

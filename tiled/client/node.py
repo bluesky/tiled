@@ -21,7 +21,6 @@ from .utils import ClientError, client_for_item, export_util
 
 
 class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
-
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
     # defer imports.

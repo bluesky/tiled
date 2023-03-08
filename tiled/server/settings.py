@@ -13,7 +13,6 @@ DatabaseSettings = collections.namedtuple(
 
 
 class Settings(BaseSettings):
-
     tree: Any = None
     allow_anonymous_access: bool = bool(
         int(os.getenv("TILED_ALLOW_ANONYMOUS_ACCESS", False))

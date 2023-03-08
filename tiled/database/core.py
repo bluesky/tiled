@@ -22,7 +22,6 @@ ALL_REVISIONS = ["4a9dfaba4a98", "56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
 
 
 async def create_default_roles(db):
-
     db.add_all(
         [
             Role(
@@ -57,7 +56,6 @@ async def create_default_roles(db):
 
 
 async def initialize_database(engine):
-
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 
@@ -110,7 +108,6 @@ class DatabaseUpgradeNeeded(Exception):
 
 
 async def get_current_revision(engine):
-
     redacted_url = engine.url._replace(password="[redacted]")
     async with engine.connect() as conn:
         context = await conn.run_sync(migration.MigrationContext.configure)

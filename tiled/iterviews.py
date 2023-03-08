@@ -4,7 +4,6 @@ Iterables for KeysView, ValuesView, ItemsView that are sliceable.
 
 
 class IterViewBase:
-
     __slots__ = ("_get_length",)
 
     def __init__(self, get_length):

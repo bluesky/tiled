@@ -108,7 +108,7 @@ def get_data_files():
     """Get data files in share/tiled"""
 
     data_files = []
-    for (d, _dirs, filenames) in os.walk(share_tiled):
+    for d, _dirs, filenames in os.walk(share_tiled):
         rel_d = os.path.relpath(d, here)
         data_files.append((rel_d, [os.path.join(rel_d, f) for f in filenames]))
     return data_files

@@ -701,7 +701,6 @@ Back up the database, and then run:
 
     metrics_config = server_settings.get("metrics", {})
     if metrics_config.get("prometheus", True):
-
         # PROMETHEUS_MULTIRPOC_DIR puts prometheus_client in multiprocess mode
         # (for e.g. gunicorn) which uses a directory of memory-mapped files.
         # If that environment variable is set, check that the directory exists

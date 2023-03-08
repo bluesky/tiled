@@ -23,7 +23,6 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
 def test_write_array_full():
-
     tree = WritableMapAdapter({})
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -87,7 +86,6 @@ def test_write_large_array_full():
 
 
 def test_write_array_chunked():
-
     tree = WritableMapAdapter({})
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -115,7 +113,6 @@ def test_write_array_chunked():
 
 
 def test_write_dataframe_full():
-
     tree = WritableMapAdapter({})
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -146,7 +143,6 @@ def test_write_dataframe_full():
 
 
 def test_write_dataframe_partitioned():
-
     tree = WritableMapAdapter({})
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -178,7 +174,6 @@ def test_write_dataframe_partitioned():
 
 
 def test_write_sparse_full():
-
     tree = WritableMapAdapter({})
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -213,7 +208,6 @@ def test_write_sparse_full():
 
 
 def test_write_sparse_chunked():
-
     tree = WritableMapAdapter({})
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)

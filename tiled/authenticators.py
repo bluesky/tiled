@@ -63,7 +63,6 @@ properties:
 
 
 class PAMAuthenticator:
-
     mode = Mode.password
     configuration_schema = """
 $schema": http://json-schema.org/draft-07/schema#
@@ -96,7 +95,6 @@ properties:
 
 
 class OIDCAuthenticator:
-
     mode = Mode.external
     configuration_schema = """
 $schema": http://json-schema.org/draft-07/schema#
@@ -237,7 +235,6 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
 
 
 class SAMLAuthenticator:
-
     mode = Mode.external
 
     def __init__(
@@ -588,7 +585,6 @@ class LDAPAuthenticator:
             return 389  # default plaintext port for LDAP
 
     async def resolve_username(self, username_supplied_by_user):
-
         import ldap3
 
         search_dn = self.lookup_dn_search_user
@@ -670,7 +666,6 @@ class LDAPAuthenticator:
         return (user_dn, response[0]["dn"])
 
     def get_connection(self, userdn, password):
-
         import ldap3
 
         # NOTE: setting 'acitve=False' essentially disables exclusion of inactive servers from the pool.
@@ -728,7 +723,6 @@ class LDAPAuthenticator:
         return attrs
 
     async def authenticate(self, username: str, password: str):
-
         import ldap3
 
         username_saved = username  # Save the user name passed as a parameter

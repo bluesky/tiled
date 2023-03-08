@@ -18,7 +18,6 @@ class StructureFamily(str, enum.Enum):
 
 @dataclass(frozen=True)
 class Spec:
-
     name: str
     version: Optional[str] = None
 

@@ -14,7 +14,6 @@ class MetadataRevisions:
         self._link = link
 
     def __len__(self):
-
         LENGTH_CACHE_TTL = 1  # second
 
         now = time.monotonic()
