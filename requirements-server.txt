@@ -7,7 +7,7 @@ cachey
 cachetools
 click !=8.1.0
 dask
-fastapi
+fastapi <=0.89.1
 httpx >=0.20.0,!=0.23.1
 jinja2
 jmespath
