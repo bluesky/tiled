@@ -3,7 +3,8 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context, from_context
+from ..server.app import build_app
 from ..structures.array import StructDtype
 
 
@@ -33,7 +34,6 @@ def test_read():
         dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
     )
     tree = MapAdapter({"A": ArrayAdapter.from_array(data)})
-
-    client = from_tree(tree)
-
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
     assert np.all(data == client["A"].read())

@@ -1,11 +1,10 @@
 import collections
 import collections.abc
-import sys
 
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
-from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, Context
+from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, UNSET, Context
 from .node import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Node
 from .utils import ClientError, client_for_item
 
@@ -21,7 +20,7 @@ def from_uri(
     api_key=None,
     token_cache=DEFAULT_TOKEN_CACHE,
     verify=True,
-    prompt_for_reauthentication=None,
+    prompt_for_reauthentication=UNSET,
     headers=None,
     timeout=None,
 ):
@@ -83,188 +82,10 @@ def from_uri(
     )
 
 
-def from_app(
-    app,
-    structure_clients="numpy",
-    *,
-    cache=None,
-    offline=False,
-    username=None,
-    auth_provider=None,
-    api_key=None,
-    token_cache=DEFAULT_TOKEN_CACHE,
-    headers=None,
-    timeout=None,
-    prompt_for_reauthentication=None,
-    raise_server_exceptions=True,
-):
-    """
-    Connect to a Node directly, running the app in this same process.
-
-    NOTE: This is experimental. It may need to be re-designed or even removed.
-
-    In this configuration, we are using the server, but we are communicating
-    with it directly within this process, not over a local network. It is
-    generally faster.
-
-    Specifically, we are using HTTP over ASGI rather than HTTP over TCP.
-    There are no sockets or network-related syscalls.
-
-    Parameters
-    ----------
-    structure_clients : str or dict, optional
-        Use "dask" for delayed data loading and "numpy" for immediate
-        in-memory structures (e.g. normal numpy arrays, pandas
-        DataFrames). For advanced use, provide dict mapping a
-        structure_family or a spec to a client object.
-    username : str, optional
-        Username for authenticated access.
-    auth_provider : str, optional
-        Name of an authentication provider. If None and the server supports
-        multiple provides, the user will be interactively prompted to
-        choose from a list.
-    api_key : str, optional
-        API key based authentication. Cannot mix with username/auth_provider.
-    cache : Cache, optional
-    offline : bool, optional
-        False by default. If True, rely on cache only.
-    token_cache : str, optional
-        Path to directory for storing refresh tokens.
-    prompt_for_reauthentication : bool, optional
-        If True, prompt interactively for credentials if needed. If False,
-        raise an error. By default, attempt to detect whether terminal is
-        interactive (is a TTY).
-    timeout : httpx.Timeout, optional
-        If None, use Tiled default settings.
-        (To disable timeouts, use httpx.Timeout(None)).
-    """
-    from ..server.app import get_settings
-
-    if (api_key is None) and (username is None):
-        # Extract the API key that the server is running on.
-        settings = app.dependency_overrides[get_settings]()
-        api_key = settings.single_user_api_key or None
-    context = Context(
-        uri="http://local-tiled-app/api/v1",
-        headers=headers,
-        api_key=api_key,
-        cache=cache,
-        offline=offline,
-        timeout=timeout,
-        token_cache=token_cache,
-        app=app,
-        raise_server_exceptions=raise_server_exceptions,
-    )
-    return from_context(
-        context,
-        structure_clients=structure_clients,
-        prompt_for_reauthentication=prompt_for_reauthentication,
-        username=username,
-        auth_provider=auth_provider,
-    )
-
-
-def from_tree(
-    tree,
-    structure_clients="numpy",
-    *,
-    authentication=None,
-    server_settings=None,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-    validation_registry=None,
-    cache=None,
-    offline=False,
-    username=None,
-    auth_provider=None,
-    api_key=None,
-    token_cache=DEFAULT_TOKEN_CACHE,
-    headers=None,
-    timeout=None,
-    prompt_for_reauthentication=None,
-):
-    """
-    Connect to a Node directly, running the app in this same process.
-
-    NOTE: This is experimental. It may need to be re-designed or even removed.
-
-    In this configuration, we are using the server, but we are communicating
-    with it directly within this process, not over a local network. It is
-    generally faster.
-
-    Specifically, we are using HTTP over ASGI rather than HTTP over TCP.
-    There are no sockets or network-related syscalls.
-
-    Parameters
-    ----------
-    tree : Node
-    structure_clients : str or dict, optional
-        Use "dask" for delayed data loading and "numpy" for immediate
-        in-memory structures (e.g. normal numpy arrays, pandas
-        DataFrames). For advanced use, provide dict mapping a
-        structure_family or a spec to a client object.
-    authentication : dict, optional
-        Dict of authentication configuration.
-    username : str, optional
-        Username for authenticated access.
-    auth_provider : str, optional
-        Name of an authentication provider. If None and the server supports
-        multiple provides, the user will be interactively prompted to
-        choose from a list.
-    api_key : str, optional
-        API key based authentication. Cannot mix with username/auth_provider.
-    cache : Cache, optional
-    offline : bool, optional
-        False by default. If True, rely on cache only.
-    token_cache : str, optional
-        Path to directory for storing refresh tokens.
-    prompt_for_reauthentication : bool, optional
-        If True, prompt interactively for credentials if needed. If False,
-        raise an error. By default, attempt to detect whether terminal is
-        interactive (is a TTY).
-    timeout : httpx.Timeout, optional
-        If None, use Tiled default settings.
-        (To disable timeouts, use httpx.Timeout(None)).
-    """
-    from ..server.app import build_app, get_settings
-
-    app = build_app(
-        tree,
-        authentication,
-        server_settings,
-        query_registry=query_registry,
-        serialization_registry=serialization_registry,
-        compression_registry=compression_registry,
-        validation_registry=validation_registry,
-    )
-    if (api_key is None) and (username is None):
-        # Extract the API key that the server is running on.
-        settings = app.dependency_overrides[get_settings]()
-        api_key = settings.single_user_api_key or None
-    context = Context(
-        uri="http://local-tiled-app/api/v1",
-        headers=headers,
-        api_key=api_key,
-        cache=cache,
-        offline=offline,
-        timeout=timeout,
-        token_cache=token_cache,
-        app=app,
-    )
-    return from_context(
-        context,
-        structure_clients=structure_clients,
-        prompt_for_reauthentication=prompt_for_reauthentication,
-        username=username,
-        auth_provider=auth_provider,
-    )
-
-
 def from_context(
     context,
     structure_clients="numpy",
-    prompt_for_reauthentication=None,
+    prompt_for_reauthentication=UNSET,
     username=None,
     auth_provider=None,
     node_path_parts=None,
@@ -288,8 +109,6 @@ def from_context(
     if (username is not None) or (auth_provider is not None):
         if context.api_key is not None:
             raise ValueError("Use api_key or username/auth_provider, not both.")
-    if prompt_for_reauthentication is None:
-        prompt_for_reauthentication = sys.__stdin__.isatty()
     node_path_parts = node_path_parts or []
     # Do entrypoint discovery if it hasn't yet been done.
     if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
@@ -311,7 +130,11 @@ Set an api_key as in:
 """
         )
     if username is not None:
-        context.authenticate(username=username, provider=auth_provider)
+        context.authenticate(
+            username=username,
+            provider=auth_provider,
+            prompt_for_reauthentication=prompt_for_reauthentication,
+        )
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}node/metadata/{'/'.join(node_path_parts)}"
     try:
@@ -401,9 +224,12 @@ def from_profile(name, structure_clients=None, **kwargs):
         merged["cache"] = cache
     timeout_config = merged.pop("timeout", None)
     if timeout_config is not None:
-        timeout_params = DEFAULT_TIMEOUT_PARAMS.copy()
-        timeout_params.update(timeout_config)
-        timeout = httpx.Timeout(**timeout_params)
+        if isinstance(timeout_config, httpx.Timeout):
+            timeout = timeout_config
+        else:
+            timeout_params = DEFAULT_TIMEOUT_PARAMS.copy()
+            timeout_params.update(timeout_config)
+            timeout = httpx.Timeout(**timeout_params)
         merged["timeout"] = timeout
     # Below, we may convert importable strings like
     # "package.module:obj" to live objects. Include the profile's
@@ -426,94 +252,12 @@ def from_profile(name, structure_clients=None, **kwargs):
                     result[key] = class_
                 merged["structure_clients"] = result
     if "direct" in merged:
-        # The profiles specifies that there is no server. We should create
-        # an app ourselves and use it directly via ASGI.
-        from ..config import construct_build_app_kwargs
+        # The profile specifies the server in-line.
+        # Create an app and use it directly via ASGI.
+        from ..server import build_app_from_config
 
-        build_app_kwargs = construct_build_app_kwargs(
-            merged.pop("direct", None), source_filepath=filepath
-        )
-        return from_tree(**build_app_kwargs, **merged)
+        config = merged.pop("direct", None)
+        context = Context.from_app(build_app_from_config(config), **merged)
+        return from_context(context)
     else:
         return from_uri(**merged)
-
-
-def from_config(
-    config,
-    structure_clients="numpy",
-    *,
-    username=None,
-    auth_provider=None,
-    api_key=None,
-    cache=None,
-    offline=False,
-    token_cache=DEFAULT_TOKEN_CACHE,
-    prompt_for_reauthentication=None,
-    headers=None,
-    timeout=None,
-):
-    """
-    Build Nodes directly, running the app in this same process.
-
-    NOTE: This is experimental. It may need to be re-designed or even removed.
-
-    Parameters
-    ----------
-    config : str or dict
-        May be:
-
-        * Path to config file
-        * Path to directory of config files
-        * Dict of config
-
-    Examples
-    --------
-
-    From config file:
-
-    >>> from_config("path/to/file.yml")
-
-    From directory of config files:
-
-    >>> from_config("path/to/directory")
-
-    From configuration given directly, as dict:
-
-    >>> from_config(
-            {
-                "trees":
-                    [
-                        "path": "/",
-                        "tree": "tiled.files.Node.from_files",
-                        "args": {"diretory": "path/to/files"}
-                    ]
-            }
-        )
-    """
-
-    from ..config import construct_build_app_kwargs
-    from ..server.app import build_app, get_settings
-
-    build_app_kwargs = construct_build_app_kwargs(config)
-    app = build_app(**build_app_kwargs)
-    if (api_key is None) and (username is None):
-        # Extract the API key that the server is running on.
-        settings = app.dependency_overrides[get_settings]()
-        api_key = settings.single_user_api_key or None
-    context = Context(
-        uri="http://local-tiled-app/api/v1",
-        headers=headers,
-        api_key=api_key,
-        cache=cache,
-        offline=offline,
-        timeout=timeout,
-        token_cache=token_cache,
-        app=app,
-    )
-    return from_context(
-        context,
-        structure_clients=structure_clients,
-        prompt_for_reauthentication=prompt_for_reauthentication,
-        username=username,
-        auth_provider=auth_provider,
-    )

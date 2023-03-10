@@ -11,8 +11,9 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
-from ..client import from_tree
+from ..client import Context, from_context
 from ..client.utils import ClientError
+from ..server.app import build_app
 
 data = numpy.random.random((10, 10))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -61,7 +62,14 @@ tree = MapAdapter(
         ),
     }
 )
-client = from_tree(tree)
+
+
+@pytest.fixture(scope="module")
+def client():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
 
 
 # We test a little bit of actual file export, using the tmpdir fixture,
@@ -70,18 +78,17 @@ client = from_tree(tree)
 
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "image.png", "image.tiff"])
-def test_export_2d_array(filename, tmpdir):
+def test_export_2d_array(client, filename, tmpdir):
     client["A"].export(Path(tmpdir, filename))
 
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
-def test_export_table(filename, tmpdir):
+def test_export_table(client, filename, tmpdir):
     client["C"].export(Path(tmpdir, filename))
 
 
-def test_streaming_export():
+def test_streaming_export(client):
     "The application/json-seq format is streamed via a generator."
-    client = from_tree(tree)
     buffer = io.BytesIO()
     client["C"].export(buffer, format="application/json-seq")
     # Verify that output is valid newline-delimited JSON.
@@ -90,41 +97,46 @@ def test_streaming_export():
         json.loads(line)
 
 
-def test_streaming_export_empty():
+def test_streaming_export_empty(client):
     "The application/json-seq format is streamed via a generator."
-    client = from_tree(tree)
     buffer = io.BytesIO()
     client["empty_table"].export(buffer, format="application/json-seq")
     buffer.seek(0)
     assert buffer.read() == b""
 
 
-def test_export_weather_data_var(tmpdir):
+def test_export_weather_data_var(client, tmpdir):
     buffer = io.BytesIO()
     client["structured_data"]["weather"]["temperature"].export(
         buffer, slice=(0,), format="text/csv"
     )
 
 
-def test_export_weather_all():
+def test_export_weather_all(client):
     buffer = io.BytesIO()
     client["structured_data"]["weather"].export(buffer, format="application/x-hdf5")
 
 
-def test_serialization_error_hdf5_metadata():
-    good = MapAdapter({}, metadata={"a": 1})
-    bad = MapAdapter({}, metadata={"a": {"b": 1}})
-    buffer = io.BytesIO()
-    from_tree(good).export(buffer, format="application/x-hdf5")
-    with pytest.raises(ClientError, match="contains types or structure"):
-        from_tree(bad).export(buffer, format="application/x-hdf5")
+def test_serialization_error_hdf5_metadata(client):
+    tree = MapAdapter(
+        {
+            "good": MapAdapter({}, metadata={"a": 1}),
+            "bad": MapAdapter({}, metadata={"a": {"b": 1}}),
+        }
+    )
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        buffer = io.BytesIO()
+        client["good"].export(buffer, format="application/x-hdf5")
+        with pytest.raises(ClientError, match="contains types or structure"):
+            client["bad"].export(buffer, format="application/x-hdf5")
 
 
-def test_path_as_Path_or_string(tmpdir):
+def test_path_as_Path_or_string(client, tmpdir):
     client["A"].export(Path(tmpdir, "test_path_as_path.txt"))
     client["A"].export(str(Path(tmpdir, "test_path_as_str.txt")))
 
 
-def test_formats():
+def test_formats(client):
     client.formats
     client["A"].formats

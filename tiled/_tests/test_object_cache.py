@@ -4,7 +4,8 @@ import numpy
 import psutil
 import pytest
 
-from ..client import from_config
+from ..client import Context, from_context
+from ..server.app import build_app_from_config
 from ..server.object_cache import NO_CACHE, ObjectCache, get_object_cache
 from .utils import force_update
 
@@ -69,23 +70,24 @@ a,b,c
 """
         )
     config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
-    client = from_config(config)
-    cache = get_object_cache()
-    assert cache.hits == cache.misses == 0
-    client["data"].read()
-    assert cache.misses == 2  # two dask objects in the cache
-    assert cache.hits == 0
-    client["data"].read()
-    assert cache.misses == 2
-    assert cache.hits == 2
-    # Simulate eviction.
-    cache.clear()
-    client["data"].read()
-    assert cache.misses == 4
-    assert cache.hits == 2
-    client["data"].read()
-    assert cache.misses == 4
-    assert cache.hits == 4
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        cache = get_object_cache()
+        assert cache.hits == cache.misses == 0
+        client["data"].read()
+        assert cache.misses == 2  # two dask objects in the cache
+        assert cache.hits == 0
+        client["data"].read()
+        assert cache.misses == 2
+        assert cache.hits == 2
+        # Simulate eviction.
+        cache.clear()
+        client["data"].read()
+        assert cache.misses == 4
+        assert cache.hits == 2
+        client["data"].read()
+        assert cache.misses == 4
+        assert cache.hits == 4
 
 
 def test_object_cache_disabled(tmpdir):
@@ -100,10 +102,11 @@ a,b,c
         "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 0},
     }
-    client = from_config(config)
-    cache = get_object_cache()
-    assert cache is NO_CACHE
-    client["data"]
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        cache = get_object_cache()
+        assert cache is NO_CACHE
+        client["data"]
 
 
 def test_detect_content_changed_or_removed(tmpdir):
@@ -116,37 +119,38 @@ a,b,c
 """
         )
     config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
-    client = from_config(config)
-    cache = get_object_cache()
-    assert cache.hits == cache.misses == 0
-    assert len(client["data"].read()) == 1
-    with open(path, "w") as file:
-        file.write(
-            """
-a,b,c
-1,2,3
-4,5,6
-"""
-        )
-    force_update(client)
-    assert len(client["data"].read()) == 2
-    with open(path, "w") as file:
-        file.write(
-            """
-a,b,c
-1,2,3
-4,5,6
-7,8,9
-"""
-        )
-    force_update(client)
-    assert len(client["data"].read()) == 3
-    # Remove file.
-    path.unlink()
-    force_update(client)
-    assert "data" not in client
-    with pytest.raises(KeyError):
-        client["data"]
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        cache = get_object_cache()
+        assert cache.hits == cache.misses == 0
+        assert len(client["data"].read()) == 1
+        with open(path, "w") as file:
+            file.write(
+                """
+    a,b,c
+    1,2,3
+    4,5,6
+    """
+            )
+        force_update(client)
+        assert len(client["data"].read()) == 2
+        with open(path, "w") as file:
+            file.write(
+                """
+    a,b,c
+    1,2,3
+    4,5,6
+    7,8,9
+    """
+            )
+        force_update(client)
+        assert len(client["data"].read()) == 3
+        # Remove file.
+        path.unlink()
+        force_update(client)
+        assert "data" not in client
+        with pytest.raises(KeyError):
+            client["data"]
 
 
 def test_cache_size_absolute(tmpdir):
@@ -154,9 +158,9 @@ def test_cache_size_absolute(tmpdir):
         "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 1000},
     }
-    from_config(config)
-    cache = get_object_cache()
-    assert cache.available_bytes == 1000
+    with Context.from_app(build_app_from_config(config)):
+        cache = get_object_cache()
+        assert cache.available_bytes == 1000
 
 
 def test_cache_size_relative(tmpdir):
@@ -165,8 +169,8 @@ def test_cache_size_relative(tmpdir):
         "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
         "object_cache": {"available_bytes": 0.1},
     }
-    from_config(config)
-    cache = get_object_cache()
-    actual = cache.available_bytes
-    expected = psutil.virtual_memory().total * 0.1
-    assert abs(actual - expected) / expected < 0.01  # inexact is OK
+    with Context.from_app(build_app_from_config(config)):
+        cache = get_object_cache()
+        actual = cache.available_bytes
+        expected = psutil.virtual_memory().total * 0.1
+        assert abs(actual - expected) / expected < 0.01  # inexact is OK

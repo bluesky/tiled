@@ -65,7 +65,6 @@ class TiffAdapter:
 
 
 class TiffSequenceAdapter:
-
     structure_family = "array"
 
     def __init__(self, seq, *, specs=None, references=None):

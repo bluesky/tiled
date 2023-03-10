@@ -12,7 +12,7 @@ import httpx
 import msgpack
 
 from .._version import get_versions
-from ..utils import DictView
+from ..utils import DictView, Sentinel
 from .auth import (
     DEFAULT_TOKEN_CACHE,
     CannotRefreshAuthentication,
@@ -31,6 +31,8 @@ from .utils import (
 tiled_version = get_versions()["version"]
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
+UNSET = Sentinel("UNSET")
+PROMPT_FOR_REAUTHENTICATION = None
 
 
 class Context:
@@ -48,7 +50,7 @@ class Context:
         offline=False,
         timeout=None,
         verify=True,
-        token_cache=DEFAULT_TOKEN_CACHE,
+        token_cache=None,
         app=None,
         raise_server_exceptions=True,
     ):
@@ -59,6 +61,8 @@ class Context:
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
         headers.setdefault("user-agent", USER_AGENT)
+        if token_cache is None:
+            token_cache = DEFAULT_TOKEN_CACHE
 
         # If ?api_key=... is present, move it from the query into a header.
         # The server would accept it in the query parameter, but using
@@ -125,13 +129,13 @@ class Context:
 
                 atexit.register(client.__exit__)
             else:
+                import threading
+
                 # The threading module has its own (internal) atexit
                 # mechanism that runs at thread shutdown, prior to the atexit
                 # mechanism that runs at interpreter shutdown.
                 # We need to intervene at that layer to close the portal, or else
                 # we will wait forever for a thread run by the portal to join().
-                import threading
-
                 threading._register_atexit(client.__exit__)
 
         self.http_client = client
@@ -153,6 +157,16 @@ class Context:
             with self.disable_cache(allow_read=False, allow_write=True):
                 self.server_info = self.get_json(self.api_uri)
         self.api_key = api_key  # property setter sets Authorization header
+        self.admin = Admin(self)  # accessor for admin-related requests
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def close(self):
+        self.http_client.__exit__()
 
     def __getstate__(self):
         if getattr(self.http_client, "app", None):
@@ -228,7 +242,7 @@ class Context:
         offline=False,
         timeout=None,
         verify=True,
-        token_cache=DEFAULT_TOKEN_CACHE,
+        token_cache=None,
         app=None,
     ):
         """
@@ -276,6 +290,44 @@ class Context:
             app=app,
         )
         return context, node_path_parts
+
+    @classmethod
+    def from_app(
+        cls,
+        app,
+        *,
+        cache=None,
+        offline=False,
+        token_cache=None,
+        headers=None,
+        timeout=None,
+        api_key=UNSET,
+        raise_server_exceptions=True,
+    ):
+        """
+        Construct a Context around a FastAPI app. Primarily for testing.
+        """
+        context = cls(
+            uri="http://local-tiled-app/api/v1",
+            headers=headers,
+            api_key=api_key,
+            cache=cache,
+            offline=offline,
+            timeout=timeout,
+            token_cache=token_cache,
+            app=app,
+            raise_server_exceptions=raise_server_exceptions,
+        )
+        if (api_key is UNSET) and (
+            not context.server_info["authentication"]["providers"]
+        ):
+            # Extract the API key from the app and set it.
+            from ..server.settings import get_settings
+
+            settings = app.dependency_overrides[get_settings]()
+            api_key = settings.single_user_api_key or None
+            context.api_key = api_key
+        return context
 
     @property
     def tokens(self):
@@ -620,10 +672,16 @@ class Context:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def authenticate(self, username=None, provider=None):
+    def authenticate(
+        self, username=None, provider=None, prompt_for_reauthentication=UNSET
+    ):
         """
         See login. This is for programmatic use.
         """
+        if prompt_for_reauthentication is UNSET:
+            prompt_for_reauthentication = PROMPT_FOR_REAUTHENTICATION
+        if prompt_for_reauthentication is None:
+            prompt_for_reauthentication = sys.__stdin__.isatty()
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
@@ -657,6 +715,8 @@ class Context:
             except CannotRefreshAuthentication:
                 # Continue below, where we will prompt for log in.
                 self.http_client.auth = None
+                if not prompt_for_reauthentication:
+                    raise
             else:
                 # We have a live session for the specified provider and username already.
                 # No need to log in again.
@@ -883,3 +943,28 @@ def _choose_identity_provider(providers, provider=None):
                     continue
                 break
     return spec
+
+
+class Admin:
+    "Accessor for requests that require administrative privileges."
+
+    def __init__(self, context):
+        self.context = context
+        self.base_url = context.server_info["links"]["self"]
+
+    def list_principals(self, offset=0, limit=100):
+        "List Principals (users and services) in the authenticaiton database."
+        params = dict(offset=offset, limit=limit)
+        response = self.context.http_client.get(
+            f"{self.base_url}/auth/principal", params=params
+        )
+        handle_error(response)
+        return response.json()
+
+    def show_principal(self, uuid):
+        "Show one Principal (user or service) in the authenticaiton database."
+        response = self.context.http_client.get(
+            f"{self.base_url}/auth/principal/{uuid}"
+        )
+        handle_error(response)
+        return response.json()

@@ -30,7 +30,6 @@ def create_api_key(
     note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
     no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
 ):
-
     context = get_context(profile)
     if not scopes:
         # This is how typer interprets unspecified scopes.

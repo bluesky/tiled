@@ -5,7 +5,9 @@ from datetime import datetime
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
 
 from .alembic_utils import temp_alembic_ini
@@ -19,75 +21,76 @@ REQUIRED_REVISION = "4a9dfaba4a98"
 ALL_REVISIONS = ["4a9dfaba4a98", "56809bcbfcb0", "722ff4e4fcc7", "481830dd6c11"]
 
 
-def create_default_roles(engine):
-
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
-
-    db.add(
-        Role(
-            name="user",
-            description="Default Role for users.",
-            scopes=[
-                "read:metadata",
-                "read:data",
-                "create",
-                "write:metadata",
-                "write:data",
-                "apikeys",
-            ],
-        ),
+async def create_default_roles(db):
+    db.add_all(
+        [
+            Role(
+                name="user",
+                description="Default Role for users.",
+                scopes=[
+                    "read:metadata",
+                    "read:data",
+                    "create",
+                    "write:metadata",
+                    "write:data",
+                    "apikeys",
+                ],
+            ),
+            Role(
+                name="admin",
+                description="Role with elevated privileges.",
+                scopes=[
+                    "read:metadata",
+                    "read:data",
+                    "create",
+                    "write:metadata",
+                    "write:data",
+                    "admin:apikeys",
+                    "read:principals",
+                    "metrics",
+                ],
+            ),
+        ]
     )
-    db.add(
-        Role(
-            name="admin",
-            description="Role with elevated privileges.",
-            scopes=[
-                "read:metadata",
-                "read:data",
-                "create",
-                "write:metadata",
-                "write:data",
-                "admin:apikeys",
-                "read:principals",
-                "metrics",
-            ],
-        ),
-    )
-    db.commit()
+    await db.commit()
 
 
-def initialize_database(engine):
-
+async def initialize_database(engine):
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 
-    # Create all tables.
-    Base.metadata.create_all(engine)
+    async with engine.connect() as conn:
+        # Create all tables.
+        await conn.run_sync(Base.metadata.create_all)
 
-    # Initialize Roles table.
-    create_default_roles(engine)
+        # Initialize Roles table.
+        async with AsyncSession(engine) as db:
+            await create_default_roles(db)
 
-    # Mark current revision.
-    with temp_alembic_ini(engine.url) as alembic_ini:
+
+def stamp_head(engine_url):
+    """
+    Upgrade schema to the specified revision.
+    """
+    with temp_alembic_ini(engine_url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
         command.stamp(alembic_cfg, "head")
 
 
-def upgrade(engine, revision):
+def upgrade(engine_url, revision):
     """
     Upgrade schema to the specified revision.
     """
-    with temp_alembic_ini(engine.url) as alembic_ini:
+    with temp_alembic_ini(engine_url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
         command.upgrade(alembic_cfg, revision)
 
 
-def downgrade(engine, revision):
+def downgrade(engine_url, revision):
     """
     Downgrade schema to the specified revision.
     """
-    with temp_alembic_ini(engine.url) as alembic_ini:
+    with temp_alembic_ini(engine_url) as alembic_ini:
         alembic_cfg = Config(alembic_ini)
         command.downgrade(alembic_cfg, revision)
 
@@ -104,12 +107,11 @@ class DatabaseUpgradeNeeded(Exception):
     pass
 
 
-def get_current_revision(engine):
-
+async def get_current_revision(engine):
     redacted_url = engine.url._replace(password="[redacted]")
-    with engine.begin() as conn:
-        context = migration.MigrationContext.configure(conn)
-        heads = context.get_current_heads()
+    async with engine.connect() as conn:
+        context = await conn.run_sync(migration.MigrationContext.configure)
+        heads = await conn.run_sync(lambda conn: context.get_current_heads())
     if heads == ():
         return None
     elif len(heads) != 1:
@@ -128,8 +130,8 @@ def get_current_revision(engine):
     return revision
 
 
-def check_database(engine):
-    revision = get_current_revision(engine)
+async def check_database(engine):
+    revision = await get_current_revision(engine)
     redacted_url = engine.url._replace(password="[redacted]")
     if revision is None:
         raise UninitializedDatabase(
@@ -143,123 +145,137 @@ def check_database(engine):
         )
 
 
-def purge_expired(engine, cls):
+async def purge_expired(db, cls):
     """
     Remove expired entries.
-
-    Return reference to cls, supporting usage like
-
-    >>> db.query(purge_expired(engine, orm.APIKey))
     """
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
     now = datetime.utcnow()
-    deleted = False
-    for obj in (
-        db.query(cls)
+    num_expired = 0
+    statement = (
+        select(cls)
         .filter(cls.expiration_time.is_not(None))
         .filter(cls.expiration_time < now)
-    ):
-        deleted = True
-        db.delete(obj)
-    if deleted:
-        db.commit()
-    return cls
+    )
+    result = await db.execute(statement)
+    for obj in result.scalars():
+        num_expired += 1
+        await db.delete(obj)
+    if num_expired:
+        await db.commit()
+    return num_expired
 
 
-def create_user(db, identity_provider, id):
-    principal = Principal(type="user")
-    user_role = db.query(Role).filter(Role.name == "user").first()
-    principal.roles.append(user_role)
+async def create_user(db, identity_provider, id):
+    user_role = (await db.execute(select(Role).filter(Role.name == "user"))).scalar()
+    assert user_role is not None, "User role is missing from Roles table"
+    principal = Principal(type="user", roles=[user_role])
     db.add(principal)
-    db.commit()
-    db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
+    await db.commit()
     identity = Identity(
         provider=identity_provider,
         id=id,
         principal_id=principal.id,
     )
     db.add(identity)
-    db.commit()
-    return principal
+    await db.commit()
+    refreshed_principal = (
+        await db.execute(
+            select(Principal)
+            .filter(Principal.id == principal.id)
+            .options(selectinload(Principal.identities))
+        )
+    ).scalar()
+    return refreshed_principal
 
 
-def lookup_valid_session(db, session_id):
+async def lookup_valid_session(db, session_id):
     if isinstance(session_id, int):
         # Old versions of tiled used an integer sid.
         # Reject any of those old sessions and force reauthentication.
         return None
 
     session = (
-        db.query(Session)
-        .filter(Session.uuid == uuid_module.UUID(hex=session_id))
-        .first()
-    )
+        await db.execute(
+            select(Session)
+            .options(
+                selectinload(Session.principal).selectinload(Principal.roles),
+                selectinload(Session.principal).selectinload(Principal.identities),
+            )
+            .filter(Session.uuid == uuid_module.UUID(hex=session_id))
+        )
+    ).scalar()
     if session is None:
         return None
     if (
         session.expiration_time is not None
         and session.expiration_time < datetime.utcnow()
     ):
-        db.delete(session)
-        db.commit()
+        await db.delete(session)
+        await db.commit()
         return None
     return session
 
 
-def lookup_valid_pending_session_by_device_code(db, device_code):
+async def lookup_valid_pending_session_by_device_code(db, device_code):
     hashed_device_code = hashlib.sha256(device_code).digest()
     pending_session = (
-        db.query(PendingSession)
-        .filter(PendingSession.hashed_device_code == hashed_device_code)
-        .first()
-    )
+        await db.execute(
+            select(PendingSession).filter(
+                PendingSession.hashed_device_code == hashed_device_code
+            )
+        )
+    ).scalar()
     if pending_session is None:
         return None
     if (
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db.delete(pending_session)
-        db.commit()
+        await db.delete(pending_session)
+        await db.commit()
         return None
     return pending_session
 
 
-def lookup_valid_pending_session_by_user_code(db, user_code):
+async def lookup_valid_pending_session_by_user_code(db, user_code):
     pending_session = (
-        db.query(PendingSession).filter(PendingSession.user_code == user_code).first()
-    )
+        await db.execute(
+            select(PendingSession).filter(PendingSession.user_code == user_code)
+        )
+    ).scalar()
     if pending_session is None:
         return None
     if (
         pending_session.expiration_time is not None
         and pending_session.expiration_time < datetime.utcnow()
     ):
-        db.delete(pending_session)
-        db.commit()
+        await db.delete(pending_session)
+        await db.commit()
         return None
     return pending_session
 
 
-def make_admin_by_identity(db, identity_provider, id):
+async def make_admin_by_identity(db, identity_provider, id):
     identity = (
-        db.query(Identity)
-        .filter(Identity.id == id)
-        .filter(Identity.provider == identity_provider)
-        .first()
-    )
+        await db.execute(
+            select(Identity)
+            .options(selectinload(Identity.principal).selectinload(Principal.roles))
+            .filter(Identity.id == id)
+            .filter(Identity.provider == identity_provider)
+        )
+    ).scalar()
     if identity is None:
-        principal = create_user(db, identity_provider, id)
+        principal = await create_user(db, identity_provider, id)
     else:
         principal = identity.principal
-    admin_role = db.query(Role).filter(Role.name == "admin").first()
+    admin_role = (await db.execute(select(Role).filter(Role.name == "admin"))).scalar()
+    assert admin_role is not None, "Admin role is missing from Roles table"
     principal.roles.append(admin_role)
-    db.commit()
+    await db.commit()
     return principal
 
 
-def lookup_valid_api_key(db, secret):
+async def lookup_valid_api_key(db, secret):
     """
     Look up an API key. Ensure that it is valid.
     """
@@ -267,30 +283,32 @@ def lookup_valid_api_key(db, secret):
     now = datetime.utcnow()
     hashed_secret = hashlib.sha256(secret).digest()
     api_key = (
-        db.query(APIKey)
-        .filter(APIKey.first_eight == secret.hex()[:8])
-        .filter(APIKey.hashed_secret == hashed_secret)
-        .first()
-    )
+        await db.execute(
+            select(APIKey)
+            .options(selectinload(APIKey.principal).selectinload(Principal.roles))
+            .filter(APIKey.first_eight == secret.hex()[:8])
+            .filter(APIKey.hashed_secret == hashed_secret)
+        )
+    ).scalar()
     if api_key is None:
         # No match
         validated_api_key = None
     elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
         # Match is expired. Delete it.
-        db.delete(api_key)
-        db.commit()
+        await db.delete(api_key)
+        await db.commit()
         validated_api_key = None
     elif api_key.principal is None:
         # The Principal for the API key no longer exists. Delete it.
-        db.delete(api_key)
-        db.commit()
+        await db.delete(api_key)
+        await db.commit()
         validated_api_key = None
     else:
         validated_api_key = api_key
     return validated_api_key
 
 
-def latest_principal_activity(db, principal):
+async def latest_principal_activity(db, principal):
     """
     The most recent time this Principal has logged in with an Identity,
     refreshed a Session, or used an APIKey.
@@ -302,20 +320,26 @@ def latest_principal_activity(db, principal):
     minutes).
     """
     latest_identity_activity = (
-        db.query(func.max(Identity.latest_login))
-        .filter(Identity.principal_id == principal.id)
-        .scalar()
-    )
+        await db.execute(
+            select(func.max(Identity.latest_login)).filter(
+                Identity.principal_id == principal.id
+            )
+        )
+    ).scalar()
     latest_session_activity = (
-        db.query(func.max(Session.time_last_refreshed))
-        .filter(Session.principal_id == principal.id)
-        .scalar()
-    )
+        await db.execute(
+            select(func.max(Session.time_last_refreshed)).filter(
+                Session.principal_id == principal.id
+            )
+        )
+    ).scalar()
     latest_api_key_activity = (
-        db.query(func.max(APIKey.latest_activity))
-        .filter(APIKey.principal_id == principal.id)
-        .scalar()
-    )
+        await db.execute(
+            select(func.max(APIKey.latest_activity)).filter(
+                APIKey.principal_id == principal.id
+            )
+        )
+    ).scalar()
     all_activity = [
         latest_identity_activity,
         latest_api_key_activity,

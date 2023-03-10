@@ -2,8 +2,9 @@ import yaml
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_config
+from ..client import Context, from_context
 from ..config import parse_configs
+from ..server.app import build_app_from_config
 
 tree = MapAdapter({"example": ArrayAdapter.from_array([1, 2, 3])})
 
@@ -18,8 +19,9 @@ def test_root():
             },
         ]
     }
-    client = from_config(config)
-    assert list(client) == ["example"]
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        assert list(client) == ["example"]
 
 
 def test_single_nested():
@@ -32,10 +34,11 @@ def test_single_nested():
             },
         ]
     }
-    client = from_config(config)
-    assert list(client) == ["a"]
-    assert list(client["a"]) == ["b"]
-    assert list(client["a"]["b"]) == ["example"]
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b"]
+        assert list(client["a"]["b"]) == ["example"]
 
 
 def test_single_deeply_nested():
@@ -48,13 +51,14 @@ def test_single_deeply_nested():
             },
         ]
     }
-    client = from_config(config)
-    assert list(client) == ["a"]
-    assert list(client["a"]) == ["b"]
-    assert list(client["a"]["b"]) == ["c"]
-    assert list(client["a"]["b"]["c"]) == ["d"]
-    assert list(client["a"]["b"]["c"]["d"]) == ["e"]
-    assert list(client["a"]["b"]["c"]["d"]["e"]) == ["example"]
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b"]
+        assert list(client["a"]["b"]) == ["c"]
+        assert list(client["a"]["b"]["c"]) == ["d"]
+        assert list(client["a"]["b"]["c"]["d"]) == ["e"]
+        assert list(client["a"]["b"]["c"]["d"]["e"]) == ["example"]
 
 
 def test_many_nested():
@@ -86,13 +90,14 @@ def test_many_nested():
             },
         ],
     }
-    client = from_config(config)
-    assert list(client["a"]["b"]) == ["example"]
-    assert list(client["a"]["c"]) == ["example"]
-    assert list(client["a"]["d"]["e"]) == ["example"]
-    assert list(client["a"]["d"]["f"]) == ["example"]
-    assert list(client["a"]["d"]["g"]["h"]) == ["example"]
-    assert list(client["a"]["d"]["g"]["i"]) == ["example"]
+    with Context.from_app(build_app_from_config(config)) as context:
+        client = from_context(context)
+        assert list(client["a"]["b"]) == ["example"]
+        assert list(client["a"]["c"]) == ["example"]
+        assert list(client["a"]["d"]["e"]) == ["example"]
+        assert list(client["a"]["d"]["f"]) == ["example"]
+        assert list(client["a"]["d"]["g"]["h"]) == ["example"]
+        assert list(client["a"]["d"]["g"]["i"]) == ["example"]
 
 
 def test_extra_files(tmpdir):

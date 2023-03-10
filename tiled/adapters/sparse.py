@@ -55,7 +55,7 @@ class COOAdapter:
         Construct from blocks with coords given in global reference frame.
         """
         local_blocks = {}
-        for (block, (coords, data)) in blocks.items():
+        for block, (coords, data) in blocks.items():
             offsets = []
             for b, c in zip(block, chunks):
                 offset = sum(c[:b])
@@ -113,7 +113,7 @@ class COOAdapter:
     def read(self, slice=None):
         all_coords = []
         all_data = []
-        for (block, (coords, data)) in self.blocks.items():
+        for block, (coords, data) in self.blocks.items():
             offsets = []
             for b, c in zip(block, self.chunks):
                 offset = sum(c[:b])

@@ -6,7 +6,7 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context, from_context
 from ..client.cache import (
     Cache,
     CacheIsFull,
@@ -18,11 +18,17 @@ from ..client.cache import (
 from ..client.utils import logger
 from ..queries import FullText
 from ..query_registration import register
+from ..server.app import build_app
 
 tree = MapAdapter(
     {"arr": ArrayAdapter.from_array(numpy.arange(10), metadata={"a": 1})},
     metadata={"t": 1},
 )
+
+
+@pytest.fixture(scope="module", params=["numpy", "dask"])
+def structure_clients(request):
+    return request.param
 
 
 @pytest.fixture(params=["in_memory", "on_disk"])
@@ -33,9 +39,19 @@ def cache(request, tmpdir):
         return Cache.on_disk(tmpdir, capacity=2e9)
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_offline(cache, structure_clients):
-    client = from_tree(tree, cache=cache, structure_clients=structure_clients)
+@pytest.fixture
+def context(cache):
+    app = build_app(tree)
+    with Context.from_app(app, cache=cache) as context:
+        yield context
+
+
+@pytest.fixture
+def client(context, structure_clients):
+    yield from_context(context, structure_clients=structure_clients)
+
+
+def test_offline(client, structure_clients, cache):
     expected_tree_md = client.metadata
     expected_arr = client["arr"][:]
     if structure_clients == "dask":
@@ -54,10 +70,9 @@ def test_offline(cache, structure_clients):
     assert expected_arr_md == actual_arr_md
     assert expected_tree_md == actual_tree_md
 
-    # Make a fresh client in offline mode from the start.
-    client = from_tree(
-        tree, cache=cache, structure_clients=structure_clients, offline=True
-    )
+    # Make a fresh context in offline mode from the start.
+    with Context.from_app(build_app(tree), offline=True, cache=cache) as context:
+        client = from_context(context, structure_clients=structure_clients)
     actual_tree_md = client.metadata
     actual_arr = client["arr"][:]
     if structure_clients == "dask":
@@ -71,9 +86,7 @@ def test_offline(cache, structure_clients):
     client.offline = False
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_download(cache, structure_clients):
-    client = from_tree(tree, cache=cache, structure_clients=structure_clients)
+def test_download(client, cache):
     download(client)
     assert cache.when_full == WhenFull.ERROR
     client.offline = True
@@ -85,8 +98,7 @@ def test_download(cache, structure_clients):
     client["arr"].metadata
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_entries_stale_at(caplog, cache, structure_clients):
+def test_entries_stale_at(caplog, cache):
     """
     Test that entries_stale_at causes us to rely on the cache for some time.
     """
@@ -98,39 +110,39 @@ def test_entries_stale_at(caplog, cache, structure_clients):
         metadata={"t": 1},
         entries_stale_after=timedelta(seconds=EXPIRES_AFTER),
     )
-    client = from_tree(tree, cache=cache, structure_clients=structure_clients)
-    client["a"].download()
-    # Entries are stored in cache.
-    assert "Cache stored" in caplog.text
-    caplog.clear()
-    for _ in range(3):
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
         client["a"].download()
-        # Entries are read from cache *without contacting server*
+        # Entries are stored in cache.
+        assert "Cache stored" in caplog.text
+        caplog.clear()
+        for _ in range(3):
+            client["a"].download()
+            # Entries are read from cache *without contacting server*
+            assert "Cache read" in caplog.text
+            assert "Cache stored" not in caplog.text
+            assert "<- 304" not in caplog.text
+            caplog.clear()
+        client["a"].download()
+        # By default, we do not refresh stale entries.
+        assert "Cache read" in caplog.text
+        assert "<- 304" not in caplog.text
+        assert "Cache stored" not in caplog.text
+        caplog.clear()
+        client["a"].refresh()
+        # Server is contacted to confirm cache is still valid.
+        # The cache is still valid. Entries are read from cache.
+        assert "<- 304" in caplog.text
         assert "Cache read" in caplog.text
         assert "Cache stored" not in caplog.text
-        assert "<- 304" not in caplog.text
         caplog.clear()
-    client["a"].download()
-    # By default, we do not refresh stale entries.
-    assert "Cache read" in caplog.text
-    assert "<- 304" not in caplog.text
-    assert "Cache stored" not in caplog.text
-    caplog.clear()
-    client["a"].refresh()
-    # Server is contacted to confirm cache is still valid.
-    # The cache is still valid. Entries are read from cache.
-    assert "<- 304" in caplog.text
-    assert "Cache read" in caplog.text
-    assert "Cache stored" not in caplog.text
-    caplog.clear()
-    # Change the entries...
-    mapping["b"] = ArrayAdapter.from_array(2 * numpy.arange(10), metadata={"b": 2})
-    client["b"].download()
-    assert "Cache stored" in caplog.text
+        # Change the entries...
+        mapping["b"] = ArrayAdapter.from_array(2 * numpy.arange(10), metadata={"b": 2})
+        client["b"].download()
+        assert "Cache stored" in caplog.text
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_content_stale_at(caplog, cache, structure_clients):
+def test_content_stale_at(caplog, cache):
     """
     Test that metadata_stale_at causes us to rely on the cache for some time.
     """
@@ -144,45 +156,45 @@ def test_content_stale_at(caplog, cache, structure_clients):
     # how to best to expose this when initializing Adapters.
     mapping["a"].content_stale_at = datetime.utcnow() + timedelta(seconds=1_000)
     mapping["a"].metadata_stale_at = datetime.utcnow() + timedelta(seconds=1_000)
-    client = from_tree(tree, cache=cache, structure_clients=structure_clients)
-    assert client["a"].read().sum() == 45
-    # Content is stored in cache.
-    assert "Cache stored" in caplog.text
-    assert "Cache read" not in caplog.text
-    caplog.clear()
-    for _ in range(3):
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
         assert client["a"].read().sum() == 45
-        # Content is read from cache *without contacting server*
+        # Content is stored in cache.
+        assert "Cache stored" in caplog.text
+        assert "Cache read" not in caplog.text
+        caplog.clear()
+        for _ in range(3):
+            assert client["a"].read().sum() == 45
+            # Content is read from cache *without contacting server*
+            assert "Cache read" in caplog.text
+            assert "Cache stored" not in caplog.text
+            assert "<- 304" not in caplog.text
+            caplog.clear()
+        # This refresh will have no effect because nothing is stale.
+        client["a"].refresh()
         assert "Cache read" in caplog.text
         assert "Cache stored" not in caplog.text
         assert "<- 304" not in caplog.text
         caplog.clear()
-    # This refresh will have no effect because nothing is stale.
-    client["a"].refresh()
-    assert "Cache read" in caplog.text
-    assert "Cache stored" not in caplog.text
-    assert "<- 304" not in caplog.text
-    caplog.clear()
-    # A force-refresh will have an effect.
-    client["a"].refresh(force=True)
-    # Server is contacted to confirm cache is still valid.
-    # The cache is still valid. Content is read from cache.
-    assert "Cache read" in caplog.text
-    assert "Cache stored" not in caplog.text
-    assert "<- 304" in caplog.text
-    caplog.clear()
-    # Change the content...
-    mapping["a"] = ArrayAdapter.from_array(2 * numpy.arange(10))
-    client["a"].refresh(force=True)
-    # Server is contacted to confirm cache is still valid ("renew" it).
-    # The cache is NOT still valid. Content is read from server.
-    # Content is stored in cache.
-    assert "Cache stored" in caplog.text
-    assert client["a"].read().sum() == 90
+        # A force-refresh will have an effect.
+        client["a"].refresh(force=True)
+        # Server is contacted to confirm cache is still valid.
+        # The cache is still valid. Content is read from cache.
+        assert "Cache read" in caplog.text
+        assert "Cache stored" not in caplog.text
+        assert "<- 304" in caplog.text
+        caplog.clear()
+        # Change the content...
+        mapping["a"] = ArrayAdapter.from_array(2 * numpy.arange(10))
+        client["a"].refresh(force=True)
+        # Server is contacted to confirm cache is still valid ("renew" it).
+        # The cache is NOT still valid. Content is read from server.
+        # Content is stored in cache.
+        assert "Cache stored" in caplog.text
+        assert client["a"].read().sum() == 90
 
 
-@pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_metadata_stale_at(caplog, cache, structure_clients):
+def test_metadata_stale_at(caplog, cache):
     """
     Test that metadata_stale_at causes us to rely on the cache for some time.
     """
@@ -197,48 +209,49 @@ def test_metadata_stale_at(caplog, cache, structure_clients):
     # how to best to expose this when initializing Adapters.
     mapping["a"].metadata_stale_at = datetime.utcnow() + timedelta(seconds=1_000)
     mapping["a"].content_stale_at = datetime.utcnow() + timedelta(seconds=1_000)
-    client = from_tree(tree, cache=cache, structure_clients=structure_clients)
-    assert client["a"].metadata["a"] == 1
-    # Metadata are stored in cache.
-    assert "Cache stored" in caplog.text
-    assert "Cache read" not in caplog.text
-    caplog.clear()
-    for _ in range(3):
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
         assert client["a"].metadata["a"] == 1
-        # Metadata are read from cache *without contacting server*
+        # Metadata are stored in cache.
+        assert "Cache stored" in caplog.text
+        assert "Cache read" not in caplog.text
+        caplog.clear()
+        for _ in range(3):
+            assert client["a"].metadata["a"] == 1
+            # Metadata are read from cache *without contacting server*
+            assert "Cache read" in caplog.text
+            assert "Cache stored" not in caplog.text
+            caplog.clear()
+        assert client["a"].metadata["a"] == 1
+        caplog.clear()
+        # This refresh will have an effect because we haven't downloaded everything yet.
+        client["a"].refresh()
+        assert "Cache read" in caplog.text
+        assert "Cache stored" in caplog.text
+        assert "<- 304" not in caplog.text
+        caplog.clear()
+        # A force-refresh will also have an effect.
+        client["a"].refresh(force=True)
+        # Server is contacted to confirm cache is still valid.
+        # The cache is still valid. Metadata are read from cache.
         assert "Cache read" in caplog.text
         assert "Cache stored" not in caplog.text
         caplog.clear()
-    assert client["a"].metadata["a"] == 1
-    caplog.clear()
-    # This refresh will have an effect because we haven't downloaded everything yet.
-    client["a"].refresh()
-    assert "Cache read" in caplog.text
-    assert "Cache stored" in caplog.text
-    assert "<- 304" not in caplog.text
-    caplog.clear()
-    # A force-refresh will also have an effect.
-    client["a"].refresh(force=True)
-    # Server is contacted to confirm cache is still valid.
-    # The cache is still valid. Metadata are read from cache.
-    assert "Cache read" in caplog.text
-    assert "Cache stored" not in caplog.text
-    caplog.clear()
-    # Change the metadata...
-    metadata["a"] = 2
-    client.refresh(force=True)
-    # Server is contacted to confirm cache is still valid.
-    # The cache is NOT still valid. Metadata are read from server.
-    # Metadata are stored in cache.
-    assert client["a"].metadata["a"] == 2
-    assert "Cache stored" in caplog.text
+        # Change the metadata...
+        metadata["a"] = 2
+        client.refresh(force=True)
+        # Server is contacted to confirm cache is still valid.
+        # The cache is NOT still valid. Metadata are read from server.
+        # Metadata are stored in cache.
+        assert client["a"].metadata["a"] == 2
+        assert "Cache stored" in caplog.text
 
 
 def test_download_with_no_cache():
-    tree = MapAdapter({})
-    client = from_tree(tree)
-    with pytest.raises(NoCache):
-        client.download()
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        with pytest.raises(NoCache):
+            client.download()
 
 
 @register("stable")
@@ -277,29 +290,30 @@ def test_must_revalidate(caplog, cache):
         must_revalidate=True,
     )
     tree.register_query(StableQuery, stable_query_search)
-    client = from_tree(tree, cache=cache)
-    caplog.clear()
-    list(client.search(FullText("red")))
-    assert "must-revalidate" in caplog.text
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
+        caplog.clear()
+        list(client.search(FullText("red")))
+        assert "must-revalidate" in caplog.text
 
-    # The must-revalidate Cache-Control directive forces a refresh.
-    caplog.clear()
-    list(client.search(FullText("red")))
-    assert "<- 304" in caplog.text
-    assert "must-revalidate" in caplog.text
-    # But the results have not changed.
-    assert "<- 200" not in caplog.text
+        # The must-revalidate Cache-Control directive forces a refresh.
+        caplog.clear()
+        list(client.search(FullText("red")))
+        assert "<- 304" in caplog.text
+        assert "must-revalidate" in caplog.text
+        # But the results have not changed.
+        assert "<- 200" not in caplog.text
 
-    # The StableQuery does not require revalidation.
-    caplog.clear()
-    list(client.search(StableQuery(dummy="stuff")))
-    assert "must-revalidate" not in caplog.text
+        # The StableQuery does not require revalidation.
+        caplog.clear()
+        list(client.search(StableQuery(dummy="stuff")))
+        assert "must-revalidate" not in caplog.text
 
-    caplog.clear()
-    list(client.search(StableQuery(dummy="stuff")))
-    assert "must-revalidate" not in caplog.text
-    assert "<- 304" not in caplog.text
-    assert "<- 200" not in caplog.text
+        caplog.clear()
+        list(client.search(StableQuery(dummy="stuff")))
+        assert "must-revalidate" not in caplog.text
+        assert "<- 304" not in caplog.text
+        assert "<- 200" not in caplog.text
 
 
 def test_when_full(caplog):
@@ -316,30 +330,33 @@ def test_when_full(caplog):
     # error
     cache = Cache.in_memory(1.5 * arr.nbytes)
     cache.when_full = "error"
-    c = from_tree(tree, cache=cache)
-    c["a"][:]
-    with pytest.raises(CacheIsFull):
-        c["b"][:]
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
+        client["a"][:]
+        with pytest.raises(CacheIsFull):
+            client["b"][:]
 
     # warn
     cache = Cache.in_memory(1.5 * arr.nbytes)
     cache.when_full = "warn"
-    c = from_tree(tree, cache=cache)
-    c["a"][:]
-    with pytest.warns(UserWarning):
-        c["b"][:]
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
+        client["a"][:]
+        with pytest.warns(UserWarning):
+            client["b"][:]
 
     # evict
     caplog.clear()
     cache = Cache.in_memory(1.5 * arr.nbytes)
     assert cache.when_full == WhenFull.EVICT  # default
-    c = from_tree(tree, cache=cache)
-    c["a"][:]
-    assert "stored (8_000_000 B" in caplog.text
-    caplog.clear()
-    c["b"][:]
-    assert "stored (8_000_000 B" in caplog.text
-    assert "evicted 8_000_000 B" in caplog.text
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
+        client["a"][:]
+        assert "stored (8_000_000 B" in caplog.text
+        caplog.clear()
+        client["b"][:]
+        assert "stored (8_000_000 B" in caplog.text
+        assert "evicted 8_000_000 B" in caplog.text
 
 
 def test_too_large(caplog):
@@ -354,22 +371,25 @@ def test_too_large(caplog):
     # error
     cache = Cache.in_memory(0.5 * arr.nbytes)
     cache.when_full = "error"
-    c = from_tree(tree, cache=cache)
-    c["a"]
-    with pytest.raises(TooLargeForCache):
-        c["a"][:]
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
+        client["a"]
+        with pytest.raises(TooLargeForCache):
+            client["a"][:]
 
     # warn
     cache = Cache.in_memory(0.5 * arr.nbytes)
     cache.when_full = "warn"
-    c = from_tree(tree, cache=cache)
-    c["a"]
-    with pytest.warns(UserWarning):
-        c["a"][:]
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
+        client["a"]
+        with pytest.warns(UserWarning):
+            client["a"][:]
 
     # evict
     cache = Cache.in_memory(0.5 * arr.nbytes)
     assert cache.when_full == WhenFull.EVICT  # default
-    c = from_tree(tree, cache=cache)
-    c["a"]
-    c["a"][:]
+    with Context.from_app(build_app(tree), cache=cache) as context:
+        client = from_context(context)
+        client["a"]
+        client["a"][:]

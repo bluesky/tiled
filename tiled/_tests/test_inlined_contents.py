@@ -6,12 +6,14 @@ be used more widely later.
 """
 
 import numpy
+import pytest
 import xarray
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
-from ..client import from_tree, record_history
+from ..client import Context, from_context, record_history
+from ..server.app import build_app
 from ..server.core import INLINED_CONTENTS_LIMIT
 
 tree = MapAdapter(
@@ -25,17 +27,24 @@ tree = MapAdapter(
     },
     metadata={"thing": "stuff"},
 )
-client = from_tree(tree)
 
 
-def test_lookup():
+@pytest.fixture(scope="module")
+def client():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
+
+
+def test_lookup(client):
     "Accessing a child node should trigger one request."
     with record_history() as history:
         client["dataset"]
     assert len(history.requests) == 1
 
 
-def test_iter():
+def test_iter(client):
     "Iteration should be free because the contents were in-lined."
     expected = ["temperature", "time"]
     dsc = client["dataset"]
@@ -50,7 +59,7 @@ def test_iter():
     assert history.requests
 
 
-def test_keys_slice():
+def test_keys_slice(client):
     "Iteration should be free because the contents were in-lined."
     expected = ["temperature", "time"]
     dsc = client["dataset"]
@@ -74,7 +83,7 @@ def test_keys_slice():
     assert history.requests
 
 
-def test_items_slice():
+def test_items_slice(client):
     "Iteration should be free because the contents were in-lined."
     dsc = client["dataset"]
     with record_history() as history:
@@ -119,8 +128,10 @@ def test_too_wide_for_inline():
             for i in range(1 + 2 * INLINED_CONTENTS_LIMIT)
         }
     )
-    client = from_tree(tree)
-    assert client.item["attributes"]["structure"]["contents"] is None
-    with record_history() as history:
-        assert set(client) == set(tree)
-    assert len(history.requests) >= 3
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        assert client.item["attributes"]["structure"]["contents"] is None
+        with record_history() as history:
+            assert set(client) == set(tree)
+        assert len(history.requests) >= 3

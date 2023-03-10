@@ -3,6 +3,8 @@ from typing import Optional
 
 import typer
 
+from ._utils import get_context, get_default_profile_name, get_profile  # noqa E402
+
 admin_app = typer.Typer()
 
 
@@ -11,30 +13,38 @@ def initialize_database(database_uri: str):
     """
     Initialize a SQL database for use by Tiled.
     """
-    from sqlalchemy import create_engine
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..database.core import (
         REQUIRED_REVISION,
         UninitializedDatabase,
         check_database,
         initialize_database,
+        stamp_head,
     )
 
-    engine = create_engine(database_uri)
-    redacted_url = engine.url._replace(password="[redacted]")
-    try:
-        check_database(engine)
-    except UninitializedDatabase:
-        # Create tables and stamp (alembic) revision.
-        typer.echo(
-            f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
-            err=True,
-        )
-        initialize_database(engine)
-        typer.echo("Database initialized.", err=True)
-    else:
-        typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
-        raise typer.Abort()
+    async def do_setup():
+        engine = create_async_engine(database_uri)
+        redacted_url = engine.url._replace(password="[redacted]")
+        try:
+            await check_database(engine)
+        except UninitializedDatabase:
+            # Create tables and stamp (alembic) revision.
+            typer.echo(
+                f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
+                err=True,
+            )
+            await initialize_database(engine)
+            typer.echo("Database initialized.", err=True)
+        else:
+            typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
+            raise typer.Abort()
+        await engine.dispose()
+
+    asyncio.run(do_setup())
+    stamp_head(database_uri)
 
 
 @admin_app.command("upgrade-database")
@@ -62,7 +72,7 @@ def upgrade_database(
             err=True,
         )
         raise typer.Abort()
-    upgrade(engine, revision or "head")
+    upgrade(engine.url, revision or "head")
 
 
 @admin_app.command("downgrade-database")
@@ -87,7 +97,7 @@ def downgrade_database(
             err=True,
         )
         raise typer.Abort()
-    downgrade(engine, revision)
+    downgrade(engine.url, revision)
 
 
 @admin_app.command("check-config")
@@ -113,3 +123,38 @@ def check_config(
         typer.echo(str(err), err=True)
         raise typer.Exit(1)
     typer.echo("No errors found in configuration.")
+
+
+@admin_app.command("list-principals")
+def list_principals(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    page_offset: int = typer.Argument(0),
+    page_limit: int = typer.Argument(100, help="Max items to show"),
+):
+    """
+    List information about all Principals (users or services) that have ever logged in.
+    """
+    import json
+
+    context = get_context(profile)
+    result = context.admin.list_principals(offset=page_offset, limit=page_limit)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@admin_app.command("show-principal")
+def show_principal(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    uuid: str = typer.Argument(..., help="UUID identifying Principal of interest"),
+):
+    """
+    Show information about one Principal (user or service).
+    """
+    import json
+
+    context = get_context(profile)
+    result = context.admin.show_principal(uuid)
+    typer.echo(json.dumps(result, indent=2))

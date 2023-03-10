@@ -1,9 +1,11 @@
 import numpy
+import pytest
 import sparse
 
 from ..adapters.mapping import MapAdapter
 from ..adapters.sparse import COOAdapter
-from ..client import from_tree
+from ..client import Context, from_context
+from ..server.app import build_app
 
 N, M = 3, 5
 state = numpy.random.RandomState(0)
@@ -27,10 +29,17 @@ mapping = {
     ),
 }
 tree = MapAdapter(mapping)
-client = from_tree(tree)
 
 
-def test_sparse_single_chunk():
+@pytest.fixture(scope="module")
+def client():
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        yield client
+
+
+def test_sparse_single_chunk(client):
     sc = client["single_chunk"]
     actual_via_slice = sc[:]
     actual_via_read = sc.read()
@@ -48,7 +57,7 @@ def test_sparse_single_chunk():
     assert sc.dims == dims
 
 
-def test_sparse_multi_chunk():
+def test_sparse_multi_chunk(client):
     sc = client["multi_chunk"]
     actual_via_slice = sc[:]
     actual_via_read = sc.read()

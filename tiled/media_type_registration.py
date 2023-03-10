@@ -210,7 +210,6 @@ for media_type in [
     )
 
 if modules_available("zstandard"):
-
     import zstandard
 
     # These defaults are cribbed from
@@ -250,7 +249,6 @@ if modules_available("zstandard"):
         compression_registry.register(media_type, "zstd", ZstdBuffer)
 
 if modules_available("lz4"):
-
     import lz4
 
     # These fallback and workaround paths are cribbed from
@@ -307,7 +305,6 @@ if modules_available("lz4"):
         compression_registry.register(media_type, "lz4", LZ4Buffer)
 
 if modules_available("blosc"):
-
     import blosc
 
     # The choice of settings here is cribbed from distributed.protocol.compression.

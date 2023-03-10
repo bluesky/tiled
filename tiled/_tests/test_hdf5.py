@@ -6,7 +6,8 @@ import pytest
 from ..adapters import hdf5 as hdf5_adapters
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree, record_history
+from ..client import Context, from_context, record_history
+from ..server.app import build_app
 from ..utils import tree as tree_util
 
 
@@ -40,13 +41,14 @@ def test_from_file(example_file):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file)
-    client = from_tree(tree)
-    arr = client["a"]["b"]["c"]["d"].read()
-    assert isinstance(arr, numpy.ndarray)
-    buffer = io.BytesIO()
-    client.export(buffer, format="application/x-hdf5")
-    file = h5py.File(buffer, "r")
-    file["a"]["b"]["c"]["d"]
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        arr = client["a"]["b"]["c"]["d"].read()
+        assert isinstance(arr, numpy.ndarray)
+        buffer = io.BytesIO()
+        client.export(buffer, format="application/x-hdf5")
+        file = h5py.File(buffer, "r")
+        file["a"]["b"]["c"]["d"]
 
 
 def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
@@ -54,8 +56,9 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
     with pytest.warns(UserWarning):
-        client = from_tree(tree)
-        arr = client["a"]["b"]["c"]["d"].read()
+        with Context.from_app(build_app(tree)) as context:
+            client = from_context(context)
+    arr = client["a"]["b"]["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
     buffer = io.BytesIO()
     with pytest.warns(UserWarning):
@@ -68,7 +71,8 @@ def test_from_group(example_file):
     """Serve a Group within an HDF5 file."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file["a"]["b"])
-    client = from_tree(tree)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
     arr = client["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
     buffer = io.BytesIO()
@@ -86,7 +90,8 @@ def test_from_multiple(example_file):
             "B": HDF5Adapter(example_file),
         }
     )
-    client = from_tree(tree)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
     arr_A = client["A"]["a"]["b"]["c"]["d"].read()
     assert isinstance(arr_A, numpy.ndarray)
     arr_B = client["B"]["a"]["b"]["c"]["d"].read()
@@ -104,12 +109,15 @@ def test_inlined_contents(example_file):
     assert hdf5_adapters.INLINED_DEPTH > 0
     original = hdf5_adapters.INLINED_DEPTH
     try:
-        hdf5_adapters.INLINED_DEPTH = 1
-        with record_history() as h1:
-            tree_util(from_tree(tree))
-        hdf5_adapters.INLINED_DEPTH = 0
-        with record_history() as h0:
-            tree_util(from_tree(tree))
-        assert len(h0.requests) > len(h1.requests)
+        with Context.from_app(build_app(tree)) as context:
+            hdf5_adapters.INLINED_DEPTH = 1
+            with record_history() as h1:
+                client = from_context(context)
+                tree_util(client)
+            hdf5_adapters.INLINED_DEPTH = 0
+            with record_history() as h0:
+                client = from_context(context)
+                tree_util(client)
+            assert len(h0.requests) > len(h1.requests)
     finally:
         hdf5_adapters.INLINED_DEPTH = original

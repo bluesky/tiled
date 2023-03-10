@@ -18,9 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
 
-from tiled.database.core import purge_expired
-
 from ..authenticators import Mode
+from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
@@ -39,7 +38,7 @@ from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
 from .router import declare_search_router, router
-from .settings import get_sessionmaker, get_settings
+from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
@@ -135,15 +134,29 @@ def build_app(
             ):
                 raise UnscalableConfig(
                     """
-    In a scaled (multi-process) deployment, when Tiled is configured with an
-    Authenticator, secret keys must be provided via configuration like
+In a scaled (multi-process) deployment, when Tiled is configured with an
+Authenticator, secret keys must be provided via configuration like
 
-    authentication:
-      secret_keys:
-        - SECRET
-      ...
+authentication:
+  secret_keys:
+    - SECRET
+  ...
 
-    or via the environment variable TILED_SERVER_SECRET_KEYS.""",
+or via the environment variable TILED_SERVER_SECRET_KEYS.""",
+                )
+            # Multi-user authentication requires a database. We cannot fall
+            # back to the default of an in-memory SQLite database in a
+            # horizontally scaled deployment.
+            if not server_settings.get("database", {}).get("uri"):
+                raise UnscalableConfig(
+                    """
+In a scaled (multi-process) deployment, when Tiled is configured with an
+Authenticator, a persistent database must be provided via configuration like
+
+database:
+  uri: sqlite+aiosqlite:////path/to/database.sqlite
+
+"""
                 )
         else:
             # No authentication provider is configured, so no secret keys are
@@ -154,15 +167,15 @@ def build_app(
             ):
                 raise UnscalableConfig(
                     """
-    In a scaled (multi-process) deployment, when Tiled is configured for
-    single-user access (i.e. without an Authenticator) a single-user API key must
-    be provided via configuration like
+In a scaled (multi-process) deployment, when Tiled is configured for
+single-user access (i.e. without an Authenticator) a single-user API key must
+be provided via configuration like
 
-    authentication:
-      single_user_api_key: SECRET
-      ...
+authentication:
+  single_user_api_key: SECRET
+  ...
 
-    or via the environment variable TILED_SINGLE_USER_API_KEY.""",
+or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # If we reach here, the no configuration problems were found.
 
@@ -357,8 +370,9 @@ def build_app(
             )
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
-            # not set, use a SQLite database in the current working directory.
-            settings.database_uri = settings.database_uri or "sqlite:///./tiled.sqlite"
+            # not set, use a SQLite database in memory. Horizontally scaled deployments
+            # must specify a persistent database.
+            settings.database_uri = settings.database_uri or "sqlite+aiosqlite://"
         return settings
 
     @app.on_event("startup")
@@ -435,66 +449,96 @@ def build_app(
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_uri is not None:
-            with get_sessionmaker(settings.database_settings)() as db:
-                from ..database import orm
-                from ..database.core import (
-                    REQUIRED_REVISION,
-                    DatabaseUpgradeNeeded,
-                    UninitializedDatabase,
-                    check_database,
-                    initialize_database,
-                    make_admin_by_identity,
-                )
+            from sqlalchemy.ext.asyncio import AsyncSession
 
-                engine = db.get_bind()
+            from ..database import orm
+            from ..database.connection_pool import open_database_connection_pool
+            from ..database.core import (
+                DatabaseUpgradeNeeded,
+                UninitializedDatabase,
+                check_database,
+                initialize_database,
+                make_admin_by_identity,
+                purge_expired,
+            )
+
+            # This creates a connection pool and stashes it in a module-global
+            # registry, keyed on database_settings, where can be retrieved by
+            # the Dependency get_database_session.
+            engine = open_database_connection_pool(settings.database_settings)
+            if not engine.url.database:
+                # Special-case for in-memory SQLite: Because it is transient we can
+                # skip over anything related to migrations.
+                await initialize_database(engine)
+                logger.info("Transient in-memory database initialized.")
+            else:
                 redacted_url = engine.url._replace(password="[redacted]")
                 try:
-                    check_database(engine)
+                    await check_database(engine)
                 except UninitializedDatabase:
-                    # Create tables and stamp (alembic) revision.
-                    logger.info(
-                        f"Database {redacted_url} is new. "
-                        f"Creating tables and marking revision {REQUIRED_REVISION}."
+                    print(
+                        f"""
+
+No database found at {redacted_url}
+
+To create one, run:
+
+    tiled admin init-database {redacted_url}
+""",
+                        file=sys.stderr,
                     )
-                    initialize_database(engine)
-                    logger.info("Database initialized.")
+                    raise
                 except DatabaseUpgradeNeeded as err:
                     print(
                         f"""
 
-    The database used by Tiled to store authentication-related information
-    was created using an older version of Tiled. It needs to be upgraded to
-    work with this version of Tiled.
+The database used by Tiled to store authentication-related information
+was created using an older version of Tiled. It needs to be upgraded to
+work with this version of Tiled.
 
-    Back up the database, and then run:
+Back up the database, and then run:
 
-        tiled admin upgrade-database {redacted_url}
-    """,
+    tiled admin upgrade-database {redacted_url}
+""",
                         file=sys.stderr,
                     )
                     raise err from None
                 else:
                     logger.info(f"Connected to existing database at {redacted_url}.")
-                for admin in authentication.get("tiled_admins", []):
-                    logger.info(
-                        f"Ensuring that principal with identity {admin} has role 'admin'"
-                    )
-                    make_admin_by_identity(
-                        db,
+            for admin in authentication.get("tiled_admins", []):
+                logger.info(
+                    f"Ensuring that principal with identity {admin} has role 'admin'"
+                )
+                async with AsyncSession(
+                    engine, autoflush=False, expire_on_commit=False
+                ) as session:
+                    await make_admin_by_identity(
+                        session,
                         identity_provider=admin["provider"],
                         id=admin["id"],
                     )
 
             async def purge_expired_sessions_and_api_keys():
-                logger.info("Purging expired Sessions and API keys from the database.")
+                PURGE_INTERVAL = 600  # seconds
                 while True:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, purge_expired(engine, orm.Session)
-                    )
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, purge_expired(engine, orm.APIKey)
-                    )
-                    await asyncio.sleep(600)
+                    async with AsyncSession(
+                        engine, autoflush=False, expire_on_commit=False
+                    ) as db_session:
+                        num_expired_sessions = await purge_expired(
+                            db_session, orm.Session
+                        )
+                        if num_expired_sessions:
+                            logger.info(
+                                f"Purged {num_expired_sessions} expired Sessions from the database."
+                            )
+                        num_expired_api_keys = await purge_expired(
+                            db_session, orm.APIKey
+                        )
+                        if num_expired_api_keys:
+                            logger.info(
+                                f"Purged {num_expired_api_keys} expired API keys from the database."
+                            )
+                    await asyncio.sleep(PURGE_INTERVAL)
 
             app.state.tasks.append(
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
@@ -502,8 +546,13 @@ def build_app(
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        for task in app.state.tasks:
-            task.cancel()
+        settings = app.dependency_overrides[get_settings]()
+        if settings.database_uri is not None:
+            from ..database.connection_pool import close_database_connection_pool
+
+            for task in app.state.tasks:
+                task.cancel()
+            await close_database_connection_pool(settings.database_settings)
 
     app.add_middleware(
         CompressionMiddleware,
@@ -652,7 +701,6 @@ def build_app(
 
     metrics_config = server_settings.get("metrics", {})
     if metrics_config.get("prometheus", True):
-
         # PROMETHEUS_MULTIRPOC_DIR puts prometheus_client in multiprocess mode
         # (for e.g. gunicorn) which uses a directory of memory-mapped files.
         # If that environment variable is set, check that the directory exists
@@ -690,6 +738,12 @@ def build_app(
             return response
 
     return app
+
+
+def build_app_from_config(config, scalable=False):
+    "Convenience function that calls build_app(...) given config as dict."
+    kwargs = construct_build_app_kwargs(config)
+    return build_app(scalable=scalable, **kwargs)
 
 
 def app_factory():

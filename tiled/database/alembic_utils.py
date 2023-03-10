@@ -16,7 +16,7 @@ def write_alembic_ini(path, database_uri):
     path : str
         path to the alembic.ini file that should be written.
     db_url : str
-        The SQLAlchemy database url, e.g. `sqlite:///tiled.sqlite`.
+        The SQLAlchemy database url, e.g. `sqlite+aiosqlite:///tiled.sqlite`.
     """
     with open(ALEMBIC_INI_TEMPLATE_PATH) as f:
         alembic_ini_tpl = f.read()
@@ -45,7 +45,7 @@ def temp_alembic_ini(database_uri):
     Parameters
     ----------
     datbase_uri : str
-        The SQLAlchemy database url, e.g. `sqlite:///tiled.sqlite`.
+        The SQLAlchemy database url, e.g. `sqlite+aiosqlite:///tiled.sqlite`.
 
     Returns
     -------

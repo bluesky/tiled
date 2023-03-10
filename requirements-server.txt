@@ -1,5 +1,6 @@
 # These are the requirements needed for basic server functionality.
 aiofiles
+aiosqlite
 alembic
 anyio
 appdirs
@@ -22,7 +23,7 @@ python-dateutil
 python-jose[cryptography]
 python-multipart
 pyyaml
-sqlalchemy
+sqlalchemy >=2
 starlette
 toolz
 typer

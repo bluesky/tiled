@@ -1,13 +1,13 @@
 import httpx
 
 from ..adapters.mapping import MapAdapter
-from ..client import from_tree
+from ..client import Context
+from ..server.app import build_app
 
 tree = MapAdapter({})
 
 
 def test_configurable_timeout():
-    c = from_tree(tree)
-    assert c.context.http_client.timeout.connect != 17
-    c = from_tree(tree, timeout=httpx.Timeout(17))
-    assert c.context.http_client.timeout.connect == 17
+    with Context.from_app(build_app(tree), timeout=httpx.Timeout(17)) as context:
+        assert context.http_client.timeout.connect == 17
+        assert context.http_client.timeout.read == 17
