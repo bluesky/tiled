@@ -275,7 +275,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
         oauth2_scheme.model.flows.password.tokenUrl = (
-            f"/api/auth/provider/{first_provider}/token"
+            f"/api/v1/auth/provider/{first_provider}/token"
         )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
