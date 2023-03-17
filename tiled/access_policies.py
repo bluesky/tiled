@@ -2,6 +2,7 @@ from .queries import KeysFilter
 from .scopes import SCOPES
 from .utils import Sentinel, SpecialUsers, import_object
 
+ALL_ACCESS = Sentinel("ALL_ACCESS")
 ALL_SCOPES = set(SCOPES)
 NO_ACCESS = Sentinel("NO_ACCESS")
 
@@ -25,7 +26,7 @@ class SimpleAccessPolicy:
     >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]}, provider="toy")
     """
 
-    ALL = object()  # sentinel
+    ALL = ALL_ACCESS
 
     def __init__(self, access_lists, *, provider, scopes=None, public=None):
         self.access_lists = {}
@@ -63,7 +64,15 @@ class SimpleAccessPolicy:
         id = self._get_id(principal)
         access_list = self.access_lists.get(id, [])
         queries = []
-        if not ((principal is SpecialUsers.admin) or (access_list is self.ALL)):
-            allowed = set(access_list or []) | self.public
+        if not ((principal is SpecialUsers.admin) or (access_list == self.ALL)):
+            try:
+                allowed = set(access_list or [])
+            except TypeError:
+                # Provide rich debugging info because we have encountered a confusing
+                # bug here in a previous implementation.
+                raise TypeError(
+                    f"Unexpected access_list {access_list} of type {type(access_list)}. "
+                    f"Expected iterable or {self.ALL}, instance of {type(self.ALL)}."
+                )
             queries.append(KeysFilter(allowed))
         return queries

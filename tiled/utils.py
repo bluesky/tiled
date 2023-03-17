@@ -393,6 +393,14 @@ class Sentinel:
     def __repr__(self):
         return f"<{self.name}>"
 
+    def __copy__(self):
+        # The goal here is to make copy.copy(sentinel) == sentinel
+        return self
+
+    def __deepcopy__(self, memo):
+        # The goal here is to make copy.deepcopy(sentinel) == sentinel
+        return self
+
 
 UNCHANGED = Sentinel("UNCHANGED")
 
