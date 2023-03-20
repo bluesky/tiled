@@ -14,10 +14,10 @@ COLOR_SHAPE = (11, 17, 3)
 
 @pytest.fixture(scope="module")
 def client(tmpdir_module):
-    data = numpy.random.random((5, 7))
     sequence_directory = Path(tmpdir_module, "sequence")
     sequence_directory.mkdir()
     for i in range(3):
+        data = numpy.random.random((5, 7))
         tf.imwrite(sequence_directory / f"temp{i:05}.tif", data)
     color_data = numpy.random.randint(0, 255, COLOR_SHAPE, dtype="uint8")
     path = Path(tmpdir_module, "color.tif")
@@ -110,3 +110,20 @@ def test_rgb(client):
     "Test an RGB TIFF."
     arr = client["color"].read()
     assert arr.shape == COLOR_SHAPE
+
+
+def test_tiff_sequence_cache(client):
+    from numpy.testing import assert_raises
+
+    # The two requests go through the same method in the server (read_block) to
+    # call the same object
+    indexed_array = client["sequence"][0]
+    read_array = client["sequence"].read(0)
+
+    # Using a different index to confirm that the previous cache doesn't affect the new array
+    other_read_array = client["sequence"].read(1)
+
+    numpy.testing.assert_equal(indexed_array, read_array)
+    assert_raises(
+        AssertionError, numpy.testing.assert_equal, read_array, other_read_array
+    )
