@@ -561,42 +561,6 @@ Back up the database, and then run:
     )
 
     @app.middleware("http")
-    async def capture_metrics(request: Request, call_next):
-        """
-        Place metrics in Server-Timing header, in accordance with HTTP spec.
-        """
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
-        # https://w3c.github.io/server-timing/#the-server-timing-header-field
-        # This information seems safe to share because the user can easily
-        # estimate it based on request/response time, but if we add more detailed
-        # information here we should keep in mind security concerns and perhaps
-        # only include this for certain users.
-        # Initialize a dict that routes and dependencies can stash metrics in.
-        metrics = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
-        request.state.metrics = metrics
-        # Record the overall application time.
-        with record_timing(metrics, "app"):
-            response = await call_next(request)
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        # Server-Timing specifies times should be in milliseconds.
-        # Prometheus specifies times should be in seconds.
-        # Therefore, we store as seconds and convert to ms for Server-Timing here.
-        # That is what the factor of 1000 below is doing.
-        response.headers["Server-Timing"] = ", ".join(
-            f"{key};"
-            + ";".join(
-                (
-                    f"{metric}={value * 1000:.1f}"
-                    if metric == "dur"
-                    else f"{metric}={value:.1f}"
-                )
-                for metric, value in metrics_.items()
-            )
-            for key, metrics_ in metrics.items()
-        )
-        return response
-
-    @app.middleware("http")
     async def double_submit_cookie_csrf_protection(request: Request, call_next):
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
@@ -639,18 +603,30 @@ Back up the database, and then run:
         user_agent = request.headers.get("user-agent", "")
         if user_agent.startswith("python-tiled/"):
             agent, _, raw_version = user_agent.partition("/")
-            parsed_version = packaging.version.parse(raw_version)
-            if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+            try:
+                parsed_version = packaging.version.parse(raw_version)
+            except Exception:
                 return JSONResponse(
                     status_code=400,
                     content={
                         "detail": (
-                            f"Python Tiled client is version {parsed_version}. "
-                            f"Version {MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION} or higher "
-                            "is needed to communicate with this Tiled server."
+                            f"Python Tiled client is version is reported as {raw_version}. "
+                            "This cannot be parsed as a valid version."
                         ),
                     },
                 )
+            else:
+                if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "detail": (
+                                f"Python Tiled client reports version {parsed_version}. "
+                                f"Version {MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION} or higher "
+                                "is needed to communicate with this Tiled server."
+                            ),
+                        },
+                    )
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
@@ -698,6 +674,42 @@ Back up the database, and then run:
         app.dependency_overrides[
             get_validation_registry
         ] = override_get_validation_registry
+
+    @app.middleware("http")
+    async def capture_metrics(request: Request, call_next):
+        """
+        Place metrics in Server-Timing header, in accordance with HTTP spec.
+        """
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
+        # https://w3c.github.io/server-timing/#the-server-timing-header-field
+        # This information seems safe to share because the user can easily
+        # estimate it based on request/response time, but if we add more detailed
+        # information here we should keep in mind security concerns and perhaps
+        # only include this for certain users.
+        # Initialize a dict that routes and dependencies can stash metrics in.
+        metrics = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
+        request.state.metrics = metrics
+        # Record the overall application time.
+        with record_timing(metrics, "app"):
+            response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        # Server-Timing specifies times should be in milliseconds.
+        # Prometheus specifies times should be in seconds.
+        # Therefore, we store as seconds and convert to ms for Server-Timing here.
+        # That is what the factor of 1000 below is doing.
+        response.headers["Server-Timing"] = ", ".join(
+            f"{key};"
+            + ";".join(
+                (
+                    f"{metric}={value * 1000:.1f}"
+                    if metric == "dur"
+                    else f"{metric}={value:.1f}"
+                )
+                for metric, value in metrics_.items()
+            )
+            for key, metrics_ in metrics.items()
+        )
+        return response
 
     metrics_config = server_settings.get("metrics", {})
     if metrics_config.get("prometheus", True):
