@@ -603,18 +603,30 @@ Back up the database, and then run:
         user_agent = request.headers.get("user-agent", "")
         if user_agent.startswith("python-tiled/"):
             agent, _, raw_version = user_agent.partition("/")
-            parsed_version = packaging.version.parse(raw_version)
-            if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+            try:
+                parsed_version = packaging.version.parse(raw_version)
+            except Exception:
                 return JSONResponse(
                     status_code=400,
                     content={
                         "detail": (
-                            f"Python Tiled client is version {parsed_version}. "
-                            f"Version {MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION} or higher "
-                            "is needed to communicate with this Tiled server."
+                            f"Python Tiled client is version is reported as {raw_version}. "
+                            "This cannot be parsed as a valid version."
                         ),
                     },
                 )
+            else:
+                if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "detail": (
+                                f"Python Tiled client reports version {parsed_version}. "
+                                f"Version {MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION} or higher "
+                                "is needed to communicate with this Tiled server."
+                            ),
+                        },
+                    )
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
