@@ -252,7 +252,9 @@ def serve_config(
 
     # This config was already validated when it was parsed. Do not re-validate.
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
-    web_app = build_app_from_config(parsed_config, scalable=scalable)
+    web_app = build_app_from_config(
+        parsed_config, source_filepath=config_path, scalable=scalable
+    )
     print_admin_api_key_if_generated(
         web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
     )

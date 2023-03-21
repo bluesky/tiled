@@ -4,7 +4,7 @@ import io
 
 from PIL import Image
 
-from tiled.structures.image_serializer_helpers import img_as_ubyte
+from tiled.serialization.image_serializer_helpers import img_as_ubyte
 
 
 def smiley_separated_variables(array, metadata):
