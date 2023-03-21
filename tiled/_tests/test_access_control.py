@@ -144,6 +144,16 @@ def test_top_level_access_control(context, enter_password):
         bob_client["b"]
 
 
+def test_access_control_with_api_key_auth(context, enter_password):
+    with enter_password("secret1"):
+        context.authenticate(username="alice")
+    key_info = context.create_api_key()
+    context.logout()
+    context.api_key = key_info["secret"]
+    client = from_context(context)
+    client["a"]["A2"]
+
+
 def test_node_export(enter_password, context):
     "Exporting a node should include only the children we can see."
     with enter_password("secret1"):
