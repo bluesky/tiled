@@ -285,7 +285,10 @@ async def lookup_valid_api_key(db, secret):
     api_key = (
         await db.execute(
             select(APIKey)
-            .options(selectinload(APIKey.principal).selectinload(Principal.roles))
+            .options(
+                selectinload(APIKey.principal).selectinload(Principal.roles),
+                selectinload(APIKey.principal).selectinload(Principal.identities),
+            )
             .filter(APIKey.first_eight == secret.hex()[:8])
             .filter(APIKey.hashed_secret == hashed_secret)
         )
