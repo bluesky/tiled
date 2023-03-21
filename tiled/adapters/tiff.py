@@ -125,7 +125,7 @@ class TiffSequenceAdapter:
                     slice_step = image_axis.step
 
                 arr = with_object_cache(
-                    self._cache_key,
+                    self._cache_key + (slice_start, image_axis.stop, slice_step),
                     tifffile.TiffSequence(
                         self._seq.files[
                             slice_start : image_axis.stop : slice_step  # noqa: E203
@@ -146,7 +146,7 @@ class TiffSequenceAdapter:
                 slice_step = slice.step
 
             arr = with_object_cache(
-                self._cache_key,
+                self._cache_key + (slice_start, slice.stop, slice_step),
                 tifffile.TiffSequence(
                     self._seq.files[slice_start : slice.stop : slice_step]  # noqa: E203
                 ).asarray,
