@@ -145,10 +145,13 @@ def test_top_level_access_control(context, enter_password):
 
 
 def test_access_control_with_api_key_auth(context, enter_password):
+    # Log in, create an API key, log out.
     with enter_password("secret1"):
         context.authenticate(username="alice")
     key_info = context.create_api_key()
     context.logout()
+
+    # Use API key auth while exercising the access control code.
     context.api_key = key_info["secret"]
     client = from_context(context)
     client["a"]["A2"]
