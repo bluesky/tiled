@@ -752,9 +752,9 @@ Back up the database, and then run:
     return app
 
 
-def build_app_from_config(config, scalable=False):
+def build_app_from_config(config, source_filepath=None, scalable=False):
     "Convenience function that calls build_app(...) given config as dict."
-    kwargs = construct_build_app_kwargs(config)
+    kwargs = construct_build_app_kwargs(config, source_filepath=source_filepath)
     return build_app(scalable=scalable, **kwargs)
 
 
