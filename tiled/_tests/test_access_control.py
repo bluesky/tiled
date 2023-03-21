@@ -151,10 +151,14 @@ def test_access_control_with_api_key_auth(context, enter_password):
     key_info = context.create_api_key()
     context.logout()
 
-    # Use API key auth while exercising the access control code.
-    context.api_key = key_info["secret"]
-    client = from_context(context)
-    client["a"]["A2"]
+    try:
+        # Use API key auth while exercising the access control code.
+        context.api_key = key_info["secret"]
+        client = from_context(context)
+        client["a"]["A2"]
+    finally:
+        # Clean up Context, which is a module-scopae fixture shared with other tests.
+        context.api_key = None
 
 
 def test_node_export(enter_password, context):
