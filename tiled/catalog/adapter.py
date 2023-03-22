@@ -4,6 +4,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
 
+from ..utils import UNCHANGED
 from . import orm
 from .base import Base
 
@@ -23,6 +24,7 @@ class Adapter:
         engine,
         segments=None,
         queries=None,
+        sorting=None,
         key_maker=lambda: str(uuid.uuid4()),
         metadata=None,
         specs=None,
@@ -32,6 +34,7 @@ class Adapter:
     ):
         self.engine = engine
         self.segments = segments or []
+        self.sorting = sorting or [("time_created", 1)]
         self.queries = queries or []
         self.key_maker = key_maker
 
@@ -109,8 +112,40 @@ class Adapter:
             time_updated=node.time_updated,
         )
 
+    def new_variation(
+        self,
+        *args,
+        sorting=UNCHANGED,
+        queries=UNCHANGED,
+        # must_revalidate=UNCHANGED,
+        **kwargs,
+    ):
+        if sorting is UNCHANGED:
+            sorting = self.sorting
+        # if must_revalidate is UNCHANGED:
+        #     must_revalidate = self.must_revalidate
+        if queries is UNCHANGED:
+            queries = self.queries
+        return type(self)(
+            engine=self.engine,
+            segments=self.segments,
+            queries=queries,
+            sorting=sorting,
+            key_maker=self.key_maker,
+            metadata=self.metadata,
+            specs=self.specs,
+            references=self.references,
+            time_created=self.time_created,
+            time_updated=self.time_updated,
+            # access_policy=self.access_policy,
+            # entries_stale_after=self.entries_stale_after,
+            # metadata_stale_after=self.entries_stale_after,
+            # must_revalidate=must_revalidate,
+            **kwargs,
+        )
+
     def search(self, query):
-        return type(self)(self.engine, self.queries + [query])
+        return self.new_variation(queries=self.queries + [query])
 
     async def create_node(
         self, metadata, structure_family, specs, references, key=None
