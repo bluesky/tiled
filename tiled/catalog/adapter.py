@@ -55,11 +55,18 @@ class Adapter:
 
     async def lookup(self, segments, principal=None):  # TODO: Accept filter for predicate-pushdown.
         async with self.session() as db:
-            ...
-            # Return something that can be searched or keys()/values()/items().
+            node = (
+                await db.execute(
+                    select(orm.Node)
+                    .filter(orm.Node.ancestors == self.segments + segments)
+                    # TODO Apply queries.
+                )
+            ).scalar()
+            # TODO Do binary search to find where database stops and
+            # (for example) HDF5 file begins.
+            return node  # may be None
 
     def search(self, query):
-        # Return something that can be searched or keys()/values()/items().
         return type(self)(self.engine, self.queries + [query])
 
     async def create_node(self, metadata, structure_family, specs, references, key=None):
@@ -84,6 +91,7 @@ class Adapter:
                 await db.execute(
                     select(orm.Node.key)
                     .filter(orm.Node.ancestors == self.segments)
+                    # TODO Apply queries.
                     .offset(start)
                     .limit(stop - start)
                 )
@@ -97,6 +105,7 @@ class Adapter:
                 await db.execute(
                     select(orm.Node)
                     .filter(orm.Node.ancestors == self.segments)
+                    # TODO Apply queries.
                     .offset(start)
                     .limit(stop - start)
                 )
