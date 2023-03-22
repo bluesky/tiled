@@ -18,7 +18,18 @@ async def initialize_database(engine):
 
 
 class Adapter:
-    def __init__(self, engine, segments=None, queries=None, key_maker=lambda: str(uuid.uuid4()), metadata=None, specs=None, references=None):
+    def __init__(
+        self,
+        engine,
+        segments=None,
+        queries=None,
+        key_maker=lambda: str(uuid.uuid4()),
+        metadata=None,
+        specs=None,
+        references=None,
+        time_created=None,
+        time_updated=None,
+    ):
         self.engine = engine
         self.segments = segments or []
         self.queries = queries or []
@@ -27,6 +38,11 @@ class Adapter:
         self.metadata = metadata or {}
         self.specs = specs or []
         self.references = references or []
+        self.time_created = time_created
+        self.time_updated = time_updated
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self.segments}>"
 
     @classmethod
     def from_uri(cls, database_uri):
@@ -43,33 +59,62 @@ class Adapter:
         return cls(engine)
 
     @classmethod
-    def in_memory(cls):
+    def in_memory(cls, echo=False):
         "Create a transient database in memory."
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
         asyncio.run(initialize_database(engine))
+        return cls(engine)
+
+    @classmethod
+    async def async_in_memory(cls, echo=False):
+        "Create a transient database in memory."
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
+        await initialize_database(engine)
         return cls(engine)
 
     def session(self):
         "Convenience method for constructing an AsyncSessoin context"
         return AsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
-    async def lookup(self, segments, principal=None):  # TODO: Accept filter for predicate-pushdown.
+    async def lookup(
+        self, segments, principal=None
+    ):  # TODO: Accept filter for predicate-pushdown.
+        if not segments:
+            return self
         async with self.session() as db:
+            *ancestors, key = segments
             node = (
                 await db.execute(
                     select(orm.Node)
-                    .filter(orm.Node.ancestors == self.segments + segments)
+                    .filter(orm.Node.ancestors == self.segments + ancestors)
+                    .filter(orm.Node.key == key)
                     # TODO Apply queries.
                 )
             ).scalar()
             # TODO Do binary search to find where database stops and
             # (for example) HDF5 file begins.
-            return node  # may be None
+        if node is None:
+            return
+        return self.from_orm(node)
+
+    def from_orm(self, node):
+        return type(self)(
+            engine=self.engine,
+            segments=node.ancestors + [node.key],
+            key_maker=self.key_maker,
+            metadata=node.metadata,
+            specs=node.specs,
+            references=node.references,
+            time_created=node.time_created,
+            time_updated=node.time_updated,
+        )
 
     def search(self, query):
         return type(self)(self.engine, self.queries + [query])
 
-    async def create_node(self, metadata, structure_family, specs, references, key=None):
+    async def create_node(
+        self, metadata, structure_family, specs, references, key=None
+    ):
         key = key or self.key_maker()
         node = orm.Node(
             key=key,
@@ -82,20 +127,27 @@ class Adapter:
         async with self.session() as db:
             db.add(node)
             await db.commit()
+        # TODO Is this the right thing to return here?
+        # Should we return anything at all?
+        return self.from_orm(node)
 
     async def keys_slice(self, start, stop, direction):
         if direction != 1:
             raise NotImplementedError
         async with self.session() as db:
             return (
-                await db.execute(
-                    select(orm.Node.key)
-                    .filter(orm.Node.ancestors == self.segments)
-                    # TODO Apply queries.
-                    .offset(start)
-                    .limit(stop - start)
+                (
+                    await db.execute(
+                        select(orm.Node.key)
+                        .filter(orm.Node.ancestors == self.segments)
+                        # TODO Apply queries.
+                        .offset(start)
+                        .limit(stop - start)
+                    )
                 )
-            ).all()
+                .scalars()
+                .all()
+            )
 
     async def items_slice(self, start, stop, direction):
         if direction != 1:
@@ -110,7 +162,3 @@ class Adapter:
                     .limit(stop - start)
                 )
             ).all()
-
-
-class DatabaseNotFound(ValueError):
-    pass
