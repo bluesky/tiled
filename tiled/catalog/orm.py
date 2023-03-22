@@ -29,8 +29,8 @@ class Timestamped:
 
     time_created = Column(DateTime(timezone=False), server_default=func.now())
     time_updated = Column(
-        DateTime(timezone=False), onupdate=func.now()
-    )  # null until first update
+        DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
+    )
 
     def __repr__(self):
         return (
