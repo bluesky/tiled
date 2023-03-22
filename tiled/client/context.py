@@ -681,7 +681,9 @@ class Context:
         if prompt_for_reauthentication is UNSET:
             prompt_for_reauthentication = PROMPT_FOR_REAUTHENTICATION
         if prompt_for_reauthentication is None:
-            prompt_for_reauthentication = sys.__stdin__.isatty()
+            prompt_for_reauthentication = (
+                not sys.__stdin__.closed
+            ) and sys.__stdin__.isatty()
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
