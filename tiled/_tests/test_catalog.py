@@ -128,4 +128,15 @@ async def test_search():
     # Search on nested key.
     assert await a.search(Eq("x.y.z", "c")).keys_slice(0, 5, 1) == ["c"]
 
-    # TODO Test searching on nested node.
+    # Created nested nodes and search on them.
+    d = await a.lookup(["d"])
+    for letter, number in zip(string.ascii_lowercase[:5], range(10, 15)):
+        await d.create_node(
+            key=letter,
+            metadata={"letter": letter, "number": number},
+            structure_family=StructureFamily.array,
+            specs=[],
+            references=[],
+        )
+    assert await d.search(Eq("letter", "c")).keys_slice(0, 5, 1) == ["c"]
+    assert await d.search(Eq("number", 12)).keys_slice(0, 5, 1) == ["c"]
