@@ -1,12 +1,17 @@
 import asyncio
+import os
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
 
+from ..queries import Eq
+from ..query_registration import QueryTranslationRegistry
 from ..utils import UNCHANGED
 from . import orm
 from .base import Base
+
+DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 
 
 async def initialize_database(engine):
@@ -39,12 +44,16 @@ class RootNode:
 
 
 class Adapter:
+    query_registry = QueryTranslationRegistry()
+    register_query = query_registry.register
+    register_query_lazy = query_registry.register_lazy
+
     def __init__(
         self,
         engine,
         node,
         *,
-        queries=None,
+        conditions=None,
         sorting=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
@@ -57,7 +66,7 @@ class Adapter:
             self.segments = node.ancestors + [node.key]
         self.sorting = sorting or [("time_created", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
-        self.queries = queries or []
+        self.conditions = conditions or []
         self.key_maker = key_maker
         self.metadata = node.metadata_
         self.specs = node.specs
@@ -70,7 +79,7 @@ class Adapter:
 
     @classmethod
     def from_uri(
-        cls, database_uri, metadata=None, specs=None, references=None, echo=False
+        cls, database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
     ):
         "Connect to an existing database."
         # TODO Check that database exists and has the expected alembic revision.
@@ -79,7 +88,7 @@ class Adapter:
 
     @classmethod
     def create_from_uri(
-        cls, database_uri, metadata=None, specs=None, references=None, echo=False
+        cls, database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
     ):
         "Create a new database and connect to it."
         engine = create_async_engine(database_uri, echo=echo)
@@ -88,7 +97,12 @@ class Adapter:
 
     @classmethod
     async def async_create_from_uri(
-        cls, database_uri, metadata=None, specs=None, references=None, echo=False
+        cls,
+        database_uri,
+        metadata=None,
+        specs=None,
+        references=None,
+        echo=DEFAULT_ECHO,
     ):
         "Create a new database and connect to it."
         engine = create_async_engine(database_uri, echo=echo)
@@ -96,7 +110,7 @@ class Adapter:
         return cls(engine, RootNode(metadata, specs, references))
 
     @classmethod
-    def in_memory(cls, metadata=None, specs=None, references=None, echo=False):
+    def in_memory(cls, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO):
         "Create a transient database in memory."
         engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
         asyncio.run(initialize_database(engine))
@@ -104,7 +118,11 @@ class Adapter:
 
     @classmethod
     async def async_in_memory(
-        cls, metadata=None, specs=None, references=None, echo=False
+        cls,
+        metadata=None,
+        specs=None,
+        references=None,
+        echo=DEFAULT_ECHO,
     ):
         "Create a transient database in memory."
         engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
@@ -120,16 +138,14 @@ class Adapter:
     ):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
+        *ancestors, key = segments
+        statement = select(orm.Node).filter(
+            orm.Node.ancestors == self.segments + ancestors
+        )
+        for condition in self.conditions:
+            statement = statement.filter(condition)
         async with self.session() as db:
-            *ancestors, key = segments
-            node = (
-                await db.execute(
-                    select(orm.Node)
-                    .filter(orm.Node.ancestors == self.segments + ancestors)
-                    .filter(orm.Node.key == key)
-                    # TODO Apply queries.
-                )
-            ).scalar()
+            node = (await db.execute(statement.filter(orm.Node.key == key))).scalar()
             # TODO Do binary search or use some tricky JSON query to find where
             # database stops and (for example) HDF5 file begins.
         if node is None:
@@ -143,7 +159,7 @@ class Adapter:
         self,
         *args,
         sorting=UNCHANGED,
-        queries=UNCHANGED,
+        conditions=UNCHANGED,
         # must_revalidate=UNCHANGED,
         **kwargs,
     ):
@@ -151,12 +167,12 @@ class Adapter:
             sorting = self.sorting
         # if must_revalidate is UNCHANGED:
         #     must_revalidate = self.must_revalidate
-        if queries is UNCHANGED:
-            queries = self.queries
+        if conditions is UNCHANGED:
+            conditions = self.conditions
         return type(self)(
             engine=self.engine,
             node=self.node,
-            queries=queries,
+            conditions=conditions,
             sorting=sorting,
             key_maker=self.key_maker,
             # access_policy=self.access_policy,
@@ -167,7 +183,7 @@ class Adapter:
         )
 
     def search(self, query):
-        return self.new_variation(queries=self.queries + [query])
+        return self.query_registry(query, self)
 
     def sort(self, sorting):
         return self.new_variation(sorting=sorting)
@@ -194,14 +210,14 @@ class Adapter:
     async def keys_slice(self, start, stop, direction):
         if direction != 1:
             raise NotImplementedError
+        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        for condition in self.conditions:
+            statement = statement.filter(condition)
         async with self.session() as db:
             return (
                 (
                     await db.execute(
-                        select(orm.Node.key)
-                        .filter(orm.Node.ancestors == self.segments)
-                        # TODO Apply queries.
-                        .order_by(*self.order_by_clauses)
+                        statement.order_by(*self.order_by_clauses)
                         .offset(start)
                         .limit(stop - start)
                     )
@@ -213,14 +229,14 @@ class Adapter:
     async def items_slice(self, start, stop, direction):
         if direction != 1:
             raise NotImplementedError
+        statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
+        for condition in self.conditions:
+            statement = statement.filter(condition)
         async with self.session() as db:
             nodes = (
                 (
                     await db.execute(
-                        select(orm.Node)
-                        .filter(orm.Node.ancestors == self.segments)
-                        .order_by(*self.order_by_clauses)
-                        # TODO Apply queries.
+                        statement.order_by(*self.order_by_clauses)
                         .offset(start)
                         .limit(stop - start)
                     )
@@ -259,3 +275,29 @@ def order_by_clauses(sorting):
             clause = clause.desc()
         clauses.append(clause)
     return clauses
+
+
+# SQLAlchemy returns extracted JSON values as JSON objects.
+# There are others to extract the underlying value for use
+# in comparisons.
+
+
+_TYPE_METHODS = {
+    str: "as_string",
+    float: "as_float",
+    int: "as_integer",
+    bool: "as_boolean",
+}
+
+
+def get_value(attr, type):
+    return getattr(attr, _TYPE_METHODS[type])()
+
+
+def eq(query, tree):
+    attr = orm.Node.metadata_[query.key.split(".")]
+    condition = get_value(attr, type(query.value)) == query.value
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+Adapter.register_query(Eq, eq)

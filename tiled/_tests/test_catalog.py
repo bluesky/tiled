@@ -4,6 +4,7 @@ import string
 import pytest
 
 from ..catalog.adapter import Adapter
+from ..queries import Eq
 from ..structures.core import StructureFamily
 
 
@@ -102,3 +103,29 @@ async def test_sorting():
     # Within each block of numbers, keys and letters are sorted.
     assert sorted(keys[:5]) == keys[:5] == letters[:5]
     assert sorted(keys[5:]) == keys[5:] == letters[5:]
+
+
+@pytest.mark.asyncio
+async def test_search():
+    a = await Adapter.async_in_memory()
+    for letter, number in zip(string.ascii_lowercase[:5], range(5)):
+        await a.create_node(
+            key=letter,
+            metadata={"letter": letter, "number": number, "x": {"y": {"z": letter}}},
+            structure_family=StructureFamily.array,
+            specs=[],
+            references=[],
+        )
+    assert "c" in await a.keys_slice(0, 5, 1)
+    assert await a.search(Eq("letter", "c")).keys_slice(0, 5, 1) == ["c"]
+    assert await a.search(Eq("number", 2)).keys_slice(0, 5, 1) == ["c"]
+
+    # Looking up "d" inside search results should find nothing when
+    # "d" is filtered out by a search query first.
+    assert await a.lookup(["d"]) is not None
+    assert await a.search(Eq("letter", "c")).lookup(["d"]) is None
+
+    # Search on nested key.
+    assert await a.search(Eq("x.y.z", "c")).keys_slice(0, 5, 1) == ["c"]
+
+    # TODO Test searching on nested node.
