@@ -1,7 +1,9 @@
 import asyncio
 import os
+import re
 import uuid
 
+from sqlalchemy import Index, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
 
@@ -12,6 +14,7 @@ from . import orm
 from .base import Base
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
+INDEX_PATTERN = re.compile(r"^[A-Za-z_-]+$")
 
 
 async def initialize_database(engine):
@@ -132,6 +135,48 @@ class Adapter:
     def session(self):
         "Convenience method for constructing an AsyncSessoin context"
         return AsyncSession(self.engine, autoflush=False, expire_on_commit=False)
+
+    async def list_metadata_indexes(self):
+        async with self.session() as db:
+            index_sql = (
+                await db.execute(
+                    text(
+                        """
+SELECT name, sql
+FROM SQLite_master
+WHERE type = 'index'
+AND tbl_name = 'nodes'
+AND name LIKE 'tiled_md_%';
+
+"""
+                    )
+                )
+            ).all()
+        return index_sql
+
+    async def create_metadata_index(self, index_name, key):
+        if INDEX_PATTERN.match(index_name) is None:
+            raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
+        index = Index(f"tiled_md_{index_name}", orm.Node.metadata_[key].as_string())
+
+        def create_index(connection):
+            index.create(connection)
+
+        async with self.engine.connect() as connection:
+            await connection.run_sync(create_index)
+
+    async def drop_metadata_index(self, index_name):
+        if INDEX_PATTERN.match(index_name) is None:
+            raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
+        if not index_name.startswith("tiled_md_"):
+            index_name = f"tiled_md_{index_name}"
+        async with self.session() as db:
+            await db.execute(text(f"DROP INDEX {index_name}"))
+
+    async def _execute(self, statement):
+        "Debugging convenience utility, not exposed to server"
+        async with self.session() as db:
+            return await db.execute(text(statement))
 
     async def lookup(
         self, segments, principal=None
