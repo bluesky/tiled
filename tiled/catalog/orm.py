@@ -135,6 +135,9 @@ class AssetBlob(Base):
 class AssetState(Base):
     """
     This tracks information used to check whether a filesystem asset has changed.
+
+    Note that mtime alone is not sufficient to know whether a file has changed.
+    https://apenwarr.ca/log/20181113
     """
 
     __tablename__ = "asset_state"
