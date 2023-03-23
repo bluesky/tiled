@@ -1,6 +1,5 @@
-import json
-
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
@@ -13,7 +12,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
-from sqlalchemy.types import TypeDecorator
 
 from ..structures.core import StructureFamily
 from .base import Base
@@ -44,60 +42,6 @@ class Timestamped:
         )
 
 
-class JSONList(TypeDecorator):
-    """Represents an immutable structure as a JSON-encoded list.
-
-    Usage::
-
-        JSONList(255)
-
-    """
-
-    impl = Unicode
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        if value is not None:
-            # Make sure we don't get passed some iterable like a dict.
-            if not isinstance(value, (list, tuple)):
-                raise ValueError(
-                    "JSONList must be given a literal `list` or `tuple` type."
-                )
-            value = json.dumps(value)
-        return value
-
-    def process_result_value(self, value, dialect):
-        if value is not None:
-            value = json.loads(value)
-        return value
-
-
-class JSONDict(TypeDecorator):
-    """Represents an immutable structure as a JSON-encoded dict (i.e. object).
-
-    Usage::
-
-        JSONDict(255)
-
-    """
-
-    impl = Unicode
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        if value is not None:
-            # Make sure we don't get passed some iterable like a dict.
-            if not isinstance(value, dict):
-                raise ValueError("JSONDict must be given a literal `dict` type.")
-            value = json.dumps(value)
-        return value
-
-    def process_result_value(self, value, dialect):
-        if value is not None:
-            value = json.loads(value)
-        return value
-
-
 class Node(Timestamped, Base):
     """
     This describes a single Node and sometimes inlines descriptions of all its children.
@@ -109,11 +53,11 @@ class Node(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     key = Column(Unicode(1023), index=True, nullable=False)
-    ancestors = Column(JSONList(2**16 - 1), index=True, nullable=True)
+    ancestors = Column(JSON, index=True, nullable=True)
     structure_family = Column(Enum(StructureFamily), nullable=False)
-    metadata_ = Column("metadata", JSONDict, nullable=False)
-    specs = Column(JSONList, nullable=False)
-    references = Column(JSONList, nullable=False)
+    metadata_ = Column("metadata", JSON, nullable=False)
+    specs = Column(JSON, nullable=False)
+    references = Column(JSON, nullable=False)
 
     data_sources = relationship("DataSource", back_populates="node")
 
@@ -141,11 +85,11 @@ class DataSource(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
 
-    structure = Column(JSONDict, nullable=True)
+    structure = Column(JSON, nullable=True)
     mimetype = Column(Unicode(1023), nullable=False)
     # These are additional parameters passed to the Adapter to guide
     # it to access and arrange the data in the file correctly.
-    parameters = Column(JSONDict(1023), nullable=True)
+    parameters = Column(JSON(1023), nullable=True)
     externally_managed = Column(Boolean, default=False, nullable=False)
 
     node = relationship("Node", back_populates="data_sources")
@@ -216,11 +160,11 @@ class Revisions(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     key = Column(Unicode(1023), index=True, nullable=False)
-    ancestors = Column(JSONList(2**16), index=True, nullable=True)
+    ancestors = Column(JSON(2**16), index=True, nullable=True)
     revision = Column(Integer, index=True, nullable=False)
 
-    metadata_ = Column("metadata", JSONDict, nullable=False)
-    specs = Column(JSONList, nullable=False)
+    metadata_ = Column("metadata", JSON, nullable=False)
+    specs = Column(JSON, nullable=False)
 
     time_updated = Column(
         DateTime(timezone=False), onupdate=func.now()
