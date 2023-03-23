@@ -137,21 +137,27 @@ class Adapter:
         return AsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
     async def list_metadata_indexes(self):
+        dialect_name = self.engine.url.get_dialect().name
         async with self.session() as db:
-            index_sql = (
-                await db.execute(
-                    text(
-                        """
-SELECT name, sql
-FROM SQLite_master
-WHERE type = 'index'
-AND tbl_name = 'nodes'
-AND name LIKE 'tiled_md_%';
+            if dialect_name == "sqlite":
+                index_sql = (
+                    await db.execute(
+                        text(
+                            """
+    SELECT name, sql
+    FROM SQLite_master
+    WHERE type = 'index'
+    AND tbl_name = 'nodes'
+    AND name LIKE 'tiled_md_%';
 
-"""
+    """
+                        )
                     )
+                ).all()
+            else:
+                raise NotImplementedError(
+                    f"Cannot list indexes for dialect {dialect_name}"
                 )
-            ).all()
         return index_sql
 
     async def create_metadata_index(self, index_name, key):
