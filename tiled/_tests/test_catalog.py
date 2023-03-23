@@ -1,3 +1,6 @@
+import random
+import string
+
 import pytest
 
 from ..catalog.adapter import Adapter
@@ -40,3 +43,62 @@ async def test_nested_node_creation():
     # smoke test
     await a.items_slice(0, 1, 1)
     await b.items_slice(0, 1, 1)
+
+
+@pytest.mark.asyncio
+async def test_sorting():
+    a = await Adapter.async_in_memory()
+    # Generate lists of letters and numbers, randomly shuffled.
+    random_state = random.Random(0)
+    ordered_letters = list(string.ascii_lowercase[:10])
+    shuffled_letters = list(ordered_letters)
+    random_state.shuffle(shuffled_letters)
+    shuffled_numbers = [0] * 5 + [1] * 5
+    random_state.shuffle(shuffled_numbers)
+    assert ordered_letters != shuffled_letters
+    assert sorted(shuffled_letters) != shuffled_letters
+
+    for letter, number in zip(shuffled_letters, shuffled_numbers):
+        await a.create_node(
+            key=letter,
+            metadata={"letter": letter, "number": number},
+            structure_family=StructureFamily.array,
+            specs=[],
+            references=[],
+        )
+    # Default order is based on time_created.
+    assert (await a.keys_slice(0, 10, 1)) == shuffled_letters
+
+    # Explicitly sort by time_created.
+    assert (
+        await a.sort([("time_created", 1)]).keys_slice(0, 10, 1)
+    ) == shuffled_letters
+
+    # Sort by key.
+    await a.sort([("id", 1)]).keys_slice(0, 10, 1) == ordered_letters
+    # Test again, with items_slice.
+    [k for k, v in await a.sort([("id", 1)]).items_slice(0, 10, 1)] == ordered_letters
+
+    # Sort by letter metadata.
+    # Use explicit 'metadata.{key}' namespace.
+    assert (
+        await a.sort([("metadata.letter", 1)]).keys_slice(0, 10, 1)
+    ) == ordered_letters
+
+    # Sort by letter metadata.
+    # Use implicit '{key}' (more convenient, and necessary for back-compat).
+    assert (await a.sort([("letter", 1)]).keys_slice(0, 10, 1)) == ordered_letters
+
+    # Sort by number and then by letter.
+    # Use explicit 'metadata.{key}' namespace.
+    items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_slice(
+        0, 10, 1
+    )
+    numbers = [v.metadata["number"] for k, v in items]
+    letters = [v.metadata["letter"] for k, v in items]
+    keys = [k for k, v in items]
+    # Numbers are sorted.
+    numbers = sorted(numbers)
+    # Within each block of numbers, keys and letters are sorted.
+    assert sorted(keys[:5]) == keys[:5] == letters[:5]
+    assert sorted(keys[5:]) == keys[5:] == letters[5:]
