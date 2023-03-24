@@ -19,8 +19,7 @@ from ..structures.core import StructureFamily
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
 
-# @pytest_asyncio.fixture(params=["sqlite", "postgresql"])
-@pytest_asyncio.fixture(params=["sqlite"])
+@pytest_asyncio.fixture(params=["sqlite", "postgresql"])
 async def a(request):
     "Adapter instance"
     if request.param == "sqlite":

@@ -9,12 +9,16 @@ from sqlalchemy import (
     LargeBinary,
     Unicode,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
 
 from ..structures.core import StructureFamily
 from .base import Base
+
+# Use JSON with SQLite and JSONB with PostgreSQL.
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Timestamped:
@@ -53,11 +57,11 @@ class Node(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     key = Column(Unicode(1023), index=True, nullable=False)
-    ancestors = Column(JSON, index=True, nullable=True)
+    ancestors = Column(JSONVariant, index=True, nullable=True)
     structure_family = Column(Enum(StructureFamily), nullable=False)
-    metadata_ = Column("metadata", JSON, nullable=False)
-    specs = Column(JSON, nullable=False)
-    references = Column(JSON, nullable=False)
+    metadata_ = Column("metadata", JSONVariant, nullable=False)
+    specs = Column(JSONVariant, nullable=False)
+    references = Column(JSONVariant, nullable=False)
 
     data_sources = relationship("DataSource", back_populates="node")
 
@@ -85,11 +89,11 @@ class DataSource(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
 
-    structure = Column(JSON, nullable=True)
+    structure = Column(JSONVariant, nullable=True)
     mimetype = Column(Unicode(1023), nullable=False)
     # These are additional parameters passed to the Adapter to guide
     # it to access and arrange the data in the file correctly.
-    parameters = Column(JSON(1023), nullable=True)
+    parameters = Column(JSONVariant, nullable=True)
     externally_managed = Column(Boolean, default=False, nullable=False)
 
     node = relationship("Node", back_populates="data_sources")
@@ -163,11 +167,11 @@ class Revisions(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     key = Column(Unicode(1023), index=True, nullable=False)
-    ancestors = Column(JSON(2**16), index=True, nullable=True)
+    ancestors = Column(JSONVariant, index=True, nullable=True)
     revision = Column(Integer, index=True, nullable=False)
 
-    metadata_ = Column("metadata", JSON, nullable=False)
-    specs = Column(JSON, nullable=False)
+    metadata_ = Column("metadata", JSONVariant, nullable=False)
+    specs = Column(JSONVariant, nullable=False)
 
     time_updated = Column(
         DateTime(timezone=False), onupdate=func.now()
