@@ -1,9 +1,12 @@
 import os
 import random
 import string
+import uuid
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..catalog.adapter import Adapter
 from ..queries import Eq
@@ -14,7 +17,7 @@ from ..structures.core import StructureFamily
 # docker run --name tiled-test-postgres -e POSTGRES_PASSWORD=secret -d docker.io/postgres
 # and set this env var like:
 #
-# TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432/
+# TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
 
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
@@ -27,10 +30,21 @@ async def a(request):
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+        engine = create_async_engine(TILED_TEST_POSTGRESQL_URI)
+        database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
+        async with engine.connect() as connection:
+            raw_conn = await connection.get_raw_connection()
+            raw_conn.set_isolation_level(0)
+            await connection.execute(text(f"CREATE DATABASE {database_name}"))
+            raw_conn = await connection.get_raw_connection()
+            raw_conn.set_isolation_level(1)
         adapter = await Adapter.async_create_from_uri(TILED_TEST_POSTGRESQL_URI)
     else:
         assert False
-    return adapter
+    yield adapter
+    if request.param == "postgresql" and TILED_TEST_POSTGRESQL_URI:
+        async with engine.connect() as connection:
+            await connection.execute(("CREATE DATABASE {database_name}"))
 
 
 def test_constructors(tmpdir):
