@@ -163,7 +163,9 @@ class Adapter:
     async def create_metadata_index(self, index_name, key):
         if INDEX_PATTERN.match(index_name) is None:
             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
-        index = Index(f"tiled_md_{index_name}", orm.Node.metadata_[key].as_string())
+        index = Index(
+            f"tiled_md_{index_name}", "ancestors", orm.Node.metadata_[key].as_string()
+        )
 
         def create_index(connection):
             index.create(connection)
