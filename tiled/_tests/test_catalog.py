@@ -14,37 +14,46 @@ from ..structures.core import StructureFamily
 
 # To test with postgres, start a container like:
 #
-# docker run --name tiled-test-postgres -e POSTGRES_PASSWORD=secret -d docker.io/postgres
+# docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=secret -d docker.io/postgres
 # and set this env var like:
 #
 # TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
 
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
+if TILED_TEST_POSTGRESQL_URI.endswith("/"):
+    TILED_TEST_POSTGRESQL_URI = TILED_TEST_POSTGRESQL_URI[:-1]
 
 
 @pytest_asyncio.fixture(params=["sqlite", "postgresql"])
 async def a(request):
     "Adapter instance"
     if request.param == "sqlite":
-        adapter = await Adapter.async_in_memory()
+        async with Adapter.async_in_memory() as adapter:
+            yield adapter
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+        # Create a fresh database.
         engine = create_async_engine(TILED_TEST_POSTGRESQL_URI)
         database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
         async with engine.connect() as connection:
-            raw_conn = await connection.get_raw_connection()
-            raw_conn.set_isolation_level(0)
+            await connection.execute(
+                text("COMMIT")
+            )  # close the automatically-started transaction
             await connection.execute(text(f"CREATE DATABASE {database_name}"))
-            raw_conn = await connection.get_raw_connection()
-            raw_conn.set_isolation_level(1)
-        adapter = await Adapter.async_create_from_uri(TILED_TEST_POSTGRESQL_URI)
+        # Use the database.
+        async with Adapter.async_create_from_uri(
+            f"{TILED_TEST_POSTGRESQL_URI}/{database_name}"
+        ) as adapter:
+            yield adapter
+        # Drop the database.
+        async with engine.connect() as connection:
+            await connection.execute(
+                text("COMMIT")
+            )  # close the automatically-started transaction
+            await connection.execute(text(f"DROP DATABASE {database_name}"))
     else:
         assert False
-    yield adapter
-    if request.param == "postgresql" and TILED_TEST_POSTGRESQL_URI:
-        async with engine.connect() as connection:
-            await connection.execute(("CREATE DATABASE {database_name}"))
 
 
 def test_constructors(tmpdir):

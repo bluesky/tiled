@@ -24,6 +24,7 @@ async def initialize_database(engine):
     async with engine.connect() as conn:
         # Create all tables.
         await conn.run_sync(Base.metadata.create_all)
+        await conn.commit()
 
 
 class RootNode:
@@ -80,6 +81,14 @@ class Adapter:
     def __repr__(self):
         return f"<{type(self).__name__} {self.segments}>"
 
+    async def __aenter__(self):
+        # TODO Add some state so that initialization only happens if it is needed.
+        await initialize_database(self.engine)
+        return self
+
+    async def __aexit__(self, *args):
+        await self.engine.dispose()
+
     @classmethod
     def from_uri(
         cls, database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
@@ -99,7 +108,7 @@ class Adapter:
         return cls(engine, RootNode(metadata, specs, references))
 
     @classmethod
-    async def async_create_from_uri(
+    def async_create_from_uri(
         cls,
         database_uri,
         metadata=None,
@@ -109,7 +118,6 @@ class Adapter:
     ):
         "Create a new database and connect to it."
         engine = create_async_engine(database_uri, echo=echo)
-        await initialize_database(engine)
         return cls(engine, RootNode(metadata, specs, references))
 
     @classmethod
@@ -120,7 +128,7 @@ class Adapter:
         return cls(engine, RootNode(metadata, specs, references))
 
     @classmethod
-    async def async_in_memory(
+    def async_in_memory(
         cls,
         metadata=None,
         specs=None,
@@ -129,7 +137,6 @@ class Adapter:
     ):
         "Create a transient database in memory."
         engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-        await initialize_database(engine)
         return cls(engine, RootNode(metadata, specs, references))
 
     def session(self):
