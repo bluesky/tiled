@@ -1,11 +1,37 @@
+import os
 import random
 import string
 
 import pytest
+import pytest_asyncio
 
 from ..catalog.adapter import Adapter
 from ..queries import Eq
 from ..structures.core import StructureFamily
+
+# To test with postgres, start a container like:
+#
+# docker run --name tiled-test-postgres -e POSTGRES_PASSWORD=secret -d docker.io/postgres
+# and set this env var like:
+#
+# TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432/
+
+TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
+
+
+# @pytest_asyncio.fixture(params=["sqlite", "postgresql"])
+@pytest_asyncio.fixture(params=["sqlite"])
+async def a(request):
+    "Adapter instance"
+    if request.param == "sqlite":
+        adapter = await Adapter.async_in_memory()
+    elif request.param == "postgresql":
+        if not TILED_TEST_POSTGRESQL_URI:
+            raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+        adapter = await Adapter.async_create_from_uri(TILED_TEST_POSTGRESQL_URI)
+    else:
+        assert False
+    return adapter
 
 
 def test_constructors(tmpdir):
@@ -21,8 +47,7 @@ def test_constructors(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_nested_node_creation():
-    a = await Adapter.async_in_memory()
+async def test_nested_node_creation(a):
     b = await a.create_node(
         key="b",
         metadata={},
@@ -47,8 +72,7 @@ async def test_nested_node_creation():
 
 
 @pytest.mark.asyncio
-async def test_sorting():
-    a = await Adapter.async_in_memory()
+async def test_sorting(a):
     # Generate lists of letters and numbers, randomly shuffled.
     random_state = random.Random(0)
     ordered_letters = list(string.ascii_lowercase[:10])
@@ -106,8 +130,7 @@ async def test_sorting():
 
 
 @pytest.mark.asyncio
-async def test_search():
-    a = await Adapter.async_in_memory()
+async def test_search(a):
     for letter, number in zip(string.ascii_lowercase[:5], range(5)):
         await a.create_node(
             key=letter,
