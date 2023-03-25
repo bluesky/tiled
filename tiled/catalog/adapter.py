@@ -12,6 +12,7 @@ from ..query_registration import QueryTranslationRegistry
 from ..utils import UNCHANGED
 from . import orm
 from .base import Base
+from .explain import ExplainAsyncSession
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z_-]+$")
@@ -140,8 +141,10 @@ class Adapter:
         return cls(engine, RootNode(metadata, specs, references))
 
     def session(self):
-        "Convenience method for constructing an AsyncSessoin context"
-        return AsyncSession(self.engine, autoflush=False, expire_on_commit=False)
+        "Convenience method for constructing an AsyncSession context"
+        s = ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
+        s.add_explanation_callback(print)
+        return s
 
     async def list_metadata_indexes(self):
         dialect_name = self.engine.url.get_dialect().name
