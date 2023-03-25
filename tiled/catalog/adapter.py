@@ -191,6 +191,10 @@ class Adapter:
         async with self.session() as db:
             await db.execute(text(f"DROP INDEX {index_name}"))
 
+    async def drop_all_metadata_indexes(self):
+        for name, sql in await self.list_metadata_indexes():
+            await self.drop_metadata_index(name)
+
     async def _execute(self, statement):
         "Debugging convenience utility, not exposed to server"
         async with self.session() as db:
