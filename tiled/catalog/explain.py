@@ -1,7 +1,12 @@
 "Adapted from https://github.com/sqlalchemy/sqlalchemy/wiki/Query-Plan-SQL-construct"
+import contextlib
+import os
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.expression import ClauseElement, Executable
+
+EXPLAIN_SQL = bool(int(os.getenv("TILED_EXPLAIN_SQL", "0") or "0"))
 
 
 class explain(Executable, ClauseElement):
@@ -32,32 +37,39 @@ def sqlite_explain(element, compiler, **kw):
     return text
 
 
+_query_explanation_callbacks = []
+
+
+@contextlib.contextmanager
+def record_explanations():
+    explanations = []
+
+    def capture(e):
+        explanations.append(e)
+
+    _query_explanation_callbacks.append(capture)
+    yield explanations
+    _query_explanation_callbacks.remove(capture)
+
+
 class ExplainAsyncSession(AsyncSession):
     """
-    Extend AsyncSession to explain and then explain.
+    Extend AsyncSession to explain and then query.
+
+    If EXPLAIN_SQL is off and there are now callbacks, just fall back
+    to normal AsyncSession. For performance reasons, we only query
+    for the explanation if it will be used.
 
     1. Explain the query.
-    2. Pass the explanation to the callback.
+    2. Pass the explanation to the callback(s).
     3. Execute normally.
-
-    This has has an intentionally simple callback registry.
-    Because sessions are short-lived contexts, we do not need to
-    deal with the complexity of callback removal.
-
-    This is probably a way to achieve this capability using SQLAlchemy hooks,
-    but the hooks involve SQLAlchemy core objects that I do not yet fully
-    understand.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.__explanation_callbacks = []
-
-    def add_explanation_callback(self, callback):
-        self.__explanation_callbacks.append(callback)
-
     async def execute(self, statement, *args, **kwargs):
-        explanation = (await super().execute(explain(statement), *args, **kwargs)).all()
-        for callback in self.__explanation_callbacks:
-            callback(explanation)
+        if EXPLAIN_SQL or _query_explanation_callbacks:
+            explanation = (
+                await super().execute(explain(statement), *args, **kwargs)
+            ).all()
+            for callback in _query_explanation_callbacks:
+                callback(explanation)
         return await super().execute(statement, *args, **kwargs)

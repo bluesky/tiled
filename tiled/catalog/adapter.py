@@ -4,7 +4,7 @@ import re
 import uuid
 
 from sqlalchemy import Index, text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
 from ..queries import Eq
@@ -142,9 +142,7 @@ class Adapter:
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
-        s = ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
-        s.add_explanation_callback(print)
-        return s
+        return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
     async def list_metadata_indexes(self):
         dialect_name = self.engine.url.get_dialect().name
