@@ -188,7 +188,7 @@ indexname;
             f"tiled_md_{index_name}",
             "ancestors",
             orm.Node.metadata_[key].label("md"),
-            postgresql_ops={"md": "jsonb_ops"},
+            # postgresql_ops={"md": "jsonb_ops"},
             postgresql_using="gin",
         )
 
