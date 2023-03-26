@@ -9,7 +9,7 @@ from sqlalchemy.sql.expression import ClauseElement, Executable
 EXPLAIN_SQL = bool(int(os.getenv("TILED_EXPLAIN_SQL", "0") or "0"))
 
 
-class explain(Executable, ClauseElement):
+class _explain(Executable, ClauseElement):
     inherit_cache = False
 
     def __init__(self, stmt, analyze=False):
@@ -17,7 +17,7 @@ class explain(Executable, ClauseElement):
         self.analyze = analyze
 
 
-@compiles(explain, "postgresql")
+@compiles(_explain, "postgresql")
 def pg_explain(element, compiler, **kw):
     text = "EXPLAIN "
     if element.analyze:
@@ -27,7 +27,7 @@ def pg_explain(element, compiler, **kw):
     return text
 
 
-@compiles(explain, "sqlite")
+@compiles(_explain, "sqlite")
 def sqlite_explain(element, compiler, **kw):
     text = "EXPLAIN QUERY PLAN "
     if element.analyze:
@@ -60,15 +60,20 @@ class ExplainAsyncSession(AsyncSession):
     to normal AsyncSession. For performance reasons, we only query
     for the explanation if it will be used.
 
+    Use 'explain' paramete (default: None) to force explain on
+    or off (True, False).
+
     1. Explain the query.
     2. Pass the explanation to the callback(s).
     3. Execute normally.
     """
 
-    async def execute(self, statement, *args, **kwargs):
-        if EXPLAIN_SQL or _query_explanation_callbacks:
+    async def execute(self, statement, *args, explain=None, **kwargs):
+        if explain is None:
+            explain = bool(EXPLAIN_SQL or _query_explanation_callbacks)
+        if explain:
             explanation = (
-                await super().execute(explain(statement), *args, **kwargs)
+                await super().execute(_explain(statement), *args, **kwargs)
             ).all()
             for callback in _query_explanation_callbacks:
                 callback(explanation)

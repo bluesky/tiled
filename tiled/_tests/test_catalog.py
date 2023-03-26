@@ -20,7 +20,7 @@ from ..structures.core import StructureFamily
 # TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
 
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
-if TILED_TEST_POSTGRESQL_URI.endswith("/"):
+if TILED_TEST_POSTGRESQL_URI and TILED_TEST_POSTGRESQL_URI.endswith("/"):
     TILED_TEST_POSTGRESQL_URI = TILED_TEST_POSTGRESQL_URI[:-1]
 
 
@@ -40,7 +40,8 @@ async def a(request):
             await connection.execute(
                 text("COMMIT")
             )  # close the automatically-started transaction
-            await connection.execute(text(f"CREATE DATABASE {database_name}"))
+            await connection.execute(text(f"CREATE DATABASE {database_name};"))
+            await connection.commit()
         # Use the database.
         async with Adapter.async_create_from_uri(
             f"{TILED_TEST_POSTGRESQL_URI}/{database_name}"
@@ -51,7 +52,8 @@ async def a(request):
             await connection.execute(
                 text("COMMIT")
             )  # close the automatically-started transaction
-            await connection.execute(text(f"DROP DATABASE {database_name}"))
+            await connection.execute(text(f"DROP DATABASE {database_name};"))
+            await connection.commit()
     else:
         assert False
 
@@ -185,3 +187,20 @@ async def test_search(a):
         )
     assert await d.search(Eq("letter", "c")).keys_slice(0, 5, 1) == ["c"]
     assert await d.search(Eq("number", 12)).keys_slice(0, 5, 1) == ["c"]
+
+
+@pytest.mark.asyncio
+async def test_metadata_indexes(a):
+    # There is some weird coupling happening with pytest
+    # that needs investiagtion. In the mean time, lead with this:
+    await a.drop_all_metadata_indexes()
+
+    # Test create / list / drop.
+    assert len(await a.list_metadata_indexes()) == 0
+    await a.create_metadata_index("letter", "letter")
+    indexes = await a.list_metadata_indexes()
+    assert len(indexes) == 1
+    assert indexes[0][0] == "tiled_md_letter"
+    await a.drop_metadata_index("tiled_md_letter")
+    assert len(await a.list_metadata_indexes()) == 0
+    await a.drop_all_metadata_indexes()

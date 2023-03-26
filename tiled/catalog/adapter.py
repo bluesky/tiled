@@ -3,7 +3,7 @@ import os
 import re
 import uuid
 
-from sqlalchemy import Index, text
+from sqlalchemy import Index, text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
@@ -15,17 +15,17 @@ from .base import Base
 from .explain import ExplainAsyncSession
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
-INDEX_PATTERN = re.compile(r"^[A-Za-z_-]+$")
+INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 async def initialize_database(engine):
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 
-    async with engine.connect() as conn:
+    async with engine.connect() as connection:
         # Create all tables.
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.commit()
+        await connection.run_sync(Base.metadata.create_all)
+        await connection.commit()
 
 
 class RootNode:
@@ -148,31 +148,48 @@ class Adapter:
         dialect_name = self.engine.url.get_dialect().name
         async with self.session() as db:
             if dialect_name == "sqlite":
-                index_sql = (
-                    await db.execute(
-                        text(
-                            """
-    SELECT name, sql
-    FROM SQLite_master
-    WHERE type = 'index'
-    AND tbl_name = 'nodes'
-    AND name LIKE 'tiled_md_%';
+                statement = """
+SELECT name, sql
+FROM SQLite_master
+WHERE type = 'index'
+AND tbl_name = 'nodes'
+AND name LIKE 'tiled_md_%'
+ORDER BY tbl_name;
 
-    """
-                        )
-                    )
-                ).all()
+"""
+            elif dialect_name == "postgresql":
+                statement = """
+SELECT
+indexname, indexdef
+FROM
+pg_indexes
+WHERE tablename = 'nodes'
+AND indexname LIKE 'tiled_md_%'
+ORDER BY
+indexname;
+
+"""
             else:
                 raise NotImplementedError(
                     f"Cannot list indexes for dialect {dialect_name}"
                 )
-        return index_sql
+            indexes = (
+                await db.execute(
+                    text(statement),
+                    explain=False,
+                )
+            ).all()
+        return indexes
 
     async def create_metadata_index(self, index_name, key):
         if INDEX_PATTERN.match(index_name) is None:
             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
         index = Index(
-            f"tiled_md_{index_name}", "ancestors", orm.Node.metadata_[key].as_string()
+            f"tiled_md_{index_name}",
+            "ancestors",
+            orm.Node.metadata_[key].label("md"),
+            postgresql_ops={"md": "jsonb_ops"},
+            postgresql_using="gin",
         )
 
         def create_index(connection):
@@ -180,6 +197,7 @@ class Adapter:
 
         async with self.engine.connect() as connection:
             await connection.run_sync(create_index)
+            await connection.commit()
 
     async def drop_metadata_index(self, index_name):
         if INDEX_PATTERN.match(index_name) is None:
@@ -187,16 +205,21 @@ class Adapter:
         if not index_name.startswith("tiled_md_"):
             index_name = f"tiled_md_{index_name}"
         async with self.session() as db:
-            await db.execute(text(f"DROP INDEX {index_name}"))
+            await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
+            await db.commit()
 
     async def drop_all_metadata_indexes(self):
-        for name, sql in await self.list_metadata_indexes():
-            await self.drop_metadata_index(name)
+        indexes = await self.list_metadata_indexes()
+        async with self.session() as db:
+            for index_name, sql in indexes:
+                await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
+            await db.commit()
 
     async def _execute(self, statement):
         "Debugging convenience utility, not exposed to server"
         async with self.session() as db:
             return await db.execute(text(statement))
+            await db.commit()
 
     async def lookup(
         self, segments, principal=None
@@ -342,26 +365,10 @@ def order_by_clauses(sorting):
     return clauses
 
 
-# SQLAlchemy returns extracted JSON values as JSON objects.
-# There are others to extract the underlying value for use
-# in comparisons.
-
-
-_TYPE_METHODS = {
-    str: "as_string",
-    float: "as_float",
-    int: "as_integer",
-    bool: "as_boolean",
-}
-
-
-def get_value(attr, type):
-    return getattr(attr, _TYPE_METHODS[type])()
-
-
 def eq(query, tree):
     attr = orm.Node.metadata_[query.key.split(".")]
-    condition = get_value(attr, type(query.value)) == query.value
+    # condition = get_value(attr, type(query.value)) == query.value
+    condition = attr == type_coerce(query.value, orm.Node.metadata_.type)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
