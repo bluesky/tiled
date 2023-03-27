@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     Unicode,
@@ -66,7 +67,17 @@ class Node(Timestamped, Base):
     data_sources = relationship("DataSource", back_populates="node")
 
     __table_args__ = (
-        UniqueConstraint("key", "ancestors", name="_key_ancestors_unique_constraint"),
+        UniqueConstraint("key", "ancestors", name="key_ancestors_unique_constraint"),
+        # This index supports comparison operations (==, <, ...).
+        # For key-existence operations we will need a GIN index additionally.
+        Index(
+            "top_level_metadata",
+            "ancestors",
+            "metadata",
+            postgresql_using="btree",
+        ),
+        # This is used by ORDER BY with the default sorting.
+        # Index("ancestors_time_created", "ancestors", "time_created"),
     )
 
 

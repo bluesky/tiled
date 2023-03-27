@@ -182,12 +182,26 @@ indexname;
         return indexes
 
     async def create_metadata_index(self, index_name, key):
+        """
+
+        References
+        ----------
+        https://scalegrid.io/blog/using-jsonb-in-postgresql-how-to-effectively-store-index-json-data-in-postgresql/
+        https://pganalyze.com/blog/gin-index
+        """
+        dialect_name = self.engine.url.get_dialect().name
         if INDEX_PATTERN.match(index_name) is None:
             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
+        if dialect_name == "sqlite":
+            expression = orm.Node.metadata_[key].as_string()
+        elif dialect_name == "postgresql":
+            expression = orm.Node.metadata_[key].label("md")
+        else:
+            raise NotImplementedError
         index = Index(
             f"tiled_md_{index_name}",
             "ancestors",
-            orm.Node.metadata_[key].label("md"),
+            expression,
             # postgresql_ops={"md": "jsonb_ops"},
             postgresql_using="gin",
         )
@@ -215,10 +229,10 @@ indexname;
                 await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
             await db.commit()
 
-    async def _execute(self, statement):
+    async def _execute(self, statement, explain=None):
         "Debugging convenience utility, not exposed to server"
         async with self.session() as db:
-            return await db.execute(text(statement))
+            return await db.execute(text(statement), explain=explain)
             await db.commit()
 
     async def lookup(
@@ -365,10 +379,30 @@ def order_by_clauses(sorting):
     return clauses
 
 
+_TYPE_CONVERSION_MAP = {
+    int: "as_integer",
+    float: "as_float",
+    str: "as_string",
+    bool: "as_boolean",
+}
+
+
+def _get_value(value, type):
+    # This is used only for SQLite, to get the types right
+    # so that that index is used. There is probably a
+    # cleaner way to handle this.
+    # Study https://gist.github.com/brthor/e3d23ae549ee53cdea56d72d39ad1288
+    # which may or may not be relevant anymore.
+    return getattr(value, _TYPE_CONVERSION_MAP[type])()
+
+
 def eq(query, tree):
+    dialect_name = tree.engine.url.get_dialect().name
     attr = orm.Node.metadata_[query.key.split(".")]
-    # condition = get_value(attr, type(query.value)) == query.value
-    condition = attr == type_coerce(query.value, orm.Node.metadata_.type)
+    if dialect_name == "sqlite":
+        condition = _get_value(attr, type(query.value)) == query.value
+    else:
+        condition = attr == type_coerce(query.value, orm.Node.metadata_.type)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 

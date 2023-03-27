@@ -1,3 +1,4 @@
+import contextlib
 import os
 import random
 import string
@@ -20,8 +21,35 @@ from ..structures.core import StructureFamily
 # TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
 
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
-if TILED_TEST_POSTGRESQL_URI and TILED_TEST_POSTGRESQL_URI.endswith("/"):
-    TILED_TEST_POSTGRESQL_URI = TILED_TEST_POSTGRESQL_URI[:-1]
+
+
+@contextlib.asynccontextmanager
+async def temp_postgres(uri, *args, **kwargs):
+    if uri.endswith("/"):
+        uri = uri[:-1]
+    # Create a fresh database.
+    engine = create_async_engine(uri)
+    database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
+    async with engine.connect() as connection:
+        await connection.execute(
+            text("COMMIT")
+        )  # close the automatically-started transaction
+        await connection.execute(text(f"CREATE DATABASE {database_name};"))
+        await connection.commit()
+    # Use the database.
+    async with Adapter.async_create_from_uri(
+        f"{uri}/{database_name}",
+        *args,
+        **kwargs,
+    ) as adapter:
+        yield adapter
+    # Drop the database.
+    async with engine.connect() as connection:
+        await connection.execute(
+            text("COMMIT")
+        )  # close the automatically-started transaction
+        await connection.execute(text(f"DROP DATABASE {database_name};"))
+        await connection.commit()
 
 
 @pytest_asyncio.fixture(params=["sqlite", "postgresql"])
@@ -33,27 +61,8 @@ async def a(request):
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
-        # Create a fresh database.
-        engine = create_async_engine(TILED_TEST_POSTGRESQL_URI)
-        database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
-        async with engine.connect() as connection:
-            await connection.execute(
-                text("COMMIT")
-            )  # close the automatically-started transaction
-            await connection.execute(text(f"CREATE DATABASE {database_name};"))
-            await connection.commit()
-        # Use the database.
-        async with Adapter.async_create_from_uri(
-            f"{TILED_TEST_POSTGRESQL_URI}/{database_name}"
-        ) as adapter:
+        with temp_postgres(TILED_TEST_POSTGRESQL_URI):
             yield adapter
-        # Drop the database.
-        async with engine.connect() as connection:
-            await connection.execute(
-                text("COMMIT")
-            )  # close the automatically-started transaction
-            await connection.execute(text(f"DROP DATABASE {database_name};"))
-            await connection.commit()
     else:
         assert False
 
