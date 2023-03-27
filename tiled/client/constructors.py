@@ -254,7 +254,7 @@ def from_profile(name, structure_clients=None, **kwargs):
     if "direct" in merged:
         # The profile specifies the server in-line.
         # Create an app and use it directly via ASGI.
-        from ..server import build_app_from_config
+        from ..server.app import build_app_from_config
 
         config = merged.pop("direct", None)
         context = Context.from_app(build_app_from_config(config), **merged)
