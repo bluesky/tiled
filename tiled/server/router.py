@@ -136,83 +136,123 @@ async def about(
     )
 
 
-def declare_search_router(query_registry):
+async def node_search(
+    request: Request,
+    path: str,
+    fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
+    select_metadata: Optional[str] = Query(None),
+    offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+    limit: Optional[int] = Query(
+        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+    ),
+    sort: Optional[str] = Query(None),
+    max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
+    omit_links: bool = Query(False),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    query_registry=Depends(get_query_registry),
+    principal: str = Depends(get_current_principal),
+    **filters,
+):
+    request.state.endpoint = "search"
+    if entry.structure_family != "node":
+        raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
+    entry = filter_for_access(
+        entry, principal, ["read:metadata"], request.state.metrics
+    )
+    try:
+        resource, metadata_stale_at, must_revalidate = construct_entries_response(
+            query_registry,
+            entry,
+            "/node/search",
+            path,
+            offset,
+            limit,
+            fields,
+            select_metadata,
+            omit_links,
+            filters,
+            sort,
+            get_base_url(request),
+            resolve_media_type(request),
+            max_depth=max_depth,
+        )
+        # We only get one Expires header, so if different parts
+        # of this response become stale at different times, we
+        # cite the earliest one.
+        entries_stale_at = getattr(entry, "entries_stale_at", None)
+        headers = {}
+        if (metadata_stale_at is None) or (entries_stale_at is None):
+            expires = None
+        else:
+            expires = min(metadata_stale_at, entries_stale_at)
+        if must_revalidate:
+            headers["Cache-Control"] = "must-revalidate"
+        return json_or_msgpack(
+            request,
+            resource.dict(),
+            expires=expires,
+            headers=headers,
+        )
+    except NoEntry:
+        raise HTTPException(status_code=404, detail="No such entry.")
+    except WrongTypeForRoute as err:
+        raise HTTPException(status_code=404, detail=err.args[0])
+    except JMESPathError as err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
+        )
+
+
+# @router.get("/node/distinct/{path:path}", response_model=schemas.GetDistinctResponse)
+async def node_distinct(
+    request: Request,
+    structure_families: bool = False,
+    specs: bool = False,
+    metadata: Optional[List[str]] = Query(default=[]),
+    counts: bool = False,
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    **filters,
+):
+    if hasattr(entry, "get_distinct"):
+        distinct = entry.get_distinct(
+            metadata=metadata,
+            structure_families=structure_families,
+            specs=specs,
+            counts=counts,
+        )
+        return json_or_msgpack(
+            request, schemas.GetDistinctResponse.parse_obj(distinct).dict()
+        )
+    else:
+        raise HTTPException(
+            status_code=405, detail="This path does not support distinct."
+        )
+
+
+def patch_route_signature(route, query_registry):
     """
     This is done dynamically at router startup.
 
     We check the registry of known search query types, which is user
     configurable, and use that to define the allowed HTTP query parameters for
     this route.
+
+    Take a route that accept unspecified search queries as **filters.
+    Return a wrapped version of the route that has the supported
+    search queries explicitly spelled out in the function signature.
+
+    This has no change in the actual behavior of the function,
+    but it enables FastAPI to generate good OpenAPI documentation
+    showing the supported search queries.
+
     """
 
-    async def node_search(
-        request: Request,
-        path: str,
-        fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
-        select_metadata: Optional[str] = Query(None),
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
-        sort: Optional[str] = Query(None),
-        max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
-        omit_links: bool = Query(False),
-        entry: Any = SecureEntry(scopes=["read:metadata"]),
-        query_registry=Depends(get_query_registry),
-        principal: str = Depends(get_current_principal),
-        **filters,
-    ):
-        request.state.endpoint = "search"
-        if entry.structure_family != "node":
-            raise WrongTypeForRoute(
-                "This is not a Node; it cannot be searched or listed."
-            )
-        entry = filter_for_access(
-            entry, principal, ["read:metadata"], request.state.metrics
-        )
-        try:
-            resource, metadata_stale_at, must_revalidate = construct_entries_response(
-                query_registry,
-                entry,
-                "/node/search",
-                path,
-                offset,
-                limit,
-                fields,
-                select_metadata,
-                omit_links,
-                filters,
-                sort,
-                get_base_url(request),
-                resolve_media_type(request),
-                max_depth=max_depth,
-            )
-            # We only get one Expires header, so if different parts
-            # of this response become stale at different times, we
-            # cite the earliest one.
-            entries_stale_at = getattr(entry, "entries_stale_at", None)
-            headers = {}
-            if (metadata_stale_at is None) or (entries_stale_at is None):
-                expires = None
-            else:
-                expires = min(metadata_stale_at, entries_stale_at)
-            if must_revalidate:
-                headers["Cache-Control"] = "must-revalidate"
-            return json_or_msgpack(
-                request,
-                resource.dict(),
-                expires=expires,
-                headers=headers,
-            )
-        except NoEntry:
-            raise HTTPException(status_code=404, detail="No such entry.")
-        except WrongTypeForRoute as err:
-            raise HTTPException(status_code=404, detail=err.args[0])
-        except JMESPathError as err:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
-            )
+    # Build a wrapper so that we can modify the signature
+    # without mutating the wrapped original.
+
+    async def route_with_sig(*args, **kwargs):
+        return await route(*args, **kwargs)
 
     # Black magic here! FastAPI bases its validation and auto-generated swagger
     # documentation on the signature of the route function. We do not know what
@@ -225,7 +265,7 @@ def declare_search_router(query_registry):
     # accepted via **filters.
 
     # Make a copy of the original parameters.
-    signature = inspect.signature(node_search)
+    signature = inspect.signature(route)
     parameters = list(signature.parameters.values())
     # Drop the **filters parameter from the signature.
     del parameters[-1]
@@ -245,54 +285,29 @@ def declare_search_router(query_registry):
                 annotation=Optional[List[field_type]],
             )
             parameters.append(injected_parameter)
-    node_search.__signature__ = signature.replace(parameters=parameters)
+    route_with_sig.__signature__ = signature.replace(parameters=parameters)
     # End black magic
 
-    # Register the search route.
-    router = APIRouter()
-    router.get(
-        "/node/search",
-        response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-            schemas.PaginationLinks,
-            dict,
-        ],
-        include_in_schema=False,
-    )(node_search)
-    router.get(
-        "/node/search/{path:path}",
-        response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-            schemas.PaginationLinks,
-            dict,
-        ],
-    )(node_search)
-    return router
-
-
-@router.get("/node/distinct/{path:path}", response_model=schemas.GetDistinctResponse)
-async def node_distinct(
-    request: Request,
-    structure_families: bool = False,
-    specs: bool = False,
-    metadata: Optional[List[str]] = Query(default=[]),
-    counts: bool = False,
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
-):
-    if hasattr(entry, "get_distinct"):
-        distinct = entry.get_distinct(
-            metadata=metadata,
-            structure_families=structure_families,
-            specs=specs,
-            counts=counts,
-        )
-        return json_or_msgpack(
-            request, schemas.GetDistinctResponse.parse_obj(distinct).dict()
-        )
-    else:
-        raise HTTPException(
-            status_code=405, detail="This path does not support distinct."
-        )
+    # # Register the search route.
+    # router = APIRouter()
+    # router.get(
+    #     "/node/search",
+    #     response_model=schemas.Response[
+    #         List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+    #         schemas.PaginationLinks,
+    #         dict,
+    #     ],
+    #     include_in_schema=False,
+    # )(route_with_sig)
+    # router.get(
+    #     "/node/search/{path:path}",
+    #     response_model=schemas.Response[
+    #         List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+    #         schemas.PaginationLinks,
+    #         dict,
+    #     ],
+    # )(route_with_sig)
+    return route_with_sig
 
 
 @router.get(
