@@ -198,7 +198,8 @@ async def test_metadata_index_is_used(a):
             metadata={
                 "number": i,
                 "number_as_string": str(i),
-                "nested": {"number": i, "number_as_string": str(i)},
+                "nested": {"number": i, "number_as_string": str(i), "bool": bool(i)},
+                "bool": bool(i),
             },
             specs=[],
             references=[],
@@ -217,6 +218,10 @@ async def test_metadata_index_is_used(a):
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
 
+        results = await a.search(Key("bool") == False).keys_slice(0, 5, 1)  # noqa: #712
+        assert len(results) == 1
+        assert "top_level_metadata" in str(e)
+
         results = await a.search(Key("nested.number_as_string") == "3").keys_slice(
             0, 5, 1
         )
@@ -224,5 +229,11 @@ async def test_metadata_index_is_used(a):
         assert "top_level_metadata" in str(e)
 
         results = await a.search(Key("nested.number") == 3).keys_slice(0, 5, 1)
+        assert len(results) == 1
+        assert "top_level_metadata" in str(e)
+
+        results = await a.search(Key("nested.bool") == False).keys_slice(  # noqa: #712
+            0, 5, 1
+        )
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
