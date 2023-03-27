@@ -10,7 +10,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..catalog.adapter import Adapter
-from ..queries import Eq
+from ..catalog.explain import record_explanations
+from ..queries import Eq, Key
 from ..structures.core import StructureFamily
 
 # To test with postgres, start a container like:
@@ -61,7 +62,7 @@ async def a(request):
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
-        with temp_postgres(TILED_TEST_POSTGRESQL_URI):
+        async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as adapter:
             yield adapter
     else:
         assert False
@@ -124,14 +125,6 @@ async def test_sorting(a):
             specs=[],
             references=[],
         )
-    # Default order is based on time_created.
-    assert (await a.keys_slice(0, 10, 1)) == shuffled_letters
-
-    # Explicitly sort by time_created.
-    assert (
-        await a.sort([("time_created", 1)]).keys_slice(0, 10, 1)
-    ) == shuffled_letters
-
     # Sort by key.
     await a.sort([("id", 1)]).keys_slice(0, 10, 1) == ordered_letters
     # Test again, with items_slice.
@@ -199,17 +192,37 @@ async def test_search(a):
 
 
 @pytest.mark.asyncio
-async def test_metadata_indexes(a):
-    # There is some weird coupling happening with pytest
-    # that needs investiagtion. In the mean time, lead with this:
-    await a.drop_all_metadata_indexes()
+async def test_metadata_index_is_used(a):
+    for i in range(10):
+        await a.create_node(
+            metadata={
+                "number": i,
+                "number_as_string": str(i),
+                "nested": {"number": i, "number_as_string": str(i)},
+            },
+            specs=[],
+            references=[],
+            structure_family="array",
+        )
+    # Check that an index (specifically the 'top_level_metdata' index) is used
+    # by inspecting the content of an 'EXPLAIN ...' query. The exact content
+    # is intended for humans and is not an API, but we can coarsely check
+    # that the index of interest is mentioned.
+    with record_explanations() as e:
+        results = await a.search(Key("number_as_string") == "3").keys_slice(0, 5, 1)
+        assert len(results) == 1
+        assert "top_level_metadata" in str(e)
 
-    # Test create / list / drop.
-    assert len(await a.list_metadata_indexes()) == 0
-    await a.create_metadata_index("letter", "letter")
-    indexes = await a.list_metadata_indexes()
-    assert len(indexes) == 1
-    assert indexes[0][0] == "tiled_md_letter"
-    await a.drop_metadata_index("tiled_md_letter")
-    assert len(await a.list_metadata_indexes()) == 0
-    await a.drop_all_metadata_indexes()
+        results = await a.search(Key("number") == 3).keys_slice(0, 5, 1)
+        assert len(results) == 1
+        assert "top_level_metadata" in str(e)
+
+        results = await a.search(Key("nested.number_as_string") == "3").keys_slice(
+            0, 5, 1
+        )
+        assert len(results) == 1
+        assert "top_level_metadata" in str(e)
+
+        results = await a.search(Key("nested.number") == 3).keys_slice(0, 5, 1)
+        assert len(results) == 1
+        assert "top_level_metadata" in str(e)

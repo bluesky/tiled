@@ -3,7 +3,7 @@ import os
 import re
 import uuid
 
-from sqlalchemy import Index, text, type_coerce
+from sqlalchemy import text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
@@ -144,90 +144,93 @@ class Adapter:
         "Convenience method for constructing an AsyncSession context"
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
-    async def list_metadata_indexes(self):
-        dialect_name = self.engine.url.get_dialect().name
-        async with self.session() as db:
-            if dialect_name == "sqlite":
-                statement = """
-SELECT name, sql
-FROM SQLite_master
-WHERE type = 'index'
-AND tbl_name = 'nodes'
-AND name LIKE 'tiled_md_%'
-ORDER BY tbl_name;
-
-"""
-            elif dialect_name == "postgresql":
-                statement = """
-SELECT
-indexname, indexdef
-FROM
-pg_indexes
-WHERE tablename = 'nodes'
-AND indexname LIKE 'tiled_md_%'
-ORDER BY
-indexname;
-
-"""
-            else:
-                raise NotImplementedError(
-                    f"Cannot list indexes for dialect {dialect_name}"
-                )
-            indexes = (
-                await db.execute(
-                    text(statement),
-                    explain=False,
-                )
-            ).all()
-        return indexes
-
-    async def create_metadata_index(self, index_name, key):
-        """
-
-        References
-        ----------
-        https://scalegrid.io/blog/using-jsonb-in-postgresql-how-to-effectively-store-index-json-data-in-postgresql/
-        https://pganalyze.com/blog/gin-index
-        """
-        dialect_name = self.engine.url.get_dialect().name
-        if INDEX_PATTERN.match(index_name) is None:
-            raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
-        if dialect_name == "sqlite":
-            expression = orm.Node.metadata_[key].as_string()
-        elif dialect_name == "postgresql":
-            expression = orm.Node.metadata_[key].label("md")
-        else:
-            raise NotImplementedError
-        index = Index(
-            f"tiled_md_{index_name}",
-            "ancestors",
-            expression,
-            # postgresql_ops={"md": "jsonb_ops"},
-            postgresql_using="gin",
-        )
-
-        def create_index(connection):
-            index.create(connection)
-
-        async with self.engine.connect() as connection:
-            await connection.run_sync(create_index)
-            await connection.commit()
-
-    async def drop_metadata_index(self, index_name):
-        if INDEX_PATTERN.match(index_name) is None:
-            raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
-        if not index_name.startswith("tiled_md_"):
-            index_name = f"tiled_md_{index_name}"
-        async with self.session() as db:
-            await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
-            await db.commit()
-
-    async def drop_all_metadata_indexes(self):
-        indexes = await self.list_metadata_indexes()
-        async with self.session() as db:
-            for index_name, sql in indexes:
-                await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
-            await db.commit()
+    # This is heading in a reasonable direction but does not actually work yet.
+    # Pausing development for now.
+    #
+    #     async def list_metadata_indexes(self):
+    #         dialect_name = self.engine.url.get_dialect().name
+    #         async with self.session() as db:
+    #             if dialect_name == "sqlite":
+    #                 statement = """
+    # SELECT name, sql
+    # FROM SQLite_master
+    # WHERE type = 'index'
+    # AND tbl_name = 'nodes'
+    # AND name LIKE 'tiled_md_%'
+    # ORDER BY tbl_name;
+    #
+    # """
+    #             elif dialect_name == "postgresql":
+    #                 statement = """
+    # SELECT
+    # indexname, indexdef
+    # FROM
+    # pg_indexes
+    # WHERE tablename = 'nodes'
+    # AND indexname LIKE 'tiled_md_%'
+    # ORDER BY
+    # indexname;
+    #
+    # """
+    #             else:
+    #                 raise NotImplementedError(
+    #                     f"Cannot list indexes for dialect {dialect_name}"
+    #                 )
+    #             indexes = (
+    #                 await db.execute(
+    #                     text(statement),
+    #                     explain=False,
+    #                 )
+    #             ).all()
+    #         return indexes
+    #
+    #     async def create_metadata_index(self, index_name, key):
+    #         """
+    #
+    #         References
+    #         ----------
+    #         https://scalegrid.io/blog/using-jsonb-in-postgresql-how-to-effectively-store-index-json-data-in-postgresql/
+    #         https://pganalyze.com/blog/gin-index
+    #         """
+    #         dialect_name = self.engine.url.get_dialect().name
+    #         if INDEX_PATTERN.match(index_name) is None:
+    #             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
+    #         if dialect_name == "sqlite":
+    #             expression = orm.Node.metadata_[key].as_string()
+    #         elif dialect_name == "postgresql":
+    #             expression = orm.Node.metadata_[key].label("md")
+    #         else:
+    #             raise NotImplementedError
+    #         index = Index(
+    #             f"tiled_md_{index_name}",
+    #             "ancestors",
+    #             expression,
+    #             # postgresql_ops={"md": "jsonb_ops"},
+    #             postgresql_using="gin",
+    #         )
+    #
+    #         def create_index(connection):
+    #             index.create(connection)
+    #
+    #         async with self.engine.connect() as connection:
+    #             await connection.run_sync(create_index)
+    #             await connection.commit()
+    #
+    #     async def drop_metadata_index(self, index_name):
+    #         if INDEX_PATTERN.match(index_name) is None:
+    #             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
+    #         if not index_name.startswith("tiled_md_"):
+    #             index_name = f"tiled_md_{index_name}"
+    #         async with self.session() as db:
+    #             await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
+    #             await db.commit()
+    #
+    #     async def drop_all_metadata_indexes(self):
+    #         indexes = await self.list_metadata_indexes()
+    #         async with self.session() as db:
+    #             for index_name, sql in indexes:
+    #                 await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
+    #             await db.commit()
 
     async def _execute(self, statement, explain=None):
         "Debugging convenience utility, not exposed to server"

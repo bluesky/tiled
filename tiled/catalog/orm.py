@@ -57,8 +57,8 @@ class Node(Timestamped, Base):
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    key = Column(Unicode(1023), index=True, nullable=False)
-    ancestors = Column(JSONVariant, index=True, nullable=True)
+    key = Column(Unicode(1023), nullable=False)
+    ancestors = Column(JSONVariant, nullable=True)
     structure_family = Column(Enum(StructureFamily), nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
@@ -73,6 +73,7 @@ class Node(Timestamped, Base):
         Index(
             "top_level_metadata",
             "ancestors",
+            "time_created",  # the default sorting, used to avoid creating a temp sort index
             "metadata",
             postgresql_using="btree",
         ),
@@ -177,9 +178,9 @@ class Revisions(Timestamped, Base):
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    key = Column(Unicode(1023), index=True, nullable=False)
-    ancestors = Column(JSONVariant, index=True, nullable=True)
-    revision = Column(Integer, index=True, nullable=False)
+    key = Column(Unicode(1023), nullable=False)
+    ancestors = Column(JSONVariant, nullable=True)
+    revision = Column(Integer, nullable=False)
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
@@ -193,6 +194,6 @@ class Revisions(Timestamped, Base):
             "key",
             "ancestors",
             "revision",
-            name="_key_ancestors_revision_unique_constraint",
+            name="key_ancestors_revision_unique_constraint",
         ),
     )
