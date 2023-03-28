@@ -8,7 +8,6 @@ import yaml
 
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, from_profile
-from ..config import ConfigError
 from ..client.context import CannotPrompt
 from ..config import ConfigError
 from ..profiles import load_profiles, paths
@@ -51,10 +50,10 @@ def test_direct(tmpdir):
     }
     with open(tmpdir / "example.yml", "w") as file:
         file.write(yaml.dump(profile_content))
-    load_profiles.cache_clear()
     profile_dir = Path(tmpdir)
     try:
-        paths.insert(0, profile_dir)
+        paths.append(profile_dir)
+        load_profiles.cache_clear()
         from_profile("test")
     finally:
         paths.remove(profile_dir)
@@ -72,10 +71,10 @@ def test_direct_config_error(tmpdir):
     }
     with open(tmpdir / "example.yml", "w") as file:
         file.write(yaml.dump(profile_content))
-    load_profiles.cache_clear()
     profile_dir = Path(tmpdir)
     try:
-        paths.insert(0, profile_dir)
+        paths.append(profile_dir)
+        load_profiles.cache_clear()
         with pytest.raises(ConfigError):
             from_profile("test")
     finally:
