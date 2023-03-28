@@ -1,10 +1,12 @@
 from pathlib import Path
 
 import httpx
+import pytest
 import yaml
 
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, from_profile
+from ..config import ConfigError
 from ..profiles import load_profiles, paths
 from ..server.app import build_app
 from .utils import fail_with_status_code
@@ -50,5 +52,27 @@ def test_direct(tmpdir):
     try:
         paths.insert(0, profile_dir)
         from_profile("test")
+    finally:
+        paths.remove(profile_dir)
+
+
+def test_direct_config_error(tmpdir):
+    profile_content = {
+        "test": {
+            "direct": {
+                # Intentional config mistake!
+                # Value of trees must be a list.
+                "trees": {"path": "/", "tree": "tiled.examples.generated_minimal:tree"}
+            }
+        }
+    }
+    with open(tmpdir / "example.yml", "w") as file:
+        file.write(yaml.dump(profile_content))
+    load_profiles.cache_clear()
+    profile_dir = Path(tmpdir)
+    try:
+        paths.insert(0, profile_dir)
+        with pytest.raises(ConfigError):
+            from_profile("test")
     finally:
         paths.remove(profile_dir)
