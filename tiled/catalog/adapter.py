@@ -1,21 +1,44 @@
 import asyncio
+import collections
+import importlib
 import os
 import re
 import uuid
 
+import anyio
 from sqlalchemy import text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
-from ..utils import UNCHANGED
+from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
 from .base import Base
 from .explain import ExplainAsyncSession
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+
+# This maps MIME types (i.e. file formats) for appropriate Readers.
+# OneShotCachedMap is used to defer imports. We don't want to pay up front
+# for importing Readers that we will not actually use.
+DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
+    {
+        "image/tiff": lambda: importlib.import_module(
+            "...adapters.tiff", __name__
+        ).TiffAdapter,
+        "text/csv": lambda: importlib.import_module(
+            "...adapters.dataframe", __name__
+        ).DataFrameAdapter.read_csv,
+        XLSX_MIME_TYPE: lambda: importlib.import_module(
+            "...adapters.excel", __name__
+        ).ExcelAdapter.from_file,
+        "application/x-hdf5": lambda: importlib.import_module(
+            "...adapters.hdf5", __name__
+        ).HDF5Adapter.from_file,
+    }
+)
 
 
 async def initialize_database(engine):
@@ -48,6 +71,30 @@ class RootNode:
         self.time_updated = None
 
 
+class Context:
+    def __init__(
+        self,
+        engine,
+        readers_by_mimetype=None,
+        mimetype_detection_hook=None,
+        key_maker=lambda: str(uuid.uuid4()),
+    ):
+        self.engine = engine
+        self.key_maker = key_maker
+        readers_by_mimetype = readers_by_mimetype or {}
+        if mimetype_detection_hook is not None:
+            mimetype_detection_hook = import_object(mimetype_detection_hook)
+        # If readers_by_mimetype comes from a configuration file,
+        # objects are given as importable strings, like "package.module:Reader".
+        for key, value in list(readers_by_mimetype.items()):
+            if isinstance(value, str):
+                readers_by_mimetype[key] = import_object(value)
+        # User-provided readers take precedence over defaults.
+        merged_readers_by_mimetype = collections.ChainMap(
+            readers_by_mimetype, DEFAULT_READERS_BY_MIMETYPE
+        )
+
+
 class Adapter:
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
@@ -55,15 +102,15 @@ class Adapter:
 
     def __init__(
         self,
-        engine,
+        context,
         node,
         *,
         conditions=None,
         sorting=None,
-        key_maker=lambda: str(uuid.uuid4()),
         new_database=False,
     ):
-        self.engine = engine
+        self.context = context
+        self.engine = self.context.engine
         self.node = node
         if node.key is None:
             # Special case for RootNode
@@ -73,7 +120,6 @@ class Adapter:
         self.sorting = sorting or [("time_created", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
-        self.key_maker = key_maker
         self.metadata = node.metadata_
         self.specs = node.specs
         self.references = node.references
@@ -99,7 +145,7 @@ class Adapter:
         "Connect to an existing database."
         # TODO Check that database exists and has the expected alembic revision.
         engine = create_async_engine(database_uri, echo=echo)
-        return cls(engine, RootNode(metadata, specs, references))
+        return cls(Context(engine), RootNode(metadata, specs, references))
 
     @classmethod
     def create_from_uri(
@@ -108,7 +154,9 @@ class Adapter:
         "Create a new database and connect to it."
         engine = create_async_engine(database_uri, echo=echo)
         asyncio.run(initialize_database(engine))
-        return cls(engine, RootNode(metadata, specs, references), new_database=True)
+        return cls(
+            Context(engine), RootNode(metadata, specs, references), new_database=True
+        )
 
     @classmethod
     def async_create_from_uri(
@@ -121,14 +169,18 @@ class Adapter:
     ):
         "Create a new database and connect to it."
         engine = create_async_engine(database_uri, echo=echo)
-        return cls(engine, RootNode(metadata, specs, references), new_database=True)
+        return cls(
+            Context(engine), RootNode(metadata, specs, references), new_database=True
+        )
 
     @classmethod
     def in_memory(cls, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO):
         "Create a transient database in memory."
         engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
         asyncio.run(initialize_database(engine))
-        return cls(engine, RootNode(metadata, specs, references), new_database=True)
+        return cls(
+            Context(engine), RootNode(metadata, specs, references), new_database=True
+        )
 
     @classmethod
     def async_in_memory(
@@ -140,7 +192,9 @@ class Adapter:
     ):
         "Create a transient database in memory."
         engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-        return cls(engine, RootNode(metadata, specs, references), new_database=True)
+        return cls(
+            Context(engine), RootNode(metadata, specs, references), new_database=True
+        )
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -260,7 +314,7 @@ class Adapter:
         return self.from_orm(node)
 
     def from_orm(self, node):
-        return type(self)(engine=self.engine, node=node, key_maker=self.key_maker)
+        return type(self)(context=self.context, node=node)
 
     def new_variation(
         self,
@@ -281,7 +335,6 @@ class Adapter:
             node=self.node,
             conditions=conditions,
             sorting=sorting,
-            key_maker=self.key_maker,
             # access_policy=self.access_policy,
             # entries_stale_after=self.entries_stale_after,
             # metadata_stale_after=self.entries_stale_after,
@@ -333,7 +386,9 @@ class Adapter:
                 await db.commit()
                 await db.refresh(data_source_orm)
                 for asset in data_source.assets:
-                    asset_orm = orm.Asset(data_uri=asset.data_uri)
+                    asset_orm = orm.Asset(
+                        data_uri=asset.data_uri, data_source_id=data_source_orm.id
+                    )
                     db.add(asset_orm)
                     await db.commit()
 

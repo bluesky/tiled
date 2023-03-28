@@ -53,6 +53,7 @@ class Node(Timestamped, Base):
     """
 
     __tablename__ = "nodes"
+    __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -64,7 +65,7 @@ class Node(Timestamped, Base):
     specs = Column(JSONVariant, nullable=False)
     references = Column(JSONVariant, nullable=False)
 
-    data_sources = relationship("DataSource", back_populates="node")
+    data_sources = relationship("DataSource", back_populates="node", lazy="joined")
 
     __table_args__ = (
         UniqueConstraint("key", "ancestors", name="key_ancestors_unique_constraint"),
@@ -96,6 +97,7 @@ class DataSource(Timestamped, Base):
     """
 
     __tablename__ = "data_sources"
+    __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -109,7 +111,7 @@ class DataSource(Timestamped, Base):
     externally_managed = Column(Boolean, default=False, nullable=False)
 
     node = relationship("Node", back_populates="data_sources")
-    assets = relationship("Asset", back_populates="data_source")
+    assets = relationship("Asset", back_populates="data_source", lazy="joined")
 
 
 class Asset(Timestamped, Base):
@@ -118,6 +120,7 @@ class Asset(Timestamped, Base):
     """
 
     __tablename__ = "assets"
+    __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -142,13 +145,14 @@ class AssetBlob(Base):
     """
 
     __tablename__ = "asset_blobs"
+    __mapper_args__ = {"eager_defaults": True}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
     blob = Column(LargeBinary, nullable=False)
 
 
-class AssetInodeState(Base):
+class AssetInodeAttributes(Base):
     """
     This tracks information used to check whether a filesystem asset has changed.
 
@@ -156,13 +160,14 @@ class AssetInodeState(Base):
     https://apenwarr.ca/log/20181113
     """
 
-    __tablename__ = "asset_state"
+    __tablename__ = "asset_inode_attributes"
+    __mapper_args__ = {"eager_defaults": True}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
     mtime = Column(Integer, nullable=False)
     size = Column(Integer, nullable=False)
-    inode = Column(Integer, nullable=False)
+    inode_number = Column(Integer, nullable=False)
     mode = Column(Unicode(4), nullable=False)  # e.g. "0664"
     uid = Column(Integer, nullable=False)
     gid = Column(Integer, nullable=False)
@@ -174,6 +179,7 @@ class Revisions(Timestamped, Base):
     """
 
     __tablename__ = "revisions"
+    __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the user.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

@@ -246,9 +246,12 @@ async def test_metadata_index_is_used(a):
 
 
 @pytest.mark.asyncio
-async def test_write(a):
+async def test_write_externally_managed(a, tmpdir):
     arr = numpy.ones((3, 5))
+    filepath = tmpdir / "file.txt"
+    numpy.savetxt(filepath, arr)
     await a.create_node(
+        key="x",
         structure_family="array",
         metadata={},
         data_sources=[
@@ -261,8 +264,11 @@ async def test_write(a):
                     ),
                 ),
                 parameters={},
-                externally_managed=False,
-                assets=[],
+                externally_managed=True,
+                assets=[Asset(data_uri=f"file:///{filepath}")],
             )
         ],
     )
+    x = await a.lookup(["x"])
+    x.node.data_sources[0].mimetype
+    x.node.data_sources[0].assets[0].data_uri
