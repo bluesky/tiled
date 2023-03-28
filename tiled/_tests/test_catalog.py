@@ -4,14 +4,20 @@ import random
 import string
 import uuid
 
+import numpy
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from ..adapters.array import ArrayAdapter
 from ..catalog.adapter import Adapter
 from ..catalog.explain import record_explanations
 from ..queries import Eq, Key
+from ..server.pydantic_array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
+from ..server.pydantic_dataframe import DataFrameStructure
+from ..server.pydantic_sparse import SparseStructure
+from ..server.schemas import Asset, DataSource
 from ..structures.core import StructureFamily
 
 # To test with postgres, start a container like:
@@ -237,3 +243,26 @@ async def test_metadata_index_is_used(a):
         )
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
+
+
+@pytest.mark.asyncio
+async def test_write(a):
+    arr = numpy.ones((3, 5))
+    await a.create_node(
+        structure_family="array",
+        metadata={},
+        data_sources=[
+            DataSource(
+                mimetype="text/csv",
+                structure=ArrayStructure(
+                    micro=BuiltinDtype.from_numpy_dtype(arr.dtype),
+                    macro=ArrayMacroStructure(
+                        shape=arr.shape, chunks=[[dim] for dim in arr.shape]
+                    ),
+                ),
+                parameters={},
+                externally_managed=False,
+                assets=[],
+            )
+        ],
+    )

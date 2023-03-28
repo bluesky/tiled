@@ -96,6 +96,20 @@ References = pydantic.conlist(ReferenceDocument, max_items=20)
 Specs = pydantic.conlist(Spec, max_items=20)
 
 
+class Asset(pydantic.BaseModel):
+    data_uri: str
+
+
+class DataSource(pydantic.BaseModel):
+    structure: Optional[
+        Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
+    ]
+    mimetype: str
+    parameters: dict
+    externally_managed: bool
+    assets: List[Asset]
+
+
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
     structure_family: Optional[StructureFamily]

@@ -296,23 +296,53 @@ class Adapter:
         return self.new_variation(sorting=sorting)
 
     async def create_node(
-        self, metadata, structure_family, specs, references, key=None
+        self,
+        structure_family,
+        metadata,
+        key=None,
+        specs=None,
+        references=None,
+        data_sources=None,
     ):
         key = key or self.key_maker()
+        data_sources = data_sources or []
         node = orm.Node(
             key=key,
             ancestors=self.segments,
             metadata_=metadata,
             structure_family=structure_family,
-            specs=specs,
-            references=references,
+            specs=specs or [],
+            references=references or [],
         )
+        # TODO Is there a way to insert related objects without
+        # going back to commit/refresh so much?
         async with self.session() as db:
             db.add(node)
             await db.commit()
+            await db.refresh(node)
+            print(data_sources)
+            for data_source in data_sources:
+                data_source_orm = orm.DataSource(
+                    node_id=node.id,
+                    structure=data_source.structure.dict(),
+                    mimetype=data_source.mimetype,
+                    externally_managed=data_source.externally_managed,
+                    parameters=data_source.parameters,
+                )
+                db.add(data_source_orm)
+                await db.commit()
+                await db.refresh(data_source_orm)
+                for asset in data_source.assets:
+                    asset_orm = orm.Asset(data_uri=asset.data_uri)
+                    db.add(asset_orm)
+                    await db.commit()
+
         # TODO Is this the right thing to return here?
         # Should we return anything at all?
         return self.from_orm(node)
+
+    async def patch_node(datasources=None):
+        ...
 
     async def keys_slice(self, start, stop, direction):
         if direction != 1:
