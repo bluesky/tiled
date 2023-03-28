@@ -424,7 +424,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         #     schemas.PaginationLinks,dict,])(node_search(query_registry))
 
         app.get(
-            "/node/search/{path:path}",
+            "/api/v1/node/search/{path:path}",
             response_model=schemas.Response[
                 List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
                 schemas.PaginationLinks,
@@ -432,7 +432,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             ],
         )(patch_route_signature(node_search, query_registry))
         app.get(
-            "/node/distinct/{path:path}", response_model=schemas.GetDistinctResponse
+            "/api/v1/node/distinct/{path:path}",
+            response_model=schemas.GetDistinctResponse,
         )(patch_route_signature(node_distinct, query_registry))
 
         app.state.allow_origins.extend(settings.allow_origins)
