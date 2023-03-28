@@ -102,7 +102,7 @@ class DataSource(Timestamped, Base):
     node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
 
     structure = Column(JSONVariant, nullable=True)
-    mimetype = Column(Unicode(1023), nullable=False)
+    mimetype = Column(Unicode(255), nullable=False)  # max length given by RFC 4288
     # These are additional parameters passed to the Adapter to guide
     # it to access and arrange the data in the file correctly.
     parameters = Column(JSONVariant, nullable=True)
@@ -148,7 +148,7 @@ class AssetBlob(Base):
     blob = Column(LargeBinary, nullable=False)
 
 
-class AssetState(Base):
+class AssetInodeState(Base):
     """
     This tracks information used to check whether a filesystem asset has changed.
 

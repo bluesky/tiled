@@ -61,6 +61,7 @@ class Adapter:
         conditions=None,
         sorting=None,
         key_maker=lambda: str(uuid.uuid4()),
+        new_database=False,
     ):
         self.engine = engine
         self.node = node
@@ -78,13 +79,14 @@ class Adapter:
         self.references = node.references
         self.time_creatd = node.time_created
         self.time_updated = node.time_updated
+        self.new_database = new_database
 
     def __repr__(self):
         return f"<{type(self).__name__} {self.segments}>"
 
     async def __aenter__(self):
-        # TODO Add some state so that initialization only happens if it is needed.
-        await initialize_database(self.engine)
+        if self.new_database:
+            await initialize_database(self.engine)
         return self
 
     async def __aexit__(self, *args):
@@ -106,7 +108,7 @@ class Adapter:
         "Create a new database and connect to it."
         engine = create_async_engine(database_uri, echo=echo)
         asyncio.run(initialize_database(engine))
-        return cls(engine, RootNode(metadata, specs, references))
+        return cls(engine, RootNode(metadata, specs, references), new_database=True)
 
     @classmethod
     def async_create_from_uri(
@@ -119,14 +121,14 @@ class Adapter:
     ):
         "Create a new database and connect to it."
         engine = create_async_engine(database_uri, echo=echo)
-        return cls(engine, RootNode(metadata, specs, references))
+        return cls(engine, RootNode(metadata, specs, references), new_database=True)
 
     @classmethod
     def in_memory(cls, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO):
         "Create a transient database in memory."
         engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
         asyncio.run(initialize_database(engine))
-        return cls(engine, RootNode(metadata, specs, references))
+        return cls(engine, RootNode(metadata, specs, references), new_database=True)
 
     @classmethod
     def async_in_memory(
@@ -138,7 +140,7 @@ class Adapter:
     ):
         "Create a transient database in memory."
         engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-        return cls(engine, RootNode(metadata, specs, references))
+        return cls(engine, RootNode(metadata, specs, references), new_database=True)
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
