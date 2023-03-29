@@ -1,3 +1,5 @@
+import sys
+import types
 from pathlib import Path
 
 import httpx
@@ -6,9 +8,10 @@ import yaml
 
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, from_profile
+from ..client.context import CannotPrompt
 from ..config import ConfigError
 from ..profiles import load_profiles, paths
-from ..server.app import build_app
+from ..server.app import build_app, build_app_from_config
 from .utils import fail_with_status_code
 
 tree = MapAdapter({})
@@ -47,10 +50,10 @@ def test_direct(tmpdir):
     }
     with open(tmpdir / "example.yml", "w") as file:
         file.write(yaml.dump(profile_content))
-    load_profiles.cache_clear()
     profile_dir = Path(tmpdir)
     try:
-        paths.insert(0, profile_dir)
+        paths.append(profile_dir)
+        load_profiles.cache_clear()
         from_profile("test")
     finally:
         paths.remove(profile_dir)
@@ -68,11 +71,44 @@ def test_direct_config_error(tmpdir):
     }
     with open(tmpdir / "example.yml", "w") as file:
         file.write(yaml.dump(profile_content))
-    load_profiles.cache_clear()
     profile_dir = Path(tmpdir)
     try:
-        paths.insert(0, profile_dir)
+        paths.append(profile_dir)
+        load_profiles.cache_clear()
         with pytest.raises(ConfigError):
             from_profile("test")
     finally:
         paths.remove(profile_dir)
+
+
+def test_stdin_closed(monkeypatch):
+    "When stdin is closed do not prompt for authentication."
+    # https://github.com/bluesky/tiled/pull/427
+    __stdin__ = types.SimpleNamespace(closed=True)
+    monkeypatch.setattr(sys, "__stdin__", __stdin__)
+    config = {
+        "authentication": {
+            "secret_keys": ["SECRET"],
+            "providers": [
+                {
+                    "provider": "toy",
+                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                    "args": {
+                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
+                    },
+                }
+            ],
+        },
+        "database": {
+            "uri": "sqlite+aiosqlite://",  # in memory
+        },
+        "trees": [
+            {
+                "tree": f"{__name__}:tree",
+                "path": "/",
+            },
+        ],
+    }
+    with Context.from_app(build_app_from_config(config)) as context:
+        with pytest.raises(CannotPrompt):
+            from_context(context)
