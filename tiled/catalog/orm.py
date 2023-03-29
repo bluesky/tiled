@@ -65,7 +65,7 @@ class Node(Timestamped, Base):
     specs = Column(JSONVariant, nullable=False)
     references = Column(JSONVariant, nullable=False)
 
-    data_sources = relationship("DataSource", back_populates="node", lazy="joined")
+    data_sources = relationship("DataSource", back_populates="node", lazy="selectin")
 
     __table_args__ = (
         UniqueConstraint("key", "ancestors", name="key_ancestors_unique_constraint"),
@@ -111,7 +111,7 @@ class DataSource(Timestamped, Base):
     externally_managed = Column(Boolean, default=False, nullable=False)
 
     node = relationship("Node", back_populates="data_sources")
-    assets = relationship("Asset", back_populates="data_source", lazy="joined")
+    assets = relationship("Asset", back_populates="data_source", lazy="selectin")
 
 
 class Asset(Timestamped, Base):

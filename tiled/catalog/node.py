@@ -12,6 +12,7 @@ from sqlalchemy.future import select
 
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
+from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
 from .base import Base
@@ -39,6 +40,62 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         ).HDF5Adapter.from_file,
     }
 )
+
+
+def from_uri(
+    database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
+):
+    "Connect to an existing database."
+    # TODO Check that database exists and has the expected alembic revision.
+    engine = create_async_engine(database_uri, echo=echo)
+    return NodeAdapter(Context(engine), RootNode(metadata, specs, references))
+
+
+def create_from_uri(
+    database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
+):
+    "Create a new database and connect to it."
+    engine = create_async_engine(database_uri, echo=echo)
+    asyncio.run(initialize_database(engine))
+    return NodeAdapter(
+        Context(engine), RootNode(metadata, specs, references), new_database=True
+    )
+
+
+def async_create_from_uri(
+    database_uri,
+    metadata=None,
+    specs=None,
+    references=None,
+    echo=DEFAULT_ECHO,
+):
+    "Create a new database and connect to it."
+    engine = create_async_engine(database_uri, echo=echo)
+    return NodeAdapter(
+        Context(engine), RootNode(metadata, specs, references), new_database=True
+    )
+
+
+def in_memory(metadata=None, specs=None, references=None, echo=DEFAULT_ECHO):
+    "Create a transient database in memory."
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
+    asyncio.run(initialize_database(engine))
+    return NodeAdapter(
+        Context(engine), RootNode(metadata, specs, references), new_database=True
+    )
+
+
+def async_in_memory(
+    metadata=None,
+    specs=None,
+    references=None,
+    echo=DEFAULT_ECHO,
+):
+    "Create a transient database in memory."
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
+    return NodeAdapter(
+        Context(engine), RootNode(metadata, specs, references), new_database=True
+    )
 
 
 async def initialize_database(engine):
@@ -94,108 +151,6 @@ class Context:
             readers_by_mimetype, DEFAULT_READERS_BY_MIMETYPE
         )
 
-
-class Adapter:
-    query_registry = QueryTranslationRegistry()
-    register_query = query_registry.register
-    register_query_lazy = query_registry.register_lazy
-
-    def __init__(
-        self,
-        context,
-        node,
-        *,
-        conditions=None,
-        sorting=None,
-        new_database=False,
-    ):
-        self.context = context
-        self.engine = self.context.engine
-        self.node = node
-        if node.key is None:
-            # Special case for RootNode
-            self.segments = []
-        else:
-            self.segments = node.ancestors + [node.key]
-        self.sorting = sorting or [("time_created", 1)]
-        self.order_by_clauses = order_by_clauses(self.sorting)
-        self.conditions = conditions or []
-        self.metadata = node.metadata_
-        self.specs = node.specs
-        self.references = node.references
-        self.time_creatd = node.time_created
-        self.time_updated = node.time_updated
-        self.new_database = new_database
-
-    def __repr__(self):
-        return f"<{type(self).__name__} {self.segments}>"
-
-    async def __aenter__(self):
-        if self.new_database:
-            await initialize_database(self.engine)
-        return self
-
-    async def __aexit__(self, *args):
-        await self.engine.dispose()
-
-    @classmethod
-    def from_uri(
-        cls, database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
-    ):
-        "Connect to an existing database."
-        # TODO Check that database exists and has the expected alembic revision.
-        engine = create_async_engine(database_uri, echo=echo)
-        return cls(Context(engine), RootNode(metadata, specs, references))
-
-    @classmethod
-    def create_from_uri(
-        cls, database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
-    ):
-        "Create a new database and connect to it."
-        engine = create_async_engine(database_uri, echo=echo)
-        asyncio.run(initialize_database(engine))
-        return cls(
-            Context(engine), RootNode(metadata, specs, references), new_database=True
-        )
-
-    @classmethod
-    def async_create_from_uri(
-        cls,
-        database_uri,
-        metadata=None,
-        specs=None,
-        references=None,
-        echo=DEFAULT_ECHO,
-    ):
-        "Create a new database and connect to it."
-        engine = create_async_engine(database_uri, echo=echo)
-        return cls(
-            Context(engine), RootNode(metadata, specs, references), new_database=True
-        )
-
-    @classmethod
-    def in_memory(cls, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO):
-        "Create a transient database in memory."
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-        asyncio.run(initialize_database(engine))
-        return cls(
-            Context(engine), RootNode(metadata, specs, references), new_database=True
-        )
-
-    @classmethod
-    def async_in_memory(
-        cls,
-        metadata=None,
-        specs=None,
-        references=None,
-        echo=DEFAULT_ECHO,
-    ):
-        "Create a transient database in memory."
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-        return cls(
-            Context(engine), RootNode(metadata, specs, references), new_database=True
-        )
-
     def session(self):
         "Convenience method for constructing an AsyncSession context"
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
@@ -205,7 +160,7 @@ class Adapter:
     #
     #     async def list_metadata_indexes(self):
     #         dialect_name = self.engine.url.get_dialect().name
-    #         async with self.session() as db:
+    #         async with self.context.session() as db:
     #             if dialect_name == "sqlite":
     #                 statement = """
     # SELECT name, sql
@@ -277,23 +232,69 @@ class Adapter:
     #             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
     #         if not index_name.startswith("tiled_md_"):
     #             index_name = f"tiled_md_{index_name}"
-    #         async with self.session() as db:
+    #         async with self.context.session() as db:
     #             await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
     #             await db.commit()
     #
     #     async def drop_all_metadata_indexes(self):
     #         indexes = await self.list_metadata_indexes()
-    #         async with self.session() as db:
+    #         async with self.context.session() as db:
     #             for index_name, sql in indexes:
     #                 await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
     #             await db.commit()
 
     async def _execute(self, statement, explain=None):
         "Debugging convenience utility, not exposed to server"
-        async with self.session() as db:
+        async with self.context.session() as db:
             return await db.execute(text(statement), explain=explain)
             await db.commit()
 
+
+class BaseAdapter:
+    query_registry = QueryTranslationRegistry()
+    register_query = query_registry.register
+    register_query_lazy = query_registry.register_lazy
+
+    def __init__(
+        self,
+        context,
+        node,
+        *,
+        conditions=None,
+        sorting=None,
+        new_database=False,
+    ):
+        self.context = context
+        self.engine = self.context.engine
+        self.node = node
+        if node.key is None:
+            # Special case for RootNode
+            self.segments = []
+        else:
+            self.segments = node.ancestors + [node.key]
+        self.sorting = sorting or [("time_created", 1)]
+        self.order_by_clauses = order_by_clauses(self.sorting)
+        self.conditions = conditions or []
+        self.metadata = node.metadata_
+        self.specs = node.specs
+        self.references = node.references
+        self.time_creatd = node.time_created
+        self.time_updated = node.time_updated
+        self.new_database = new_database
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self.segments}>"
+
+    async def __aenter__(self):
+        if self.new_database:
+            await initialize_database(self.engine)
+        return self
+
+    async def __aexit__(self, *args):
+        await self.engine.dispose()
+
+
+class NodeAdapter(BaseAdapter):
     async def lookup(
         self, segments, principal=None
     ):  # TODO: Accept filter for predicate-pushdown.
@@ -305,7 +306,7 @@ class Adapter:
         )
         for condition in self.conditions:
             statement = statement.filter(condition)
-        async with self.session() as db:
+        async with self.context.session() as db:
             node = (await db.execute(statement.filter(orm.Node.key == key))).scalar()
             # TODO Do binary search or use some tricky JSON query to find where
             # database stops and (for example) HDF5 file begins.
@@ -331,7 +332,7 @@ class Adapter:
         if conditions is UNCHANGED:
             conditions = self.conditions
         return type(self)(
-            engine=self.engine,
+            self.context,
             node=self.node,
             conditions=conditions,
             sorting=sorting,
@@ -357,7 +358,7 @@ class Adapter:
         references=None,
         data_sources=None,
     ):
-        key = key or self.key_maker()
+        key = key or self.context.key_maker()
         data_sources = data_sources or []
         node = orm.Node(
             key=key,
@@ -369,7 +370,7 @@ class Adapter:
         )
         # TODO Is there a way to insert related objects without
         # going back to commit/refresh so much?
-        async with self.session() as db:
+        async with self.context.session() as db:
             db.add(node)
             await db.commit()
             await db.refresh(node)
@@ -405,7 +406,7 @@ class Adapter:
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)
-        async with self.session() as db:
+        async with self.context.session() as db:
             return (
                 (
                     await db.execute(
@@ -424,7 +425,7 @@ class Adapter:
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)
-        async with self.session() as db:
+        async with self.context.session() as db:
             nodes = (
                 (
                     await db.execute(
@@ -496,4 +497,4 @@ def eq(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-Adapter.register_query(Eq, eq)
+NodeAdapter.register_query(Eq, eq)

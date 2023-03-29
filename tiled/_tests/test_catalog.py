@@ -11,8 +11,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..adapters.array import ArrayAdapter
-from ..catalog.adapter import Adapter
 from ..catalog.explain import record_explanations
+from ..catalog.node import (
+    async_create_from_uri,
+    async_in_memory,
+    create_from_uri,
+    from_uri,
+    in_memory,
+)
 from ..queries import Eq, Key
 from ..server.pydantic_array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
 from ..server.pydantic_dataframe import DataFrameStructure
@@ -44,7 +50,7 @@ async def temp_postgres(uri, *args, **kwargs):
         await connection.execute(text(f"CREATE DATABASE {database_name};"))
         await connection.commit()
     # Use the database.
-    async with Adapter.async_create_from_uri(
+    async with async_create_from_uri(
         f"{uri}/{database_name}",
         *args,
         **kwargs,
@@ -63,7 +69,7 @@ async def temp_postgres(uri, *args, **kwargs):
 async def a(request):
     "Adapter instance"
     if request.param == "sqlite":
-        async with Adapter.async_in_memory() as adapter:
+        async with async_in_memory() as adapter:
             yield adapter
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
@@ -76,14 +82,14 @@ async def a(request):
 
 def test_constructors(tmpdir):
     # Create an adapter with a database in memory.
-    Adapter.in_memory()
+    in_memory()
     # Cannot connect to database that does not exist.
     # with pytest.raises(DatabaseNotFound):
     #     Adapter.from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
     # Create one.
-    Adapter.create_from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
+    create_from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
     # Now connecting works.
-    Adapter.from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
+    from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
 
 
 @pytest.mark.asyncio
