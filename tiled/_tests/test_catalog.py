@@ -3,14 +3,17 @@ import os
 import random
 import string
 import uuid
+from dataclasses import asdict
 
 import numpy
+import pandas
+import pandas.testing
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from ..adapters.array import ArrayAdapter
+from ..adapters.dataframe import DataFrameAdapter
 from ..catalog.explain import record_explanations
 from ..catalog.node import (
     async_create_from_uri,
@@ -20,11 +23,9 @@ from ..catalog.node import (
     in_memory,
 )
 from ..queries import Eq, Key
-from ..server.pydantic_array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
-from ..server.pydantic_dataframe import DataFrameStructure
-from ..server.pydantic_sparse import SparseStructure
 from ..server.schemas import Asset, DataSource
 from ..structures.core import StructureFamily
+from ..structures.dataframe import DataFrameStructure
 
 # To test with postgres, start a container like:
 #
@@ -253,22 +254,21 @@ async def test_metadata_index_is_used(a):
 
 @pytest.mark.asyncio
 async def test_write_externally_managed(a, tmpdir):
-    arr = numpy.ones((3, 5))
-    filepath = tmpdir / "file.txt"
-    numpy.savetxt(filepath, arr)
+    df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
+    filepath = tmpdir / "file.csv"
+    df.to_csv(filepath, index=False)
+    dfa = DataFrameAdapter.read_csv(filepath)
+    structure = asdict(
+        DataFrameStructure(macro=dfa.macrostructure(), micro=dfa.microstructure())
+    )
     await a.create_node(
         key="x",
-        structure_family="array",
+        structure_family="dataframe",
         metadata={},
         data_sources=[
             DataSource(
                 mimetype="text/csv",
-                structure=ArrayStructure(
-                    micro=BuiltinDtype.from_numpy_dtype(arr.dtype),
-                    macro=ArrayMacroStructure(
-                        shape=arr.shape, chunks=[[dim] for dim in arr.shape]
-                    ),
-                ),
+                structure=structure,
                 parameters={},
                 externally_managed=True,
                 assets=[Asset(data_uri=f"file:///{filepath}")],
@@ -276,5 +276,4 @@ async def test_write_externally_managed(a, tmpdir):
         ],
     )
     x = await a.lookup(["x"])
-    x.node.data_sources[0].mimetype
-    x.node.data_sources[0].assets[0].data_uri
+    pandas.testing.assert_frame_equal(df, x.read())

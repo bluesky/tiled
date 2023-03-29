@@ -1,11 +1,11 @@
 import asyncio
+import base64
 import collections
 import importlib
 import os
 import re
 import uuid
 
-import anyio
 from sqlalchemy import text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
@@ -13,6 +13,7 @@ from sqlalchemy.future import select
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
+from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
 from .base import Base
@@ -150,6 +151,7 @@ class Context:
         merged_readers_by_mimetype = collections.ChainMap(
             readers_by_mimetype, DEFAULT_READERS_BY_MIMETYPE
         )
+        self.readers_by_mimetype = merged_readers_by_mimetype
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -312,7 +314,16 @@ class NodeAdapter(BaseAdapter):
             # database stops and (for example) HDF5 file begins.
         if node is None:
             return
-        return self.from_orm(node)
+        if not node.data_sources:
+            # This is a node that exists only in the database.
+            return self.from_orm(node)
+        if len(node.data_sources) > 1:
+            raise NotImplementedError
+        data_source = node.data_sources[0]
+        reader_factory = self.context.readers_by_mimetype[data_source.mimetype]
+        paths = [asset.data_uri for asset in data_source.assets]
+        reader = reader_factory(*paths, **data_source.parameters)
+        return reader
 
     def from_orm(self, node):
         return type(self)(context=self.context, node=node)
@@ -378,7 +389,9 @@ class NodeAdapter(BaseAdapter):
             for data_source in data_sources:
                 data_source_orm = orm.DataSource(
                     node_id=node.id,
-                    structure=data_source.structure.dict(),
+                    structure=_prepare_structure(
+                        structure_family, data_source.structure
+                    ),
                     mimetype=data_source.mimetype,
                     externally_managed=data_source.externally_managed,
                     parameters=data_source.parameters,
@@ -485,6 +498,19 @@ def _get_value(value, type):
     # Study https://gist.github.com/brthor/e3d23ae549ee53cdea56d72d39ad1288
     # which may or may not be relevant anymore.
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
+
+
+def _prepare_structure(structure_family, structure):
+    "Convert from pydantic model to dict and base64-encode binary values."
+    structure = structure.dict()
+    if structure_family == StructureFamily.dataframe:
+        structure["micro"]["meta"] = base64.b64encode(
+            structure["micro"]["meta"]
+        ).decode()
+        structure["micro"]["divisions"] = base64.b64encode(
+            structure["micro"]["divisions"]
+        ).decode()
+    return structure
 
 
 def eq(query, tree):
