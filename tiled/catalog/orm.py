@@ -129,6 +129,20 @@ class Asset(Timestamped, Base):
     # data_uri can refer to an external file or network resource,
     # or to a row in the AssetBlob table "assetblob://"
     data_uri = Column(Unicode(1023))
+    # Is this an Asset that does not belong to a DataSource?
+    dangling = Column(Boolean, nullable=False, default=False)
+    # Is this new and uninspected or its inode attributes change?
+    stale = Column(Boolean, nullable=False, default=False)
+    # DId some request fail to find this in the expected location?
+    # True -> It was there last time I looked.
+    # False -> It used to be there but it is gone now.
+    # None -> I haven't seen it yet ever. (It might still be being generated.)
+    present = Column(Boolean, nullable=True, default=False)
+    # If inotify watching is on, new files appear as dangling=True and stale=True.
+    # When we next re-walk, recognized files (e.g. TIFF) and incorporated and
+    # therefore dangling=False and stale=False. Unrecognized files (e.g. DOCX)
+    # are no longer stale but remain dangling. Any known files that *change*
+    # become stale, whether or not they are dangling.
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
 
