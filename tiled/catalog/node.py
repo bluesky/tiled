@@ -44,22 +44,36 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
 
 
 def from_uri(
-    database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
+    database_uri,
+    metadata=None,
+    specs=None,
+    references=None,
+    access_policy=None,
+    echo=DEFAULT_ECHO,
 ):
     "Connect to an existing database."
     # TODO Check that database exists and has the expected alembic revision.
     engine = create_async_engine(database_uri, echo=echo)
-    return NodeAdapter(Context(engine), RootNode(metadata, specs, references))
+    return NodeAdapter(
+        Context(engine), RootNode(metadata, specs, references, access_policy)
+    )
 
 
 def create_from_uri(
-    database_uri, metadata=None, specs=None, references=None, echo=DEFAULT_ECHO
+    database_uri,
+    metadata=None,
+    specs=None,
+    references=None,
+    access_policy=None,
+    echo=DEFAULT_ECHO,
 ):
     "Create a new database and connect to it."
     engine = create_async_engine(database_uri, echo=echo)
     asyncio.run(initialize_database(engine))
     return NodeAdapter(
-        Context(engine), RootNode(metadata, specs, references), new_database=True
+        Context(engine),
+        RootNode(metadata, specs, references, access_policy),
+        new_database=True,
     )
 
 
@@ -68,21 +82,28 @@ def async_create_from_uri(
     metadata=None,
     specs=None,
     references=None,
+    access_policy=None,
     echo=DEFAULT_ECHO,
 ):
     "Create a new database and connect to it."
     engine = create_async_engine(database_uri, echo=echo)
     return NodeAdapter(
-        Context(engine), RootNode(metadata, specs, references), new_database=True
+        Context(engine),
+        RootNode(metadata, specs, references, access_policy),
+        new_database=True,
     )
 
 
-def in_memory(metadata=None, specs=None, references=None, echo=DEFAULT_ECHO):
+def in_memory(
+    metadata=None, specs=None, references=None, access_policy=None, echo=DEFAULT_ECHO
+):
     "Create a transient database in memory."
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
     asyncio.run(initialize_database(engine))
     return NodeAdapter(
-        Context(engine), RootNode(metadata, specs, references), new_database=True
+        Context(engine),
+        RootNode(metadata, specs, references, access_policy),
+        new_database=True,
     )
 
 
@@ -90,12 +111,15 @@ def async_in_memory(
     metadata=None,
     specs=None,
     references=None,
+    access_policy=None,
     echo=DEFAULT_ECHO,
 ):
     "Create a transient database in memory."
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
     return NodeAdapter(
-        Context(engine), RootNode(metadata, specs, references), new_database=True
+        Context(engine),
+        RootNode(metadata, specs, references, access_policy),
+        new_database=True,
     )
 
 
@@ -118,7 +142,7 @@ class RootNode:
     database.
     """
 
-    def __init__(self, metadata, specs, references):
+    def __init__(self, metadata, specs, references, access_policy):
         # This is self.metadata_ to match orm.Node.
         self.metadata_ = metadata or {}
         self.specs = specs or []
@@ -264,6 +288,7 @@ class BaseAdapter:
         *,
         conditions=None,
         sorting=None,
+        access_policy=None,
         new_database=False,
     ):
         self.context = context
@@ -282,6 +307,7 @@ class BaseAdapter:
         self.references = node.references
         self.time_creatd = node.time_created
         self.time_updated = node.time_updated
+        self.access_policy = access_policy
         self.new_database = new_database
 
     def __repr__(self):
@@ -297,9 +323,7 @@ class BaseAdapter:
 
 
 class NodeAdapter(BaseAdapter):
-    async def lookup(
-        self, segments, principal=None
-    ):  # TODO: Accept filter for predicate-pushdown.
+    async def lookup(self, segments):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
         *ancestors, key = segments

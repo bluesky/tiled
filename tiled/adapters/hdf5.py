@@ -50,12 +50,6 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     structure_family = "node"
 
     def __init__(self, node, *, specs=None, references=None, access_policy=None):
-        if (access_policy is not None) and (
-            not access_policy.check_compatibility(self)
-        ):
-            raise ValueError(
-                f"Access policy {access_policy} is not compatible with this Tree."
-            )
         self._node = node
         self._access_policy = access_policy
         self.specs = specs or []
