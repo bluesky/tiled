@@ -69,15 +69,17 @@ async def temp_postgres(uri, *args, **kwargs):
 
 
 @pytest_asyncio.fixture(params=["sqlite", "postgresql"])
-async def a(request):
+async def a(request, tmpdir):
     "Adapter instance"
     if request.param == "sqlite":
-        async with async_in_memory() as adapter:
+        async with async_in_memory(writable_storage=str(tmpdir)) as adapter:
             yield adapter
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
-        async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as adapter:
+        async with temp_postgres(
+            TILED_TEST_POSTGRESQL_URI, writable_storage=str(tmpdir)
+        ) as adapter:
             yield adapter
     else:
         assert False

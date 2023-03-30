@@ -603,11 +603,14 @@ async def post_metadata(
     request: Request,
     path: str,
     body: schemas.PostMetadataRequest,
+    allocate: bool = Query(
+        True, help="Allocate storage. Set False to manually specify data sources."
+    ),
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
-    if not hasattr(entry, "create_node"):
+    if not getattr(entry, "writable", False):
         raise HTTPException(
             status_code=405, detail=f"Data cannot be written at the path {path}"
         )
@@ -659,8 +662,10 @@ async def post_metadata(
                 metadata = result
 
     key = await entry.create_node(
+        allocate=allocate,
         metadata=body.metadata,
         structure_family=body.structure_family,
+        structure=body.structure,
         specs=body.specs,
         references=body.references,
         data_sources=body.data_sources,

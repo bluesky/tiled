@@ -5,6 +5,7 @@ import importlib
 import os
 import re
 import uuid
+from urllib.parse import urlencode
 
 from sqlalchemy import text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -13,6 +14,7 @@ from sqlalchemy.future import select
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
+from ..server.schemas import Asset, DataSource
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
@@ -21,6 +23,7 @@ from .explain import ExplainAsyncSession
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+ZARR_MIMETYPE = "application/x-zarr"
 
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
@@ -56,13 +59,15 @@ def from_uri(
     specs=None,
     references=None,
     access_policy=None,
+    writable_storage=None,
     echo=DEFAULT_ECHO,
 ):
     "Connect to an existing database."
     # TODO Check that database exists and has the expected alembic revision.
     engine = create_async_engine(database_uri, echo=echo)
     return NodeAdapter(
-        Context(engine), RootNode(metadata, specs, references, access_policy)
+        Context(engine, writable_storage),
+        RootNode(metadata, specs, references, access_policy),
     )
 
 
@@ -72,13 +77,14 @@ def create_from_uri(
     specs=None,
     references=None,
     access_policy=None,
+    writable_storage=None,
     echo=DEFAULT_ECHO,
 ):
     "Create a new database and connect to it."
     engine = create_async_engine(database_uri, echo=echo)
     asyncio.run(initialize_database(engine))
     return NodeAdapter(
-        Context(engine),
+        Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
     )
@@ -90,25 +96,31 @@ def async_create_from_uri(
     specs=None,
     references=None,
     access_policy=None,
+    writable_storage=None,
     echo=DEFAULT_ECHO,
 ):
     "Create a new database and connect to it."
     engine = create_async_engine(database_uri, echo=echo)
     return NodeAdapter(
-        Context(engine),
+        Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
     )
 
 
 def in_memory(
-    metadata=None, specs=None, references=None, access_policy=None, echo=DEFAULT_ECHO
+    metadata=None,
+    specs=None,
+    references=None,
+    access_policy=None,
+    writable_storage=None,
+    echo=DEFAULT_ECHO,
 ):
     "Create a transient database in memory."
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
     asyncio.run(initialize_database(engine))
     return NodeAdapter(
-        Context(engine),
+        Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
     )
@@ -119,12 +131,13 @@ def async_in_memory(
     specs=None,
     references=None,
     access_policy=None,
+    writable_storage=None,
     echo=DEFAULT_ECHO,
 ):
     "Create a transient database in memory."
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
     return NodeAdapter(
-        Context(engine),
+        Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
     )
@@ -322,6 +335,10 @@ class BaseAdapter:
         self.access_policy = access_policy
         self.new_database = new_database
 
+    @property
+    def writable(self):
+        return bool(self.context.writable_storage)
+
     def __repr__(self):
         return f"<{type(self).__name__} {self.segments}>"
 
@@ -351,8 +368,9 @@ class NodeAdapter(BaseAdapter):
         if node is None:
             return
         if not node.data_sources:
-            # This is a node that exists only in the database.
-            return self.from_orm(node)
+            return WRITABLE_ADAPTERS[node.structure_family].from_node(
+                context=self.context, node=node
+            )
         if len(node.data_sources) > 1:
             raise NotImplementedError
         data_source = node.data_sources[0]
@@ -360,9 +378,6 @@ class NodeAdapter(BaseAdapter):
         paths = [asset.data_uri for asset in data_source.assets]
         reader = reader_factory(*paths, **data_source.parameters)
         return reader
-
-    def from_orm(self, node):
-        return WRITABLE_ADAPTERS[node.structure_family](context=self.context, node=node)
 
     def new_variation(
         self,
@@ -401,9 +416,11 @@ class NodeAdapter(BaseAdapter):
         structure_family,
         metadata,
         key=None,
+        structure=None,
         specs=None,
         references=None,
         data_sources=None,
+        allocate=True,
     ):
         key = key or self.context.key_maker()
         data_sources = data_sources or []
@@ -415,6 +432,19 @@ class NodeAdapter(BaseAdapter):
             specs=specs or [],
             references=references or [],
         )
+        if allocate:
+            data_uri = self.context.writable_storage + "".join(
+                f"/{urlencode(segment)}" for segment in self.segments
+            )
+            data_sources.append(
+                DataSource(
+                    externally_managed=False,
+                    structure=structure,
+                    mimetype=ZARR_MIMETYPE,
+                    parameters={},
+                    assets=[Asset(data_uri=data_uri)],
+                )
+            )
         # TODO Is there a way to insert related objects without
         # going back to commit/refresh so much?
         async with self.context.session() as db:
@@ -440,10 +470,12 @@ class NodeAdapter(BaseAdapter):
                     )
                     db.add(asset_orm)
                     await db.commit()
-
-        # TODO Is this the right thing to return here?
-        # Should we return anything at all?
-        return self.from_orm(node)
+        if allocate:
+            return WRITABLE_ADAPTERS[node.structure_family].new(
+                context=self.context, node=node
+            )
+        else:
+            raise NotImplementedError
 
     async def patch_node(datasources=None):
         ...

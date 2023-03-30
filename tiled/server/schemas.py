@@ -321,6 +321,9 @@ class APIKeyRequestParams(pydantic.BaseModel):
 
 class PostMetadataRequest(pydantic.BaseModel):
     structure_family: StructureFamily
+    structure: Optional[
+        Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
+    ]
     metadata: Dict = {}
     data_sources: List[DataSource] = []
     specs: Specs = []
@@ -336,6 +339,14 @@ class PostMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise pydantic.errors.ListUniqueItemsError()
         return v
+
+    @pydantic.validator("data_sources", always=True)
+    def data_sources_externally_managed(cls, v):
+        for data_source in v:
+            if not v.externally_managed:
+                raise ValueError(
+                    "Only externally-managed data sources may be specified."
+                )
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
