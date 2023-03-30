@@ -7,7 +7,7 @@ import zarr.storage
 from tiled.adapters.array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 
 
-class WritingArrayAdapter(ArrayAdapter):
+class ZarrAdapter(ArrayAdapter):
     @classmethod
     def new(cls, context, node):
         data_source = node.data_sources[0]
@@ -44,9 +44,3 @@ class WritingArrayAdapter(ArrayAdapter):
             body, dtype=self.doc.structure.micro.to_numpy_dtype()
         ).reshape(shape)
         self.array[slice_] = array
-
-
-def safe_path(path):
-    if sys.platform == "win32" and path[0] == "/":
-        path = path[1:]
-    return Path(path)

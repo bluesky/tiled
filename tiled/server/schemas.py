@@ -98,16 +98,26 @@ Specs = pydantic.conlist(Spec, max_items=20)
 
 class Asset(pydantic.BaseModel):
     data_uri: str
+    is_directory: bool
 
 
 class DataSource(pydantic.BaseModel):
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
-    ]
-    mimetype: str
-    parameters: dict
-    externally_managed: bool
+    ] = None
+    mimetype: Optional[str] = None
+    parameters: dict = {}
     assets: List[Asset]
+    externally_managed: bool
+
+    @pydantic.validator("externally_managed", always=True)
+    def check_externally_managed(cls, v, values):
+        if v:
+            if not (values["mimetype"] and values["structure"]):
+                raise ValueError("Externally managed data must include mimetype and structure.")
+        else:
+            if (values["mimetype"] or values["structure"] or values["parameters"]):
+                raise ValueError("Internally managed data must not include mimetype, structure, or parameters.")
 
 
 class NodeAttributes(pydantic.BaseModel):
@@ -339,14 +349,6 @@ class PostMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise pydantic.errors.ListUniqueItemsError()
         return v
-
-    @pydantic.validator("data_sources", always=True)
-    def data_sources_externally_managed(cls, v):
-        for data_source in v:
-            if not v.externally_managed:
-                raise ValueError(
-                    "Only externally-managed data sources may be specified."
-                )
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):

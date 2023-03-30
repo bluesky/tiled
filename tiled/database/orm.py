@@ -109,7 +109,7 @@ principal_role_association_table = Table(
 class Principal(Timestamped, Base):
     __tablename__ = "principals"
 
-    # This id is internal, never exposed to the user.
+    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     # This uuid is public.
     uuid = Column(
@@ -192,15 +192,10 @@ class Session(Timestamped, Base):
 
     __tablename__ = "sessions"
 
-    # This id is internal, never exposed to the user.
+    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    # This uuid is public.
-    uuid = Column(
-        UUID,
-        index=True,
-        nullable=False,
-        default=lambda: uuid_module.uuid4(),
-    )
+    # This uuid is exposed to the client.
+    uuid = Column(UUID, index=True, nullable=False, default=uuid_module.uuid4)
     time_last_refreshed = Column(DateTime(timezone=False), nullable=True)
     refresh_count = Column(Integer, nullable=False, default=0)
     expiration_time = Column(DateTime(timezone=False), nullable=False)

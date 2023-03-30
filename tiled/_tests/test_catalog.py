@@ -102,24 +102,24 @@ async def test_nested_node_creation(a):
     b = await a.create_node(
         key="b",
         metadata={},
-        structure_family=StructureFamily.array,
+        structure_family=StructureFamily.node,
         specs=[],
         references=[],
     )
     c = await b.create_node(
         key="c",
         metadata={},
-        structure_family=StructureFamily.array,
+        structure_family=StructureFamily.node,
         specs=[],
         references=[],
     )
     assert b.segments == ["b"]
     assert c.segments == ["b", "c"]
-    assert (await a.keys_slice(0, 1, 1)) == ["b"]
-    assert (await b.keys_slice(0, 1, 1)) == ["c"]
+    assert (await a.keys_range(0, 1)) == ["b"]
+    assert (await b.keys_range(0, 1)) == ["c"]
     # smoke test
-    await a.items_slice(0, 1, 1)
-    await b.items_slice(0, 1, 1)
+    await a.items_range(0, 1)
+    await b.items_range(0, 1)
 
 
 @pytest.mark.asyncio
@@ -138,29 +138,29 @@ async def test_sorting(a):
         await a.create_node(
             key=letter,
             metadata={"letter": letter, "number": number},
-            structure_family=StructureFamily.array,
+            structure_family=StructureFamily.node,
             specs=[],
             references=[],
         )
     # Sort by key.
-    await a.sort([("id", 1)]).keys_slice(0, 10, 1) == ordered_letters
-    # Test again, with items_slice.
-    [k for k, v in await a.sort([("id", 1)]).items_slice(0, 10, 1)] == ordered_letters
+    await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
+    # Test again, with items_range.
+    [k for k, v in await a.sort([("id", 1)]).items_range(0, 10)] == ordered_letters
 
     # Sort by letter metadata.
     # Use explicit 'metadata.{key}' namespace.
     assert (
-        await a.sort([("metadata.letter", 1)]).keys_slice(0, 10, 1)
+        await a.sort([("metadata.letter", 1)]).keys_range(0, 10)
     ) == ordered_letters
 
     # Sort by letter metadata.
     # Use implicit '{key}' (more convenient, and necessary for back-compat).
-    assert (await a.sort([("letter", 1)]).keys_slice(0, 10, 1)) == ordered_letters
+    assert (await a.sort([("letter", 1)]).keys_range(0, 10)) == ordered_letters
 
     # Sort by number and then by letter.
     # Use explicit 'metadata.{key}' namespace.
-    items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_slice(
-        0, 10, 1
+    items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_range(
+        0, 10
     )
     numbers = [v.metadata["number"] for k, v in items]
     letters = [v.metadata["letter"] for k, v in items]
@@ -178,13 +178,13 @@ async def test_search(a):
         await a.create_node(
             key=letter,
             metadata={"letter": letter, "number": number, "x": {"y": {"z": letter}}},
-            structure_family=StructureFamily.array,
+            structure_family=StructureFamily.node,
             specs=[],
             references=[],
         )
-    assert "c" in await a.keys_slice(0, 5, 1)
-    assert await a.search(Eq("letter", "c")).keys_slice(0, 5, 1) == ["c"]
-    assert await a.search(Eq("number", 2)).keys_slice(0, 5, 1) == ["c"]
+    assert "c" in await a.keys_range(0, 5)
+    assert await a.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
+    assert await a.search(Eq("number", 2)).keys_range(0, 5) == ["c"]
 
     # Looking up "d" inside search results should find nothing when
     # "d" is filtered out by a search query first.
@@ -192,7 +192,7 @@ async def test_search(a):
     assert await a.search(Eq("letter", "c")).lookup(["d"]) is None
 
     # Search on nested key.
-    assert await a.search(Eq("x.y.z", "c")).keys_slice(0, 5, 1) == ["c"]
+    assert await a.search(Eq("x.y.z", "c")).keys_range(0, 5) == ["c"]
 
     # Created nested nodes and search on them.
     d = await a.lookup(["d"])
@@ -200,12 +200,12 @@ async def test_search(a):
         await d.create_node(
             key=letter,
             metadata={"letter": letter, "number": number},
-            structure_family=StructureFamily.array,
+            structure_family=StructureFamily.node,
             specs=[],
             references=[],
         )
-    assert await d.search(Eq("letter", "c")).keys_slice(0, 5, 1) == ["c"]
-    assert await d.search(Eq("number", 12)).keys_slice(0, 5, 1) == ["c"]
+    assert await d.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
+    assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
 
 
 @pytest.mark.asyncio
@@ -227,30 +227,30 @@ async def test_metadata_index_is_used(a):
     # is intended for humans and is not an API, but we can coarsely check
     # that the index of interest is mentioned.
     with record_explanations() as e:
-        results = await a.search(Key("number_as_string") == "3").keys_slice(0, 5, 1)
+        results = await a.search(Key("number_as_string") == "3").keys_range(0, 5)
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("number") == 3).keys_slice(0, 5, 1)
+        results = await a.search(Key("number") == 3).keys_range(0, 5)
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_slice(0, 5, 1)  # noqa: #712
+        results = await a.search(Key("bool") == False).keys_range(0, 5)  # noqa: #712
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.number_as_string") == "3").keys_slice(
-            0, 5, 1
+        results = await a.search(Key("nested.number_as_string") == "3").keys_range(
+            0, 5
         )
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.number") == 3).keys_slice(0, 5, 1)
+        results = await a.search(Key("nested.number") == 3).keys_range(0, 5)
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_slice(  # noqa: #712
-            0, 5, 1
+        results = await a.search(Key("nested.bool") == False).keys_range(  # noqa: #712
+            0, 5
         )
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
@@ -275,7 +275,7 @@ async def test_write_externally_managed(a, tmpdir):
                 structure=structure,
                 parameters={},
                 externally_managed=True,
-                assets=[Asset(data_uri=f"file:///{filepath}")],
+                assets=[Asset(data_uri=f"file:///{filepath}", is_directory=False)],
             )
         ],
     )

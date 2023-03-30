@@ -3,6 +3,7 @@ import base64
 import collections
 import importlib
 import os
+import sys
 import re
 import uuid
 from urllib.parse import urlencode
@@ -42,13 +43,9 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         "application/x-hdf5": lambda: importlib.import_module(
             "...adapters.hdf5", __name__
         ).HDF5Adapter.from_file,
-    }
-)
-WRITABLE_ADAPTERS = OneShotCachedMap(
-    {
-        StructureFamily.array: lambda: importlib.import_module(
+        ZARR_MIMETYPE: lambda: importlib.import_module(
             "..array", __name__
-        ).WritingArrayAdapter,
+        ).ZarrAdapter,
     }
 )
 
@@ -351,7 +348,13 @@ class BaseAdapter:
         await self.engine.dispose()
 
 
+class UnallocatedAdapter(BaseAdapter):
+    # Raise clear error if you try to read or write chunks.
+    pass
+
+
 class NodeAdapter(BaseAdapter):
+
     async def lookup(self, segments):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
@@ -367,17 +370,21 @@ class NodeAdapter(BaseAdapter):
             # database stops and (for example) HDF5 file begins.
         if node is None:
             return
-        if not node.data_sources:
-            return WRITABLE_ADAPTERS[node.structure_family].from_node(
-                context=self.context, node=node
-            )
-        if len(node.data_sources) > 1:
+        return self.from_node(node)
+
+    def from_node(self, node):
+        num_data_sources = len(node.data_sources) 
+        if num_data_sources > 1:
             raise NotImplementedError
-        data_source = node.data_sources[0]
-        reader_factory = self.context.readers_by_mimetype[data_source.mimetype]
-        paths = [asset.data_uri for asset in data_source.assets]
-        reader = reader_factory(*paths, **data_source.parameters)
-        return reader
+        if num_data_sources == 1:
+            (data_source,) = node.data_sources
+            reader_factory = self.context.readers_by_mimetype[data_source.mimetype]
+            paths = [asset.data_uri for asset in data_source.assets]
+            reader = reader_factory(*paths, **data_source.parameters)
+            return reader
+        else:
+            # A node with no underlying data source
+            return NodeAdapter(self.context, node)
 
     def new_variation(
         self,
@@ -420,7 +427,6 @@ class NodeAdapter(BaseAdapter):
         specs=None,
         references=None,
         data_sources=None,
-        allocate=True,
     ):
         key = key or self.context.key_maker()
         data_sources = data_sources or []
@@ -432,19 +438,6 @@ class NodeAdapter(BaseAdapter):
             specs=specs or [],
             references=references or [],
         )
-        if allocate:
-            data_uri = self.context.writable_storage + "".join(
-                f"/{urlencode(segment)}" for segment in self.segments
-            )
-            data_sources.append(
-                DataSource(
-                    externally_managed=False,
-                    structure=structure,
-                    mimetype=ZARR_MIMETYPE,
-                    parameters={},
-                    assets=[Asset(data_uri=data_uri)],
-                )
-            )
         # TODO Is there a way to insert related objects without
         # going back to commit/refresh so much?
         async with self.context.session() as db:
@@ -452,6 +445,15 @@ class NodeAdapter(BaseAdapter):
             await db.commit()
             await db.refresh(node)
             for data_source in data_sources:
+                if not data_source.externally_managed:
+                    # TODO Branch on StructureFamily
+                    data_source.mimetype = ZARR_MIMETYPE
+                    data_source.parameters = {}
+                    data_uri = self.context.writable_storage + "".join(
+                        f"/{urlencode(segment)}" for segment in self.segments
+                    )
+                    asset = Asset(data_uri=data_uri, is_directory=True)
+                    data_source.assets.append(asset)
                 data_source_orm = orm.DataSource(
                     node_id=node.id,
                     structure=_prepare_structure(
@@ -466,16 +468,11 @@ class NodeAdapter(BaseAdapter):
                 await db.refresh(data_source_orm)
                 for asset in data_source.assets:
                     asset_orm = orm.Asset(
-                        data_uri=asset.data_uri, data_source_id=data_source_orm.id
+                        data_uri=asset.data_uri, data_source_id=data_source_orm.id, is_directory=asset.is_directory,
                     )
                     db.add(asset_orm)
                     await db.commit()
-        if allocate:
-            return WRITABLE_ADAPTERS[node.structure_family].new(
-                context=self.context, node=node
-            )
-        else:
-            raise NotImplementedError
+            return self.from_node(node)
 
     async def patch_node(datasources=None):
         ...
@@ -513,7 +510,7 @@ class NodeAdapter(BaseAdapter):
                 .scalars()
                 .all()
             )
-            return [(node.key, self.from_orm(node)) for node in nodes]
+            return [(node.key, self.from_node(node)) for node in nodes]
 
 
 # Map sort key to Node ORM attribute.
@@ -544,6 +541,12 @@ def order_by_clauses(sorting):
             clause = clause.desc()
         clauses.append(clause)
     return clauses
+
+
+def _safe_path(path):
+    if sys.platform == "win32" and path[0] == "/":
+        path = path[1:]
+    return Path(path)
 
 
 _TYPE_CONVERSION_MAP = {

@@ -1,3 +1,5 @@
+import uuid as uuid_module
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -15,12 +17,39 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator
 
 from ..structures.core import StructureFamily
 from .base import Base
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
+
+
+class UUID(TypeDecorator):
+    """Represents a UUID in a dialect-agnostic way
+
+    Postgres has built-in support but SQLite does not, so we
+    just use a 36-character Unicode column.
+
+    We could use 16-byte LargeBinary, which would be more compact
+    but we decided it was worth the cost to make the content easily
+    inspectable by external database management and development tools.
+    """
+
+    impl = Unicode(36)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if not isinstance(value, uuid_module.UUID):
+                raise ValueError(f"Expected uuid.UUID, got {type(value)}")
+            return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return uuid_module.UUID(hex=value)
+
 
 
 class Timestamped:
@@ -56,7 +85,7 @@ class Node(Timestamped, Base):
     __tablename__ = "nodes"
     __mapper_args__ = {"eager_defaults": True}
 
-    # This id is internal, never exposed to the user.
+    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     key = Column(Unicode(1023), nullable=False)
@@ -108,8 +137,10 @@ class DataSource(Timestamped, Base):
     __tablename__ = "data_sources"
     __mapper_args__ = {"eager_defaults": True}
 
-    # This id is internal, never exposed to the user.
+    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    # This uuid is exposed to the client.
+    uuid = Column(UUID, index=True, nullable=False, default=uuid_module.uuid4)
     node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
 
     structure = Column(JSONVariant, nullable=True)
@@ -136,13 +167,14 @@ class Asset(Timestamped, Base):
     __tablename__ = "assets"
     __mapper_args__ = {"eager_defaults": True}
 
-    # This id is internal, never exposed to the user.
+    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     data_source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False)
 
     # data_uri can refer to an external file or network resource,
     # or to a row in the AssetBlob table "assetblob://"
     data_uri = Column(Unicode(1023), index=True, unique=True)
+    is_directory = Column(Boolean, nullable=False)
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
 
@@ -178,7 +210,7 @@ class Revisions(Timestamped, Base):
     __tablename__ = "revisions"
     __mapper_args__ = {"eager_defaults": True}
 
-    # This id is internal, never exposed to the user.
+    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     key = Column(Unicode(1023), nullable=False)

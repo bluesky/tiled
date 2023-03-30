@@ -580,30 +580,28 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             "attributes": {
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
-                "structure": asdict(structure),
                 "specs": normalized_specs,
                 "references": references,
+                "data_sources": [{"structure": asdict(structure)}]
             }
         }
 
         if structure_family == StructureFamily.dataframe:
             # send bytes base64 encoded
-            item["attributes"]["structure"]["micro"]["meta"] = base64.b64encode(
+            item["attributes"]["data_sources"][0]["structure"]["micro"]["meta"] = base64.b64encode(
                 item["attributes"]["structure"]["micro"]["meta"]
             ).decode()
-            item["attributes"]["structure"]["micro"]["divisions"] = base64.b64encode(
+            item["attributes"]["data_sources"][0]["structure"]["micro"]["divisions"] = base64.b64encode(
                 item["attributes"]["structure"]["micro"]["divisions"]
             ).decode()
 
-        document = self.context.post_json(
-            self.uri, item["attributes"], params={"allocate": True}
-        )
+        document = self.context.post_json(self.uri, item["attributes"])
 
         # if server returned modified metadata update the local copy
         if "metadata" in document:
             item["attributes"]["metadata"] = document.pop("metadata")
 
-        # Merge in "id" and "links" returned by the server.
+        # Merge in "id", "structure", and "links" returned by the server.
         item.update(document)
 
         return client_for_item(

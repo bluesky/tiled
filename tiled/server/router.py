@@ -603,9 +603,6 @@ async def post_metadata(
     request: Request,
     path: str,
     body: schemas.PostMetadataRequest,
-    allocate: bool = Query(
-        True, help="Allocate storage. Set False to manually specify data sources."
-    ),
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
@@ -662,7 +659,6 @@ async def post_metadata(
                 metadata = result
 
     key = await entry.create_node(
-        allocate=allocate,
         metadata=body.metadata,
         structure_family=body.structure_family,
         structure=body.structure,
