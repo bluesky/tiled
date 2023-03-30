@@ -41,6 +41,13 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         ).HDF5Adapter.from_file,
     }
 )
+WRITABLE_ADAPTERS = OneShotCachedMap(
+    {
+        StructureFamily.array: lambda: importlib.import_module(
+            ".array", __name__
+        ).WritableArrayAdapter,
+    }
+)
 
 
 def from_uri(
@@ -353,7 +360,7 @@ class NodeAdapter(BaseAdapter):
         return reader
 
     def from_orm(self, node):
-        return type(self)(context=self.context, node=node)
+        return WRITABLE_ADAPTERS[node.structure_family](context=self.context, node=node)
 
     def new_variation(
         self,
@@ -435,7 +442,7 @@ class NodeAdapter(BaseAdapter):
 
         # TODO Is this the right thing to return here?
         # Should we return anything at all?
-        return self.from_orm(node)
+        return self.from_orm.new(node)
 
     async def patch_node(datasources=None):
         ...
