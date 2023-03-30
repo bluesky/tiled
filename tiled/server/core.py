@@ -195,12 +195,17 @@ def construct_entries_response(
     data = []
     if fields != [schemas.EntryFields.none]:
         # Pull a page of items into memory.
-        items = tree.items()[offset : offset + limit]  # noqa: E203
+        if hasattr(tree, "items_range"):
+            items = tree.items_range(offset, limit)
+        else:
+            items = tree.items()[offset : offset + limit]  # noqa: E203
     else:
         # Pull a page of just the keys, which is cheaper.
-        items = (
-            (key, None) for key in tree.keys()[offset : offset + limit]  # noqa: E203
-        )
+        if hasattr(tree, "keys_range"):
+            keys = await tree.keys_range(offset, limit)
+        else:
+            keys = tree.keys()[offset : offset + limit]  # noqa: E203
+        items = [(key, None) for key in keys]
     # This value will not leak out. It just used to seed comparisons.
     metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)

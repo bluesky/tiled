@@ -142,6 +142,8 @@ class RootNode:
     database.
     """
 
+    structure_family = StructureFamily.node
+
     def __init__(self, metadata, specs, references, access_policy):
         # This is self.metadata_ to match orm.Node.
         self.metadata_ = metadata or {}
@@ -302,6 +304,7 @@ class BaseAdapter:
         self.sorting = sorting or [("time_created", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
+        self.structure_family = node.structure_family
         self.metadata = node.metadata_
         self.specs = node.specs
         self.references = node.references
@@ -437,9 +440,7 @@ class NodeAdapter(BaseAdapter):
     async def patch_node(datasources=None):
         ...
 
-    async def keys_slice(self, start, stop, direction):
-        if direction != 1:
-            raise NotImplementedError
+    async def keys_range(self, offset, limit):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)
@@ -448,17 +449,15 @@ class NodeAdapter(BaseAdapter):
                 (
                     await db.execute(
                         statement.order_by(*self.order_by_clauses)
-                        .offset(start)
-                        .limit(stop - start)
+                        .offset(offset)
+                        .limit(limit)
                     )
                 )
                 .scalars()
                 .all()
             )
 
-    async def items_slice(self, start, stop, direction):
-        if direction != 1:
-            raise NotImplementedError
+    async def items_range(self, offset, limit):
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)
@@ -467,8 +466,8 @@ class NodeAdapter(BaseAdapter):
                 (
                     await db.execute(
                         statement.order_by(*self.order_by_clauses)
-                        .offset(start)
-                        .limit(stop - start)
+                        .offset(offset)
+                        .limit(limit)
                     )
                 )
                 .scalars()

@@ -161,7 +161,7 @@ async def node_search(
         entry, principal, ["read:metadata"], request.state.metrics
     )
     try:
-        resource, metadata_stale_at, must_revalidate = construct_entries_response(
+        resource, metadata_stale_at, must_revalidate = await construct_entries_response(
             query_registry,
             entry,
             "/node/search",
@@ -599,7 +599,7 @@ def node_full(
 
 
 @router.post("/node/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
-def post_metadata(
+async def post_metadata(
     request: Request,
     path: str,
     body: schemas.PostMetadataRequest,
@@ -607,8 +607,10 @@ def post_metadata(
     settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
-    if not hasattr(entry, "post_metadata"):
-        raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
+    if not hasattr(entry, "create_node"):
+        raise HTTPException(
+            status_code=405, detail=f"Data cannot be written at the path {path}"
+        )
 
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
@@ -656,12 +658,12 @@ def post_metadata(
                 metadata_modified = True
                 metadata = result
 
-    key = entry.post_metadata(
+    key = await entry.create_node(
         metadata=body.metadata,
         structure_family=body.structure_family,
-        structure=body.structure,
         specs=body.specs,
         references=body.references,
+        data_sources=body.data_sources,
     )
     links = {}
     base_url = get_base_url(request)

@@ -14,7 +14,13 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
-from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr
+from ..utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    UNCHANGED,
+    OneShotCachedMap,
+    Sentinel,
+    node_repr,
+)
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
 from .utils import ClientError, client_for_item, export_util
@@ -579,7 +585,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         item = {
             "attributes": {
                 "metadata": metadata,
-                "structure": asdict(structure),
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
                 "references": references,
@@ -587,6 +592,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         }
 
         if structure_family == StructureFamily.dataframe:
+            mimetype = APACHE_ARROW_FILE_MIME_TYPE
             # send bytes base64 encoded
             item["attributes"]["structure"]["micro"]["meta"] = base64.b64encode(
                 item["attributes"]["structure"]["micro"]["meta"]
@@ -594,8 +600,19 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             item["attributes"]["structure"]["micro"]["divisions"] = base64.b64encode(
                 item["attributes"]["structure"]["micro"]["divisions"]
             ).decode()
+        else:
+            mimetype = "applicaiton/octet-stream"  # C-ordered buffer
 
-        document = self.context.post_json(self.uri, item["attributes"])
+        payload = item.copy()
+        payload["data_sources"] = [
+            {
+                "structure": asdict(structure),
+                "mimetype": mimetype,
+                "parameters": {},
+                "externally_managed": False,
+            }
+        ]
+        document = self.context.post_json(self.uri, payload)
 
         # if server returned modified metadata update the local copy
         if "metadata" in document:

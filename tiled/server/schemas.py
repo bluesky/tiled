@@ -321,8 +321,8 @@ class APIKeyRequestParams(pydantic.BaseModel):
 
 class PostMetadataRequest(pydantic.BaseModel):
     structure_family: StructureFamily
-    structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
     metadata: Dict = {}
+    data_sources: List[DataSource] = []
     specs: Specs = []
     references: References = []
 

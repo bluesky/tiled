@@ -40,7 +40,7 @@ def get_root_tree():
 
 
 def SecureEntry(scopes):
-    def inner(
+    async def inner(
         path: str,
         request: Request,
         principal: str = Depends(get_current_principal),
@@ -60,10 +60,18 @@ def SecureEntry(scopes):
                 entry = filter_for_access(
                     entry, principal, ["read:metadata"], request.state.metrics
                 )
-                try:
-                    entry = entry[segment]
-                except (KeyError, TypeError):
-                    raise NoEntry(path_parts)
+                # The new catalog adapter only has access control at top level for now.
+                # It can jump directly to the node of interest.
+                if hasattr(entry, "lookup"):
+                    entry = await entry.lookup(path_parts)
+                    if entry is None:
+                        raise NoEntry(path_parts)
+                # Old-style dict-like interface
+                else:
+                    try:
+                        entry = entry[segment]
+                    except (KeyError, TypeError):
+                        raise NoEntry(path_parts)
             # Now check that we have the requested scope on the final node.
             access_policy = getattr(entry, "access_policy", None)
             if access_policy is not None:

@@ -22,7 +22,9 @@ from ..catalog.node import (
     from_uri,
     in_memory,
 )
+from ..client import Context, from_context
 from ..queries import Eq, Key
+from ..server.app import build_app
 from ..server.schemas import Asset, DataSource
 from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameStructure
@@ -277,3 +279,11 @@ async def test_write_externally_managed(a, tmpdir):
     )
     x = await a.lookup(["x"])
     pandas.testing.assert_frame_equal(df, x.read())
+
+
+def test_server(a):
+    app = build_app(a)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        list(client)
+        client.write_array([1, 2, 3])
