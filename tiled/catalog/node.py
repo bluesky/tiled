@@ -44,8 +44,8 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
 WRITABLE_ADAPTERS = OneShotCachedMap(
     {
         StructureFamily.array: lambda: importlib.import_module(
-            ".array", __name__
-        ).WritableArrayAdapter,
+            "..array", __name__
+        ).WritingArrayAdapter,
     }
 )
 
@@ -166,11 +166,13 @@ class Context:
     def __init__(
         self,
         engine,
+        writable_storage=None,
         readers_by_mimetype=None,
         mimetype_detection_hook=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
+        self.writable_storage = writable_storage
         self.key_maker = key_maker
         readers_by_mimetype = readers_by_mimetype or {}
         if mimetype_detection_hook is not None:
@@ -419,7 +421,6 @@ class NodeAdapter(BaseAdapter):
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            print(data_sources)
             for data_source in data_sources:
                 data_source_orm = orm.DataSource(
                     node_id=node.id,
@@ -442,7 +443,7 @@ class NodeAdapter(BaseAdapter):
 
         # TODO Is this the right thing to return here?
         # Should we return anything at all?
-        return self.from_orm.new(node)
+        return self.from_orm(node)
 
     async def patch_node(datasources=None):
         ...

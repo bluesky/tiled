@@ -22,6 +22,11 @@ class WritingArrayAdapter(ArrayAdapter):
             chunks=chunks,
             dtype=data_source.structure.micro.to_numpy_dtype(),
         )
+        return cls.from_node(context, node)
+
+    @classmethod
+    def from_node(cls, context, node):
+        data_source = node.data_sources[0]
         array = zarr.open_array(str(safe_path(data_source.data_url.path)), "r+")
         return cls.from_array(array)
 
