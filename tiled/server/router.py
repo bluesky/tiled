@@ -20,6 +20,7 @@ from .core import (
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
+    apply_search,
     construct_data_response,
     construct_entries_response,
     construct_resource,
@@ -212,10 +213,11 @@ async def node_distinct(
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
     entry: Any = SecureEntry(scopes=["read:metadata"]),
+    query_registry=Depends(get_query_registry),
     **filters,
 ):
     if hasattr(entry, "get_distinct"):
-        distinct = entry.get_distinct(
+        distinct = apply_search(entry, filters, query_registry).get_distinct(
             metadata=metadata,
             structure_families=structure_families,
             specs=specs,

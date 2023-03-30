@@ -326,6 +326,21 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
 
+    # The /search route is defined at server startup so that the user has the
+    # opporunity to register custom query types before startup.
+    app.get(
+        "/api/v1/node/search/{path:path}",
+        response_model=schemas.Response[
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
+        ],
+    )(patch_route_signature(node_search, query_registry))
+    app.get(
+        "/api/v1/node/distinct/{path:path}",
+        response_model=schemas.GetDistinctResponse,
+    )(patch_route_signature(node_distinct, query_registry))
+
     @lru_cache(1)
     def override_get_authenticators():
         return authenticators
@@ -411,30 +426,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         for task in background_tasks or []:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
-
-        # The /search route is defined at server startup so that the user has the
-        # opporunity to register custom query types before startup.
-        # app.include_router(declare_search_router(query_registry), prefix="/api/v1")
-
-        # Note: Tested registering just node_search but got a TypeError message:
-        # TypeError: node_search() missing 1 required positional argument: 'path'
-        # It looks like path is not being passed as part of query_registry
-        # app.get("/node/search/{path:path}", response_model=schemas.Response[
-        #     List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-        #     schemas.PaginationLinks,dict,])(node_search(query_registry))
-
-        app.get(
-            "/api/v1/node/search/{path:path}",
-            response_model=schemas.Response[
-                List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-                schemas.PaginationLinks,
-                dict,
-            ],
-        )(patch_route_signature(node_search, query_registry))
-        app.get(
-            "/api/v1/node/distinct/{path:path}",
-            response_model=schemas.GetDistinctResponse,
-        )(patch_route_signature(node_distinct, query_registry))
 
         app.state.allow_origins.extend(settings.allow_origins)
         object_cache_logger.setLevel(settings.object_cache_log_level.upper())
