@@ -8,6 +8,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Table,
     Unicode,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -83,6 +84,14 @@ class Node(Timestamped, Base):
     )
 
 
+data_source_asset_association_table = Table(
+    "data_source_asset_association",
+    Base.metadata,
+    Column("data_source_id", Integer, ForeignKey("data_sources.id"), primary_key=True),
+    Column("asset_id", Integer, ForeignKey("assets.id"), primary_key=True),
+)
+
+
 class DataSource(Timestamped, Base):
     """
     The describes how to open one or more file/blobs to extract data for a Node.
@@ -111,7 +120,12 @@ class DataSource(Timestamped, Base):
     externally_managed = Column(Boolean, default=False, nullable=False)
 
     node = relationship("Node", back_populates="data_sources")
-    assets = relationship("Asset", back_populates="data_source", lazy="selectin")
+    assets = relationship(
+        "Asset",
+        secondary=data_source_asset_association_table,
+        back_populates="data_sources",
+        lazy="selectin",
+    )
 
 
 class Asset(Timestamped, Base):
@@ -128,25 +142,15 @@ class Asset(Timestamped, Base):
 
     # data_uri can refer to an external file or network resource,
     # or to a row in the AssetBlob table "assetblob://"
-    data_uri = Column(Unicode(1023))
-    # Is this an Asset that does not belong to a DataSource?
-    dangling = Column(Boolean, nullable=False, default=False)
-    # Is this new and uninspected or its inode attributes change?
-    stale = Column(Boolean, nullable=False, default=False)
-    # DId some request fail to find this in the expected location?
-    # True -> It was there last time I looked.
-    # False -> It used to be there but it is gone now.
-    # None -> I haven't seen it yet ever. (It might still be being generated.)
-    present = Column(Boolean, nullable=True, default=False)
-    # If inotify watching is on, new files appear as dangling=True and stale=True.
-    # When we next re-walk, recognized files (e.g. TIFF) and incorporated and
-    # therefore dangling=False and stale=False. Unrecognized files (e.g. DOCX)
-    # are no longer stale but remain dangling. Any known files that *change*
-    # become stale, whether or not they are dangling.
+    data_uri = Column(Unicode(1023), index=True, unique=True)
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
 
-    data_source = relationship("DataSource", back_populates="assets")
+    data_sources = relationship(
+        "DataSource",
+        secondary=data_source_asset_association_table,
+        back_populates="assets",
+    )
 
 
 class AssetBlob(Base):
@@ -164,27 +168,6 @@ class AssetBlob(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
     blob = Column(LargeBinary, nullable=False)
-
-
-class AssetInodeAttributes(Base):
-    """
-    This tracks information used to check whether a filesystem asset has changed.
-
-    Note that mtime alone is not sufficient to know whether a file has changed.
-    https://apenwarr.ca/log/20181113
-    """
-
-    __tablename__ = "asset_inode_attributes"
-    __mapper_args__ = {"eager_defaults": True}
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
-    mtime = Column(Integer, nullable=False)
-    size = Column(Integer, nullable=False)
-    inode_number = Column(Integer, nullable=False)
-    mode = Column(Unicode(4), nullable=False)  # e.g. "0664"
-    uid = Column(Integer, nullable=False)
-    gid = Column(Integer, nullable=False)
 
 
 class Revisions(Timestamped, Base):
