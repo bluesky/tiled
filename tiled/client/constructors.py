@@ -267,7 +267,9 @@ def from_profile(name, structure_clients=None, **kwargs):
             raise ConfigError(
                 f"ValidationError while parsing configuration file {filepath}: {msg}"
             ) from err
-        context = Context.from_app(build_app_from_config(config), **merged)
+        context = Context.from_app(
+            build_app_from_config(config, source_filepath=filepath), **merged
+        )
         return from_context(context)
     else:
         return from_uri(**merged)
