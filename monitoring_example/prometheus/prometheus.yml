@@ -1,0 +1,13 @@
+# Do we need this?
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'tiled'
+    metrics_path: /api/v1/metrics
+    authorization:  # Set Authorization header to 'Apikey secret'.
+      type: Apikey
+      credentials: secret
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['tiled:8000']

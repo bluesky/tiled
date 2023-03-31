@@ -1,0 +1,5 @@
+authentication:
+  single_user_api_key: ${TILED_SINGLE_USER_API_KEY}
+trees:
+  - tree: tiled.examples.generated_minimal:tree
+    path: /

@@ -25,6 +25,7 @@ how-to/custom-export-formats
 how-to/profiles
 how-to/api-keys
 how-to/custom-clients
+how-to/metrics
 how-to/direct-client
 how-to/tune-caches
 how-to/docker
