@@ -465,6 +465,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_families": structure_families,
                 "specs": specs,
                 "counts": counts,
+                **self._queries_as_params,
             },
         )
         return distinct

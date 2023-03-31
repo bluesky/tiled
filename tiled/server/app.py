@@ -7,6 +7,7 @@ import sys
 import urllib.parse
 from functools import lru_cache, partial
 from pathlib import Path
+from typing import List
 
 import anyio
 import packaging.version
@@ -25,6 +26,7 @@ from ..media_type_registration import (
 )
 from ..utils import SHARE_TILED_PATH
 from ..validation_registration import validation_registry as default_validation_registry
+from . import schemas
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
 from .core import PatchedStreamingResponse
@@ -37,7 +39,7 @@ from .dependencies import (
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
-from .router import declare_search_router, router
+from .router import node_distinct, node_search, patch_route_signature, router
 from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
@@ -324,6 +326,21 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
 
+    # The /search route is defined after import time so that the user has the
+    # opporunity to register custom query types before startup.
+    app.get(
+        "/api/v1/node/search/{path:path}",
+        response_model=schemas.Response[
+            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
+            schemas.PaginationLinks,
+            dict,
+        ],
+    )(patch_route_signature(node_search, query_registry))
+    app.get(
+        "/api/v1/node/distinct/{path:path}",
+        response_model=schemas.GetDistinctResponse,
+    )(patch_route_signature(node_distinct, query_registry))
+
     @lru_cache(1)
     def override_get_authenticators():
         return authenticators
@@ -409,10 +426,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         for task in background_tasks or []:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
-
-        # The /search route is defined at server startup so that the user has the
-        # opporunity to register custom query types before startup.
-        app.include_router(declare_search_router(query_registry), prefix="/api/v1")
 
         app.state.allow_origins.extend(settings.allow_origins)
         object_cache_logger.setLevel(settings.object_cache_log_level.upper())

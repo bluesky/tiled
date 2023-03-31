@@ -8,6 +8,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
+from ..queries import Key
 from ..server.app import build_app
 
 values = ["a", "b", "c"]
@@ -25,10 +26,31 @@ for _ in range(10):
         np.ones(10), metadata={}, specs=["MyArray"]
     )
 
-for _ in range(10):
+# Added additional field in metadata to implement consecutive search and distinct queries
+for i in range(10):
+    if i < 5:
+        group = "A"
+    else:
+        group = "B"
+
+    if i % 2 == 0:
+        subgroup = "even"
+    else:
+        subgroup = "odd"
+
+    if i == 0:
+        tag = "Zero"
+    else:
+        for j in range(2, int(i / 2) + 1):
+            if (i % j) == 0:
+                tag = "NotPrime"
+                break
+        else:
+            tag = "Prime"
+
     mapping[str(uuid.uuid4())] = DataFrameAdapter.from_pandas(
         pd.DataFrame({"a": np.ones(10)}),
-        metadata={},
+        metadata={"group": group, "subgroup": subgroup, "tag": tag},
         specs=["MyDataFrame"],
         npartitions=1,
     )
@@ -95,3 +117,22 @@ def test_distinct(context):
     distinct = client.distinct("baz", counts=True)
     expected = {"baz": []}
     assert distinct["metadata"] == expected
+
+
+def test_search_distinct(context):
+    client = from_context(context)
+    distinct = (
+        client.search(Key("group") == "A")
+        .search(Key("subgroup") == "odd")
+        .distinct("tag", counts=True)
+    )
+
+    expected = {
+        "metadata": {
+            "tag": [
+                {"value": "Prime", "count": 2},
+            ],
+        },
+    }
+
+    assert distinct["metadata"] == expected["metadata"]

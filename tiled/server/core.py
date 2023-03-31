@@ -100,23 +100,7 @@ def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
     return links
 
 
-def construct_entries_response(
-    query_registry,
-    tree,
-    route,
-    path,
-    offset,
-    limit,
-    fields,
-    select_metadata,
-    omit_links,
-    filters,
-    sort,
-    base_url,
-    media_type,
-    max_depth,
-):
-    path_parts = [segment for segment in path.split("/") if segment]
+def apply_search(tree, filters, query_registry):
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
@@ -126,20 +110,7 @@ def construct_entries_response(
             continue
         name, field = _FILTER_PARAM_PATTERN.match(key).groups()
         queries[name][field] = value
-    sorting = []
-    if sort is not None:
-        for item in sort.split(","):
-            if item:
-                if item.startswith("-"):
-                    sorting.append((item[1:], -1))
-                else:
-                    sorting.append((item, 1))
-    if sorting:
-        if not hasattr(tree, "sort"):
-            raise HTTPException(
-                status_code=400, detail="This Tree does not support sorting."
-            )
-        tree = tree.sort(sorting)
+
     # Apply the queries and obtain a narrowed tree.
     key_lookups = []
     for query_name, parameters_dict_of_lists in queries.items():
@@ -176,6 +147,49 @@ def construct_entries_response(
                 tree = MapAdapter({key_lookup: tree[key_lookup]}, must_revalidate=False)
             except KeyError:
                 tree = MapAdapter({})
+
+    return tree
+
+
+def apply_sort(tree, sort):
+    sorting = []
+    if sort is not None:
+        for item in sort.split(","):
+            if item:
+                if item.startswith("-"):
+                    sorting.append((item[1:], -1))
+                else:
+                    sorting.append((item, 1))
+    if sorting:
+        if not hasattr(tree, "sort"):
+            raise HTTPException(
+                status_code=400, detail="This Tree does not support sorting."
+            )
+        tree = tree.sort(sorting)
+
+    return tree
+
+
+def construct_entries_response(
+    query_registry,
+    tree,
+    route,
+    path,
+    offset,
+    limit,
+    fields,
+    select_metadata,
+    omit_links,
+    filters,
+    sort,
+    base_url,
+    media_type,
+    max_depth,
+):
+    path_parts = [segment for segment in path.split("/") if segment]
+    tree = apply_search(tree, filters, query_registry)
+    tree = apply_sort(tree, sort)
+
     count = len_or_approx(tree)
     links = pagination_links(base_url, route, path_parts, offset, limit, count)
     data = []
