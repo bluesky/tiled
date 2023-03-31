@@ -8,7 +8,8 @@ services:
         source: ./example_configs/
         target: /deploy
     environment:
-      - TILED_CONFIG=/deploy/small_demo.yml
+      - TILED_CONFIG=/deploy/small_single_user_demo.yml
+      - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
     ports:
       - 8000:8000
     restart: unless-stopped
