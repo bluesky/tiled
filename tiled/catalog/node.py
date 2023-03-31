@@ -17,7 +17,7 @@ from sqlalchemy.future import select
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
-from ..server.schemas import Asset, NodeAttributes
+from ..server.schemas import Asset, Node
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
@@ -381,7 +381,7 @@ class NodeAdapter(BaseAdapter):
             # database stops and (for example) HDF5 file begins.
         if node is None:
             return None
-        return NodeAttributes.from_orm(node, sorting=self.sorting)
+        return Node.from_orm(node, sorting=self.sorting)
 
     async def lookup_adapter(
         self, segments
@@ -503,7 +503,7 @@ class NodeAdapter(BaseAdapter):
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            return key, NodeAttributes.from_orm(node, sorting=self.sorting)
+            return key, Node.from_orm(node, sorting=self.sorting)
 
     async def patch_node(datasources=None):
         ...
@@ -541,7 +541,7 @@ class NodeAdapter(BaseAdapter):
                 .scalars()
                 .all()
             )
-            return [(node.key, NodeAttributes.from_orm(node)) for node in nodes]
+            return [(node.key, Node.from_orm(node)) for node in nodes]
 
 
 # Map sort key to Node ORM attribute.

@@ -127,7 +127,6 @@ class DataSource(pydantic.BaseModel):
 
 
 class NodeAttributes(pydantic.BaseModel):
-    key: str
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
     specs: Optional[Specs]
@@ -140,6 +139,16 @@ class NodeAttributes(pydantic.BaseModel):
     data_sources: Optional[List[DataSource]]
     time_created: Optional[datetime]
     time_updated: Optional[datetime]
+
+
+class Node(NodeAttributes):
+    # In the HTTP response, we place the key *outside* the other attributes,
+    # as "id". This was inspired by JSON API, and for now we are sticking
+    # with it.
+    #
+    # But for passing the Node around internally, it is useful to have the
+    # key included in the model.
+    key: str
 
     @classmethod
     def from_orm(cls, orm, sorting=None):
