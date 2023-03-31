@@ -107,17 +107,21 @@ class DataSource(pydantic.BaseModel):
     ] = None
     mimetype: Optional[str] = None
     parameters: dict = {}
-    assets: List[Asset]
+    assets: List[Asset] = []
     externally_managed: bool
 
     @pydantic.validator("externally_managed", always=True)
     def check_externally_managed(cls, v, values):
         if v:
             if not (values["mimetype"] and values["structure"]):
-                raise ValueError("Externally managed data must include mimetype and structure.")
+                raise ValueError(
+                    "Externally managed data must include mimetype and structure."
+                )
         else:
-            if (values["mimetype"] or values["structure"] or values["parameters"]):
-                raise ValueError("Internally managed data must not include mimetype, structure, or parameters.")
+            if values["mimetype"] or values["parameters"] or values["assets"]:
+                raise ValueError(
+                    "Internally managed data must not include mimetype, parameters, or assets."
+                )
 
 
 class NodeAttributes(pydantic.BaseModel):

@@ -582,16 +582,22 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
                 "references": references,
-                "data_sources": [{"structure": asdict(structure)}]
+                "data_sources": [
+                    {"externally_managed": False, "structure": asdict(structure)}
+                ],
             }
         }
 
         if structure_family == StructureFamily.dataframe:
             # send bytes base64 encoded
-            item["attributes"]["data_sources"][0]["structure"]["micro"]["meta"] = base64.b64encode(
+            item["attributes"]["data_sources"][0]["structure"]["micro"][
+                "meta"
+            ] = base64.b64encode(
                 item["attributes"]["structure"]["micro"]["meta"]
             ).decode()
-            item["attributes"]["data_sources"][0]["structure"]["micro"]["divisions"] = base64.b64encode(
+            item["attributes"]["data_sources"][0]["structure"]["micro"][
+                "divisions"
+            ] = base64.b64encode(
                 item["attributes"]["structure"]["micro"]["divisions"]
             ).decode()
 

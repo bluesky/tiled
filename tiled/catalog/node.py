@@ -3,9 +3,10 @@ import base64
 import collections
 import importlib
 import os
-import sys
 import re
+import sys
 import uuid
+from pathlib import Path
 from urllib.parse import urlencode
 
 from sqlalchemy import text, type_coerce
@@ -15,7 +16,7 @@ from sqlalchemy.future import select
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
-from ..server.schemas import Asset, DataSource
+from ..server.schemas import Asset
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
@@ -45,7 +46,7 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         ).HDF5Adapter.from_file,
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "..array", __name__
-        ).ZarrAdapter,
+        ).ZarrAdapter.from_directory,
     }
 )
 
@@ -354,7 +355,6 @@ class UnallocatedAdapter(BaseAdapter):
 
 
 class NodeAdapter(BaseAdapter):
-
     async def lookup(self, segments):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
@@ -373,7 +373,7 @@ class NodeAdapter(BaseAdapter):
         return self.from_node(node)
 
     def from_node(self, node):
-        num_data_sources = len(node.data_sources) 
+        num_data_sources = len(node.data_sources)
         if num_data_sources > 1:
             raise NotImplementedError
         if num_data_sources == 1:
@@ -452,6 +452,14 @@ class NodeAdapter(BaseAdapter):
                     data_uri = self.context.writable_storage + "".join(
                         f"/{urlencode(segment)}" for segment in self.segments
                     )
+                    from .array import ZarrAdapter  # TEMP HACK
+
+                    ZarrAdapter.new(
+                        data_uri,
+                        data_source.structure.micro.to_numpy_dtype(),
+                        data_source.structure.macro.shape,
+                        data_source.structure.macro.chunks,
+                    )
                     asset = Asset(data_uri=data_uri, is_directory=True)
                     data_source.assets.append(asset)
                 data_source_orm = orm.DataSource(
@@ -468,10 +476,13 @@ class NodeAdapter(BaseAdapter):
                 await db.refresh(data_source_orm)
                 for asset in data_source.assets:
                     asset_orm = orm.Asset(
-                        data_uri=asset.data_uri, data_source_id=data_source_orm.id, is_directory=asset.is_directory,
+                        data_uri=asset.data_uri,
+                        data_source_id=data_source_orm.id,
+                        is_directory=asset.is_directory,
                     )
                     db.add(asset_orm)
                     await db.commit()
+                await db.refresh(data_source_orm)
             return self.from_node(node)
 
     async def patch_node(datasources=None):

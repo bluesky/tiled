@@ -51,7 +51,6 @@ class UUID(TypeDecorator):
             return uuid_module.UUID(hex=value)
 
 
-
 class Timestamped:
     """
     Mixin for providing timestamps of creation and update time.

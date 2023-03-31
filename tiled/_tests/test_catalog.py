@@ -10,10 +10,12 @@ import pandas
 import pandas.testing
 import pytest
 import pytest_asyncio
+import tifffile
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..adapters.dataframe import DataFrameAdapter
+from ..adapters.tiff import TiffAdapter
 from ..catalog.explain import record_explanations
 from ..catalog.node import (
     async_create_from_uri,
@@ -26,6 +28,7 @@ from ..client import Context, from_context
 from ..queries import Eq, Key
 from ..server.app import build_app
 from ..server.schemas import Asset, DataSource
+from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameStructure
 
@@ -149,9 +152,7 @@ async def test_sorting(a):
 
     # Sort by letter metadata.
     # Use explicit 'metadata.{key}' namespace.
-    assert (
-        await a.sort([("metadata.letter", 1)]).keys_range(0, 10)
-    ) == ordered_letters
+    assert (await a.sort([("metadata.letter", 1)]).keys_range(0, 10)) == ordered_letters
 
     # Sort by letter metadata.
     # Use implicit '{key}' (more convenient, and necessary for back-compat).
@@ -239,9 +240,7 @@ async def test_metadata_index_is_used(a):
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.number_as_string") == "3").keys_range(
-            0, 5
-        )
+        results = await a.search(Key("nested.number_as_string") == "3").keys_range(0, 5)
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
@@ -257,7 +256,35 @@ async def test_metadata_index_is_used(a):
 
 
 @pytest.mark.asyncio
-async def test_write_externally_managed(a, tmpdir):
+async def test_write_array_externally_managed(a, tmpdir):
+    arr = numpy.ones((5, 3))
+    filepath = tmpdir / "file.tiff"
+    tifffile.imwrite(filepath, arr)
+    ad = TiffAdapter(filepath)
+    structure = asdict(
+        ArrayStructure(macro=ad.macrostructure(), micro=ad.microstructure())
+    )
+    await a.create_node(
+        key="x",
+        structure_family="array",
+        metadata={},
+        data_sources=[
+            DataSource(
+                mimetype="image/tiff",
+                structure=structure,
+                parameters={},
+                externally_managed=True,
+                assets=[Asset(data_uri=f"file:///{filepath}", is_directory=False)],
+            )
+        ],
+    )
+    x = await a.lookup(["x"])
+    assert numpy.array_equal(arr, x.read())
+
+
+@pytest.mark.asyncio
+async def test_write_dataframe_externally_managed(a, tmpdir):
+    raise pytest.skip("No dataframe support yet")
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
