@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlencode
 
+import httpx
 from sqlalchemy import text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
@@ -183,6 +184,14 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
+        if writable_storage:
+            writable_storage = httpx.URL(writable_storage)
+            if not writable_storage.scheme:
+                writable_storage = writable_storage.copy_with(scheme="file")
+            if not writable_storage.scheme == "file":
+                raise NotImplementedError(
+                    "Only file://... writable storage is currently supported."
+                )
         self.writable_storage = writable_storage
         self.key_maker = key_maker
         readers_by_mimetype = readers_by_mimetype or {}
@@ -379,7 +388,14 @@ class NodeAdapter(BaseAdapter):
         if num_data_sources == 1:
             (data_source,) = node.data_sources
             reader_factory = self.context.readers_by_mimetype[data_source.mimetype]
-            paths = [asset.data_uri for asset in data_source.assets]
+            data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
+            paths = []
+            for data_uri in data_uris:
+                if data_uri.scheme != "file":
+                    raise NotImplementedError(
+                        f"Only 'file://...'.scheme URLs are currently supported, not {data_uri!r}"
+                    )
+                paths.append(data_uri.path)
             reader = reader_factory(*paths, **data_source.parameters)
             return reader
         else:  # num_data_sources == 0
@@ -445,13 +461,13 @@ class NodeAdapter(BaseAdapter):
                     # TODO Branch on StructureFamily
                     data_source.mimetype = ZARR_MIMETYPE
                     data_source.parameters = {}
-                    data_uri = self.context.writable_storage + "".join(
+                    data_uri = str(self.context.writable_storage) + "".join(
                         f"/{urlencode(segment)}" for segment in self.segments
                     )
                     from .array import ZarrAdapter  # TEMP HACK
 
                     ZarrAdapter.new(
-                        data_uri,
+                        httpx.URL(data_uri).path,
                         data_source.structure.micro.to_numpy_dtype(),
                         data_source.structure.macro.shape,
                         data_source.structure.macro.chunks,
@@ -477,7 +493,7 @@ class NodeAdapter(BaseAdapter):
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            return self.from_node(node)
+            return key, self.from_node(node)
 
     async def patch_node(datasources=None):
         ...

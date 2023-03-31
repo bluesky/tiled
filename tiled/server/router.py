@@ -661,7 +661,7 @@ async def post_metadata(
                 metadata_modified = True
                 metadata = result
 
-    adapter = await entry.create_node(
+    key, adapter = await entry.create_node(
         metadata=body.metadata,
         structure_family=body.structure_family,
         specs=body.specs,
@@ -670,9 +670,7 @@ async def post_metadata(
     )
     links = {}
     base_url = get_base_url(request)
-    path_parts = [segment for segment in path.split("/") if segment] + [
-        adapter.node.key
-    ]
+    path_parts = [segment for segment in path.split("/") if segment] + [key]
     path_str = "/".join(path_parts)
     links["self"] = f"{base_url}/node/metadata/{path_str}"
     if body.structure_family == StructureFamily.array:
@@ -697,7 +695,7 @@ async def post_metadata(
     else:
         raise NotImplementedError(body.structure_family)
     response_data = {
-        "id": adapter.node.key,
+        "id": key,
         "links": links,
         "data_sources": adapter.node.data_sources,
     }

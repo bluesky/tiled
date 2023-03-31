@@ -259,8 +259,8 @@ async def test_metadata_index_is_used(a):
 async def test_write_array_externally_managed(a, tmpdir):
     arr = numpy.ones((5, 3))
     filepath = tmpdir / "file.tiff"
-    tifffile.imwrite(filepath, arr)
-    ad = TiffAdapter(filepath)
+    tifffile.imwrite(str(filepath), arr)
+    ad = TiffAdapter(str(filepath))
     structure = asdict(
         ArrayStructure(macro=ad.macrostructure(), micro=ad.microstructure())
     )
