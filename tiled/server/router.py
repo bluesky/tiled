@@ -675,8 +675,7 @@ async def post_metadata(
     links["self"] = f"{base_url}/node/metadata/{path_str}"
     if body.structure_family == StructureFamily.array:
         block_template = ",".join(
-            f"{{{index}}}"
-            for index in range(len(node.data_sources[0].structure["macro"]["shape"]))
+            f"{{{index}}}" for index in range(len(node.structure.macro.shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -684,8 +683,7 @@ async def post_metadata(
         # Different from array because of structure.macro.shape vs structure.shape
         # Can be unified if we drop macro/micro namespace.
         block_template = ",".join(
-            f"{{{index}}}"
-            for index in range(len(node.data_sources[0].structure["macro"]["shape"]))
+            f"{{{index}}}" for index in range(len(node.structure.macro.shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -699,9 +697,7 @@ async def post_metadata(
     response_data = {
         "id": key,
         "links": links,
-        "data_sources": [
-            schemas.DataSource.from_orm(ds).dict() for ds in node.data_sources
-        ],
+        "data_sources": [ds.dict() for ds in node.data_sources],
     }
     if metadata_modified:
         response_data["metadata"] = metadata

@@ -17,7 +17,7 @@ from sqlalchemy.future import select
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
-from ..server.schemas import Asset
+from ..server.schemas import Asset, NodeAttributes
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
@@ -164,14 +164,14 @@ class RootNode:
     structure_family = StructureFamily.node
 
     def __init__(self, metadata, specs, references, access_policy):
-        # This is self.metadata_ to match orm.Node.
-        self.metadata_ = metadata or {}
+        self.metadata = metadata or {}
         self.specs = specs or []
         self.references = references or []
         self.ancestors = []
         self.key = None
         self.time_created = None
         self.time_updated = None
+        self.data_sources = None
 
 
 class Context:
@@ -334,7 +334,7 @@ class BaseAdapter:
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.structure_family = node.structure_family
-        self.metadata = node.metadata_
+        self.metadata = node.metadata
         self.specs = node.specs
         self.references = node.references
         self.time_creatd = node.time_created
@@ -364,7 +364,9 @@ class UnallocatedAdapter(BaseAdapter):
 
 
 class NodeAdapter(BaseAdapter):
-    async def lookup(self, segments):  # TODO: Accept filter for predicate-pushdown.
+    async def lookup_node(
+        self, segments
+    ):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
         *ancestors, key = segments
@@ -378,10 +380,18 @@ class NodeAdapter(BaseAdapter):
             # TODO Do binary search or use some tricky JSON query to find where
             # database stops and (for example) HDF5 file begins.
         if node is None:
-            return
-        return self.from_node(node)
+            return None
+        return NodeAttributes.from_orm(node, sorting=self.sorting)
 
-    def from_node(self, node):
+    async def lookup_adapter(
+        self, segments
+    ):  # TODO: Accept filter for predicate-pushdown.
+        node = await self.lookup_node(segments)
+        if node is None:
+            return None
+        return self.adapter_from_node(node)
+
+    def adapter_from_node(self, node):
         num_data_sources = len(node.data_sources)
         if num_data_sources > 1:
             raise NotImplementedError
@@ -493,7 +503,7 @@ class NodeAdapter(BaseAdapter):
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            return key, node
+            return key, NodeAttributes.from_orm(node, sorting=self.sorting)
 
     async def patch_node(datasources=None):
         ...
@@ -531,7 +541,7 @@ class NodeAdapter(BaseAdapter):
                 .scalars()
                 .all()
             )
-            return [(node.key, self.from_node(node)) for node in nodes]
+            return [(node.key, NodeAttributes.from_orm(node)) for node in nodes]
 
 
 # Map sort key to Node ORM attribute.

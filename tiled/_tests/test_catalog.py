@@ -109,7 +109,7 @@ async def test_nested_node_creation(a):
         specs=[],
         references=[],
     )
-    b = await a.lookup(["b"])
+    b = await a.lookup_adapter(["b"])
     await b.create_node(
         key="c",
         metadata={},
@@ -117,7 +117,7 @@ async def test_nested_node_creation(a):
         specs=[],
         references=[],
     )
-    c = await b.lookup(["c"])
+    c = await b.lookup_adapter(["c"])
     assert b.segments == ["b"]
     assert c.segments == ["b", "c"]
     assert (await a.keys_range(0, 1)) == ["b"]
@@ -191,14 +191,14 @@ async def test_search(a):
 
     # Looking up "d" inside search results should find nothing when
     # "d" is filtered out by a search query first.
-    assert await a.lookup(["d"]) is not None
-    assert await a.search(Eq("letter", "c")).lookup(["d"]) is None
+    assert await a.lookup_adapter(["d"]) is not None
+    assert await a.search(Eq("letter", "c")).lookup_adapter(["d"]) is None
 
     # Search on nested key.
     assert await a.search(Eq("x.y.z", "c")).keys_range(0, 5) == ["c"]
 
     # Created nested nodes and search on them.
-    d = await a.lookup(["d"])
+    d = await a.lookup_adapter(["d"])
     for letter, number in zip(string.ascii_lowercase[:5], range(10, 15)):
         await d.create_node(
             key=letter,
@@ -280,7 +280,7 @@ async def test_write_array_externally_managed(a, tmpdir):
             )
         ],
     )
-    x = await a.lookup(["x"])
+    x = await a.lookup_adapter(["x"])
     assert numpy.array_equal(arr, x.read())
 
 
@@ -308,7 +308,7 @@ async def test_write_dataframe_externally_managed(a, tmpdir):
             )
         ],
     )
-    x = await a.lookup(["x"])
+    x = await a.lookup_adapter(["x"])
     pandas.testing.assert_frame_equal(df, x.read())
 
 

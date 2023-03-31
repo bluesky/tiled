@@ -58,6 +58,7 @@ class EntryFields(str, enum.Enum):
     sorting = "sorting"
     specs = "specs"
     references = "references"
+    data_sources = "data_sources"
     none = ""
 
 
@@ -126,6 +127,7 @@ class DataSource(pydantic.BaseModel):
 
 
 class NodeAttributes(pydantic.BaseModel):
+    key: str
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
     specs: Optional[Specs]
@@ -135,6 +137,38 @@ class NodeAttributes(pydantic.BaseModel):
     ]
     sorting: Optional[List[SortingItem]]
     references: Optional[References]
+    data_sources: Optional[List[DataSource]]
+    time_created: Optional[datetime]
+    time_updated: Optional[datetime]
+
+    @classmethod
+    def from_orm(cls, orm, sorting=None):
+        # In the Python API we encode sorting as (key, direction).
+        # This order-based "record" notion does not play well with OpenAPI.
+        # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
+        if sorting is None:
+            sorting = [("time_created", 1)]
+        sorting_as_dict = [
+            {"key": key, "direction": direction} for key, direction in sorting
+        ]
+        if orm.data_sources:
+            # TODO Handle multiple data sources
+            structure = orm.data_sources[0].structure
+        else:
+            structure = None
+        return cls(
+            key=orm.key,
+            ancestors=orm.ancestors,
+            metadata=orm.metadata_,
+            structure_family=orm.structure_family,
+            structure=structure,
+            specs=orm.specs,
+            references=orm.references,
+            sorting=sorting_as_dict,
+            data_sources=[DataSource.from_orm(ds) for ds in orm.data_sources],
+            time_created=orm.time_created,
+            time_updated=orm.time_updated,
+        )
 
 
 AttributesT = TypeVar("AttributesT")
