@@ -460,10 +460,9 @@ def construct_resource(
                     {"key": key, "direction": direction}
                     for key, direction in entry.sorting
                 ]
-        key = path_parts[-1] if path_parts else ""
         d = {
-            "id": key,
-            "attributes": schemas.NodeAttributes(key=key, **attributes),
+            "id": path_parts[-1] if path_parts else "",
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = {
@@ -558,10 +557,9 @@ def construct_resource(
         else:
             # We only have entry names, not structure_family, so
             ResourceLinksT = schemas.SelfLinkOnly
-        key = path_parts[-1] if path_parts else ""
         d = {
-            "id": key,
-            "attributes": schemas.NodeAttributes(key=key, **attributes),
+            "id": path_parts[-1],
+            "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
             d["links"] = links
