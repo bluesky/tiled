@@ -170,7 +170,7 @@ def apply_sort(tree, sort):
     return tree
 
 
-def construct_entries_response(
+async def construct_entries_response(
     query_registry,
     tree,
     route,
