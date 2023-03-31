@@ -5,10 +5,10 @@ services:
       contenxt: .
     volumes:
       - type: bind
-        source: .
+        source: ./example_configs/
         target: /deploy
     environment:
-      - TILED_CONFIG=/deploy/config.yml
+      - TILED_CONFIG=/deploy/small_demo.yml
     ports:
       - 8000:8000
     restart: unless-stopped
