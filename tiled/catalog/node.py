@@ -7,7 +7,7 @@ import re
 import sys
 import uuid
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote_plus
 
 import httpx
 from sqlalchemy import text, type_coerce
@@ -472,7 +472,7 @@ class NodeAdapter(BaseAdapter):
                     data_source.mimetype = ZARR_MIMETYPE
                     data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
-                        f"/{urlencode(segment)}" for segment in self.segments
+                        f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
                     from .array import ZarrAdapter  # TEMP HACK
 

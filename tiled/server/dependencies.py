@@ -62,8 +62,8 @@ def SecureEntry(scopes):
                 )
                 # The new catalog adapter only has access control at top level for now.
                 # It can jump directly to the node of interest.
-                if hasattr(entry, "lookup"):
-                    entry = await entry.lookup(path_parts)
+                if hasattr(entry, "lookup_adapter"):
+                    entry = await entry.lookup_adapter(path_parts)
                     if entry is None:
                         raise NoEntry(path_parts)
                 # Old-style dict-like interface
