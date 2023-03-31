@@ -102,20 +102,22 @@ def test_constructors(tmpdir):
 
 @pytest.mark.asyncio
 async def test_nested_node_creation(a):
-    b = await a.create_node(
+    await a.create_node(
         key="b",
         metadata={},
         structure_family=StructureFamily.node,
         specs=[],
         references=[],
     )
-    c = await b.create_node(
+    b = await a.lookup(["b"])
+    await b.create_node(
         key="c",
         metadata={},
         structure_family=StructureFamily.node,
         specs=[],
         references=[],
     )
+    c = await b.lookup(["c"])
     assert b.segments == ["b"]
     assert c.segments == ["b", "c"]
     assert (await a.keys_range(0, 1)) == ["b"]

@@ -493,7 +493,7 @@ class NodeAdapter(BaseAdapter):
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            return key, self.from_node(node)
+            return key, node
 
     async def patch_node(datasources=None):
         ...

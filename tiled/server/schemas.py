@@ -100,6 +100,10 @@ class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
 
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(data_uri=orm.data_uri, is_directory=orm.is_directory)
+
 
 class DataSource(pydantic.BaseModel):
     structure: Optional[
@@ -110,19 +114,15 @@ class DataSource(pydantic.BaseModel):
     assets: List[Asset] = []
     externally_managed: bool
 
-    @pydantic.validator("externally_managed", always=True)
-    def check_externally_managed(cls, v, values):
-        if v:
-            if not (values["mimetype"] and values["structure"]):
-                raise ValueError(
-                    "Externally managed data must include mimetype and structure."
-                )
-        else:
-            if values["mimetype"] or values["parameters"] or values["assets"]:
-                raise ValueError(
-                    "Internally managed data must not include mimetype, parameters, or assets."
-                )
-        return v
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(
+            structure=orm.structure,
+            mimetype=orm.mimetype,
+            parameters=orm.parameters,
+            assets=[Asset.from_orm(asset) for asset in orm.assets],
+            externally_managed=orm.externally_managed,
+        )
 
 
 class NodeAttributes(pydantic.BaseModel):
