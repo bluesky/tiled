@@ -19,6 +19,7 @@ Tiled ships with some example configuration to make it easy to try this.
    [http://localhost:3000/d/Hnvd_TA4z/tiled-dashboard](http://localhost:3000/d/Hnvd_TA4z/tiled-dashboard).
 
 The dashboard will be blank at first. To generate some activity, use the Tiled Python client.
+Authenticate using the dummy API key, `secret`.
 
 ```python
 from tiled.client import from_uri
@@ -33,10 +34,22 @@ down`. This must be run before running `podman-compose up` again. (Ditto for
 
 
 ```{warning}
-This example configuration turns off authentication in Grafana.
+**Security Notes**
 
-Do not use it "in production" unless you intend for your dashboard to
-be world-public.
+This example configuration disables authentication in Grafana so that no login
+is required to view or edit the dashboard. Do not use it "in production", or
+anyone will be able to view (or vandalize) your dashboard.
+
+Also, the example Prometheus configuration in
+`montioring_example/prometheus/prometheus.yml` contains a dummy credential
+(`secret`). To run the example, it must match the secret set by
+`TILED_SINGLE_USER_API_KEY`.
+
+In real single-user deployments, the secret should be set to a secure value as described in
+[Tiled's security documentation](https://blueskyproject.io/tiled/explanations/security.html).
+In multi-user deployments, an
+[API key](https://blueskyproject.io/tiled/how-to/api-keys.html) with the
+`metrics` scope should be used.
 ```
 
 ## How does it work?
