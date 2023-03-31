@@ -326,7 +326,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
 
-    # The /search route is defined at server startup so that the user has the
+    # The /search route is defined after import time so that the user has the
     # opporunity to register custom query types before startup.
     app.get(
         "/api/v1/node/search/{path:path}",

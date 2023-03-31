@@ -205,7 +205,6 @@ async def node_search(
         )
 
 
-# @router.get("/node/distinct/{path:path}", response_model=schemas.GetDistinctResponse)
 async def node_distinct(
     request: Request,
     structure_families: bool = False,
@@ -290,25 +289,6 @@ def patch_route_signature(route, query_registry):
     route_with_sig.__signature__ = signature.replace(parameters=parameters)
     # End black magic
 
-    # # Register the search route.
-    # router = APIRouter()
-    # router.get(
-    #     "/node/search",
-    #     response_model=schemas.Response[
-    #         List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-    #         schemas.PaginationLinks,
-    #         dict,
-    #     ],
-    #     include_in_schema=False,
-    # )(route_with_sig)
-    # router.get(
-    #     "/node/search/{path:path}",
-    #     response_model=schemas.Response[
-    #         List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-    #         schemas.PaginationLinks,
-    #         dict,
-    #     ],
-    # )(route_with_sig)
     return route_with_sig
 
 
