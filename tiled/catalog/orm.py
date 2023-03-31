@@ -94,7 +94,9 @@ class Node(Timestamped, Base):
     specs = Column(JSONVariant, nullable=False)
     references = Column(JSONVariant, nullable=False)
 
-    data_sources = relationship("DataSource", back_populates="node", lazy="selectin")
+    data_sources = relationship(
+        "DataSource", back_populates="node", cascade="save-update", lazy="selectin"
+    )
 
     __table_args__ = (
         UniqueConstraint("key", "ancestors", name="key_ancestors_unique_constraint"),
@@ -154,6 +156,7 @@ class DataSource(Timestamped, Base):
         "Asset",
         secondary=data_source_asset_association_table,
         back_populates="data_sources",
+        cascade="save-update",
         lazy="selectin",
     )
 
@@ -168,7 +171,6 @@ class Asset(Timestamped, Base):
 
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    data_source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False)
 
     # data_uri can refer to an external file or network resource,
     # or to a row in the AssetBlob table "assetblob://"

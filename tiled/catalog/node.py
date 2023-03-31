@@ -382,7 +382,9 @@ class NodeAdapter(BaseAdapter):
             paths = [asset.data_uri for asset in data_source.assets]
             reader = reader_factory(*paths, **data_source.parameters)
             return reader
-        else:
+        else:  # num_data_sources == 0
+            if node.structure_family != StructureFamily.node:
+                raise NotImplementedError  # array or dataframe that is uninitialized
             # A node with no underlying data source
             return NodeAdapter(self.context, node)
 
@@ -423,7 +425,6 @@ class NodeAdapter(BaseAdapter):
         structure_family,
         metadata,
         key=None,
-        structure=None,
         specs=None,
         references=None,
         data_sources=None,
@@ -438,12 +439,7 @@ class NodeAdapter(BaseAdapter):
             specs=specs or [],
             references=references or [],
         )
-        # TODO Is there a way to insert related objects without
-        # going back to commit/refresh so much?
         async with self.context.session() as db:
-            db.add(node)
-            await db.commit()
-            await db.refresh(node)
             for data_source in data_sources:
                 if not data_source.externally_managed:
                     # TODO Branch on StructureFamily
@@ -463,7 +459,6 @@ class NodeAdapter(BaseAdapter):
                     asset = Asset(data_uri=data_uri, is_directory=True)
                     data_source.assets.append(asset)
                 data_source_orm = orm.DataSource(
-                    node_id=node.id,
                     structure=_prepare_structure(
                         structure_family, data_source.structure
                     ),
@@ -471,18 +466,17 @@ class NodeAdapter(BaseAdapter):
                     externally_managed=data_source.externally_managed,
                     parameters=data_source.parameters,
                 )
-                db.add(data_source_orm)
-                await db.commit()
-                await db.refresh(data_source_orm)
+                node.data_sources.append(data_source_orm)
+                await db.flush(data_source_orm)
                 for asset in data_source.assets:
                     asset_orm = orm.Asset(
                         data_uri=asset.data_uri,
-                        data_source_id=data_source_orm.id,
                         is_directory=asset.is_directory,
                     )
-                    db.add(asset_orm)
-                    await db.commit()
-                await db.refresh(data_source_orm)
+                    data_source_orm.assets.append(asset_orm)
+            db.add(node)
+            await db.commit()
+            await db.refresh(node)
             return self.from_node(node)
 
     async def patch_node(datasources=None):

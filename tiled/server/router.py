@@ -614,15 +614,18 @@ async def post_metadata(
 
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
-        body.structure.micro.meta = base64.b64decode(body.structure.micro.meta)
-        body.structure.micro.divisions = base64.b64decode(
+        # TODO This is fragile.
+        body.data_sources[0].structure.micro.meta = base64.b64decode(
+            body.structure.micro.meta
+        )
+        body.data_sources[0].structure.micro.divisions = base64.b64decode(
             body.structure.micro.divisions
         )
 
     metadata, structure_family, structure, specs, references = (
         body.metadata,
         body.structure_family,
-        body.structure,
+        body.data_sources[0].structure,
         body.specs,
         body.references,
     )
@@ -658,22 +661,23 @@ async def post_metadata(
                 metadata_modified = True
                 metadata = result
 
-    key = await entry.create_node(
+    adapter = await entry.create_node(
         metadata=body.metadata,
         structure_family=body.structure_family,
-        structure=body.structure,
         specs=body.specs,
         references=body.references,
         data_sources=body.data_sources,
     )
     links = {}
     base_url = get_base_url(request)
-    path_parts = [segment for segment in path.split("/") if segment] + [key]
+    path_parts = [segment for segment in path.split("/") if segment] + [
+        adapter.node.key
+    ]
     path_str = "/".join(path_parts)
     links["self"] = f"{base_url}/node/metadata/{path_str}"
     if body.structure_family == StructureFamily.array:
         block_template = ",".join(
-            f"{{{index}}}" for index in range(len(body.structure.macro.shape))
+            f"{{{index}}}" for index in range(len(adapter.macrostructure().shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -681,7 +685,7 @@ async def post_metadata(
         # Different from array because of structure.macro.shape vs structure.shape
         # Can be unified if we drop macro/micro namespace.
         block_template = ",".join(
-            f"{{{index}}}" for index in range(len(body.structure.shape))
+            f"{{{index}}}" for index in range(len(adapter.macrostructure().shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -692,7 +696,11 @@ async def post_metadata(
         links["full"] = f"{base_url}/node/full/{path_str}"
     else:
         raise NotImplementedError(body.structure_family)
-    response_data = {"id": key, "links": links}
+    response_data = {
+        "id": adapter.node.key,
+        "links": links,
+        "data_sources": adapter.node.data_sources,
+    }
     if metadata_modified:
         response_data["metadata"] = metadata
     return json_or_msgpack(request, response_data)
@@ -777,7 +785,7 @@ async def put_dataframe_partition(
     return json_or_msgpack(request, None)
 
 
-@router.put("/node/metadata/{path:path}")
+@router.put("/node/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
 async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,

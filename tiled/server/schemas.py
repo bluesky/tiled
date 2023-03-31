@@ -122,6 +122,7 @@ class DataSource(pydantic.BaseModel):
                 raise ValueError(
                     "Internally managed data must not include mimetype, parameters, or assets."
                 )
+        return v
 
 
 class NodeAttributes(pydantic.BaseModel):
@@ -335,9 +336,6 @@ class APIKeyRequestParams(pydantic.BaseModel):
 
 class PostMetadataRequest(pydantic.BaseModel):
     structure_family: StructureFamily
-    structure: Optional[
-        Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
-    ]
     metadata: Dict = {}
     data_sources: List[DataSource] = []
     specs: Specs = []
@@ -357,8 +355,17 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    metadata: Optional[Dict]  # may be None if validators did not alter metadata
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    metadata: Dict
+    data_sources: List[DataSource]
+
+
+class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
+    id: str
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    # May be None if not altered
+    metadata: Optional[Dict]
+    data_sources: Optional[List[DataSource]]
 
 
 class DistinctValueInfo(pydantic.BaseModel):
