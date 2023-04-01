@@ -29,6 +29,7 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
+    EntryKind,
     SecureEntry,
     block,
     expected_shape,
@@ -149,7 +150,7 @@ async def node_search(
     sort: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
     **filters,
@@ -211,7 +212,7 @@ async def node_distinct(
     specs: bool = False,
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
     query_registry=Depends(get_query_registry),
     **filters,
 ):
@@ -305,7 +306,7 @@ async def node_metadata(
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
     root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
@@ -605,7 +606,7 @@ async def post_metadata(
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
-    entry=SecureEntry(scopes=["write:metadata", "create"]),
+    entry=SecureEntry(scopes=["write:metadata", "create"], kind=EntryKind.node),
 ):
     if not getattr(entry, "writable", False):
         raise HTTPException(
@@ -707,7 +708,7 @@ async def post_metadata(
 @router.delete("/node/metadata/{path:path}")
 async def delete(
     request: Request,
-    entry=SecureEntry(scopes=["write:data", "write:metadata"]),
+    entry=SecureEntry(scopes=["write:data", "write:metadata"], kind=EntryKind.node),
 ):
     if hasattr(entry, "delete"):
         entry.delete()
@@ -789,7 +790,7 @@ async def put_metadata(
     body: schemas.PutMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
-    entry=SecureEntry(scopes=["write:metadata"]),
+    entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
 ):
     if not hasattr(entry, "put_metadata"):
         raise HTTPException(
@@ -851,7 +852,7 @@ async def node_revisions(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    entry=SecureEntry(scopes=["read:metadata"]),
+    entry=SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
@@ -873,7 +874,9 @@ async def node_revisions(
 
 @router.delete("/node/revisions/{path:path}")
 async def revisions_delitem(
-    request: Request, n: int, entry=SecureEntry(scopes=["write:metadata"])
+    request: Request,
+    n: int,
+    entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(

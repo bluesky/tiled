@@ -1,3 +1,4 @@
+from enum import Enum
 from functools import lru_cache
 from typing import Optional
 
@@ -39,7 +40,15 @@ def get_root_tree():
     )
 
 
-def SecureEntry(scopes):
+# A node implements the kinds of things we need for JSON descriptions.
+# An adapter implements the kind of things we need to send binary data.
+# These should both become 'protocols' in Python.
+EntryKind = Enum("EntryKind", ["adapter", "node"])
+
+
+def SecureEntry(scopes, kind=EntryKind.adapter):
+    kind = EntryKind(kind)
+
     async def inner(
         path: str,
         request: Request,
@@ -63,7 +72,10 @@ def SecureEntry(scopes):
                 # The new catalog adapter only has access control at top level for now.
                 # It can jump directly to the node of interest.
                 if hasattr(entry, "lookup_adapter"):
-                    entry = await entry.lookup_adapter(path_parts)
+                    if kind == EntryKind.adapter:
+                        entry = await entry.lookup_adapter(path_parts)
+                    else:  # kind == EntryKind.node
+                        entry = await entry.lookup_node(path_parts)
                     if entry is None:
                         raise NoEntry(path_parts)
                 # Old-style dict-like interface
