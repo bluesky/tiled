@@ -1,3 +1,4 @@
+import anyio
 import numpy
 import zarr.storage
 
@@ -25,16 +26,16 @@ class ZarrAdapter(ArrayAdapter):
         array = zarr.open_array(str(directory), "r+")
         return cls.from_array(array)
 
-    def put_data(self, body, block=None):
-        # Organize files into subdirectories with the first two
-        # characters of the key to avoid one giant directory.
-        if block:
-            slice_, shape = slice_and_shape_from_block_and_chunks(
-                block, self.doc.structure.macro.chunks
-            )
-        else:
-            slice_ = numpy.s_[:]
-            shape = self.doc.structure.macro.shape
+    async def write(self, data, slice=None):
+        def _write():
+            self._array[:] = data
+
+        await anyio.to_thread.run_sync(_write)
+
+    def write_block(self, block, data):
+        slice_, shape = slice_and_shape_from_block_and_chunks(
+            block, self.doc.structure.macro.chunks
+        )
         array = numpy.frombuffer(
             body, dtype=self.doc.structure.micro.to_numpy_dtype()
         ).reshape(shape)

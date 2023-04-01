@@ -14,7 +14,7 @@ import tifffile
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from ..adapters.dataframe import DataFrameAdapter
+from ..adapters.dataframe import ArrayAdapter, DataFrameAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog.explain import record_explanations
 from ..catalog.node import (
@@ -258,7 +258,7 @@ async def test_metadata_index_is_used(a):
 
 
 @pytest.mark.asyncio
-async def test_write_array_externally_managed(a, tmpdir):
+async def test_write_array_external(a, tmpdir):
     arr = numpy.ones((5, 3))
     filepath = tmpdir / "file.tiff"
     tifffile.imwrite(str(filepath), arr)
@@ -285,7 +285,7 @@ async def test_write_array_externally_managed(a, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_write_dataframe_externally_managed(a, tmpdir):
+async def test_write_dataframe_external(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
@@ -309,6 +309,29 @@ async def test_write_dataframe_externally_managed(a, tmpdir):
     )
     x = await a.lookup_adapter(["x"])
     pandas.testing.assert_frame_equal(df, x.read())
+
+
+@pytest.mark.asyncio
+async def test_write_array_internal(a, tmpdir):
+    arr = numpy.ones((5, 3))
+    ad = ArrayAdapter(arr)
+    structure = asdict(
+        ArrayStructure(macro=ad.macrostructure(), micro=ad.microstructure())
+    )
+    await a.create_node(
+        key="x",
+        structure_family="array",
+        metadata={},
+        data_sources=[
+            DataSource(
+                structure=structure,
+                externally_managed=False,
+            )
+        ],
+    )
+    x = await a.lookup_adapter(["x"])
+    await x.write(arr)
+    assert numpy.array_equal(arr, x.read())
 
 
 def test_server(a):
