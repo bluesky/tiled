@@ -286,7 +286,6 @@ async def test_write_array_externally_managed(a, tmpdir):
 
 @pytest.mark.asyncio
 async def test_write_dataframe_externally_managed(a, tmpdir):
-    raise pytest.skip("No dataframe support yet")
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
