@@ -287,7 +287,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 len(data) == 1
             ), "The key lookup query must never result more than one result."
             (item,) = data
-            return client_for_item(self.context, self.structure_clients, item)[tail]
+            result = client_for_item(self.context, self.structure_clients, item)
+            if tail:
+                result = result[tail]
         else:
             # Straightforwardly look up the key under this node.
             # There is no search filter in place, so if it is there
@@ -319,7 +321,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                         raise
                     item = content["data"]
                     break
-            return client_for_item(self.context, self.structure_clients, item)
+            result = client_for_item(self.context, self.structure_clients, item)
+        return result
 
     def __delitem__(self, key):
         self._cached_len = None
