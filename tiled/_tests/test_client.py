@@ -7,10 +7,11 @@ import pytest
 import yaml
 
 from ..adapters.mapping import MapAdapter
-from ..client import Context, from_context, from_profile
+from ..client import Context, from_context, from_profile, record_history
 from ..client.context import CannotPrompt
 from ..config import ConfigError
 from ..profiles import load_profiles, paths
+from ..queries import Key
 from ..server.app import build_app, build_app_from_config
 from .utils import fail_with_status_code
 
@@ -112,3 +113,54 @@ def test_stdin_closed(monkeypatch):
     with Context.from_app(build_app_from_config(config)) as context:
         with pytest.raises(CannotPrompt):
             from_context(context)
+
+
+def test_jump_down_tree():
+    tree = MapAdapter({}, metadata={"number": 1})
+    for number, letter in enumerate(list("abcde"), start=2):
+        tree = MapAdapter({letter: tree}, metadata={"number": number})
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+    assert (
+        client["e"]["d"]["c"]["b"]["a"].metadata["number"]
+        == client["e", "d", "c", "b", "a"].metadata["number"]
+        == 1
+    )
+    assert (
+        client["e"]["d"]["c"]["b"].metadata["number"]
+        == client["e", "d", "c", "b"].metadata["number"]
+        == 2
+    )
+    assert (
+        client["e"]["d"]["c"].metadata["number"]
+        == client["e", "d", "c"].metadata["number"]
+        == 3
+    )
+    assert (
+        client["e"]["d"].metadata["number"] == client["e", "d"].metadata["number"] == 4
+    )
+
+    assert client["e"]["d", "c", "b"]["a"].metadata["number"] == 1
+    assert client["e"]["d", "c", "b", "a"].metadata["number"] == 1
+    assert client["e", "d", "c", "b"]["a"].metadata["number"] == 1
+    assert (
+        client.search(Key("number") == 5)["e", "d", "c", "b", "a"].metadata["number"]
+        == 1
+    )
+    assert (
+        client["e"].search(Key("number") == 4)["d", "c", "b", "a"].metadata["number"]
+        == 1
+    )
+    with pytest.raises(KeyError):
+        client.search(Key("number") == 4)["e", "d", "c", "b", "a"]
+        client["e"].search(Key("number") == 3)["d", "c", "b", "a"].metadata[
+            "number"
+        ] == 1
+
+    with record_history() as h:
+        client["e", "d", "c", "b", "a"]
+    assert len(h.requests) == 1
+
+    with record_history() as h:
+        client["e"]["d"]["c"]["b"]["a"]
+    assert len(h.requests) == 5
