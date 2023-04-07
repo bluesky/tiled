@@ -311,7 +311,11 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                         )
                     except ClientError as err:
                         if err.response.status_code == 404:
-                            raise KeyError(key)
+                            # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
+                            err_arg = keys[i:]
+                            if len(err_arg) == 1:
+                                (err_arg,) = err_arg
+                            raise KeyError(err_arg)
                         raise
                     item = content["data"]
                     break

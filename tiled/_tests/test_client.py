@@ -151,11 +151,33 @@ def test_jump_down_tree():
         client["e"].search(Key("number") == 4)["d", "c", "b", "a"].metadata["number"]
         == 1
     )
-    with pytest.raises(KeyError):
+
+    # Check that a reasonable KeyError is raised.
+    # Notice that we do not binary search to find _exactly_ where the problem is.
+    with pytest.raises(KeyError) as exc_info:
+        client["e", "d", "c", "b"]["X"]
+    assert exc_info.value.args[0] == "X"
+    with pytest.raises(KeyError) as exc_info:
+        client["e", "d", "c", "b", "X"]
+    assert exc_info.value.args[0] == ("e", "d", "c", "b", "X")
+    with pytest.raises(KeyError) as exc_info:
+        client["e", "d", "X", "b", "a"]
+    assert exc_info.value.args[0] == ("e", "d", "X", "b", "a")
+
+    # Check that jumping raises if a key along the path is not in the search
+    # resuts.
+    with pytest.raises(KeyError) as exc_info:
+        client.search(Key("number") == 4)["e"]
+    assert exc_info.value.args[0] == "e"
+    with pytest.raises(KeyError) as exc_info:
         client.search(Key("number") == 4)["e", "d", "c", "b", "a"]
-        client["e"].search(Key("number") == 3)["d", "c", "b", "a"].metadata[
-            "number"
-        ] == 1
+    assert exc_info.value.args[0] == "e"
+    with pytest.raises(KeyError) as exc_info:
+        client["e"].search(Key("number") == 3)["d"]
+    assert exc_info.value.args[0] == "d"
+    with pytest.raises(KeyError) as exc_info:
+        client["e"].search(Key("number") == 3)["d", "c", "b", "a"]
+    assert exc_info.value.args[0] == "d"
 
     with record_history() as h:
         client["e", "d", "c", "b", "a"]
