@@ -1,6 +1,10 @@
 import collections
 import contextlib
+import inspect
 import time
+from typing import Any, Callable
+
+import anyio
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
@@ -133,3 +137,19 @@ def get_structure(entry):
     else:
         raise ValueError(f"Unrecognized structure family {structure_family}")
     return structure
+
+
+def is_coroutine_callable(call: Callable[..., Any]) -> bool:
+    if inspect.isroutine(call):
+        return inspect.iscoroutinefunction(call)
+    if inspect.isclass(call):
+        return False
+    dunder_call = getattr(call, "__call__", None)  # noqa: B004
+    return inspect.iscoroutinefunction(dunder_call)
+
+
+async def ensure_awaitable(func, *args):
+    if is_coroutine_callable(func):
+        return await func(*args)
+    else:
+        return await anyio.to_thread.run_sync(func, *args)

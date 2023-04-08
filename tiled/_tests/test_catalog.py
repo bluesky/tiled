@@ -5,6 +5,7 @@ import string
 import uuid
 from dataclasses import asdict
 
+import anyio
 import numpy
 import pandas
 import pandas.testing
@@ -330,7 +331,7 @@ async def test_write_array_internal(a, tmpdir):
         ],
     )
     x = await a.lookup_adapter(["x"])
-    await x.write(arr)
+    await anyio.to_thread.run_sync(x.write, arr)
     assert numpy.array_equal(arr, x.read())
 
 
@@ -339,4 +340,7 @@ def test_server(a):
     with Context.from_app(app) as context:
         client = from_context(context)
         list(client)
-        client.write_array([1, 2, 3])
+        expected = numpy.array([1, 2, 3])
+        x = client.write_array(expected)
+        actual = x.read()
+        assert numpy.array_equal(actual, expected)

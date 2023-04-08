@@ -1,4 +1,3 @@
-import anyio
 import numpy
 import zarr.storage
 
@@ -26,13 +25,13 @@ class ZarrAdapter(ArrayAdapter):
         array = zarr.open_array(str(directory), "r+")
         return cls.from_array(array)
 
-    async def write(self, data, slice=None):
-        def _write():
-            self._array[:] = data
+    def write(self, data, slice=...):
+        self._array[slice] = data
 
-        await anyio.to_thread.run_sync(_write)
+    def read(self, slice=...):
+        return self._array[slice]
 
-    def write_block(self, block, data):
+    async def write_block(self, block, data):
         slice_, shape = slice_and_shape_from_block_and_chunks(
             block, self.doc.structure.macro.chunks
         )

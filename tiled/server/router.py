@@ -41,6 +41,7 @@ from .dependencies import (
 from .settings import get_settings
 from .utils import (
     FilteredNode,
+    ensure_awaitable,
     filter_for_access,
     get_base_url,
     get_structure,
@@ -341,7 +342,7 @@ async def node_metadata(
 @router.get(
     "/array/block/{path:path}", response_model=schemas.Response, name="array block"
 )
-def array_block(
+async def array_block(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     block=Depends(block),
@@ -382,11 +383,11 @@ def array_block(
                 detail=f"Requested scalar but shape is {entry.macrostructure().shape}",
             )
         with record_timing(request.state.metrics, "read"):
-            array = entry.read()
+            array = await ensure_awaitable(entry.read)
     else:
         try:
             with record_timing(request.state.metrics, "read"):
-                array = entry.read_block(block, slice=slice)
+                array = await ensure_awaitable(entry.read_block, block, slice)
         except IndexError:
             raise HTTPException(status_code=400, detail="Block index out of range")
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -423,7 +424,7 @@ def array_block(
 @router.get(
     "/array/full/{path:path}", response_model=schemas.Response, name="full array"
 )
-def array_full(
+async def array_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     slice=Depends(slice_),
@@ -448,7 +449,7 @@ def array_full(
 
     try:
         with record_timing(request.state.metrics, "read"):
-            array = entry.read(slice)
+            array = await ensure_awaitable(entry.read, slice)
         if structure_family == "array":
             array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
@@ -547,7 +548,7 @@ def dataframe_partition(
     response_model=schemas.Response,
     name="full generic 'node' or 'dataframe'",
 )
-def node_full(
+async def node_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     principal: str = Depends(get_current_principal),
@@ -561,10 +562,8 @@ def node_full(
     Fetch the data below the given node.
     """
     try:
-        # The singular/plural mismatch here of "fields" and "field" is
-        # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            data = entry.read(fields=field)
+            data = await ensure_awaitable(entry.read, field)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
