@@ -582,9 +582,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
                 "references": references,
-                "data_sources": [
-                    {"externally_managed": False, "structure": asdict(structure)}
-                ],
+                "data_sources": [{"structure": asdict(structure)}],
             }
         }
 

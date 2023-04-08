@@ -19,6 +19,7 @@ from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
 
+from ..server.schemas import Management
 from ..structures.core import StructureFamily
 from .base import Base
 
@@ -149,7 +150,8 @@ class DataSource(Timestamped, Base):
     # These are additional parameters passed to the Adapter to guide
     # it to access and arrange the data in the file correctly.
     parameters = Column(JSONVariant, nullable=True)
-    externally_managed = Column(Boolean, default=False, nullable=False)
+    # This relates to the mutability of the data.
+    management = Column(Enum(Management), nullable=False)
 
     node = relationship("Node", back_populates="data_sources")
     assets = relationship(

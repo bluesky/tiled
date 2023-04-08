@@ -275,7 +275,7 @@ async def test_write_array_external(a, tmpdir):
                 mimetype="image/tiff",
                 structure=structure,
                 parameters={},
-                externally_managed=True,
+                management="external",
                 assets=[Asset(data_uri=f"file:///{filepath}", is_directory=False)],
             )
         ],
@@ -302,7 +302,7 @@ async def test_write_dataframe_external(a, tmpdir):
                 mimetype="text/csv",
                 structure=structure,
                 parameters={},
-                externally_managed=True,
+                management="external",
                 assets=[Asset(data_uri=f"file:///{filepath}", is_directory=False)],
             )
         ],
@@ -325,7 +325,7 @@ async def test_write_array_internal(a, tmpdir):
         data_sources=[
             DataSource(
                 structure=structure,
-                externally_managed=False,
+                management="writable",
             )
         ],
     )

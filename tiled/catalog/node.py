@@ -17,7 +17,7 @@ from sqlalchemy.future import select
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
-from ..server.schemas import Asset, Node
+from ..server.schemas import Asset, Management, Node
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
@@ -467,7 +467,7 @@ class NodeAdapter(BaseAdapter):
         )
         async with self.context.session() as db:
             for data_source in data_sources:
-                if not data_source.externally_managed:
+                if data_source.management != Management.external:
                     # TODO Branch on StructureFamily
                     data_source.mimetype = ZARR_MIMETYPE
                     data_source.parameters = {}
@@ -489,7 +489,7 @@ class NodeAdapter(BaseAdapter):
                         structure_family, data_source.structure
                     ),
                     mimetype=data_source.mimetype,
-                    externally_managed=data_source.externally_managed,
+                    management=data_source.management,
                     parameters=data_source.parameters,
                 )
                 node.data_sources.append(data_source_orm)

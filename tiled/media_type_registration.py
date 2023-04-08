@@ -173,14 +173,11 @@ class CompressionRegistry:
 serialization_registry = SerializationRegistry()
 "Global serialization registry. See Registry for usage examples."
 
+deserialization_registry = SerializationRegistry()
+"Global deserialization registry. See Registry for usage examples."
+
 compression_registry = CompressionRegistry()
 "Global compression registry. See Registry for usage examples."
-
-# TODO Do we *need* a deserialization registry?
-# The Python client always deals with a certain preferred format
-# for each structure family. Deserializing other formats is other
-# clients' problem, and we can't help with that from here.
-deserialization_registry = SerializationRegistry()
 
 
 compression_registry.register(

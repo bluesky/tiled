@@ -723,14 +723,20 @@ async def delete(
 async def put_array_full(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_serialization_registry),
 ):
-    data = await request.body()
-    if hasattr(entry, "put_data"):
-        entry.put_data(data)
-    else:
+    buffer = await request.body()
+    if not hasattr(entry, "write"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept array data."
         )
+        deserializer = deserialization_registry[request.headers["content-type"]]
+        data = deserializer(
+            buffer,
+            entry.microstructure().to_numpy_dtype(),
+            entry.macrostructure().shape,
+        )
+        entry.write(data)
     return json_or_msgpack(request, None)
 
 

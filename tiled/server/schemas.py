@@ -106,6 +106,13 @@ class Asset(pydantic.BaseModel):
         return cls(data_uri=orm.data_uri, is_directory=orm.is_directory)
 
 
+class Management(str, enum.Enum):
+    external = "external"
+    immutable = "immutable"
+    locked = "locked"
+    writable = "writable"
+
+
 class DataSource(pydantic.BaseModel):
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
@@ -113,7 +120,7 @@ class DataSource(pydantic.BaseModel):
     mimetype: Optional[str] = None
     parameters: dict = {}
     assets: List[Asset] = []
-    externally_managed: bool
+    management: Management = Management.writable
 
     @classmethod
     def from_orm(cls, orm):
@@ -122,7 +129,7 @@ class DataSource(pydantic.BaseModel):
             mimetype=orm.mimetype,
             parameters=orm.parameters,
             assets=[Asset.from_orm(asset) for asset in orm.assets],
-            externally_managed=orm.externally_managed,
+            management=orm.management,
         )
 
 
