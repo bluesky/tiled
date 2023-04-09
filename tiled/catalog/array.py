@@ -1,4 +1,5 @@
-import numpy
+import builtins
+
 import zarr.storage
 
 from tiled.adapters.array import ArrayAdapter, slice_and_shape_from_block_and_chunks
@@ -18,24 +19,38 @@ class ZarrAdapter(ArrayAdapter):
             chunks=zarr_chunks,
             dtype=dtype,
         )
-        return cls.from_directory(directory)
+        return cls.from_directory(directory, shape=shape, chunks=chunks)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # This is used to trim overflow because Zarr always has equal-sized
+        # chunks.
+        self.__stencil = tuple(
+            builtins.slice(0, dim) for dim in self.macrostructure().shape
+        )
 
     @classmethod
-    def from_directory(cls, directory):
+    def from_directory(cls, directory, shape=None, chunks=None):
         array = zarr.open_array(str(directory), "r+")
-        return cls.from_array(array)
-
-    def write(self, data, slice=...):
-        self._array[slice] = data
+        return cls(array, shape=shape, chunks=chunks)
 
     def read(self, slice=...):
-        return self._array[slice]
+        # Trim overflow because Zarr always has equal-sized chunks.
+        return self._array[self.__stencil][slice]
 
-    async def write_block(self, block, data):
-        slice_, shape = slice_and_shape_from_block_and_chunks(
-            block, self.doc.structure.macro.chunks
+    def read_block(self, block, slice=...):
+        block_slice, _ = slice_and_shape_from_block_and_chunks(
+            block, self.macrostructure().chunks
         )
-        array = numpy.frombuffer(
-            body, dtype=self.doc.structure.micro.to_numpy_dtype()
-        ).reshape(shape)
-        self.array[slice_] = array
+        # Slice the block out of the whole array,
+        # and optionally a sub-slice therein.
+        return self._array[self.__stencil][block_slice][slice]
+
+    def write(self, data, slice=...):
+        self._array[self.__stencil][slice] = data
+
+    async def write_block(self, block, data, slice=...):
+        block_slice, shape = slice_and_shape_from_block_and_chunks(
+            block, self.macrostructure().chunks
+        )
+        self._array[self.__stencil][block_slice][slice] = data
