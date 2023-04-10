@@ -6,6 +6,8 @@ import uuid
 from dataclasses import asdict
 
 import anyio
+
+# import dask.array
 import numpy
 import pandas
 import pandas.testing
@@ -286,7 +288,7 @@ async def test_write_array_external(a, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_write_dataframe_external(a, tmpdir):
+async def test_write_dataframe_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
@@ -313,7 +315,7 @@ async def test_write_dataframe_external(a, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_write_array_internal(a, tmpdir):
+async def test_write_array_internal_direct(a, tmpdir):
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter(arr)
     structure = asdict(
@@ -335,12 +337,17 @@ async def test_write_array_internal(a, tmpdir):
     assert numpy.array_equal(arr, x.read())
 
 
-def test_server(a):
+def test_write_array_internal_via_client(a):
     app = build_app(a)
     with Context.from_app(app) as context:
         client = from_context(context)
-        list(client)
+
         expected = numpy.array([1, 2, 3])
         x = client.write_array(expected)
         actual = x.read()
         assert numpy.array_equal(actual, expected)
+
+        # expected = dask.array.from_array(numpy.array([1, 2, 3]), chunks=((1, 1, 1),))
+        # y = client.write_array(expected)
+        # actual = y.read()
+        # assert numpy.array_equal(actual, expected)

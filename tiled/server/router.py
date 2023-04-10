@@ -33,6 +33,7 @@ from .dependencies import (
     SecureEntry,
     block,
     expected_shape,
+    get_deserialization_registry,
     get_query_registry,
     get_serialization_registry,
     get_validation_registry,
@@ -722,20 +723,18 @@ async def delete(
 async def put_array_full(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
-    deserialization_registry=Depends(get_serialization_registry),
+    deserialization_registry=Depends(get_deserialization_registry),
 ):
-    buffer = await request.body()
+    body = await request.body()
     if not hasattr(entry, "write"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept array data."
         )
-        deserializer = deserialization_registry[request.headers["content-type"]]
-        data = deserializer(
-            buffer,
-            entry.microstructure().to_numpy_dtype(),
-            entry.macrostructure().shape,
-        )
-        entry.write(data)
+    media_type = request.headers["content-type"]
+    dtype = entry.microstructure().to_numpy_dtype()
+    shape = entry.macrostructure().shape
+    data = deserialization_registry("array", media_type, body, dtype, shape)
+    await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
 
@@ -743,16 +742,19 @@ async def put_array_full(
 async def put_array_block(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
     block=Depends(block),
 ):
-    data = await request.body()
-
-    if hasattr(entry, "put_data"):
-        entry.put_data(data, block=block)
-    else:
+    if not hasattr(entry, "write_block"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept array data."
         )
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    dtype = entry.microstructure().to_numpy_dtype()
+    shape = entry.macrostructure().shape
+    data = deserialization_registry("array", media_type, body, dtype, shape)
+    await ensure_awaitable(entry.write_block, data, block)
     return json_or_msgpack(request, None)
 
 

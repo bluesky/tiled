@@ -6,6 +6,9 @@ import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Security
 
 from ..media_type_registration import (
+    deserialization_registry as default_deserialization_registry,
+)
+from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
 from ..query_registration import query_registry as default_query_registry
@@ -19,6 +22,12 @@ from .utils import filter_for_access, record_timing
 def get_query_registry():
     "This may be overridden via dependency_overrides."
     return default_query_registry
+
+
+@lru_cache(1)
+def get_deserialization_registry():
+    "This may be overridden via dependency_overrides."
+    return default_deserialization_registry
 
 
 @lru_cache(1)
