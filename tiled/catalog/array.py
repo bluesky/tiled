@@ -21,22 +21,17 @@ class ZarrAdapter(ArrayAdapter):
         )
         return cls.from_directory(directory, shape=shape, chunks=chunks)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # This is used to trim overflow because Zarr always has equal-sized
-        # chunks.
-        self.__stencil = tuple(
-            builtins.slice(0, dim) for dim in self.macrostructure().shape
-        )
-
     @classmethod
     def from_directory(cls, directory, shape=None, chunks=None):
         array = zarr.open_array(str(directory), "r+")
         return cls(array, shape=shape, chunks=chunks)
 
+    def _stencil(self):
+        "Trims overflow because Zarr always has equal-sized chunks."
+        return tuple(builtins.slice(0, dim) for dim in self.macrostructure().shape)
+
     def read(self, slice=...):
-        # Trim overflow because Zarr always has equal-sized chunks.
-        return self._array[self.__stencil][slice]
+        return self._array[self._stencil()][slice]
 
     def read_block(self, block, slice=...):
         block_slice, _ = slice_and_shape_from_block_and_chunks(
@@ -44,13 +39,17 @@ class ZarrAdapter(ArrayAdapter):
         )
         # Slice the block out of the whole array,
         # and optionally a sub-slice therein.
-        return self._array[self.__stencil][block_slice][slice]
+        return self._array[self._stencil()][block_slice][slice]
 
     def write(self, data, slice=...):
-        self._array[self.__stencil][slice] = data
+        if slice is not ...:
+            raise NotImplementedError
+        self._array[self._stencil()] = data
 
     async def write_block(self, data, block, slice=...):
+        if slice is not ...:
+            raise NotImplementedError
         block_slice, shape = slice_and_shape_from_block_and_chunks(
             block, self.macrostructure().chunks
         )
-        self._array[self.__stencil][block_slice][slice] = data
+        self._array[block_slice] = data
