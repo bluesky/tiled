@@ -46,7 +46,7 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
             "...adapters.hdf5", __name__
         ).HDF5Adapter.from_file,
         ZARR_MIMETYPE: lambda: importlib.import_module(
-            "..array", __name__
+            "...adapters.zarr", __name__
         ).ZarrAdapter.from_directory,
     }
 )
@@ -474,7 +474,7 @@ class NodeAdapter(BaseAdapter):
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    from .array import ZarrAdapter  # TEMP HACK
+                    from ..adapters.zarr import ZarrAdapter
 
                     ZarrAdapter.new(
                         httpx.URL(data_uri).path,

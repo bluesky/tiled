@@ -2,7 +2,7 @@ import builtins
 
 import zarr.storage
 
-from tiled.adapters.array import ArrayAdapter, slice_and_shape_from_block_and_chunks
+from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 
 
 class ZarrAdapter(ArrayAdapter):
