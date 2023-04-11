@@ -6,8 +6,7 @@ import uuid
 from dataclasses import asdict
 
 import anyio
-
-# import dask.array
+import dask.array
 import numpy
 import pandas
 import pandas.testing
@@ -342,12 +341,11 @@ def test_write_array_internal_via_client(a):
     with Context.from_app(app) as context:
         client = from_context(context)
 
-        expected = numpy.array([1, 2, 3])
+        expected = numpy.array([1, 3, 7])
         x = client.write_array(expected)
         actual = x.read()
         assert numpy.array_equal(actual, expected)
 
-        # expected = dask.array.from_array(numpy.array([1, 2, 3]), chunks=((1, 1, 1),))
-        # y = client.write_array(expected)
-        # actual = y.read()
-        # assert numpy.array_equal(actual, expected)
+        y = client.write_array(dask.array.from_array(expected, chunks=((1, 1, 1),)))
+        actual = y.read()
+        assert numpy.array_equal(actual, expected)

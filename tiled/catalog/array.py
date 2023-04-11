@@ -49,7 +49,7 @@ class ZarrAdapter(ArrayAdapter):
     def write(self, data, slice=...):
         self._array[self.__stencil][slice] = data
 
-    async def write_block(self, block, data, slice=...):
+    async def write_block(self, data, block, slice=...):
         block_slice, shape = slice_and_shape_from_block_and_chunks(
             block, self.macrostructure().chunks
         )

@@ -749,10 +749,14 @@ async def put_array_block(
         raise HTTPException(
             status_code=405, detail="This path cannot accept array data."
         )
+    from tiled.adapters.array import slice_and_shape_from_block_and_chunks
+
     body = await request.body()
     media_type = request.headers["content-type"]
     dtype = entry.microstructure().to_numpy_dtype()
-    shape = entry.macrostructure().shape
+    _, shape = slice_and_shape_from_block_and_chunks(
+        block, entry.macrostructure().chunks
+    )
     data = deserialization_registry("array", media_type, body, dtype, shape)
     await ensure_awaitable(entry.write_block, data, block)
     return json_or_msgpack(request, None)
