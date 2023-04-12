@@ -291,13 +291,20 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             if tail:
                 result = result[tail]
         else:
-            # Straightforwardly look up the key under this node.
+            # Straightforwardly look up the keys under this node.
             # There is no search filter in place, so if it is there
             # then we want it.
 
-            # Sometimes Nodes will in-line their contents (child nodes)
-            # to reduce latency. This is how we handle xarray Datasets efficiently,
-            # for example. Use that, if present.
+            # The server may greedily send nested information about children
+            # ("inlined contents") to reduce latency. This is how we handle
+            # xarray Datasets efficiently, for example.
+
+            # In a loop, walk the key(s). Use inlined contents if we have it.
+            # When we reach a key that we don't have inlined contents for, send
+            # out a single request with all the rest of the keys, and break
+            # the keys-walking loop. We are effectively "jumping" down the tree
+            # to the node of interest without downloading information about
+            # intermediate parents.
             for i, key in enumerate(keys):
                 item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
                 if (item is None) or _ignore_inlined_contents:
