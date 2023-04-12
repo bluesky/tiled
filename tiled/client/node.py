@@ -245,7 +245,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def __getitem__(self, key, _ignore_inlined_contents=False):
+    def __getitem__(self, keys, _ignore_inlined_contents=False):
         # These are equivalent:
         #
         # >>> node['a']['b']['c']
@@ -255,24 +255,19 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # The last two are equivalent at a Python level;
         # both call node.__getitem__(('a', 'b', 'c')).
         #
-        # TODO Elide this into a single request to the server rather than
+        # We elide this into a single request to the server rather than
         # a chain of requests. This is not totally straightforward because
         # of this use case:
         #
         # >>> node.search(...)['a', 'b']
         #
         # which must only return a result if 'a' is contained in the search results.
-        # There are also some open design questions on the server side about
-        # how search and tree-traversal will relate, so we'll wait to make this
-        # optimization until that is fully worked out.
-        if isinstance(key, tuple):
-            child = self
-            for k in key:
-                child = child[k]
-            return child
-
+        if not isinstance(keys, tuple):
+            keys = (keys,)
         if self._queries:
             # Lookup this key *within the search results* of this Node.
+            key, *tail = keys
+            tail = tuple(tail)  # list -> tuple
             content = self.context.get_json(
                 self.item["links"]["search"],
                 params={
@@ -292,32 +287,49 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 len(data) == 1
             ), "The key lookup query must never result more than one result."
             (item,) = data
+            result = client_for_item(self.context, self.structure_clients, item)
+            if tail:
+                result = result[tail]
         else:
-            # Straightforwardly look up the key under this node.
+            # Straightforwardly look up the keys under this node.
             # There is no search filter in place, so if it is there
             # then we want it.
 
-            # Sometimes Nodes will in-line their contents (child nodes)
-            # to reduce latency. This is how we handle xarray Datasets efficiently,
-            # for example. Use that, if present.
-            item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
-            if (item is None) or _ignore_inlined_contents:
-                # The item was not inlined, either because nothing was inlined
-                # or because it was added after we fetched the inlined contents.
-                # Make a request for it.
-                try:
-                    self_link = self.item["links"]["self"]
-                    if self_link.endswith("/"):
-                        self_link = self_link[:-1]
-                    content = self.context.get_json(
-                        self_link + f"/{key}",
-                    )
-                except ClientError as err:
-                    if err.response.status_code == 404:
-                        raise KeyError(key)
-                    raise
-                item = content["data"]
-        return client_for_item(self.context, self.structure_clients, item)
+            # The server may greedily send nested information about children
+            # ("inlined contents") to reduce latency. This is how we handle
+            # xarray Datasets efficiently, for example.
+
+            # In a loop, walk the key(s). Use inlined contents if we have it.
+            # When we reach a key that we don't have inlined contents for, send
+            # out a single request with all the rest of the keys, and break
+            # the keys-walking loop. We are effectively "jumping" down the tree
+            # to the node of interest without downloading information about
+            # intermediate parents.
+            for i, key in enumerate(keys):
+                item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
+                if (item is None) or _ignore_inlined_contents:
+                    # The item was not inlined, either because nothing was inlined
+                    # or because it was added after we fetched the inlined contents.
+                    # Make a request for it.
+                    try:
+                        self_link = self.item["links"]["self"]
+                        if self_link.endswith("/"):
+                            self_link = self_link[:-1]
+                        content = self.context.get_json(
+                            self_link + "".join(f"/{key}" for key in keys[i:]),
+                        )
+                    except ClientError as err:
+                        if err.response.status_code == 404:
+                            # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
+                            err_arg = keys[i:]
+                            if len(err_arg) == 1:
+                                (err_arg,) = err_arg
+                            raise KeyError(err_arg)
+                        raise
+                    item = content["data"]
+                    break
+            result = client_for_item(self.context, self.structure_clients, item)
+        return result
 
     def __delitem__(self, key):
         self._cached_len = None
