@@ -18,6 +18,7 @@ from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import Asset, Management, Node
+from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
 from . import orm
@@ -31,7 +32,7 @@ ZARR_MIMETYPE = "application/x-zarr"
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
 # for importing Readers that we will not actually use.
-DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
+DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
         "image/tiff": lambda: importlib.import_module(
             "...adapters.tiff", __name__
@@ -48,6 +49,16 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrAdapter.from_directory,
+    }
+)
+DEFAULT_CREATION_MIMETYPE = {
+    "array": ZARR_MIMETYPE,
+}
+NEW_DATA_SOURCE_METHOD = OneShotCachedMap(
+    {
+        ZARR_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.zarr", __name__
+        ).ZarrAdapter.new,
     }
 )
 
@@ -179,7 +190,7 @@ class Context:
         self,
         engine,
         writable_storage=None,
-        readers_by_mimetype=None,
+        adapters_by_mimetype=None,
         mimetype_detection_hook=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
@@ -194,19 +205,19 @@ class Context:
                 )
         self.writable_storage = writable_storage
         self.key_maker = key_maker
-        readers_by_mimetype = readers_by_mimetype or {}
+        adapters_by_mimetype = adapters_by_mimetype or {}
         if mimetype_detection_hook is not None:
             mimetype_detection_hook = import_object(mimetype_detection_hook)
-        # If readers_by_mimetype comes from a configuration file,
+        # If adapters_by_mimetype comes from a configuration file,
         # objects are given as importable strings, like "package.module:Reader".
-        for key, value in list(readers_by_mimetype.items()):
+        for key, value in list(adapters_by_mimetype.items()):
             if isinstance(value, str):
-                readers_by_mimetype[key] = import_object(value)
-        # User-provided readers take precedence over defaults.
-        merged_readers_by_mimetype = collections.ChainMap(
-            readers_by_mimetype, DEFAULT_READERS_BY_MIMETYPE
+                adapters_by_mimetype[key] = import_object(value)
+        # User-provided adapters take precedence over defaults.
+        merged_adapters_by_mimetype = collections.ChainMap(
+            adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
-        self.readers_by_mimetype = merged_readers_by_mimetype
+        self.adapters_by_mimetype = merged_adapters_by_mimetype
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -397,7 +408,7 @@ class NodeAdapter(BaseAdapter):
             raise NotImplementedError
         if num_data_sources == 1:
             (data_source,) = node.data_sources
-            reader_factory = self.context.readers_by_mimetype[data_source.mimetype]
+            adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
             data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
             paths = []
             for data_uri in data_uris:
@@ -406,8 +417,8 @@ class NodeAdapter(BaseAdapter):
                         f"Only 'file://...'.scheme URLs are currently supported, not {data_uri!r}"
                     )
                 paths.append(data_uri.path)
-            reader = reader_factory(*paths, **data_source.parameters)
-            return reader
+            adapter = adapter_factory(*paths, **data_source.parameters)
+            return adapter
         else:  # num_data_sources == 0
             if node.structure_family != StructureFamily.node:
                 raise NotImplementedError  # array or dataframe that is uninitialized
@@ -468,15 +479,14 @@ class NodeAdapter(BaseAdapter):
         async with self.context.session() as db:
             for data_source in data_sources:
                 if data_source.management != Management.external:
-                    # TODO Branch on StructureFamily
-                    data_source.mimetype = ZARR_MIMETYPE
+                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[structure_family]
                     data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    from ..adapters.zarr import ZarrAdapter
-
-                    ZarrAdapter.new(
+                    new = NEW_DATA_SOURCE_METHOD[data_source.mimetype]
+                    await ensure_awaitable(
+                        new,
                         httpx.URL(data_uri).path,
                         data_source.structure.micro.to_numpy_dtype(),
                         data_source.structure.macro.shape,
