@@ -60,6 +60,16 @@ DEFAULT_CREATION_MIMETYPE = {
     "dataframe": PARQUET_MIMETYPE,
     "sparse": PARQUET_MIMETYPE,
 }
+CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
+    {
+        ZARR_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.zarr", __name__
+        ).ZarrAdapter.init_storage,
+        PARQUET_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.parquet", __name__
+        ).ParquetDatasetAdapter.init_storage,
+    }
+)
 
 
 def from_uri(
@@ -422,7 +432,6 @@ class NodeAdapter(BaseAdapter):
                 kwargs["shape"] = data_source.structure.macro.shape
                 kwargs["chunks"] = data_source.structure.macro.chunks
             elif node.structure_family == StructureFamily.dataframe:
-                kwargs["npartitions"] = data_source.structure.macro.npartitions
                 kwargs["meta"] = data_source.structure.micro.meta
                 kwargs["divisions"] = data_source.structure.micro.divisions
             adapter = adapter_factory(*paths, **kwargs)
@@ -492,7 +501,7 @@ class NodeAdapter(BaseAdapter):
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    adapter = self.context.adapters_by_mimetype[data_source.mimetype]
+                    init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
                     assets = []
                     if structure_family == StructureFamily.array:
                         assets.append(Asset(data_uri=data_uri, is_directory=True))
@@ -511,7 +520,7 @@ class NodeAdapter(BaseAdapter):
                                 )
                             )
                         init_storage_args = (httpx.URL(data_uri).path,)
-                    await ensure_awaitable(adapter.init_storage, *init_storage_args)
+                    await ensure_awaitable(init_storage, *init_storage_args)
                     data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(
                     structure=_prepare_structure(

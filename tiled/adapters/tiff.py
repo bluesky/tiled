@@ -19,7 +19,7 @@ class TiffAdapter:
 
     structure_family = "array"
 
-    def __init__(self, path, *, specs=None, references=None):
+    def __init__(self, path, *, shape=None, chunks=None, specs=None, references=None):
         self._file = tifffile.TiffFile(path)
         self._cache_key = (type(self).__module__, type(self).__qualname__, path)
         self.specs = specs or []

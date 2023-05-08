@@ -766,15 +766,16 @@ async def put_array_block(
 async def put_dataframe_full(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
 ):
-    data = await request.body()
-
-    if hasattr(entry, "put_data"):
-        entry.put_data(data)
-    else:
+    if not hasattr(entry, "write"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."
         )
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    data = deserialization_registry("dataframe", media_type, body)
+    await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
 
@@ -783,15 +784,16 @@ async def put_dataframe_partition(
     partition: int,
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
 ):
-    data = await request.body()
-
-    if hasattr(entry, "put_data"):
-        entry.put_data(data, partition=partition)
-    else:
+    if not hasattr(entry, "write_partition"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."
         )
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    data = deserialization_registry("dataframe", media_type, body)
+    await ensure_awaitable(entry.write, data, partition)
     return json_or_msgpack(request, None)
 
 
