@@ -349,3 +349,19 @@ def test_write_array_internal_via_client(a):
         y = client.write_array(dask.array.from_array(expected, chunks=((1, 1, 1),)))
         actual = y.read()
         assert numpy.array_equal(actual, expected)
+
+
+def test_write_dataframe_internal_via_client(a):
+    app = build_app(a)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+
+        expected = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
+        x = client.write_dataframe(expected)
+        actual = x.read()
+        pandas.testing.assert_frame_equal(actual, expected)
+
+        # y = client.write_array(dask.array.from_array(expected, chunks=((1, 1, 1),)))
+        # actual = y.read()
+        # assert numpy.array_equal(actual, expected)
+        # pandas.testing.assert_frame_equal(actual, expected)

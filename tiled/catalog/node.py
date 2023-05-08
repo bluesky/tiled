@@ -28,6 +28,7 @@ from .explain import ExplainAsyncSession
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 ZARR_MIMETYPE = "application/x-zarr"
+PARQUET_MIMETYPE = "application/x-parquet"
 
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
@@ -49,18 +50,16 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrAdapter.from_directory,
+        PARQUET_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.parquet", __name__
+        ).ParquetDatasetAdapter,
     }
 )
 DEFAULT_CREATION_MIMETYPE = {
     "array": ZARR_MIMETYPE,
+    "dataframe": PARQUET_MIMETYPE,
+    "sparse": PARQUET_MIMETYPE,
 }
-NEW_DATA_SOURCE_METHOD = OneShotCachedMap(
-    {
-        ZARR_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.zarr", __name__
-        ).ZarrAdapter.new,
-    }
-)
 
 
 def from_uri(
@@ -417,7 +416,16 @@ class NodeAdapter(BaseAdapter):
                         f"Only 'file://...'.scheme URLs are currently supported, not {data_uri!r}"
                     )
                 paths.append(data_uri.path)
-            adapter = adapter_factory(*paths, **data_source.parameters)
+            kwargs = dict(data_source.parameters)
+            if node.structure_family == StructureFamily.array:
+                # kwargs["dtype"] = data_source.structure.micro.to_numpy_dtype()
+                kwargs["shape"] = data_source.structure.macro.shape
+                kwargs["chunks"] = data_source.structure.macro.chunks
+            elif node.structure_family == StructureFamily.dataframe:
+                kwargs["npartitions"] = data_source.structure.macro.npartitions
+                kwargs["meta"] = data_source.structure.micro.meta
+                kwargs["divisions"] = data_source.structure.micro.divisions
+            adapter = adapter_factory(*paths, **kwargs)
             return adapter
         else:  # num_data_sources == 0
             if node.structure_family != StructureFamily.node:
@@ -484,16 +492,27 @@ class NodeAdapter(BaseAdapter):
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    new = NEW_DATA_SOURCE_METHOD[data_source.mimetype]
-                    await ensure_awaitable(
-                        new,
-                        httpx.URL(data_uri).path,
-                        data_source.structure.micro.to_numpy_dtype(),
-                        data_source.structure.macro.shape,
-                        data_source.structure.macro.chunks,
-                    )
-                    asset = Asset(data_uri=data_uri, is_directory=True)
-                    data_source.assets.append(asset)
+                    adapter = self.context.adapters_by_mimetype[data_source.mimetype]
+                    assets = []
+                    if structure_family == StructureFamily.array:
+                        assets.append(Asset(data_uri=data_uri, is_directory=True))
+                        init_storage_args = (
+                            httpx.URL(data_uri).path,
+                            data_source.structure.micro.to_numpy_dtype(),
+                            data_source.structure.macro.shape,
+                            data_source.structure.macro.chunks,
+                        )
+                    if structure_family == StructureFamily.dataframe:
+                        for i in range(data_source.structure.macro.npartitions):
+                            assets.append(
+                                Asset(
+                                    data_uri=data_uri + f"/partition-{i}",
+                                    is_directory=False,
+                                )
+                            )
+                        init_storage_args = (httpx.URL(data_uri).path,)
+                    await ensure_awaitable(adapter.init_storage, *init_storage_args)
+                    data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(
                     structure=_prepare_structure(
                         structure_family, data_source.structure
