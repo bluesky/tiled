@@ -591,12 +591,12 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             item["attributes"]["data_sources"][0]["structure"]["micro"][
                 "meta"
             ] = base64.b64encode(
-                item["attributes"]["structure"]["micro"]["meta"]
+                item["attributes"]["data_sources"][0]["structure"]["micro"]["meta"]
             ).decode()
             item["attributes"]["data_sources"][0]["structure"]["micro"][
                 "divisions"
             ] = base64.b64encode(
-                item["attributes"]["structure"]["micro"]["divisions"]
+                item["attributes"]["data_sources"][0]["structure"]["micro"]["divisions"]
             ).decode()
 
         document = self.context.post_json(self.uri, item["attributes"])

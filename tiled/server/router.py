@@ -617,10 +617,10 @@ async def post_metadata(
         # Decode meta for pydantic validation
         # TODO This is fragile.
         body.data_sources[0].structure.micro.meta = base64.b64decode(
-            body.structure.micro.meta
+            body.data_sources[0].structure.micro.meta
         )
         body.data_sources[0].structure.micro.divisions = base64.b64decode(
-            body.structure.micro.divisions
+            body.data_sources[0].structure.micro.divisions
         )
 
     metadata, structure_family, structure, specs, references = (
