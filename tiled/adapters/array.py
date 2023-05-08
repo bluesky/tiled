@@ -37,7 +37,7 @@ class ArrayAdapter:
     ):
         # Why would shape ever be different from array.shape, you ask?
         # Some formats (notably Zarr) force shape to be a multiple of
-        # a chunk size, and the shape may include a margin beyond the
+        # a chunk size, such that array.shape may include a margin beyond the
         # actual data.
         if shape is None:
             shape = array.shape
@@ -57,7 +57,6 @@ class ArrayAdapter:
         self._array = array
         self._metadata = metadata or {}
         self._dims = dims
-        self.shape = shape
         self.specs = specs or []
         self.references = references or []
 
