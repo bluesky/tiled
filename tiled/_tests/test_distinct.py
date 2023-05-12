@@ -35,8 +35,10 @@ for i in range(10):
 
     if i % 2 == 0:
         subgroup = "even"
+        specs = ["MyDataFrame", "ExtendedSpec"]
     else:
         subgroup = "odd"
+        specs = ["MyDataFrame"]
 
     if i == 0:
         tag = "Zero"
@@ -51,7 +53,7 @@ for i in range(10):
     mapping[str(uuid.uuid4())] = DataFrameAdapter.from_pandas(
         pd.DataFrame({"a": np.ones(10)}),
         metadata={"group": group, "subgroup": subgroup, "tag": tag},
-        specs=["MyDataFrame"],
+        specs=specs,
         npartitions=1,
     )
 
@@ -76,6 +78,7 @@ def test_distinct(context):
         "specs": [
             {"value": [], "count": None},
             {"value": ["MyArray"], "count": None},
+            {"value": ["MyDataFrame", "ExtendedSpec"], "count": None},
             {"value": ["MyDataFrame"], "count": None},
         ],
         "structure_families": [
@@ -100,7 +103,8 @@ def test_distinct(context):
         "specs": [
             {"value": [], "count": 22},
             {"value": ["MyArray"], "count": 10},
-            {"value": ["MyDataFrame"], "count": 10},
+            {"value": ["MyDataFrame", "ExtendedSpec"], "count": 5},
+            {"value": ["MyDataFrame"], "count": 5},
         ],
         "structure_families": [
             {"value": "node", "count": 22},
