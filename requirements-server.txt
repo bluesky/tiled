@@ -16,6 +16,7 @@ jsonschema
 msgpack >=1.0.0
 orjson
 packaging
+parquet
 psutil
 prometheus_client
 pydantic >=1.8.2
@@ -29,3 +30,4 @@ toolz
 typer
 uvicorn[standard]
 watchgod
+zarr
