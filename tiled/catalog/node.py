@@ -432,8 +432,8 @@ class NodeAdapter(BaseAdapter):
                 kwargs["shape"] = data_source.structure.macro.shape
                 kwargs["chunks"] = data_source.structure.macro.chunks
             elif node.structure_family == StructureFamily.dataframe:
-                kwargs["meta"] = data_source.structure.micro.meta
-                kwargs["divisions"] = data_source.structure.micro.divisions
+                kwargs["meta"] = data_source.structure.micro.meta_decoded
+                kwargs["divisions"] = data_source.structure.micro.divisions_decoded
             adapter = adapter_factory(*paths, **kwargs)
             return adapter
         else:  # num_data_sources == 0

@@ -4,7 +4,7 @@ import pandas
 from pydantic import BaseModel
 
 from ..media_type_registration import deserialization_registry
-from ..serialization.dataframe import serialize_arrow
+from ..serialization.dataframe import serialize_arrow, deserialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 
 
@@ -39,6 +39,15 @@ class DataFrameMicroStructure(BaseModel):
             serialize_arrow(pandas.DataFrame({"divisions": list(ddf.divisions)}), {})
         )
         return cls(meta=meta, divisions=divisions)
+
+    @property
+    def meta_decoded(self):
+        return deserialize_arrow(self.meta)
+
+    @property
+    def divisions_decoded(self):
+        divisions_wrapped_in_df = deserialize_arrow(self.divisions)
+        return tuple(divisions_wrapped_in_df["divisions"].values)
 
 
 class DataFrameMacroStructure(BaseModel):

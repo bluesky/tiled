@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+import base64
 import enum
 import uuid
 from datetime import datetime
@@ -124,8 +126,15 @@ class DataSource(pydantic.BaseModel):
 
     @classmethod
     def from_orm(cls, orm):
+        # if isinstance(orm.structure, DataFrameStructure):
+        if "meta" in orm.structure.get("micro", {}):
+            structure = copy.deepcopy(orm.structure)
+            structure["micro"]["meta"] = base64.b64decode(structure["micro"]["meta"] )
+            structure["micro"]["divisions"] = base64.b64decode(structure["micro"]["divisions"])
+        else:
+            structure = orm.structure
         return cls(
-            structure=orm.structure,
+            structure=structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
             assets=[Asset.from_orm(asset) for asset in orm.assets],
@@ -167,9 +176,11 @@ class Node(NodeAttributes):
         sorting_as_dict = [
             {"key": key, "direction": direction} for key, direction in sorting
         ]
-        if orm.data_sources:
+        if len(orm.data_sources) > 1:
             # TODO Handle multiple data sources
-            structure = orm.data_sources[0].structure
+            raise NotImplementedError
+        if orm.data_sources:
+            structure = copy.deepcopy(DataSource.from_orm(orm.data_sources[0]).structure)
         else:
             structure = None
         return cls(

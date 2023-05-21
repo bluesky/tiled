@@ -278,7 +278,7 @@ async def test_write_array_external(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=f"file:///{filepath}", is_directory=False)],
+                assets=[Asset(data_uri=f"file://localhost{filepath}", is_directory=False)],
             )
         ],
     )
@@ -305,7 +305,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=f"file:///{filepath}", is_directory=False)],
+                assets=[Asset(data_uri=f"file://localhost{filepath}", is_directory=False)],
             )
         ],
     )
