@@ -423,7 +423,7 @@ class NodeAdapter(BaseAdapter):
             for data_uri in data_uris:
                 if data_uri.scheme != "file":
                     raise NotImplementedError(
-                        f"Only 'file://...'.scheme URLs are currently supported, not {data_uri!r}"
+                        f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
                     )
                 paths.append(data_uri.path)
             kwargs = dict(data_source.parameters)
@@ -502,9 +502,7 @@ class NodeAdapter(BaseAdapter):
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
                     init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
-                    assets = []
                     if structure_family == StructureFamily.array:
-                        assets.append(Asset(data_uri=data_uri, is_directory=True))
                         init_storage_args = (
                             httpx.URL(data_uri).path,
                             data_source.structure.micro.to_numpy_dtype(),
@@ -512,15 +510,11 @@ class NodeAdapter(BaseAdapter):
                             data_source.structure.macro.chunks,
                         )
                     if structure_family == StructureFamily.dataframe:
-                        for i in range(data_source.structure.macro.npartitions):
-                            assets.append(
-                                Asset(
-                                    data_uri=data_uri + f"/partition-{i}",
-                                    is_directory=False,
-                                )
-                            )
-                        init_storage_args = (httpx.URL(data_uri).path,)
-                    await ensure_awaitable(init_storage, *init_storage_args)
+                        init_storage_args = (
+                            httpx.URL(data_uri).path,
+                            data_source.structure.macro.npartitions,
+                        )
+                    assets = await ensure_awaitable(init_storage, *init_storage_args)
                     data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(
                     structure=_prepare_structure(

@@ -8,6 +8,8 @@ from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 class ZarrAdapter(ArrayAdapter):
     @classmethod
     def init_storage(cls, directory, dtype, shape, chunks):
+        from ..server.schemas import Asset
+
         # Zarr requires evently-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in chunks)
@@ -19,11 +21,12 @@ class ZarrAdapter(ArrayAdapter):
             chunks=zarr_chunks,
             dtype=dtype,
         )
+        return [Asset(data_uri=data_uri, is_directory=True)]
 
     @classmethod
-    def from_directory(cls, directory, shape=None, chunks=None):
+    def from_directory(cls, directory, *, shape=None, chunks=None, metadata=None, specs=None, references=None):
         array = zarr.open_array(str(directory), "r+")
-        return cls(array, shape=shape, chunks=chunks)
+        return cls(array, shape=shape, chunks=chunks, metadata=metadata, specs=specs, references=references)
 
     def _stencil(self):
         "Trims overflow because Zarr always has equal-sized chunks."
