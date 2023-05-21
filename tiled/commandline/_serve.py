@@ -95,6 +95,11 @@ def serve_directory(
 @serve_app.command("writable")
 def serve_writable(
     directory: str,
+    init: bool = typer.Option(
+        False,
+        "--init",
+        help="Make a new writable space and catalog (database).",
+    ),
     public: bool = typer.Option(
         False,
         "--public",
@@ -132,7 +137,7 @@ def serve_writable(
     ),
 ):
     "Serve a writable storage area."
-    from ..catalog.node import in_memory
+    from ..catalog.node import create_from_uri, from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     tree_kwargs = {}
@@ -142,7 +147,13 @@ def serve_writable(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    tree = in_memory(writable_storage=directory, **tree_kwargs)
+    sqlite_filename = "tiled_catalog.sqlite"
+    uri = f"sqlite+aiosqlite:///{Path(directory, sqlite_filename)}"
+    if init:
+        f = create_from_uri
+    else:
+        f = from_uri
+    tree = f(uri, writable_storage=directory, **tree_kwargs)
     web_app = build_app(
         tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
     )

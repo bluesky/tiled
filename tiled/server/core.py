@@ -196,7 +196,7 @@ async def construct_entries_response(
     if fields != [schemas.EntryFields.none]:
         # Pull a page of items into memory.
         if hasattr(tree, "items_range"):
-            items = tree.items_range(offset, limit)
+            items = await tree.items_range(offset, limit)
         else:
             items = tree.items()[offset : offset + limit]  # noqa: E203
     else:
@@ -492,7 +492,7 @@ def construct_resource(
                 attributes["structure_family"] = entry.structure_family
             if entry.structure_family == "sparse":
                 if schemas.EntryFields.structure in fields:
-                    structure = dataclasses.asdict(entry.structure())
+                    structure = asdict(entry.structure())
                     shape = structure.get("shape")
                 else:
                     # The client did not request structure so we have not yet
@@ -509,7 +509,7 @@ def construct_resource(
                 ):
                     macrostructure = entry.macrostructure()
                     if macrostructure is not None:
-                        structure["macro"] = dataclasses.asdict(macrostructure)
+                        structure["macro"] = asdict(macrostructure)
                 if (schemas.EntryFields.microstructure in fields) or (
                     schemas.EntryFields.structure in fields
                 ):
@@ -536,7 +536,7 @@ def construct_resource(
                     else:
                         microstructure = entry.microstructure()
                         if microstructure is not None:
-                            structure["micro"] = dataclasses.asdict(microstructure)
+                            structure["micro"] = asdict(microstructure)
                 if entry.structure_family == "array":
                     shape = structure.get("macro", {}).get("shape")
                     if shape is None:
@@ -734,3 +734,11 @@ FULL_LINKS = {
     "dataframe": {"full": "{base_url}/node/full/{path}"},
     "sparse": {"full": "{base_url}/array/full/{path}"},
 }
+
+
+def asdict(dc):
+    "Compat for converting dataclass or pydantic.BaseModel to dict."
+    try:
+        return dataclasses.asdict(dc)
+    except TypeError:
+        return dict(dc)
