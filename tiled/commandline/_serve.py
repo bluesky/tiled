@@ -92,6 +92,67 @@ def serve_directory(
     uvicorn.run(web_app, host=host, port=port)
 
 
+@serve_app.command("writable")
+def serve_writable(
+    directory: str,
+    public: bool = typer.Option(
+        False,
+        "--public",
+        help=(
+            "Turns off requirement for API key authentication for reading. "
+            "However, the API key is still required for writing, so data cannot be modified even with "
+            "this option selected."
+        ),
+    ),
+    host: str = typer.Option(
+        "127.0.0.1",
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`."
+        ),
+    ),
+    port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    object_cache_available_bytes: Optional[float] = typer.Option(
+        None,
+        "--data-cache",
+        help=(
+            "Maximum size for the object cache, given as a number of bytes as in "
+            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
+            "0.3. Set to 0 to disable this cache. By default, it will use up to "
+            "0.15 (15%) of RAM."
+        ),
+    ),
+    scalable: bool = typer.Option(
+        False,
+        "--scalable",
+        help=(
+            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
+        ),
+    ),
+):
+    "Serve a writable storage area."
+    from ..catalog.node import in_memory
+    from ..server.app import build_app, print_admin_api_key_if_generated
+
+    tree_kwargs = {}
+    server_settings = {}
+    if object_cache_available_bytes is not None:
+        server_settings["object_cache"] = {}
+        server_settings["object_cache"][
+            "available_bytes"
+        ] = object_cache_available_bytes
+    tree = in_memory(writable_storage=directory, **tree_kwargs)
+    web_app = build_app(
+        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+    )
+    print_admin_api_key_if_generated(web_app, host=host, port=port)
+
+    import uvicorn
+
+    uvicorn.run(web_app, host=host, port=port)
+
+
 @serve_app.command("pyobject")
 def serve_pyobject(
     object_path: str = typer.Argument(

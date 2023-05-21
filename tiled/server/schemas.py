@@ -197,6 +197,12 @@ class Node(NodeAttributes):
             time_updated=orm.time_updated,
         )
 
+    def microstructure(self):
+        return getattr(self.structure, "micro", None)
+
+    def macrostructure(self):
+        return getattr(self.structure, "macro", None)
+
 
 AttributesT = TypeVar("AttributesT")
 ResourceMetaT = TypeVar("ResourceMetaT")
