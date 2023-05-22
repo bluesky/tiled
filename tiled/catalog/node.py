@@ -84,7 +84,7 @@ def from_uri(
     "Connect to an existing database."
     # TODO Check that database exists and has the expected alembic revision.
     engine = create_async_engine(database_uri, echo=echo)
-    return NodeAdapter(
+    return CatalogNodeAdapter(
         Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
     )
@@ -102,7 +102,7 @@ def create_from_uri(
     "Create a new database and connect to it."
     engine = create_async_engine(database_uri, echo=echo)
     asyncio.run(initialize_database(engine))
-    return NodeAdapter(
+    return CatalogNodeAdapter(
         Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
@@ -120,7 +120,7 @@ def async_create_from_uri(
 ):
     "Create a new database and connect to it."
     engine = create_async_engine(database_uri, echo=echo)
-    return NodeAdapter(
+    return CatalogNodeAdapter(
         Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
@@ -138,7 +138,7 @@ def in_memory(
     "Create a transient database in memory."
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
     asyncio.run(initialize_database(engine))
-    return NodeAdapter(
+    return CatalogNodeAdapter(
         Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
@@ -155,7 +155,7 @@ def async_in_memory(
 ):
     "Create a transient database in memory."
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-    return NodeAdapter(
+    return CatalogNodeAdapter(
         Context(engine, writable_storage),
         RootNode(metadata, specs, references, access_policy),
         new_database=True,
@@ -383,7 +383,7 @@ class UnallocatedAdapter(BaseAdapter):
     pass
 
 
-class NodeAdapter(BaseAdapter):
+class CatalogNodeAdapter(BaseAdapter):
     async def lookup_node(
         self, segments
     ):  # TODO: Accept filter for predicate-pushdown.
@@ -440,7 +440,7 @@ class NodeAdapter(BaseAdapter):
             if node.structure_family != StructureFamily.node:
                 raise NotImplementedError  # array or dataframe that is uninitialized
             # A node with no underlying data source
-            return NodeAdapter(self.context, node)
+            return CatalogNodeAdapter(self.context, node)
 
     def new_variation(
         self,
@@ -652,4 +652,4 @@ def eq(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-NodeAdapter.register_query(Eq, eq)
+CatalogNodeAdapter.register_query(Eq, eq)

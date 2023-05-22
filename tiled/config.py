@@ -52,6 +52,9 @@ def construct_build_app_kwargs(
     and used (and modified).
     """
     config = copy.deepcopy(config)  # Avoid mutating input.
+    startup_tasks = []
+    shutdown_tasks = []
+    background_tasks = []
     if query_registry is None:
         query_registry = default_query_registry
     if serialization_registry is None:
@@ -134,6 +137,9 @@ def construct_build_app_kwargs(
             if segments in trees:
                 raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
             trees[segments] = tree
+            startup_tasks.extend(getattr(tree, "startup_tasks", []))
+            shutdown_tasks.extend(getattr(tree, "shutdown_tasks", []))
+            background_tasks.extend(getattr(tree, "background_tasks", []))
         if not len(trees):
             raise ValueError("Configuration contains no trees")
         if list(trees) == [()]:
@@ -202,6 +208,11 @@ def construct_build_app_kwargs(
         "serialization_registry": serialization_registry,
         "compression_registry": compression_registry,
         "validation_registry": validation_registry,
+        "tasks": {
+            "startup": startup_tasks,
+            "shutdown": shutdown_tasks,
+            "background": background_tasks,
+        }
     }
 
 
