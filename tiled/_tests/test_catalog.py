@@ -19,13 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from ..adapters.dataframe import ArrayAdapter, DataFrameAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog.explain import record_explanations
-from ..catalog.node import (
-    async_create_from_uri,
-    async_in_memory,
-    create_from_uri,
-    from_uri,
-    in_memory,
-)
+from ..catalog.node import CatalogNodeAdapter
 from ..client import Context, from_context
 from ..queries import Eq, Key
 from ..server.app import build_app
@@ -63,7 +57,7 @@ async def temp_postgres(uri):
         await connection.execute(
             text("COMMIT")
         )  # close the automatically-started transaction
-        await connection.execute(text(f"DROP DATABASE {database_name};"))
+        # await connection.execute(text(f"DROP DATABASE {database_name};"))
         await connection.commit()
 
 
@@ -71,37 +65,27 @@ async def temp_postgres(uri):
 async def a(request, tmpdir):
     "Adapter instance"
     if request.param == "sqlite":
-        async with async_in_memory(writable_storage=str(tmpdir)) as adapter:
-            yield adapter
+        adapter = CatalogNodeAdapter.in_memory(writable_storage=str(tmpdir))
+        yield adapter
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
         # Create temporary databsae.
         async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
             # Build an adapter on it.
-            async with async_create_from_uri(
+            adapter = CatalogNodeAdapter.from_uri(
                 uri_with_database_name,
                 writable_storage=str(tmpdir),
-            ) as adapter:
-                yield adapter
+                initialize_database_at_startup=True,
+            )
+            yield adapter
     else:
         assert False
 
 
-def test_constructors(tmpdir):
-    # Create an adapter with a database in memory.
-    in_memory()
-    # Cannot connect to database that does not exist.
-    # with pytest.raises(DatabaseNotFound):
-    #     Adapter.from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
-    # Create one.
-    create_from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
-    # Now connecting works.
-    from_uri(f"sqlite+aiosqlite:///{tmpdir}/database.sqlite")
-
-
 @pytest.mark.asyncio
 async def test_nested_node_creation(a):
+    await a.startup()
     await a.create_node(
         key="b",
         metadata={},
@@ -129,6 +113,7 @@ async def test_nested_node_creation(a):
 
 @pytest.mark.asyncio
 async def test_sorting(a):
+    await a.startup()
     # Generate lists of letters and numbers, randomly shuffled.
     random_state = random.Random(0)
     ordered_letters = list(string.ascii_lowercase[:10])
@@ -177,6 +162,7 @@ async def test_sorting(a):
 
 @pytest.mark.asyncio
 async def test_search(a):
+    await a.startup()
     for letter, number in zip(string.ascii_lowercase[:5], range(5)):
         await a.create_node(
             key=letter,
@@ -213,6 +199,7 @@ async def test_search(a):
 
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(a):
+    await a.startup()
     for i in range(10):
         await a.create_node(
             metadata={
@@ -259,6 +246,7 @@ async def test_metadata_index_is_used(a):
 
 @pytest.mark.asyncio
 async def test_write_array_external(a, tmpdir):
+    await a.startup()
     arr = numpy.ones((5, 3))
     filepath = tmpdir / "file.tiff"
     tifffile.imwrite(str(filepath), arr)
@@ -286,6 +274,7 @@ async def test_write_array_external(a, tmpdir):
 
 @pytest.mark.asyncio
 async def test_write_dataframe_external_direct(a, tmpdir):
+    await a.startup()
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
@@ -313,6 +302,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 
 @pytest.mark.asyncio
 async def test_write_array_internal_direct(a, tmpdir):
+    await a.startup()
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter(arr)
     structure = asdict(
@@ -334,8 +324,7 @@ async def test_write_array_internal_direct(a, tmpdir):
     assert numpy.array_equal(arr, x.read())
 
 
-@pytest.mark.asyncio
-async def test_write_array_internal_via_client(a):
+def test_write_array_internal_via_client(a):
     app = build_app(a)
     with Context.from_app(app) as context:
         client = from_context(context)
@@ -350,8 +339,7 @@ async def test_write_array_internal_via_client(a):
         assert numpy.array_equal(actual, expected)
 
 
-@pytest.mark.asyncio
-async def test_write_dataframe_internal_via_client(a):
+def test_write_dataframe_internal_via_client(a):
     app = build_app(a)
     with Context.from_app(app) as context:
         client = from_context(context)

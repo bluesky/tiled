@@ -12,6 +12,7 @@ from pathlib import Path
 
 import jsonschema
 
+from .adapters.mapping import MapAdapter
 from .media_type_registration import (
     compression_registry as default_compression_registry,
 )
@@ -142,35 +143,25 @@ def construct_build_app_kwargs(
             background_tasks.extend(getattr(tree, "background_tasks", []))
         if not len(trees):
             raise ValueError("Configuration contains no trees")
-        if list(trees) == [()]:
-            # Simple case: there is one tree, served at the root path /.
-            root_tree = tree
-            if root_access_policy is not None:
-                tree.access_policy = root_access_policy
-        else:
-            # There are one or more tree(s) to be served at
-            # sub-paths. Merged them into one root MapAdapter.
-            from .adapters.mapping import MapAdapter
-
-            # Map path segments to dicts containing Adapters at that path.
-            root_mapping = {}
-            index = {(): root_mapping}
-            include_routers = []
-            for segments, tree in trees.items():
-                for i in range(len(segments)):
-                    if segments[:i] not in index:
-                        mapping = {}
-                        index[segments[:i]] = mapping
-                        parent = index[segments[: i - 1]]
-                        parent[segments[i - 1]] = MapAdapter(mapping)
-                index[segments[:-1]][segments[-1]] = tree
-                # Collect any custom routers.
-                routers = getattr(tree, "include_routers", [])
-                for router in routers:
-                    if router not in include_routers:
-                        include_routers.append(router)
-            root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
-            root_tree.include_routers.extend(include_routers)
+        # Map path segments to dicts containing Adapters at that path.
+        root_mapping = {}
+        index = {(): root_mapping}
+        include_routers = []
+        for segments, tree in trees.items():
+            for i in range(len(segments)):
+                if segments[:i] not in index:
+                    mapping = {}
+                    index[segments[:i]] = mapping
+                    parent = index[segments[: i - 1]]
+                    parent[segments[i - 1]] = MapAdapter(mapping)
+            index[segments[:-1]][segments[-1]] = tree
+            # Collect any custom routers.
+            routers = getattr(tree, "include_routers", [])
+            for router in routers:
+                if router not in include_routers:
+                    include_routers.append(router)
+        root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
+        root_tree.include_routers.extend(include_routers)
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["object_cache"] = config.get("object_cache", {})

@@ -127,6 +127,15 @@ def build_app(
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
     tasks = tasks or {}
+    tasks.setdefault("startup", [])
+    tasks.setdefault("background", [])
+    tasks.setdefault("shutdown", [])
+    # The tasks are collected at config-parsing time off of the sub-trees.
+    # Collect the tasks off the root tree here, so that it works when
+    # a single tree is passed to build_app(...) directly, as happens in the tests.
+    tasks["startup"].extend(getattr(tree, "startup_tasks", []))
+    tasks["background"].extend(getattr(tree, "background_tasks", []))
+    tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
         if authentication.get("providers"):

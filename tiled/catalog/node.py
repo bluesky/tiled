@@ -72,96 +72,6 @@ CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
 )
 
 
-def from_uri(
-    database_uri,
-    metadata=None,
-    specs=None,
-    references=None,
-    access_policy=None,
-    writable_storage=None,
-    echo=DEFAULT_ECHO,
-):
-    "Connect to an existing database."
-    # TODO Check that database exists and has the expected alembic revision.
-    engine = create_async_engine(database_uri, echo=echo)
-    return CatalogNodeAdapter(
-        Context(engine, writable_storage),
-        RootNode(metadata, specs, references, access_policy),
-    )
-
-
-def create_from_uri(
-    database_uri,
-    metadata=None,
-    specs=None,
-    references=None,
-    access_policy=None,
-    writable_storage=None,
-    echo=DEFAULT_ECHO,
-):
-    "Create a new database and connect to it."
-    engine = create_async_engine(database_uri, echo=echo)
-    asyncio.run(initialize_database(engine))
-    return CatalogNodeAdapter(
-        Context(engine, writable_storage),
-        RootNode(metadata, specs, references, access_policy),
-        new_database=True,
-    )
-
-
-def async_create_from_uri(
-    database_uri,
-    metadata=None,
-    specs=None,
-    references=None,
-    access_policy=None,
-    writable_storage=None,
-    echo=DEFAULT_ECHO,
-):
-    "Create a new database and connect to it."
-    engine = create_async_engine(database_uri, echo=echo)
-    return CatalogNodeAdapter(
-        Context(engine, writable_storage),
-        RootNode(metadata, specs, references, access_policy),
-        new_database=True,
-    )
-
-
-def in_memory(
-    metadata=None,
-    specs=None,
-    references=None,
-    access_policy=None,
-    writable_storage=None,
-    echo=DEFAULT_ECHO,
-):
-    "Create a transient database in memory."
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-    asyncio.run(initialize_database(engine))
-    return CatalogNodeAdapter(
-        Context(engine, writable_storage),
-        RootNode(metadata, specs, references, access_policy),
-        new_database=True,
-    )
-
-
-def async_in_memory(
-    metadata=None,
-    specs=None,
-    references=None,
-    access_policy=None,
-    writable_storage=None,
-    echo=DEFAULT_ECHO,
-):
-    "Create a transient database in memory."
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=echo)
-    return CatalogNodeAdapter(
-        Context(engine, writable_storage),
-        RootNode(metadata, specs, references, access_policy),
-        new_database=True,
-    )
-
-
 async def initialize_database(engine):
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
@@ -179,6 +89,8 @@ class RootNode:
     This node is special because the state configuring this node arises from
     server initialization (typically a configuration file) not from the
     database.
+
+    It mocks the relevant part of the interface of .orm.Node.
     """
 
     structure_family = StructureFamily.node
@@ -340,7 +252,7 @@ class BaseAdapter:
         conditions=None,
         sorting=None,
         access_policy=None,
-        new_database=False,
+        initialize_database_at_startup=False,
     ):
         self.context = context
         self.engine = self.context.engine
@@ -360,7 +272,58 @@ class BaseAdapter:
         self.time_creatd = node.time_created
         self.time_updated = node.time_updated
         self.access_policy = access_policy
-        self.new_database = new_database
+        self.initialize_database_at_startup = initialize_database_at_startup
+        self.startup_tasks = [self.startup]
+        # self.shutdown_tasks = [self.shutdown]
+
+    @classmethod
+    def in_memory(
+        cls,
+        metadata=None,
+        specs=None,
+        references=None,
+        access_policy=None,
+        writable_storage=None,
+        echo=DEFAULT_ECHO,
+    ):
+        uri = "sqlite+aiosqlite:///:memory:"
+        return cls. from_uri(
+            uri=uri,
+            metadata=metadata,
+            specs=specs,
+            references=references,
+            access_policy=access_policy,
+            writable_storage=writable_storage,
+            echo=echo,
+            # An in-memory database will always need initialization.
+            initialize_database_at_startup=True,
+        )
+
+    @classmethod
+    def from_uri(
+        cls,
+        uri,
+        metadata=None,
+        specs=None,
+        references=None,
+        access_policy=None,
+        writable_storage=None,
+        echo=DEFAULT_ECHO,
+        initialize_database_at_startup=False,
+    ):
+        engine = create_async_engine(uri, echo=echo)
+        return CatalogNodeAdapter(
+            Context(engine, writable_storage),
+            RootNode(metadata, specs, references, access_policy),
+            initialize_database_at_startup=initialize_database_at_startup,
+        )
+
+    async def startup(self):
+        if self.initialize_database_at_startup:
+            await initialize_database(self.context.engine)
+
+    async def shutdown(self):
+        await self.context.engine.destroy()
 
     @property
     def writable(self):
@@ -368,14 +331,6 @@ class BaseAdapter:
 
     def __repr__(self):
         return f"<{type(self).__name__} {self.segments}>"
-
-    async def __aenter__(self):
-        if self.new_database:
-            await initialize_database(self.engine)
-        return self
-
-    async def __aexit__(self, *args):
-        await self.engine.dispose()
 
 
 class UnallocatedAdapter(BaseAdapter):
