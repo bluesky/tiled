@@ -45,7 +45,7 @@ TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
 
 @contextlib.asynccontextmanager
-async def temp_postgres(uri, *args, **kwargs):
+async def temp_postgres(uri):
     if uri.endswith("/"):
         uri = uri[:-1]
     # Create a fresh database.
@@ -57,13 +57,7 @@ async def temp_postgres(uri, *args, **kwargs):
         )  # close the automatically-started transaction
         await connection.execute(text(f"CREATE DATABASE {database_name};"))
         await connection.commit()
-    # Use the database.
-    async with async_create_from_uri(
-        f"{uri}/{database_name}",
-        *args,
-        **kwargs,
-    ) as adapter:
-        yield adapter
+    yield f"{uri}/{database_name}"
     # Drop the database.
     async with engine.connect() as connection:
         await connection.execute(
@@ -82,10 +76,14 @@ async def a(request, tmpdir):
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
-        async with temp_postgres(
-            TILED_TEST_POSTGRESQL_URI, writable_storage=str(tmpdir)
-        ) as adapter:
-            yield adapter
+        # Create temporary databsae.
+        async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
+            # Build an adapter on it.
+            async with async_create_from_uri(
+                uri_with_database_name,
+                writable_storage=str(tmpdir),
+            ) as adapter:
+                yield adapter
     else:
         assert False
 
@@ -336,7 +334,8 @@ async def test_write_array_internal_direct(a, tmpdir):
     assert numpy.array_equal(arr, x.read())
 
 
-def test_write_array_internal_via_client(a):
+@pytest.mark.asyncio
+async def test_write_array_internal_via_client(a):
     app = build_app(a)
     with Context.from_app(app) as context:
         client = from_context(context)
@@ -351,7 +350,8 @@ def test_write_array_internal_via_client(a):
         assert numpy.array_equal(actual, expected)
 
 
-def test_write_dataframe_internal_via_client(a):
+@pytest.mark.asyncio
+async def test_write_dataframe_internal_via_client(a):
     app = build_app(a)
     with Context.from_app(app) as context:
         client = from_context(context)
