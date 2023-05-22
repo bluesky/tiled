@@ -57,13 +57,18 @@ async def temp_postgres(uri):
         await connection.execute(
             text("COMMIT")
         )  # close the automatically-started transaction
-        # await connection.execute(text(f"DROP DATABASE {database_name};"))
+        await connection.execute(text(f"DROP DATABASE {database_name};"))
         await connection.commit()
 
 
 @pytest_asyncio.fixture(params=["sqlite", "postgresql"])
-async def a(request, tmpdir):
-    "Adapter instance"
+async def adapter(request, tmpdir):
+    """
+    Adapter instance
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
+    """
     if request.param == "sqlite":
         adapter = CatalogNodeAdapter.in_memory(writable_storage=str(tmpdir))
         yield adapter
@@ -81,6 +86,20 @@ async def a(request, tmpdir):
             yield adapter
     else:
         assert False
+
+@pytest_asyncio.fixture
+async def a(adapter):
+    "Raw adapter, not to be used within an app becaues it is manually started and stopped."
+    await adapter.startup()
+    yield adapter
+    await adapter.shutdown()
+
+
+@pytest_asyncio.fixture
+async def client(adapter):
+    app = build_app(adapter)
+    with Context.from_app(app) as context:
+        yield from_context(context)
 
 
 @pytest.mark.asyncio
@@ -109,6 +128,7 @@ async def test_nested_node_creation(a):
     # smoke test
     await a.items_range(0, 1)
     await b.items_range(0, 1)
+    await a.shutdown()
 
 
 @pytest.mark.asyncio
@@ -324,32 +344,24 @@ async def test_write_array_internal_direct(a, tmpdir):
     assert numpy.array_equal(arr, x.read())
 
 
-def test_write_array_internal_via_client(a):
-    app = build_app(a)
-    with Context.from_app(app) as context:
-        client = from_context(context)
+def test_write_array_internal_via_client(client):
+    expected = numpy.array([1, 3, 7])
+    x = client.write_array(expected)
+    actual = x.read()
+    assert numpy.array_equal(actual, expected)
 
-        expected = numpy.array([1, 3, 7])
-        x = client.write_array(expected)
-        actual = x.read()
-        assert numpy.array_equal(actual, expected)
-
-        y = client.write_array(dask.array.from_array(expected, chunks=((1, 1, 1),)))
-        actual = y.read()
-        assert numpy.array_equal(actual, expected)
+    y = client.write_array(dask.array.from_array(expected, chunks=((1, 1, 1),)))
+    actual = y.read()
+    assert numpy.array_equal(actual, expected)
 
 
-def test_write_dataframe_internal_via_client(a):
-    app = build_app(a)
-    with Context.from_app(app) as context:
-        client = from_context(context)
+def test_write_dataframe_internal_via_client(client):
+    expected = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
+    x = client.write_dataframe(expected)
+    actual = x.read()
+    pandas.testing.assert_frame_equal(actual, expected)
 
-        expected = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
-        x = client.write_dataframe(expected)
-        actual = x.read()
-        pandas.testing.assert_frame_equal(actual, expected)
-
-        # y = client.write_array(dask.array.from_array(expected, chunks=((1, 1, 1),)))
-        # actual = y.read()
-        # assert numpy.array_equal(actual, expected)
-        # pandas.testing.assert_frame_equal(actual, expected)
+    # y = client.write_array(dask.array.from_array(expected, chunks=((1, 1, 1),)))
+    # actual = y.read()
+    # assert numpy.array_equal(actual, expected)
+    # pandas.testing.assert_frame_equal(actual, expected)

@@ -274,7 +274,7 @@ class BaseAdapter:
         self.access_policy = access_policy
         self.initialize_database_at_startup = initialize_database_at_startup
         self.startup_tasks = [self.startup]
-        # self.shutdown_tasks = [self.shutdown]
+        self.shutdown_tasks = [self.shutdown]
 
     @classmethod
     def in_memory(
@@ -323,7 +323,7 @@ class BaseAdapter:
             await initialize_database(self.context.engine)
 
     async def shutdown(self):
-        await self.context.engine.destroy()
+        await self.context.engine.dispose()
 
     @property
     def writable(self):
