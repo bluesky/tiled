@@ -162,3 +162,17 @@ def test_array_interface(context):
         # smoke test
         v.chunks
         v.dims
+
+
+def test_slices():
+    client = from_tree(cube_tree)
+    ac = client["tiny_cube"]
+    ac[:]
+    ac[:, :, :]
+    ac[..., 0, :1]
+    ac[1:4, -5:]
+    ac[-100:4, :-3]
+    ac[0, 3, 8]
+    ac[0, 3, :]
+    with pytest.raises(IndexError):
+        ac[100]
