@@ -17,7 +17,7 @@ from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr
 from .base import BaseClient
 from .cache import Revalidate, verify_cache
-from .utils import ClientError, client_for_item, export_util
+from .utils import ClientError, client_for_item, export_util, modules_available
 
 
 class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -884,11 +884,14 @@ DESCENDING = Descending("DESCENDING")
 
 class _LazyLoad:
     # This exists because lambdas and closures cannot be pickled.
-    def __init__(self, import_module_args, attr_name):
+    def __init__(self, import_module_args, attr_name, check=None):
         self.import_module_args = import_module_args
         self.attr_name = attr_name
+        self.check = check
 
     def __call__(self):
+        if self.check is not None:
+            self.check()
         return getattr(
             importlib.import_module(*self.import_module_args), self.attr_name
         )
@@ -903,6 +906,25 @@ class _Wrap:
         return self.obj
 
 
+class MissingExtraDependency(ImportError):
+    pass
+
+
+def _check_xarray():
+    if not modules_avaialble("xarray"):
+        raise MissingExtraDepenency(
+            """The structure can be read into an xarray.Dataset, but xarray is not installed.
+
+You can install xarray with pip:
+
+    pip install xarray
+
+or conda:
+
+    conda install -c conda-forge xarray
+""")
+
+
 DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
@@ -910,7 +932,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "array": _LazyLoad(("..array", Node.__module__), "ArrayClient"),
             "dataframe": _LazyLoad(("..dataframe", Node.__module__), "DataFrameClient"),
             "sparse": _LazyLoad(("..sparse", Node.__module__), "SparseClient"),
-            "xarray_dataset": _LazyLoad(("..xarray", Node.__module__), "DatasetClient"),
+            "xarray_dataset": _LazyLoad(("..xarray", Node.__module__), "DatasetClient", _check_xarray),
         }
     ),
     "dask": OneShotCachedMap(
