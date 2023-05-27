@@ -9,7 +9,15 @@ from ..structures.core import StructureFamily
 class ParquetDatasetAdapter:
     structure_family = StructureFamily.dataframe
 
-    def __init__(self, *partition_paths, meta, divisions, metadata=None, specs=None, references=None):
+    def __init__(
+        self,
+        *partition_paths,
+        meta,
+        divisions,
+        metadata=None,
+        specs=None,
+        references=None,
+    ):
         self.partition_paths = partition_paths
         self.meta = meta
         self.divisions = divisions
@@ -63,4 +71,3 @@ class ParquetDatasetAdapter:
 
     def microstructure(self):
         return self.dataframe_adapter.microstructure()
-

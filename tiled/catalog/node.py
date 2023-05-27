@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import collections
 import importlib
@@ -9,7 +8,6 @@ import uuid
 from pathlib import Path
 from urllib.parse import quote_plus
 
-import anyio
 import httpx
 from sqlalchemy import func, text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -18,7 +16,7 @@ from sqlalchemy.future import select
 from ..queries import Eq
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
-from ..server.schemas import Asset, Management, Node
+from ..server.schemas import Management, Node
 from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, import_object
@@ -288,7 +286,7 @@ class BaseAdapter:
         echo=DEFAULT_ECHO,
     ):
         uri = "sqlite+aiosqlite:///:memory:"
-        return cls. from_uri(
+        return cls.from_uri(
             uri=uri,
             metadata=metadata,
             specs=specs,
@@ -340,16 +338,12 @@ class UnallocatedAdapter(BaseAdapter):
 
 
 class CatalogNodeAdapter(BaseAdapter):
-
     async def async_len(self):
-        statement = select(func.count(orm.Node.id)).filter(orm.Node.ancestors == self.segments)
+        statement = select(func.count(orm.Node.id)).filter(
+            orm.Node.ancestors == self.segments
+        )
         async with self.context.session() as db:
-            return (
-                (
-                    await db.execute(statement)
-                )
-                .scalar_one()
-            )
+            return (await db.execute(statement)).scalar_one()
 
     async def lookup_node(
         self, segments

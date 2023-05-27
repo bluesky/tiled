@@ -1,8 +1,5 @@
-import contextlib
-import os
 import random
 import string
-import uuid
 from dataclasses import asdict
 
 import anyio
@@ -13,13 +10,10 @@ import pandas.testing
 import pytest
 import pytest_asyncio
 import tifffile
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..adapters.dataframe import ArrayAdapter, DataFrameAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog.explain import record_explanations
-from ..catalog.node import CatalogNodeAdapter
 from ..client import Context, from_context
 from ..queries import Eq, Key
 from ..server.app import build_app
@@ -28,64 +22,6 @@ from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameStructure
 
-# To test with postgres, start a container like:
-#
-# docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=secret -d docker.io/postgres
-# and set this env var like:
-#
-# TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
-
-TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
-
-
-@contextlib.asynccontextmanager
-async def temp_postgres(uri):
-    if uri.endswith("/"):
-        uri = uri[:-1]
-    # Create a fresh database.
-    engine = create_async_engine(uri)
-    database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
-    async with engine.connect() as connection:
-        await connection.execute(
-            text("COMMIT")
-        )  # close the automatically-started transaction
-        await connection.execute(text(f"CREATE DATABASE {database_name};"))
-        await connection.commit()
-    yield f"{uri}/{database_name}"
-    # Drop the database.
-    async with engine.connect() as connection:
-        await connection.execute(
-            text("COMMIT")
-        )  # close the automatically-started transaction
-        await connection.execute(text(f"DROP DATABASE {database_name};"))
-        await connection.commit()
-
-
-@pytest_asyncio.fixture(params=["sqlite", "postgresql"])
-async def adapter(request, tmpdir):
-    """
-    Adapter instance
-
-    Note that startup() and shutdown() are not called, and must be run
-    either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
-    """
-    if request.param == "sqlite":
-        adapter = CatalogNodeAdapter.in_memory(writable_storage=str(tmpdir))
-        yield adapter
-    elif request.param == "postgresql":
-        if not TILED_TEST_POSTGRESQL_URI:
-            raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
-        # Create temporary databsae.
-        async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-            # Build an adapter on it.
-            adapter = CatalogNodeAdapter.from_uri(
-                uri_with_database_name,
-                writable_storage=str(tmpdir),
-                initialize_database_at_startup=True,
-            )
-            yield adapter
-    else:
-        assert False
 
 @pytest_asyncio.fixture
 async def a(adapter):
@@ -284,7 +220,9 @@ async def test_write_array_external(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=f"file://localhost{filepath}", is_directory=False)],
+                assets=[
+                    Asset(data_uri=f"file://localhost{filepath}", is_directory=False)
+                ],
             )
         ],
     )
@@ -312,7 +250,9 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=f"file://localhost{filepath}", is_directory=False)],
+                assets=[
+                    Asset(data_uri=f"file://localhost{filepath}", is_directory=False)
+                ],
             )
         ],
     )

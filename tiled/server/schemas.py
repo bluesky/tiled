@@ -129,8 +129,10 @@ class DataSource(pydantic.BaseModel):
         # if isinstance(orm.structure, DataFrameStructure):
         if "meta" in orm.structure.get("micro", {}):
             structure = copy.deepcopy(orm.structure)
-            structure["micro"]["meta"] = base64.b64decode(structure["micro"]["meta"] )
-            structure["micro"]["divisions"] = base64.b64decode(structure["micro"]["divisions"])
+            structure["micro"]["meta"] = base64.b64decode(structure["micro"]["meta"])
+            structure["micro"]["divisions"] = base64.b64decode(
+                structure["micro"]["divisions"]
+            )
         else:
             structure = orm.structure
         return cls(
@@ -180,7 +182,9 @@ class Node(NodeAttributes):
             # TODO Handle multiple data sources
             raise NotImplementedError
         if orm.data_sources:
-            structure = copy.deepcopy(DataSource.from_orm(orm.data_sources[0]).structure)
+            structure = copy.deepcopy(
+                DataSource.from_orm(orm.data_sources[0]).structure
+            )
         else:
             structure = None
         return cls(

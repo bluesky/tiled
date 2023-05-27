@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from hashlib import md5
 from typing import Any
 
+import anyio
 import dateutil.tz
 import jmespath
 import msgpack
@@ -66,11 +67,11 @@ async def len_or_approx(tree):
     Prefer approximate length if implemented. (It's cheaper.)
     """
     if hasattr(tree, "async_len"):
-        return (await tree.async_len())
+        return await tree.async_len()
     try:
-        return anyio.to_thread().run_sync(operator.length_hint, tree)
+        return await anyio.to_thread.run_sync(operator.length_hint, tree)
     except TypeError:
-        return anyio.to_thread().run_sync(len, tree)
+        return await anyio.to_thread.run_sync(len, tree)
 
 
 def pagination_links(base_url, route, path_parts, offset, limit, length_hint):

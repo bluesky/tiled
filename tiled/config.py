@@ -203,7 +203,7 @@ def construct_build_app_kwargs(
             "startup": startup_tasks,
             "shutdown": shutdown_tasks,
             "background": background_tasks,
-        }
+        },
     }
 
 

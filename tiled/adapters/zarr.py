@@ -22,12 +22,33 @@ class ZarrAdapter(ArrayAdapter):
             chunks=zarr_chunks,
             dtype=dtype,
         )
-        return [Asset(data_uri=f"file://localhost{Path(directory).absolute()}", is_directory=True)]
+        return [
+            Asset(
+                data_uri=f"file://localhost{Path(directory).absolute()}",
+                is_directory=True,
+            )
+        ]
 
     @classmethod
-    def from_directory(cls, directory, *, shape=None, chunks=None, metadata=None, specs=None, references=None):
+    def from_directory(
+        cls,
+        directory,
+        *,
+        shape=None,
+        chunks=None,
+        metadata=None,
+        specs=None,
+        references=None,
+    ):
         array = zarr.open_array(str(directory), "r+")
-        return cls(array, shape=shape, chunks=chunks, metadata=metadata, specs=specs, references=references)
+        return cls(
+            array,
+            shape=shape,
+            chunks=chunks,
+            metadata=metadata,
+            specs=specs,
+            references=references,
+        )
 
     def _stencil(self):
         "Trims overflow because Zarr always has equal-sized chunks."
