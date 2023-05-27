@@ -317,7 +317,7 @@ async def node_metadata(
     base_url = get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
     try:
-        resource = construct_resource(
+        resource = await construct_resource(
             base_url,
             path_parts,
             entry,

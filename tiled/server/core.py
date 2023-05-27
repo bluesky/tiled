@@ -61,14 +61,16 @@ DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
 
 
-def len_or_approx(tree):
+async def len_or_approx(tree):
     """
     Prefer approximate length if implemented. (It's cheaper.)
     """
+    if hasattr(tree, "async_len"):
+        return (await tree.async_len())
     try:
-        return operator.length_hint(tree)
+        return anyio.to_thread().run_sync(operator.length_hint, tree)
     except TypeError:
-        return len(tree)
+        return anyio.to_thread().run_sync(len, tree)
 
 
 def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
@@ -190,7 +192,7 @@ async def construct_entries_response(
     tree = apply_search(tree, filters, query_registry)
     tree = apply_sort(tree, sort)
 
-    count = len_or_approx(tree)
+    count = await len_or_approx(tree)
     links = pagination_links(base_url, route, path_parts, offset, limit, count)
     data = []
     if fields != [schemas.EntryFields.none]:
@@ -210,7 +212,7 @@ async def construct_entries_response(
     metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
-        resource = construct_resource(
+        resource = await construct_resource(
             base_url,
             path_parts + [key],
             entry,
@@ -370,7 +372,7 @@ def construct_data_response(
     )
 
 
-def construct_resource(
+async def construct_resource(
     base_url,
     path_parts,
     entry,
@@ -414,7 +416,7 @@ def construct_resource(
             ):
                 # This node wants us to inline its contents.
                 # First check that it is not too large.
-                est_count = len_or_approx(entry)
+                est_count = await len_or_approx(entry)
                 if est_count > INLINED_CONTENTS_LIMIT:
                     # Too large: do not inline its contents.
                     count = est_count
@@ -429,10 +431,10 @@ def construct_resource(
                         if count > INLINED_CONTENTS_LIMIT:
                             # The est_count was inaccurate or else the entry has grown
                             # new children while we are walking it. Too large!
-                            count = len_or_approx(entry)
+                            count = await len_or_approx(entry)
                             contents = None
                             break
-                        contents[key] = construct_resource(
+                        contents[key] = await construct_resource(
                             base_url,
                             path_parts + [key],
                             adapter,
@@ -444,7 +446,7 @@ def construct_resource(
                             depth=1 + depth,
                         )
             else:
-                count = len_or_approx(entry)
+                count = await len_or_approx(entry)
                 contents = None
             structure = schemas.NodeStructure(
                 count=count,

@@ -9,8 +9,9 @@ import uuid
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import anyio
 import httpx
-from sqlalchemy import text, type_coerce
+from sqlalchemy import func, text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
@@ -339,6 +340,17 @@ class UnallocatedAdapter(BaseAdapter):
 
 
 class CatalogNodeAdapter(BaseAdapter):
+
+    async def async_len(self):
+        statement = select(func.count(orm.Node.id)).filter(orm.Node.ancestors == self.segments)
+        async with self.context.session() as db:
+            return (
+                (
+                    await db.execute(statement)
+                )
+                .scalar_one()
+            )
+
     async def lookup_node(
         self, segments
     ):  # TODO: Accept filter for predicate-pushdown.
