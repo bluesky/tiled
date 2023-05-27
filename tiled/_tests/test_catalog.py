@@ -40,7 +40,6 @@ async def client(adapter):
 
 @pytest.mark.asyncio
 async def test_nested_node_creation(a):
-    await a.startup()
     await a.create_node(
         key="b",
         metadata={},
@@ -69,7 +68,6 @@ async def test_nested_node_creation(a):
 
 @pytest.mark.asyncio
 async def test_sorting(a):
-    await a.startup()
     # Generate lists of letters and numbers, randomly shuffled.
     random_state = random.Random(0)
     ordered_letters = list(string.ascii_lowercase[:10])
@@ -118,7 +116,6 @@ async def test_sorting(a):
 
 @pytest.mark.asyncio
 async def test_search(a):
-    await a.startup()
     for letter, number in zip(string.ascii_lowercase[:5], range(5)):
         await a.create_node(
             key=letter,
@@ -155,7 +152,6 @@ async def test_search(a):
 
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(a):
-    await a.startup()
     for i in range(10):
         await a.create_node(
             metadata={
@@ -202,7 +198,6 @@ async def test_metadata_index_is_used(a):
 
 @pytest.mark.asyncio
 async def test_write_array_external(a, tmpdir):
-    await a.startup()
     arr = numpy.ones((5, 3))
     filepath = tmpdir / "file.tiff"
     tifffile.imwrite(str(filepath), arr)
@@ -232,7 +227,6 @@ async def test_write_array_external(a, tmpdir):
 
 @pytest.mark.asyncio
 async def test_write_dataframe_external_direct(a, tmpdir):
-    await a.startup()
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
@@ -262,7 +256,6 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 
 @pytest.mark.asyncio
 async def test_write_array_internal_direct(a, tmpdir):
-    await a.startup()
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter(arr)
     structure = asdict(
