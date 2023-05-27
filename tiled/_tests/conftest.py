@@ -1,16 +1,14 @@
 import contextlib
 import getpass
 import os
-import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..catalog.node import CatalogNodeAdapter
 from ..client import context
 from ..server.settings import get_settings
+from .utils import temp_postgres
 
 
 @pytest.fixture(autouse=True)
@@ -85,29 +83,6 @@ def tmpdir_module(request, tmpdir_factory):
 # TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
 
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
-
-
-@contextlib.asynccontextmanager
-async def temp_postgres(uri):
-    if uri.endswith("/"):
-        uri = uri[:-1]
-    # Create a fresh database.
-    engine = create_async_engine(uri)
-    database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
-    async with engine.connect() as connection:
-        await connection.execute(
-            text("COMMIT")
-        )  # close the automatically-started transaction
-        await connection.execute(text(f"CREATE DATABASE {database_name};"))
-        await connection.commit()
-    yield f"{uri}/{database_name}"
-    # Drop the database.
-    async with engine.connect() as connection:
-        await connection.execute(
-            text("COMMIT")
-        )  # close the automatically-started transaction
-        await connection.execute(text(f"DROP DATABASE {database_name};"))
-        await connection.commit()
 
 
 @pytest_asyncio.fixture(params=["sqlite", "postgresql"])

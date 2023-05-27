@@ -9,7 +9,6 @@ from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
-from .writable_adapters import WritableMapAdapter
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 
@@ -23,7 +22,23 @@ def tree_b(access_policy=None):
 
 
 def writable_tree(access_policy=None):
-    return WritableMapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
+    adapter = CatalogNodeAdapter.in_memory(writable_storage=str(tmpdir), access_policy=access_policy)
+    await a.create_node(
+        key="A1",
+        structure_family="array",
+        metadata={},
+        data_sources=[
+            DataSource(
+                mimetype="image/tiff",
+                structure=structure,
+                parameters={},
+                management="external",
+                assets=[
+                    Asset(data_uri=f"file://localhost{filepath}", is_directory=False)
+                ],
+            )
+        ],
+    )
 
 
 @pytest.fixture(scope="module")
