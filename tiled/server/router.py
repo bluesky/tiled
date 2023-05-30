@@ -849,7 +849,7 @@ async def put_metadata(
                 metadata_modified = True
                 metadata = result
 
-    entry.put_metadata(metadata=metadata, specs=specs, references=references)
+    await entry.update_metadata(metadata=metadata, specs=specs, references=references)
 
     response_data = {"id": entry.key}
     if metadata_modified:

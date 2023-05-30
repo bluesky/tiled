@@ -338,12 +338,30 @@ class UnallocatedAdapter(BaseAdapter):
 
 
 class CatalogNodeAdapter(BaseAdapter):
+    async def __aiter__(self):
+        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        for condition in self.conditions:
+            statement = statement.filter(condition)
+        async with self.context.session() as db:
+            return (
+                (await db.execute(statement.order_by(*self.order_by_clauses)))
+                .scalars()
+                .all()
+            )
+        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        async with self.context.session() as db:
+            return (await db.execute(statement)).scalar().all()
+
     async def async_len(self):
-        statement = select(func.count(orm.Node.id)).filter(
+        statement = select(func.count(orm.Node.key)).filter(
             orm.Node.ancestors == self.segments
         )
+        for condition in self.conditions:
+            statement = statement.filter(condition)
         async with self.context.session() as db:
-            return (await db.execute(statement)).scalar_one()
+            return (
+                await db.execute(statement.order_by(*self.order_by_clauses))
+            ).scalar_one()
 
     async def lookup_node(
         self, segments
@@ -498,8 +516,17 @@ class CatalogNodeAdapter(BaseAdapter):
             await db.refresh(node)
             return key, Node.from_orm(node, sorting=self.sorting)
 
-    async def patch_node(datasources=None):
-        ...
+    # async def patch_node(datasources=None):
+    #     ...
+
+    async def update_metadata(self, metadata=None, specs=None, references=None):
+        if metadata is not None:
+            self.node.metadata = metadata
+        if specs is not None:
+            self.node.specs = specs
+        if references is not None:
+            self.node.references = references
+        await self.node.commit()
 
     async def keys_range(self, offset, limit):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)

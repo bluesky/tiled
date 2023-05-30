@@ -25,7 +25,7 @@ from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,

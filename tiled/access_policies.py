@@ -19,20 +19,28 @@ class DummyAccessPolicy:
 
 class SimpleAccessPolicy:
     """
-    A mapping of user names to lists of entries they have full access.
+    A mapping of user names to lists of entries they have access to.
 
     This simple policy does not provide fine-grained control of scopes.
+    Any restriction on scopes is applied the same to all users, except
+    for an optional list of 'admins'.
+
+    This is used in the test suite; it may be suitable for very simple
+    deployments.
 
     >>> SimpleAccessPolicy({"alice": ["A", "B"], "bob": ["B"]}, provider="toy")
     """
 
     ALL = ALL_ACCESS
 
-    def __init__(self, access_lists, *, provider, scopes=None, public=None):
+    def __init__(
+        self, access_lists, *, provider, scopes=None, public=None, admins=None
+    ):
         self.access_lists = {}
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         self.public = set(public or [])
+        self.admins = set(admins or [])
         for key, value in access_lists.items():
             if isinstance(value, str):
                 value = import_object(value)
@@ -53,17 +61,21 @@ class SimpleAccessPolicy:
         return id
 
     def allowed_scopes(self, node, principal):
+        if self._get_id(principal) in self.admins:
+            return ALL_ACCESS
         # The simple policy does not provide for different Principals to
         # have different scopes on different Nodes. If the Principal has access,
         # they have the same hard-coded access everywhere.
         return self.scopes
 
     def filters(self, node, principal, scopes):
+        id = self._get_id(principal)
+        queries = []
+        if id in self.admins:
+            return queries
         if not scopes.issubset(self.scopes):
             return NO_ACCESS
-        id = self._get_id(principal)
         access_list = self.access_lists.get(id, [])
-        queries = []
         if not ((principal is SpecialUsers.admin) or (access_list == self.ALL)):
             try:
                 allowed = set(access_list or [])
