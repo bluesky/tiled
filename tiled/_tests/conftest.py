@@ -1,5 +1,3 @@
-import contextlib
-import getpass
 import os
 
 import pytest
@@ -8,6 +6,7 @@ import pytest_asyncio
 from ..catalog.node import CatalogNodeAdapter
 from ..client import context
 from ..server.settings import get_settings
+from .utils import enter_password as utils_enter_password
 from .utils import temp_postgres
 
 
@@ -35,24 +34,11 @@ def set_auth_token_cache_dir(tmpdir):
 
 
 @pytest.fixture
-def enter_password(monkeypatch):
+def enter_password():
     """
-    Return a context manager that overrides getpass, used like:
-
-    >>> with enter_password(...):
-    ...     # Run code that calls getpass.getpass().
+    DEPRECATED: Use the normal (non-fixture) context manager in .utils.
     """
-
-    @contextlib.contextmanager
-    def f(password):
-        context.PROMPT_FOR_REAUTHENTICATION = True
-        original = getpass.getpass
-        monkeypatch.setattr("getpass.getpass", lambda: password)
-        yield
-        monkeypatch.setattr("getpass.getpass", original)
-        context.PROMPT_FOR_REAUTHENTICATION = None
-
-    return f
+    return utils_enter_password
 
 
 @pytest.fixture(scope="module")

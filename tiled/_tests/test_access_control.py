@@ -8,7 +8,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..server.app import build_app_from_config
-from .utils import fail_with_status_code
+from .utils import enter_password, fail_with_status_code
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
 

@@ -1,11 +1,13 @@
 import contextlib
+import getpass
 import uuid
 
 import httpx
 import pytest
-
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from ..client import context
 
 
 def force_update(client):
@@ -47,3 +49,21 @@ async def temp_postgres(uri):
         )  # close the automatically-started transaction
         await connection.execute(text(f"DROP DATABASE {database_name};"))
         await connection.commit()
+
+
+@contextlib.contextmanager
+def enter_password(password):
+    """
+    Override getpass, used like:
+
+    >>> with enter_password(...):
+    ...     # Run code that calls getpass.getpass().
+    """
+
+    original_prompt = context.PROMPT_FOR_REAUTHENTICATION
+    original_getpass = getpass.getpass
+    context.PROMPT_FOR_REAUTHENTICATION = True
+    setattr(getpass, "getpass", lambda: password)
+    yield
+    setattr(getpass, "getpass", original_getpass)
+    context.PROMPT_FOR_REAUTHENTICATION = original_prompt

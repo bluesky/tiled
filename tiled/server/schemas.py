@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import copy
 import base64
+import copy
 import enum
 import uuid
 from datetime import datetime
@@ -406,6 +406,7 @@ class APIKeyRequestParams(pydantic.BaseModel):
 
 
 class PostMetadataRequest(pydantic.BaseModel):
+    key: Optional[str] = None
     structure_family: StructureFamily
     metadata: Dict = {}
     data_sources: List[DataSource] = []
