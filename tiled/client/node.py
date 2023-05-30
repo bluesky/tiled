@@ -555,7 +555,14 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             return []
 
     def new(
-        self, structure_family, structure, *, metadata=None, specs=None, references=None
+        self,
+        structure_family,
+        structure,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        references=None,
     ):
         """
         Create a new item within this Node.
@@ -599,7 +606,10 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
                 item["attributes"]["data_sources"][0]["structure"]["micro"]["divisions"]
             ).decode()
 
-        document = self.context.post_json(self.uri, item["attributes"])
+        body = dict(item["attributes"])
+        if key is not None:
+            body["id"] = key
+        document = self.context.post_json(self.uri, body)
 
         # if server returned modified metadata update the local copy
         if "metadata" in document:
@@ -619,13 +629,17 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def write_array(self, array, metadata=None, dims=None, specs=None, references=None):
+    def write_array(
+        self, array, *, key=None, metadata=None, dims=None, specs=None, references=None
+    ):
         """
         EXPERIMENTAL: Write an array.
 
         Parameters
         ----------
         array : array-like
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
@@ -681,6 +695,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         client = self.new(
             StructureFamily.array,
             structure,
+            key=key,
             metadata=metadata,
             specs=specs,
             references=references,
@@ -709,10 +724,39 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         return client
 
     def write_sparse(
-        self, coords, data, shape, metadata=None, dims=None, specs=None, references=None
+        self,
+        coords,
+        data,
+        shape,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        references=None,
     ):
         """
         EXPERIMENTAL: Write a sparse array.
+
+        Parameters
+        ----------
+        coords : array-like
+        data : array-like
+        shape : tuple
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        dims : List[str], optional
+            A label for each dimension of the array.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        references : List[Dict[str, URL]], optional
+            References (e.g. links) to related information. This may include
+            links into other Tiled data sets, search results, or external
+            resources unrelated to Tiled.
 
         Examples
         --------
@@ -732,25 +776,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Coords are given with in the reference frame of each chunk.
         >>> x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
         >>> x.write_block(coords=[[0, 1]], data=[6.7, 1.2], block=(1,))
-
-        Parameters
-        ----------
-        coords : array-like
-        data : array-like
-        shape: Tuple
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        dims : List[str], optional
-            A label for each dimension of the array.
-        specs : List[Spec], optional
-            List of names that are used to label that the data and/or metadata
-            conform to some named standard specification.
-        references : Dict[str, URL], optional
-            References (e.g. links) to related information. This may include
-            links into other Tiled data sets, search results, or external
-            resources unrelated to Tiled.
-
         """
         from ..structures.sparse import COOStructure
 
@@ -763,6 +788,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         client = self.new(
             StructureFamily.sparse,
             structure,
+            key=key,
             metadata=metadata,
             specs=specs,
             references=references,
@@ -770,7 +796,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(coords, data)
         return client
 
-    def write_dataframe(self, dataframe, metadata=None, specs=None, references=None):
+    def write_dataframe(
+        self, dataframe, *, key=None, metadata=None, specs=None, references=None
+    ):
         """
         EXPERIMENTAL: Write a DataFrame.
 
@@ -779,6 +807,8 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         Parameters
         ----------
         dataframe : pandas.DataFrame
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
@@ -828,6 +858,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         client = self.new(
             StructureFamily.dataframe,
             structure,
+            key=key,
             metadata=metadata,
             specs=specs,
             references=references,

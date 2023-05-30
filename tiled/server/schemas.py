@@ -406,7 +406,7 @@ class APIKeyRequestParams(pydantic.BaseModel):
 
 
 class PostMetadataRequest(pydantic.BaseModel):
-    key: Optional[str] = None
+    id: Optional[str] = None
     structure_family: StructureFamily
     metadata: Dict = {}
     data_sources: List[DataSource] = []
