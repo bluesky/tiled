@@ -10,19 +10,20 @@ from ..client import Context, from_context
 from ..server.app import build_app_from_config
 from .utils import enter_password, fail_with_status_code
 
-arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
+arr = numpy.ones((5, 5))
+arr_ad = ArrayAdapter.from_array(arr)
 
 
 def tree_a(access_policy=None):
-    return MapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
+    return MapAdapter({"A1": arr_ad, "A2": arr_ad}, access_policy=access_policy)
 
 
 def tree_b(access_policy=None):
-    return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
+    return MapAdapter({"B1": arr_ad, "B2": arr_ad}, access_policy=access_policy)
 
 
 @pytest.fixture(scope="module")
-def context():
+def context(tmpdir_module):
     config = {
         "authentication": {
             "secret_keys": ["SECRET"],
@@ -87,7 +88,7 @@ def context():
             },
             {
                 "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
-                "args": {},
+                "args": {"writable_storage": str(tmpdir_module / "d")},
                 "path": "/d",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
@@ -104,7 +105,7 @@ def context():
             },
             {
                 "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
-                "args": {},
+                "args": {"writable_storage": str(tmpdir_module / "e")},
                 "path": "/e",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
@@ -130,9 +131,10 @@ def context():
     with Context.from_app(app) as context:
         with enter_password("admin"):
             admin_client = from_context(context, username="admin")
-            admin_client.write_array(arr, key="A1")
-            admin_client.write_array(arr, key="A2")
-            admin_client.write_array(arr, key="x")
+            for k in ["d", "e"]:
+                admin_client[k].write_array(arr, key="A1")
+                admin_client[k].write_array(arr, key="A2")
+                admin_client[k].write_array(arr, key="x")
         yield context
 
 

@@ -207,6 +207,16 @@ class Node(NodeAttributes):
     def macrostructure(self):
         return getattr(self.structure, "macro", None)
 
+    async def update_metadata(self, metadata=None, specs=None, references=None):
+        async with self._context.session() as db:
+            if metadata is not None:
+                self._node.metadata = metadata
+            if specs is not None:
+                self._node.specs = specs
+            if references is not None:
+                self._node.references = references
+            await self._node.commit()
+
 
 AttributesT = TypeVar("AttributesT")
 ResourceMetaT = TypeVar("ResourceMetaT")

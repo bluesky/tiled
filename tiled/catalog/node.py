@@ -124,6 +124,7 @@ class Context:
                     "Only file://... writable storage is currently supported."
                 )
         self.writable_storage = writable_storage
+        self.writable = bool(writable_storage)
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
         if mimetype_detection_hook is not None:
@@ -242,6 +243,10 @@ class BaseAdapter:
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
+
+    @property
+    def writable(self):
+        return self.context.writable
 
     def __init__(
         self,
@@ -518,15 +523,6 @@ class CatalogNodeAdapter(BaseAdapter):
 
     # async def patch_node(datasources=None):
     #     ...
-
-    async def update_metadata(self, metadata=None, specs=None, references=None):
-        if metadata is not None:
-            self.node.metadata = metadata
-        if specs is not None:
-            self.node.specs = specs
-        if references is not None:
-            self.node.references = references
-        await self.node.commit()
 
     async def keys_range(self, offset, limit):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)

@@ -62,7 +62,7 @@ class SimpleAccessPolicy:
 
     def allowed_scopes(self, node, principal):
         if self._get_id(principal) in self.admins:
-            return {ALL_ACCESS}
+            return ALL_SCOPES
         # The simple policy does not provide for different Principals to
         # have different scopes on different Nodes. If the Principal has access,
         # they have the same hard-coded access everywhere.

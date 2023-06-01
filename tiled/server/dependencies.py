@@ -74,7 +74,7 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
         entry = root_tree
         try:
             # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
-            for segment in path_parts:
+            for i, segment in enumerate(path_parts):
                 entry = filter_for_access(
                     entry, principal, ["read:metadata"], request.state.metrics
                 )
@@ -82,9 +82,9 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
                 # It can jump directly to the node of interest.
                 if hasattr(entry, "lookup_adapter"):
                     if kind == EntryKind.adapter:
-                        entry = await entry.lookup_adapter(path_parts)
+                        entry = await entry.lookup_adapter(path_parts[i:])
                     else:  # kind == EntryKind.node
-                        entry = await entry.lookup_node(path_parts)
+                        entry = await entry.lookup_node(path_parts[i:])
                     if entry is None:
                         raise NoEntry(path_parts)
                 # Old-style dict-like interface
