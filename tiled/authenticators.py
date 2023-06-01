@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import functools
 import logging
 import re
@@ -225,6 +226,7 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
         token_url ([type]): [description]
         auth_code ([type]): [description]
     """
+    auth_value = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     response = httpx.post(
         url=token_uri,
         data={
@@ -234,6 +236,7 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
             "code": auth_code,
             "client_secret": client_secret,
         },
+        headers={"Authorization": f"Basic {auth_value}"},
     )
     return response
 
