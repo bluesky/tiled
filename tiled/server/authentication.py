@@ -630,7 +630,9 @@ def build_device_code_token_route(authenticator, provider):
         except Exception:
             # Not valid hex, therefore not a valid device_code
             raise HTTPException(status_code=401, detail="Invalid device code")
-        pending_session = lookup_valid_pending_session_by_device_code(db, device_code)
+        pending_session = await lookup_valid_pending_session_by_device_code(
+            db, device_code
+        )
         if pending_session is None:
             raise HTTPException(
                 404,
