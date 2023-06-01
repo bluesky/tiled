@@ -644,7 +644,7 @@ def build_device_code_token_route(authenticator, provider):
         # The pending session can only be used once.
         await db.delete(pending_session)
         await db.commit()
-        tokens = create_tokens_from_session(settings, db, session, provider)
+        tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
     return route
