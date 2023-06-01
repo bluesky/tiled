@@ -492,10 +492,10 @@ def build_device_code_authorize_route(authenticator, provider):
 
     async def route(
         request: Request,
-        settings: BaseSettings = Depends(get_settings),
+        db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        pending_session = await create_pending_session(settings)
+        pending_session = await create_pending_session(db)
         verification_uri = f"{get_base_url(request)}/auth/provider/{provider}/token"
         authorization_uri = authenticator.authorization_endpoint.copy_with(
             params={
