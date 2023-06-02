@@ -124,7 +124,6 @@ class Context:
                     "Only file://... writable storage is currently supported."
                 )
         self.writable_storage = writable_storage
-        self.writable = bool(writable_storage)
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
         if mimetype_detection_hook is not None:
@@ -243,10 +242,6 @@ class BaseAdapter:
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
-
-    @property
-    def writable(self):
-        return self.context.writable
 
     def __init__(
         self,
