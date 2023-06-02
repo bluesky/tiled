@@ -359,9 +359,7 @@ class CatalogNodeAdapter(BaseAdapter):
         for condition in self.conditions:
             statement = statement.filter(condition)
         async with self.context.session() as db:
-            return (
-                await db.execute(statement.order_by(*self.order_by_clauses))
-            ).scalar_one()
+            return (await db.execute(statement)).scalar_one()
 
     async def lookup_node(
         self, segments
