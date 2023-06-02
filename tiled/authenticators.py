@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import functools
 import logging
 import re
@@ -11,6 +12,7 @@ from jose import JWTError, jwk, jwt
 from starlette.responses import RedirectResponse
 
 from .server.authentication import Mode
+from .server.utils import get_root_url
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
@@ -153,7 +155,10 @@ properties:
 
     async def authenticate(self, request):
         code = request.query_params["code"]
-        redirect_uri = str(httpx.URL(str(request.url)).copy_with(params=[]))
+        # A proxy in the middle may make the request into something like
+        # 'http://localhost:8000/...' so we fix the first part but keep
+        # the original URI path.
+        redirect_uri = f"{get_root_url(request)}{request.url.path}"
         response = await exchange_code(
             self.token_uri, code, self.client_id, self.client_secret, redirect_uri
         )
@@ -221,6 +226,7 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
         token_url ([type]): [description]
         auth_code ([type]): [description]
     """
+    auth_value = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     response = httpx.post(
         url=token_uri,
         data={
@@ -230,6 +236,7 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
             "code": auth_code,
             "client_secret": client_secret,
         },
+        headers={"Authorization": f"Basic {auth_value}"},
     )
     return response
 

@@ -492,10 +492,10 @@ def build_device_code_authorize_route(authenticator, provider):
 
     async def route(
         request: Request,
-        settings: BaseSettings = Depends(get_settings),
+        db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        pending_session = await create_pending_session(settings)
+        pending_session = await create_pending_session(db)
         verification_uri = f"{get_base_url(request)}/auth/provider/{provider}/token"
         authorization_uri = authenticator.authorization_endpoint.copy_with(
             params={
@@ -630,7 +630,9 @@ def build_device_code_token_route(authenticator, provider):
         except Exception:
             # Not valid hex, therefore not a valid device_code
             raise HTTPException(status_code=401, detail="Invalid device code")
-        pending_session = lookup_valid_pending_session_by_device_code(db, device_code)
+        pending_session = await lookup_valid_pending_session_by_device_code(
+            db, device_code
+        )
         if pending_session is None:
             raise HTTPException(
                 404,
@@ -642,7 +644,7 @@ def build_device_code_token_route(authenticator, provider):
         # The pending session can only be used once.
         await db.delete(pending_session)
         await db.commit()
-        tokens = create_tokens_from_session(settings, db, session, provider)
+        tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
     return route

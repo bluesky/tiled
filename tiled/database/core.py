@@ -220,8 +220,12 @@ async def lookup_valid_pending_session_by_device_code(db, device_code):
     hashed_device_code = hashlib.sha256(device_code).digest()
     pending_session = (
         await db.execute(
-            select(PendingSession).filter(
-                PendingSession.hashed_device_code == hashed_device_code
+            select(PendingSession)
+            .filter(PendingSession.hashed_device_code == hashed_device_code)
+            .options(
+                selectinload(PendingSession.session)
+                .selectinload(Session.principal)
+                .selectinload(Principal.identities),
             )
         )
     ).scalar()
