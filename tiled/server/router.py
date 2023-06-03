@@ -609,7 +609,6 @@ async def post_metadata(
     entry=SecureEntry(scopes=["write:metadata", "create"], kind=EntryKind.node),
 ):
     if not getattr(entry, "writable", False):
-        breakpoint()
         raise HTTPException(
             status_code=405, detail=f"Data cannot be written at the path {path}"
         )
@@ -808,7 +807,6 @@ async def put_metadata(
     entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
 ):
     if not hasattr(entry, "update_metadata"):
-        breakpoint()
         raise HTTPException(
             status_code=405, detail="This path does not support update of metadata."
         )
