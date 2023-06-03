@@ -2,8 +2,8 @@ from pathlib import Path
 
 import dask.dataframe
 
-from .dataframe import DataFrameAdapter
 from ..structures.core import StructureFamily
+from .dataframe import DataFrameAdapter
 
 
 class ParquetDatasetAdapter:
