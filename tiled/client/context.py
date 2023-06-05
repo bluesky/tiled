@@ -681,9 +681,7 @@ class Context:
         if prompt_for_reauthentication is UNSET:
             prompt_for_reauthentication = PROMPT_FOR_REAUTHENTICATION
         if prompt_for_reauthentication is None:
-            prompt_for_reauthentication = (
-                not sys.__stdin__.closed
-            ) and sys.__stdin__.isatty()
+            prompt_for_reauthentication = _can_prompt()
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
@@ -978,3 +976,20 @@ class Admin:
 
 class CannotPrompt(Exception):
     pass
+
+
+def _can_prompt():
+    "Infer whether the user can be prompted for a password or user code."
+
+    if (not sys.__stdin__.closed) and sys.__stdin__.isatty():
+        return True
+    # In IPython (TerminalInteractiveShell) the above is true, but in
+    # Jupyter (ZMQInteractiveShell) it is False.
+    # Jupyter own mechanism for giving a prompt, so we always return
+    # True if we detect IPython/Jupyter.
+    if "IPython" in sys.modules:
+        import IPython
+
+        if IPython.get_ipython() is not None:
+            return True
+    return False
