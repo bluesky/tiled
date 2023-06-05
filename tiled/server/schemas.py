@@ -219,13 +219,23 @@ class Node(NodeAttributes):
         return getattr(self.structure, "macro", None)
 
     async def update_metadata(self, metadata=None, specs=None, references=None):
+        values = {}
+        if metadata is not None:
+            # Trailing underscore in 'metadata_' avoids collision with
+            # SQLAlchemy reserved word 'metadata'.
+            values["metadata_"] = metadata
+        if specs is not None:
+            values["specs"] = specs
+        if references is not None:
+            values["references"] = references
         async with self._context.session() as db:
-            if metadata is not None:
-                self._node.metadata = metadata
-            if specs is not None:
-                self._node.specs = specs
-            if references is not None:
-                self._node.references = references
+            from sqlalchemy import update
+
+            from tiled.catalog import orm
+
+            await db.execute(
+                update(orm.Node).where(orm.Node.id == self._node.id).values(**values)
+            )
             await db.commit()
 
 
