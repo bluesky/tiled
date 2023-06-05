@@ -724,7 +724,14 @@ class Context:
 
         if not prompt_for_reauthentication:
             raise CannotPrompt(
-                "Authentication is needed but the client cannot prompt for it."
+                """Authentication is needed but Tiled has detected that it is running
+in a 'headless' context where it cannot prompt the user to provide
+credentials in the stdin. Options:
+
+- If Tiled has detected this wrongly, pass prompt_for_reauthentication=True
+  to force it to prompt.
+- Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
+"""
             )
         self.http_client.auth = None
         mode = spec["mode"]
