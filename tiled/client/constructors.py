@@ -270,6 +270,6 @@ def from_profile(name, structure_clients=None, **kwargs):
         context = Context.from_app(
             build_app_from_config(config, source_filepath=filepath),
         )
-        return from_context(context)
+        return from_context(context, **merged)
     else:
         return from_uri(**merged)
