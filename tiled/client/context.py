@@ -681,9 +681,7 @@ class Context:
         if prompt_for_reauthentication is UNSET:
             prompt_for_reauthentication = PROMPT_FOR_REAUTHENTICATION
         if prompt_for_reauthentication is None:
-            prompt_for_reauthentication = (
-                not sys.__stdin__.closed
-            ) and sys.__stdin__.isatty()
+            prompt_for_reauthentication = _can_prompt()
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
@@ -726,7 +724,14 @@ class Context:
 
         if not prompt_for_reauthentication:
             raise CannotPrompt(
-                "Authentication is needed but the client cannot prompt for it."
+                """Authentication is needed but Tiled has detected that it is running
+in a 'headless' context where it cannot prompt the user to provide
+credentials in the stdin. Options:
+
+- If Tiled has detected this wrongly, pass prompt_for_reauthentication=True
+  to force it to prompt.
+- Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
+"""
             )
         self.http_client.auth = None
         mode = spec["mode"]
@@ -806,7 +811,7 @@ and enter the code:
             print(confirmation_message.format(id=username))
         return spec, username
 
-    def login(self, username=None, provider=None):
+    def login(self, username=None, provider=None, prompt_for_reauthentication=UNSET):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -823,7 +828,9 @@ and enter the code:
 
         and enter the code: XXXX-XXXX
         """
-        self.authenticate(username, provider)
+        self.authenticate(
+            username, provider, prompt_for_reauthentication=prompt_for_reauthentication
+        )
         # For programmatic access to the return values, use authenticate().
         # This returns None in order to provide a clean UX in an interpreter.
         return None
@@ -980,3 +987,20 @@ class Admin:
 
 class CannotPrompt(Exception):
     pass
+
+
+def _can_prompt():
+    "Infer whether the user can be prompted for a password or user code."
+
+    if (not sys.__stdin__.closed) and sys.__stdin__.isatty():
+        return True
+    # In IPython (TerminalInteractiveShell) the above is true, but in
+    # Jupyter (ZMQInteractiveShell) it is False.
+    # Jupyter own mechanism for giving a prompt, so we always return
+    # True if we detect IPython/Jupyter.
+    if "IPython" in sys.modules:
+        import IPython
+
+        if IPython.get_ipython() is not None:
+            return True
+    return False
