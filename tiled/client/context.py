@@ -758,9 +758,11 @@ class Context:
                 f"""
 You have {int(verification['expires_in']) // 60} minutes visit this URL
 
-{authorization_uri}
+  {authorization_uri}
 
-and enter the code: {verification['user_code']}
+and enter the code:
+
+  {verification['user_code']}
 
 """
             )
