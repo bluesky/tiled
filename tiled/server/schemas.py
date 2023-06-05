@@ -167,6 +167,7 @@ class Node(NodeAttributes):
     # But for passing the Node around internally, it is useful to have the
     # key included in the model.
     key: str
+    access_policy: Any
     _node: Any = pydantic.PrivateAttr()
     _context: Any = pydantic.PrivateAttr()
 
@@ -176,7 +177,7 @@ class Node(NodeAttributes):
         self._context = context
 
     @classmethod
-    def from_orm(cls, orm, context, sorting=None):
+    def from_orm(cls, orm, context, *, access_policy, sorting=None):
         # In the Python API we encode sorting as (key, direction).
         # This order-based "record" notion does not play well with OpenAPI.
         # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
@@ -208,6 +209,7 @@ class Node(NodeAttributes):
             time_updated=orm.time_updated,
             node=orm,
             context=context,
+            access_policy=access_policy,
         )
 
     def microstructure(self):

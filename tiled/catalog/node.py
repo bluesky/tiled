@@ -315,6 +315,7 @@ class BaseAdapter:
             Context(engine, writable_storage),
             RootNode(metadata, specs, references, access_policy),
             initialize_database_at_startup=initialize_database_at_startup,
+            access_policy=access_policy,
         )
 
     async def startup(self):
@@ -362,7 +363,7 @@ class CatalogNodeAdapter(BaseAdapter):
             return (await db.execute(statement)).scalar_one()
 
     async def lookup_node(
-        self, segments, principal
+        self, segments
     ):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
@@ -378,10 +379,12 @@ class CatalogNodeAdapter(BaseAdapter):
             # database stops and (for example) HDF5 file begins.
         if node is None:
             return None
-        return Node.from_orm(node, self.context, sorting=self.sorting)
+        return Node.from_orm(
+            node, self.context, access_policy=self.access_policy, sorting=self.sorting
+        )
 
     async def lookup_adapter(
-        self, segments, principal
+        self, segments
     ):  # TODO: Accept filter for predicate-pushdown.
         node = await self.lookup_node(segments)
         if node is None:
@@ -412,12 +415,13 @@ class CatalogNodeAdapter(BaseAdapter):
                 kwargs["meta"] = data_source.structure.micro.meta_decoded
                 kwargs["divisions"] = data_source.structure.micro.divisions_decoded
             adapter = adapter_factory(*paths, **kwargs)
+            adapter.access_policy = self.access_policy  # HACK
             return adapter
         else:  # num_data_sources == 0
             if node.structure_family != StructureFamily.node:
                 raise NotImplementedError  # array or dataframe that is uninitialized
             # A node with no underlying data source
-            return CatalogNodeAdapter(self.context, node)
+            return type(self)(self.context, node, access_policy=self.access_policy)
 
     def new_variation(
         self,
@@ -515,7 +519,12 @@ class CatalogNodeAdapter(BaseAdapter):
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            return key, Node.from_orm(node, self.context, sorting=self.sorting)
+            return key, Node.from_orm(
+                node,
+                self.context,
+                access_policy=self.access_policy,
+                sorting=self.sorting,
+            )
 
     # async def patch_node(datasources=None):
     #     ...
@@ -553,7 +562,13 @@ class CatalogNodeAdapter(BaseAdapter):
                 .scalars()
                 .all()
             )
-            return [(node.key, Node.from_orm(node, self.context)) for node in nodes]
+            return [
+                (
+                    node.key,
+                    Node.from_orm(node, self.context, access_policy=self.access_policy),
+                )
+                for node in nodes
+            ]
 
 
 # Map sort key to Node ORM attribute.

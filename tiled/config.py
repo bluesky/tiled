@@ -134,6 +134,10 @@ def construct_build_app_kwargs(
                 tree = obj(**args)
             else:
                 # Interpret obj as a tree *instance*.
+                if access_policy is None:
+                    raise ValueError(
+                        f"Cannot apply access_policy to object {obj} which is already instantiated."
+                    )
                 tree = obj
             if segments in trees:
                 raise ValueError(f"The path {'/'.join(segments)} was specified twice.")

@@ -247,7 +247,7 @@ DEFAULT_MEDIA_TYPES = {
 }
 
 
-def construct_revisions_response(
+async def construct_revisions_response(
     entry,
     base_url,
     route,

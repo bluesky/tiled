@@ -82,13 +82,9 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
                 # It can jump directly to the node of interest.
                 if hasattr(entry, "lookup_adapter"):
                     if kind == EntryKind.adapter:
-                        entry = await entry.lookup_adapter(
-                            path_parts[i:], principal=principal
-                        )
+                        entry = await entry.lookup_adapter(path_parts[i:])
                     else:  # kind == EntryKind.node
-                        entry = await entry.lookup_node(
-                            path_parts[i:], principal=principal
-                        )
+                        entry = await entry.lookup_node(path_parts[i:])
                     if entry is None:
                         raise NoEntry(path_parts)
                 # Old-style dict-like interface
