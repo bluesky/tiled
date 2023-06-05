@@ -42,11 +42,12 @@ def test_client_version_check():
 def test_direct(tmpdir):
     profile_content = {
         "test": {
+            "structure_clients": "dask",
             "direct": {
                 "trees": [
                     {"path": "/", "tree": "tiled.examples.generated_minimal:tree"}
                 ]
-            }
+            },
         }
     }
     with open(tmpdir / "example.yml", "w") as file:
