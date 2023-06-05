@@ -570,12 +570,12 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         action = (
             f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
         )
-        normalized_user_code = user_code.upper().replace("-", "")
+        normalized_user_code = user_code.upper().replace("-", "").strip()
         pending_session = await lookup_valid_pending_session_by_user_code(
             db, normalized_user_code
         )
         if pending_session is None:
-            message = "Invalid user_code. It may have been mistyped, or the pending request may have expired."
+            message = "Invalid user code. It may have been mistyped, or the pending request may have expired."
             return templates.TemplateResponse(
                 "device_code_form.html",
                 {
