@@ -898,5 +898,5 @@ async def revisions_delitem(
             detail="This path does not support a del request for revisions.",
         )
 
-    entry.revisions.delete_revision(n)
+    await entry.revisions.delete_revision(n)
     return json_or_msgpack(request, None)

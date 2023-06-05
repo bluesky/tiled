@@ -257,7 +257,7 @@ def construct_revisions_response(
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    revisions = entry.revisions[offset : offset + limit]  # noqa: E203
+    revisions = await entry.revisions(offset, limit)
     data = []
     for revision in revisions:
         item = {
