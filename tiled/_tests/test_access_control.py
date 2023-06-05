@@ -73,14 +73,14 @@ def context(tmpdir_module):
             {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
             {
                 "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
-                "args": {},
+                "args": {"writable_storage": str(tmpdir_module / "c")},
                 "path": "/c",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
+                            "alice": "tiled.access_policies:ALL_ACCESS",
                         },
                         "admins": ["admin"],
                     },
@@ -95,7 +95,7 @@ def context(tmpdir_module):
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
+                            "alice": "tiled.access_policies:ALL_ACCESS",
                         },
                         "admins": ["admin"],
                         # Block writing.
@@ -112,7 +112,7 @@ def context(tmpdir_module):
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
+                            "alice": "tiled.access_policies:ALL_ACCESS",
                         },
                         "admins": ["admin"],
                         # Block creation.
@@ -131,7 +131,7 @@ def context(tmpdir_module):
     with Context.from_app(app) as context:
         with enter_password("admin"):
             admin_client = from_context(context, username="admin")
-            for k in ["d", "e"]:
+            for k in ["c", "d", "e"]:
                 admin_client[k].write_array(arr, key="A1")
                 admin_client[k].write_array(arr, key="A2")
                 admin_client[k].write_array(arr, key="x")
@@ -195,9 +195,9 @@ def test_create_and_update_allowed(enter_password, context):
         alice_client = from_context(context, username="alice")
 
     # Update
-    alice_client["c"].metadata
-    alice_client["c"].update_metadata(metadata={"added_key": 3})
-    assert alice_client["c"].metadata["added_key"] == 3
+    alice_client["c"]["x"].metadata
+    alice_client["c"]["x"].update_metadata(metadata={"added_key": 3})
+    assert alice_client["c"]["x"].metadata["added_key"] == 3
 
     # Create
     alice_client["c"].write_array([1, 2, 3])
