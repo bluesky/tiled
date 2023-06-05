@@ -802,7 +802,7 @@ and enter the code: {verification['user_code']}
             print(confirmation_message.format(id=username))
         return spec, username
 
-    def login(self, username=None, provider=None):
+    def login(self, username=None, provider=None, prompt_for_reauthentication=UNSET):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -819,7 +819,9 @@ and enter the code: {verification['user_code']}
 
         and enter the code: XXXX-XXXX
         """
-        self.authenticate(username, provider)
+        self.authenticate(
+            username, provider, prompt_for_reauthentication=prompt_for_reauthentication
+        )
         # For programmatic access to the return values, use authenticate().
         # This returns None in order to provide a clean UX in an interpreter.
         return None
