@@ -4,7 +4,7 @@ from ..media_type_registration import serialization_registry
 from ..utils import SerializationError, modules_available, safe_json_dump
 
 
-def walk(node, pre=None):
+async def walk(node, pre=None):
     """
     Yield (key_path, value) where each value is an ArrayAdapter.
 
@@ -18,8 +18,8 @@ def walk(node, pre=None):
     """
     pre = pre[:] if pre else []
     if node.structure_family != "array":
-        for key, value in node.items():
-            for d in walk(value, pre + [key]):
+        async for key, value in node.items():
+            async for d in walk(value, pre + [key]):
                 yield d
     else:
         yield (pre, node)
@@ -66,11 +66,11 @@ if modules_available("h5py"):
 
 if modules_available("orjson"):
 
-    def serialize_json(node, metadata):
+    async def serialize_json(node, metadata):
         "Export node to JSON, with each node having a 'contents' and 'metadata' sub-key."
         root_node = node
         to_serialize = {"contents": {}, "metadata": dict(root_node.metadata)}
-        for key_path, array_adapter in walk(node):
+        async for key_path, array_adapter in walk(node):
             d = to_serialize["contents"]
             node = root_node
             for key in key_path:

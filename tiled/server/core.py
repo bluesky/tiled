@@ -350,11 +350,10 @@ async def construct_data_response(
         return Response(status_code=304, headers=headers)
     if filename:
         headers["Content-Disposition"] = f"attachment;filename={filename}"
+    serializer = serialization_registry.dispatch(spec, media_type)
     # This is the expensive step: actually serialize.
     try:
-        content = await ensure_awaitable(
-            serialization_registry, spec, media_type, payload, metadata
-        )
+        content = await ensure_awaitable(serializer, payload, metadata)
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
