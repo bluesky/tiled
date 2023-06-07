@@ -34,7 +34,7 @@ from ..utils import (
 )
 from . import schemas
 from .etag import tokenize
-from .utils import record_timing
+from .utils import ensure_awaitable, record_timing
 
 del queries
 register_builtin_serializers()
@@ -277,7 +277,7 @@ async def construct_revisions_response(
     return schemas.Response(data=data, links=links, meta={"count": count})
 
 
-def construct_data_response(
+async def construct_data_response(
     structure_family,
     serialization_registry,
     payload,
@@ -352,7 +352,9 @@ def construct_data_response(
         headers["Content-Disposition"] = f"attachment;filename={filename}"
     # This is the expensive step: actually serialize.
     try:
-        content = serialization_registry(spec, media_type, payload, metadata)
+        content = await ensure_awaitable(
+            serialization_registry, spec, media_type, payload, metadata
+        )
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "

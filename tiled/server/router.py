@@ -406,7 +406,7 @@ async def array_block(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 entry.structure_family,
                 serialization_registry,
                 array,
@@ -470,7 +470,7 @@ async def array_full(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 structure_family,
                 serialization_registry,
                 array,
@@ -490,7 +490,7 @@ async def array_full(
     response_model=schemas.Response,
     name="dataframe partition",
 )
-def dataframe_partition(
+async def dataframe_partition(
     request: Request,
     partition: int,
     entry=SecureEntry(scopes=["read:data"]),
@@ -512,7 +512,7 @@ def dataframe_partition(
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = entry.read_partition(partition, fields=field)
+            df = await ensure_awaitable(entry.read_partition, partition, fields=field)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
@@ -529,7 +529,7 @@ def dataframe_partition(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 "dataframe",
                 serialization_registry,
                 df,
@@ -584,7 +584,7 @@ async def node_full(
         # TODO Walk node to determine size before handing off to serializer.
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 entry.structure_family,
                 serialization_registry,
                 data,
