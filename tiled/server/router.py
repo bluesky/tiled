@@ -512,7 +512,7 @@ async def dataframe_partition(
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = await ensure_awaitable(entry.read_partition, partition, fields=field)
+            df = await ensure_awaitable(entry.read_partition, partition, field)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
@@ -586,6 +586,8 @@ async def node_full(
             scopes=["read:data"],
             metrics=request.state.metrics,
         )
+    else:
+        curried_filter = None
         # TODO Walk node to determine size before handing off to serializer.
     try:
         with record_timing(request.state.metrics, "pack"):
