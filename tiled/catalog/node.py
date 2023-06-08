@@ -493,11 +493,13 @@ class CatalogNodeAdapter(BaseAdapter):
                             data_source.structure.macro.shape,
                             data_source.structure.macro.chunks,
                         )
-                    if structure_family == StructureFamily.dataframe:
+                    elif structure_family == StructureFamily.dataframe:
                         init_storage_args = (
                             httpx.URL(data_uri).path,
                             data_source.structure.macro.npartitions,
                         )
+                    else:
+                        raise NotImplementedError(structure_family)
                     assets = await ensure_awaitable(init_storage, *init_storage_args)
                     data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(

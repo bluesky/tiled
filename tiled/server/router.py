@@ -806,7 +806,7 @@ async def put_dataframe_partition(
     media_type = request.headers["content-type"]
     deserializer = deserialization_registry.dispatch("dataframe", media_type)
     data = await ensure_awaitable(deserializer, body)
-    await ensure_awaitable(entry.write, data, partition)
+    await ensure_awaitable(entry.write_partition, data, partition)
     return json_or_msgpack(request, None)
 
 
