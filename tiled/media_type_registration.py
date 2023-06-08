@@ -120,12 +120,6 @@ class SerializationRegistry:
             f"No dispatch for structure_family {structure_family} with media type {media_type}"
         )
 
-    def __call__(self, structure_family, media_type, *args, **kwargs):
-        """
-        Invoke a writer for a given structure and media type.
-        """
-        return self.dispatch(structure_family, media_type)(*args, **kwargs)
-
 
 class CompressionRegistry:
     def __init__(self):

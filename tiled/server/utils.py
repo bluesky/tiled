@@ -1,4 +1,3 @@
-import collections
 import contextlib
 import inspect
 import time
@@ -87,34 +86,6 @@ def filter_for_access(entry, principal, scopes, metrics):
                 for query in queries:
                     entry = entry.search(query)
     return entry
-
-
-class FilteredNode(collections.abc.Mapping):
-    structure_family = "node"
-
-    "Wrap a node, hiding contents that the principal cannot access."
-
-    def __init__(self, node, principal, scopes, metrics):
-        if not node.structure_family == "node":
-            raise ValueError("Input must have structure_family == 'node'")
-        self._principal = principal
-        self._scopes = scopes
-        self._metrics = metrics
-        self._node = filter_for_access(node, principal, scopes, metrics)
-        self.metadata = self._node.metadata
-        super().__init__()
-
-    def __getitem__(self, key):
-        value = self._node[key]
-        if value.structure_family == "node":
-            return type(self)(value, self._principal, self._scopes, self._metrics)
-        return value
-
-    def __len__(self):
-        return len(self._node)
-
-    def __iter__(self):
-        yield from self._node
 
 
 def get_structure(entry):

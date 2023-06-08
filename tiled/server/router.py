@@ -2,6 +2,7 @@ import base64
 import dataclasses
 import inspect
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
@@ -41,7 +42,6 @@ from .dependencies import (
 )
 from .settings import get_settings
 from .utils import (
-    FilteredNode,
     ensure_awaitable,
     filter_for_access,
     get_base_url,
@@ -580,7 +580,12 @@ async def node_full(
             ),
         )
     if entry.structure_family == "node":
-        data = FilteredNode(data, principal, ["read:data"], request.state.metrics)
+        curried_filter = partial(
+            filter_for_access,
+            principal=principal,
+            scopes=["read:data"],
+            metrics=request.state.metrics,
+        )
         # TODO Walk node to determine size before handing off to serializer.
     try:
         with record_timing(request.state.metrics, "pack"):
@@ -594,6 +599,7 @@ async def node_full(
                 specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
+                filter_for_access=curried_filter,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
@@ -734,7 +740,8 @@ async def put_array_full(
     media_type = request.headers["content-type"]
     dtype = entry.microstructure().to_numpy_dtype()
     shape = entry.macrostructure().shape
-    data = deserialization_registry("array", media_type, body, dtype, shape)
+    deserializer = deserialization_registry.dispatch("array", media_type)
+    data = await ensure_awaitable(deserializer, body, dtype, shape)
     await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
@@ -758,7 +765,8 @@ async def put_array_block(
     _, shape = slice_and_shape_from_block_and_chunks(
         block, entry.macrostructure().chunks
     )
-    data = deserialization_registry("array", media_type, body, dtype, shape)
+    deserializer = await deserialization_registry.dispatch("array", media_type)
+    data = ensure_awaitable(deserializer, body, dtype, shape)
     await ensure_awaitable(entry.write_block, data, block)
     return json_or_msgpack(request, None)
 

@@ -287,6 +287,7 @@ async def construct_data_response(
     specs=None,
     expires=None,
     filename=None,
+    filter_for_access=None,
 ):
     request.state.endpoint = "data"
     if specs is None:
@@ -353,7 +354,12 @@ async def construct_data_response(
     serializer = serialization_registry.dispatch(spec, media_type)
     # This is the expensive step: actually serialize.
     try:
-        content = await ensure_awaitable(serializer, payload, metadata)
+        if filter_for_access is not None:
+            content = await ensure_awaitable(
+                serializer, payload, metadata, filter_for_access
+            )
+        else:
+            content = await ensure_awaitable(serializer, payload, metadata)
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
