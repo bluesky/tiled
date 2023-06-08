@@ -767,8 +767,8 @@ async def put_array_block(
     _, shape = slice_and_shape_from_block_and_chunks(
         block, entry.macrostructure().chunks
     )
-    deserializer = await deserialization_registry.dispatch("array", media_type)
-    data = ensure_awaitable(deserializer, body, dtype, shape)
+    deserializer = deserialization_registry.dispatch("array", media_type)
+    data = await ensure_awaitable(deserializer, body, dtype, shape)
     await ensure_awaitable(entry.write_block, data, block)
     return json_or_msgpack(request, None)
 
@@ -785,7 +785,8 @@ async def put_dataframe_full(
         )
     body = await request.body()
     media_type = request.headers["content-type"]
-    data = deserialization_registry("dataframe", media_type, body)
+    deserializer = deserialization_registry.dispatch("dataframe", media_type)
+    data = await ensure_awaitable(deserializer, body)
     await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
@@ -803,7 +804,8 @@ async def put_dataframe_partition(
         )
     body = await request.body()
     media_type = request.headers["content-type"]
-    data = deserialization_registry("dataframe", media_type, body)
+    deserializer = deserialization_registry.dispatch("dataframe", media_type)
+    data = await ensure_awaitable(deserializer, body)
     await ensure_awaitable(entry.write, data, partition)
     return json_or_msgpack(request, None)
 

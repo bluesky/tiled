@@ -144,7 +144,7 @@ if modules_available("h5py"):
         with h5py.File(buffer, mode="w") as file:
             for k, v in metadata["attrs"].items():
                 file.attrs.create(k, v)
-            for key_path, array_adapter in await walk(node, filter_for_access):
+            async for key_path, array_adapter in walk(node, filter_for_access):
                 group = file
                 node = root_node
                 for key in key_path[:-1]:

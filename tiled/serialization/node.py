@@ -48,7 +48,7 @@ if modules_available("h5py"):
                 file.attrs.update(metadata)
             except TypeError:
                 raise SerializationError(MSG)
-            for key_path, array_adapter in walk(node, filter_for_access):
+            async for key_path, array_adapter in walk(node, filter_for_access):
                 group = file
                 node = root_node
                 for key in key_path[:-1]:
