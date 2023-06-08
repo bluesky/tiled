@@ -54,7 +54,6 @@ def SecureEntry(scopes):
         'read:metadata' and finally filtering by the specified scope.
         """
         path_parts = [unquote(segment) for segment in path.split("/") if segment]
-        breakpoint()
         entry = root_tree
         try:
             # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
