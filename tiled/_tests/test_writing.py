@@ -7,8 +7,10 @@ Persistent stores are being developed externally to the tiled package.
 import dask.dataframe
 import numpy
 import pandas.testing
+import pytest
 import sparse
 
+from ..catalog.node import CatalogNodeAdapter
 from ..client import Context, from_context, record_history
 from ..queries import Key
 from ..server.app import build_app
@@ -16,14 +18,17 @@ from ..structures.core import Spec
 from ..structures.sparse import COOStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
-from .writable_adapters import WritableMapAdapter
 
 validation_registry = ValidationRegistry()
 validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
-def test_write_array_full():
-    tree = WritableMapAdapter({})
+@pytest.fixture
+def tree(tmpdir):
+    return CatalogNodeAdapter.in_memory(writable_storage=tmpdir)
+
+
+def test_write_array_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -49,10 +54,8 @@ def test_write_array_full():
         assert result.references == references
 
 
-def test_write_large_array_full():
+def test_write_large_array_full(tree):
     "Test that a large array is chunked"
-
-    tree = WritableMapAdapter({})
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -85,8 +88,7 @@ def test_write_large_array_full():
             client._SUGGESTED_MAX_UPLOAD_SIZE = original
 
 
-def test_write_array_chunked():
-    tree = WritableMapAdapter({})
+def test_write_array_chunked(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -112,8 +114,7 @@ def test_write_array_chunked():
         assert result.references == references
 
 
-def test_write_dataframe_full():
-    tree = WritableMapAdapter({})
+def test_write_dataframe_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -142,8 +143,7 @@ def test_write_dataframe_full():
         assert result.references == references
 
 
-def test_write_dataframe_partitioned():
-    tree = WritableMapAdapter({})
+def test_write_dataframe_partitioned(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -173,8 +173,7 @@ def test_write_dataframe_partitioned():
         assert result.references == references
 
 
-def test_write_sparse_full():
-    tree = WritableMapAdapter({})
+def test_write_sparse_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -207,8 +206,7 @@ def test_write_sparse_full():
         assert result.references == references
 
 
-def test_write_sparse_chunked():
-    tree = WritableMapAdapter({})
+def test_write_sparse_chunked(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -248,7 +246,7 @@ def test_write_sparse_chunked():
         assert result.references == references
 
 
-def test_limits():
+def test_limits(tree):
     "Test various limits on uploaded metadata."
 
     MAX_ALLOWED_SPECS = 20
@@ -256,7 +254,6 @@ def test_limits():
     MAX_ALLOWED_REFERENCES = 20
     MAX_LABEL_CHARS = 255
 
-    tree = WritableMapAdapter({})
     validation_registry = ValidationRegistry()
     for i in range(101):
         validation_registry.register(f"spec{i}", lambda *args, **kwargs: None)

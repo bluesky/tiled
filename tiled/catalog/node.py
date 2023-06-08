@@ -116,7 +116,7 @@ class Context:
     ):
         self.engine = engine
         if writable_storage:
-            writable_storage = httpx.URL(writable_storage)
+            writable_storage = httpx.URL(str(writable_storage))
             if not writable_storage.scheme:
                 writable_storage = writable_storage.copy_with(scheme="file")
             if not writable_storage.scheme == "file":
@@ -471,8 +471,8 @@ class CatalogNodeAdapter(BaseAdapter):
             ancestors=self.segments,
             metadata_=metadata,
             structure_family=structure_family,
-            specs=specs or [],
-            references=references or [],
+            specs=[s.dict() for s in specs or []],
+            references=[r.dict() for r in references or []],
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that

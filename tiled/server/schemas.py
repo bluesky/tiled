@@ -225,9 +225,9 @@ class Node(NodeAttributes):
             # SQLAlchemy reserved word 'metadata'.
             values["metadata_"] = metadata
         if specs is not None:
-            values["specs"] = specs
+            values["specs"] = [s.dict() for s in specs]
         if references is not None:
-            values["references"] = references
+            values["references"] = [r.dict() for r in references]
         async with self._context.session() as db:
             from sqlalchemy import update
 
