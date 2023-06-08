@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Optional
+from urllib.parse import unquote
 
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Security
@@ -52,7 +53,7 @@ def SecureEntry(scopes):
         Walk down the path from the root tree, filtering each intermediate node by
         'read:metadata' and finally filtering by the specified scope.
         """
-        path_parts = [segment for segment in path.split("/") if segment]
+        path_parts = [unquote(segment) for segment in path.split("/") if segment]
         entry = root_tree
         try:
             # Traverse into sub-tree(s). This requires only 'read:metadata' scope.

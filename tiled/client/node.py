@@ -6,6 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
+from urllib.parse import quote_plus
 
 import entrypoints
 
@@ -264,6 +265,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         # which must only return a result if 'a' is contained in the search results.
         if not isinstance(keys, tuple):
             keys = (keys,)
+        keys = tuple(quote_plus(key) for key in keys)
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys

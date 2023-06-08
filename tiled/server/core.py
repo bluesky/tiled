@@ -12,6 +12,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from hashlib import md5
 from typing import Any
+from urllib.parse import quote_plus
 
 import dateutil.tz
 import jmespath
@@ -186,7 +187,7 @@ def construct_entries_response(
     media_type,
     max_depth,
 ):
-    path_parts = [segment for segment in path.split("/") if segment]
+    path_parts = [quote_plus(segment) for segment in path.split("/") if segment]
     tree = apply_search(tree, filters, query_registry)
     tree = apply_sort(tree, sort)
 
@@ -248,7 +249,7 @@ def construct_revisions_response(
     limit,
     media_type,
 ):
-    path_parts = [segment for segment in path.split("/") if segment]
+    path_parts = [quote_plus(segment) for segment in path.split("/") if segment]
     revisions = entry.revisions[offset : offset + limit]  # noqa: E203
     data = []
     for revision in revisions:
@@ -456,7 +457,7 @@ def construct_resource(
                     for key, direction in entry.sorting
                 ]
         d = {
-            "id": path_parts[-1] if path_parts else "",
+            "id": quote_plus(path_parts[-1]) if path_parts else "",
             "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
