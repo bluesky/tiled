@@ -693,7 +693,7 @@ async def post_metadata(
         # Different from array because of structure.macro.shape vs structure.shape
         # Can be unified if we drop macro/micro namespace.
         block_template = ",".join(
-            f"{{{index}}}" for index in range(len(node.structure.macro.shape))
+            f"{{{index}}}" for index in range(len(node.structure.shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"

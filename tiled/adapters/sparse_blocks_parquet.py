@@ -1,11 +1,13 @@
 import itertools
 from pathlib import Path
 
+import numpy
 import pandas
 import sparse
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..structures.core import StructureFamily
+from ..structures.sparse import COOStructure
 
 
 def load_block(uri):
@@ -17,27 +19,33 @@ def load_block(uri):
     return coords, data
 
 
-class SparseParquetBlocksAdapter:
+class SparseBlocksParquetAdapter:
     structure_family = StructureFamily.sparse
 
     def __init__(
         self,
         *block_uris,
-        meta,
-        divisions,
         metadata=None,
+        shape=None,
+        chunks=None,
+        dims=None,
         specs=None,
         references=None,
     ):
         self.block_uris = block_uris
-        self.meta = meta
-        self.divisions = divisions
+        self.dims = dims
+        self.shape = shape
+        self.chunks = chunks
         self.metadata = metadata or {}
         self.specs = list(specs or [])
         self.references = list(references or [])
 
     @classmethod
-    def init_storage(cls, directory, chunks):
+    def init_storage(
+        cls,
+        directory,
+        chunks,
+    ):
         from ..server.schemas import Asset
 
         abs_directory = Path(directory).absolute()
@@ -45,9 +53,7 @@ class SparseParquetBlocksAdapter:
         num_blocks = (range(len(n)) for n in chunks)
         blocks = {}
         for block in itertools.product(*num_blocks):
-            filepath = (
-                directory.absolute() / f"block-{'.'.join(map(str, block))}.parquet"
-            )
+            filepath = abs_directory / f"block-{'.'.join(map(str, block))}.parquet"
             uri = f"file://localhost{filepath}"
             blocks[block] = uri
         assets = [
@@ -64,13 +70,29 @@ class SparseParquetBlocksAdapter:
         data.to_parquet(uri)
 
     def write(self, data):
-        if self.macrostructure().npartitions != 1:
+        if len(self.blocks) > 1:
             raise NotImplementedError
-        uri = self.partition_paths[0]
+        uri = self.blocks[(0, 0)]
         data.to_parquet(uri)
 
-    def read(self, *args, **kwargs):
-        return self.dataframe_adapter.read(*args, **kwargs)
+    def read(self, slice=...):
+        all_coords = []
+        all_data = []
+        for block, uri in self.blocks.items():
+            coords, data = load_block(uri)
+            offsets = []
+            for b, c in zip(block, self.structure().chunks):
+                offset = sum(c[:b])
+                offsets.append(offset)
+            global_coords = coords + [[i] for i in offsets]
+            all_coords.append(global_coords)
+            all_data.append(data)
+        arr = sparse.COO(
+            data=numpy.concatenate(all_data),
+            coords=numpy.concatenate(all_coords, axis=-1),
+            shape=self.doc.structure.shape,
+        )
+        return arr[slice]
 
     def read_block(self, block, slice=...):
         coords, data = load_block(self.block_uris[block])
@@ -78,11 +100,9 @@ class SparseParquetBlocksAdapter:
             block, self.doc.structure.chunks
         )
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
-        arr = arr[...]
-        return arr
+        return arr[slice]
 
-    def macrostructure(self):
-        return self.dataframe_adapter.macrostructure()
-
-    def microstructure(self):
-        return self.dataframe_adapter.microstructure()
+    def structure(self):
+        # Convert pydantic implementation to dataclass implemenetation
+        # expected by server.
+        return COOStructure(**self.doc.structure.dict())

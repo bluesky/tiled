@@ -28,6 +28,7 @@ DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 ZARR_MIMETYPE = "application/x-zarr"
 PARQUET_MIMETYPE = "application/x-parquet"
+SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet-sparse"  # HACK!
 
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
@@ -52,12 +53,15 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter,
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.sparse_blocks_parquet", __name__
+        ).SparseBlocksParquetAdapter,
     }
 )
 DEFAULT_CREATION_MIMETYPE = {
     "array": ZARR_MIMETYPE,
     "dataframe": PARQUET_MIMETYPE,
-    "sparse": PARQUET_MIMETYPE,
+    "sparse": SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
 CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
     {
@@ -67,6 +71,9 @@ CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.sparse_blocks_parquet", __name__
+        ).SparseBlocksParquetAdapter.init_storage,
     }
 )
 
@@ -414,6 +421,12 @@ class CatalogNodeAdapter(BaseAdapter):
             elif node.structure_family == StructureFamily.dataframe:
                 kwargs["meta"] = data_source.structure.micro.meta_decoded
                 kwargs["divisions"] = data_source.structure.micro.divisions_decoded
+            elif node.structure_family == StructureFamily.sparse:
+                kwargs["chunks"] = data_source.structure.chunks
+                kwargs["shape"] = data_source.structure.shape
+                kwargs["dims"] = data_source.structure.dims
+            else:
+                raise NotImplementedError(node.structure_family)
             adapter = adapter_factory(*paths, **kwargs)
             adapter.access_policy = self.access_policy  # HACK
             return adapter
@@ -497,6 +510,11 @@ class CatalogNodeAdapter(BaseAdapter):
                         init_storage_args = (
                             httpx.URL(data_uri).path,
                             data_source.structure.macro.npartitions,
+                        )
+                    elif structure_family == StructureFamily.sparse:
+                        init_storage_args = (
+                            httpx.URL(data_uri).path,
+                            data_source.structure.chunks,
                         )
                     else:
                         raise NotImplementedError(structure_family)
