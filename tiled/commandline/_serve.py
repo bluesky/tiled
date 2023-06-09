@@ -137,7 +137,7 @@ def serve_writable(
     ),
 ):
     "Serve a writable storage area."
-    from ..catalog.node import CatalogNodeAdapter
+    from ..catalog import from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     tree_kwargs = {}
@@ -149,7 +149,7 @@ def serve_writable(
         ] = object_cache_available_bytes
     sqlite_filename = "tiled_catalog.sqlite"
     uri = f"sqlite+aiosqlite:///{Path(directory, sqlite_filename)}"
-    tree = CatalogNodeAdapter.from_uri(
+    tree = from_uri(
         uri,
         writable_storage=directory,
         initialize_database_at_startup=init,

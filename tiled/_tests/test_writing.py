@@ -10,7 +10,7 @@ import pandas.testing
 import pytest
 import sparse
 
-from ..catalog.node import CatalogNodeAdapter
+from ..catalog import in_memory
 from ..client import Context, from_context, record_history
 from ..queries import Key
 from ..server.app import build_app
@@ -25,7 +25,7 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 @pytest.fixture
 def tree(tmpdir):
-    return CatalogNodeAdapter.in_memory(writable_storage=tmpdir)
+    return in_memory(writable_storage=tmpdir)
 
 
 def test_write_array_full(tree):

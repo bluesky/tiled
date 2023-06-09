@@ -72,7 +72,7 @@ def context(tmpdir_module):
             },
             {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
             {
-                "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
+                "tree": "tiled.catalog:in_memory",
                 "args": {"writable_storage": tmpdir_module / "c"},
                 "path": "/c",
                 "access_control": {
@@ -87,7 +87,7 @@ def context(tmpdir_module):
                 },
             },
             {
-                "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
+                "tree": "tiled.catalog:in_memory",
                 "args": {"writable_storage": tmpdir_module / "d"},
                 "path": "/d",
                 "access_control": {
@@ -104,7 +104,7 @@ def context(tmpdir_module):
                 },
             },
             {
-                "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
+                "tree": "tiled.catalog:in_memory",
                 "args": {"writable_storage": tmpdir_module / "e"},
                 "path": "/e",
                 "access_control": {

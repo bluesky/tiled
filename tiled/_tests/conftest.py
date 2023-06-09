@@ -3,7 +3,7 @@ import os
 import pytest
 import pytest_asyncio
 
-from ..catalog.node import CatalogNodeAdapter
+from ..catalog import from_uri, in_memory
 from ..client import context
 from ..server.settings import get_settings
 from .utils import enter_password as utils_enter_password
@@ -80,7 +80,7 @@ async def adapter(request, tmpdir):
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
     """
     if request.param == "sqlite":
-        adapter = CatalogNodeAdapter.in_memory(writable_storage=str(tmpdir))
+        adapter = in_memory(writable_storage=str(tmpdir))
         yield adapter
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
@@ -88,7 +88,7 @@ async def adapter(request, tmpdir):
         # Create temporary database.
         async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
             # Build an adapter on it.
-            adapter = CatalogNodeAdapter.from_uri(
+            adapter = from_uri(
                 uri_with_database_name,
                 writable_storage=str(tmpdir),
                 initialize_database_at_startup=True,

@@ -282,49 +282,6 @@ class BaseAdapter:
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
 
-    @classmethod
-    def in_memory(
-        cls,
-        metadata=None,
-        specs=None,
-        references=None,
-        access_policy=None,
-        writable_storage=None,
-        echo=DEFAULT_ECHO,
-    ):
-        uri = "sqlite+aiosqlite:///:memory:"
-        return cls.from_uri(
-            uri=uri,
-            metadata=metadata,
-            specs=specs,
-            references=references,
-            access_policy=access_policy,
-            writable_storage=writable_storage,
-            echo=echo,
-            # An in-memory database will always need initialization.
-            initialize_database_at_startup=True,
-        )
-
-    @classmethod
-    def from_uri(
-        cls,
-        uri,
-        metadata=None,
-        specs=None,
-        references=None,
-        access_policy=None,
-        writable_storage=None,
-        echo=DEFAULT_ECHO,
-        initialize_database_at_startup=False,
-    ):
-        engine = create_async_engine(uri, echo=echo)
-        return CatalogNodeAdapter(
-            Context(engine, writable_storage),
-            RootNode(metadata, specs, references, access_policy),
-            initialize_database_at_startup=initialize_database_at_startup,
-            access_policy=access_policy,
-        )
-
     async def startup(self):
         if self.initialize_database_at_startup:
             await initialize_database(self.context.engine)
@@ -668,3 +625,44 @@ def eq(query, tree):
 
 
 CatalogNodeAdapter.register_query(Eq, eq)
+
+
+def in_memory(
+    metadata=None,
+    specs=None,
+    references=None,
+    access_policy=None,
+    writable_storage=None,
+    echo=DEFAULT_ECHO,
+):
+    uri = "sqlite+aiosqlite:///:memory:"
+    return from_uri(
+        uri=uri,
+        metadata=metadata,
+        specs=specs,
+        references=references,
+        access_policy=access_policy,
+        writable_storage=writable_storage,
+        echo=echo,
+        # An in-memory database will always need initialization.
+        initialize_database_at_startup=True,
+    )
+
+
+def from_uri(
+    uri,
+    metadata=None,
+    specs=None,
+    references=None,
+    access_policy=None,
+    writable_storage=None,
+    echo=DEFAULT_ECHO,
+    initialize_database_at_startup=False,
+):
+    engine = create_async_engine(uri, echo=echo)
+    return CatalogNodeAdapter(
+        Context(engine, writable_storage),
+        RootNode(metadata, specs, references, access_policy),
+        initialize_database_at_startup=initialize_database_at_startup,
+        access_policy=access_policy,
+    )

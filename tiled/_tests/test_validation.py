@@ -48,7 +48,7 @@ def client(tmpdir_module):
     config = {
         "trees": [
             {
-                "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
+                "tree": "tiled.catalog:in_memory",
                 "path": "/",
                 "args": {"writable_storage": tmpdir_module},
             },
@@ -105,7 +105,7 @@ def test_unknown_spec_strict(tmpdir):
     config = {
         "trees": [
             {
-                "tree": "tiled.catalog.node:CatalogNodeAdapter.in_memory",
+                "tree": "tiled.catalog:in_memory",
                 "path": "/",
                 "args": {"writable_storage": tmpdir},
             },
