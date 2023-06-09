@@ -501,13 +501,17 @@ async def construct_resource(
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
             if entry.structure_family == "sparse":
-                if schemas.EntryFields.structure in fields:
-                    structure = asdict(entry.structure())
-                    shape = structure.get("shape")
+                # This arises from back-compat...needs revisiting.
+                structure_maybe_method = entry.structure
+                if callable(structure_maybe_method):
+                    structure = asdict(structure_maybe_method())
                 else:
-                    # The client did not request structure so we have not yet
-                    # accessed it, and we have access it specifically to construct this link.
-                    shape = entry.structure().shape
+                    structure = asdict(structure_maybe_method)
+                shape = structure.get("shape")
+                if schemas.EntryFields.structure not in fields:
+                    # We needed to access the structure to get the shape for
+                    # use in constructing links below, but we are not supposed
+                    # to include in the response.
                     structure = None
                 block_template = ",".join(f"{{{index}}}" for index in range(len(shape)))
                 links[

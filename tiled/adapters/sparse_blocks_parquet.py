@@ -32,7 +32,10 @@ class SparseBlocksParquetAdapter:
         specs=None,
         references=None,
     ):
-        self.block_uris = block_uris
+        num_blocks = (range(len(n)) for n in chunks)
+        self.blocks = {}
+        for block, uri in zip(itertools.product(*num_blocks), sorted(block_uris)):
+            self.blocks[block] = uri
         self.dims = dims
         self.shape = shape
         self.chunks = chunks
@@ -51,22 +54,22 @@ class SparseBlocksParquetAdapter:
         abs_directory = Path(directory).absolute()
         abs_directory.mkdir()
         num_blocks = (range(len(n)) for n in chunks)
-        blocks = {}
+        block_uris = []
         for block in itertools.product(*num_blocks):
             filepath = abs_directory / f"block-{'.'.join(map(str, block))}.parquet"
             uri = f"file://localhost{filepath}"
-            blocks[block] = uri
+            block_uris.append(uri)
         assets = [
             Asset(
                 data_uri=uri,
                 is_directory=False,
             )
-            for uri in blocks.values()
+            for uri in block_uris
         ]
         return assets
 
     def write_block(self, data, block):
-        uri = self.block_uris[block]
+        uri = self.blocks[block]
         data.to_parquet(uri)
 
     def write(self, data):
@@ -90,19 +93,21 @@ class SparseBlocksParquetAdapter:
         arr = sparse.COO(
             data=numpy.concatenate(all_data),
             coords=numpy.concatenate(all_coords, axis=-1),
-            shape=self.doc.structure.shape,
+            shape=self.shape,
         )
         return arr[slice]
 
     def read_block(self, block, slice=...):
-        coords, data = load_block(self.block_uris[block])
-        _, shape = slice_and_shape_from_block_and_chunks(
-            block, self.doc.structure.chunks
-        )
+        coords, data = load_block(self.blocks[block])
+        _, shape = slice_and_shape_from_block_and_chunks(block, self.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
         return arr[slice]
 
     def structure(self):
         # Convert pydantic implementation to dataclass implemenetation
         # expected by server.
-        return COOStructure(**self.doc.structure.dict())
+        return COOStructure(
+            shape=self.shape,
+            chunks=self.chunks,
+            dims=self.dims,
+        )

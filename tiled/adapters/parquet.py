@@ -28,7 +28,7 @@ class ParquetDatasetAdapter:
     @property
     def dataframe_adapter(self):
         partitions = []
-        for path in self.partition_paths:
+        for path in sorted(self.partition_paths):
             if not Path(path).exists():
                 partition = None
             else:

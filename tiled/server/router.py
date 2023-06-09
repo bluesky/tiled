@@ -740,10 +740,16 @@ async def put_array_full(
             status_code=405, detail="This path cannot accept array data."
         )
     media_type = request.headers["content-type"]
-    dtype = entry.microstructure().to_numpy_dtype()
-    shape = entry.macrostructure().shape
-    deserializer = deserialization_registry.dispatch("array", media_type)
-    data = await ensure_awaitable(deserializer, body, dtype, shape)
+    if entry.structure_family == "array":
+        dtype = entry.microstructure().to_numpy_dtype()
+        shape = entry.macrostructure().shape
+        deserializer = deserialization_registry.dispatch("array", media_type)
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
+    elif entry.structure_family == "sparse":
+        deserializer = deserialization_registry.dispatch("sparse", media_type)
+        data = await ensure_awaitable(deserializer, body)
+    else:
+        raise NotImplementedError(entry.structure_family)
     await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
@@ -763,12 +769,18 @@ async def put_array_block(
 
     body = await request.body()
     media_type = request.headers["content-type"]
-    dtype = entry.microstructure().to_numpy_dtype()
-    _, shape = slice_and_shape_from_block_and_chunks(
-        block, entry.macrostructure().chunks
-    )
-    deserializer = deserialization_registry.dispatch("array", media_type)
-    data = await ensure_awaitable(deserializer, body, dtype, shape)
+    if entry.structure_family == "array":
+        dtype = entry.microstructure().to_numpy_dtype()
+        _, shape = slice_and_shape_from_block_and_chunks(
+            block, entry.macrostructure().chunks
+        )
+        deserializer = deserialization_registry.dispatch("array", media_type)
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
+    elif entry.structure_family == "sparse":
+        deserializer = deserialization_registry.dispatch("sparse", media_type)
+        data = await ensure_awaitable(deserializer, body)
+    else:
+        raise NotImplementedError(entry.structure_family)
     await ensure_awaitable(entry.write_block, data, block)
     return json_or_msgpack(request, None)
 
