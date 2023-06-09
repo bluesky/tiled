@@ -82,6 +82,7 @@ def test_direct_config_error(tmpdir):
         paths.remove(profile_dir)
 
 
+@pytest.mark.xfail(reason="Change in pytest behavior regarding output capturing")
 def test_stdin_closed(monkeypatch):
     "When stdin is closed do not prompt for authentication."
     # https://github.com/bluesky/tiled/pull/427
