@@ -216,12 +216,12 @@ class Revisions(Timestamped, Base):
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    key = Column(Unicode(1023), nullable=False)
-    ancestors = Column(JSONVariant, nullable=True)
+    node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
     revision = Column(Integer, nullable=False)
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
+    references = Column(JSONVariant, nullable=False)
 
     time_updated = Column(
         DateTime(timezone=False), onupdate=func.now()
@@ -229,8 +229,7 @@ class Revisions(Timestamped, Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "key",
-            "ancestors",
+            "node_id",
             "revision",
             name="key_ancestors_revision_unique_constraint",
         ),

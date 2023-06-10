@@ -898,7 +898,7 @@ async def node_revisions(
         )
 
     base_url = get_base_url(request)
-    resource = construct_revisions_response(
+    resource = await construct_revisions_response(
         entry,
         base_url,
         "/node/revisions",

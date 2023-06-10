@@ -115,6 +115,24 @@ class Management(str, enum.Enum):
     writable = "writable"
 
 
+class Revision(pydantic.BaseModel):
+    revision: int
+    metadata: dict
+    specs: Specs
+    references: References
+    time_updated: datetime
+
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(
+            revision=orm.revision,
+            metadata=orm.metadata_,
+            specs=orm.specs,
+            references=orm.references,
+            time_updated=orm.time_updated,
+        )
+
+
 class DataSource(pydantic.BaseModel):
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
@@ -218,6 +236,22 @@ class Node(NodeAttributes):
     def macrostructure(self):
         return getattr(self.structure, "macro", None)
 
+    async def revisions(self, offset, limit):
+        async with self._context.session() as db:
+            from sqlalchemy import select
+
+            from tiled.catalog import orm
+
+            revision_orms = (
+                await db.execute(
+                    select(orm.Revisions)
+                    .where(orm.Revisions.node_id == self._node.id)
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            return [Revision.from_orm(o[0]) for o in revision_orms]
+
     async def update_metadata(self, metadata=None, specs=None, references=None):
         values = {}
         if metadata is not None:
@@ -229,10 +263,31 @@ class Node(NodeAttributes):
         if references is not None:
             values["references"] = [r.dict() for r in references]
         async with self._context.session() as db:
-            from sqlalchemy import update
+            from sqlalchemy import func, select, update
 
             from tiled.catalog import orm
 
+            current = (
+                await db.execute(select(orm.Node).where(orm.Node.id == self._node.id))
+            ).scalar_one()
+            next_revision_id = 1 + (
+                (
+                    await db.execute(
+                        select(func.max(orm.Revisions.revision)).where(
+                            orm.Revisions.node_id == self._node.id
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
+            revision = orm.Revisions(
+                metadata_=current.metadata_,
+                specs=current.specs,
+                references=current.references,
+                node_id=current.id,
+                revision=next_revision_id,
+            )
+            db.add(revision)
             await db.execute(
                 update(orm.Node).where(orm.Node.id == self._node.id).values(**values)
             )
