@@ -883,7 +883,7 @@ async def put_metadata(
 
 
 @router.get("/node/revisions/{path:path}")
-async def node_revisions(
+async def get_revisions(
     request: Request,
     path: str,
     offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
@@ -911,9 +911,9 @@ async def node_revisions(
 
 
 @router.delete("/node/revisions/{path:path}")
-async def revisions_delitem(
+async def delete_revision(
     request: Request,
-    n: int,
+    number: int,
     entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
 ):
     if not hasattr(entry, "revisions"):
@@ -922,5 +922,5 @@ async def revisions_delitem(
             detail="This path does not support a del request for revisions.",
         )
 
-    await entry.revisions.delete_revision(n)
+    await entry.delete_revision(number)
     return json_or_msgpack(request, None)

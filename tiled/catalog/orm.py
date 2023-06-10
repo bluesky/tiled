@@ -217,20 +217,16 @@ class Revisions(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
-    revision = Column(Integer, nullable=False)
+    revision_number = Column(Integer, nullable=False)
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     references = Column(JSONVariant, nullable=False)
 
-    time_updated = Column(
-        DateTime(timezone=False), onupdate=func.now()
-    )  # null until first update
-
     __table_args__ = (
         UniqueConstraint(
             "node_id",
-            "revision",
-            name="key_ancestors_revision_unique_constraint",
+            "revision_number",
+            name="node_id_revision_number_unique_constraint",
         ),
     )

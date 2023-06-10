@@ -261,12 +261,12 @@ async def construct_revisions_response(
     data = []
     for revision in revisions:
         item = {
-            "revision": revision.revision,
+            "revision_number": revision.revision_number,
             "attributes": {
                 "metadata": revision.metadata,
                 "specs": revision.specs,
                 "references": revision.references,
-                "updated_at": revision.updated_at,
+                "time_updated": revision.time_updated,
             },
         }
         data.append(item)

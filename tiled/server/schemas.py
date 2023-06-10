@@ -116,7 +116,7 @@ class Management(str, enum.Enum):
 
 
 class Revision(pydantic.BaseModel):
-    revision: int
+    revision_number: int
     metadata: dict
     specs: Specs
     references: References
@@ -125,7 +125,7 @@ class Revision(pydantic.BaseModel):
     @classmethod
     def from_orm(cls, orm):
         return cls(
-            revision=orm.revision,
+            revision_number=orm.revision_number,
             metadata=orm.metadata_,
             specs=orm.specs,
             references=orm.references,
@@ -252,6 +252,25 @@ class Node(NodeAttributes):
             ).all()
             return [Revision.from_orm(o[0]) for o in revision_orms]
 
+    async def delete_revision(self, number):
+        async with self._context.session() as db:
+            from sqlalchemy import delete
+
+            from tiled.catalog import orm
+
+            result = await db.execute(
+                delete(orm.Revisions)
+                .where(orm.Revisions.node_id == self._node.id)
+                .where(orm.Revisions.revision_number == number)
+            )
+            if result.rowcount == 0:
+                raise KeyError(f"No revision {number} for node {self._node.id}")
+            if result.rowcount > 1:
+                assert (
+                    False
+                ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            await db.commit()
+
     async def update_metadata(self, metadata=None, specs=None, references=None):
         values = {}
         if metadata is not None:
@@ -270,10 +289,10 @@ class Node(NodeAttributes):
             current = (
                 await db.execute(select(orm.Node).where(orm.Node.id == self._node.id))
             ).scalar_one()
-            next_revision_id = 1 + (
+            next_revision_number = 1 + (
                 (
                     await db.execute(
-                        select(func.max(orm.Revisions.revision)).where(
+                        select(func.max(orm.Revisions.revision_number)).where(
                             orm.Revisions.node_id == self._node.id
                         )
                     )
@@ -285,7 +304,7 @@ class Node(NodeAttributes):
                 specs=current.specs,
                 references=current.references,
                 node_id=current.id,
-                revision=next_revision_id,
+                revision_number=next_revision_number,
             )
             db.add(revision)
             await db.execute(

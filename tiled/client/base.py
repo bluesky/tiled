@@ -67,7 +67,7 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-        self.context.delete_content(self._link, None, params={"n": n})
+        self.context.delete_content(self._link, None, params={"number": n})
 
 
 class BaseClient:
