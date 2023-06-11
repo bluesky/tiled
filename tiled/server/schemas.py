@@ -254,6 +254,8 @@ class Node(NodeAttributes):
 
     async def delete_revision(self, number):
         async with self._context.session() as db:
+            # TODO Abstract this from FastAPI?
+            from fastapi import HTTPException
             from sqlalchemy import delete
 
             from tiled.catalog import orm
@@ -264,7 +266,10 @@ class Node(NodeAttributes):
                 .where(orm.Revisions.revision_number == number)
             )
             if result.rowcount == 0:
-                raise KeyError(f"No revision {number} for node {self._node.id}")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No revision {number} for node {self._node.id}",
+                )
             if result.rowcount > 1:
                 assert (
                     False
