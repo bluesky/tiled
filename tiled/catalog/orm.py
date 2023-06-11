@@ -1,5 +1,3 @@
-import uuid as uuid_module
-
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -17,7 +15,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
-from sqlalchemy.types import TypeDecorator
 
 from ..server.schemas import Management
 from ..structures.core import StructureFamily
@@ -25,31 +22,6 @@ from .base import Base
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
-
-
-class UUID(TypeDecorator):
-    """Represents a UUID in a dialect-agnostic way
-
-    Postgres has built-in support but SQLite does not, so we
-    just use a 36-character Unicode column.
-
-    We could use 16-byte LargeBinary, which would be more compact
-    but we decided it was worth the cost to make the content easily
-    inspectable by external database management and development tools.
-    """
-
-    impl = Unicode(36)
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        if value is not None:
-            if not isinstance(value, uuid_module.UUID):
-                raise ValueError(f"Expected uuid.UUID, got {type(value)}")
-            return str(value)
-
-    def process_result_value(self, value, dialect):
-        if value is not None:
-            return uuid_module.UUID(hex=value)
 
 
 class Timestamped:
