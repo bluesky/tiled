@@ -74,10 +74,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
     ):
         "This is not user-facing. Use Node.from_uri."
 
-        if structure is not None:
-            # Node accepts 'structure' param for API compatibility with other clients,
-            # but it should always be None.
-            raise ValueError(f"Node received unexpected structure: {structure}")
         self.structure_clients = structure_clients
         self._queries = list(queries or [])
         self._queries_as_params = _queries_to_params(*self._queries)
@@ -588,6 +584,9 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if structure_family != StructureFamily.node:
             # TODO Handle multiple data sources.
             data_sources.append({"structure": asdict(structure)})
+            structure = asdict(structure)
+        else:
+            structure = {"contents": None, "count": None}
         item = {
             "attributes": {
                 "metadata": metadata,
@@ -615,12 +614,16 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if key is not None:
             body["id"] = key
         document = self.context.post_json(self.uri, body)
+        item["attributes"]["structure"] = structure
 
         # if server returned modified metadata update the local copy
         if "metadata" in document:
             item["attributes"]["metadata"] = document.pop("metadata")
+        # Ditto for structure
+        if "structure" in document:
+            item["attributes"]["structure"] = document.pop("structure")
 
-        # Merge in "id", "structure", and "links" returned by the server.
+        # Merge in "id" and "links" returned by the server.
         item.update(document)
 
         return client_for_item(

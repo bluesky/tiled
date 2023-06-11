@@ -153,7 +153,7 @@ async def node_search(
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
     show_sources: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.adapter),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
     **filters,
@@ -713,13 +713,13 @@ async def post_metadata(
         links["full"] = f"{base_url}/node/full/{path_str}"
     elif body.structure_family == StructureFamily.node:
         links["full"] = f"{base_url}/node/full/{path_str}"
+        links["search"] = f"{base_url}/node/search/{path_str}"
     else:
         raise NotImplementedError(body.structure_family)
     response_data = {
         "id": key,
         "links": links,
         "data_sources": [ds.dict() for ds in node.data_sources],
-        "structure": node.structure,
     }
     if metadata_modified:
         response_data["metadata"] = metadata
