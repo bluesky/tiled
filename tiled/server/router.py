@@ -635,13 +635,18 @@ async def post_metadata(
             body.data_sources[0].structure.micro.divisions
         )
 
-    metadata, structure_family, structure, specs, references = (
+    metadata, structure_family, specs, references = (
         body.metadata,
         body.structure_family,
-        body.data_sources[0].structure,
         body.specs,
         body.references,
     )
+    if structure_family == StructureFamily.node:
+        structure = None
+    else:
+        if len(body.data_sources) != 1:
+            raise NotImplementedError
+        structure = body.data_sources[0].structure
 
     metadata_modified = False
 
@@ -706,12 +711,15 @@ async def post_metadata(
             "partition"
         ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
         links["full"] = f"{base_url}/node/full/{path_str}"
+    elif body.structure_family == StructureFamily.node:
+        links["full"] = f"{base_url}/node/full/{path_str}"
     else:
         raise NotImplementedError(body.structure_family)
     response_data = {
         "id": key,
         "links": links,
         "data_sources": [ds.dict() for ds in node.data_sources],
+        "structure": node.structure,
     }
     if metadata_modified:
         response_data["metadata"] = metadata
