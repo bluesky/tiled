@@ -194,14 +194,12 @@ class Node(NodeAttributes):
 
     @classmethod
     def from_orm(cls, orm, context, *, access_policy, sorting=None):
+        sorting = sorting or []
         # In the Python API we encode sorting as (key, direction).
         # This order-based "record" notion does not play well with OpenAPI.
         # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
-        if sorting is None:
-            sorting = [("time_created", 1)]
-        sorting_as_dict = [
-            {"key": key, "direction": direction} for key, direction in sorting
-        ]
+        if sorting and isinstance(sorting[0], tuple):
+            sorting = [SortingItem(key=item[0], direction=item[1]) for item in sorting]
         if len(orm.data_sources) > 1:
             # TODO Handle multiple data sources
             raise NotImplementedError
@@ -219,7 +217,7 @@ class Node(NodeAttributes):
             structure=structure,
             specs=orm.specs,
             references=orm.references,
-            sorting=sorting_as_dict,
+            sorting=sorting or [],
             data_sources=[DataSource.from_orm(ds) for ds in orm.data_sources],
             time_created=orm.time_created,
             time_updated=orm.time_updated,

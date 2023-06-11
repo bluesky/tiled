@@ -469,13 +469,17 @@ async def construct_resource(
             attributes["structure"] = structure
         if schemas.EntryFields.sorting in fields:
             if hasattr(entry, "sorting"):
+                # HUGE HACK
                 # In the Python API we encode sorting as (key, direction).
                 # This order-based "record" notion does not play well with OpenAPI.
                 # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
-                attributes["sorting"] = [
-                    {"key": key, "direction": direction}
-                    for key, direction in entry.sorting
-                ]
+                if entry.sorting and isinstance(entry.sorting[0], schemas.SortingItem):
+                    attributes["sorting"] = entry.sorting
+                else:
+                    attributes["sorting"] = [
+                        {"key": key, "direction": direction}
+                        for key, direction in entry.sorting
+                    ]
         d = {
             "id": path_parts[-1] if path_parts else "",
             "attributes": schemas.NodeAttributes(**attributes),
