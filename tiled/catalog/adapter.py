@@ -107,8 +107,6 @@ class RootNode:
         self.references = references or []
         self.ancestors = []
         self.key = None
-        self.time_created = None
-        self.time_updated = None
         self.data_sources = None
 
 
@@ -268,15 +266,13 @@ class BaseAdapter:
             self.segments = []
         else:
             self.segments = node.ancestors + [node.key]
-        self.sorting = sorting or [("time_created", 1)]
+        self.sorting = sorting or [("id", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.structure_family = node.structure_family
         self.metadata = node.metadata
         self.specs = node.specs
         self.references = node.references
-        self.time_creatd = node.time_created
-        self.time_updated = node.time_updated
         self.access_policy = access_policy
         self.initialize_database_at_startup = initialize_database_at_startup
         self.startup_tasks = [self.startup]
@@ -550,8 +546,6 @@ class CatalogNodeAdapter(BaseAdapter):
 
 # Map sort key to Node ORM attribute.
 _STANDARD_SORT_KEYS = {
-    "time_created": "time_created",
-    "time_updated": "time_created",
     "id": "key",
     # Could support structure_family...others?
 }

@@ -152,6 +152,7 @@ async def node_search(
     sort: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
+    show_sources: bool = Query(False),
     entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
@@ -174,6 +175,7 @@ async def node_search(
             fields,
             select_metadata,
             omit_links,
+            show_sources,
             filters,
             sort,
             get_base_url(request),
@@ -308,6 +310,7 @@ async def node_metadata(
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
+    show_sources: bool = Query(False),
     entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
     root_path: bool = Query(False),
 ):
@@ -324,6 +327,7 @@ async def node_metadata(
             fields,
             select_metadata,
             omit_links,
+            show_sources,
             resolve_media_type(request),
             max_depth=max_depth,
         )

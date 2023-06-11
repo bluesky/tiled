@@ -139,10 +139,7 @@ class DataSource(Timestamped, Base):
     __tablename__ = "data_sources"
     __mapper_args__ = {"eager_defaults": True}
 
-    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    # This uuid is exposed to the client.
-    uuid = Column(UUID, index=True, nullable=False, default=uuid_module.uuid4)
     node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
 
     structure = Column(JSONVariant, nullable=True)
@@ -171,7 +168,6 @@ class Asset(Timestamped, Base):
     __tablename__ = "assets"
     __mapper_args__ = {"eager_defaults": True}
 
-    # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     # data_uri can refer to an external file or network resource,

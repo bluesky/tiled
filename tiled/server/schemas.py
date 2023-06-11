@@ -173,8 +173,6 @@ class NodeAttributes(pydantic.BaseModel):
     sorting: Optional[List[SortingItem]]
     references: Optional[References]
     data_sources: Optional[List[DataSource]]
-    time_created: Optional[datetime]
-    time_updated: Optional[datetime]
 
 
 class Node(NodeAttributes):
