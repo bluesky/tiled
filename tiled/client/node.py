@@ -584,9 +584,6 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         if structure_family != StructureFamily.node:
             # TODO Handle multiple data sources.
             data_sources.append({"structure": asdict(structure)})
-            structure = asdict(structure)
-        else:
-            structure = {"contents": None, "count": None}
         item = {
             "attributes": {
                 "metadata": metadata,
@@ -663,7 +660,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new(
             StructureFamily.node,
-            None,
+            {"contents": None, "count": None},
             key=key,
             metadata=metadata,
             specs=specs,

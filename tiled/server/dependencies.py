@@ -87,6 +87,7 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
                         entry = await entry.lookup_node(path_parts[i:])
                     if entry is None:
                         raise NoEntry(path_parts)
+                    break
                 # Old-style dict-like interface
                 else:
                     try:

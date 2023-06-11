@@ -618,7 +618,7 @@ async def post_metadata(
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
-    entry=SecureEntry(scopes=["write:metadata", "create"], kind=EntryKind.node),
+    entry=SecureEntry(scopes=["write:metadata", "create"], kind=EntryKind.adapter),
 ):
     if not getattr(entry, "writable", False):
         raise HTTPException(
