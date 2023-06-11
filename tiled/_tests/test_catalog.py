@@ -10,11 +10,13 @@ import pandas.testing
 import pytest
 import pytest_asyncio
 import tifffile
+import xarray
 
 from ..adapters.dataframe import ArrayAdapter, DataFrameAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog.explain import record_explanations
 from ..client import Context, from_context
+from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app
 from ..server.schemas import Asset, DataSource
@@ -306,3 +308,15 @@ def test_write_dataframe_internal_via_client(client):
     # actual = y.read()
     # assert numpy.array_equal(actual, expected)
     # pandas.testing.assert_frame_equal(actual, expected)
+
+
+def test_write_xarray_dataset(client):
+    ds = xarray.Dataset(
+        {"temp": (["time"], [101, 102, 103])},
+        coords={"time": (["time"], [1, 2, 3])},
+    )
+    dsc = write_xarray_dataset(client, ds, key="test_xarray_dataset")
+    assert set(dsc) == {"temp", "time"}
+    # smoke test
+    dsc["temp"][:]
+    dsc["time"][:]
