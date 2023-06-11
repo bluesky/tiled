@@ -106,7 +106,10 @@ class Node(Timestamped, Base):
         Index(
             "top_level_metadata",
             "ancestors",
-            "time_created",  # the default sorting, used to avoid creating a temp sort index
+            # include the keys of the default sorting ('time_created', 'id'),
+            # used to avoid creating a temp sort index
+            "time_created",
+            "id",
             "metadata",
             postgresql_using="btree",
         ),

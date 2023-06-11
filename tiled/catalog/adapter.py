@@ -266,7 +266,7 @@ class BaseAdapter:
             self.segments = []
         else:
             self.segments = node.ancestors + [node.key]
-        self.sorting = sorting or [("id", 1)]
+        self.sorting = sorting or [("", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.structure_family = node.structure_family
@@ -544,29 +544,41 @@ class CatalogNodeAdapter(BaseAdapter):
             ]
 
 
-# Map sort key to Node ORM attribute.
 _STANDARD_SORT_KEYS = {
     "id": "key",
-    # Could support structure_family...others?
+    # Maybe add things like structure_family here, but it's not clear what the
+    # sort order would be.
 }
 
 
 def order_by_clauses(sorting):
     clauses = []
+    default_sorting_direction = 1
     for key, direction in sorting:
+        if key == "":
+            default_sorting_direction = direction
+            continue
+            # TODO Really we should insist that if this is given, it is last,
+            # because we always apply the default sorting last.
         if key in _STANDARD_SORT_KEYS:
             clause = getattr(orm.Node, _STANDARD_SORT_KEYS[key])
         else:
-            # We are sorting by something within the user metadata namespace.
+            clause = orm.Node.metadata_
             # This can be given bare like "color" or namedspaced like
             # "metadata.color" to avoid the possibility of a name collision
             # with the standard sort keys.
             if key.startswith("metadata."):
                 key = key[len("metadata.") :]  # noqa: E203
-            clause = orm.Node.metadata_
+
             for segment in key.split("."):
                 clause = clause[segment]
         if direction == -1:
+            clause = clause.desc()
+        clauses.append(clause)
+    # Ensure deterministic ordering for all queries by sorting by
+    # 'time_created' and then by 'id' last.
+    for clause in [orm.Node.time_created, orm.Node.id]:
+        if default_sorting_direction == -1:
             clause = clause.desc()
         clauses.append(clause)
     return clauses

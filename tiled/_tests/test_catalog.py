@@ -86,6 +86,14 @@ async def test_sorting(a):
             specs=[],
             references=[],
         )
+
+    # Default sorting is _not_ ordered.
+    default_key_order = await a.keys_range(0, 10)
+    assert default_key_order != ordered_letters
+    # Sorting by ("", -1) gives reversed default order.
+    reversed_default_key_order = await a.sort([("", -1)]).keys_range(0, 10)
+    assert reversed_default_key_order == list(reversed(default_key_order))
+
     # Sort by key.
     await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
     # Test again, with items_range.
