@@ -143,6 +143,7 @@ def serve_catalog(
         import tempfile
 
         directory = Path(tempfile.TemporaryDirectory().name)
+        typer.echo(f"Using temporary directory {directory}", err=True)
         directory.mkdir()
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
 
