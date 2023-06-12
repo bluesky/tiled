@@ -97,7 +97,7 @@ def serve_directory(
 
 def serve_catalog(
     database: str = typer.Argument(
-        ..., help="A filepath or database URI, e.g. 'catalog.db'"
+        None, help="A filepath or database URI, e.g. 'catalog.db'"
     ),
     read: list[str] = typer.Option(
         None,
@@ -164,21 +164,29 @@ def serve_catalog(
 
     if temp:
         if database is not None:
-            raise typer.Abort(
+            typer.echo(
                 "The option --temp was set but a database was also provided. "
-                "Do one or the other."
+                "Do one or the other.",
+                err=True,
             )
+            raise typer.Abort()
         import tempfile
 
         directory = Path(tempfile.TemporaryDirectory().name)
-        typer.echo(f"Creating temporary directory {directory}", err=True)
         directory.mkdir()
         SQLITE_CATALOG_FILENAME = "catalog.db"
         DATA_SUBDIRECTORY = "data"
+        typer.echo(
+            f"Creating catalog database at {directory / SQLITE_CATALOG_FILENAME}",
+            err=True,
+        )
+        typer.echo(
+            f"Creating writable catalog data directory at {directory / DATA_SUBDIRECTORY}",
+            err=True,
+        )
         database = f"sqlite+aiosqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
         if write is None:
-            write = temp / DATA_SUBDIRECTORY
-        read.append(directory / DATA_SUBDIRECTORY)
+            write = directory / DATA_SUBDIRECTORY
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
 
     tree_kwargs = {}
