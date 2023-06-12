@@ -92,13 +92,12 @@ def serve_directory(
     uvicorn.run(web_app, host=host, port=port)
 
 
-@serve_app.command("writable")
-def serve_writable(
-    directory: str,
-    init: bool = typer.Option(
+def serve_catalog(
+    directory: str = typer.Argument(Path.cwd()),
+    temp: bool = typer.Option(
         False,
-        "--init",
-        help="Make a new writable space and catalog (database).",
+        "--temp",
+        help="Make a new catalog in a temporary directory.",
     ),
     public: bool = typer.Option(
         False,
@@ -140,6 +139,13 @@ def serve_writable(
     from ..catalog import from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
+    if temp:
+        import tempfile
+
+        directory = Path(tempfile.TemporaryDirectory().name)
+        directory.mkdir()
+        # TODO Hook into server lifecycle hooks to delete this at shutdown.
+
     tree_kwargs = {}
     server_settings = {}
     if object_cache_available_bytes is not None:
@@ -152,7 +158,7 @@ def serve_writable(
     tree = from_uri(
         uri,
         writable_storage=directory,
-        initialize_database_at_startup=init,
+        initialize_database_at_startup=temp,
         **tree_kwargs,
     )
     web_app = build_app(
@@ -163,6 +169,9 @@ def serve_writable(
     import uvicorn
 
     uvicorn.run(web_app, host=host, port=port)
+
+
+serve_app.command("catalog")(serve_catalog)
 
 
 @serve_app.command("pyobject")
