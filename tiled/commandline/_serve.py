@@ -191,6 +191,7 @@ def serve_catalog(
     tree = from_uri(
         database,
         writable_storage=write,
+        readable_storage=read,
         initialize_database_at_startup=temp,
         **tree_kwargs,
     )

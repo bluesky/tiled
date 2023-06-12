@@ -115,11 +115,13 @@ class Context:
         self,
         engine,
         writable_storage=None,
+        readable_storage=None,
         adapters_by_mimetype=None,
         mimetype_detection_hook=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
+        readable_storage = readable_storage or []
         if writable_storage:
             writable_storage = httpx.URL(str(writable_storage))
             if not writable_storage.scheme:
@@ -128,7 +130,10 @@ class Context:
                 raise NotImplementedError(
                     "Only file://... writable storage is currently supported."
                 )
+            # If it is writable, it is automatically also readable.
+            readable_storage.append(writable_storage.path)
         self.writable_storage = writable_storage
+        self.readable_storage = [Path(p).absolute() for p in readable_storage or []]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
         if mimetype_detection_hook is not None:
@@ -359,6 +364,21 @@ class CatalogNodeAdapter(BaseAdapter):
             (data_source,) = node.data_sources
             adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
             data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
+            for data_uri in data_uris:
+                if data_uri.scheme == "file":
+                    # Protect against misbehaving clients reading from unintended
+                    # parts of the filesystem.
+                    for readable_storage in self.context.readable_storage:
+                        if (
+                            Path(os.path.commonpath([readable_storage, data_uri.path]))
+                            == readable_storage
+                        ):
+                            break
+                    else:
+                        raise RuntimeError(
+                            f"Refusing to serve {data_uri} because it is outside "
+                            "the readable storage area for this server."
+                        )
             paths = []
             for data_uri in data_uris:
                 if data_uri.scheme != "file":
@@ -639,6 +659,7 @@ def in_memory(
     references=None,
     access_policy=None,
     writable_storage=None,
+    readable_storage=None,
     echo=DEFAULT_ECHO,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
@@ -649,6 +670,7 @@ def in_memory(
         references=references,
         access_policy=access_policy,
         writable_storage=writable_storage,
+        readable_storage=readable_storage,
         echo=echo,
         # An in-memory database will always need initialization.
         initialize_database_at_startup=True,
@@ -662,12 +684,13 @@ def from_uri(
     references=None,
     access_policy=None,
     writable_storage=None,
+    readable_storage=None,
     echo=DEFAULT_ECHO,
     initialize_database_at_startup=False,
 ):
     engine = create_async_engine(uri, echo=echo)
     return CatalogNodeAdapter(
-        Context(engine, writable_storage),
+        Context(engine, writable_storage, readable_storage),
         RootNode(metadata, specs, references, access_policy),
         initialize_database_at_startup=initialize_database_at_startup,
         access_policy=access_policy,
