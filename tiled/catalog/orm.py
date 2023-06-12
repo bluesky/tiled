@@ -178,7 +178,7 @@ class AssetBlob(Base):
 
 class Revisions(Timestamped, Base):
     """
-    This tracks history of metadata and specs, supporting 'undo' functionaltiy.
+    This tracks history of metadata and specs, supporting 'undo' functionality.
     """
 
     __tablename__ = "revisions"
