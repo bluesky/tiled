@@ -6,6 +6,9 @@ import typer
 serve_app = typer.Typer()
 
 
+SQLITE_CATALOG_FILENAME = "tiled_catalog.sqlite"
+
+
 @serve_app.command("directory")
 def serve_directory(
     directory: str,
@@ -93,7 +96,21 @@ def serve_directory(
 
 
 def serve_catalog(
-    directory: str = typer.Argument(Path.cwd()),
+    database: str = typer.Argument(
+        ..., help="A filepath or database URI, e.g. 'catalog.db'"
+    ),
+    read: list[str] = typer.Option(
+        None,
+        "--read",
+        "-r",
+        help="Locations that the server may read from",
+    ),
+    write: str = typer.Option(
+        None,
+        "--write",
+        "-w",
+        help="Location that the server may write to",
+    ),
     temp: bool = typer.Option(
         False,
         "--temp",
@@ -135,16 +152,33 @@ def serve_catalog(
         ),
     ),
 ):
-    "Serve a writable storage area."
+    "Serve a catalog."
+    import urllib.parse
+
     from ..catalog import from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
+    parsed_database = urllib.parse.urlparse(database)
+    if parsed_database.scheme in ("", "file"):
+        database = f"sqlite+aiosqlite:///{parsed_database.path}"
+
     if temp:
+        if database is not None:
+            raise typer.Abort(
+                "The option --temp was set but a database was also provided. "
+                "Do one or the other."
+            )
         import tempfile
 
         directory = Path(tempfile.TemporaryDirectory().name)
-        typer.echo(f"Using temporary directory {directory}", err=True)
+        typer.echo(f"Creating temporary directory {directory}", err=True)
         directory.mkdir()
+        SQLITE_CATALOG_FILENAME = "catalog.db"
+        DATA_SUBDIRECTORY = "data"
+        database = f"sqlite+aiosqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
+        if write is None:
+            write = temp / DATA_SUBDIRECTORY
+        read.append(directory / DATA_SUBDIRECTORY)
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
 
     tree_kwargs = {}
@@ -154,11 +188,9 @@ def serve_catalog(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    sqlite_filename = "tiled_catalog.sqlite"
-    uri = f"sqlite+aiosqlite:///{Path(directory, sqlite_filename)}"
     tree = from_uri(
-        uri,
-        writable_storage=directory,
+        database,
+        writable_storage=write,
         initialize_database_at_startup=temp,
         **tree_kwargs,
     )
