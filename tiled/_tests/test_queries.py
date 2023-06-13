@@ -1,7 +1,9 @@
+import asyncio
 import string
 
 import numpy
 import pytest
+import pytest_asyncio
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -23,7 +25,7 @@ from ..queries import (
 )
 from ..server.app import build_app
 from .conftest import TILED_TEST_POSTGRESQL_URI
-from .utils import temp_postgres_sync
+from .utils import temp_postgres
 
 keys = list(string.ascii_lowercase)
 mapping = {
@@ -45,33 +47,49 @@ mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
 )
 
 
-@pytest.fixture(scope="module", params=["map", "sqlite", "postgresql"])
-def client(request, tmpdir_module):
+@pytest.fixture(scope="module")
+def event_loop():
+    # https://stackoverflow.com/a/56238383/1221924
+    loop = asyncio.get_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest_asyncio.fixture(scope="module", params=["map", "sqlite", "postgresql"])
+async def client(request, tmpdir_module):
     if request.param == "map":
         tree = MapAdapter(mapping)
+        app = build_app(tree)
+        with Context.from_app(app) as context:
+            client = from_context(context)
+            yield client
     elif request.param == "sqlite":
-        tree = in_memory(writable_storage=tmpdir_module)
+        tree = in_memory(writable_storage=tmpdir_module / "sqlite")
+        app = build_app(tree)
+        with Context.from_app(app) as context:
+            client = from_context(context)
+            for k, v in mapping.items():
+                client.write_array(v.read(), key=k, metadata=dict(v.metadata))
+            yield client
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
         # Create temporary database.
-        with temp_postgres_sync(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-            # Build an adapter on it.
-            adapter = from_uri(
+        async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
+            tree = from_uri(
                 uri_with_database_name,
-                writable_storage=str(tmpdir_module),
+                writable_storage=str(tmpdir_module / "postgresql"),
                 initialize_database_at_startup=True,
             )
-            yield adapter
+            app = build_app(tree)
+            with Context.from_app(app) as context:
+                client = from_context(context)
+                # Write data into catalog.
+                for k, v in mapping.items():
+                    client.write_array(v.read(), key=k, metadata=dict(v.metadata))
+                yield client
     else:
         assert False
-    app = build_app(tree)
-    with Context.from_app(app) as context:
-        client = from_context(context)
-        if request.param == "catalog":
-            for k, v in mapping.items():
-                client.write_array(v.read(), key=k, metadata=dict(v.metadata))
-        yield client
 
 
 def test_key(client):
