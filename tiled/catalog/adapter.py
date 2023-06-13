@@ -19,14 +19,13 @@ from tiled.queries import (
     Comparison,
     Contains,
     Eq,
-    FullText,
     In,
     KeysFilter,
     NotEq,
     NotIn,
     Operator,
-    Regex,
 )
+from tiled.queries import StructureFamily as StructureFamilyQuery
 
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
@@ -99,6 +98,11 @@ async def initialize_database(engine):
     async with engine.connect() as connection:
         # Create all tables.
         await connection.run_sync(Base.metadata.create_all)
+        if engine.dialect.name == "sqlite":
+            # Use write-ahead log mode. This persists across all future connections
+            # until/unless manually switched.
+            # https://www.sqlite.org/wal.html
+            await connection.execute(text("PRAGMA journal_mode=WAL;"))
         await connection.commit()
 
 
@@ -664,7 +668,67 @@ def binary_op(query, tree, operation):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def comparison(query, tree):
+    OPERATORS = {
+        Operator.lt: operator.lt,
+        Operator.le: operator.le,
+        Operator.gt: operator.gt,
+        Operator.ge: operator.ge,
+    }
+    return binary_op(query, tree, OPERATORS[query.operator])
+
+
+def contains(query, tree):
+    dialect_name = tree.engine.url.get_dialect().name
+    attr = orm.Node.metadata_[query.key.split(".")]
+    if dialect_name == "sqlite":
+        condition = _get_value(attr, type(query.value)).contains(query.value)
+    else:
+        condition = attr.contains(type_coerce(query.value, orm.Node.metadata_.type))
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+# def specs(query, tree):
+#     conditions = []
+#     for spec in query.include:
+#         conditions.append(func.json_contains(orm.Node.specs, spec))
+#     for spec in query.exclude:
+#         conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
+#     return tree.new_variation(conditions=tree.conditions + conditions)
+
+
+def in_or_not_in(query, tree, method):
+    dialect_name = tree.engine.url.get_dialect().name
+    attr = orm.Node.metadata_[query.key.split(".")]
+    if dialect_name == "sqlite":
+        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+    else:
+        condition = getattr(attr, method)(
+            type_coerce(query.value, orm.Node.metadata_.type)
+        )
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+def keys_filter(query, tree):
+    condition = orm.Node.key.in_(query.keys)
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+def structure_family(query, tree):
+    condition = orm.Node.structure_family == query.value
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 CatalogNodeAdapter.register_query(Eq, partial(binary_op, operation=operator.eq))
+CatalogNodeAdapter.register_query(NotEq, partial(binary_op, operation=operator.ne))
+CatalogNodeAdapter.register_query(Comparison, comparison)
+CatalogNodeAdapter.register_query(Contains, contains)
+CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
+CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
+CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
+CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
+# CatalogNodeAdapter.register_query(Specs, specs)
+# TODO: FullText, Regex, Specs
 
 
 def in_memory(

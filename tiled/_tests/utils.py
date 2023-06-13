@@ -4,7 +4,7 @@ import uuid
 
 import httpx
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..client import context
@@ -49,6 +49,29 @@ async def temp_postgres(uri):
         )  # close the automatically-started transaction
         await connection.execute(text(f"DROP DATABASE {database_name};"))
         await connection.commit()
+
+
+@contextlib.contextmanager
+def temp_postgres_sync(uri):
+    if uri.endswith("/"):
+        uri = uri[:-1]
+    # Create a fresh database.
+    engine = create_engine(uri)
+    database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
+    with engine.connect() as connection:
+        connection.execute(
+            text("COMMIT")
+        )  # close the automatically-started transaction
+        connection.execute(text(f"CREATE DATABASE {database_name};"))
+        connection.commit()
+    yield f"{uri}/{database_name}"
+    # Drop the database.
+    with engine.connect() as connection:
+        connection.execute(
+            text("COMMIT")
+        )  # close the automatically-started transaction
+        connection.execute(text(f"DROP DATABASE {database_name};"))
+        connection.commit()
 
 
 @contextlib.contextmanager
