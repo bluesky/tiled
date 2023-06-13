@@ -1,10 +1,12 @@
 import base64
 import collections
 import importlib
+import operator
 import os
 import re
 import sys
 import uuid
+from functools import partial
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -13,7 +15,19 @@ from sqlalchemy import func, text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
-from ..queries import Eq
+from tiled.queries import (
+    Comparison,
+    Contains,
+    Eq,
+    FullText,
+    In,
+    KeysFilter,
+    NotEq,
+    NotIn,
+    Operator,
+    Regex,
+)
+
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import Management, Node
@@ -640,17 +654,17 @@ def _prepare_structure(structure_family, structure):
     return structure
 
 
-def eq(query, tree):
+def binary_op(query, tree, operation):
     dialect_name = tree.engine.url.get_dialect().name
     attr = orm.Node.metadata_[query.key.split(".")]
     if dialect_name == "sqlite":
-        condition = _get_value(attr, type(query.value)) == query.value
+        condition = operation(_get_value(attr, type(query.value)), query.value)
     else:
-        condition = attr == type_coerce(query.value, orm.Node.metadata_.type)
+        condition = operation(attr, type_coerce(query.value, orm.Node.metadata_.type))
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-CatalogNodeAdapter.register_query(Eq, eq)
+CatalogNodeAdapter.register_query(Eq, partial(binary_op, operation=operator.eq))
 
 
 def in_memory(

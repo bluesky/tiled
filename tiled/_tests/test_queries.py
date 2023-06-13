@@ -5,6 +5,7 @@ import pytest
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
+from ..catalog import in_memory
 from ..client import Context, from_context
 from ..queries import (
     Comparison,
@@ -35,16 +36,26 @@ mapping["does_not_contain_z"] = ArrayAdapter.from_array(
     numpy.ones(10), metadata={"letters": list(string.ascii_lowercase[:-1])}
 )
 
-mapping["specs_foo_bar"] = MapAdapter({}, specs=["foo", "bar"])
-mapping["specs_foo_bar_baz"] = MapAdapter({}, specs=["foo", "bar", "baz"])
-tree = MapAdapter(mapping)
+mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo", "bar"])
+mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
+    numpy.ones(10), specs=["foo", "bar", "baz"]
+)
 
 
-@pytest.fixture(scope="module")
-def client():
+@pytest.fixture(scope="module", params=["map", "catalog"])
+def client(request, tmpdir_module):
+    if request.param == "map":
+        tree = MapAdapter(mapping)
+    elif request.param == "catalog":
+        tree = in_memory(writable_storage=tmpdir_module)
+    else:
+        assert False
     app = build_app(tree)
     with Context.from_app(app) as context:
         client = from_context(context)
+        if request.param == "catalog":
+            for k, v in mapping.items():
+                client.write_array(v.read(), key=k, metadata=dict(v.metadata))
         yield client
 
 
@@ -166,6 +177,4 @@ def test_structure_families(client):
     with pytest.raises(ValueError):
         StructureFamily("foo")
 
-    assert list(client.search(StructureFamily("node"))) == sorted(
-        ["specs_foo_bar", "specs_foo_bar_baz"]
-    )
+    assert set(client.search(StructureFamily("array"))) == set(mapping)
