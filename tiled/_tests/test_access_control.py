@@ -8,26 +8,22 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..server.app import build_app_from_config
-from .utils import fail_with_status_code
-from .writable_adapters import WritableMapAdapter
+from .utils import enter_password, fail_with_status_code
 
-arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
+arr = numpy.ones((5, 5))
+arr_ad = ArrayAdapter.from_array(arr)
 
 
 def tree_a(access_policy=None):
-    return MapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
+    return MapAdapter({"A1": arr_ad, "A2": arr_ad}, access_policy=access_policy)
 
 
 def tree_b(access_policy=None):
-    return MapAdapter({"B1": arr, "B2": arr}, access_policy=access_policy)
-
-
-def writable_tree(access_policy=None):
-    return WritableMapAdapter({"A1": arr, "A2": arr}, access_policy=access_policy)
+    return MapAdapter({"B1": arr_ad, "B2": arr_ad}, access_policy=access_policy)
 
 
 @pytest.fixture(scope="module")
-def context():
+def context(tmpdir_module):
     config = {
         "authentication": {
             "secret_keys": ["SECRET"],
@@ -36,7 +32,11 @@ def context():
                     "provider": "toy",
                     "authenticator": "tiled.authenticators:DictionaryAuthenticator",
                     "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
+                        "users_to_passwords": {
+                            "alice": "secret1",
+                            "bob": "secret2",
+                            "admin": "admin",
+                        }
                     },
                 }
             ],
@@ -49,6 +49,7 @@ def context():
             "args": {
                 "access_lists": {"alice": ["a", "c", "d", "e"]},
                 "provider": "toy",
+                "admins": ["admin"],
             },
         },
         "trees": [
@@ -65,48 +66,55 @@ def context():
                             # cannot access the parent node.
                             "bob": ["A1", "A2"],
                         },
+                        "admins": ["admin"],
                     },
                 },
             },
             {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
             {
-                "tree": f"{__name__}:writable_tree",
+                "tree": "tiled.catalog:in_memory",
+                "args": {"writable_storage": tmpdir_module / "c"},
                 "path": "/c",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
+                            "alice": "tiled.access_policies:ALL_ACCESS",
                         },
+                        "admins": ["admin"],
                     },
                 },
             },
             {
-                "tree": f"{__name__}:writable_tree",
+                "tree": "tiled.catalog:in_memory",
+                "args": {"writable_storage": tmpdir_module / "d"},
                 "path": "/d",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
+                            "alice": "tiled.access_policies:ALL_ACCESS",
                         },
+                        "admins": ["admin"],
                         # Block writing.
                         "scopes": ["read:metadata", "read:data"],
                     },
                 },
             },
             {
-                "tree": f"{__name__}:writable_tree",
+                "tree": "tiled.catalog:in_memory",
+                "args": {"writable_storage": tmpdir_module / "e"},
                 "path": "/e",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": "tiled.access_policies:SimpleAccessPolicy.ALL",
+                            "alice": "tiled.access_policies:ALL_ACCESS",
                         },
+                        "admins": ["admin"],
                         # Block creation.
                         "scopes": [
                             "read:metadata",
@@ -121,6 +129,12 @@ def context():
     }
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
+        with enter_password("admin"):
+            admin_client = from_context(context, username="admin")
+            for k in ["c", "d", "e"]:
+                admin_client[k].write_array(arr, key="A1")
+                admin_client[k].write_array(arr, key="A2")
+                admin_client[k].write_array(arr, key="x")
         yield context
 
 
@@ -181,9 +195,9 @@ def test_create_and_update_allowed(enter_password, context):
         alice_client = from_context(context, username="alice")
 
     # Update
-    alice_client["c"].metadata
-    alice_client["c"].update_metadata(metadata={"added_key": 3})
-    assert alice_client["c"].metadata["added_key"] == 3
+    alice_client["c"]["x"].metadata
+    alice_client["c"]["x"].update_metadata(metadata={"added_key": 3})
+    assert alice_client["c"]["x"].metadata["added_key"] == 3
 
     # Create
     alice_client["c"].write_array([1, 2, 3])
@@ -192,9 +206,9 @@ def test_create_and_update_allowed(enter_password, context):
 def test_writing_blocked_by_access_policy(enter_password, context):
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
-    alice_client["d"].metadata
+    alice_client["d"]["x"].metadata
     with fail_with_status_code(403):
-        alice_client["d"].update_metadata(metadata={"added_key": 3})
+        alice_client["d"]["x"].update_metadata(metadata={"added_key": 3})
 
 
 def test_create_blocked_by_access_policy(enter_password, context):

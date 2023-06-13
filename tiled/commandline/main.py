@@ -30,6 +30,7 @@ cli_app = typer.Typer()
 
 from ._admin import admin_app  # noqa: E402
 from ._api_key import api_key_app  # noqa: E402
+from ._catalog import catalog_app  # noqa: E402
 from ._profile import profile_app  # noqa: E402
 from ._serve import serve_app  # noqa: E402
 from ._utils import (  # noqa E402
@@ -39,6 +40,9 @@ from ._utils import (  # noqa E402
     get_profile,
 )
 
+cli_app.add_typer(
+    catalog_app, name="catalog", help="Manage a catalog of data to be served by Tiled."
+)
 cli_app.add_typer(serve_app, name="serve", help="Launch a Tiled server.")
 cli_app.add_typer(
     profile_app, name="profile", help="Examine Tiled 'profiles' (client-side config)."

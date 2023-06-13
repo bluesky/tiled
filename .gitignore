@@ -95,6 +95,8 @@ share/tiled/ui
 config.yaml
 config.yml
 *.sqlite
+*.db
 
 prometheus_data
 grafana_data
+data

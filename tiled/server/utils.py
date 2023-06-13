@@ -1,6 +1,9 @@
-import collections
 import contextlib
+import inspect
 import time
+from typing import Any, Callable
+
+import anyio
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
@@ -85,34 +88,6 @@ def filter_for_access(entry, principal, scopes, metrics):
     return entry
 
 
-class FilteredNode(collections.abc.Mapping):
-    structure_family = "node"
-
-    "Wrap a node, hiding contents that the principal cannot access."
-
-    def __init__(self, node, principal, scopes, metrics):
-        if not node.structure_family == "node":
-            raise ValueError("Input must have structure_family == 'node'")
-        self._principal = principal
-        self._scopes = scopes
-        self._metrics = metrics
-        self._node = filter_for_access(node, principal, scopes, metrics)
-        self.metadata = self._node.metadata
-        super().__init__()
-
-    def __getitem__(self, key):
-        value = self._node[key]
-        if value.structure_family == "node":
-            return type(self)(value, self._principal, self._scopes, self._metrics)
-        return value
-
-    def __len__(self):
-        return len(self._node)
-
-    def __iter__(self):
-        yield from self._node
-
-
 def get_structure(entry):
     "Abtract over the fact that some have micro/macrostructure."
     structure_family = entry.structure_family
@@ -133,3 +108,19 @@ def get_structure(entry):
     else:
         raise ValueError(f"Unrecognized structure family {structure_family}")
     return structure
+
+
+def is_coroutine_callable(call: Callable[..., Any]) -> bool:
+    if inspect.isroutine(call):
+        return inspect.iscoroutinefunction(call)
+    if inspect.isclass(call):
+        return False
+    dunder_call = getattr(call, "__call__", None)  # noqa: B004
+    return inspect.iscoroutinefunction(dunder_call)
+
+
+async def ensure_awaitable(func, *args):
+    if is_coroutine_callable(func):
+        return await func(*args)
+    else:
+        return await anyio.to_thread.run_sync(func, *args)

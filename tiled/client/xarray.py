@@ -7,6 +7,7 @@ import xarray
 
 from ..client.base import BaseStructureClient
 from ..serialization.dataframe import deserialize_arrow
+from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .node import Node
 
@@ -185,3 +186,27 @@ class _WideTableFetcher:
             params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
         )
         return deserialize_arrow(content)
+
+
+def write_xarray_dataset(client_node, dataset, key=None):
+    dataset_client = client_node.create_node(
+        key=key, specs=[Spec("xarray_dataset")], metadata={"attrs": dataset.attrs}
+    )
+    for name in dataset.data_vars:
+        data_array = dataset[name]
+        dataset_client.write_array(
+            data_array.data,
+            key=name,
+            metadata={"attrs": data_array.attrs},
+            specs=[Spec("xarray_data_var")],
+        )
+    for name in dataset.coords:
+        data_array = dataset[name]
+        dataset_client.write_array(
+            data_array.data,
+            key=name,
+            metadata={"attrs": data_array.attrs},
+            dims=data_array.dims,
+            specs=[Spec("xarray_coord")],
+        )
+    return dataset_client

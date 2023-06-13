@@ -1,6 +1,6 @@
 import io
 
-from ..media_type_registration import serialization_registry
+from ..media_type_registration import deserialization_registry, serialization_registry
 from ..utils import modules_available
 
 if modules_available("h5py"):
@@ -27,6 +27,7 @@ if modules_available("pandas", "pyarrow"):
     from .dataframe import (
         APACHE_ARROW_FILE_MIME_TYPE,
         XLSX_MIME_TYPE,
+        deserialize_arrow,
         serialize_arrow,
         serialize_csv,
         serialize_excel,
@@ -41,6 +42,9 @@ if modules_available("pandas", "pyarrow"):
         d["data"] = sparse_arr.data
         return pandas.DataFrame(d)
 
+    deserialization_registry.register(
+        "sparse", APACHE_ARROW_FILE_MIME_TYPE, deserialize_arrow
+    )
     serialization_registry.register(
         "sparse",
         APACHE_ARROW_FILE_MIME_TYPE,

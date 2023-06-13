@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import copy
 import enum
 import uuid
 from datetime import datetime
@@ -58,6 +60,7 @@ class EntryFields(str, enum.Enum):
     sorting = "sorting"
     specs = "specs"
     references = "references"
+    data_sources = "data_sources"
     none = ""
 
 
@@ -96,6 +99,69 @@ References = pydantic.conlist(ReferenceDocument, max_items=20)
 Specs = pydantic.conlist(Spec, max_items=20)
 
 
+class Asset(pydantic.BaseModel):
+    data_uri: str
+    is_directory: bool
+
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(data_uri=orm.data_uri, is_directory=orm.is_directory)
+
+
+class Management(str, enum.Enum):
+    external = "external"
+    immutable = "immutable"
+    locked = "locked"
+    writable = "writable"
+
+
+class Revision(pydantic.BaseModel):
+    revision_number: int
+    metadata: dict
+    specs: Specs
+    references: References
+    time_updated: datetime
+
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(
+            revision_number=orm.revision_number,
+            metadata=orm.metadata_,
+            specs=orm.specs,
+            references=orm.references,
+            time_updated=orm.time_updated,
+        )
+
+
+class DataSource(pydantic.BaseModel):
+    structure: Optional[
+        Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
+    ] = None
+    mimetype: Optional[str] = None
+    parameters: dict = {}
+    assets: List[Asset] = []
+    management: Management = Management.writable
+
+    @classmethod
+    def from_orm(cls, orm):
+        # if isinstance(orm.structure, DataFrameStructure):
+        if "meta" in orm.structure.get("micro", {}):
+            structure = copy.deepcopy(orm.structure)
+            structure["micro"]["meta"] = base64.b64decode(structure["micro"]["meta"])
+            structure["micro"]["divisions"] = base64.b64decode(
+                structure["micro"]["divisions"]
+            )
+        else:
+            structure = orm.structure
+        return cls(
+            structure=structure,
+            mimetype=orm.mimetype,
+            parameters=orm.parameters,
+            assets=[Asset.from_orm(asset) for asset in orm.assets],
+            management=orm.management,
+        )
+
+
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
     structure_family: Optional[StructureFamily]
@@ -106,6 +172,146 @@ class NodeAttributes(pydantic.BaseModel):
     ]
     sorting: Optional[List[SortingItem]]
     references: Optional[References]
+    data_sources: Optional[List[DataSource]]
+
+
+class Node(NodeAttributes):
+    # In the HTTP response, we place the key *outside* the other attributes,
+    # as "id". This was inspired by JSON API, and for now we are sticking
+    # with it.
+    #
+    # But for passing the Node around internally, it is useful to have the
+    # key included in the model.
+    key: str
+    access_policy: Any
+    _node: Any = pydantic.PrivateAttr()
+    _context: Any = pydantic.PrivateAttr()
+
+    def __init__(self, node, context, **data):
+        super().__init__(**data)
+        self._node = node
+        self._context = context
+
+    @classmethod
+    def from_orm(cls, orm, context, *, access_policy, sorting=None):
+        sorting = sorting or []
+        # In the Python API we encode sorting as (key, direction).
+        # This order-based "record" notion does not play well with OpenAPI.
+        # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
+        if sorting and isinstance(sorting[0], tuple):
+            sorting = [SortingItem(key=item[0], direction=item[1]) for item in sorting]
+        if len(orm.data_sources) > 1:
+            # TODO Handle multiple data sources
+            raise NotImplementedError
+        if orm.data_sources:
+            structure = copy.deepcopy(
+                DataSource.from_orm(orm.data_sources[0]).structure
+            )
+        else:
+            structure = None
+        return cls(
+            key=orm.key,
+            ancestors=orm.ancestors,
+            metadata=orm.metadata_,
+            structure_family=orm.structure_family,
+            structure=structure,
+            specs=orm.specs,
+            references=orm.references,
+            sorting=sorting or [],
+            data_sources=[DataSource.from_orm(ds) for ds in orm.data_sources],
+            time_created=orm.time_created,
+            time_updated=orm.time_updated,
+            node=orm,
+            context=context,
+            access_policy=access_policy,
+        )
+
+    def microstructure(self):
+        return getattr(self.structure, "micro", None)
+
+    def macrostructure(self):
+        return getattr(self.structure, "macro", None)
+
+    async def revisions(self, offset, limit):
+        async with self._context.session() as db:
+            from sqlalchemy import select
+
+            from tiled.catalog import orm
+
+            revision_orms = (
+                await db.execute(
+                    select(orm.Revisions)
+                    .where(orm.Revisions.node_id == self._node.id)
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            return [Revision.from_orm(o[0]) for o in revision_orms]
+
+    async def delete_revision(self, number):
+        async with self._context.session() as db:
+            # TODO Abstract this from FastAPI?
+            from fastapi import HTTPException
+            from sqlalchemy import delete
+
+            from tiled.catalog import orm
+
+            result = await db.execute(
+                delete(orm.Revisions)
+                .where(orm.Revisions.node_id == self._node.id)
+                .where(orm.Revisions.revision_number == number)
+            )
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No revision {number} for node {self._node.id}",
+                )
+            if result.rowcount > 1:
+                assert (
+                    False
+                ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            await db.commit()
+
+    async def update_metadata(self, metadata=None, specs=None, references=None):
+        values = {}
+        if metadata is not None:
+            # Trailing underscore in 'metadata_' avoids collision with
+            # SQLAlchemy reserved word 'metadata'.
+            values["metadata_"] = metadata
+        if specs is not None:
+            values["specs"] = [s.dict() for s in specs]
+        if references is not None:
+            values["references"] = [r.dict() for r in references]
+        async with self._context.session() as db:
+            from sqlalchemy import func, select, update
+
+            from tiled.catalog import orm
+
+            current = (
+                await db.execute(select(orm.Node).where(orm.Node.id == self._node.id))
+            ).scalar_one()
+            next_revision_number = 1 + (
+                (
+                    await db.execute(
+                        select(func.max(orm.Revisions.revision_number)).where(
+                            orm.Revisions.node_id == self._node.id
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
+            revision = orm.Revisions(
+                metadata_=current.metadata_,
+                specs=current.specs,
+                references=current.references,
+                node_id=current.id,
+                revision_number=next_revision_number,
+            )
+            db.add(revision)
+            await db.execute(
+                update(orm.Node).where(orm.Node.id == self._node.id).values(**values)
+            )
+            await db.commit()
 
 
 AttributesT = TypeVar("AttributesT")
@@ -306,9 +512,10 @@ class APIKeyRequestParams(pydantic.BaseModel):
 
 
 class PostMetadataRequest(pydantic.BaseModel):
+    id: Optional[str] = None
     structure_family: StructureFamily
-    structure: Union[ArrayStructure, DataFrameStructure, SparseStructure]
     metadata: Dict = {}
+    data_sources: List[DataSource] = []
     specs: Specs = []
     references: References = []
 
@@ -326,8 +533,17 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    metadata: Optional[Dict]  # may be None if validators did not alter metadata
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    metadata: Dict
+    data_sources: List[DataSource]
+
+
+class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
+    id: str
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    # May be None if not altered
+    metadata: Optional[Dict]
+    data_sources: Optional[List[DataSource]]
 
 
 class DistinctValueInfo(pydantic.BaseModel):

@@ -1,9 +1,12 @@
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
 serve_app = typer.Typer()
+
+
+SQLITE_CATALOG_FILENAME = "tiled_catalog.sqlite"
 
 
 @serve_app.command("directory")
@@ -90,6 +93,127 @@ def serve_directory(
     import uvicorn
 
     uvicorn.run(web_app, host=host, port=port)
+
+
+def serve_catalog(
+    database: str = typer.Argument(
+        None, help="A filepath or database URI, e.g. 'catalog.db'"
+    ),
+    read: List[str] = typer.Option(
+        None,
+        "--read",
+        "-r",
+        help="Locations that the server may read from",
+    ),
+    write: str = typer.Option(
+        None,
+        "--write",
+        "-w",
+        help="Location that the server may write to",
+    ),
+    temp: bool = typer.Option(
+        False,
+        "--temp",
+        help="Make a new catalog in a temporary directory.",
+    ),
+    public: bool = typer.Option(
+        False,
+        "--public",
+        help=(
+            "Turns off requirement for API key authentication for reading. "
+            "However, the API key is still required for writing, so data cannot be modified even with "
+            "this option selected."
+        ),
+    ),
+    host: str = typer.Option(
+        "127.0.0.1",
+        help=(
+            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+            "available on your local network. IPv6 addresses are supported, for "
+            "example: --host `'::'`."
+        ),
+    ),
+    port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    object_cache_available_bytes: Optional[float] = typer.Option(
+        None,
+        "--data-cache",
+        help=(
+            "Maximum size for the object cache, given as a number of bytes as in "
+            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
+            "0.3. Set to 0 to disable this cache. By default, it will use up to "
+            "0.15 (15%) of RAM."
+        ),
+    ),
+    scalable: bool = typer.Option(
+        False,
+        "--scalable",
+        help=(
+            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
+        ),
+    ),
+):
+    "Serve a catalog."
+    import urllib.parse
+
+    from ..catalog import from_uri
+    from ..server.app import build_app, print_admin_api_key_if_generated
+
+    parsed_database = urllib.parse.urlparse(database)
+    if parsed_database.scheme in ("", "file"):
+        database = f"sqlite+aiosqlite:///{parsed_database.path}"
+
+    if temp:
+        if database is not None:
+            typer.echo(
+                "The option --temp was set but a database was also provided. "
+                "Do one or the other.",
+                err=True,
+            )
+            raise typer.Abort()
+        import tempfile
+
+        directory = Path(tempfile.TemporaryDirectory().name)
+        directory.mkdir()
+        SQLITE_CATALOG_FILENAME = "catalog.db"
+        DATA_SUBDIRECTORY = "data"
+        typer.echo(
+            f"Creating catalog database at {directory / SQLITE_CATALOG_FILENAME}",
+            err=True,
+        )
+        typer.echo(
+            f"Creating writable catalog data directory at {directory / DATA_SUBDIRECTORY}",
+            err=True,
+        )
+        database = f"sqlite+aiosqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
+        if write is None:
+            write = directory / DATA_SUBDIRECTORY
+        # TODO Hook into server lifecycle hooks to delete this at shutdown.
+
+    tree_kwargs = {}
+    server_settings = {}
+    if object_cache_available_bytes is not None:
+        server_settings["object_cache"] = {}
+        server_settings["object_cache"][
+            "available_bytes"
+        ] = object_cache_available_bytes
+    tree = from_uri(
+        database,
+        writable_storage=write,
+        readable_storage=read,
+        initialize_database_at_startup=temp,
+        **tree_kwargs,
+    )
+    web_app = build_app(
+        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+    )
+    print_admin_api_key_if_generated(web_app, host=host, port=port)
+
+    import uvicorn
+
+    uvicorn.run(web_app, host=host, port=port)
+
+
+serve_app.command("catalog")(serve_catalog)
 
 
 @serve_app.command("pyobject")

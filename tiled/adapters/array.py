@@ -28,22 +28,30 @@ class ArrayAdapter:
         self,
         array,
         *,
+        shape=None,
         chunks=None,
         metadata=None,
         dims=None,
         specs=None,
         references=None,
     ):
+        # Why would shape ever be different from array.shape, you ask?
+        # Some formats (notably Zarr) force shape to be a multiple of
+        # a chunk size, such that array.shape may include a margin beyond the
+        # actual data.
+        if shape is None:
+            shape = array.shape
+        self._shape = shape
         if chunks is None:
             if hasattr(array, "chunks"):
                 chunks = array.chunks  # might be None
             else:
                 chunks = None
             if chunks is None:
-                chunks = ("auto",) * len(array.shape)
+                chunks = ("auto",) * len(shape)
         self._chunks = normalize_chunks(
             chunks,
-            shape=array.shape,
+            shape=shape,
             dtype=array.dtype,
         )
         self._array = array
@@ -82,7 +90,7 @@ class ArrayAdapter:
     def macrostructure(self):
         "Structures of the layout of blocks of this array"
         return ArrayMacroStructure(
-            shape=self._array.shape, chunks=self._chunks, dims=self._dims
+            shape=self._shape, chunks=self._chunks, dims=self._dims
         )
 
     def microstructure(self):

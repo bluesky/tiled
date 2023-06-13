@@ -49,7 +49,7 @@ class _BytesIOThatIgnoresClose(io.BytesIO):
 
 if modules_available("scipy"):
 
-    def serialize_netcdf(node, metadata):
+    def serialize_netcdf(node, metadata, filter_for_access):
         file = _BytesIOThatIgnoresClose()
         # Per the xarray.Dataset.to_netcdf documentation,
         # file-like objects are only supported by the scipy engine.
@@ -71,42 +71,56 @@ if modules_available("scipy"):
 serialization_registry.register(
     "xarray_dataset",
     APACHE_ARROW_FILE_MIME_TYPE,
-    lambda node, metadata: serialize_arrow(as_dataset(node).to_dataframe(), metadata),
+    lambda node, metadata, filter_for_access: serialize_arrow(
+        as_dataset(node).to_dataframe(), metadata
+    ),
 )
 serialization_registry.register(
     "xarray_dataset",
     "application/x-parquet",
-    lambda node, metadata: serialize_parquet(as_dataset(node).to_dataframe(), metadata),
+    lambda node, metadata, filter_for_access: serialize_parquet(
+        as_dataset(node).to_dataframe(), metadata
+    ),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/csv",
-    lambda node, metadata: serialize_csv(as_dataset(node).to_dataframe(), metadata),
+    lambda node, metadata, filter_for_access: serialize_csv(
+        as_dataset(node).to_dataframe(), metadata
+    ),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/x-comma-separated-values",
-    lambda node, metadata: serialize_csv(as_dataset(node).to_dataframe(), metadata),
+    lambda node, metadata, filter_for_access: serialize_csv(
+        as_dataset(node).to_dataframe(), metadata
+    ),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/plain",
-    lambda node, metadata: serialize_csv(as_dataset(node).to_dataframe(), metadata),
+    lambda node, metadata, filter_for_access: serialize_csv(
+        as_dataset(node).to_dataframe(), metadata
+    ),
 )
 serialization_registry.register(
     "xarray_dataset",
     "text/html",
-    lambda node, metadata: serialize_html(as_dataset(node).to_dataframe(), metadata),
+    lambda node, metadata, filter_for_access: serialize_html(
+        as_dataset(node).to_dataframe(), metadata
+    ),
 )
 serialization_registry.register(
     "xarray_dataset",
     XLSX_MIME_TYPE,
-    lambda node, metadata: serialize_excel(as_dataset(node).to_dataframe(), metadata),
+    lambda node, metadata, filter_for_access: serialize_excel(
+        as_dataset(node).to_dataframe(), metadata
+    ),
 )
 if modules_available("orjson"):
     import orjson
 
-    def serialize_json(node, metadata):
+    def serialize_json(node, metadata, filter_for_access):
         df = as_dataset(node).to_dataframe()
         return orjson.dumps(
             {column: df[column].tolist() for column in df},
@@ -119,7 +133,7 @@ if modules_available("orjson"):
     )
 if modules_available("h5py"):
 
-    def serialize_hdf5(node, metadata):
+    async def serialize_hdf5(node, metadata, filter_for_access):
         """
         Like for node, but encode everything under 'attrs' in attrs.
         """
@@ -130,7 +144,7 @@ if modules_available("h5py"):
         with h5py.File(buffer, mode="w") as file:
             for k, v in metadata["attrs"].items():
                 file.attrs.create(k, v)
-            for key_path, array_adapter in walk(node):
+            async for key_path, array_adapter in walk(node, filter_for_access):
                 group = file
                 node = root_node
                 for key in key_path[:-1]:

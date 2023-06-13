@@ -1,9 +1,13 @@
+from enum import Enum
 from functools import lru_cache
 from typing import Optional
 
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Security
 
+from ..media_type_registration import (
+    deserialization_registry as default_deserialization_registry,
+)
 from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
@@ -18,6 +22,12 @@ from .utils import filter_for_access, record_timing
 def get_query_registry():
     "This may be overridden via dependency_overrides."
     return default_query_registry
+
+
+@lru_cache(1)
+def get_deserialization_registry():
+    "This may be overridden via dependency_overrides."
+    return default_deserialization_registry
 
 
 @lru_cache(1)
@@ -39,8 +49,16 @@ def get_root_tree():
     )
 
 
-def SecureEntry(scopes):
-    def inner(
+# A node implements the kinds of things we need for JSON descriptions.
+# An adapter implements the kind of things we need to send binary data.
+# These should both become 'protocols' in Python.
+EntryKind = Enum("EntryKind", ["adapter", "node"])
+
+
+def SecureEntry(scopes, kind=EntryKind.adapter):
+    kind = EntryKind(kind)
+
+    async def inner(
         path: str,
         request: Request,
         principal: str = Depends(get_current_principal),
@@ -56,14 +74,26 @@ def SecureEntry(scopes):
         entry = root_tree
         try:
             # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
-            for segment in path_parts:
+            for i, segment in enumerate(path_parts):
                 entry = filter_for_access(
                     entry, principal, ["read:metadata"], request.state.metrics
                 )
-                try:
-                    entry = entry[segment]
-                except (KeyError, TypeError):
-                    raise NoEntry(path_parts)
+                # The new catalog adapter only has access control at top level for now.
+                # It can jump directly to the node of interest.
+                if hasattr(entry, "lookup_adapter"):
+                    if kind == EntryKind.adapter:
+                        entry = await entry.lookup_adapter(path_parts[i:])
+                    else:  # kind == EntryKind.node
+                        entry = await entry.lookup_node(path_parts[i:])
+                    if entry is None:
+                        raise NoEntry(path_parts)
+                    break
+                # Old-style dict-like interface
+                else:
+                    try:
+                        entry = entry[segment]
+                    except (KeyError, TypeError):
+                        raise NoEntry(path_parts)
             # Now check that we have the requested scope on the final node.
             access_policy = getattr(entry, "access_policy", None)
             if access_policy is not None:

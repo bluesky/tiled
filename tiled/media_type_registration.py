@@ -120,12 +120,6 @@ class SerializationRegistry:
             f"No dispatch for structure_family {structure_family} with media type {media_type}"
         )
 
-    def __call__(self, structure_family, media_type, *args, **kwargs):
-        """
-        Invoke a writer for a given structure and media type.
-        """
-        return self.dispatch(structure_family, media_type)(*args, **kwargs)
-
 
 class CompressionRegistry:
     def __init__(self):
@@ -173,14 +167,11 @@ class CompressionRegistry:
 serialization_registry = SerializationRegistry()
 "Global serialization registry. See Registry for usage examples."
 
+deserialization_registry = SerializationRegistry()
+"Global deserialization registry. See Registry for usage examples."
+
 compression_registry = CompressionRegistry()
 "Global compression registry. See Registry for usage examples."
-
-# TODO Do we *need* a deserialization registry?
-# The Python client always deals with a certain preferred format
-# for each structure family. Deserializing other formats is other
-# clients' problem, and we can't help with that from here.
-deserialization_registry = SerializationRegistry()
 
 
 compression_registry.register(

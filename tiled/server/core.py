@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from hashlib import md5
 from typing import Any
 
+import anyio
 import dateutil.tz
 import jmespath
 import msgpack
@@ -33,7 +34,7 @@ from ..utils import (
 )
 from . import schemas
 from .etag import tokenize
-from .utils import record_timing
+from .utils import ensure_awaitable, record_timing
 
 del queries
 register_builtin_serializers()
@@ -61,14 +62,16 @@ DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
 
 
-def len_or_approx(tree):
+async def len_or_approx(tree):
     """
     Prefer approximate length if implemented. (It's cheaper.)
     """
+    if hasattr(tree, "async_len"):
+        return await tree.async_len()
     try:
-        return operator.length_hint(tree)
+        return await anyio.to_thread.run_sync(operator.length_hint, tree)
     except TypeError:
-        return len(tree)
+        return await anyio.to_thread.run_sync(len, tree)
 
 
 def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
@@ -170,7 +173,7 @@ def apply_sort(tree, sort):
     return tree
 
 
-def construct_entries_response(
+async def construct_entries_response(
     query_registry,
     tree,
     route,
@@ -180,6 +183,7 @@ def construct_entries_response(
     fields,
     select_metadata,
     omit_links,
+    show_sources,
     filters,
     sort,
     base_url,
@@ -190,28 +194,34 @@ def construct_entries_response(
     tree = apply_search(tree, filters, query_registry)
     tree = apply_sort(tree, sort)
 
-    count = len_or_approx(tree)
+    count = await len_or_approx(tree)
     links = pagination_links(base_url, route, path_parts, offset, limit, count)
     data = []
     if fields != [schemas.EntryFields.none]:
         # Pull a page of items into memory.
-        items = tree.items()[offset : offset + limit]  # noqa: E203
+        if hasattr(tree, "items_range"):
+            items = await tree.items_range(offset, limit)
+        else:
+            items = tree.items()[offset : offset + limit]  # noqa: E203
     else:
         # Pull a page of just the keys, which is cheaper.
-        items = (
-            (key, None) for key in tree.keys()[offset : offset + limit]  # noqa: E203
-        )
+        if hasattr(tree, "keys_range"):
+            keys = await tree.keys_range(offset, limit)
+        else:
+            keys = tree.keys()[offset : offset + limit]  # noqa: E203
+        items = [(key, None) for key in keys]
     # This value will not leak out. It just used to seed comparisons.
     metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
-        resource = construct_resource(
+        resource = await construct_resource(
             base_url,
             path_parts + [key],
             entry,
             fields,
             select_metadata,
             omit_links,
+            show_sources,
             media_type,
             max_depth=max_depth,
         )
@@ -239,7 +249,7 @@ DEFAULT_MEDIA_TYPES = {
 }
 
 
-def construct_revisions_response(
+async def construct_revisions_response(
     entry,
     base_url,
     route,
@@ -249,16 +259,16 @@ def construct_revisions_response(
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    revisions = entry.revisions[offset : offset + limit]  # noqa: E203
+    revisions = await entry.revisions(offset, limit)
     data = []
     for revision in revisions:
         item = {
-            "revision": revision["revision"],
+            "revision_number": revision.revision_number,
             "attributes": {
-                "metadata": revision["metadata"],
-                "specs": revision["specs"],
-                "references": revision["references"],
-                "updated_at": revision["updated_at"],
+                "metadata": revision.metadata,
+                "specs": revision.specs,
+                "references": revision.references,
+                "time_updated": revision.time_updated,
             },
         }
         data.append(item)
@@ -269,7 +279,7 @@ def construct_revisions_response(
     return schemas.Response(data=data, links=links, meta={"count": count})
 
 
-def construct_data_response(
+async def construct_data_response(
     structure_family,
     serialization_registry,
     payload,
@@ -279,6 +289,7 @@ def construct_data_response(
     specs=None,
     expires=None,
     filename=None,
+    filter_for_access=None,
 ):
     request.state.endpoint = "data"
     if specs is None:
@@ -342,9 +353,15 @@ def construct_data_response(
         return Response(status_code=304, headers=headers)
     if filename:
         headers["Content-Disposition"] = f"attachment;filename={filename}"
+    serializer = serialization_registry.dispatch(spec, media_type)
     # This is the expensive step: actually serialize.
     try:
-        content = serialization_registry(spec, media_type, payload, metadata)
+        if filter_for_access is not None:
+            content = await ensure_awaitable(
+                serializer, payload, metadata, filter_for_access
+            )
+        else:
+            content = await ensure_awaitable(serializer, payload, metadata)
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
@@ -365,19 +382,22 @@ def construct_data_response(
     )
 
 
-def construct_resource(
+async def construct_resource(
     base_url,
     path_parts,
     entry,
     fields,
     select_metadata,
     omit_links,
+    show_sources,
     media_type,
     max_depth,
     depth=0,
 ):
     path_str = "/".join(path_parts)
     attributes = {"ancestors": path_parts[:-1]}
+    if show_sources and hasattr(entry, "data_sources"):
+        attributes["data_sources"] = entry.data_sources
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
             attributes["metadata"] = jmespath.compile(select_metadata).search(
@@ -409,7 +429,7 @@ def construct_resource(
             ):
                 # This node wants us to inline its contents.
                 # First check that it is not too large.
-                est_count = len_or_approx(entry)
+                est_count = await len_or_approx(entry)
                 if est_count > INLINED_CONTENTS_LIMIT:
                     # Too large: do not inline its contents.
                     count = est_count
@@ -424,22 +444,23 @@ def construct_resource(
                         if count > INLINED_CONTENTS_LIMIT:
                             # The est_count was inaccurate or else the entry has grown
                             # new children while we are walking it. Too large!
-                            count = len_or_approx(entry)
+                            count = await len_or_approx(entry)
                             contents = None
                             break
-                        contents[key] = construct_resource(
+                        contents[key] = await construct_resource(
                             base_url,
                             path_parts + [key],
                             adapter,
                             fields,
                             select_metadata,
                             omit_links,
+                            show_sources,
                             media_type,
                             max_depth,
                             depth=1 + depth,
                         )
             else:
-                count = len_or_approx(entry)
+                count = await len_or_approx(entry)
                 contents = None
             structure = schemas.NodeStructure(
                 count=count,
@@ -448,13 +469,17 @@ def construct_resource(
             attributes["structure"] = structure
         if schemas.EntryFields.sorting in fields:
             if hasattr(entry, "sorting"):
+                # HUGE HACK
                 # In the Python API we encode sorting as (key, direction).
                 # This order-based "record" notion does not play well with OpenAPI.
                 # In the HTTP API, therefore, we use {"key": key, "direction": direction}.
-                attributes["sorting"] = [
-                    {"key": key, "direction": direction}
-                    for key, direction in entry.sorting
-                ]
+                if entry.sorting and isinstance(entry.sorting[0], schemas.SortingItem):
+                    attributes["sorting"] = entry.sorting
+                else:
+                    attributes["sorting"] = [
+                        {"key": key, "direction": direction}
+                        for key, direction in entry.sorting
+                    ]
         d = {
             "id": path_parts[-1] if path_parts else "",
             "attributes": schemas.NodeAttributes(**attributes),
@@ -465,6 +490,7 @@ def construct_resource(
                 "search": f"{base_url}/node/search/{path_str}",
                 "full": f"{base_url}/node/full/{path_str}",
             }
+
         resource = schemas.Resource[
             schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
         ](**d)
@@ -486,13 +512,17 @@ def construct_resource(
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
             if entry.structure_family == "sparse":
-                if schemas.EntryFields.structure in fields:
-                    structure = dataclasses.asdict(entry.structure())
-                    shape = structure.get("shape")
+                # This arises from back-compat...needs revisiting.
+                structure_maybe_method = entry.structure
+                if callable(structure_maybe_method):
+                    structure = asdict(structure_maybe_method())
                 else:
-                    # The client did not request structure so we have not yet
-                    # accessed it, and we have access it specifically to construct this link.
-                    shape = entry.structure().shape
+                    structure = asdict(structure_maybe_method)
+                shape = structure.get("shape")
+                if schemas.EntryFields.structure not in fields:
+                    # We needed to access the structure to get the shape for
+                    # use in constructing links below, but we are not supposed
+                    # to include in the response.
                     structure = None
                 block_template = ",".join(f"{{{index}}}" for index in range(len(shape)))
                 links[
@@ -504,7 +534,7 @@ def construct_resource(
                 ):
                     macrostructure = entry.macrostructure()
                     if macrostructure is not None:
-                        structure["macro"] = dataclasses.asdict(macrostructure)
+                        structure["macro"] = asdict(macrostructure)
                 if (schemas.EntryFields.microstructure in fields) or (
                     schemas.EntryFields.structure in fields
                 ):
@@ -531,7 +561,7 @@ def construct_resource(
                     else:
                         microstructure = entry.microstructure()
                         if microstructure is not None:
-                            structure["micro"] = dataclasses.asdict(microstructure)
+                            structure["micro"] = asdict(microstructure)
                 if entry.structure_family == "array":
                     shape = structure.get("macro", {}).get("shape")
                     if shape is None:
@@ -729,3 +759,11 @@ FULL_LINKS = {
     "dataframe": {"full": "{base_url}/node/full/{path}"},
     "sparse": {"full": "{base_url}/array/full/{path}"},
 }
+
+
+def asdict(dc):
+    "Compat for converting dataclass or pydantic.BaseModel to dict."
+    try:
+        return dataclasses.asdict(dc)
+    except TypeError:
+        return dict(dc)

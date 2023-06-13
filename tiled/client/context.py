@@ -598,7 +598,7 @@ class Context:
             timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
         )
 
-    def post_json(self, path, content):
+    def post_json(self, path, content, params=None):
         request = self.http_client.build_request(
             "POST",
             path,
@@ -609,6 +609,7 @@ class Context:
                 "x-csrf": self.http_client.cookies["tiled_csrf"],
                 "accept": "application/x-msgpack",
             },
+            params=params,
         )
         response = self.http_client.send(request)
         handle_error(response)

@@ -2,6 +2,7 @@ import base64
 import dataclasses
 import inspect
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
@@ -29,9 +30,11 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
+    EntryKind,
     SecureEntry,
     block,
     expected_shape,
+    get_deserialization_registry,
     get_query_registry,
     get_serialization_registry,
     get_validation_registry,
@@ -39,7 +42,7 @@ from .dependencies import (
 )
 from .settings import get_settings
 from .utils import (
-    FilteredNode,
+    ensure_awaitable,
     filter_for_access,
     get_base_url,
     get_structure,
@@ -149,7 +152,8 @@ async def node_search(
     sort: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    show_sources: bool = Query(False),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.adapter),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
     **filters,
@@ -161,7 +165,7 @@ async def node_search(
         entry, principal, ["read:metadata"], request.state.metrics
     )
     try:
-        resource, metadata_stale_at, must_revalidate = construct_entries_response(
+        resource, metadata_stale_at, must_revalidate = await construct_entries_response(
             query_registry,
             entry,
             "/node/search",
@@ -171,6 +175,7 @@ async def node_search(
             fields,
             select_metadata,
             omit_links,
+            show_sources,
             filters,
             sort,
             get_base_url(request),
@@ -211,7 +216,7 @@ async def node_distinct(
     specs: bool = False,
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
     query_registry=Depends(get_query_registry),
     **filters,
 ):
@@ -305,7 +310,8 @@ async def node_metadata(
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    show_sources: bool = Query(False),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
     root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
@@ -314,13 +320,14 @@ async def node_metadata(
     base_url = get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
     try:
-        resource = construct_resource(
+        resource = await construct_resource(
             base_url,
             path_parts,
             entry,
             fields,
             select_metadata,
             omit_links,
+            show_sources,
             resolve_media_type(request),
             max_depth=max_depth,
         )
@@ -340,7 +347,7 @@ async def node_metadata(
 @router.get(
     "/array/block/{path:path}", response_model=schemas.Response, name="array block"
 )
-def array_block(
+async def array_block(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     block=Depends(block),
@@ -381,11 +388,11 @@ def array_block(
                 detail=f"Requested scalar but shape is {entry.macrostructure().shape}",
             )
         with record_timing(request.state.metrics, "read"):
-            array = entry.read()
+            array = await ensure_awaitable(entry.read)
     else:
         try:
             with record_timing(request.state.metrics, "read"):
-                array = entry.read_block(block, slice=slice)
+                array = await ensure_awaitable(entry.read_block, block, slice)
         except IndexError:
             raise HTTPException(status_code=400, detail="Block index out of range")
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -403,7 +410,7 @@ def array_block(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 entry.structure_family,
                 serialization_registry,
                 array,
@@ -422,7 +429,7 @@ def array_block(
 @router.get(
     "/array/full/{path:path}", response_model=schemas.Response, name="full array"
 )
-def array_full(
+async def array_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     slice=Depends(slice_),
@@ -447,7 +454,7 @@ def array_full(
 
     try:
         with record_timing(request.state.metrics, "read"):
-            array = entry.read(slice)
+            array = await ensure_awaitable(entry.read, slice)
         if structure_family == "array":
             array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
@@ -467,7 +474,7 @@ def array_full(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 structure_family,
                 serialization_registry,
                 array,
@@ -487,7 +494,7 @@ def array_full(
     response_model=schemas.Response,
     name="dataframe partition",
 )
-def dataframe_partition(
+async def dataframe_partition(
     request: Request,
     partition: int,
     entry=SecureEntry(scopes=["read:data"]),
@@ -509,7 +516,7 @@ def dataframe_partition(
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = entry.read_partition(partition, fields=field)
+            df = await ensure_awaitable(entry.read_partition, partition, field)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
@@ -526,7 +533,7 @@ def dataframe_partition(
         )
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 "dataframe",
                 serialization_registry,
                 df,
@@ -546,7 +553,7 @@ def dataframe_partition(
     response_model=schemas.Response,
     name="full generic 'node' or 'dataframe'",
 )
-def node_full(
+async def node_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     principal: str = Depends(get_current_principal),
@@ -560,10 +567,8 @@ def node_full(
     Fetch the data below the given node.
     """
     try:
-        # The singular/plural mismatch here of "fields" and "field" is
-        # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            data = entry.read(fields=field)
+            data = await ensure_awaitable(entry.read, field)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
@@ -579,11 +584,18 @@ def node_full(
             ),
         )
     if entry.structure_family == "node":
-        data = FilteredNode(data, principal, ["read:data"], request.state.metrics)
+        curried_filter = partial(
+            filter_for_access,
+            principal=principal,
+            scopes=["read:data"],
+            metrics=request.state.metrics,
+        )
+    else:
+        curried_filter = None
         # TODO Walk node to determine size before handing off to serializer.
     try:
         with record_timing(request.state.metrics, "pack"):
-            return construct_data_response(
+            return await construct_data_response(
                 entry.structure_family,
                 serialization_registry,
                 data,
@@ -593,37 +605,48 @@ def node_full(
                 specs=getattr(entry, "specs", []),
                 expires=getattr(entry, "content_stale_at", None),
                 filename=filename,
+                filter_for_access=curried_filter,
             )
     except UnsupportedMediaTypes as err:
         raise HTTPException(status_code=406, detail=err.args[0])
 
 
 @router.post("/node/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
-def post_metadata(
+async def post_metadata(
     request: Request,
     path: str,
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
-    entry=SecureEntry(scopes=["write:metadata", "create"]),
+    entry=SecureEntry(scopes=["write:metadata", "create"], kind=EntryKind.adapter),
 ):
-    if not hasattr(entry, "post_metadata"):
-        raise HTTPException(status_code=405, detail="This path cannot accept metadata.")
+    if not getattr(entry, "writable", False):
+        raise HTTPException(
+            status_code=405, detail=f"Data cannot be written at the path {path}"
+        )
 
     if body.structure_family == StructureFamily.dataframe:
         # Decode meta for pydantic validation
-        body.structure.micro.meta = base64.b64decode(body.structure.micro.meta)
-        body.structure.micro.divisions = base64.b64decode(
-            body.structure.micro.divisions
+        # TODO This is fragile.
+        body.data_sources[0].structure.micro.meta = base64.b64decode(
+            body.data_sources[0].structure.micro.meta
+        )
+        body.data_sources[0].structure.micro.divisions = base64.b64decode(
+            body.data_sources[0].structure.micro.divisions
         )
 
-    metadata, structure_family, structure, specs, references = (
+    metadata, structure_family, specs, references = (
         body.metadata,
         body.structure_family,
-        body.structure,
         body.specs,
         body.references,
     )
+    if structure_family == StructureFamily.node:
+        structure = None
+    else:
+        if len(body.data_sources) != 1:
+            raise NotImplementedError
+        structure = body.data_sources[0].structure
 
     metadata_modified = False
 
@@ -656,12 +679,13 @@ def post_metadata(
                 metadata_modified = True
                 metadata = result
 
-    key = entry.post_metadata(
+    key, node = await entry.create_node(
         metadata=body.metadata,
         structure_family=body.structure_family,
-        structure=body.structure,
+        key=body.id,
         specs=body.specs,
         references=body.references,
+        data_sources=body.data_sources,
     )
     links = {}
     base_url = get_base_url(request)
@@ -670,7 +694,7 @@ def post_metadata(
     links["self"] = f"{base_url}/node/metadata/{path_str}"
     if body.structure_family == StructureFamily.array:
         block_template = ",".join(
-            f"{{{index}}}" for index in range(len(body.structure.macro.shape))
+            f"{{{index}}}" for index in range(len(node.structure.macro.shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -678,7 +702,7 @@ def post_metadata(
         # Different from array because of structure.macro.shape vs structure.shape
         # Can be unified if we drop macro/micro namespace.
         block_template = ",".join(
-            f"{{{index}}}" for index in range(len(body.structure.shape))
+            f"{{{index}}}" for index in range(len(node.structure.shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -687,9 +711,16 @@ def post_metadata(
             "partition"
         ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
         links["full"] = f"{base_url}/node/full/{path_str}"
+    elif body.structure_family == StructureFamily.node:
+        links["full"] = f"{base_url}/node/full/{path_str}"
+        links["search"] = f"{base_url}/node/search/{path_str}"
     else:
         raise NotImplementedError(body.structure_family)
-    response_data = {"id": key, "links": links}
+    response_data = {
+        "id": key,
+        "links": links,
+        "data_sources": [ds.dict() for ds in node.data_sources],
+    }
     if metadata_modified:
         response_data["metadata"] = metadata
     return json_or_msgpack(request, response_data)
@@ -698,7 +729,7 @@ def post_metadata(
 @router.delete("/node/metadata/{path:path}")
 async def delete(
     request: Request,
-    entry=SecureEntry(scopes=["write:data", "write:metadata"]),
+    entry=SecureEntry(scopes=["write:data", "write:metadata"], kind=EntryKind.node),
 ):
     if hasattr(entry, "delete"):
         entry.delete()
@@ -713,14 +744,25 @@ async def delete(
 async def put_array_full(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
 ):
-    data = await request.body()
-    if hasattr(entry, "put_data"):
-        entry.put_data(data)
-    else:
+    body = await request.body()
+    if not hasattr(entry, "write"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept array data."
         )
+    media_type = request.headers["content-type"]
+    if entry.structure_family == "array":
+        dtype = entry.microstructure().to_numpy_dtype()
+        shape = entry.macrostructure().shape
+        deserializer = deserialization_registry.dispatch("array", media_type)
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
+    elif entry.structure_family == "sparse":
+        deserializer = deserialization_registry.dispatch("sparse", media_type)
+        data = await ensure_awaitable(deserializer, body)
+    else:
+        raise NotImplementedError(entry.structure_family)
+    await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
 
@@ -728,16 +770,30 @@ async def put_array_full(
 async def put_array_block(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
     block=Depends(block),
 ):
-    data = await request.body()
-
-    if hasattr(entry, "put_data"):
-        entry.put_data(data, block=block)
-    else:
+    if not hasattr(entry, "write_block"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept array data."
         )
+    from tiled.adapters.array import slice_and_shape_from_block_and_chunks
+
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    if entry.structure_family == "array":
+        dtype = entry.microstructure().to_numpy_dtype()
+        _, shape = slice_and_shape_from_block_and_chunks(
+            block, entry.macrostructure().chunks
+        )
+        deserializer = deserialization_registry.dispatch("array", media_type)
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
+    elif entry.structure_family == "sparse":
+        deserializer = deserialization_registry.dispatch("sparse", media_type)
+        data = await ensure_awaitable(deserializer, body)
+    else:
+        raise NotImplementedError(entry.structure_family)
+    await ensure_awaitable(entry.write_block, data, block)
     return json_or_msgpack(request, None)
 
 
@@ -745,15 +801,17 @@ async def put_array_block(
 async def put_dataframe_full(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
 ):
-    data = await request.body()
-
-    if hasattr(entry, "put_data"):
-        entry.put_data(data)
-    else:
+    if not hasattr(entry, "write"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."
         )
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    deserializer = deserialization_registry.dispatch("dataframe", media_type)
+    data = await ensure_awaitable(deserializer, body)
+    await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
 
@@ -762,27 +820,29 @@ async def put_dataframe_partition(
     partition: int,
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
 ):
-    data = await request.body()
-
-    if hasattr(entry, "put_data"):
-        entry.put_data(data, partition=partition)
-    else:
+    if not hasattr(entry, "write_partition"):
         raise HTTPException(
             status_code=405, detail="This path cannot accept dataframe data."
         )
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    deserializer = deserialization_registry.dispatch("dataframe", media_type)
+    data = await ensure_awaitable(deserializer, body)
+    await ensure_awaitable(entry.write_partition, data, partition)
     return json_or_msgpack(request, None)
 
 
-@router.put("/node/metadata/{path:path}")
+@router.put("/node/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
 async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
-    entry=SecureEntry(scopes=["write:metadata"]),
+    entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
 ):
-    if not hasattr(entry, "put_metadata"):
+    if not hasattr(entry, "update_metadata"):
         raise HTTPException(
             status_code=405, detail="This path does not support update of metadata."
         )
@@ -826,7 +886,7 @@ async def put_metadata(
                 metadata_modified = True
                 metadata = result
 
-    entry.put_metadata(metadata=metadata, specs=specs, references=references)
+    await entry.update_metadata(metadata=metadata, specs=specs, references=references)
 
     response_data = {"id": entry.key}
     if metadata_modified:
@@ -835,22 +895,22 @@ async def put_metadata(
 
 
 @router.get("/node/revisions/{path:path}")
-async def node_revisions(
+async def get_revisions(
     request: Request,
     path: str,
     offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    entry=SecureEntry(scopes=["read:metadata"]),
+    entry=SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
-            status_code=405, detail="This path does not support update of metadata."
+            status_code=405, detail="This path does not support revisions."
         )
 
     base_url = get_base_url(request)
-    resource = construct_revisions_response(
+    resource = await construct_revisions_response(
         entry,
         base_url,
         "/node/revisions",
@@ -863,8 +923,10 @@ async def node_revisions(
 
 
 @router.delete("/node/revisions/{path:path}")
-async def revisions_delitem(
-    request: Request, n: int, entry=SecureEntry(scopes=["write:metadata"])
+async def delete_revision(
+    request: Request,
+    number: int,
+    entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
@@ -872,5 +934,5 @@ async def revisions_delitem(
             detail="This path does not support a del request for revisions.",
         )
 
-    entry.revisions.delete_revision(n)
+    await entry.delete_revision(number)
     return json_or_msgpack(request, None)

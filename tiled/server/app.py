@@ -101,6 +101,7 @@ def build_app(
     serialization_registry=None,
     compression_registry=None,
     validation_registry=None,
+    tasks=None,
     scalable=False,
 ):
     """
@@ -125,6 +126,16 @@ def build_app(
     query_registry = query_registry or get_query_registry()
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
+    tasks = tasks or {}
+    tasks.setdefault("startup", [])
+    tasks.setdefault("background", [])
+    tasks.setdefault("shutdown", [])
+    # The tasks are collected at config-parsing time off of the sub-trees.
+    # Collect the tasks off the root tree here, so that it works when
+    # a single tree is passed to build_app(...) directly, as happens in the tests.
+    tasks["startup"].extend(getattr(tree, "startup_tasks", []))
+    tasks["background"].extend(getattr(tree, "background_tasks", []))
+    tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
         if authentication.get("providers"):
@@ -416,11 +427,15 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     """
                 )
 
+        # Run startup tasks collected from trees (adapters).
+        for task in tasks.get("startup", []):
+            await task()
+
         # Stash these to cancel this on shutdown.
         app.state.tasks = []
         # Trees and Authenticators can run tasks in the background.
         background_tasks = []
-        background_tasks.extend(getattr(tree, "background_tasks", []))
+        background_tasks.extend(tasks.get("background_tasks", []))
         for authenticator in authenticators:
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
         for task in background_tasks or []:
@@ -559,6 +574,10 @@ Back up the database, and then run:
 
     @app.on_event("shutdown")
     async def shutdown_event():
+        # Run shutdown tasks collected from trees (adapters).
+        for task in tasks.get("shutdown", []):
+            await task()
+
         settings = app.dependency_overrides[get_settings]()
         if settings.database_uri is not None:
             from ..database.connection_pool import close_database_connection_pool

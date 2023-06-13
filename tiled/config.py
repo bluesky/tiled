@@ -12,6 +12,7 @@ from pathlib import Path
 
 import jsonschema
 
+from .adapters.mapping import MapAdapter
 from .media_type_registration import (
     compression_registry as default_compression_registry,
 )
@@ -52,6 +53,9 @@ def construct_build_app_kwargs(
     and used (and modified).
     """
     config = copy.deepcopy(config)  # Avoid mutating input.
+    startup_tasks = []
+    shutdown_tasks = []
+    background_tasks = []
     if query_registry is None:
         query_registry = default_query_registry
     if serialization_registry is None:
@@ -130,10 +134,17 @@ def construct_build_app_kwargs(
                 tree = obj(**args)
             else:
                 # Interpret obj as a tree *instance*.
+                if access_policy is not None:
+                    raise ValueError(
+                        f"Cannot apply access_policy to object {obj} which is already instantiated."
+                    )
                 tree = obj
             if segments in trees:
                 raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
             trees[segments] = tree
+            startup_tasks.extend(getattr(tree, "startup_tasks", []))
+            shutdown_tasks.extend(getattr(tree, "shutdown_tasks", []))
+            background_tasks.extend(getattr(tree, "background_tasks", []))
         if not len(trees):
             raise ValueError("Configuration contains no trees")
         if list(trees) == [()]:
@@ -144,8 +155,6 @@ def construct_build_app_kwargs(
         else:
             # There are one or more tree(s) to be served at
             # sub-paths. Merged them into one root MapAdapter.
-            from .adapters.mapping import MapAdapter
-
             # Map path segments to dicts containing Adapters at that path.
             root_mapping = {}
             index = {(): root_mapping}
@@ -202,6 +211,11 @@ def construct_build_app_kwargs(
         "serialization_registry": serialization_registry,
         "compression_registry": compression_registry,
         "validation_registry": validation_registry,
+        "tasks": {
+            "startup": startup_tasks,
+            "shutdown": shutdown_tasks,
+            "background": background_tasks,
+        },
     }
 
 

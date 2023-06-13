@@ -53,7 +53,16 @@ class DataFrameAdapter:
         )
 
     @classmethod
-    def read_csv(cls, *args, metadata=None, specs=None, references=None, **kwargs):
+    def read_csv(
+        cls,
+        *args,
+        metadata=None,
+        meta=None,
+        divisions=None,
+        specs=None,
+        references=None,
+        **kwargs,
+    ):
         """
         Read a CSV.
 
