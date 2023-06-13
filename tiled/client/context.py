@@ -12,7 +12,7 @@ import httpx
 import msgpack
 
 from .._version import get_versions
-from ..utils import DictView, Sentinel
+from ..utils import DictView, Sentinel, safe_json_dump
 from .auth import (
     DEFAULT_TOKEN_CACHE,
     CannotRefreshAuthentication,
@@ -602,7 +602,7 @@ class Context:
         request = self.http_client.build_request(
             "POST",
             path,
-            json=content,
+            content=safe_json_dump(content),
             # Submit CSRF token in both header and cookie.
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             headers={
@@ -622,7 +622,7 @@ class Context:
         request = self.http_client.build_request(
             "PUT",
             path,
-            json=content,
+            content=safe_json_dump(content),
             # Submit CSRF token in both header and cookie.
             # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
             headers={
