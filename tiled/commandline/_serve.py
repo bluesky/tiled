@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -99,7 +99,7 @@ def serve_catalog(
     database: str = typer.Argument(
         None, help="A filepath or database URI, e.g. 'catalog.db'"
     ),
-    read: list[str] = typer.Option(
+    read: List[str] = typer.Option(
         None,
         "--read",
         "-r",
