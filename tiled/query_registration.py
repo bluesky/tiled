@@ -7,7 +7,7 @@ This intentionally only uses built-in dataclasses, not pydantic models.
 import inspect
 from dataclasses import fields
 
-from .utils import DictView
+from .utils import DictView, UnsupportedQueryType
 
 
 class QueryRegistry:
@@ -123,7 +123,7 @@ class QueryTranslationRegistry:
             if base in lk:
                 lk[class_] = lk[base]
                 return lk[base]
-        raise TypeError(f"No dispatch for {class_}")
+        raise UnsupportedQueryType(class_.__name__)
 
     def __call__(self, arg, *args, **kwargs):
         """

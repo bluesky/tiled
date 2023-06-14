@@ -32,7 +32,7 @@ from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import Management, Node
 from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
-from ..utils import UNCHANGED, OneShotCachedMap, import_object
+from ..utils import UNCHANGED, OneShotCachedMap, UnsupportedQueryType, import_object
 from . import orm
 from .base import Base
 from .explain import ExplainAsyncSession
@@ -684,17 +684,18 @@ def contains(query, tree):
     if dialect_name == "sqlite":
         condition = _get_value(attr, type(query.value)).contains(query.value)
     else:
-        condition = attr.contains(type_coerce(query.value, orm.Node.metadata_.type))
+        raise UnsupportedQueryType("Contains")
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-# def specs(query, tree):
-#     conditions = []
-#     for spec in query.include:
-#         conditions.append(func.json_contains(orm.Node.specs, spec))
-#     for spec in query.exclude:
-#         conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
-#     return tree.new_variation(conditions=tree.conditions + conditions)
+def specs(query, tree):
+    raise UnsupportedQueryType("Specs")
+    # conditions = []
+    # for spec in query.include:
+    #     conditions.append(func.json_contains(orm.Node.specs, spec))
+    # for spec in query.exclude:
+    #     conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
+    # return tree.new_variation(conditions=tree.conditions + conditions)
 
 
 def in_or_not_in(query, tree, method):
@@ -703,9 +704,7 @@ def in_or_not_in(query, tree, method):
     if dialect_name == "sqlite":
         condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
     else:
-        condition = getattr(attr, method)(
-            type_coerce(query.value, orm.Node.metadata_.type)
-        )
+        raise UnsupportedQueryType("In/NotIn")
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
