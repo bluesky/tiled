@@ -1,3 +1,0 @@
-# These are needed by the client and server to transmit/receive arrays.
-dask[array]
-numpy

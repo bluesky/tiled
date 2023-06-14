@@ -32,14 +32,125 @@ classifiers = [
 
 dynamic = ["version"]
 
-[tool.hatch]
-version.source = "vcs"
-build.hooks.vcs.version-file = "tiled/_version.py"
+[project.scripts]
+tiled = "tiled.commandline.main:main"
+
+[project.optional-dependencies]
+# These are needed by the client and server to transmit/receive arrays.
+array = [
+    "dask[array]",
+    "numpy",
+]
+# These are the requirements needed for basic client functionality.
+minimal-client = [
+    "appdirs",
+    "click !=8.1.0",
+    "entrypoints",
+    "heapdict",
+    "httpx >=0.20.0,!=0.23.1",
+    "jsonschema",
+    "msgpack >=1.0.0",
+    "pyyaml",
+    "typer",
+]
+# These are used by the client/server to more efficiently compress.
+# They fall back to gzip (which is slower) if these are not installed.
+compression = [
+    "blosc",
+    "lz4",
+    "zstandard",
+]
+# These are needed by the client and server to transmit/receive dataframes.
+dataframe = [
+    "dask[dataframe]",
+    "pandas",
+    "pyarrow",
+]
+# These are required for developing the package (running the tests, building
+# the documentation) but not necessarily required for _using_ it.
+dev = [
+    "coverage",
+    "flake8",
+    "ldap3",
+    "pre-commit",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-rerunfailures",
+    "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
+    "# These are dependencies of various sphinx extensions for documentation.",
+    "ipython",
+    "matplotlib",
+    "mistune <2.0.0  # temporary while sphinx sorts this out",
+    "myst-parser",
+    "numpydoc",
+    "sphinx-click",
+    "sphinx-copybutton",
+    "sphinx_rtd_theme",
+]
+# These are used by the server to read files in the respective formats.
+formats = [
+    "h5py",
+    "h5netcdf",
+    "openpyxl",
+    "pillow",
+    "tifffile",
+]
+# These are the requirements needed for basic server functionality.
+minimal-server = [
+    "aiofiles",
+    "aiosqlite",
+    "alembic",
+    "anyio",
+    "appdirs",
+    "cachey",
+    "cachetools",
+    "click !=8.1.0",
+    "dask",
+    "fastapi",
+    "httpx >=0.20.0,!=0.23.1",
+    "jinja2",
+    "jmespath",
+    "jsonschema",
+    "msgpack >=1.0.0",
+    "orjson",
+    "packaging",
+    "parquet",
+    "psutil",
+    "prometheus_client",
+    "pydantic >=1.8.2",
+    "python-dateutil",
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pyyaml",
+    "sqlalchemy >=2",
+    "starlette",
+    "toolz",
+    "typer",
+    "uvicorn[standard]",
+    "watchgod",
+    "zarr",
+]
+sparse = [
+    "ndindex",
+    "pyarrow",
+    "sparse",
+]
+# These are needed by the client and server to transmit/receive xarrays.
+xarray = [
+    "dask[array]",
+    "pandas",
+    "pyarrow",
+    "xarray",
+]
 
 [project.urls]
 Homepage = "https://github.com/bluesky/tiled"
 Documentation = "https://blueskyproject.io/tiled"
 "Bug Tracker" = "https://github.com/bluesky/tiled/issues"
+
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "tiled/_version.py"
 
 [tool.black]
 line-length = 88
