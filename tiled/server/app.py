@@ -29,7 +29,7 @@ from ..validation_registration import validation_registry as default_validation_
 from . import schemas
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
-from .core import PatchedStreamingResponse, json_or_msgpack
+from .core import PatchedStreamingResponse
 from .dependencies import (
     get_query_registry,
     get_root_tree,
@@ -255,11 +255,10 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     @app.exception_handler(UnsupportedQueryType)
     async def unicorn_exception_handler(request: Request, exc: UnsupportedQueryType):
         query_type = exc.args[0]
-        return json_or_msgpack(
-            request,
+        return JSONResponse(
             status_code=400,
             content={
-                "detail": f"The query type {query_type} is not supported on this node."
+                "detail": f"The query type {query_type!r} is not supported on this node."
             },
         )
 
