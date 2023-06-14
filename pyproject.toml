@@ -14,9 +14,10 @@ maintainers = [
 ]
 requires-python = ">=3.7"
 
-dependencies = [
-  "numpy>=1.13.3",
-]
+# All dependencies are optional; it depends on whether you are running
+# a client or server (or both) and what data structures you care about.
+# Use pip install tiled[all] to get everything.
+dependencies = []
 
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -36,6 +37,63 @@ dynamic = ["version"]
 tiled = "tiled.commandline.main:main"
 
 [project.optional-dependencies]
+# When updating the dependencies, make sure to coordinate changes with the list
+# 'all', 'server' and 'client', which aggregate dependencies from other more
+# finely-targeted lists.
+
+# This is the union of all optional dependencies.
+all = [
+    "aiofiles",
+    "aiosqlite",
+    "alembic",
+    "anyio",
+    "appdirs",
+    "blosc",
+    "cachetools",
+    "cachey",
+    "click !=8.1.0",
+    "dask",
+    "dask[array]",
+    "dask[dataframe]",
+    "entrypoints",
+    "fastapi",
+    "h5netcdf",
+    "h5py",
+    "heapdict",
+    "httpx >=0.20.0,!=0.23.1",
+    "jinja2",
+    "jmespath",
+    "jsonschema",
+    "lz4",
+    "msgpack >=1.0.0",
+    "ndindex",
+    "numpy",
+    "openpyxl",
+    "orjson",
+    "packaging",
+    "pandas",
+    "parquet",
+    "pillow",
+    "prometheus_client",
+    "psutil",
+    "pyarrow",
+    "pydantic >=1.8.2",
+    "python-dateutil",
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pyyaml",
+    "sparse",
+    "sqlalchemy >=2",
+    "starlette",
+    "tifffile",
+    "toolz",
+    "typer",
+    "uvicorn[standard]",
+    "watchgod",
+    "xarray",
+    "zarr",
+    "zstandard",
+]
 # These are needed by the client and server to transmit/receive arrays.
 array = [
     "dask[array]",
