@@ -327,7 +327,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             result = client_for_item(self.context, self.structure_clients, item)
         return result
 
-    def __delitem__(self, key):
+    def delete(self, key):
         self._cached_len = None
         self.context.delete_content(f"{self.uri}/{key}", None)
 

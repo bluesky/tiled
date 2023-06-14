@@ -248,6 +248,28 @@ class Node(NodeAttributes):
             ).all()
             return [Revision.from_orm(o[0]) for o in revision_orms]
 
+    async def delete(self):
+        async with self._context.session() as db:
+            # TODO Abstract this from FastAPI?
+            from fastapi import HTTPException
+            from sqlalchemy import delete
+
+            from tiled.catalog import orm
+
+            result = await db.execute(
+                delete(orm.Node).where(orm.Node.id == self._node.id)
+            )
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No node {self._node.id}",
+                )
+            if result.rowcount > 1:
+                assert (
+                    False
+                ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            await db.commit()
+
     async def delete_revision(self, number):
         async with self._context.session() as db:
             # TODO Abstract this from FastAPI?
