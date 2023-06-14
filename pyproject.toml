@@ -41,17 +41,28 @@ array = [
     "dask[array]",
     "numpy",
 ]
-# These are the requirements needed for basic client functionality.
-minimal-client = [
+# This is the "kichen sink" fully-featured client dependency set.
+client = [
     "appdirs",
+    "blosc",
     "click !=8.1.0",
+    "dask[array]",
+    "dask[dataframe]",
     "entrypoints",
     "heapdict",
     "httpx >=0.20.0,!=0.23.1",
     "jsonschema",
+    "lz4",
     "msgpack >=1.0.0",
+    "ndindex",
+    "numpy",
+    "pandas",
+    "pyarrow",
     "pyyaml",
+    "sparse",
     "typer",
+    "xarray",
+    "zstandard",
 ]
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
@@ -95,6 +106,18 @@ formats = [
     "pillow",
     "tifffile",
 ]
+# These are the requirements needed for basic client functionality.
+minimal-client = [
+    "appdirs",
+    "click !=8.1.0",
+    "entrypoints",
+    "heapdict",
+    "httpx >=0.20.0,!=0.23.1",
+    "jsonschema",
+    "msgpack >=1.0.0",
+    "pyyaml",
+    "typer",
+]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
     "aiofiles",
@@ -129,6 +152,51 @@ minimal-server = [
     "uvicorn[standard]",
     "watchgod",
     "zarr",
+]
+server = [
+    "aiofiles",
+    "aiosqlite",
+    "alembic",
+    "anyio",
+    "appdirs",
+    "blosc",
+    "cachetools",
+    "cachey",
+    "click !=8.1.0",
+    "dask",
+    "dask[array]",
+    "dask[dataframe]",
+    "fastapi",
+    "httpx >=0.20.0,!=0.23.1",
+    "jinja2",
+    "jmespath",
+    "jsonschema",
+    "lz4",
+    "msgpack >=1.0.0",
+    "ndindex",
+    "numpy",
+    "orjson",
+    "packaging",
+    "pandas",
+    "parquet",
+    "prometheus_client",
+    "psutil",
+    "pyarrow",
+    "pydantic >=1.8.2",
+    "python-dateutil",
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pyyaml",
+    "sparse",
+    "sqlalchemy >=2",
+    "starlette",
+    "toolz",
+    "typer",
+    "uvicorn[standard]",
+    "watchgod",
+    "xarray",
+    "zarr",
+    "zstandard",
 ]
 sparse = [
     "ndindex",
