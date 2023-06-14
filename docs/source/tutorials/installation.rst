@@ -78,7 +78,8 @@ exploring metadata.
    python3 -m pip install 'tiled[minimal-client]'
    python3 -m pip install 'tiled[minimal-server]'
 
-See the files named `requirements-*.txt` in the repository root for details.
+See lists of dependencies in `pyproject.toml` in the repository root for
+details.
 
 Source
 ------
