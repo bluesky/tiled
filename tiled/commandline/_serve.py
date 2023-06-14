@@ -187,6 +187,7 @@ def serve_catalog(
         database = f"sqlite+aiosqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
         if write is None:
             write = directory / DATA_SUBDIRECTORY
+            write.mkdir()
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
 
     tree_kwargs = {}
