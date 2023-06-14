@@ -723,7 +723,7 @@ def resolve_media_type(request):
     return media_type
 
 
-def json_or_msgpack(request, content, expires=None, headers=None):
+def json_or_msgpack(request, content, expires=None, headers=None, status_code=200):
     media_type = resolve_media_type(request)
     with record_timing(request.state.metrics, "tok"):
         etag = md5(str(content).encode()).hexdigest()
@@ -735,9 +735,14 @@ def json_or_msgpack(request, content, expires=None, headers=None):
         # If the client already has this content, confirm that.
         return Response(status_code=304, headers=headers)
     if media_type == "application/x-msgpack":
-        return MsgpackResponse(content, headers=headers, metrics=request.state.metrics)
+        return MsgpackResponse(
+            content,
+            headers=headers,
+            metrics=request.state.metrics,
+            status_code=status_code,
+        )
     return NumpySafeJSONResponse(
-        content, headers=headers, metrics=request.state.metrics
+        content, headers=headers, metrics=request.state.metrics, status_code=status_code
     )
 
 

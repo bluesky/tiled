@@ -1,10 +1,14 @@
+import asyncio
 import string
+from contextlib import nullcontext
 
 import numpy
 import pytest
+import pytest_asyncio
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
+from ..catalog import from_uri, in_memory
 from ..client import Context, from_context
 from ..queries import (
     Comparison,
@@ -13,6 +17,7 @@ from ..queries import (
     FullText,
     In,
     Key,
+    KeysFilter,
     NotEq,
     NotIn,
     Regex,
@@ -20,6 +25,8 @@ from ..queries import (
     StructureFamily,
 )
 from ..server.app import build_app
+from .conftest import TILED_TEST_POSTGRESQL_URI
+from .utils import fail_with_status_code, temp_postgres
 
 keys = list(string.ascii_lowercase)
 mapping = {
@@ -35,17 +42,59 @@ mapping["does_not_contain_z"] = ArrayAdapter.from_array(
     numpy.ones(10), metadata={"letters": list(string.ascii_lowercase[:-1])}
 )
 
-mapping["specs_foo_bar"] = MapAdapter({}, specs=["foo", "bar"])
-mapping["specs_foo_bar_baz"] = MapAdapter({}, specs=["foo", "bar", "baz"])
-tree = MapAdapter(mapping)
+mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo", "bar"])
+mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
+    numpy.ones(10), specs=["foo", "bar", "baz"]
+)
 
 
 @pytest.fixture(scope="module")
-def client():
-    app = build_app(tree)
-    with Context.from_app(app) as context:
-        client = from_context(context)
-        yield client
+def event_loop():
+    # https://stackoverflow.com/a/56238383/1221924
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest_asyncio.fixture(scope="module", params=["map", "sqlite", "postgresql"])
+async def client(request, tmpdir_module):
+    if request.param == "map":
+        tree = MapAdapter(mapping, metadata={"backend": request.param})
+        app = build_app(tree)
+        with Context.from_app(app) as context:
+            client = from_context(context)
+            yield client
+    elif request.param == "sqlite":
+        tree = in_memory(
+            writable_storage=tmpdir_module / "sqlite",
+            metadata={"backend": request.param},
+        )
+        app = build_app(tree)
+        with Context.from_app(app) as context:
+            client = from_context(context)
+            for k, v in mapping.items():
+                client.write_array(v.read(), key=k, metadata=dict(v.metadata))
+            yield client
+    elif request.param == "postgresql":
+        if not TILED_TEST_POSTGRESQL_URI:
+            raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+        # Create temporary database.
+        async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
+            tree = from_uri(
+                uri_with_database_name,
+                writable_storage=str(tmpdir_module / "postgresql"),
+                initialize_database_at_startup=True,
+                metadata={"backend": request.param},
+            )
+            app = build_app(tree)
+            with Context.from_app(app) as context:
+                client = from_context(context)
+                # Write data into catalog.
+                for k, v in mapping.items():
+                    client.write_array(v.read(), key=k, metadata=dict(v.metadata))
+                yield client
+    else:
+        assert False
 
 
 def test_key(client):
@@ -84,23 +133,54 @@ def test_comparison(client):
 
 
 def test_contains(client):
-    assert list(client.search(Contains("letters", "z"))) == ["does_contain_z"]
+    if client.metadata["backend"] == "postgresql":
+
+        def cm():
+            return fail_with_status_code(400)
+
+    else:
+        cm = nullcontext
+    with cm():
+        assert list(client.search(Contains("letters", "z"))) == ["does_contain_z"]
 
 
 def test_full_text(client):
-    assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
+    if client.metadata["backend"] in {"postgresql", "sqlite"}:
+
+        def cm():
+            return fail_with_status_code(400)
+
+    else:
+        cm = nullcontext
+    with cm():
+        assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
 
 
 def test_regex(client):
-    assert list(client.search(Regex("letter", "^z$"))) == ["z"]
-    assert (
-        list(client.search(Regex("letter", "^Z$"))) == []
-    )  # default case_sensitive=True
-    assert list(client.search(Regex("letter", "^Z$", case_sensitive=False))) == ["z"]
-    assert list(client.search(Regex("letter", "^Z$", case_sensitive=True))) == []
-    assert list(client.search(Regex("letter", "[a-c]"))) == ["a", "b", "c"]
-    # Check that if the key is not a string it is ignored.
-    assert list(client.search(Regex("letters", "anything"))) == []
+    if client.metadata["backend"] in {"postgresql", "sqlite"}:
+
+        def cm():
+            return fail_with_status_code(400)
+
+    else:
+        cm = nullcontext
+    with cm():
+        assert list(client.search(Regex("letter", "^z$"))) == ["z"]
+    with cm():
+        assert (
+            list(client.search(Regex("letter", "^Z$"))) == []
+        )  # default case_sensitive=True
+    with cm():
+        assert list(client.search(Regex("letter", "^Z$", case_sensitive=False))) == [
+            "z"
+        ]
+    with cm():
+        assert list(client.search(Regex("letter", "^Z$", case_sensitive=True))) == []
+    with cm():
+        assert list(client.search(Regex("letter", "[a-c]"))) == ["a", "b", "c"]
+    with cm():
+        # Check that if the key is not a string it is ignored.
+        assert list(client.search(Regex("letters", "anything"))) == []
 
 
 def test_not_and_and_or(client):
@@ -122,7 +202,19 @@ def test_not_and_and_or(client):
     ],
 )
 def test_in(client, query_values):
-    assert sorted(list(client.search(In("letter", query_values)))) == ["a", "k", "z"]
+    if client.metadata["backend"] == "postgresql":
+
+        def cm():
+            return fail_with_status_code(400)
+
+    else:
+        cm = nullcontext
+    with cm():
+        assert sorted(list(client.search(In("letter", query_values)))) == [
+            "a",
+            "k",
+            "z",
+        ]
 
 
 @pytest.mark.parametrize(
@@ -135,9 +227,17 @@ def test_in(client, query_values):
     ],
 )
 def test_notin(client, query_values):
-    assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
-        list(set(keys) - set(["a", "k", "z"]))
-    )
+    if client.metadata["backend"] == "postgresql":
+
+        def cm():
+            return fail_with_status_code(400)
+
+    else:
+        cm = nullcontext
+    with cm():
+        assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
+            list(set(keys) - set(["a", "k", "z"]))
+        )
 
 
 @pytest.mark.parametrize(
@@ -150,22 +250,35 @@ def test_notin(client, query_values):
     ],
 )
 def test_specs(client, include_values, exclude_values):
+    if client.metadata["backend"] in {"postgresql", "sqlite"}:
+
+        def cm():
+            return fail_with_status_code(400)
+
+    else:
+        cm = nullcontext
     with pytest.raises(TypeError):
         Specs("foo")
 
-    assert sorted(list(client.search(Specs(include=include_values)))) == sorted(
-        ["specs_foo_bar", "specs_foo_bar_baz"]
-    )
+    with cm():
+        assert sorted(list(client.search(Specs(include=include_values)))) == sorted(
+            ["specs_foo_bar", "specs_foo_bar_baz"]
+        )
 
-    assert list(
-        client.search(Specs(include=include_values, exclude=exclude_values))
-    ) == ["specs_foo_bar"]
+    with cm():
+        assert list(
+            client.search(Specs(include=include_values, exclude=exclude_values))
+        ) == ["specs_foo_bar"]
 
 
 def test_structure_families(client):
     with pytest.raises(ValueError):
         StructureFamily("foo")
 
-    assert list(client.search(StructureFamily("node"))) == sorted(
-        ["specs_foo_bar", "specs_foo_bar_baz"]
-    )
+    assert set(client.search(StructureFamily("array"))) == set(mapping)
+
+
+def test_keys_filter(client):
+    expected = ["a", "b", "c"]
+    results = client.search(KeysFilter(keys=expected))
+    assert set(results) == set(expected)

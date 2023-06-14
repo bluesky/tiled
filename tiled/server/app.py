@@ -24,12 +24,12 @@ from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
-from ..utils import SHARE_TILED_PATH
+from ..utils import SHARE_TILED_PATH, UnsupportedQueryType
 from ..validation_registration import validation_registry as default_validation_registry
 from . import schemas
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
-from .core import PatchedStreamingResponse
+from .core import PatchedStreamingResponse, json_or_msgpack
 from .dependencies import (
     get_query_registry,
     get_root_tree,
@@ -251,6 +251,17 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                     "binder_link": os.getenv("TILED_BINDER_LINK"),
                 },
             )
+
+    @app.exception_handler(UnsupportedQueryType)
+    async def unicorn_exception_handler(request: Request, exc: UnsupportedQueryType):
+        query_type = exc.args[0]
+        return json_or_msgpack(
+            request,
+            status_code=400,
+            content={
+                "detail": f"The query type {query_type} is not supported on this node."
+            },
+        )
 
     # This list will be mutated when settings are processed at app startup.
     app.state.allow_origins = []
