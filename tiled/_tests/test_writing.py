@@ -3,6 +3,7 @@ This tests tiled's writing routes with an in-memory store.
 
 Persistent stores are being developed externally to the tiled package.
 """
+from datetime import datetime
 
 import dask.dataframe
 import numpy
@@ -341,3 +342,14 @@ def test_metadata_revisions(tree):
         assert len(ac.metadata_revisions[:]) == 1
         with fail_with_status_code(404):
             ac.metadata_revisions.delete_revision(1)
+
+
+def test_metadata_with_unsafe_objects(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array(
+            [1, 2, 3],
+            metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
+        )
+        ac.metadata
+        ac.read()
