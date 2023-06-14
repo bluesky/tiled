@@ -77,10 +77,10 @@ dev = [
     "pytest-asyncio",
     "pytest-rerunfailures",
     "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
-    "# These are dependencies of various sphinx extensions for documentation.",
+    # These are dependencies of various sphinx extensions for documentation.
     "ipython",
     "matplotlib",
-    "mistune <2.0.0  # temporary while sphinx sorts this out",
+    "mistune <2.0.0",  # temporary while sphinx sorts this out,
     "myst-parser",
     "numpydoc",
     "sphinx-click",
