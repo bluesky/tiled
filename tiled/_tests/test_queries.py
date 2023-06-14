@@ -50,7 +50,7 @@ mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
 @pytest.fixture(scope="module")
 def event_loop():
     # https://stackoverflow.com/a/56238383/1221924
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     yield loop
     loop.close()
 
