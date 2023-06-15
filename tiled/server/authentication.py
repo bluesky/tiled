@@ -53,6 +53,7 @@ from ..authn_database.core import (
 from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
+from .protocols import UsernamePasswordAuthenticator, UserSessionState
 from .settings import get_settings
 from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
@@ -365,7 +366,7 @@ async def create_pending_session(db):
     }
 
 
-async def create_session(settings, db, identity_provider, id):
+async def create_session(settings, db, identity_provider, id, state: UserSessionState = None):
     # Have we seen this Identity before?
     identity = (
         await db.execute(
@@ -404,6 +405,7 @@ async def create_session(settings, db, identity_provider, id):
     session = orm.Session(
         principal_id=principal.id,
         expiration_time=utcnow() + settings.session_max_age,
+        state=state
     )
     db.add(session)
     await db.commit()
@@ -650,7 +652,7 @@ def build_device_code_token_route(authenticator, provider):
     return route
 
 
-def build_handle_credentials_route(authenticator, provider):
+def build_handle_credentials_route(authenticator: UsernamePasswordAuthenticator, provider):
     "Register a handle_credentials route function for this Authenticator."
 
     async def route(
@@ -660,16 +662,16 @@ def build_handle_credentials_route(authenticator, provider):
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        username = await authenticator.authenticate(
+        user_session_state = await authenticator.authenticate(
             username=form_data.username, password=form_data.password
         )
-        if not username:
+        if not user_session_state or not user_session_state.user_name:
             raise HTTPException(
                 status_code=401,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        session = await create_session(settings, db, provider, username)
+        session = await create_session(settings, db, provider, user_session_state.user_name, state = user_session_state.state)
         tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 

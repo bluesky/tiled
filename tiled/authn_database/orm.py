@@ -8,10 +8,12 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     LargeBinary,
     Table,
     Unicode,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
@@ -19,6 +21,8 @@ from sqlalchemy.types import TypeDecorator
 from ..server.schemas import PrincipalType
 from .base import Base
 
+# Use JSON with SQLite and JSONB with PostgreSQL.
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 class JSONList(TypeDecorator):
     """Represents an immutable structure as a JSON-encoded list.
@@ -201,7 +205,7 @@ class Session(Timestamped, Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
-
+    state = Column(JSONVariant, nullable=True)
     principal = relationship("Principal", back_populates="sessions", lazy="joined")
 
 
