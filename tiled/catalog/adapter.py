@@ -560,6 +560,9 @@ class CatalogNodeAdapter(BaseAdapter):
     # async def patch_node(datasources=None):
     #     ...
 
+    async def read(self, fields=None):
+        return self.search(KeysFilter(fields))
+
     async def keys_range(self, offset, limit):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
