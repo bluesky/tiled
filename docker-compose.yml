@@ -2,7 +2,7 @@ version: "3.2"
 services:
   tiled:
     build:
-      contenxt: .
+      context: .
     volumes:
       - type: bind
         source: ./example_configs/
