@@ -9,6 +9,7 @@ services:
         target: /storage
     environment:
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
+      - TILED_INIT_CATALOG_DB=${TILED_INIT_CATALOG_DB}
     ports:
       - 8000:8000
     restart: unless-stopped

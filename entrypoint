@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if [ ! -z "${TILED_INIT_CATALOG_DB}" ]
+then
+	echo "Initializing catalog database: ${TILED_CATALOG_DB}"
+	tiled catalog init "${TILED_CATALOG_DB}"
+	echo "Initialized catalog database: ${TILED_CATALOG_DB}"
+fi
+
+exec "$@"

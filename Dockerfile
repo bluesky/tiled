@@ -57,8 +57,13 @@ ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 
+COPY ./entrypoint /usr/local/bin/entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
+ENV TILED_CATALOG_DB="/storage/catalog.db"
+
 WORKDIR /deploy
 
 EXPOSE 8000
 
-CMD ["tiled", "serve", "catalog", "/storage/catalog.db", "--write", "/storage/data", "--host", "0.0.0.0", "--port", "8000", "--scalable"]
+# Invoke the shell (bash -c ...) to enable variable expansion of ${TILED_CATALOG_DB}.
+CMD ["bash", "-c", "tiled serve catalog --write /storage/data --host 0.0.0.0 --port 8000 --scalable ${TILED_CATALOG_DB}"]

@@ -7,13 +7,25 @@ can be visualized in dashboards using, for example,
 
 ![Grafana Dashboard with Tiled metrics](../_static/grafana-screenshot.png)
 
+## Try Tiled with the Dashboard
+
 Tiled ships with some example configuration to make it easy to try this.
 
 1. Install [Podman](https://podman.io/) (recommended) or Docker (also works).
 
 2. Install `podman-compose` or `docker-compose`. Either can be installed using `pip install`.
 
-3. Run `TILED_SINGLE_USER_API_KEY=secret podman-compose up`.
+3. For the first use, run:
+
+   ```
+   TILED_INIT_CATALOG_DB=1 TILED_SINGLE_USER_API_KEY=secret podman-compose up
+   ```
+
+   The `TILED_INIT_CATALOG_DB` parameter creates and initializes a database
+   at the path `./storage/catalog.db` that Tiled uses to store metadata.
+
+   If you restart the container later, omit `TILED_INIT_CATALOG_DB`; the
+   catalog database is already initialized.
 
 4. Open Grafana by navigating a web browser to
    [http://localhost:3000/d/Hnvd_TA4z/tiled-dashboard](http://localhost:3000/d/Hnvd_TA4z/tiled-dashboard).
