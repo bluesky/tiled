@@ -10,7 +10,8 @@ FROM python:3.10-slim as builder
 # We need git at build time in order for versioneer to work, which in turn is
 # needed for the server to correctly report the library_version in the /api/v1/
 # route.
-RUN apt-get -y update && apt-get install -y git
+# We need gcc to compile thriftpy2, a secondary dependency.
+RUN apt-get -y update && apt-get install -y git gcc
 
 WORKDIR /code
 
@@ -28,7 +29,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Copy requirements over first so this layer is cached and we don't have to
 # reinstall dependencies when only the tiled source has changed.
 COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-sparse.txt requirements-compression.txt /code/
-RUN pip install --upgrade --no-cache-dir pip wheel
+RUN pip install --upgrade --no-cache-dir cython pip wheel
 RUN pip install --upgrade --no-cache-dir \
   -r /code/requirements-array.txt \
   -r /code/requirements-compression.txt \
