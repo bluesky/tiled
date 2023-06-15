@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+# Initialize the catalog database if TILED_INIT_CATALOG_DB is set.
+# This approach is inspired by the way the official MongoDB container works.
 if [ ! -z "${TILED_INIT_CATALOG_DB}" ]
 then
 	echo "Initializing catalog database: ${TILED_CATALOG_DB}"
