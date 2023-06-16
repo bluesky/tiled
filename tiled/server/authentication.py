@@ -366,7 +366,9 @@ async def create_pending_session(db):
     }
 
 
-async def create_session(settings, db, identity_provider, id, state: UserSessionState = None):
+async def create_session(
+    settings, db, identity_provider, id, state: UserSessionState = None
+):
     # Have we seen this Identity before?
     identity = (
         await db.execute(
@@ -405,7 +407,7 @@ async def create_session(settings, db, identity_provider, id, state: UserSession
     session = orm.Session(
         principal_id=principal.id,
         expiration_time=utcnow() + settings.session_max_age,
-        state=state
+        state=state,
     )
     db.add(session)
     await db.commit()
@@ -652,7 +654,9 @@ def build_device_code_token_route(authenticator, provider):
     return route
 
 
-def build_handle_credentials_route(authenticator: UsernamePasswordAuthenticator, provider):
+def build_handle_credentials_route(
+    authenticator: UsernamePasswordAuthenticator, provider
+):
     "Register a handle_credentials route function for this Authenticator."
 
     async def route(
@@ -671,7 +675,13 @@ def build_handle_credentials_route(authenticator: UsernamePasswordAuthenticator,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        session = await create_session(settings, db, provider, user_session_state.user_name, state = user_session_state.state)
+        session = await create_session(
+            settings,
+            db,
+            provider,
+            user_session_state.user_name,
+            state=user_session_state.state,
+        )
         tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
