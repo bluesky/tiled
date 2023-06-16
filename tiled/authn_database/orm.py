@@ -2,13 +2,13 @@ import json
 import uuid as uuid_module
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
-    JSON,
     LargeBinary,
     Table,
     Unicode,
