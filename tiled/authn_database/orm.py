@@ -25,6 +25,7 @@ from .base import Base
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
+
 class JSONList(TypeDecorator):
     """Represents an immutable structure as a JSON-encoded list.
 
