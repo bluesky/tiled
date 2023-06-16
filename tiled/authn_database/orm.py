@@ -9,7 +9,6 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
-    JSON,
     LargeBinary,
     Table,
     Unicode,
