@@ -1,8 +1,7 @@
 version: "3.2"
 services:
   tiled:
-    build:
-      contenxt: .
+    image: ghcr.io/bluesky/tiled:v0.1.0a96
     volumes:
       - type: bind
         source: ./example_configs/
