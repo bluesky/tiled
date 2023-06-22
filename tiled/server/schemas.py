@@ -264,10 +264,9 @@ class Node(NodeAttributes):
                     status_code=404,
                     detail=f"No node {self._node.id}",
                 )
-            if result.rowcount > 1:
-                assert (
-                    False
-                ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            assert (
+                result.rowcount == 1
+            ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
     async def delete_revision(self, number):
@@ -288,10 +287,9 @@ class Node(NodeAttributes):
                     status_code=404,
                     detail=f"No revision {number} for node {self._node.id}",
                 )
-            if result.rowcount > 1:
-                assert (
-                    False
-                ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            assert (
+                result.rowcount > 1
+            ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
     async def update_metadata(self, metadata=None, specs=None, references=None):
