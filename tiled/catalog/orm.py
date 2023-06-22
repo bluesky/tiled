@@ -100,13 +100,11 @@ data_source_asset_association_table = Table(
         "data_source_id",
         Integer,
         ForeignKey("data_sources.id", ondelete="CASCADE"),
-        primary_key=True,
     ),
     Column(
         "asset_id",
         Integer,
         ForeignKey("assets.id", ondelete="CASCADE"),
-        primary_key=True,
     ),
 )
 
