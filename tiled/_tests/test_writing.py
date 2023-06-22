@@ -353,3 +353,50 @@ def test_metadata_with_unsafe_objects(tree):
         )
         ac.metadata
         ac.read()
+
+
+@pytest.mark.asyncio
+async def test_delete(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.write_array(
+            [1, 2, 3],
+            metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
+            key="x",
+        )
+        nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_before_delete) == 1
+        data_sources_before_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_before_delete) == 1
+        assets_before_delete = (
+            await tree.context.execute("SELECT * from assets")
+        ).all()
+        assert len(assets_before_delete) == 1
+
+        # Writing again with the same name fails.
+        with fail_with_status_code(409):
+            client.write_array(
+                [1, 2, 3],
+                metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
+                key="x",
+            )
+
+        client.delete("x")
+
+        nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_after_delete) == 0
+        data_sources_after_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_after_delete) == 0
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 0
+
+        # Writing again with the same name works now.
+        client.write_array(
+            [1, 2, 3],
+            metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
+            key="x",
+        )

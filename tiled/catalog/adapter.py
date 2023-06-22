@@ -11,7 +11,9 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import httpx
+from fastapi import HTTPException
 from sqlalchemy import event, func, text, type_coerce
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
@@ -260,11 +262,12 @@ class Context:
     #                 await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
     #             await db.commit()
 
-    async def _execute(self, statement, explain=None):
+    async def execute(self, statement, explain=None):
         "Debugging convenience utility, not exposed to server"
-        async with self.context.session() as db:
-            return await db.execute(text(statement), explain=explain)
+        async with self.session() as db:
+            result = await db.execute(text(statement), explain=explain)
             await db.commit()
+            return result
 
 
 class BaseAdapter:
@@ -483,6 +486,22 @@ class CatalogNodeAdapter(BaseAdapter):
             # TODO Consider using nested transitions to ensure that
             # both the node is created (name not already taken)
             # and the directory/file is created---or neither are.
+            try:
+                db.add(node)
+                await db.commit()
+            except IntegrityError as exc:
+                UNIQUE_CONSTRAINT_FAILED = "gkpj"
+                if exc.code == UNIQUE_CONSTRAINT_FAILED:
+                    await db.rollback()
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Cannot create new node here because path is already taken: "
+                            f"{'/'.join(self.segments + [key])}"
+                        ),
+                    )
+                raise
+            await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
                     data_source.mimetype = DEFAULT_CREATION_MIMETYPE[structure_family]
@@ -521,7 +540,7 @@ class CatalogNodeAdapter(BaseAdapter):
                     parameters=data_source.parameters,
                 )
                 node.data_sources.append(data_source_orm)
-                await db.flush(data_source_orm)
+                # await db.flush(data_source_orm)
                 for asset in data_source.assets:
                     asset_orm = orm.Asset(
                         data_uri=asset.data_uri,
