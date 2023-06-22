@@ -1,11 +1,20 @@
 import copy
+import shutil
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pydantic
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select, update
 
-from ..server.schemas import DataSource, NodeAttributes, Revision, SortingItem
+from ..server.schemas import (
+    DataSource,
+    Management,
+    NodeAttributes,
+    Revision,
+    SortingItem,
+)
 from . import orm
 
 
@@ -72,8 +81,8 @@ class Node(NodeAttributes):
         async with self._context.session() as db:
             revision_orms = (
                 await db.execute(
-                    select(orm.Revisions)
-                    .where(orm.Revisions.node_id == self._node.id)
+                    select(orm.Revision)
+                    .where(orm.Revision.node_id == self._node.id)
                     .offset(offset)
                     .limit(limit)
                 )
@@ -82,6 +91,16 @@ class Node(NodeAttributes):
 
     async def delete(self):
         async with self._context.session() as db:
+            for data_source in self.data_sources:
+                if data_source.management != Management.external:
+                    # TODO Handle case where the same Asset is associated
+                    # with multiple DataSources. This is not possible yet
+                    # but it is expected to become possible in the future.
+                    for asset in data_source.assets:
+                        delete_asset(asset)
+                        await db.execute(
+                            delete(orm.Asset).where(orm.Asset.id == asset.id)
+                        )
             result = await db.execute(
                 delete(orm.Node).where(orm.Node.id == self._node.id)
             )
@@ -99,9 +118,9 @@ class Node(NodeAttributes):
     async def delete_revision(self, number):
         async with self._context.session() as db:
             result = await db.execute(
-                delete(orm.Revisions)
-                .where(orm.Revisions.node_id == self._node.id)
-                .where(orm.Revisions.revision_number == number)
+                delete(orm.Revision)
+                .where(orm.Revision.node_id == self._node.id)
+                .where(orm.Revision.revision_number == number)
             )
             if result.rowcount == 0:
                 # TODO Abstract this from FastAPI?
@@ -131,14 +150,14 @@ class Node(NodeAttributes):
             next_revision_number = 1 + (
                 (
                     await db.execute(
-                        select(func.max(orm.Revisions.revision_number)).where(
-                            orm.Revisions.node_id == self._node.id
+                        select(func.max(orm.Revision.revision_number)).where(
+                            orm.Revision.node_id == self._node.id
                         )
                     )
                 ).scalar_one()
                 or 0
             )
-            revision = orm.Revisions(
+            revision = orm.Revision(
                 # Trailing underscore in 'metadata_' avoids collision with
                 # SQLAlchemy reserved word 'metadata'.
                 metadata_=current.metadata_,
@@ -152,3 +171,14 @@ class Node(NodeAttributes):
                 update(orm.Node).where(orm.Node.id == self._node.id).values(**values)
             )
             await db.commit()
+
+
+def delete_asset(asset):
+    url = urlparse(asset.data_uri)
+    if url.scheme == "file":
+        if asset.is_directory:
+            shutil.rmtree(url.path)
+        else:
+            Path(url.path).unlink()
+    else:
+        raise NotImplementedError(url.scheme)

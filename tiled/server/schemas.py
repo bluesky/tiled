@@ -102,10 +102,11 @@ Specs = pydantic.conlist(Spec, max_items=20)
 class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
+    id: Optional[int] = None
 
     @classmethod
     def from_orm(cls, orm):
-        return cls(data_uri=orm.data_uri, is_directory=orm.is_directory)
+        return cls(id=orm.id, data_uri=orm.data_uri, is_directory=orm.is_directory)
 
 
 class Management(str, enum.Enum):
@@ -136,6 +137,7 @@ class Revision(pydantic.BaseModel):
 
 
 class DataSource(pydantic.BaseModel):
+    id: Optional[int] = None
     structure: Optional[
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ] = None
@@ -156,6 +158,7 @@ class DataSource(pydantic.BaseModel):
         else:
             structure = orm.structure
         return cls(
+            id=orm.id,
             structure=structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,

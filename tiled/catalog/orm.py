@@ -73,6 +73,11 @@ class Node(Timestamped, Base):
         lazy="selectin",
         passive_deletes=True,
     )
+    revisions = relationship(
+        "Revision",
+        backref="revisions",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("key", "ancestors", name="key_ancestors_unique_constraint"),
@@ -171,7 +176,7 @@ class Asset(Timestamped, Base):
     )
 
 
-class Revisions(Timestamped, Base):
+class Revision(Timestamped, Base):
     """
     This tracks history of metadata and specs, supporting 'undo' functionality.
     """
