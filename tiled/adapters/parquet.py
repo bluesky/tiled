@@ -18,7 +18,7 @@ class ParquetDatasetAdapter:
         specs=None,
         references=None,
     ):
-        self.partition_paths = partition_paths
+        self.partition_paths = sorted(partition_paths)
         self.meta = meta
         self.divisions = divisions
         self.metadata = metadata or {}
@@ -28,7 +28,7 @@ class ParquetDatasetAdapter:
     @property
     def dataframe_adapter(self):
         partitions = []
-        for path in sorted(self.partition_paths):
+        for path in self.partition_paths:
             if not Path(path).exists():
                 partition = None
             else:
