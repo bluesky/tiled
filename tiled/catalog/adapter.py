@@ -11,7 +11,9 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import httpx
-from sqlalchemy import func, text, type_coerce
+from fastapi import HTTPException
+from sqlalchemy import event, func, text, type_coerce
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
@@ -29,13 +31,14 @@ from tiled.queries import StructureFamily as StructureFamilyQuery
 
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
-from ..server.schemas import Management, Node
+from ..server.schemas import Management
 from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, UnsupportedQueryType, import_object
 from . import orm
 from .base import Base
 from .explain import ExplainAsyncSession
+from .node import Node
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -259,11 +262,12 @@ class Context:
     #                 await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
     #             await db.commit()
 
-    async def _execute(self, statement, explain=None):
+    async def execute(self, statement, explain=None):
         "Debugging convenience utility, not exposed to server"
-        async with self.context.session() as db:
-            return await db.execute(text(statement), explain=explain)
+        async with self.session() as db:
+            result = await db.execute(text(statement), explain=explain)
             await db.commit()
+            return result
 
 
 class BaseAdapter:
@@ -482,6 +486,22 @@ class CatalogNodeAdapter(BaseAdapter):
             # TODO Consider using nested transitions to ensure that
             # both the node is created (name not already taken)
             # and the directory/file is created---or neither are.
+            try:
+                db.add(node)
+                await db.commit()
+            except IntegrityError as exc:
+                UNIQUE_CONSTRAINT_FAILED = "gkpj"
+                if exc.code == UNIQUE_CONSTRAINT_FAILED:
+                    await db.rollback()
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Cannot create new node here because path is already taken: "
+                            f"{'/'.join(self.segments + [key])}"
+                        ),
+                    )
+                raise
+            await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
                     data_source.mimetype = DEFAULT_CREATION_MIMETYPE[structure_family]
@@ -520,7 +540,7 @@ class CatalogNodeAdapter(BaseAdapter):
                     parameters=data_source.parameters,
                 )
                 node.data_sources.append(data_source_orm)
-                await db.flush(data_source_orm)
+                # await db.flush(data_source_orm)
                 for asset in data_source.assets:
                     asset_orm = orm.Asset(
                         data_uri=asset.data_uri,
@@ -766,9 +786,18 @@ def from_uri(
     initialize_database_at_startup=False,
 ):
     engine = create_async_engine(uri, echo=echo)
+    if engine.dialect.name == "sqlite":
+        event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogNodeAdapter(
         Context(engine, writable_storage, readable_storage),
         RootNode(metadata, specs, references, access_policy),
         initialize_database_at_startup=initialize_database_at_startup,
         access_policy=access_policy,
     )
+
+
+def _set_sqlite_pragma(conn, record):
+    cursor = conn.cursor()
+    # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()

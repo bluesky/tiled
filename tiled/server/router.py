@@ -732,7 +732,7 @@ async def delete(
     entry=SecureEntry(scopes=["write:data", "write:metadata"], kind=EntryKind.node),
 ):
     if hasattr(entry, "delete"):
-        entry.delete()
+        await entry.delete()
     else:
         raise HTTPException(
             status_code=405, detail="This path does not support deletion."

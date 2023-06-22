@@ -7,7 +7,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    LargeBinary,
     Table,
     Unicode,
 )
@@ -68,7 +67,16 @@ class Node(Timestamped, Base):
     references = Column(JSONVariant, nullable=False)
 
     data_sources = relationship(
-        "DataSource", back_populates="node", cascade="save-update", lazy="selectin"
+        "DataSource",
+        backref="node",
+        cascade="save-update",
+        lazy="selectin",
+        passive_deletes=True,
+    )
+    revisions = relationship(
+        "Revision",
+        backref="revisions",
+        passive_deletes=True,
     )
 
     __table_args__ = (
@@ -93,8 +101,16 @@ class Node(Timestamped, Base):
 data_source_asset_association_table = Table(
     "data_source_asset_association",
     Base.metadata,
-    Column("data_source_id", Integer, ForeignKey("data_sources.id"), primary_key=True),
-    Column("asset_id", Integer, ForeignKey("assets.id"), primary_key=True),
+    Column(
+        "data_source_id",
+        Integer,
+        ForeignKey("data_sources.id", ondelete="CASCADE"),
+    ),
+    Column(
+        "asset_id",
+        Integer,
+        ForeignKey("assets.id", ondelete="CASCADE"),
+    ),
 )
 
 
@@ -115,7 +131,9 @@ class DataSource(Timestamped, Base):
     __mapper_args__ = {"eager_defaults": True}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
+    node_id = Column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+    )
 
     structure = Column(JSONVariant, nullable=True)
     mimetype = Column(Unicode(255), nullable=False)  # max length given by RFC 4288
@@ -125,12 +143,11 @@ class DataSource(Timestamped, Base):
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
 
-    node = relationship("Node", back_populates="data_sources")
     assets = relationship(
         "Asset",
         secondary=data_source_asset_association_table,
         back_populates="data_sources",
-        cascade="save-update",
+        cascade="all, delete",
         lazy="selectin",
     )
 
@@ -145,38 +162,21 @@ class Asset(Timestamped, Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    # data_uri can refer to an external file or network resource,
-    # or to a row in the AssetBlob table "assetblob://"
     data_uri = Column(Unicode(1023), index=True, unique=True)
     is_directory = Column(Boolean, nullable=False)
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
+    size = Column(Integer, nullable=True)
 
     data_sources = relationship(
         "DataSource",
         secondary=data_source_asset_association_table,
         back_populates="assets",
+        passive_deletes=True,
     )
 
 
-class AssetBlob(Base):
-    """
-    This stores blob data in the table.
-
-    This is can be optimal for small data payloads, where the overhead
-    of opening a separate file or accessing a network resource is
-    significant.
-    """
-
-    __tablename__ = "asset_blobs"
-    __mapper_args__ = {"eager_defaults": True}
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
-    blob = Column(LargeBinary, nullable=False)
-
-
-class Revisions(Timestamped, Base):
+class Revision(Timestamped, Base):
     """
     This tracks history of metadata and specs, supporting 'undo' functionality.
     """
@@ -187,7 +187,9 @@ class Revisions(Timestamped, Base):
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
+    node_id = Column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+    )
     revision_number = Column(Integer, nullable=False)
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
