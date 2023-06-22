@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import httpx
-from sqlalchemy import func, text, type_coerce
+from sqlalchemy import event, func, text, type_coerce
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 
@@ -766,9 +766,18 @@ def from_uri(
     initialize_database_at_startup=False,
 ):
     engine = create_async_engine(uri, echo=echo)
+    if engine.dialect.name == "sqlite":
+        event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogNodeAdapter(
         Context(engine, writable_storage, readable_storage),
         RootNode(metadata, specs, references, access_policy),
         initialize_database_at_startup=initialize_database_at_startup,
         access_policy=access_policy,
     )
+
+
+def _set_sqlite_pragma(conn, record):
+    cursor = conn.cursor()
+    # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()

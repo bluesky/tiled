@@ -68,7 +68,11 @@ class Node(Timestamped, Base):
     references = Column(JSONVariant, nullable=False)
 
     data_sources = relationship(
-        "DataSource", back_populates="node", cascade="save-update", lazy="selectin"
+        "DataSource",
+        backref="node",
+        cascade="save-update",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     __table_args__ = (
@@ -93,8 +97,18 @@ class Node(Timestamped, Base):
 data_source_asset_association_table = Table(
     "data_source_asset_association",
     Base.metadata,
-    Column("data_source_id", Integer, ForeignKey("data_sources.id"), primary_key=True),
-    Column("asset_id", Integer, ForeignKey("assets.id"), primary_key=True),
+    Column(
+        "data_source_id",
+        Integer,
+        ForeignKey("data_sources.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "asset_id",
+        Integer,
+        ForeignKey("assets.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 
@@ -115,7 +129,9 @@ class DataSource(Timestamped, Base):
     __mapper_args__ = {"eager_defaults": True}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
+    node_id = Column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+    )
 
     structure = Column(JSONVariant, nullable=True)
     mimetype = Column(Unicode(255), nullable=False)  # max length given by RFC 4288
@@ -125,12 +141,11 @@ class DataSource(Timestamped, Base):
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
 
-    node = relationship("Node", back_populates="data_sources")
     assets = relationship(
         "Asset",
         secondary=data_source_asset_association_table,
         back_populates="data_sources",
-        cascade="save-update",
+        cascade="all, delete",
         lazy="selectin",
     )
 
@@ -156,6 +171,7 @@ class Asset(Timestamped, Base):
         "DataSource",
         secondary=data_source_asset_association_table,
         back_populates="assets",
+        passive_deletes=True,
     )
 
 
@@ -172,7 +188,9 @@ class AssetBlob(Base):
     __mapper_args__ = {"eager_defaults": True}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
+    asset_id = Column(
+        Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+    )
     blob = Column(LargeBinary, nullable=False)
 
 
@@ -187,7 +205,9 @@ class Revisions(Timestamped, Base):
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
+    node_id = Column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+    )
     revision_number = Column(Integer, nullable=False)
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
