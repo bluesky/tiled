@@ -7,7 +7,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    LargeBinary,
     Table,
     Unicode,
 )
@@ -160,8 +159,6 @@ class Asset(Timestamped, Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    # data_uri can refer to an external file or network resource,
-    # or to a row in the AssetBlob table "assetblob://"
     data_uri = Column(Unicode(1023), index=True, unique=True)
     is_directory = Column(Boolean, nullable=False)
     hash_type = Column(Unicode(63), nullable=True)
@@ -173,25 +170,6 @@ class Asset(Timestamped, Base):
         back_populates="assets",
         passive_deletes=True,
     )
-
-
-class AssetBlob(Base):
-    """
-    This stores blob data in the table.
-
-    This is can be optimal for small data payloads, where the overhead
-    of opening a separate file or accessing a network resource is
-    significant.
-    """
-
-    __tablename__ = "asset_blobs"
-    __mapper_args__ = {"eager_defaults": True}
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    asset_id = Column(
-        Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
-    )
-    blob = Column(LargeBinary, nullable=False)
 
 
 class Revisions(Timestamped, Base):
