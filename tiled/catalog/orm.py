@@ -163,6 +163,7 @@ class Asset(Timestamped, Base):
     is_directory = Column(Boolean, nullable=False)
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
+    size = Column(Integer, nullable=True)
 
     data_sources = relationship(
         "DataSource",
