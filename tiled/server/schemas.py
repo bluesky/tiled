@@ -124,6 +124,8 @@ class Revision(pydantic.BaseModel):
 
     @classmethod
     def from_orm(cls, orm):
+        # Trailing underscore in 'metadata_' avoids collision with
+        # SQLAlchemy reserved word 'metadata'.
         return cls(
             revision_number=orm.revision_number,
             metadata=orm.metadata_,
@@ -212,6 +214,8 @@ class Node(NodeAttributes):
         return cls(
             key=orm.key,
             ancestors=orm.ancestors,
+            # Trailing underscore in 'metadata_' avoids collision with
+            # SQLAlchemy reserved word 'metadata'.
             metadata=orm.metadata_,
             structure_family=orm.structure_family,
             structure=structure,
@@ -321,6 +325,8 @@ class Node(NodeAttributes):
                 or 0
             )
             revision = orm.Revisions(
+                # Trailing underscore in 'metadata_' avoids collision with
+                # SQLAlchemy reserved word 'metadata'.
                 metadata_=current.metadata_,
                 specs=current.specs,
                 references=current.references,
