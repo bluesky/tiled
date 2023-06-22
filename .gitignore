@@ -96,6 +96,9 @@ config.yaml
 config.yml
 *.sqlite
 *.db
+*.db
+*.db-wal
+*.db-shm
 
 prometheus_data
 grafana_data
