@@ -320,3 +320,4 @@ def test_write_xarray_dataset(client):
     # smoke test
     dsc["temp"][:]
     dsc["time"][:]
+    dsc.read()

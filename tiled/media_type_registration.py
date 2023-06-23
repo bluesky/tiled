@@ -81,7 +81,7 @@ class SerializationRegistry:
         result.update(self._custom_aliases_by_type)
         return result
 
-    def register(self, structure_family, media_type, func):
+    def register(self, structure_family, media_type, func=None):
         """
         Register a new media_type for a structure family.
 
@@ -89,14 +89,43 @@ class SerializationRegistry:
         ----------
         structure_family : str
             The structure we are encoding, as in "array", "dataframe", "variable", ...
-        media_type : str
+        media_type : {str, List[str]}
             MIME type, as in "application/json" or "text/csv".
             If there is not standard name, use "application/x-INVENT-NAME-HERE".
-        func : callable
+        func : callable, optional
             Should accept the relevant structure as input (e.g. a numpy array)
             and return bytes or memoryview
+
+        Examples
+        --------
+        Use as a normal method.
+
+        >>> serialization_registry.register("array", "image/tiff", serialize_tiff)
+
+        Use as a decorator.
+
+        >>> @serialization_registry.register("array", "image_tiff")
+        ... def serialize_tiff(...):
+        ...     ...
+        ...
+
         """
-        self._lookup[structure_family][media_type] = func
+
+        def dec(func):
+            # This is convoluted for backward-compatibility.
+            # The function formerly only accepted one media_type.
+            # Now it accepts a list as well.
+            if isinstance(media_type, str):
+                media_types = [media_type]
+            else:
+                media_types = media_type
+            for m in media_types:
+                self._lookup[structure_family][m] = func
+
+        if func is None:
+            # Return a decorator
+            return dec
+        dec(func)
 
     def register_alias(self, ext, media_type):
         self._custom_aliases_by_type[media_type].append(ext)
