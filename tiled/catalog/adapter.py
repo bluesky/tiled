@@ -409,10 +409,13 @@ class CatalogNodeAdapter(BaseAdapter):
                     )
                 paths.append(data_uri.path)
             kwargs = dict(data_source.parameters)
+            kwargs["specs"] = node.specs
+            kwargs["metadata"] = node.metadata
             if node.structure_family == StructureFamily.array:
                 # kwargs["dtype"] = data_source.structure.micro.to_numpy_dtype()
                 kwargs["shape"] = data_source.structure.macro.shape
                 kwargs["chunks"] = data_source.structure.macro.chunks
+                kwargs["dims"] = node.structure.macro.dims
             elif node.structure_family == StructureFamily.dataframe:
                 kwargs["meta"] = data_source.structure.micro.meta_decoded
                 kwargs["divisions"] = data_source.structure.micro.divisions_decoded
@@ -603,6 +606,10 @@ class CatalogNodeAdapter(BaseAdapter):
                 )
                 for node in nodes
             ]
+
+    async def adapters_range(self, offset, limit):
+        items = await self.items_range(offset, limit)
+        return [(key, self.adapter_from_node(value)) for key, value in items]
 
 
 _STANDARD_SORT_KEYS = {

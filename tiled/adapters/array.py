@@ -4,7 +4,7 @@ from dask.array.core import normalize_chunks
 
 from ..server.object_cache import get_object_cache
 from ..structures.array import ArrayMacroStructure, BuiltinDtype, StructDtype
-from ..utils import DictView
+from ..utils import DictView, ListView
 
 
 class ArrayAdapter:
@@ -82,6 +82,10 @@ class ArrayAdapter:
 
     def __repr__(self):
         return f"{type(self).__name__}({self._array!r})"
+
+    @property
+    def dims(self):
+        return ListView(self._dims)
 
     @property
     def metadata(self):

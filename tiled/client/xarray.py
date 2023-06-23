@@ -198,6 +198,7 @@ def write_xarray_dataset(client_node, dataset, key=None):
             data_array.data,
             key=name,
             metadata={"attrs": data_array.attrs},
+            dims=data_array.dims,
             specs=[Spec("xarray_data_var")],
         )
     for name in dataset.coords:
