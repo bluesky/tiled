@@ -19,17 +19,31 @@ class TiffAdapter:
 
     structure_family = "array"
 
-    def __init__(self, path, *, shape=None, chunks=None, specs=None, references=None):
+    def __init__(
+        self,
+        path,
+        *,
+        shape=None,
+        chunks=None,
+        specs=None,
+        metadata=None,
+        dims=None,
+        references=None,
+    ):
         self._file = tifffile.TiffFile(path)
         self._cache_key = (type(self).__module__, type(self).__qualname__, path)
         self.specs = specs or []
+        self.dims = dims
         self.references = references or []
+        self._provided_metadata = metadata
 
     @property
     def metadata(self):
         # This contains some enums, but Python's built-in JSON serializer
         # handles them fine (converting  to str or int as appropriate).
-        return {tag.name: tag.value for tag in self._file.pages[0].tags.values()}
+        d = {tag.name: tag.value for tag in self._file.pages[0].tags.values()}
+        d.update(self._provided_metadata)
+        return d
 
     def read(self, slice=None):
         # TODO Is there support for reading less than the whole array
