@@ -26,29 +26,16 @@ RUN python3 -m venv $VIRTUAL_ENV
 # in ENTRYPOINT or CMD.
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Copy requirements over first so this layer is cached and we don't have to
-# reinstall dependencies when only the tiled source has changed.
-COPY requirements-server.txt requirements-formats.txt requirements-dataframe.txt requirements-array.txt requirements-xarray.txt requirements-sparse.txt requirements-compression.txt /code/
 RUN pip install --upgrade --no-cache-dir cython pip wheel
-RUN pip install --upgrade --no-cache-dir \
-  -r /code/requirements-array.txt \
-  -r /code/requirements-compression.txt \
-  -r /code/requirements-dataframe.txt \
-  -r /code/requirements-formats.txt \
-  -r /code/requirements-server.txt \
-  -r /code/requirements-sparse.txt \
-  -r /code/requirements-xarray.txt
 
 COPY --from=web_frontend_builder /code/build /code/share/tiled/ui
 COPY . .
 
-# note requirements listed here but all deps should be already satisfied
-RUN pip install '.[array, compression, dataframe, formats, server, sparse, xarray]'
+RUN pip install '.[server]'
 
 # FROM base as test
 #
-# RUN pip install '.[client]'
-# RUN pip install -r requirements-dev.txt
+# RUN pip install '.[client,dev]'
 # RUN pytest -v
 
 FROM python:3.10-slim as runner

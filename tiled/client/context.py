@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 import msgpack
 
-from .._version import get_versions
+from .._version import __version__ as tiled_version
 from ..utils import DictView, Sentinel, safe_json_dump
 from .auth import (
     DEFAULT_TOKEN_CACHE,
@@ -28,7 +28,6 @@ from .utils import (
     handle_error,
 )
 
-tiled_version = get_versions()["version"]
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 UNSET = Sentinel("UNSET")

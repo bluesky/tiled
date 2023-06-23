@@ -1,3 +1,285 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tiled"
+description = "Structured Scientific Data Access Service"
+readme = "README.md"
+authors = [
+  { name = "Dan Allan", email = "dallan@bnl.gov" },
+]
+maintainers = [
+  { name = "Brookhaven National Laboratoryu", email = "dallan@bnl.gov" },
+]
+requires-python = ">=3.7"
+
+# All dependencies are optional; it depends on whether you are running
+# a client or server (or both) and what data structures you care about.
+# Use pip install tiled[all] to get everything.
+dependencies = []
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+
+dynamic = ["version"]
+
+[project.scripts]
+tiled = "tiled.commandline.main:main"
+
+[project.optional-dependencies]
+# When updating the dependencies, make sure to coordinate changes with the list
+# 'all', 'server' and 'client', which aggregate dependencies from other more
+# finely-targeted lists.
+
+# This is the union of all optional dependencies.
+all = [
+    "aiofiles",
+    "aiosqlite",
+    "alembic",
+    "anyio",
+    "appdirs",
+    "blosc",
+    "cachetools",
+    "cachey",
+    "click !=8.1.0",
+    "dask",
+    "dask[array]",
+    "dask[dataframe]",
+    "entrypoints",
+    "fastapi",
+    "h5netcdf",
+    "h5py",
+    "heapdict",
+    "httpx >=0.20.0,!=0.23.1",
+    "jinja2",
+    "jmespath",
+    "jsonschema",
+    "lz4",
+    "msgpack >=1.0.0",
+    "ndindex",
+    "numpy",
+    "openpyxl",
+    "orjson",
+    "packaging",
+    "pandas",
+    "parquet",
+    "pillow",
+    "prometheus_client",
+    "psutil",
+    "pyarrow",
+    "pydantic >=1.8.2",
+    "python-dateutil",
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pyyaml",
+    "sparse",
+    "sqlalchemy >=2",
+    "starlette",
+    "tifffile",
+    "toolz",
+    "typer",
+    "uvicorn[standard]",
+    "watchgod",
+    "xarray",
+    "zarr",
+    "zstandard",
+]
+# These are needed by the client and server to transmit/receive arrays.
+array = [
+    "dask[array]",
+    "numpy",
+]
+# This is the "kichen sink" fully-featured client dependency set.
+client = [
+    "appdirs",
+    "blosc",
+    "click !=8.1.0",
+    "dask[array]",
+    "dask[dataframe]",
+    "entrypoints",
+    "heapdict",
+    "httpx >=0.20.0,!=0.23.1",
+    "jsonschema",
+    "lz4",
+    "msgpack >=1.0.0",
+    "ndindex",
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "pyyaml",
+    "sparse",
+    "typer",
+    "xarray",
+    "zstandard",
+]
+# These are used by the client/server to more efficiently compress.
+# They fall back to gzip (which is slower) if these are not installed.
+compression = [
+    "blosc",
+    "lz4",
+    "zstandard",
+]
+# These are needed by the client and server to transmit/receive dataframes.
+dataframe = [
+    "dask[dataframe]",
+    "pandas",
+    "pyarrow",
+]
+# These are required for developing the package (running the tests, building
+# the documentation) but not necessarily required for _using_ it.
+dev = [
+    "coverage",
+    "flake8",
+    "ldap3",
+    "pre-commit",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-rerunfailures",
+    "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
+    # These are dependencies of various sphinx extensions for documentation.
+    "ipython",
+    "matplotlib",
+    "mistune <2.0.0",  # temporary while sphinx sorts this out,
+    "myst-parser",
+    "numpydoc",
+    "sphinx-click",
+    "sphinx-copybutton",
+    "sphinx_rtd_theme",
+]
+# These are used by the server to read files in the respective formats.
+formats = [
+    "h5py",
+    "h5netcdf",
+    "openpyxl",
+    "pillow",
+    "tifffile",
+]
+# These are the requirements needed for basic client functionality.
+minimal-client = [
+    "appdirs",
+    "click !=8.1.0",
+    "entrypoints",
+    "heapdict",
+    "httpx >=0.20.0,!=0.23.1",
+    "jsonschema",
+    "msgpack >=1.0.0",
+    "pyyaml",
+    "typer",
+]
+# These are the requirements needed for basic server functionality.
+minimal-server = [
+    "aiofiles",
+    "aiosqlite",
+    "alembic",
+    "anyio",
+    "appdirs",
+    "cachey",
+    "cachetools",
+    "click !=8.1.0",
+    "dask",
+    "fastapi",
+    "httpx >=0.20.0,!=0.23.1",
+    "jinja2",
+    "jmespath",
+    "jsonschema",
+    "msgpack >=1.0.0",
+    "orjson",
+    "packaging",
+    "parquet",
+    "psutil",
+    "prometheus_client",
+    "pydantic >=1.8.2",
+    "python-dateutil",
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pyyaml",
+    "sqlalchemy >=2",
+    "starlette",
+    "toolz",
+    "typer",
+    "uvicorn[standard]",
+    "watchgod",
+    "zarr",
+]
+# This is the "kichen sink" fully-featured server dependency set.
+server = [
+    "aiofiles",
+    "aiosqlite",
+    "alembic",
+    "anyio",
+    "appdirs",
+    "blosc",
+    "cachetools",
+    "cachey",
+    "click !=8.1.0",
+    "dask",
+    "dask[array]",
+    "dask[dataframe]",
+    "fastapi",
+    "httpx >=0.20.0,!=0.23.1",
+    "jinja2",
+    "jmespath",
+    "jsonschema",
+    "lz4",
+    "msgpack >=1.0.0",
+    "ndindex",
+    "numpy",
+    "orjson",
+    "packaging",
+    "pandas",
+    "parquet",
+    "prometheus_client",
+    "psutil",
+    "pyarrow",
+    "pydantic >=1.8.2",
+    "python-dateutil",
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pyyaml",
+    "sparse",
+    "sqlalchemy >=2",
+    "starlette",
+    "toolz",
+    "typer",
+    "uvicorn[standard]",
+    "watchgod",
+    "xarray",
+    "zarr",
+    "zstandard",
+]
+# These are needed by the client and server to transmit/receive sparse arrays.
+sparse = [
+    "ndindex",
+    "pyarrow",
+    "sparse",
+]
+# These are needed by the client and server to transmit/receive xarrays.
+xarray = [
+    "dask[array]",
+    "pandas",
+    "pyarrow",
+    "xarray",
+]
+
+[project.urls]
+Homepage = "https://github.com/bluesky/tiled"
+Documentation = "https://blueskyproject.io/tiled"
+"Bug Tracker" = "https://github.com/bluesky/tiled/issues"
+
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "tiled/_version.py"
+
 [tool.black]
 line-length = 88
 target-version = ['py37']

@@ -12,5 +12,5 @@ python -m pip install --upgrade pip setuptools wheel numpy
 # in the published documentation and is declared by the client when it
 # connects to a server.
 git fetch --tags --unshallow
-python -m pip install '.[complete]'
+python -m pip install '.[all]'
 python -m pip list

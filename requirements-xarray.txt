@@ -1,5 +1,0 @@
-# These are needed by the client and server to transmit/receive xarrays.
-dask[array]
-pandas
-pyarrow
-xarray
