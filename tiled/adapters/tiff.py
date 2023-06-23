@@ -35,7 +35,7 @@ class TiffAdapter:
         self.specs = specs or []
         self.dims = dims
         self.references = references or []
-        self._provided_metadata = metadata
+        self._provided_metadata = metadata or {}
 
     @property
     def metadata(self):
