@@ -280,6 +280,12 @@ Documentation = "https://blueskyproject.io/tiled"
 version.source = "vcs"
 build.hooks.vcs.version-file = "tiled/_version.py"
 
+# Used to call hatch_build.py
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"share/tiled" = "share/tiled"
+
 [tool.black]
 line-length = 88
 target-version = ['py37']
