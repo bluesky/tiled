@@ -1,3 +1,4 @@
+import os
 import subprocess
 from shutil import which
 
@@ -10,6 +11,9 @@ class CustomHook(BuildHookInterface):
     """
 
     def initialize(self, version, build_data):
+        if os.getenv("TILED_BUILD_SKIP_UI"):
+            # no-op
+            return
         npm_path = which("npm")
         if npm_path is None:
             raise ValueError
