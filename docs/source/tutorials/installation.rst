@@ -91,3 +91,15 @@ To install an editable installation for local development:
    git clone https://github.com/bluesky/tiled
    cd tiled
    pip install -e '.[all]'
+
+Web UI
+------
+
+Tiled includes a web front-end, based in React. A standard pip installation
+(i.e. installing from the published wheel) includes the web front-end
+pre-built---no further action required.
+
+An installation from source will attempt to build the web front-end if an
+`npm` executable is found in the `PATH`. To opt out of this step,
+set `TILED_BUILD_SKIP_UI=1`. For details, see `hatch_build.py`, at the root of
+the `tiled` source tree.
