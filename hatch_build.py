@@ -12,6 +12,17 @@ class CustomHook(BuildHookInterface):
     """
 
     def initialize(self, version, build_data):
+        # https://hatch.pypa.io/1.1/plugins/build-hook/#hatchling.builders.hooks.plugin.interface.BuildHookInterface
+
+        # Hatchling intends for us to mutate the input build_data communicate
+        # that 'share/tiled/ui' contains build artifacts that should be included
+        # in the distribution.
+
+        # Set this irrespective of whether the build happens below. It may have
+        # already been done manually by the user. This simply allow-lists the
+        # files, however they were put there.
+        build_data["artifacts"].append("share/tiled/ui")
+
         if os.getenv("TILED_BUILD_SKIP_UI"):
             print(
                 "Will skip building the Tiled web UI because TILED_BUILD_SKIP_UI is set",
@@ -31,8 +42,3 @@ class CustomHook(BuildHookInterface):
         )
         subprocess.check_call([npm_path, "install"], cwd="./web-frontend")
         subprocess.check_call([npm_path, "run", "build:pydist"], cwd="./web-frontend")
-        # https://hatch.pypa.io/1.1/plugins/build-hook/#hatchling.builders.hooks.plugin.interface.BuildHookInterface
-        # Hatchling intends for us to mutate the input build_data communicate
-        # that 'share/tiled/ui' contains build artifacts that should be included
-        # in the distribution.
-        build_data["artifacts"].append("share/tiled/ui")
