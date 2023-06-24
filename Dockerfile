@@ -33,7 +33,7 @@ COPY . .
 
 # Skip building the UI here because we already did it in the stage
 # above using a node container.
-RUN TILED_BUILDSKIP_UI=1 pip install '.[server]'
+RUN TILED_BUILD_SKIP_UI=1 pip install '.[server]'
 
 # FROM base as test
 #
