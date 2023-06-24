@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys
-from pathlib import Path
 from shutil import which
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
@@ -26,17 +25,14 @@ class CustomHook(BuildHookInterface):
                 file=sys.stderr,
             )
             return
-            print(
-                f"Building Tiled web UI using {npm_path}. (Set TILED_BUILD_SKIP_UI=1 to skip.)",
-                file=sys.stderr,
-            )
+        print(
+            f"Building Tiled web UI using {npm_path!r}. (Set TILED_BUILD_SKIP_UI=1 to skip.)",
+            file=sys.stderr,
+        )
         subprocess.check_call([npm_path, "install"], cwd="./web-frontend")
         subprocess.check_call([npm_path, "run", "build:pydist"], cwd="./web-frontend")
-        here = Path(__file__).parent
-        ui_directory = here / "share" / "tiled" / "ui"
-        assert (ui_directory).exists()
         # https://hatch.pypa.io/1.1/plugins/build-hook/#hatchling.builders.hooks.plugin.interface.BuildHookInterface
         # Hatchling intends for us to mutate the input build_data communicate
-        # that share/tiled/ui contains build artifacts that should be included
+        # that 'share/tiled/ui' contains build artifacts that should be included
         # in the distribution.
         build_data["artifacts"].append("share/tiled/ui")
