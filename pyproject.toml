@@ -284,7 +284,10 @@ build.hooks.vcs.version-file = "tiled/_version.py"
 [tool.hatch.build.hooks.custom]
 
 [tool.hatch.build.targets.wheel.shared-data]
-"share/tiled" = "share/tiled"
+"share/tiled/.identifying_file_72628d5f953b4229b58c9f1f8f6a9a09" = "share/tiled/.identifying_file_72628d5f953b4229b58c9f1f8f6a9a09"
+"share/tiled/static" = "share/tiled/static"
+"share/tiled/templates" = "share/tiled/templates"
+"share/tiled/ui" = "share/tiled/ui"
 
 [tool.black]
 line-length = 88
