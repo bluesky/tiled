@@ -52,7 +52,6 @@ class _BytesIOThatIgnoresClose(io.BytesIO):
 
 
 if modules_available("scipy"):
-
     # Both application/netcdf and application/x-netcdf are used.
     # https://en.wikipedia.org/wiki/NetCDF
     @serialization_registry.register(
