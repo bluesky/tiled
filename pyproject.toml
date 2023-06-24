@@ -7,10 +7,10 @@ name = "tiled"
 description = "Structured Scientific Data Access Service"
 readme = "README.md"
 authors = [
-  { name = "Dan Allan", email = "dallan@bnl.gov" },
+  { name = "Bluesky Project Contributors", email = "dallan@bnl.gov" },
 ]
 maintainers = [
-  { name = "Brookhaven National Laboratoryu", email = "dallan@bnl.gov" },
+  { name = "Brookhaven National Laboratory", email = "dallan@bnl.gov" },
 ]
 requires-python = ">=3.7"
 
