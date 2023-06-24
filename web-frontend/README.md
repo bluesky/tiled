@@ -25,22 +25,9 @@ The front-end will launch at `http://localhost:3000`.
 
 ## Packaging
 
-This builds the package and copies the built assets to
-`<repostiory root>/share/tiled/ui` where they can
-be found and served by the FastAPI application.
-
-```
-cd web-frontend/
-npm run build:pydist
-```
-
-Now a normal
-
-```
-python setup.py sdist bdist_wheel
-```
-
-will include the built application.
+The build hook in `hatch_build.py` builds the UI using `npm build:pydist`
+and ensures that they are included in the distribution under `share/tiled/ui`,
+outside the Python package.
 
 ## Generating TypeScript from OpenAPI
 
