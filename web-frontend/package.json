@@ -15,7 +15,6 @@
     "@testing-library/jest-dom": "^5.16.2",
     "@testing-library/react": "^12.1.2",
     "@testing-library/user-event": "^13.5.0",
-    "@types/history": "^5.0.0",
     "@types/jest": "^27.4.0",
     "@types/js-yaml": "^4.0.5",
     "@types/material-ui": "^0.21.12",
@@ -64,6 +63,7 @@
     ]
   },
   "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.0",
     "husky": "^7.0.4",
     "lint-staged": "^12.3.4",
     "prettier": "^2.5.1"

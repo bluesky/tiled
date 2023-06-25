@@ -68,6 +68,7 @@ export const loadConfig = async (signal: AbortSignal) => {
     configs.map((config, index) => {
       (config.specs || []).map((spec: Spec) => {
         mergedConfig.specs.push(spec);
+        return null;
       });
       for (const [key, value] of Object.entries(
         config.structure_families || {}
@@ -75,6 +76,7 @@ export const loadConfig = async (signal: AbortSignal) => {
         mergedConfig.structure_families[key] = value;
       }
       console.log(`Loaded config ${manifest[index]}`);
+      return null;
     });
     sessionStorage.setItem("config", JSON.stringify(mergedConfig));
     return mergedConfig;

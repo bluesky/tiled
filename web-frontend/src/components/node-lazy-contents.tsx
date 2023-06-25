@@ -22,9 +22,10 @@ interface Column {
 
 function CustomToolbar() {
   return (
+    // working around https://github.com/mui/mui-x/issues/2383
     <GridToolbarContainer>
-      <GridToolbarColumnsButton />
-      <GridToolbarDensitySelector />
+      <GridToolbarColumnsButton {...({} as any)} />
+      <GridToolbarDensitySelector {...({} as any)} />
     </GridToolbarContainer>
   );
 }
