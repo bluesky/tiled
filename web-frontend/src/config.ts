@@ -5,7 +5,7 @@
 // stash it in sessionStorage.
 import yaml from "js-yaml";
 
-const basename = process.env.PUBLIC_URL;
+const basename = import.meta.env.BASE_URL;
 
 interface Column {
   header: string;

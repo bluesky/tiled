@@ -12,13 +12,12 @@ import ErrorBoundary from "./components/error-boundary";
 import Skeleton from "@mui/material/Skeleton";
 import { ThemeProvider } from "@mui/material/styles";
 import { render } from "react-dom";
-import reportWebVitals from "./reportWebVitals";
 import theme from "./theme";
 
 const Browse = lazy(() => import("./routes/browse"));
 
 const root_element = document.getElementById("root");
-const basename = process.env.PUBLIC_URL;
+const basename = import.meta.env.BASE_URL;
 
 render(
   <ThemeProvider theme={theme}>
@@ -47,8 +46,3 @@ render(
   </ThemeProvider>,
   root_element
 );
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
