@@ -13,7 +13,7 @@ from ..media_type_registration import (
 )
 from ..query_registration import query_registry as default_query_registry
 from ..validation_registration import validation_registry as default_validation_registry
-from .authentication import get_current_principal
+from .authentication import get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
@@ -63,23 +63,32 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
         request: Request,
         principal: str = Depends(get_current_principal),
         root_tree: pydantic.BaseSettings = Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
     ):
         """
         Obtain a node in the tree from its path.
 
         Walk down the path from the root tree, filtering each intermediate node by
         'read:metadata' and finally filtering by the specified scope.
+
+        session_state is an optional dictionary passed in the session token
         """
         path_parts = [segment for segment in path.split("/") if segment]
         entry = root_tree
+
+        # if the entry/adapter can take a session state, pass it in
+        if hasattr(entry, "with_session_state") and session_state:
+            entry.with_session_state(session_state)
         try:
             # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
             for i, segment in enumerate(path_parts):
+                # add session state to entry
                 entry = filter_for_access(
                     entry, principal, ["read:metadata"], request.state.metrics
                 )
                 # The new catalog adapter only has access control at top level for now.
                 # It can jump directly to the node of interest.
+
                 if hasattr(entry, "lookup_adapter"):
                     if kind == EntryKind.adapter:
                         entry = await entry.lookup_adapter(path_parts[i:])

@@ -12,6 +12,7 @@ from jose import JWTError, jwk, jwt
 from starlette.responses import RedirectResponse
 
 from .server.authentication import Mode
+from .server.protocols import UserSessionState
 from .server.utils import get_root_url
 from .utils import modules_available
 
@@ -28,8 +29,8 @@ class DummyAuthenticator:
 
     mode = Mode.password
 
-    async def authenticate(self, username: str, password: str):
-        return username
+    async def authenticate(self, username: str, password: str) -> UserSessionState:
+        return UserSessionState(username, {})
 
 
 class DictionaryAuthenticator:
@@ -55,13 +56,13 @@ properties:
     def __init__(self, users_to_passwords):
         self._users_to_passwords = users_to_passwords
 
-    async def authenticate(self, username: str, password: str):
+    async def authenticate(self, username: str, password: str) -> UserSessionState:
         true_password = self._users_to_passwords.get(username)
         if not true_password:
             # Username is not valid.
             return
         if secrets.compare_digest(true_password, password):
-            return username
+            return UserSessionState(username, {})
 
 
 class PAMAuthenticator:
@@ -84,7 +85,7 @@ properties:
         self.service = service
         # TODO Try to open a PAM session.
 
-    async def authenticate(self, username: str, password: str):
+    async def authenticate(self, username: str, password: str) -> UserSessionState:
         import pamela
 
         try:
@@ -93,7 +94,7 @@ properties:
             # Authentication failed.
             return
         else:
-            return username
+            return UserSessionState(username, {})
 
 
 class OIDCAuthenticator:
@@ -153,7 +154,7 @@ properties:
         self.token_uri = token_uri
         self.authorization_endpoint = httpx.URL(authorization_endpoint)
 
-    async def authenticate(self, request):
+    async def authenticate(self, request) -> UserSessionState:
         code = request.query_params["code"]
         # A proxy in the middle may make the request into something like
         # 'http://localhost:8000/...' so we fix the first part but keep
@@ -181,7 +182,7 @@ properties:
                 jwt.get_unverified_claims(id_token),
             )
             return None
-        return verified_body["sub"]
+        return UserSessionState(verified_body["sub"], {})
 
 
 class KeyNotFoundError(Exception):
@@ -284,7 +285,7 @@ class SAMLAuthenticator:
 
         self.include_routers = [router]
 
-    async def authenticate(self, request):
+    async def authenticate(self, request) -> UserSessionState:
         if not modules_available("onelogin"):
             raise ModuleNotFoundError(
                 "This SAMLAuthenticator requires the module 'oneline' to be installed."
@@ -305,7 +306,7 @@ class SAMLAuthenticator:
             attribute_as_list = auth.get_attributes()[self.attribute_name]
             # Confused in what situation this would have more than one item....
             assert len(attribute_as_list) == 1
-            return attribute_as_list[0]
+            return UserSessionState(attribute_as_list[0], {})
         else:
             return None
 
@@ -729,7 +730,7 @@ class LDAPAuthenticator:
                 attrs = conn.entries[0].entry_attributes_as_dict
         return attrs
 
-    async def authenticate(self, username: str, password: str):
+    async def authenticate(self, username: str, password: str) -> UserSessionState:
         import ldap3
 
         username_saved = username  # Save the user name passed as a parameter
@@ -881,5 +882,6 @@ class LDAPAuthenticator:
         user_info = await self.get_user_attributes(conn, userdn)
         if user_info:
             logger.debug("username:%s attributes:%s", username, user_info)
-            return {"name": username, "auth_state": user_info}
-        return username
+            # this path might never have been worked out...is it ever hit?
+            return UserSessionState(username, user_info)
+        return UserSessionState(username, {})

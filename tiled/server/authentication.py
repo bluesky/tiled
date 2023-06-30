@@ -193,10 +193,48 @@ async def get_api_key(
     return None
 
 
-async def get_current_principal(
+def headers_for_401(request: Request, security_scopes: SecurityScopes):
+    # call directly from methods, rather than as a dependency, to avoid calling
+    # when not needed.
+    if security_scopes.scopes:
+        authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
+    else:
+        authenticate_value = "Bearer"
+    headers_for_401 = {
+        "WWW-Authenticate": authenticate_value,
+        "X-Tiled-Root": get_base_url(request),
+    }
+    return headers_for_401
+
+
+async def get_decoded_access_token(
     request: Request,
     security_scopes: SecurityScopes,
     access_token: str = Depends(oauth2_scheme),
+    settings: BaseSettings = Depends(get_settings),
+):
+    if not access_token:
+        return None
+    try:
+        payload = decode_token(access_token, settings.secret_keys)
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401,
+            detail="Access token has expired. Refresh token.",
+            headers=headers_for_401(request, security_scopes),
+        )
+    return payload
+
+
+async def get_session_state(decoded_access_token=Depends(get_decoded_access_token)):
+    if decoded_access_token:
+        return decoded_access_token.get("state")
+
+
+async def get_current_principal(
+    request: Request,
+    security_scopes: SecurityScopes,
+    decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
@@ -213,14 +251,7 @@ async def get_current_principal(
     If this server is configured with a "single-user API key", then
     the Principal will be SpecialUsers.admin always.
     """
-    if security_scopes.scopes:
-        authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
-    else:
-        authenticate_value = "Bearer"
-    headers_for_401 = {
-        "WWW-Authenticate": authenticate_value,
-        "X-Tiled-Root": get_base_url(request),
-    }
+
     if api_key is not None:
         if authenticators:
             # Tiled is in a multi-user configuration with authentication providers.
@@ -236,7 +267,7 @@ async def get_current_principal(
                 raise HTTPException(
                     status_code=401,
                     detail="Invalid API key",
-                    headers=headers_for_401,
+                    headers=headers_for_401(request, security_scopes),
                 )
             api_key_orm = await lookup_valid_api_key(db, secret)
             if api_key_orm is not None:
@@ -260,7 +291,7 @@ async def get_current_principal(
                 raise HTTPException(
                     status_code=401,
                     detail="Invalid API key",
-                    headers=headers_for_401,
+                    headers=headers_for_401(request, security_scopes),
                 )
         else:
             # Tiled is in a "single user" mode with only one API key.
@@ -276,7 +307,9 @@ async def get_current_principal(
                 }
             else:
                 raise HTTPException(
-                    status_code=401, detail="Invalid API key", headers=headers_for_401
+                    status_code=401,
+                    detail="Invalid API key",
+                    headers=headers_for_401(request, security_scopes),
                 )
         # If we made it to this point, we have a valid API key.
         # If the API key was given in query param, move to cookie.
@@ -287,24 +320,16 @@ async def get_current_principal(
             request.state.cookies_to_set.append(
                 {"key": API_KEY_COOKIE_NAME, "value": api_key}
             )
-    elif access_token is not None:
-        try:
-            payload = decode_token(access_token, settings.secret_keys)
-        except ExpiredSignatureError:
-            raise HTTPException(
-                status_code=401,
-                detail="Access token has expired. Refresh token.",
-                headers=headers_for_401,
-            )
+    elif decoded_access_token is not None:
         principal = schemas.Principal(
-            uuid=uuid_module.UUID(hex=payload["sub"]),
-            type=payload["sub_typ"],
+            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+            type=decoded_access_token["sub_typ"],
             identities=[
                 schemas.Identity(id=identity["id"], provider=identity["idp"])
-                for identity in payload["ids"]
+                for identity in decoded_access_token["ids"]
             ],
         )
-        scopes = payload["scp"]
+        scopes = decoded_access_token["scp"]
     else:
         # No form of authentication is present.
         principal = SpecialUsers.public
@@ -336,7 +361,7 @@ async def get_current_principal(
                 f"Requires scopes {security_scopes.scopes}. "
                 f"Request had scopes {list(scopes)}"
             ),
-            headers=headers_for_401,
+            headers=headers_for_401(request, security_scopes),
         )
     return principal
 
@@ -426,7 +451,7 @@ async def create_session(
     return fully_loaded_session
 
 
-async def create_tokens_from_session(settings, db, session, provider):
+async def create_tokens_from_session(settings, db, session, provider, state_data: dict):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -440,6 +465,11 @@ async def create_tokens_from_session(settings, db, session, provider):
             for identity in principal.identities
         ],
     }
+    if state_data:
+        # add a custom claim for state if exists, this way tiled Adapter
+        # can have access to a state object that were created by Authenticators without
+        # having to store it in the database
+        data["state"] = state_data
     access_token = create_access_token(
         data=data,
         expires_delta=settings.access_token_max_age,
@@ -682,7 +712,9 @@ def build_handle_credentials_route(
             user_session_state.user_name,
             state=user_session_state.state,
         )
-        tokens = await create_tokens_from_session(settings, db, session, provider)
+        tokens = await create_tokens_from_session(
+            settings, db, session, provider, state_data=user_session_state.state
+        )
         return tokens
 
     return route
