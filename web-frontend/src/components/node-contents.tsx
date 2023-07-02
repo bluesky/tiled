@@ -1,8 +1,9 @@
 import Contents, { Column } from "../components/contents";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import { components } from "../openapi_schemas";
 import { search } from "../client";
+import { SettingsContext } from "../context/settings";
 
 interface NodeContentsProps {
   segments: string[];
@@ -12,6 +13,7 @@ interface NodeContentsProps {
 }
 
 const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
+  const settings = useContext(SettingsContext)
   const [items, setItems] = useState<
     components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
   >([]);
@@ -36,6 +38,7 @@ const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
     }
     async function loadData() {
       var data = await search(
+        settings.api_url,
         props.segments,
         controller.signal,
         fields,

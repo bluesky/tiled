@@ -6,13 +6,14 @@ import {
   GridToolbarContainer,
   GridToolbarDensitySelector,
 } from "@mui/x-data-grid";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import { components } from "../openapi_schemas";
 import { search } from "../client";
 import { useNavigate } from "react-router-dom";
+import { SettingsContext } from "../context/settings";
 
 interface Column {
   header: string;
@@ -22,9 +23,10 @@ interface Column {
 
 function CustomToolbar() {
   return (
+    // working around https://github.com/mui/mui-x/issues/2383
     <GridToolbarContainer>
-      <GridToolbarColumnsButton />
-      <GridToolbarDensitySelector />
+      <GridToolbarColumnsButton {...({} as any)} />
+      <GridToolbarDensitySelector {...({} as any)} />
     </GridToolbarContainer>
   );
 }
@@ -65,6 +67,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
       hide: !props.defaultColumns.includes(column.field),
     })
   );
+  const settings = useContext(SettingsContext)
   const [rowsState, setRowsState] = useState<RowsState>({
     page: 0,
     pageSize: DEFAULT_PAGE_SIZE,
@@ -99,6 +102,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           "}";
       }
       var data = await search(
+        settings.api_url,
         props.segments,
         controller.signal,
         fields,

@@ -1,0 +1,51 @@
+# This is used to verify that a container image has the basic expected behavior.
+# See https://github.com/NVIDIA/container-canary
+#
+# Run locally like:
+#
+# canary validate --file canary-validator.yml ghcr.io/bluesky/tiled:latest
+
+apiVersion: container-canary.nvidia.com/v2
+kind: Validator
+name: tiled
+description: Validate that Tiled container image is operational.
+env: []
+ports:
+ - port: 8000
+   protocol: TCP
+volumes: []
+command:
+  - tiled
+  - serve
+  - catalog
+  - --temp
+  - --host
+  - 0.0.0.0
+checks:
+ - name: http
+   description: Exposes an HTTP interface on port 8000
+   probe:
+     httpGet:
+       path: /api/v1
+       port: 8000
+     initialDelaySeconds: 5
+     timeoutSeconds: 10
+     failureThreshold: 3
+ - name: http
+   description: Serves a REST API at /api/v1
+   probe:
+     httpGet:
+       path: /api/v1
+       port: 8000
+     initialDelaySeconds: 5
+     timeoutSeconds: 10
+     failureThreshold: 3
+ - name: http
+   description: Serves a UI at /ui/browse
+   probe:
+     httpGet:
+       path: /ui/browse
+       port: 8000
+     initialDelaySeconds: 5
+     timeoutSeconds: 10
+     failureThreshold: 3

@@ -28,10 +28,12 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN pip install --upgrade --no-cache-dir cython pip wheel
 
-COPY --from=web_frontend_builder /code/build /code/share/tiled/ui
+COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
 
-RUN pip install '.[server]'
+# Skip building the UI here because we already did it in the stage
+# above using a node container.
+RUN TILED_BUILD_SKIP_UI=1 pip install '.[server]'
 
 # FROM base as test
 #

@@ -1,11 +1,11 @@
 import { Column, Spec } from "./contents";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import Container from "@mui/material/Container";
 import NodeLazyContents from "./node-lazy-contents";
 import { Skeleton } from "@mui/material";
 import Typography from "@mui/material/Typography";
-import { loadConfig } from "../config";
+import { SettingsContext } from "../context/settings";
 
 interface IProps {
   segments: string[];
@@ -13,24 +13,9 @@ interface IProps {
 }
 
 const NodeOverview: React.FunctionComponent<IProps> = (props) => {
-  const [specs, setSpecs] = useState<any>();
-
-  useEffect(() => {
-    const controller = new AbortController();
-    async function loadSpecs() {
-      const config = await loadConfig(controller.signal);
-      const specs = config.specs;
-      setSpecs(specs);
-    }
-    loadSpecs();
-    return () => {
-      controller.abort();
-    };
-  }, []);
+  const settings = useContext(SettingsContext);
+  const specs = settings.specs || [];
   // Walk through the node's specs until we find one we recognize.
-  if (specs === undefined) {
-    return <Skeleton variant="rectangular" />;
-  }
   const spec = specs.find((spec: Spec) =>
     props.item.data!.attributes!.specs.includes(spec.spec)
   );

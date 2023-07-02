@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import Select, { SelectChangeEvent } from "@mui/material/Select";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -18,7 +18,7 @@ import Tooltip from "@mui/material/Tooltip";
 import { about } from "../client";
 import { components } from "../openapi_schemas";
 import copy from "clipboard-copy";
-import { loadConfig } from "../config";
+import { SettingsContext } from "../context/settings";
 
 interface Format {
   mimetype: string;
@@ -35,33 +35,12 @@ interface DownloadProps {
 }
 
 const Download: React.FunctionComponent<DownloadProps> = (props) => {
-  const [formats, setFormats] = useState<any>();
-  const [info, setInfo] = useState<components["schemas"]["About"]>();
+  const settings = useContext(SettingsContext);
+  const formats = settings.structure_families[props.structureFamily].formats;
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
     null
   );
 
-  useMemo(() => {
-    async function loadInfo() {
-      var result = await about();
-      setInfo(result);
-    }
-    loadInfo();
-  }, []);
-
-  // Access config to get info about supported formats.
-  useEffect(() => {
-    const controller = new AbortController();
-    async function loadFormats() {
-      const config = await loadConfig(controller.signal);
-      const formats = config.structure_families[props.structureFamily].formats;
-      setFormats(formats);
-    }
-    loadFormats();
-    return () => {
-      controller.abort();
-    };
-  }, [props.structureFamily]);
   const handleLinkClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -81,10 +60,6 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     props.setFormat(format);
   };
 
-  if (formats === undefined || info === undefined) {
-    // Waiting for 'about' and 'config' to load.
-    return <Skeleton variant="rectangular" />;
-  }
   const value = props.format !== undefined ? props.format.mimetype : "";
 
   return (
@@ -102,21 +77,13 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
           >
             {formats.map((format: Format) => {
               return (
-                // Look up the display name in the UI configuration.
-                // If none is given, skip this format.
-                info!.formats[props.structureFamily].includes(
-                  format.mimetype
-                ) ? (
-                  <MenuItem
-                    key={`format-${format.mimetype}`}
-                    value={format.mimetype}
-                  >
-                    {format.display_name as string}
-                  </MenuItem>
-                ) : (
-                  ""
-                )
-              );
+                <MenuItem
+                  key={`format-${format.mimetype}`}
+                  value={format.mimetype}
+                >
+                  {format.display_name as string}
+                </MenuItem>
+              )
             })}
           </Select>
         </FormControl>

@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { Suspense, lazy } from "react";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import ErrorBoundary from "../components/error-boundary";
@@ -14,6 +14,7 @@ import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 import { components } from "../openapi_schemas";
 import { metadata } from "../client";
+import { SettingsContext } from "../context/settings";
 import { useParams } from "react-router-dom";
 
 const ArrayOverview = lazy(() => import("../components/overview-array"));
@@ -168,6 +169,7 @@ function Browse() {
 }
 
 const NodeTabs: React.FunctionComponent<IProps> = (props) => {
+  const settings = useContext(SettingsContext)
   const [tabValue, setTabValue] = useState(0);
   const handleTabChange = (event: React.ChangeEvent<any>, newValue: number) => {
     setTabValue(newValue);
@@ -184,7 +186,7 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
     const controller = new AbortController();
     async function loadData() {
       // Request all the attributes.
-      var result = await metadata(props.segments, controller.signal, [
+      var result = await metadata(settings.api_url, props.segments, controller.signal, [
         "structure_family",
         "structure.macro",
         "structure.micro",
@@ -207,7 +209,7 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
     const controller = new AbortController();
     async function loadData() {
       // Request all the attributes.
-      var result = await metadata(props.segments, controller.signal, [
+      var result = await metadata(settings.api_url, props.segments, controller.signal, [
         "structure_family",
         "structure.macro",
         "structure.micro",

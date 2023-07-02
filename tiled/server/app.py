@@ -11,6 +11,7 @@ from typing import List
 
 import anyio
 import packaging.version
+import yaml
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -251,6 +252,24 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                     "binder_link": os.getenv("TILED_BINDER_LINK"),
                 },
             )
+
+        TILED_UI_SETTINGS = os.getenv("TILED_UI_SETTINGS")
+        if TILED_UI_SETTINGS is None:
+            TILED_UI_SETTINGS = Path(
+                SHARE_TILED_PATH, "static", "default_ui_settings.yml"
+            )
+        if TILED_UI_SETTINGS != "":
+            # If "", the settings are being served some other way, such as by
+            # nginx, perhaps because the API is served from a sub-path of this netloc.
+
+            # The settings are YAML-formatted because that is more readable and supports
+            # comments. But they are served as JSON because that is easy to deal with
+            # on the client side.
+            ui_settings = yaml.safe_load(Path(TILED_UI_SETTINGS).read_text())
+
+            @app.get("/tiled-ui-settings")
+            async def tiled_ui_settings():
+                return ui_settings
 
     @app.exception_handler(UnsupportedQueryType)
     async def unicorn_exception_handler(request: Request, exc: UnsupportedQueryType):

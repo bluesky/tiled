@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "tiled"
 description = "Structured Scientific Data Access Service"
-readme = "README.md"
+readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
-  { name = "Dan Allan", email = "dallan@bnl.gov" },
+  { name = "Bluesky Project Contributors", email = "dallan@bnl.gov" },
 ]
 maintainers = [
-  { name = "Brookhaven National Laboratoryu", email = "dallan@bnl.gov" },
+  { name = "Brookhaven National Laboratory", email = "dallan@bnl.gov" },
 ]
 requires-python = ">=3.7"
 
@@ -279,6 +279,15 @@ Documentation = "https://blueskyproject.io/tiled"
 [tool.hatch]
 version.source = "vcs"
 build.hooks.vcs.version-file = "tiled/_version.py"
+
+# Defining this (empty) section invokes hatch_build.py
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"share/tiled/.identifying_file_72628d5f953b4229b58c9f1f8f6a9a09" = "share/tiled/.identifying_file_72628d5f953b4229b58c9f1f8f6a9a09"
+"share/tiled/static" = "share/tiled/static"
+"share/tiled/templates" = "share/tiled/templates"
+"share/tiled/ui" = "share/tiled/ui"
 
 [tool.black]
 line-length = 88
