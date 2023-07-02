@@ -418,23 +418,33 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # Validate the single-user API key.
         settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
+        API_KEY_MSG = """
+Here are two ways to generate a good API key:
+
+# With openssl:
+openssl rand -hex 32
+
+# With Python:
+python -c "import secrets; print(secrets.token_hex(32))"
+
+"""
         if single_user_api_key is not None:
+            if not single_user_api_key:
+                raise ValueError(
+                    """
+The single-user API key is set to an empty value. Perhaps the environment
+variable TILED_SINGLE_USER_API_KEY is set to an empty string.
+"""
+                    + API_KEY_MSG
+                )
             if not single_user_api_key.isalnum():
                 raise ValueError(
                     """
-    The API key must only contain alphanumeric characters. We enforce this because
-    pasting other characters into a URL, as in ?api_key=..., can result in
-    confusing behavior due to ambiguous encodings.
-
-    The API key can be as long as you like. Here are two ways to generate a valid
-    one:
-
-    # With openssl:
-    openssl rand -hex 32
-
-    # With Python:
-    python -c "import secrets; print(secrets.token_hex(32))"
-    """
+The API key must only contain alphanumeric characters. We enforce this because
+pasting other characters into a URL, as in ?api_key=..., can result in
+confusing behavior due to ambiguous encodings.
+"""
+                    + API_KEY_MSG
                 )
 
         # Run startup tasks collected from trees (adapters).
