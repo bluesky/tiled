@@ -5,6 +5,27 @@ import TiledAppBar from "./components/tiled-app-bar";
 import { useEffect, useState } from "react";
 import { fetchSettings } from "./settings"
 import { SettingsContext, emptySettings } from "./context/settings"
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Suspense, lazy } from "react";
+import Skeleton from "@mui/material/Skeleton";
+
+const Browse = lazy(() => import("./routes/browse"));
+
+
+function Base() {
+  return (
+    <Container>
+      <TiledAppBar />
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
+    </Container>
+  )
+}
+
+
+const basename = import.meta.env.BASE_URL;
+console.log(basename)
 
 function App() {
   const [settings, setSettings] = useState(emptySettings)
@@ -18,14 +39,27 @@ function App() {
   } , []);
   return (
     <SettingsContext.Provider value={settings}>
-      <Container>
-        <TiledAppBar />
+      <BrowserRouter basename={basename}>
         <ErrorBoundary>
-          <Outlet />
+          <Suspense fallback={<Skeleton variant="rectangular" />}>
+            <Routes>
+              <Route path="/" element={<Base />}>
+                <Route path="/browse/*" element={<Browse />} />
+              </Route>
+              <Route
+                path="*"
+                element={
+                  <main style={{ padding: "1rem" }}>
+                    <p>There's nothing here!</p>
+                  </main>
+                }
+              />
+            </Routes>
+          </Suspense>
         </ErrorBoundary>
-      </Container>
+      </BrowserRouter>
     </SettingsContext.Provider>
-  );
+  )
 }
 
 export default App;
