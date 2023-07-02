@@ -1,4 +1,4 @@
-name: CD
+name: Publish package on PyPI
 
 on:
   workflow_dispatch:
@@ -18,15 +18,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build source distribution (sdist) and wheel
-        run: python -m build
+      - name: Build SDist and wheel
+        run: pipx run build
 
       - uses: actions/upload-artifact@v3
         with:
           path: dist/*
 
       - name: Check metadata
-        run: twine check dist/*
+        run: pipx run twine check dist/*
 
   publish:
     needs: [dist]
