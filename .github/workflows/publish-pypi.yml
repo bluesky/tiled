@@ -1,29 +1,45 @@
-# This workflows will upload a Python Package using when a GH release is created
-
-name: Upload Python Package
+name: CD
 
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
   release:
-    types: [created]
+    types:
+      - published
 
 jobs:
-  deploy:
+  dist:
     runs-on: ubuntu-latest
-    # https://docs.pypi.org/trusted-publishers/
+    steps:
+      - uses: actions/checkout@v3
+
+        with:
+          fetch-depth: 0
+
+      - name: Build source distribution (sdist) and wheel
+        run: python -m build
+
+      - uses: actions/upload-artifact@v3
+        with:
+          path: dist/*
+
+      - name: Check metadata
+        run: twine check dist/*
+
+  publish:
+    needs: [dist]
+    environment: pypi
     permissions:
       id-token: write
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
-    - name: Ensure we have latest pip
-      run: python -m pip install --upgrade pip
-    - name: Build
-      run: python -m build
-        pip install .
-    - name: Build and publish
-      run: |
-        python setup.py sdist bdist_wheel
-        twine upload dist/*
+      - uses: actions/download-artifact@v3
+        with:
+          name: artifact
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
