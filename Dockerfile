@@ -28,7 +28,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN pip install --upgrade --no-cache-dir cython pip wheel
 
-COPY --from=web_frontend_builder /code/build /code/share/tiled/ui
+COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
 
 # Skip building the UI here because we already did it in the stage

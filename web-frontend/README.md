@@ -22,9 +22,9 @@ The front-end will launch at `http://localhost:5173`.
 
 ## Packaging
 
-The build hook in `hatch_build.py` builds the UI using `npm build:pydist`
-and ensures that they are included in the distribution under `share/tiled/ui`,
-outside the Python package.
+The build hook in `hatch_build.py` builds the UI and copies the production
+build into `share/tiled/ui`. The build will include this as _data_, included in
+the distribution but placed outside the Python package.
 
 ## Generating TypeScript from OpenAPI
 

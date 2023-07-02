@@ -5,8 +5,7 @@
   "private": true,
   "scripts": {
     "serve": "vite serve",
-    "build": "vite build",
-    "build:pydist": "vite build && rm -rf ../share/tiled/ui && cp -r build/ ../share/tiled/ui"
+    "build": "vite build"
   },
   "dependencies": {
     "@emotion/react": "^11.7.1",
