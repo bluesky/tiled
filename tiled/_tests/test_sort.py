@@ -15,7 +15,7 @@ repeated_letters = ["a", "b"] * 5
 sorted_numbers = list(range(10))
 letters = sorted_letters.copy()
 numbers = sorted_numbers.copy()
-seed = random.Random()
+seed = random.Random(0)  # deterministic
 seed.shuffle(letters)
 seed.shuffle(numbers)
 
