@@ -15,6 +15,7 @@ interface Spec {
 }
 
 interface Settings {
+  api_url: string;
   specs: Spec[];
   structure_families: any;
 }

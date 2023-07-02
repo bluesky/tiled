@@ -12,7 +12,7 @@ import Skeleton from "@mui/material/Skeleton";
 const Browse = lazy(() => import("./routes/browse"));
 
 
-function Base() {
+function MainContainer() {
   return (
     <Container>
       <TiledAppBar />
@@ -24,8 +24,8 @@ function Base() {
 }
 
 
+// This is set in vite.config.js. It is the base path of the ui.
 const basename = import.meta.env.BASE_URL;
-console.log(basename)
 
 function App() {
   const [settings, setSettings] = useState(emptySettings)
@@ -43,7 +43,7 @@ function App() {
         <ErrorBoundary>
           <Suspense fallback={<Skeleton variant="rectangular" />}>
             <Routes>
-              <Route path="/" element={<Base />}>
+              <Route path="/" element={<MainContainer />}>
                 <Route path="/browse/*" element={<Browse />} />
               </Route>
               <Route

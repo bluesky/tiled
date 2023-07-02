@@ -15,8 +15,6 @@ interface IProps {
 const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   const settings = useContext(SettingsContext);
   const specs = settings.specs || [];
-  console.log('settings', settings)
-  console.log('specs', specs)
   // Walk through the node's specs until we find one we recognize.
   const spec = specs.find((spec: Spec) =>
     props.item.data!.attributes!.specs.includes(spec.spec)

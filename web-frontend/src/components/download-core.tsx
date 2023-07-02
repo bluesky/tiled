@@ -37,18 +37,9 @@ interface DownloadProps {
 const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const settings = useContext(SettingsContext);
   const formats = settings.structure_families[props.structureFamily].formats;
-  const [info, setInfo] = useState<components["schemas"]["About"]>();
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
     null
   );
-
-  useMemo(() => {
-    async function loadInfo() {
-      var result = await about();
-      setInfo(result);
-    }
-    loadInfo();
-  }, []);
 
   const handleLinkClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
@@ -69,10 +60,6 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
     props.setFormat(format);
   };
 
-  if (formats === undefined || info === undefined) {
-    // Waiting for 'about' and 'config' to load.
-    return <Skeleton variant="rectangular" />;
-  }
   const value = props.format !== undefined ? props.format.mimetype : "";
 
   return (
@@ -90,21 +77,13 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
           >
             {formats.map((format: Format) => {
               return (
-                // Look up the display name in the UI configuration.
-                // If none is given, skip this format.
-                info!.formats[props.structureFamily].includes(
-                  format.mimetype
-                ) ? (
-                  <MenuItem
-                    key={`format-${format.mimetype}`}
-                    value={format.mimetype}
-                  >
-                    {format.display_name as string}
-                  </MenuItem>
-                ) : (
-                  ""
-                )
-              );
+                <MenuItem
+                  key={`format-${format.mimetype}`}
+                  value={format.mimetype}
+                >
+                  {format.display_name as string}
+                </MenuItem>
+              )
             })}
           </Select>
         </FormControl>

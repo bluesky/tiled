@@ -1,3 +1,4 @@
+api_url: /api/v1
 structure_families:
   array:
     formats:

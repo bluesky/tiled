@@ -1,13 +1,10 @@
 import axios from "axios";
 import { components } from "./openapi_schemas";
 
-const apiURL = import.meta.env.REACT_APP_API_PREFIX || "../../api/v1";
-
-var axiosInstance = axios.create({
-  baseURL: apiURL,
-});
+var axiosInstance = axios.create();
 
 export const search = async (
+  apiURL: string,
   segments: string[],
   signal: AbortSignal,
   fields: string[] = [],
@@ -17,7 +14,7 @@ export const search = async (
 ): Promise<
   components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]
 > => {
-  let url = `/node/search/${segments.join(
+  let url = `${apiURL}/node/search/${segments.join(
     "/"
   )}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
     "&fields="
@@ -30,6 +27,7 @@ export const search = async (
 };
 
 export const metadata = async (
+  apiURL: string,
   segments: string[],
   signal: AbortSignal,
   fields: string[] = []
@@ -37,7 +35,7 @@ export const metadata = async (
   components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
 > => {
   const response = await axiosInstance.get(
-    `/node/metadata/${segments.join("/")}?fields=${fields.join("&fields=")}`,
+    `${apiURL}/node/metadata/${segments.join("/")}?fields=${fields.join("&fields=")}`,
     { signal: signal }
   );
   return response.data;
