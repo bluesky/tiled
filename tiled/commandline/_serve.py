@@ -189,6 +189,24 @@ def serve_catalog(
             write = directory / DATA_SUBDIRECTORY
             write.mkdir()
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
+    elif database is None:
+        typer.echo(
+            """A catalog must be specified. Either use a temporary catalog:
+
+    tiled serve catalog --temp
+
+or initialize a new catalog, e.g.
+
+    tiled catalog init catalog.db
+    tiled serve catalog catalog.db
+
+or use an existing one:
+
+    tiled serve catalog catalog.db
+""",
+            err=True,
+        )
+        raise typer.Abort()
 
     tree_kwargs = {}
     server_settings = {}
