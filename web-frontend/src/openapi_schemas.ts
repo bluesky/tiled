@@ -13,7 +13,7 @@ export interface paths {
   "/api/": {
     get: operations["about_api__get"];
   };
-  "/api/node/metadata/{path}": {
+  "/api/metadata/{path}": {
     /** Fetch the metadata and structure information for one entry. */
     get: operations["node_metadata_api_node_metadata__path__get"];
   };
@@ -33,7 +33,7 @@ export interface paths {
     /** Fetch the data below the given node. */
     get: operations["full_xarray_Dataset_api_node_full__path__get"];
   };
-  "/api/node/search/{path}": {
+  "/api/search/{path}": {
     get: operations["node_search_api_node_search__path__get"];
   };
 }

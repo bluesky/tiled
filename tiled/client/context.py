@@ -247,7 +247,7 @@ class Context:
         """
         Accept a URI to a specific node.
 
-        For example, given URI "https://example.com/api/v1/node/metadata/a/b/c"
+        For example, given URI "https://example.com/api/v1//metadata/a/b/c"
         return a Context connected to "https://examples/api/v1" and the list
         ["a", "b", "c"].
         """

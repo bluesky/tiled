@@ -213,7 +213,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 raise HTTPException(status_code=401)
             except FileNotFoundError:
                 # This may be a URL that has meaning to the client-side application,
-                # such as /ui/node/metadata/a/b/c.
+                # such as /ui//metadata/a/b/c.
                 # Serve index.html and let the client-side application sort it out.
                 if try_app:
                     response = await lookup_file("index.html", try_app=False)

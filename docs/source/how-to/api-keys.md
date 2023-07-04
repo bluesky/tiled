@@ -98,7 +98,7 @@ We can use in other web clients as well. For example, using [HTTPie](https://htt
 we can see that unauthenticated requests are refused
 
 ```
-$ http http://localhost:8000/api/v1/node/metadata/
+$ http http://localhost:8000/api/v1/metadata/
 HTTP/1.1 401 Unauthorized
 content-length: 30
 content-type: application/json
@@ -117,7 +117,7 @@ but passing the API key in the `Authorization` header as `Apikey YOUR_KEY_HERE` 
 (Note the use of `'` quotes.)
 
 ```
-$ http http://localhost:8000/api/v1/node/metadata/ 'Authorization:Apikey 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318'
+$ http http://localhost:8000/api/v1/metadata/ 'Authorization:Apikey 48e8f8598940fa0f3e80b406def606e17e815a2c76fe21350a99d6d9935371d11533b318'
 HTTP/1.1 200 OK
 content-length: 320
 content-type: application/json
@@ -130,7 +130,7 @@ set-cookie: tiled_csrf=InE4mplUO0goPxf4V07tVuLSLUvDqhgtALTHYoC3T3s; HttpOnly; Pa
 ```
 
 The API key can also be passed in the URL like
-`http://localhost:8000/api/v1/node/metadata/?api_key=YOUR_KEY_HERE`. Using the
+`http://localhost:8000/api/v1/metadata/?api_key=YOUR_KEY_HERE`. Using the
 `Authorization` header is preferred (more secure) but in some situations, as in
 pasting a link into a web browser, the URL is the only option.
 

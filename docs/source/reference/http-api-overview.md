@@ -18,7 +18,7 @@ The routes are generally spelled like ``GET /{action}/{path}/``, like GitHub
 repository URLs, with the path following the structure of the Tree
 entries.
 
-The ``GET /node/metadata/{path}`` route provides the metadata about one node.
+The ``GET //metadata/{path}`` route provides the metadata about one node.
 The ``GET /node/search/{path}`` route provides paginated access to the children of
 a given node, with optional filtering (search). The ``GET /node/full/{path}`` route
 provides all the metadata and data below a given node.

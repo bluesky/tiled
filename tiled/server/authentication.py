@@ -323,7 +323,7 @@ async def get_current_principal(
     if not set(security_scopes.scopes).issubset(scopes):
         # Include a link to the root page which provides a list of
         # authenticators. The use case here is:
-        # 1. User is emailed a link like https://example.com/subpath/node/metadata/a/b/c
+        # 1. User is emailed a link like https://example.com/subpath//metadata/a/b/c
         # 2. Tiled Client tries to connect to that and gets 401.
         # 3. Client can use this header to find its way to
         #    https://examples.com/subpath/ and obtain a list of
