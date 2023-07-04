@@ -82,7 +82,7 @@ def test_distinct(context):
             {"value": ["MyDataFrame"], "count": None},
         ],
         "structure_families": [
-            {"value": "node", "count": None},
+            {"value": "container", "count": None},
             {"value": "array", "count": None},
             {"value": "dataframe", "count": None},
         ],
@@ -107,7 +107,7 @@ def test_distinct(context):
             {"value": ["MyDataFrame"], "count": 5},
         ],
         "structure_families": [
-            {"value": "node", "count": 22},
+            {"value": "container", "count": 22},
             {"value": "array", "count": 10},
             {"value": "dataframe", "count": 10},
         ],

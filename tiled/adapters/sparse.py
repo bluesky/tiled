@@ -1,13 +1,14 @@
 import numpy
 import sparse
 
+from ..structures.core import StructureFamily
 from ..structures.sparse import COOStructure
 from .array import slice_and_shape_from_block_and_chunks
 
 
 class COOAdapter:
     "Wrap sparse Coordinate List (COO) arrays."
-    structure_family = "sparse"
+    structure_family = StructureFamily.sparse
 
     @classmethod
     def from_arrays(

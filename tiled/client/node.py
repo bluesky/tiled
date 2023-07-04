@@ -465,7 +465,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> tree.distinct("foo", "bar", counts=True)
         """
 
-        link = self.item["links"]["self"].replace("/node/metadata", "/node/distinct", 1)
+        link = self.item["links"]["self"].replace("/metadata", "/distinct", 1)
         distinct = self.context.get_json(
             link,
             params={
@@ -581,7 +581,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
             normalized_specs.append(asdict(spec))
         references = references or []
         data_sources = []
-        if structure_family != StructureFamily.node:
+        if structure_family != StructureFamily.container:
             # TODO Handle multiple data sources.
             data_sources.append({"structure": asdict(structure)})
         item = {
@@ -659,7 +659,7 @@ class Node(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         """
         return self.new(
-            StructureFamily.node,
+            StructureFamily.container,
             {"contents": None, "count": None},
             key=key,
             metadata=metadata,
@@ -976,7 +976,7 @@ class _Wrap:
 DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
-            "node": _Wrap(Node),
+            "container": _Wrap(Node),
             "array": _LazyLoad(("..array", Node.__module__), "ArrayClient"),
             "dataframe": _LazyLoad(("..dataframe", Node.__module__), "DataFrameClient"),
             "sparse": _LazyLoad(("..sparse", Node.__module__), "SparseClient"),
@@ -985,7 +985,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     ),
     "dask": OneShotCachedMap(
         {
-            "node": _Wrap(Node),
+            "container": _Wrap(Node),
             "array": _LazyLoad(("..array", Node.__module__), "DaskArrayClient"),
             "dataframe": _LazyLoad(
                 ("..dataframe", Node.__module__), "DaskDataFrameClient"

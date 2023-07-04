@@ -189,7 +189,7 @@ class SelfLinkOnly(pydantic.BaseModel):
     self: str
 
 
-class NodeLinks(pydantic.BaseModel):
+class ContainerLinks(pydantic.BaseModel):
     self: str
     search: str
     full: str
@@ -214,7 +214,7 @@ class SparseLinks(pydantic.BaseModel):
 
 
 resource_links_type_by_structure_family = {
-    "node": NodeLinks,
+    "container": ContainerLinks,
     "array": ArrayLinks,
     "dataframe": DataFrameLinks,
     "sparse": SparseLinks,
@@ -225,7 +225,7 @@ class EmptyDict(pydantic.BaseModel):
     pass
 
 
-class NodeMeta(pydantic.BaseModel):
+class ContainerMeta(pydantic.BaseModel):
     count: int
 
 

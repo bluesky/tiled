@@ -383,7 +383,7 @@ class NotIn:
 
 @register(name="specs")
 @dataclass(init=False)
-class Specs:
+class SpecsQuery:
     """
     Query if specs list matches all elements in include list and does not match any element in exclude list
 
@@ -426,7 +426,7 @@ class Specs:
         return cls(include=json.loads(include), exclude=json.loads(exclude))
 
 
-def Spec(spec):
+def SpecQuery(spec):
     """
     Convenience function for querying if specs list contains a given spec
 
@@ -449,7 +449,7 @@ def Spec(spec):
 
 @register(name="structure_family")
 @dataclass(init=False)
-class StructureFamily:
+class StructureFamilyQuery:
     """
     Query if structure_families match value
 

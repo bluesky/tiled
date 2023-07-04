@@ -136,7 +136,7 @@ Set an api_key as in:
             prompt_for_reauthentication=prompt_for_reauthentication,
         )
     # Context ensures that context.api_uri has a trailing slash.
-    item_uri = f"{context.api_uri}node/metadata/{'/'.join(node_path_parts)}"
+    item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
     try:
         content = context.get_json(item_uri)
     except ClientError as err:

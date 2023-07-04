@@ -253,8 +253,8 @@ class Context:
         """
         uri = httpx.URL(uri)
         node_path_parts = []
-        if "/node/metadata" in uri.path:
-            api_path, _, node_path = uri.path.partition("/node/metadata")
+        if "/metadata" in uri.path:
+            api_path, _, node_path = uri.path.partition("/metadata")
             api_uri = uri.copy_with(path=api_path)
             node_path_parts.extend(
                 [segment for segment in node_path.split("/") if segment]

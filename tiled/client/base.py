@@ -234,7 +234,7 @@ class BaseClient:
     def metadata_revisions(self):
         if self._metadata_revisions is None:
             link = self.item["links"]["self"].replace(
-                "/node/metadata", "/node/revisions", 1
+                "/metadata", "/revisions", 1
             )
             self._metadata_revisions = MetadataRevisions(self.context, link)
 

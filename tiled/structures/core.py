@@ -10,7 +10,7 @@ from typing import Optional
 
 
 class StructureFamily(str, enum.Enum):
-    node = "node"
+    container = "container"
     array = "array"
     dataframe = "dataframe"
     sparse = "sparse"

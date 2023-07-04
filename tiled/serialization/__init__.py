@@ -7,9 +7,9 @@ def register_builtin_serializers():
     """
     # Each submodule in ..serialization registers serializers on import.
     # Some are conditional on the availability of particular I/O libraries.
-    from ..serialization import node as _node  # noqa: F401
+    from ..serialization import container as _container  # noqa: F401
 
-    del _node
+    del _container
     if modules_available("numpy", "dask.array"):
         from ..serialization import array as _array  # noqa: F401
 

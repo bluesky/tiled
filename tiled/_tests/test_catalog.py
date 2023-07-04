@@ -45,7 +45,7 @@ async def test_nested_node_creation(a):
     await a.create_node(
         key="b",
         metadata={},
-        structure_family=StructureFamily.node,
+        structure_family=StructureFamily.container,
         specs=[],
         references=[],
     )
@@ -53,7 +53,7 @@ async def test_nested_node_creation(a):
     await b.create_node(
         key="c",
         metadata={},
-        structure_family=StructureFamily.node,
+        structure_family=StructureFamily.container,
         specs=[],
         references=[],
     )
@@ -84,7 +84,7 @@ async def test_sorting(a):
         await a.create_node(
             key=letter,
             metadata={"letter": letter, "number": number},
-            structure_family=StructureFamily.node,
+            structure_family=StructureFamily.container,
             specs=[],
             references=[],
         )
@@ -130,7 +130,7 @@ async def test_search(a):
         await a.create_node(
             key=letter,
             metadata={"letter": letter, "number": number, "x": {"y": {"z": letter}}},
-            structure_family=StructureFamily.node,
+            structure_family=StructureFamily.container,
             specs=[],
             references=[],
         )
@@ -152,7 +152,7 @@ async def test_search(a):
         await d.create_node(
             key=letter,
             metadata={"letter": letter, "number": number},
-            structure_family=StructureFamily.node,
+            structure_family=StructureFamily.container,
             specs=[],
             references=[],
         )

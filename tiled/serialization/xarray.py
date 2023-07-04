@@ -11,7 +11,7 @@ from .dataframe import (
     serialize_html,
     serialize_parquet,
 )
-from .node import walk
+from .container import walk
 
 
 async def as_dataset(node):

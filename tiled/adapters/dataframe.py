@@ -4,6 +4,7 @@ import pandas
 
 from ..serialization.dataframe import serialize_arrow
 from ..server.object_cache import NO_CACHE, get_object_cache
+from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
 from ..utils import DictView
 from .array import ArrayAdapter
@@ -25,7 +26,7 @@ class DataFrameAdapter:
     >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
     """
 
-    structure_family = "dataframe"
+    structure_family = StructureFamily.dataframe
 
     @classmethod
     def from_pandas(cls, *args, metadata=None, specs=None, references=None, **kwargs):
