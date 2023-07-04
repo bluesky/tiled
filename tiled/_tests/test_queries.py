@@ -261,9 +261,9 @@ def test_specs(client, include_values, exclude_values):
         SpecsQuery("foo")
 
     with cm():
-        assert sorted(list(client.search(SpecsQuery(include=include_values)))) == sorted(
-            ["specs_foo_bar", "specs_foo_bar_baz"]
-        )
+        assert sorted(
+            list(client.search(SpecsQuery(include=include_values)))
+        ) == sorted(["specs_foo_bar", "specs_foo_bar_baz"])
 
     with cm():
         assert list(

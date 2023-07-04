@@ -26,8 +26,8 @@ from tiled.queries import (
     NotEq,
     NotIn,
     Operator,
+    StructureFamilyQuery,
 )
-from tiled.queries import StructureFamilyQuery
 
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE

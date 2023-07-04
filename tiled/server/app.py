@@ -40,7 +40,7 @@ from .dependencies import (
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
-from .router import distinct, search, patch_route_signature, router
+from .router import distinct, patch_route_signature, router, search
 from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,

@@ -397,7 +397,7 @@ class SpecsQuery:
 
     Search for specs ["foo", "bar"] and NOT "baz"
 
-    >>> c.search(Specs(include=["foo", "bar"], exclude=["baz"]))
+    >>> c.search(SpecsQuery(include=["foo", "bar"], exclude=["baz"]))
     """
 
     include: List[str]
@@ -430,7 +430,7 @@ def SpecQuery(spec):
     """
     Convenience function for querying if specs list contains a given spec
 
-    Equivalent to Specs([spec]).
+    Equivalent to SpecsQuery([spec]).
 
     Parameters
     ----------
@@ -444,7 +444,7 @@ def SpecQuery(spec):
     >>> c.search(Spec("foo"))
     """
 
-    return Specs([spec])
+    return SpecsQuery([spec])
 
 
 @register(name="structure_family")

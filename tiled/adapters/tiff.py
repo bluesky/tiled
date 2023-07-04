@@ -4,8 +4,8 @@ import hashlib
 import tifffile
 
 from ..server.object_cache import with_object_cache
-from ..structures.core import StructureFamily
 from ..structures.array import ArrayMacroStructure, BuiltinDtype
+from ..structures.core import StructureFamily
 
 
 class TiffAdapter:

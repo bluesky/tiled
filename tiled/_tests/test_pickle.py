@@ -2,10 +2,10 @@
 # via actual HTTP/TCP, not to an internal app via ASGI.
 # We try connecting out to the demo deployment.
 import pickle
-from packaging.version import parse
 
 import httpx
 import pytest
+from packaging.version import parse
 
 from ..client import from_context
 from ..client.context import Context
@@ -30,7 +30,9 @@ def test_pickle_clients(structure_clients):
         raise pytest.skip(f"Could not connect to {API_URL}")
     with Context(API_URL) as context:
         if parse(context.server_info["library_version"]) < parse("0.1.0a98"):
-            raise pytest.skip(f"Server at {API_URL} is running too old a version to test against.")
+            raise pytest.skip(
+                f"Server at {API_URL} is running too old a version to test against."
+            )
         client = from_context(context, structure_clients)
         pickle.loads(pickle.dumps(client))
         for segements in [
