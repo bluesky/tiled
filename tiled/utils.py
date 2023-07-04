@@ -331,7 +331,7 @@ def gen_tree(tree, nodes=None, last=None):
         return None
 
     structure_clients = collections.defaultdict(lambda: dummy_client)
-    structure_clients["node"] = Node
+    structure_clients["container"] = Node
     fast_tree = tree.new_variation(structure_clients=structure_clients)
     if nodes is None:
         last_index = len(fast_tree) - 1
