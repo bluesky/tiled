@@ -22,10 +22,13 @@ Follow the links in the table below for examples specific to each query.
    tiled.queries.In
    tiled.queries.NotIn
    tiled.queries.Regex
-   tiled.queries.Spec
-   tiled.queries.Specs
-   tiled.queries.StructureFamily
+   tiled.queries.SpecQuery
+   tiled.queries.SpecsQuery
+   tiled.queries.StructureFamilyQuery
 ```
+
+(Some have the word `Query` at the end of their name to avoid confusion with
+other objects in the Tiled codebase.)
 
 ## Query expressions
 
