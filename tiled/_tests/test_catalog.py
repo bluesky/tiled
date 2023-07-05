@@ -47,7 +47,6 @@ async def test_nested_node_creation(a):
         metadata={},
         structure_family=StructureFamily.container,
         specs=[],
-        references=[],
     )
     b = await a.lookup_adapter(["b"])
     await b.create_node(
@@ -55,7 +54,6 @@ async def test_nested_node_creation(a):
         metadata={},
         structure_family=StructureFamily.container,
         specs=[],
-        references=[],
     )
     c = await b.lookup_adapter(["c"])
     assert b.segments == ["b"]
@@ -86,7 +84,6 @@ async def test_sorting(a):
             metadata={"letter": letter, "number": number},
             structure_family=StructureFamily.container,
             specs=[],
-            references=[],
         )
 
     # Default sorting is _not_ ordered.
@@ -132,7 +129,6 @@ async def test_search(a):
             metadata={"letter": letter, "number": number, "x": {"y": {"z": letter}}},
             structure_family=StructureFamily.container,
             specs=[],
-            references=[],
         )
     assert "c" in await a.keys_range(0, 5)
     assert await a.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
@@ -154,7 +150,6 @@ async def test_search(a):
             metadata={"letter": letter, "number": number},
             structure_family=StructureFamily.container,
             specs=[],
-            references=[],
         )
     assert await d.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
     assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
@@ -171,7 +166,6 @@ async def test_metadata_index_is_used(a):
                 "bool": bool(i),
             },
             specs=[],
-            references=[],
             structure_family="array",
         )
     # Check that an index (specifically the 'top_level_metdata' index) is used

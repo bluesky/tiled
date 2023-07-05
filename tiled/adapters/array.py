@@ -34,7 +34,6 @@ class ArrayAdapter:
         metadata=None,
         dims=None,
         specs=None,
-        references=None,
     ):
         # Why would shape ever be different from array.shape, you ask?
         # Some formats (notably Zarr) force shape to be a multiple of
@@ -59,7 +58,6 @@ class ArrayAdapter:
         self._metadata = metadata or {}
         self._dims = dims
         self.specs = specs or []
-        self.references = references or []
 
     @classmethod
     def from_array(
@@ -70,7 +68,6 @@ class ArrayAdapter:
         metadata=None,
         dims=None,
         specs=None,
-        references=None,
     ):
         return cls(
             numpy.asarray(array),
@@ -78,7 +75,6 @@ class ArrayAdapter:
             metadata=metadata,
             dims=dims,
             specs=specs,
-            references=references,
         )
 
     def __repr__(self):

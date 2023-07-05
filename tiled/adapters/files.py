@@ -126,7 +126,6 @@ class DirectoryAdapter(MapAdapter):
         metadata=None,
         sorting=None,
         specs=None,
-        references=None,
         access_policy=None,
         error_if_missing=True,
         greedy=False,
@@ -161,7 +160,6 @@ class DirectoryAdapter(MapAdapter):
         metadata : dict, optional,
             Metadata for the top-level node of this tree.
         specs : List[str], optional
-        references: List[dict], optional
         access_policy : AccessPolicy, optional
         error_if_missing : boolean, optional
             If True (default) raise an error if the directory does not exist.
@@ -357,7 +355,6 @@ class DirectoryAdapter(MapAdapter):
             manual_trigger=manual_trigger,
             metadata=metadata,
             specs=specs,
-            references=references,
             sorting=sorting,
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,
@@ -379,7 +376,6 @@ class DirectoryAdapter(MapAdapter):
         manual_trigger,
         metadata,
         specs,
-        references,
         sorting,
         access_policy,
         entries_stale_after=None,
@@ -390,7 +386,6 @@ class DirectoryAdapter(MapAdapter):
             mapping,
             metadata=metadata,
             specs=specs,
-            references=references,
             sorting=sorting,
             access_policy=access_policy,
             entries_stale_after=entries_stale_after,

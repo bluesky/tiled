@@ -61,7 +61,6 @@ class Node(NodeAttributes):
             structure_family=orm.structure_family,
             structure=structure,
             specs=orm.specs,
-            references=orm.references,
             sorting=sorting or [],
             data_sources=[DataSource.from_orm(ds) for ds in orm.data_sources],
             time_created=orm.time_created,
@@ -133,7 +132,7 @@ class Node(NodeAttributes):
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def update_metadata(self, metadata=None, specs=None, references=None):
+    async def update_metadata(self, metadata=None, specs=None):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -141,8 +140,6 @@ class Node(NodeAttributes):
             values["metadata_"] = metadata
         if specs is not None:
             values["specs"] = [s.dict() for s in specs]
-        if references is not None:
-            values["references"] = [r.dict() for r in references]
         async with self._context.session() as db:
             current = (
                 await db.execute(select(orm.Node).where(orm.Node.id == self._node.id))
@@ -162,7 +159,6 @@ class Node(NodeAttributes):
                 # SQLAlchemy reserved word 'metadata'.
                 metadata_=current.metadata_,
                 specs=current.specs,
-                references=current.references,
                 node_id=current.id,
                 revision_number=next_revision_number,
             )

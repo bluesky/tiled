@@ -39,9 +39,8 @@ def test_write_array_full(tree):
 
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
-        references = [{"label": "test", "url": "http://www.test.com"}]
         with record_history() as history:
-            client.write_array(a, metadata=metadata, specs=specs, references=references)
+            client.write_array(a, metadata=metadata, specs=specs)
         # one request for metadata, one for data
         assert len(history.requests) == 1 + 1
 
@@ -52,7 +51,6 @@ def test_write_array_full(tree):
         numpy.testing.assert_equal(result_array, a)
         assert result.metadata == metadata
         assert result.specs == specs
-        assert result.references == references
 
 
 def test_write_large_array_full(tree):
@@ -69,11 +67,8 @@ def test_write_large_array_full(tree):
         try:
             metadata = {"scan_id": 1, "method": "A"}
             specs = [Spec("SomeSpec")]
-            references = [{"label": "test", "url": "http://www.test.com"}]
             with record_history() as history:
-                client.write_array(
-                    a, metadata=metadata, specs=specs, references=references
-                )
+                client.write_array(a, metadata=metadata, specs=specs)
             # one request for metadata, more than one for data
             assert len(history.requests) > 1 + 1
 
@@ -84,7 +79,6 @@ def test_write_large_array_full(tree):
             numpy.testing.assert_equal(result_array, a)
             assert result.metadata == metadata
             assert result.specs == specs
-            assert result.references == references
         finally:
             client._SUGGESTED_MAX_UPLOAD_SIZE = original
 
@@ -99,9 +93,8 @@ def test_write_array_chunked(tree):
 
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
-        references = [{"label": "test", "url": "http://www.test.com"}]
         with record_history() as history:
-            client.write_array(a, metadata=metadata, specs=specs, references=references)
+            client.write_array(a, metadata=metadata, specs=specs)
         # one request for metadata, multiple for data
         assert len(history.requests) == 1 + a.npartitions
 
@@ -112,7 +105,6 @@ def test_write_array_chunked(tree):
         numpy.testing.assert_equal(result_array, a.compute())
         assert result.metadata == metadata
         assert result.specs == specs
-        assert result.references == references
 
 
 def test_write_dataframe_full(tree):
@@ -125,12 +117,9 @@ def test_write_dataframe_full(tree):
         df = pandas.DataFrame(data)
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
-        references = [{"label": "test", "url": "http://www.test.com"}]
 
         with record_history() as history:
-            client.write_dataframe(
-                df, metadata=metadata, specs=specs, references=references
-            )
+            client.write_dataframe(df, metadata=metadata, specs=specs)
         # one request for metadata, one for data
         assert len(history.requests) == 1 + 1
 
@@ -141,7 +130,6 @@ def test_write_dataframe_full(tree):
         pandas.testing.assert_frame_equal(result_dataframe, df)
         assert result.metadata == metadata
         assert result.specs == specs
-        assert result.references == references
 
 
 def test_write_dataframe_partitioned(tree):
@@ -155,12 +143,9 @@ def test_write_dataframe_partitioned(tree):
         ddf = dask.dataframe.from_pandas(df, npartitions=3)
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
-        references = [{"label": "test", "url": "http://www.test.com"}]
 
         with record_history() as history:
-            client.write_dataframe(
-                ddf, metadata=metadata, specs=specs, references=references
-            )
+            client.write_dataframe(ddf, metadata=metadata, specs=specs)
         # one request for metadata, multiple for data
         assert len(history.requests) == 1 + 3
 
@@ -171,7 +156,6 @@ def test_write_dataframe_partitioned(tree):
         pandas.testing.assert_frame_equal(result_dataframe, df)
         assert result.metadata == metadata
         assert result.specs == specs
-        assert result.references == references
 
 
 def test_write_sparse_full(tree):
@@ -184,7 +168,6 @@ def test_write_sparse_full(tree):
 
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
-        references = [{"label": "test", "url": "http://www.test.com"}]
         with record_history() as history:
             client.write_sparse(
                 coords=coo.coords,
@@ -192,7 +175,6 @@ def test_write_sparse_full(tree):
                 shape=coo.shape,
                 metadata=metadata,
                 specs=specs,
-                references=references,
             )
         # one request for metadata, one for data
         assert len(history.requests) == 1 + 1
@@ -204,7 +186,6 @@ def test_write_sparse_full(tree):
         numpy.testing.assert_equal(result_array.todense(), coo.todense())
         assert result.metadata == metadata
         assert result.specs == specs
-        assert result.references == references
 
 
 def test_write_sparse_chunked(tree):
@@ -215,7 +196,6 @@ def test_write_sparse_chunked(tree):
 
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
-        references = [{"label": "test", "url": "http://www.test.com"}]
         N = 5
         with record_history() as history:
             x = client.new(
@@ -223,7 +203,6 @@ def test_write_sparse_chunked(tree):
                 COOStructure(shape=(2 * N,), chunks=((N, N),)),
                 metadata=metadata,
                 specs=specs,
-                references=references,
             )
             x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
             x.write_block(coords=[[0, 1]], data=[6.7, 1.2], block=(1,))
@@ -244,7 +223,6 @@ def test_write_sparse_chunked(tree):
         # numpy.testing.assert_equal(result_array, sparse.COO(coords=[0, 1, ]))
         assert result.metadata == metadata
         assert result.specs == specs
-        assert result.references == references
 
 
 def test_limits(tree):
@@ -252,8 +230,6 @@ def test_limits(tree):
 
     MAX_ALLOWED_SPECS = 20
     MAX_SPEC_CHARS = 255
-    MAX_ALLOWED_REFERENCES = 20
-    MAX_LABEL_CHARS = 255
 
     validation_registry = ValidationRegistry()
     for i in range(101):
@@ -293,36 +269,6 @@ def test_limits(tree):
             client.write_array([1, 2, 3], specs=too_many_chars)
         with fail_with_status_code(422):
             x.update_metadata(specs=too_many_chars)
-
-        # Up to 20 references are allowed.
-        max_allowed_references = [
-            {"label": f"ref{i}", "url": f"https://exmaple.com/{i}"}
-            for i in range(MAX_ALLOWED_REFERENCES)
-        ]
-        y = client.write_array([1, 2, 3], references=max_allowed_references)
-        y.update_metadata(references=max_allowed_references)  # no-op
-        too_many_references = max_allowed_references + [
-            {"label": "one_too_many", "url": "https://example.com/one_too_many"}
-        ]
-        with fail_with_status_code(422):
-            client.write_array([1, 2, 3], references=too_many_references)
-        with fail_with_status_code(422):
-            y.update_metadata(references=too_many_references)
-
-        # A given reference label cannot be too long.
-        max_allowed_chars = "a" * MAX_LABEL_CHARS
-        client.write_array(
-            [1, 2, 3],
-            references=[{"label": max_allowed_chars, "url": "https://example.com"}],
-        )
-        too_many_chars = max_allowed_chars + "a"
-        with fail_with_status_code(422):
-            client.write_array(
-                [1, 2, 3],
-                references=[{"label": too_many_chars, "url": "https://example.com"}],
-            )
-        with fail_with_status_code(422):
-            y.update_metadata(references=too_many_chars)
 
 
 def test_metadata_revisions(tree):

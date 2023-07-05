@@ -64,7 +64,6 @@ Beyond the Mapping interface, Node adds the following attributes
    :toctree: generated
 
    tiled.client.container.Container.metadata
-   tiled.client.container.Container.references
    tiled.client.container.Container.sorting
    tiled.client.container.Container.uri
    tiled.client.container.Container.specs

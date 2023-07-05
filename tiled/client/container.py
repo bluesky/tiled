@@ -558,7 +558,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
-        references=None,
     ):
         """
         Create a new item within this Node.
@@ -579,7 +578,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if isinstance(spec, str):
                 spec = Spec(spec)
             normalized_specs.append(asdict(spec))
-        references = references or []
         data_sources = []
         if structure_family != StructureFamily.container:
             # TODO Handle multiple data sources.
@@ -589,7 +587,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
-                "references": references,
                 "data_sources": data_sources,
             }
         }
@@ -634,9 +631,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_node(
-        self, key=None, *, metadata=None, dims=None, specs=None, references=None
-    ):
+    def create_node(self, key=None, *, metadata=None, dims=None, specs=None):
         """
         EXPERIMENTAL: Write an array.
 
@@ -652,10 +647,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        references : List[Dict[str, URL]], optional
-            References (e.g. links) to related information. This may include
-            links into other Tiled data sets, search results, or external
-            resources unrelated to Tiled.
 
         """
         return self.new(
@@ -664,12 +655,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            references=references,
         )
 
-    def write_array(
-        self, array, *, key=None, metadata=None, dims=None, specs=None, references=None
-    ):
+    def write_array(self, array, *, key=None, metadata=None, dims=None, specs=None):
         """
         EXPERIMENTAL: Write an array.
 
@@ -686,10 +674,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        references : List[Dict[str, URL]], optional
-            References (e.g. links) to related information. This may include
-            links into other Tiled data sets, search results, or external
-            resources unrelated to Tiled.
 
         """
         import dask.array
@@ -735,7 +719,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            references=references,
         )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
@@ -770,7 +753,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
-        references=None,
     ):
         """
         EXPERIMENTAL: Write a sparse array.
@@ -790,10 +772,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        references : List[Dict[str, URL]], optional
-            References (e.g. links) to related information. This may include
-            links into other Tiled data sets, search results, or external
-            resources unrelated to Tiled.
 
         Examples
         --------
@@ -828,13 +806,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            references=references,
         )
         client.write(coords, data)
         return client
 
     def write_dataframe(
-        self, dataframe, *, key=None, metadata=None, specs=None, references=None
+        self,
+        dataframe,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
     ):
         """
         EXPERIMENTAL: Write a DataFrame.
@@ -852,10 +834,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        references : List[Dict[str, URL]], optional
-            References (e.g. links) to related information. This may include
-            links into other Tiled data sets, search results, or external
-            resources unrelated to Tiled.
         """
         import dask.dataframe
         import pandas
@@ -896,7 +874,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            references=references,
         )
 
         if hasattr(dataframe, "partitions"):
