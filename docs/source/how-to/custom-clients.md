@@ -8,8 +8,8 @@ In the Python client, when a user accesses a given item, Tiled inspects the
 item to decide what type of object to use to represent it.
 In simple cases, this is just based on the `structure_family`: `"array"` goes
 to `tiled.client.array.ArrayClient`;  `"dataframe"` goes to
-`tiled.client.dataframe.DataFrameClient`; `"node"` goes to
-`tiled.clide.node.Container`. Those classes then manage further communication
+`tiled.client.dataframe.DataFrameClient`; `"container"` goes to
+`tiled.clide.container.Container`. Those classes then manage further communication
 with Tiled server to access their contents.
 
 Each item always has exactly one `structure_family`, and it's always from a

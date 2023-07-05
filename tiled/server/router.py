@@ -676,7 +676,7 @@ async def post_metadata(
                 metadata_modified = True
                 metadata = result
 
-    key, node = await entry.create_node(
+    key, node = await entry.create_container(
         metadata=body.metadata,
         structure_family=body.structure_family,
         key=body.id,

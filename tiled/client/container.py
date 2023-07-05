@@ -631,9 +631,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_node(self, key=None, *, metadata=None, dims=None, specs=None):
+    def create_container(self, key=None, *, metadata=None, dims=None, specs=None):
         """
-        EXPERIMENTAL: Write an array.
+        EXPERIMENTAL: Create a new, empty container.
 
         Parameters
         ----------

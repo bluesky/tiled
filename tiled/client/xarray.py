@@ -189,7 +189,7 @@ class _WideTableFetcher:
 
 
 def write_xarray_dataset(client_node, dataset, key=None):
-    dataset_client = client_node.create_node(
+    dataset_client = client_node.create_container(
         key=key, specs=[Spec("xarray_dataset")], metadata={"attrs": dataset.attrs}
     )
     for name in dataset.data_vars:
