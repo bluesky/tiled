@@ -19,7 +19,17 @@ import jsonschema
 
 from .utils import parse
 
-__all__ = ["list_profiles", "load_profiles", "paths"]
+__all__ = [
+    "list_profiles",
+    "load_profiles",
+    "paths",
+    "create_profile",
+    "delete_profile",
+    "set_default_profile_name",
+    "get_default_profile_name",
+]
+
+TILED_CACHE_DIR = Path(os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled")))
 
 
 @lru_cache(maxsize=1)
@@ -243,9 +253,124 @@ def list_profiles():
     return {name: source_filepath for name, (source_filepath, _) in profiles.items()}
 
 
+def _compose_profile(name, *, uri, verify):
+    "Compose profile YAML."
+    import yaml
+
+    content = {name: {"uri": uri, "verify": verify}}
+    return yaml.dump(content)
+
+
+def create_profile(uri, name, verify=True, overwrite=False):
+    """
+    Create a new profile.
+
+    This only includes the most commonly-used options. (More could be added.)
+    """
+    text = _compose_profile(name, uri=uri, verify=verify)
+    filepath = paths[-1] / f"{name}.yml"
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if overwrite:
+        mode = "wt"
+    else:
+        mode = "xt"
+    try:
+        with open(filepath, mode) as file:
+            file.write(text)
+    except FileExistsError:
+        raise ProfileExists(
+            f"Profile named {name} already exists at {filepath}. "
+            "Use overwite=True to overwrite it."
+        )
+    return filepath
+
+
+def delete_profile(name):
+    """
+    Delete a profile by name.
+
+    This will walk the search path, starting with the highest precedence
+    directory, and delete only the first match it finds.
+    """
+    for path in paths:
+        # All profiles created by create_profile have extension .yml but
+        # a user-written one may have extension .yaml.
+        for ext in {".yml", ".yaml"}:
+            filepath = path / f"{name}{ext}"
+            if filepath.exists():
+                filepath.unlink()
+                return filepath
+
+
+def get_default_profile_name():
+    """
+    Return the name of the current default profile.
+    """
+    filepath = TILED_CACHE_DIR / "default_profile"
+    try:
+        return filepath.read_text()
+    except FileNotFoundError:
+        return None
+
+
+def set_default_profile_name(name):
+    filepath = TILED_CACHE_DIR / "default_profile"
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if name is None:
+        if filepath.exists():
+            filepath.unlink()
+        return
+    if name not in list_profiles():
+        raise ProfileNotFound(name)
+    with open(filepath, "w") as file:
+        file.write(name)
+
+
+def stash_profile_auth(profile_name, username, provider):
+    """
+    Stash the username and provider last used to authenticate with a profile.
+
+    This does not contain any credentials are secrets, just the most recently used identity.
+    """
+    import json
+
+    filepath = TILED_CACHE_DIR / "profile_auths" / profile_name
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, "w") as file:
+        json.dump({"username": username, "provider": provider}, file)
+
+
+def get_profile_auth(profile_name):
+    """
+    Get the username and provider last used to authenticate with a profile.
+
+    This does not contain any credentials are secrets, just the most recently used identity.
+    """
+    import json
+
+    filepath = TILED_CACHE_DIR / "profile_auths" / profile_name
+    try:
+        return json.loads(filepath.read_text())
+    except FileNotFoundError:
+        return {}
+
+
+def clear_profile_auth(profile_name):
+    """
+    Clear stashed profile auth.
+    """
+    filepath = TILED_CACHE_DIR / "profile_auths" / profile_name
+    if filepath.exists():
+        filepath.unlink()
+
+
 class ProfileNotFound(KeyError):
     pass
 
 
 class ProfileError(ValueError):
+    pass
+
+
+class ProfileExists(ValueError):
     pass

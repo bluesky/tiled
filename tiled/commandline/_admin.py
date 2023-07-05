@@ -3,7 +3,7 @@ from typing import Optional
 
 import typer
 
-from ._utils import get_context, get_default_profile_name, get_profile  # noqa E402
+from ._utils import get_context, get_profile  # noqa E402
 
 admin_app = typer.Typer()
 

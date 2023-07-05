@@ -1,47 +1,49 @@
-import os
-from pathlib import Path
-
-import appdirs
 import typer
-
-CLI_CACHE_DIR = Path(
-    os.getenv(
-        "TILED_CLI_CACHE_DIR", os.path.join(appdirs.user_cache_dir("tiled"), "cli")
-    )
-)
 
 
 def get_profile(name):
-    from ..profiles import load_profiles
+    from ..profiles import (
+        get_default_profile_name,
+        load_profiles,
+        set_default_profile_name,
+    )
 
     profiles = load_profiles()
     if name is None:
         # Use the default profile.
         # Raise if it is not set or if it is set but does not exit.
-        filepath = CLI_CACHE_DIR / "active_profile"
-        if not filepath.is_file():
+        name = get_default_profile_name()
+        if name is None:
             typer.echo(
                 """No default profile set. Use:
 
-    tiled connect ...
+    tiled profile create ...
 
-to set a default profile or else specify a profile for this command using
+or
+
+    tiled profile set-default ...
+
+to set a create or choose a default profile or else specify a profile for this
+particular command using
 
     tiled ... --profile=PROFILE
 """,
                 err=True,
             )
             raise typer.Abort()
-        with open(filepath, "r") as file:
-            name = file.read()
         if name not in profiles:
-            filepath.unlink()
+            set_default_profile_name(None)
             typer.echo(
                 f"""Default profile {name!r} does not exist. Clearing default. Use:
 
-    tiled connect ...
+    tiled profile create ...
 
-to set a default profile or else specify a profile for this command using
+or
+
+    tiled profile set-default ...
+
+to set a create or choose a default profile or else specify a profile for this
+particular command using
 
     tiled ... --profile=PROFILE
 """,
@@ -70,26 +72,15 @@ to list choices.""",
     return name, profile
 
 
-def get_default_profile_name():
-    filepath = CLI_CACHE_DIR / "active_profile"
-    if not filepath.is_file():
-        return None
-    with open(filepath, "r") as file:
-        return file.read()
-
-
 def get_context(profile):
-    import json
-
     from ..client.context import Context
+    from ..profiles import get_profile_auth
 
     profile_name, profile_content = get_profile(profile)
-    filepath = CLI_CACHE_DIR / "profile_auths" / profile_name
     context, _ = Context.from_any_uri(
         profile_content["uri"], verify=profile_content.get("verify", True)
     )
-    if filepath.is_file():
-        with open(filepath, "r") as file:
-            auth = json.load(file)
-        context.authenticate(auth["username"], auth["provider"])
+    auth = get_profile_auth(profile_name)
+    if auth or context.server_info["authentication"]["required"]:
+        context.authenticate(**auth)
     return context
