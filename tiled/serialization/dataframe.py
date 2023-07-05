@@ -113,6 +113,6 @@ if modules_available("orjson"):
     )
 
 if modules_available("h5py"):
-    from .node import serialize_hdf5
+    from .container import serialize_hdf5
 
     serialization_registry.register("dataframe", "application/x-hdf5", serialize_hdf5)

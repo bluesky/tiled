@@ -26,8 +26,8 @@ from tiled.queries import (
     NotEq,
     NotIn,
     Operator,
+    StructureFamilyQuery,
 )
-from tiled.queries import StructureFamily as StructureFamilyQuery
 
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
@@ -120,7 +120,7 @@ class RootNode:
     It mocks the relevant part of the interface of .orm.Node.
     """
 
-    structure_family = StructureFamily.node
+    structure_family = StructureFamily.container
 
     def __init__(self, metadata, specs, references, access_policy):
         self.metadata = metadata or {}
@@ -429,7 +429,7 @@ class CatalogNodeAdapter(BaseAdapter):
             adapter.access_policy = self.access_policy  # HACK
             return adapter
         else:  # num_data_sources == 0
-            if node.structure_family != StructureFamily.node:
+            if node.structure_family != StructureFamily.container:
                 raise NotImplementedError  # array or dataframe that is uninitialized
             # A node with no underlying data source
             return type(self)(self.context, node, access_policy=self.access_policy)

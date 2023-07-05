@@ -40,7 +40,7 @@ from .dependencies import (
 from .object_cache import NO_CACHE, ObjectCache
 from .object_cache import logger as object_cache_logger
 from .object_cache import set_object_cache
-from .router import node_distinct, node_search, patch_route_signature, router
+from .router import distinct, patch_route_signature, router, search
 from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
@@ -213,7 +213,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 raise HTTPException(status_code=401)
             except FileNotFoundError:
                 # This may be a URL that has meaning to the client-side application,
-                # such as /ui/node/metadata/a/b/c.
+                # such as /ui//metadata/a/b/c.
                 # Serve index.html and let the client-side application sort it out.
                 if try_app:
                     response = await lookup_file("index.html", try_app=False)
@@ -369,17 +369,17 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     # The /search route is defined after import time so that the user has the
     # opporunity to register custom query types before startup.
     app.get(
-        "/api/v1/node/search/{path:path}",
+        "/api/v1/search/{path:path}",
         response_model=schemas.Response[
             List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
             dict,
         ],
-    )(patch_route_signature(node_search, query_registry))
+    )(patch_route_signature(search, query_registry))
     app.get(
-        "/api/v1/node/distinct/{path:path}",
+        "/api/v1/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
-    )(patch_route_signature(node_distinct, query_registry))
+    )(patch_route_signature(distinct, query_registry))
 
     @lru_cache(1)
     def override_get_authenticators():

@@ -21,8 +21,8 @@ from ..queries import (
     NotEq,
     NotIn,
     Regex,
-    Specs,
-    StructureFamily,
+    SpecsQuery,
+    StructureFamilyQuery,
 )
 from ..server.app import build_app
 from .conftest import TILED_TEST_POSTGRESQL_URI
@@ -258,24 +258,24 @@ def test_specs(client, include_values, exclude_values):
     else:
         cm = nullcontext
     with pytest.raises(TypeError):
-        Specs("foo")
+        SpecsQuery("foo")
 
     with cm():
-        assert sorted(list(client.search(Specs(include=include_values)))) == sorted(
-            ["specs_foo_bar", "specs_foo_bar_baz"]
-        )
+        assert sorted(
+            list(client.search(SpecsQuery(include=include_values)))
+        ) == sorted(["specs_foo_bar", "specs_foo_bar_baz"])
 
     with cm():
         assert list(
-            client.search(Specs(include=include_values, exclude=exclude_values))
+            client.search(SpecsQuery(include=include_values, exclude=exclude_values))
         ) == ["specs_foo_bar"]
 
 
 def test_structure_families(client):
     with pytest.raises(ValueError):
-        StructureFamily("foo")
+        StructureFamilyQuery("foo")
 
-    assert set(client.search(StructureFamily("array"))) == set(mapping)
+    assert set(client.search(StructureFamilyQuery("array"))) == set(mapping)
 
 
 def test_keys_filter(client):

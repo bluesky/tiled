@@ -1,7 +1,7 @@
 # Custom Python Client Objects
 
 To provide an "upgraded" and more finely-tuned user experience for certain
-kinds of dataset, TIled can be configured to use custom Python objects.
+kinds of dataset, Tiled can be configured to use custom Python objects.
 This is transparent and automatic from the point view of the user.
 
 In the Python client, when a user accesses a given item, Tiled inspects the
@@ -9,20 +9,20 @@ item to decide what type of object to use to represent it.
 In simple cases, this is just based on the `structure_family`: `"array"` goes
 to `tiled.client.array.ArrayClient`;  `"dataframe"` goes to
 `tiled.client.dataframe.DataFrameClient`; `"node"` goes to
-`tiled.clide.node.Node`. Those classes then manage further commication with
-Tiled server to access their contents.
+`tiled.clide.node.Container`. Those classes then manage further communication
+with Tiled server to access their contents.
 
 Each item always has exactly one `structure_family`, and it's always from a
 fixed list. In addition, it may have a list of `specs`, labels which are meant
 to communicate some more specific expectations about the data that may or may
 not have meaning to a given client. If a client does not recognize some spec,
 it can still access the metadata and data and performed Tiled's essential
-fucntions. If it does recognize a spec, it can provide an upgraded user
+functions. If it does recognize a spec, it can provide an upgraded user
 experience.
 
 ## Example
 
-Supose data labeled with the `xdi` spec is guaranteed to have a metadata
+Suppose data labeled with the `xdi` spec is guaranteed to have a metadata
 dictionary containing the following two entries:
 
 ```py
@@ -64,7 +64,7 @@ display as in:
 <...>
 ````
 
-It is conventional to include angle brakets `<>` when the string is not valid
+It is conventional to include angle brackets `<>` when the string is not valid
 Python code, as opposed to
 
 ````py
@@ -85,7 +85,7 @@ data labeled with the `xdi` spec. We'll register it manually for development
 and testing. Then we'll see how to configure it seamlessly for the user.
 
 ```py
-from tiled.client.node import DEFAULT_STRUCTURE_CLIENT_DISPATCH
+from tiled.client.container import DEFAULT_STRUCTURE_CLIENT_DISPATCH
 from tiled.client import from_uri
 
 custom = dict(DEFAULT_STRUCTURE_CLIENT_DISPATCH["numpy"])
@@ -149,7 +149,7 @@ recognizes none of the specs, or if there are no specs, it falls back to using t
 structure family. Specs should generally be sorted from most specific to least
 specific, so that Tiled uses the most finely-tuned client object available.
 
-## More Possiblities and Design Guidelines
+## More Possibilities and Design Guidelines
 
 There are many other useful things we could do with a custom client that is purpose-built
 for a specific kinds of data and/or metadata. We can add convenience properties
@@ -179,13 +179,13 @@ with other scientific Python libraries.
    _change_ the behavior of the existing methods, attributes, and properties in
    the base class. This is a well-known
    [principle](https://en.wikipedia.org/wiki/Liskov_substitution_principle) in
-   software design generally, and it is especialy crucial here. If a user runs code
-   in a software environment where the library with the custom objects happens
-   to be missing, we want the user to immediate notice the missing methods, not
-   get confusingly different results from the "standard" method and the
-   customized one. In addition, it is helpful if the "vanilla" Tiled documentation
-   and user knowledge transfers to the custom classes with _additions_ but no
-   confusing _changes_.
+   software design generally, and it is especially crucial here. If a user runs
+   code in a software environment where the library with the custom objects
+   happens to be missing, we want the user to immediate notice the missing
+   methods, not get confusingly different results from the "standard" method
+   and the customized one. In addition, it is helpful if the "vanilla" Tiled
+   documentation and user knowledge transfers to the custom classes with
+   _additions_ but no confusing _changes_.
 2. If something custom will do I/O (i.e. download metadata or data from the
    server) make it method, not a property. Properties that do "surprise" I/O
    may block over a slow network and can be very confusing. The same guideline

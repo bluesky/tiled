@@ -14,7 +14,7 @@ export const search = async (
 ): Promise<
   components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]
 > => {
-  let url = `${apiURL}/node/search/${segments.join(
+  let url = `${apiURL}/search/${segments.join(
     "/"
   )}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
     "&fields="
@@ -35,7 +35,7 @@ export const metadata = async (
   components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
 > => {
   const response = await axiosInstance.get(
-    `${apiURL}/node/metadata/${segments.join("/")}?fields=${fields.join("&fields=")}`,
+    `${apiURL}/metadata/${segments.join("/")}?fields=${fields.join("&fields=")}`,
     { signal: signal }
   );
   return response.data;

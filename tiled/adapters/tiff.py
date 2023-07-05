@@ -5,6 +5,7 @@ import tifffile
 
 from ..server.object_cache import with_object_cache
 from ..structures.array import ArrayMacroStructure, BuiltinDtype
+from ..structures.core import StructureFamily
 
 
 class TiffAdapter:
@@ -17,7 +18,7 @@ class TiffAdapter:
     >>> TiffAdapter("path/to/file.tiff")
     """
 
-    structure_family = "array"
+    structure_family = StructureFamily.array
 
     def __init__(
         self,

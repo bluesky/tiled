@@ -132,7 +132,7 @@ async def about(
             authentication=authentication,
             links={
                 "self": base_url,
-                "documentation": f"{base_url}docs",
+                "documentation": f"{base_url}/docs",
             },
             meta={"root_path": request.scope.get("root_path") or "" + "/api"},
         ).dict(),
@@ -140,7 +140,7 @@ async def about(
     )
 
 
-async def node_search(
+async def search(
     request: Request,
     path: str,
     fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
@@ -159,7 +159,7 @@ async def node_search(
     **filters,
 ):
     request.state.endpoint = "search"
-    if entry.structure_family != "node":
+    if entry.structure_family != StructureFamily.container:
         raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
     entry = filter_for_access(
         entry, principal, ["read:metadata"], request.state.metrics
@@ -168,7 +168,7 @@ async def node_search(
         resource, metadata_stale_at, must_revalidate = await construct_entries_response(
             query_registry,
             entry,
-            "/node/search",
+            "/search",
             path,
             offset,
             limit,
@@ -210,7 +210,7 @@ async def node_search(
         )
 
 
-async def node_distinct(
+async def distinct(
     request: Request,
     structure_families: bool = False,
     specs: bool = False,
@@ -298,12 +298,12 @@ def patch_route_signature(route, query_registry):
 
 
 @router.get(
-    "/node/metadata/{path:path}",
+    "/metadata/{path:path}",
     response_model=schemas.Response[
         schemas.Resource[schemas.NodeAttributes, dict, dict], dict, dict
     ],
 )
-async def node_metadata(
+async def metadata(
     request: Request,
     path: str,
     fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
@@ -583,7 +583,7 @@ async def node_full(
                 "request a smaller chunks."
             ),
         )
-    if entry.structure_family == "node":
+    if entry.structure_family == StructureFamily.container:
         curried_filter = partial(
             filter_for_access,
             principal=principal,
@@ -611,7 +611,7 @@ async def node_full(
         raise HTTPException(status_code=406, detail=err.args[0])
 
 
-@router.post("/node/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
+@router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
 async def post_metadata(
     request: Request,
     path: str,
@@ -641,7 +641,7 @@ async def post_metadata(
         body.specs,
         body.references,
     )
-    if structure_family == StructureFamily.node:
+    if structure_family == StructureFamily.container:
         structure = None
     else:
         if len(body.data_sources) != 1:
@@ -691,7 +691,7 @@ async def post_metadata(
     base_url = get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment] + [key]
     path_str = "/".join(path_parts)
-    links["self"] = f"{base_url}/node/metadata/{path_str}"
+    links["self"] = f"{base_url}/metadata/{path_str}"
     if body.structure_family == StructureFamily.array:
         block_template = ",".join(
             f"{{{index}}}" for index in range(len(node.structure.macro.shape))
@@ -711,9 +711,9 @@ async def post_metadata(
             "partition"
         ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
         links["full"] = f"{base_url}/node/full/{path_str}"
-    elif body.structure_family == StructureFamily.node:
+    elif body.structure_family == StructureFamily.container:
         links["full"] = f"{base_url}/node/full/{path_str}"
-        links["search"] = f"{base_url}/node/search/{path_str}"
+        links["search"] = f"{base_url}/search/{path_str}"
     else:
         raise NotImplementedError(body.structure_family)
     response_data = {
@@ -726,7 +726,7 @@ async def post_metadata(
     return json_or_msgpack(request, response_data)
 
 
-@router.delete("/node/metadata/{path:path}")
+@router.delete("/metadata/{path:path}")
 async def delete(
     request: Request,
     entry=SecureEntry(scopes=["write:data", "write:metadata"], kind=EntryKind.node),
@@ -834,7 +834,7 @@ async def put_dataframe_partition(
     return json_or_msgpack(request, None)
 
 
-@router.put("/node/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
+@router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
 async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
@@ -894,7 +894,7 @@ async def put_metadata(
     return json_or_msgpack(request, response_data)
 
 
-@router.get("/node/revisions/{path:path}")
+@router.get("/revisions/{path:path}")
 async def get_revisions(
     request: Request,
     path: str,
@@ -913,7 +913,7 @@ async def get_revisions(
     resource = await construct_revisions_response(
         entry,
         base_url,
-        "/node/revisions",
+        "/revisions",
         path,
         offset,
         limit,
@@ -922,7 +922,7 @@ async def get_revisions(
     return json_or_msgpack(request, resource.dict())
 
 
-@router.delete("/node/revisions/{path:path}")
+@router.delete("/revisions/{path:path}")
 async def delete_revision(
     request: Request,
     number: int,

@@ -7,6 +7,7 @@ import numpy
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
+from ..structures.core import StructureFamily
 from ..utils import DictView, node_repr
 from .array import ArrayAdapter
 
@@ -47,7 +48,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
 
     """
 
-    structure_family = "node"
+    structure_family = StructureFamily.container
 
     def __init__(self, node, *, specs=None, references=None, access_policy=None):
         self._node = node

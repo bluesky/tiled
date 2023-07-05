@@ -65,7 +65,7 @@ a string label for each dimension.
 This `(10, 10)`-shaped array fits in a single `(10, 10)`-shaped chunk.
 
 ```
-$ http :8000/node/metadata/small_image | jq .data.attributes.structure
+$ http :8000/metadata/small_image | jq .data.attributes.structure
 ```
 
 ```json
@@ -101,7 +101,7 @@ This `(10000, 10000)`-shaped array is subdivided into 4 × 4 = 16 chunks,
 which is why the size of each chunk is given explicitly.
 
 ```
-$ http :8000/node/metadata/big_image | jq .data.attributes.structure
+$ http :8000/metadata/big_image | jq .data.attributes.structure
 ```
 
 ```json
@@ -142,7 +142,7 @@ This is a 1D array where each item has internal structure,
 as in numpy's [strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html)
 
 ```
-$ http :8000/node/metadata/structured_data/pets | jq .data.attributes.structure
+$ http :8000/metadata/structured_data/pets | jq .data.attributes.structure
 ```
 
 ```json
@@ -241,7 +241,7 @@ order, but we cannot make requests like "rows 100-200". (Dask has the same
 limitation, for the same reason.)
 
 ```
-$ http :8000/node/metadata/long_table | jq .data.attributes.structure
+$ http :8000/metadata/long_table | jq .data.attributes.structure
 ```
 
 ```json
@@ -354,7 +354,7 @@ In certain cases, it is efficient to in-line all the information about the node'
       "links": {
         "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/lat?block={index_0},{index_1}",
         "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/lat",
-        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/lat"
+        "self": "http://localhost:8000/api/v1/metadata/structured_data/xarray_dataset/lat"
       },
       "meta": null
     },
@@ -401,7 +401,7 @@ In certain cases, it is efficient to in-line all the information about the node'
       "links": {
         "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/lon?block={index_0},{index_1}",
         "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/lon",
-        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/lon"
+        "self": "http://localhost:8000/api/v1/metadata/structured_data/xarray_dataset/lon"
       },
       "meta": null
     },
@@ -453,7 +453,7 @@ In certain cases, it is efficient to in-line all the information about the node'
       "links": {
         "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/precipitation?block={index_0},{index_1},{index_2}",
         "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/precipitation",
-        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/precipitation"
+        "self": "http://localhost:8000/api/v1/metadata/structured_data/xarray_dataset/precipitation"
       },
       "meta": null
     },
@@ -505,7 +505,7 @@ In certain cases, it is efficient to in-line all the information about the node'
       "links": {
         "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/temperature?block={index_0},{index_1},{index_2}",
         "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/temperature",
-        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/temperature"
+        "self": "http://localhost:8000/api/v1/metadata/structured_data/xarray_dataset/temperature"
       },
       "meta": null
     },
@@ -547,7 +547,7 @@ In certain cases, it is efficient to in-line all the information about the node'
       "links": {
         "block": "http://localhost:8000/api/v1/array/block/structured_data/xarray_dataset/time?block={index_0}",
         "full": "http://localhost:8000/api/v1/array/full/structured_data/xarray_dataset/time",
-        "self": "http://localhost:8000/api/v1/node/metadata/structured_data/xarray_dataset/time"
+        "self": "http://localhost:8000/api/v1/metadata/structured_data/xarray_dataset/time"
       },
       "meta": null
     }

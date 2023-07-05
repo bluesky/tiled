@@ -2,6 +2,7 @@ import io
 
 from ..media_type_registration import serialization_registry
 from ..utils import modules_available
+from .container import walk
 from .dataframe import (
     APACHE_ARROW_FILE_MIME_TYPE,
     XLSX_MIME_TYPE,
@@ -11,7 +12,6 @@ from .dataframe import (
     serialize_html,
     serialize_parquet,
 )
-from .node import walk
 
 
 async def as_dataset(node):

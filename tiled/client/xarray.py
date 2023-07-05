@@ -9,12 +9,12 @@ from ..client.base import BaseStructureClient
 from ..serialization.dataframe import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
-from .node import Node
+from .container import Container
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 
-class DaskDatasetClient(Node):
+class DaskDatasetClient(Container):
     def _repr_pretty_(self, p, cycle):
         """
         Provide "pretty" display in IPython/Jupyter.

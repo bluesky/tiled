@@ -383,7 +383,7 @@ class NotIn:
 
 @register(name="specs")
 @dataclass(init=False)
-class Specs:
+class SpecsQuery:
     """
     Query if specs list matches all elements in include list and does not match any element in exclude list
 
@@ -397,7 +397,7 @@ class Specs:
 
     Search for specs ["foo", "bar"] and NOT "baz"
 
-    >>> c.search(Specs(include=["foo", "bar"], exclude=["baz"]))
+    >>> c.search(SpecsQuery(include=["foo", "bar"], exclude=["baz"]))
     """
 
     include: List[str]
@@ -426,11 +426,11 @@ class Specs:
         return cls(include=json.loads(include), exclude=json.loads(exclude))
 
 
-def Spec(spec):
+def SpecQuery(spec):
     """
     Convenience function for querying if specs list contains a given spec
 
-    Equivalent to Specs([spec]).
+    Equivalent to SpecsQuery([spec]).
 
     Parameters
     ----------
@@ -444,12 +444,12 @@ def Spec(spec):
     >>> c.search(Spec("foo"))
     """
 
-    return Specs([spec])
+    return SpecsQuery([spec])
 
 
 @register(name="structure_family")
 @dataclass(init=False)
-class StructureFamily:
+class StructureFamilyQuery:
     """
     Query if structure_families match value
 

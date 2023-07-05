@@ -16,10 +16,11 @@ from ..queries import (
     NotEq,
     NotIn,
     Regex,
-    Specs,
-    StructureFamily,
+    SpecsQuery,
+    StructureFamilyQuery,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, DictView
 from .utils import IndexersMixin
 
@@ -43,7 +44,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         "references",
     )
 
-    structure_family = "node"
+    structure_family = StructureFamily.container
 
     # Define classmethods for managing what queries this Adapter knows.
     query_registry = QueryTranslationRegistry()
@@ -461,7 +462,7 @@ def specs(query, tree):
     return tree.new_variation(mapping=matches)
 
 
-MapAdapter.register_query(Specs, specs)
+MapAdapter.register_query(SpecsQuery, specs)
 
 
 def structure_family(query, tree):
@@ -473,7 +474,7 @@ def structure_family(query, tree):
     return tree.new_variation(mapping=matches)
 
 
-MapAdapter.register_query(StructureFamily, structure_family)
+MapAdapter.register_query(StructureFamilyQuery, structure_family)
 
 
 def keys_filter(query, tree):

@@ -25,7 +25,7 @@ from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
@@ -242,10 +242,10 @@ async def construct_entries_response(
 
 
 DEFAULT_MEDIA_TYPES = {
-    "array": {"*/*": "application/octet-stream", "image/*": "image/png"},
-    "dataframe": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
-    "node": {"*/*": "application/x-hdf5"},
-    "sparse": {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
+    StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
+    StructureFamily.dataframe: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
+    StructureFamily.container: {"*/*": "application/x-hdf5"},
+    StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
 
@@ -319,7 +319,7 @@ async def construct_data_response(
     for media_type in media_types:
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
-        elif structure_family == "array" and media_type == "image/*":
+        elif structure_family == StructureFamily.array and media_type == "image/*":
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["image/*"]
         # Compare the request formats to the formats supported by each spec
         # name and, finally, by the structure family.
@@ -418,8 +418,8 @@ async def construct_resource(
         attributes["specs"] = specs
     if schemas.EntryFields.references in fields:
         attributes["references"] = getattr(entry, "references", [])
-    if (entry is not None) and entry.structure_family == "node":
-        attributes["structure_family"] = "node"
+    if (entry is not None) and entry.structure_family == StructureFamily.container:
+        attributes["structure_family"] = StructureFamily.container
         if schemas.EntryFields.structure in fields:
             if (
                 ((max_depth is None) or (depth < max_depth))
@@ -486,16 +486,16 @@ async def construct_resource(
         }
         if not omit_links:
             d["links"] = {
-                "self": f"{base_url}/node/metadata/{path_str}",
-                "search": f"{base_url}/node/search/{path_str}",
+                "self": f"{base_url}/metadata/{path_str}",
+                "search": f"{base_url}/search/{path_str}",
                 "full": f"{base_url}/node/full/{path_str}",
             }
 
         resource = schemas.Resource[
-            schemas.NodeAttributes, schemas.NodeLinks, schemas.NodeMeta
+            schemas.NodeAttributes, schemas.ContainerLinks, schemas.ContainerMeta
         ](**d)
     else:
-        links = {"self": f"{base_url}/node/metadata/{path_str}"}
+        links = {"self": f"{base_url}/metadata/{path_str}"}
         structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
@@ -511,7 +511,7 @@ async def construct_resource(
             )
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if entry.structure_family == "sparse":
+            if entry.structure_family == StructureFamily.sparse:
                 # This arises from back-compat...needs revisiting.
                 structure_maybe_method = entry.structure
                 if callable(structure_maybe_method):
@@ -538,10 +538,10 @@ async def construct_resource(
                 if (schemas.EntryFields.microstructure in fields) or (
                     schemas.EntryFields.structure in fields
                 ):
-                    if entry.structure_family == "node":
+                    if entry.structure_family == StructureFamily.container:
                         assert False  # not sure if this ever happens
                         pass
-                    elif entry.structure_family == "dataframe":
+                    elif entry.structure_family == StructureFamily.dataframe:
                         microstructure = entry.microstructure()
                         meta = microstructure.meta
                         divisions = microstructure.divisions
@@ -562,7 +562,7 @@ async def construct_resource(
                         microstructure = entry.microstructure()
                         if microstructure is not None:
                             structure["micro"] = asdict(microstructure)
-                if entry.structure_family == "array":
+                if entry.structure_family == StructureFamily.array:
                     shape = structure.get("macro", {}).get("shape")
                     if shape is None:
                         # The client did not request structure so we have not yet
@@ -574,7 +574,7 @@ async def construct_resource(
                     links[
                         "block"
                     ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-                elif entry.structure_family == "dataframe":
+                elif entry.structure_family == StructureFamily.dataframe:
                     links[
                         "partition"
                     ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
@@ -759,10 +759,10 @@ class WrongTypeForRoute(Exception):
 
 
 FULL_LINKS = {
-    "node": {"full": "{base_url}/node/full/{path}"},
-    "array": {"full": "{base_url}/array/full/{path}"},
-    "dataframe": {"full": "{base_url}/node/full/{path}"},
-    "sparse": {"full": "{base_url}/array/full/{path}"},
+    StructureFamily.container: {"full": "{base_url}/node/full/{path}"},
+    StructureFamily.array: {"full": "{base_url}/array/full/{path}"},
+    StructureFamily.dataframe: {"full": "{base_url}/node/full/{path}"},
+    StructureFamily.sparse: {"full": "{base_url}/array/full/{path}"},
 }
 
 

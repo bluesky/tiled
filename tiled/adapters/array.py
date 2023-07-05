@@ -4,6 +4,7 @@ from dask.array.core import normalize_chunks
 
 from ..server.object_cache import get_object_cache
 from ..structures.array import ArrayMacroStructure, BuiltinDtype, StructDtype
+from ..structures.core import StructureFamily
 from ..utils import DictView, ListView
 
 
@@ -22,7 +23,7 @@ class ArrayAdapter:
 
     """
 
-    structure_family = "array"
+    structure_family = StructureFamily.array
 
     def __init__(
         self,

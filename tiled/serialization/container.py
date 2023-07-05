@@ -1,6 +1,7 @@
 import io
 
 from ..media_type_registration import serialization_registry
+from ..structures.core import StructureFamily
 from ..utils import SerializationError, modules_available, safe_json_dump
 
 
@@ -17,7 +18,7 @@ async def walk(node, filter_for_access, pre=None):
     ]
     """
     pre = pre[:] if pre else []
-    if node.structure_family != "array":
+    if node.structure_family != StructureFamily.array:
         if hasattr(node, "items_range"):
             for key, value in await filter_for_access(node).items_range(0, None):
                 async for d in walk(value, filter_for_access, pre + [key]):
@@ -70,7 +71,9 @@ if modules_available("h5py"):
                     dataset.attrs.create(k, v)
         return buffer.getbuffer()
 
-    serialization_registry.register("node", "application/x-hdf5", serialize_hdf5)
+    serialization_registry.register(
+        StructureFamily.container, "application/x-hdf5", serialize_hdf5
+    )
 
 if modules_available("orjson"):
 
@@ -91,4 +94,6 @@ if modules_available("orjson"):
                 d = d[key]["contents"]
         return safe_json_dump(to_serialize)
 
-    serialization_registry.register("node", "application/json", serialize_json)
+    serialization_registry.register(
+        StructureFamily.container, "application/json", serialize_json
+    )

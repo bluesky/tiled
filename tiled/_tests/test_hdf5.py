@@ -104,12 +104,15 @@ def test_from_multiple(example_file):
 
 
 def test_inlined_contents(example_file):
-    """Serve a Group within an HDF5 file."""
-    tree = HDF5Adapter(example_file["a"]["b"])
-    assert hdf5_adapters.INLINED_DEPTH > 0
+    """Test that the recursive structure and metadata are inlined into one request."""
+    tree = HDF5Adapter(example_file)
+    assert hdf5_adapters.INLINED_DEPTH > 1
     original = hdf5_adapters.INLINED_DEPTH
     try:
         with Context.from_app(build_app(tree)) as context:
+            with record_history() as hN:
+                client = from_context(context)
+                tree_util(client)
             hdf5_adapters.INLINED_DEPTH = 1
             with record_history() as h1:
                 client = from_context(context)
@@ -118,6 +121,6 @@ def test_inlined_contents(example_file):
             with record_history() as h0:
                 client = from_context(context)
                 tree_util(client)
-            assert len(h0.requests) > len(h1.requests)
+            assert len(h0.requests) > len(h1.requests) > len(hN.requests)
     finally:
         hdf5_adapters.INLINED_DEPTH = original
