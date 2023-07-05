@@ -59,7 +59,6 @@ class EntryFields(str, enum.Enum):
     count = "count"
     sorting = "sorting"
     specs = "specs"
-    references = "references"
     data_sources = "data_sources"
     none = ""
 
@@ -79,21 +78,11 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class ReferenceDocument(pydantic.BaseModel, extra=pydantic.Extra.forbid):
-    label: pydantic.constr(max_length=255)
-    url: pydantic.AnyUrl
-
-    @classmethod
-    def from_json(cls, json_doc):
-        return cls(label=json_doc["label"], url=json_doc["url"])
-
-
 class Spec(pydantic.BaseModel, extra=pydantic.Extra.forbid, frozen=True):
     name: pydantic.constr(max_length=255)
     version: Optional[pydantic.constr(max_length=255)]
 
 
-References = pydantic.conlist(ReferenceDocument, max_items=20)
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
 # Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
 Specs = pydantic.conlist(Spec, max_items=20)
@@ -120,7 +109,6 @@ class Revision(pydantic.BaseModel):
     revision_number: int
     metadata: dict
     specs: Specs
-    references: References
     time_updated: datetime
 
     @classmethod
@@ -131,7 +119,6 @@ class Revision(pydantic.BaseModel):
             revision_number=orm.revision_number,
             metadata=orm.metadata_,
             specs=orm.specs,
-            references=orm.references,
             time_updated=orm.time_updated,
         )
 
@@ -176,7 +163,6 @@ class NodeAttributes(pydantic.BaseModel):
         Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
-    references: Optional[References]
     data_sources: Optional[List[DataSource]]
 
 
@@ -383,7 +369,6 @@ class PostMetadataRequest(pydantic.BaseModel):
     metadata: Dict = {}
     data_sources: List[DataSource] = []
     specs: Specs = []
-    references: References = []
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -427,7 +412,6 @@ class PutMetadataRequest(pydantic.BaseModel):
     # These fields are optional because None means "no changes; do not update".
     metadata: Optional[Dict]
     specs: Optional[Specs]
-    references: Optional[References]
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.

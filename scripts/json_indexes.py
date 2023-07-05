@@ -15,7 +15,6 @@ async def test(a):
                 "nested": {"number": i, "number_as_string": str(i)},
             },
             specs=[],
-            references=[],
             structure_family="array",
         )
     # await a.create_metadata_index("nested_number_as_string", "nested.number_as_string")

@@ -27,7 +27,7 @@ def lower_case_dict(d):
     return out, modified
 
 
-def validate_foo(metadata, structure_family, structure, spec, references):
+def validate_foo(metadata, structure_family, structure, spec):
     if structure_family != "dataframe":
         raise ValidationError(f"structure family for spec {spec} must be dataframe")
 

@@ -267,7 +267,6 @@ async def construct_revisions_response(
             "attributes": {
                 "metadata": revision.metadata,
                 "specs": revision.specs,
-                "references": revision.references,
                 "time_updated": revision.time_updated,
             },
         }
@@ -416,8 +415,6 @@ async def construct_resource(
             # for ease of going between dataclass and pydantic.
             specs.append(schemas.Spec(**spec.dict()))
         attributes["specs"] = specs
-    if schemas.EntryFields.references in fields:
-        attributes["references"] = getattr(entry, "references", [])
     if (entry is not None) and entry.structure_family == StructureFamily.container:
         attributes["structure_family"] = StructureFamily.container
         if schemas.EntryFields.structure in fields:

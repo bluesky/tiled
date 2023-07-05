@@ -16,14 +16,12 @@ class ParquetDatasetAdapter:
         divisions,
         metadata=None,
         specs=None,
-        references=None,
     ):
         self.partition_paths = sorted(partition_paths)
         self.meta = meta
         self.divisions = divisions
         self.metadata = metadata or {}
         self.specs = list(specs or [])
-        self.references = list(references or [])
 
     @property
     def dataframe_adapter(self):

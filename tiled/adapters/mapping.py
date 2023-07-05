@@ -41,7 +41,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         "include_routers",
         "metadata_stale_after",
         "specs",
-        "references",
     )
 
     structure_family = StructureFamily.container
@@ -58,7 +57,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         metadata=None,
         sorting=None,
         specs=None,
-        references=None,
         access_policy=None,
         entries_stale_after=None,
         metadata_stale_after=None,
@@ -74,7 +72,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
         sorting : List[Tuple[str, int]], optional
         specs : List[str], optional
-        references : Dict[str, URL], optional
         access_policy : AccessPolicy, optional
         entries_stale_after: timedelta
             This server uses this to communite to the client how long
@@ -101,7 +98,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self.entries_stale_after = entries_stale_after
         self.metadata_stale_after = metadata_stale_after
         self.specs = specs or []
-        self.references = references or []
         super().__init__()
 
     @property
@@ -190,7 +186,6 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
             sorting=sorting,
             metadata=self._metadata,
             specs=self.specs,
-            references=self.references,
             access_policy=self.access_policy,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,

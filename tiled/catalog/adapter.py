@@ -122,10 +122,9 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs, references, access_policy):
+    def __init__(self, metadata, specs, access_policy):
         self.metadata = metadata or {}
         self.specs = specs or []
-        self.references = references or []
         self.ancestors = []
         self.key = None
         self.data_sources = None
@@ -299,7 +298,6 @@ class BaseAdapter:
         self.structure_family = node.structure_family
         self.metadata = node.metadata
         self.specs = node.specs
-        self.references = node.references
         self.access_policy = access_policy
         self.initialize_database_at_startup = initialize_database_at_startup
         self.startup_tasks = [self.startup]
@@ -472,7 +470,6 @@ class CatalogNodeAdapter(BaseAdapter):
         metadata,
         key=None,
         specs=None,
-        references=None,
         data_sources=None,
     ):
         key = key or self.context.key_maker()
@@ -483,7 +480,6 @@ class CatalogNodeAdapter(BaseAdapter):
             metadata_=metadata,
             structure_family=structure_family,
             specs=[s.dict() for s in specs or []],
-            references=[r.dict() for r in references or []],
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -763,7 +759,6 @@ CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 def in_memory(
     metadata=None,
     specs=None,
-    references=None,
     access_policy=None,
     writable_storage=None,
     readable_storage=None,
@@ -774,7 +769,6 @@ def in_memory(
         uri=uri,
         metadata=metadata,
         specs=specs,
-        references=references,
         access_policy=access_policy,
         writable_storage=writable_storage,
         readable_storage=readable_storage,
@@ -788,7 +782,6 @@ def from_uri(
     uri,
     metadata=None,
     specs=None,
-    references=None,
     access_policy=None,
     writable_storage=None,
     readable_storage=None,
@@ -800,7 +793,7 @@ def from_uri(
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogNodeAdapter(
         Context(engine, writable_storage, readable_storage),
-        RootNode(metadata, specs, references, access_policy),
+        RootNode(metadata, specs, access_policy),
         initialize_database_at_startup=initialize_database_at_startup,
         access_policy=access_policy,
     )

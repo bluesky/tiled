@@ -635,11 +635,10 @@ async def post_metadata(
             body.data_sources[0].structure.micro.divisions
         )
 
-    metadata, structure_family, specs, references = (
+    metadata, structure_family, specs = (
         body.metadata,
         body.structure_family,
         body.specs,
-        body.references,
     )
     if structure_family == StructureFamily.container:
         structure = None
@@ -667,9 +666,7 @@ async def post_metadata(
         else:
             validator = validation_registry(spec.name)
             try:
-                result = validator(
-                    metadata, structure_family, structure, spec, references
-                )
+                result = validator(metadata, structure_family, structure, spec)
             except ValidationError as e:
                 raise HTTPException(
                     status_code=400,
@@ -684,7 +681,6 @@ async def post_metadata(
         structure_family=body.structure_family,
         key=body.id,
         specs=body.specs,
-        references=body.references,
         data_sources=body.data_sources,
     )
     links = {}
@@ -847,12 +843,11 @@ async def put_metadata(
             status_code=405, detail="This path does not support update of metadata."
         )
 
-    metadata, structure_family, structure, specs, references = (
+    metadata, structure_family, structure, specs = (
         body.metadata if body.metadata is not None else entry.metadata,
         entry.structure_family,
         get_structure(entry),
         body.specs if body.specs is not None else entry.specs,
-        body.references if body.references is not None else entry.references,
     )
 
     metadata_modified = False
@@ -874,9 +869,7 @@ async def put_metadata(
         else:
             validator = validation_registry(spec.name)
             try:
-                result = validator(
-                    metadata, structure_family, structure, spec, references
-                )
+                result = validator(metadata, structure_family, structure, spec)
             except ValidationError as e:
                 raise HTTPException(
                     status_code=400,
@@ -886,7 +879,7 @@ async def put_metadata(
                 metadata_modified = True
                 metadata = result
 
-    await entry.update_metadata(metadata=metadata, specs=specs, references=references)
+    await entry.update_metadata(metadata=metadata, specs=specs)
 
     response_data = {"id": entry.key}
     if metadata_modified:

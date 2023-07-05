@@ -475,7 +475,7 @@ properties:
       The validation function should have signature
 
       ```python
-      f(metadata, structure_family, structure, spec, references)
+      f(metadata, structure_family, structure, spec)
       ```
       and return `None` or a possibly modified metadata object to indicate
       success or raise a `tiled.validation_registration.ValidationError`
