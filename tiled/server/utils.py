@@ -8,6 +8,7 @@ import anyio
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
 from ..structures.array import ArrayStructure
+from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameStructure
 
 EMPTY_NODE = MapAdapter({})
@@ -91,7 +92,7 @@ def filter_for_access(entry, principal, scopes, metrics):
 def get_structure(entry):
     "Abtract over the fact that some have micro/macrostructure."
     structure_family = entry.structure_family
-    if structure_family == "node":
+    if structure_family == StructureFamily.container:
         structure = None
     elif structure_family == "array":
         structure = ArrayStructure(

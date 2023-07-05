@@ -66,7 +66,7 @@ any HTTP client.
 >>> client = from_uri("http://localhost:8000")
 
 >>> client
-<Node {'short_table', 'long_table', 'structured_data', ...} ~10 entries>
+<Container {'short_table', 'long_table', 'structured_data', ...} ~10 entries>
 
 >>> list(client)
 'big_image',

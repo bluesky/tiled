@@ -12,9 +12,9 @@ These are functions for constructing a client object.
    tiled.client.from_profile
 ```
 
-## Client Node
+## Client Container
 
-The Node interface extends the ``collections.abc.Mapping`` (i.e. read-only
+The Container interface extends the ``collections.abc.Mapping`` (i.e. read-only
 dict) interface, so it supports these standard "magic methods":
 
 * `__getitem__` (lookup by key with `[]`)
@@ -37,9 +37,9 @@ The views returned by `.keys()`, `.items()`, and `.values()`
 support efficient random access---e.g.
 
 ```py
-node.values()[3]
-node.values()[-1]
-node.values()[:3]
+c.values()[3]
+c.values()[-1]
+c.values()[:3]
 ```
 
 and several convenience methods:
@@ -57,7 +57,7 @@ and several convenience methods:
 
 Likewise for `.keys()` and `.items()`.
 
-Beyond the Mapping interface, Node adds the following attributes
+Beyond the Mapping interface, Container adds the following attributes
 
 ```{eval-rst}
 .. autosummary::
@@ -69,7 +69,7 @@ Beyond the Mapping interface, Node adds the following attributes
    tiled.client.container.Container.specs
 ```
 
-It adds these methods, which return a new Node instance.
+It adds these methods, which return a new Container instance.
 
 ```{eval-rst}
 .. autosummary::

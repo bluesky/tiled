@@ -8,7 +8,7 @@ from tiled.queries import Key
 
 async def test(a):
     for i in range(100):
-        await a.create_node(
+        await a.create_container(
             metadata={
                 "number": i,
                 "number_as_string": str(i),

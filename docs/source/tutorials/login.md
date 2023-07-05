@@ -54,7 +54,7 @@ and you can access data.
 
 ```
 >>> c
-<Node {'big_image', 'small_image', 'medium_image', ...} ~13 entries>
+<Container {'big_image', 'small_image', 'medium_image', ...} ~13 entries>
 ```
 
 Next, quit Python and start it fresh.
@@ -63,7 +63,7 @@ Next, quit Python and start it fresh.
 >>> from tiled.client import from_uri
 >>> c = from_uri("https://tiled-demo.blueskyproject.io")
 >>> c
-<Node {'big_image', 'small_image', 'medium_image', ...} ~13 entries>
+<Container {'big_image', 'small_image', 'medium_image', ...} ~13 entries>
 ```
 
 Notice that you are _not_ prompted to log in again. The login process

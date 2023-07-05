@@ -1,6 +1,6 @@
 # Structures
 
-Tiled *Adapters* provide data in one of a fixed group of standard *structure families*.
+Tiled describes data in one of a fixed group of standard *structure families*.
 These are *not* Python-specific structures. They can be encoded in standard,
 language-agnostic formats and transferred from the service to a client in
 potentially any language.
@@ -13,7 +13,7 @@ The structure families are:
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
 * dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
-* node --- a grouping of other structures, akin to a dictionary or a directory
+* container --- a of other structures, akin to a dictionary or a directory
 
 Support for sparse arrays and [Awkward Array](https://awkward-array.org/) are
 planned.
@@ -282,20 +282,20 @@ Both of the concepts (and their names) are borrowed directly from
 dask.dataframe. They should enable any client, including in languages other than
 Python, to perform the same function.
 
-### Node
+### Container
 
-The node structure is a container for other structures. It may be compared to a
-directory, a JSON object, a Python dictionary, or an HDF5 Group. Nodes may contain
-other nodes, any other structure, or a mixture.
+This structure is a container for other structures. It may be compared to a
+directory, a JSON object, a Python dictionary, or an HDF5 Group. Containers may
+contain other containers, any other structure, or a mixture.
 
-Some nodes contain a small number of children, easy to list in a single request,
+Some may contain a small number of nodes, easy to list in a single request,
 while others may contain many listed via multiple paginated requests. Some Tiled
-deployments currently in use contain nodes with with up to hundreds of thousands
-of children.
+deployments currently in use have containers with up to hundreds of thousands
+of nodes.
 
-Typically, a node's structures tell us only how many children it has (`count`).
+Typically, a container's structure tell us only how many nodes it contains (`count`).
 The `contents` key is typically set to `null`, which indicates that we will need
-a separate request to fetch information of this node's children.
+a separate request to fetch information about each child node.
 
 ```json
 {
@@ -304,8 +304,9 @@ a separate request to fetch information of this node's children.
 }
 ```
 
-In certain cases, it is efficient to in-line all the information about the node's children
-(their metadata, structure, and more) in a single response.
+In certain cases, it is efficient to in-line all the information about the
+container's contents (their metadata, structure, and more) in a single
+response.
 
 
 ```json

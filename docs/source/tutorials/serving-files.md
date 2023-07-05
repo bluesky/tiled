@@ -56,10 +56,10 @@ disk, and we can slice and access the data.
 
 ```python
 >>> client
-<Node {'more', 'b', 'a', 'c', ...} ~7 entries>
+<Container {'more', 'b', 'a', 'c', ...} ~7 entries>
 
 >>> client['more']
-<Node {'d'}>
+<Container {'d'}>
 
 >>> client['more']['d']
 <ArrayClient>
@@ -74,7 +74,7 @@ array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.]])
 
 >>> client['tables']
-<Node {'Sheet 1', 'Sheet 2'}>
+<Container {'Sheet 1', 'Sheet 2'}>
 
 >>> client['tables']['Sheet 1']
 <DataFrameClient ['A', 'B']>

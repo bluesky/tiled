@@ -464,7 +464,7 @@ class CatalogNodeAdapter(BaseAdapter):
     def sort(self, sorting):
         return self.new_variation(sorting=sorting)
 
-    async def create_node(
+    async def create_container(
         self,
         structure_family,
         metadata,
