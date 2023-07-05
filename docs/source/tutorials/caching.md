@@ -31,7 +31,7 @@ receive a response. For example...
 >>> client = from_uri("http://localhost:8000", cache=Cache.in_memory(2e9))
 
 >>> client
-<Node {'big_image', 'small_image', 'tiny_image', 'tiny_cube', ...} ~11 entries>
+<Container {'big_image', 'small_image', 'tiny_image', 'tiny_cube', ...} ~11 entries>
 
 >>> client['long_table']
 <DataFrameClient ['A', 'B', 'C']>

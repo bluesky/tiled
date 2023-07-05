@@ -2,7 +2,7 @@
 
 The Tiled server can provide data---in whole or in part---in a variety of
 formats. See {doc}`../tutorials/export` for a list of the formats supported out
-of the box for each structure family (`"array"`, `"dataframe"`, `"node"`, ...).
+of the box for each structure family (`"array"`, `"dataframe"`, `"container"`, ...).
 
 This set of formats can easily be extended. A complete working example is
 included in the tiled source tree at `example_configs/custom_export_formats`.

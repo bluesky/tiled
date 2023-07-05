@@ -85,7 +85,7 @@ The content of `tokens.json` looks like
 Make an authenticated request using that access token.
 
 ```
-$ http GET :8000/api/v1//metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+$ http GET :8000/api/v1/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
 HTTP/1.1 200 OK
 content-length: 239
 content-type: application/json
@@ -105,8 +105,8 @@ set-cookie: tiled_csrf=1-Cpa1WcwggakZ91FtNsscjM8VO1N1znmuILlL5hGY8; HttpOnly; Pa
         },
         "id": "",
         "links": {
-            "search": "http://localhost:8000/api/v1/node/search/",
-            "self": "http://localhost:8000/api/v1//metadata/"
+            "search": "http://localhost:8000/api/v1/search/",
+            "self": "http://localhost:8000/api/v1/metadata/"
         },
         "meta": null,
         "type": "tree"
@@ -121,7 +121,7 @@ When the access token expires (after 15 minutes, by default) requests will be
 rejected like this.
 
 ```
-$ http GET :8000/api/v1//metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
+$ http GET :8000/api/v1/metadata/ "Authorization:Bearer `jq -r .access_token tokens.json`"
 HTTP/1.1 401 Unauthorized
 content-length: 53
 content-type: application/json

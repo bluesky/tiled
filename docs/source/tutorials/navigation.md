@@ -47,16 +47,16 @@ however many fit on one line.
 
 ```python
 >>> client
-<Node {'big_image', 'small_image', 'tiny_image', 'tiny_cube', ...} ~11 entries>
+<Container {'big_image', 'small_image', 'tiny_image', 'tiny_cube', ...} ~11 entries>
 ```
 
-Nodes act like (nested) mappings in Python. All the (read-only) methods
-that work on Python dictionaries work on Nodes. We can lookup a specific
+Containers act like (nested) mappings in Python. All the (read-only) methods
+that work on Python dictionaries work on Containers. We can lookup a specific
 value by its key
 
 ```python
 >>> client['structured_data']
-<Node {'image_with_coords', 'xarray_dataset'}>
+<Container {'image_with_coords', 'xarray_dataset'}>
 ```
 
 list all the keys
@@ -93,7 +93,7 @@ for key, value in client.items():
     ...
 ```
 
-Nodes also support efficient list-like access. This is useful for quickly
+Containers also support efficient list-like access. This is useful for quickly
 looking at a couple or efficiently grabbing batches of items, especially if you
 need to start from the middle.
 
@@ -144,4 +144,4 @@ DictView({})
 DictView({'animal': 'dog', 'color': 'red'})
 ```
 
-See a later tutorial for how to search Nodes with queries.
+See a later tutorial for how to search Containers with queries.

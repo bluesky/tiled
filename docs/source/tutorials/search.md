@@ -44,7 +44,7 @@ anywhere in the metadata.
 >>> from tiled.queries import FullText
 
 >>> client.search(FullText("dog"))
-<Node {'short_table', 'long_table'}>
+<Container {'short_table', 'long_table'}>
 ```
 
 The result has a subset of the contents of the original.
@@ -52,14 +52,14 @@ Searches may be chained to progressively narrow results:
 
 ```python
 >>> client.search(FullText("dog")).search(FullText("red"))
-<Node {'short_table'}>
+<Container {'short_table'}>
 ```
 
 If there no matches, the result is an empty Node:
 
 ```python
 >>> client.search(FullText("something that will not be found"))
-<Node {}>
+<Container {}>
 ```
 
 ## More Queries

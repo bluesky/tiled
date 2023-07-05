@@ -8,9 +8,9 @@ with restricted scopes.
 
 * `read:metadata` --- List and search metadata.
 * `read:data` --- Fetch (array, dataframe) data.
-* `create` --- Create a new node. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
-* `write:metadata` --- Write metadata. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
-* `write:data` --- Write (array, dataframe) data. This is not yet used by Tiled itself. It is made available for use by experimental externally-developed adapters that support writing.
+* `create` --- Create a new node.
+* `write:metadata` --- Write metadata.
+* `write:data` --- Write (array, dataframe) data.
 * `apikeys` --- Manage API keys for the currently-authenticated user or service.
 * `metrics` --- Access Prometheus metrics.
 * `admin:apikeys` --- Manage API keys on behalf of any user or service.
