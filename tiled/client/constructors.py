@@ -4,8 +4,8 @@ import collections.abc
 import httpx
 
 from ..utils import import_object, prepend_to_sys_path
+from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, UNSET, Context
-from .node import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Node
 from .utils import ClientError, client_for_item
 
 
@@ -111,8 +111,8 @@ def from_context(
             raise ValueError("Use api_key or username/auth_provider, not both.")
     node_path_parts = node_path_parts or []
     # Do entrypoint discovery if it hasn't yet been done.
-    if Node.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
-        Node.discover_clients_from_entrypoints()
+    if Container.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
+        Container.discover_clients_from_entrypoints()
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
         structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]

@@ -27,10 +27,10 @@ as well as:
 .. autosummary::
    :toctree: generated
 
-   tiled.client.node.Node.get
-   tiled.client.node.Node.keys
-   tiled.client.node.Node.items
-   tiled.client.node.Node.values
+   tiled.client.container.Container.get
+   tiled.client.container.Container.keys
+   tiled.client.container.Container.items
+   tiled.client.container.Container.values
 ```
 
 The views returned by `.keys()`, `.items()`, and `.values()`
@@ -63,11 +63,11 @@ Beyond the Mapping interface, Node adds the following attributes
 .. autosummary::
    :toctree: generated
 
-   tiled.client.node.Node.metadata
-   tiled.client.node.Node.references
-   tiled.client.node.Node.sorting
-   tiled.client.node.Node.uri
-   tiled.client.node.Node.specs
+   tiled.client.container.Container.metadata
+   tiled.client.container.Container.references
+   tiled.client.container.Container.sorting
+   tiled.client.container.Container.uri
+   tiled.client.container.Container.specs
 ```
 
 It adds these methods, which return a new Node instance.
@@ -76,8 +76,8 @@ It adds these methods, which return a new Node instance.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.node.Node.search
-   tiled.client.node.Node.sort
+   tiled.client.container.Container.search
+   tiled.client.container.Container.sort
 ```
 
 It adds these methods for downloading and refreshing cached data.
@@ -86,8 +86,8 @@ It adds these methods for downloading and refreshing cached data.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.node.Node.download
-   tiled.client.node.Node.refresh
+   tiled.client.container.Container.download
+   tiled.client.container.Container.refresh
 ```
 
 It adds this method, which returns the unique metadata keys,
@@ -97,7 +97,7 @@ structure_families, and specs of its children along with their counts.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.node.Node.distinct
+   tiled.client.container.Container.distinct
 ```
 
 ## Structure Clients
