@@ -17,7 +17,7 @@ def initialize_database(database_uri: str):
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from ..database.core import (
+    from ..auth_database.core import (
         REQUIRED_REVISION,
         UninitializedDatabase,
         check_database,
@@ -60,7 +60,7 @@ def upgrade_database(
     """
     from sqlalchemy import create_engine
 
-    from ..database.core import get_current_revision, upgrade
+    from ..auth_database.core import get_current_revision, upgrade
 
     engine = create_engine(database_uri)
     redacted_url = engine.url._replace(password="[redacted]")
@@ -85,7 +85,7 @@ def downgrade_database(
     """
     from sqlalchemy import create_engine
 
-    from ..database.core import downgrade, get_current_revision
+    from ..auth_database.core import downgrade, get_current_revision
 
     engine = create_engine(database_uri)
     redacted_url = engine.url._replace(password="[redacted]")

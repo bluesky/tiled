@@ -20,7 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func
 
-from tiled.database.orm import UUID, JSONList, PrincipalType
+from tiled.auth_database.orm import UUID, JSONList, PrincipalType
 
 # revision identifiers, used by Alembic.
 revision = "481830dd6c11"

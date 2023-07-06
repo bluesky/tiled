@@ -69,7 +69,7 @@ def main(args=None):
 
     To define a new revision:
 
-    $ python -m tiled.database.alembic_utils revision -m "description..."
+    $ python -m tiled.auth_database.alembic_utils revision -m "description..."
 
     """
     import subprocess

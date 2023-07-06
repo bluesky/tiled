@@ -30,7 +30,7 @@ how-to/metrics
 how-to/direct-client
 how-to/tune-caches
 how-to/docker
-how-to/tiled-database
+how-to/tiled-auth-database
 ```
 
 ```{toctree}

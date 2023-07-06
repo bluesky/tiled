@@ -518,9 +518,9 @@ confusing behavior due to ambiguous encodings.
         if settings.database_uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
 
-            from ..database import orm
-            from ..database.connection_pool import open_database_connection_pool
-            from ..database.core import (
+            from ..auth_database import orm
+            from ..auth_database.connection_pool import open_database_connection_pool
+            from ..auth_database.core import (
                 DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
@@ -619,7 +619,7 @@ Back up the database, and then run:
 
         settings = app.dependency_overrides[get_settings]()
         if settings.database_uri is not None:
-            from ..database.connection_pool import close_database_connection_pool
+            from ..auth_database.connection_pool import close_database_connection_pool
 
             for task in app.state.tasks:
                 task.cancel()

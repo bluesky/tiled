@@ -8,7 +8,7 @@ Create Date: 2022-03-22 16:54:02.764016
 from alembic import op
 from sqlalchemy.orm.session import Session
 
-from tiled.database.orm import Role
+from tiled.auth_database.orm import Role
 
 # revision identifiers, used by Alembic.
 revision = "722ff4e4fcc7"
