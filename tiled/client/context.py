@@ -1045,7 +1045,7 @@ def get_default_identity(api_uri):
         return json.loads(filepath.read_text())
 
 
-def clear_default_identity(self, api_uri):
+def clear_default_identity(api_uri):
     """
     Clear the cached default identity for this API.
     """

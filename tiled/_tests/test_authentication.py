@@ -10,7 +10,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.auth import CannotRefreshAuthentication
-from ..client.context import get_default_identity
+from ..client.context import clear_default_identity, get_default_identity
 from ..server import authentication
 from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
@@ -446,3 +446,6 @@ def test_sticky_identity(enter_password, config):
         get_default_identity(context.api_uri) is not None
         context.authenticate()
         assert context.whoami()["identities"][0]["id"] == "alice"
+    # Clear the default.
+    clear_default_identity(context.api_uri)
+    get_default_identity(context.api_uri) is None
