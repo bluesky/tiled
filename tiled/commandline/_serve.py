@@ -6,9 +6,6 @@ import typer
 serve_app = typer.Typer()
 
 
-SQLITE_CATALOG_FILENAME = "tiled_catalog.sqlite"
-
-
 @serve_app.command("directory")
 def serve_directory(
     directory: str,
