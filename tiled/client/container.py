@@ -604,7 +604,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if key is not None:
             body["id"] = key
         document = handle_error(
-            self.context.http_client.post(self.uri, content=safe_json_dump(body))
+            self.context.http_client.post(
+                self.uri,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                content=safe_json_dump(body),
+            )
         ).json()
         item["attributes"]["structure"] = structure
 
