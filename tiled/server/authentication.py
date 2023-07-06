@@ -40,9 +40,9 @@ with warnings.catch_warnings():
 
 from pydantic import BaseModel, BaseSettings
 
-from ..auth_database import orm
-from ..auth_database.connection_pool import get_database_session
-from ..auth_database.core import (
+from ..authn_database import orm
+from ..authn_database.connection_pool import get_database_session
+from ..authn_database.core import (
     create_user,
     latest_principal_activity,
     lookup_valid_api_key,

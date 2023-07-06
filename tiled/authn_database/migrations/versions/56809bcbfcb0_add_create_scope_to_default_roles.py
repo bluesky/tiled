@@ -1,24 +1,24 @@
-""""Add write scopes to default Roles."
+"""Add 'create' scope to default roles.
 
-Revision ID: 722ff4e4fcc7
-Revises: 481830dd6c11
-Create Date: 2022-03-22 16:54:02.764016
+Revision ID: 56809bcbfcb0
+Revises: 722ff4e4fcc7
+Create Date: 2022-09-29 09:16:32.797138
 
 """
 from alembic import op
 from sqlalchemy.orm.session import Session
 
-from tiled.auth_database.orm import Role
+from tiled.authn_database.orm import Role
 
 # revision identifiers, used by Alembic.
-revision = "722ff4e4fcc7"
-down_revision = "481830dd6c11"
+revision = "56809bcbfcb0"
+down_revision = "722ff4e4fcc7"
 branch_labels = None
 depends_on = None
 
 
 ROLES = ["admin", "user"]
-NEW_SCOPES = ["write:metadata", "write:data"]
+NEW_SCOPES = ["create"]
 
 
 def upgrade():

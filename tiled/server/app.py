@@ -523,9 +523,9 @@ confusing behavior due to ambiguous encodings.
                 UninitializedDatabase,
                 check_database,
             )
-            from ..auth_database import orm
-            from ..auth_database.connection_pool import open_database_connection_pool
-            from ..auth_database.core import (
+            from ..authn_database import orm
+            from ..authn_database.connection_pool import open_database_connection_pool
+            from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
                 initialize_database,
@@ -623,7 +623,7 @@ Back up the database, and then run:
 
         settings = app.dependency_overrides[get_settings]()
         if settings.database_uri is not None:
-            from ..auth_database.connection_pool import close_database_connection_pool
+            from ..authn_database.connection_pool import close_database_connection_pool
 
             for task in app.state.tasks:
                 task.cancel()

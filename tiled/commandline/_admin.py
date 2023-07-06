@@ -18,8 +18,11 @@ def initialize_database(database_uri: str):
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
-    from ..auth_database.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-    from ..auth_database.core import (
+    from ..authn_database.alembic_constants import (
+        ALEMBIC_DIR,
+        ALEMBIC_INI_TEMPLATE_PATH,
+    )
+    from ..authn_database.core import (
         ALL_REVISIONS,
         REQUIRED_REVISION,
         initialize_database,
@@ -61,7 +64,10 @@ def upgrade_database(
     from sqlalchemy import create_engine
 
     from ..alembic_utils import get_current_revision, upgrade
-    from ..auth_database.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..authn_database.alembic_constants import (
+        ALEMBIC_DIR,
+        ALEMBIC_INI_TEMPLATE_PATH,
+    )
 
     engine = create_engine(database_uri)
     redacted_url = engine.url._replace(password="[redacted]")
@@ -87,7 +93,10 @@ def downgrade_database(
     from sqlalchemy import create_engine
 
     from ..alembic_utils import downgrade, get_current_revision
-    from ..auth_database.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..authn_database.alembic_constants import (
+        ALEMBIC_DIR,
+        ALEMBIC_INI_TEMPLATE_PATH,
+    )
 
     engine = create_engine(database_uri)
     redacted_url = engine.url._replace(password="[redacted]")

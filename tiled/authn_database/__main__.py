@@ -14,7 +14,7 @@ def main(args=None):
 
     To define a new revision:
 
-    $ python -m tiled.auth_database revision -m "description..."
+    $ python -m tiled.authn_database revision -m "description..."
 
     """
     import subprocess
