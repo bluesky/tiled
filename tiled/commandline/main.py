@@ -26,6 +26,8 @@ which installs *everything* you might want. For other options, see:
 """
     ) from err
 
+from ..utils import UNSET
+
 cli_app = typer.Typer()
 
 from ._admin import admin_app  # noqa: E402
@@ -74,7 +76,7 @@ def login(
     context, _ = Context.from_any_uri(profile_content["uri"], **options)
     # Override sticky 'default_identity'.
     # Always prompt user to specify who they want to log in as.
-    context.authenticate(username=None, provider=None, set_default_identity=True)
+    context.authenticate(username=None, provider=None, set_default=True)
     if show_secret_tokens:
         import json
 
@@ -86,22 +88,24 @@ def logout(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
+    username: Optional[str] = typer.Option(None),
+    provider: Optional[str] = typer.Option(None),
 ):
     """
-    Log out from one or all authenticated Tiled servers.
+    Log out.
     """
     from ..client.context import Context
-    from ..profiles import clear_profile_auth, get_profile_auth
 
     profile_name, profile_content = get_profile(profile)
     context, _ = Context.from_any_uri(
         profile_content["uri"], verify=profile_content.get("verify", True)
     )
-    auth = get_profile_auth(profile)
-    if auth:
-        context.authenticate(**auth)
-        context.logout()
-    clear_profile_auth(profile)
+    if username is None:
+        username = UNSET
+    if provider is None:
+        provider = UNSET
+    context.authenticate(username=username, provider=provider, set_default=False)
+    context.logout()
 
 
 @cli_app.command("tree")

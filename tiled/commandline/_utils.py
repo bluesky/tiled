@@ -74,13 +74,11 @@ to list choices.""",
 
 def get_context(profile):
     from ..client.context import Context
-    from ..profiles import get_profile_auth
 
     profile_name, profile_content = get_profile(profile)
     context, _ = Context.from_any_uri(
         profile_content["uri"], verify=profile_content.get("verify", True)
     )
-    auth = get_profile_auth(profile_name)
-    if auth or context.server_info["authentication"]["required"]:
-        context.authenticate(**auth)
+    if context.server_info["authentication"]["required"]:
+        context.authenticate()
     return context

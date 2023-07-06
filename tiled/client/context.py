@@ -14,7 +14,7 @@ import httpx
 import msgpack
 
 from .._version import __version__ as tiled_version
-from ..utils import DictView, Sentinel, safe_json_dump
+from ..utils import UNSET, DictView, safe_json_dump
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
 from .cache import Revalidate
 from .utils import (
@@ -27,7 +27,6 @@ from .utils import (
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
-UNSET = Sentinel("UNSET")
 PROMPT_FOR_REAUTHENTICATION = None
 TILED_CACHE_DIR = Path(os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled")))
 
@@ -675,7 +674,7 @@ class Context:
         username=UNSET,
         provider=UNSET,
         prompt_for_reauthentication=UNSET,
-        set_default_identity=True,
+        set_default=True,
     ):
         """
         See login. This is for programmatic use.
@@ -820,8 +819,10 @@ and enter the code:
         confirmation_message = spec.get("confirmation_message")
         if confirmation_message:
             print(confirmation_message.format(id=username))
-        if set_default_identity:
-            set_default_identity(self.api_uri, spec["provider"], username)
+        if set_default:
+            set_default_identity(
+                self.api_uri, username=username, provider=spec["provider"]
+            )
         return spec, username
 
     def login(self, username=None, provider=None, prompt_for_reauthentication=UNSET):
@@ -1025,7 +1026,7 @@ def _default_identity_filepath(api_uri):
     )
 
 
-def set_default_identity(api_uri, filepath, provider, username):
+def set_default_identity(api_uri, provider, username):
     """
     Stash the identity used with this API so that we can reuse it by default.
     """
@@ -1041,7 +1042,7 @@ def get_default_identity(api_uri):
     """
     filepath = _default_identity_filepath(api_uri)
     if filepath.exists():
-        json.loads(filepath.read_text())
+        return json.loads(filepath.read_text())
 
 
 def clear_default_identity(self, api_uri):

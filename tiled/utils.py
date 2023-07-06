@@ -403,6 +403,7 @@ class Sentinel:
 
 
 UNCHANGED = Sentinel("UNCHANGED")
+UNSET = Sentinel("UNSET")
 
 
 def import_object(colon_separated_string, accept_live_object=True):
