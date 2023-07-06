@@ -97,7 +97,7 @@ def delete(
     )
 
     # Unset the default if this profile is currently the default.
-    default = get_default_profile_name(name)
+    default = get_default_profile_name()
     if default == name:
         set_default_profile_name(None)
     delete_profile(name)
