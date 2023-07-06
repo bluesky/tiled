@@ -14,9 +14,15 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
-from ..utils import MSGPACK_MIME_TYPE, UNCHANGED, OneShotCachedMap, Sentinel, node_repr
+from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr
 from .base import BaseClient
-from .utils import ClientError, client_for_item, export_util
+from .utils import (
+    MSGPACK_MIME_TYPE,
+    ClientError,
+    client_for_item,
+    handle_error,
+    export_util,
+)
 
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -163,15 +169,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if now < deadline:
                 # Used the cached value and do not make any request.
                 return length
-        content = self.context.http_client.get(
-            self.item["links"]["search"],
-            headers={"Accept": MSGPACK_MIME_TYPE},
-            params={
-                "fields": "",
-                **self._queries_as_params,
-                **self._sorting_params,
-            },
-        )
+        content = handle_error(
+            self.context.http_client.getread(
+                self.item["links"]["search"],
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={
+                    "fields": "",
+                    **self._queries_as_params,
+                    **self._sorting_params,
+                },
+            )
+        ).json()
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
@@ -195,15 +203,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             return (yield from contents)
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
-            content = self.context.http_client.get(
-                next_page_url,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    "fields": "",
-                    **self._queries_as_params,
-                    **self._sorting_params,
-                },
-            )
+            content = handle_error(
+                self.context.http_client.get(
+                    next_page_url,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={
+                        "fields": "",
+                        **self._queries_as_params,
+                        **self._sorting_params,
+                    },
+                )
+            ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -235,15 +245,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
             tail = tuple(tail)  # list -> tuple
-            content = self.context.http_client.get(
-                self.item["links"]["search"],
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **_queries_to_params(KeyLookup(key)),
-                    **self._queries_as_params,
-                    **self._sorting_params,
-                },
-            )
+            content = handle_error(
+                self.context.http_client.get(
+                    self.item["links"]["search"],
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={
+                        **_queries_to_params(KeyLookup(key)),
+                        **self._queries_as_params,
+                        **self._sorting_params,
+                    },
+                )
+            ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -283,10 +295,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         self_link = self.item["links"]["self"]
                         if self_link.endswith("/"):
                             self_link = self_link[:-1]
-                        content = self.context.http_client.get(
-                            self_link + "".join(f"/{key}" for key in keys[i:]),
-                            headers={"Accept": MSGPACK_MIME_TYPE},
-                        )
+                        content = handle_error(
+                            self.context.http_client.get(
+                                self_link + "".join(f"/{key}" for key in keys[i:]),
+                                headers={"Accept": MSGPACK_MIME_TYPE},
+                            )
+                        ).json()
                     except ClientError as err:
                         if err.response.status_code == 404:
                             # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
@@ -302,7 +316,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def delete(self, key):
         self._cached_len = None
-        self.context.http_client.delete(f"{self.uri}/{key}", None)
+        handle_error(self.context.http_client.delete(f"{self.uri}/{key}", None))
 
     # The following two methods are used by keys(), values(), items().
 
@@ -330,15 +344,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = self.context.http_client.get(
-                next_page_url,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    "fields": "",
-                    **self._queries_as_params,
-                    **sorting_params,
-                },
-            )
+            content = handle_error(
+                self.context.http_client.get(
+                    next_page_url,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={
+                        "fields": "",
+                        **self._queries_as_params,
+                        **sorting_params,
+                    },
+                )
+            ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -379,11 +395,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = self.context.http_client.get(
-                next_page_url,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={**self._queries_as_params, **sorting_params},
-            )
+            content = handle_error(
+                self.context.http_client.get(
+                    next_page_url,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={**self._queries_as_params, **sorting_params},
+                )
+            ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -441,17 +459,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
 
         link = self.item["links"]["self"].replace("/metadata", "/distinct", 1)
-        distinct = self.context.http_client.get(
-            link,
-            headers={"Accept": MSGPACK_MIME_TYPE},
-            params={
-                "metadata": metadata_keys,
-                "structure_families": structure_families,
-                "specs": specs,
-                "counts": counts,
-                **self._queries_as_params,
-            },
-        )
+        distinct = handle_error(
+            self.context.http_client.get(
+                link,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={
+                    "metadata": metadata_keys,
+                    "structure_families": structure_families,
+                    "specs": specs,
+                    "counts": counts,
+                    **self._queries_as_params,
+                },
+            )
+        ).json()
         return distinct
 
     def sort(self, *sorting):
@@ -583,7 +603,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         body = dict(item["attributes"])
         if key is not None:
             body["id"] = key
-        document = self.context.http_client.post(self.uri, content=body)
+        document = handle_error(self.context.http_client.post(self.uri, content=body))
         item["attributes"]["structure"] = structure
 
         # if server returned modified metadata update the local copy

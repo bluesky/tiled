@@ -97,7 +97,7 @@ class _DaskArrayClient(BaseStructureClient):
                 "block": ",".join(map(str, block)),
                 "expected_shape": expected_shape,
             },
-        )
+        ).read()
         return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
     def read_block(self, block, slice=None):

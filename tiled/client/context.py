@@ -14,6 +14,7 @@ import httpx
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
+from .transport import Transport
 from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
     DEFAULT_TIMEOUT_PARAMS,
@@ -88,6 +89,7 @@ class Context:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
         if app is None:
             client = httpx.Client(
+                transport=Transport(),
                 verify=verify,
                 event_hooks=EVENT_HOOKS,
                 timeout=timeout,
@@ -106,6 +108,7 @@ class Context:
                 raise_server_exceptions=raise_server_exceptions,
             )
             client.follow_redirects = True
+            client._transport = Transport(transport=client._transport)
             client.__enter__()
             # The TestClient is meant to be used only as a context manager,
             # where the context starts and stops and the wrapped ASGI app.
@@ -142,7 +145,7 @@ class Context:
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         self.server_info = self.http_client.get(
             self.api_uri, headers={"Accept": MSGPACK_MIME_TYPE}
-        )
+        ).json()
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 

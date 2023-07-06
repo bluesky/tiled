@@ -27,7 +27,7 @@ MSGPACK_MIME_TYPE = "application/x-msgpack"
 
 def handle_error(response):
     if not response.is_error:
-        return
+        return response
     try:
         response.raise_for_status()
     except httpx.RequestError:
@@ -97,7 +97,7 @@ def export_util(file, format, get, link, params):
             format = ".".join(
                 suffix[1:] for suffix in Path(file).suffixes
             )  # e.g. "csv"
-        content = get(link, params={"format": format, **params})
+        content = handle_error(get(link, params={"format": format, **params})).read()
         with open(file, "wb") as buffer:
             buffer.write(content)
     else:
@@ -105,7 +105,7 @@ def export_util(file, format, get, link, params):
         if format is None:
             # We have no filepath to infer to format from.
             raise ValueError("format must be specified when file is writeable buffer")
-        content = get(link, params={"format": format, **params})
+        content = handle_error(get(link, params={"format": format, **params})).read()
         file.write(content)
 
 

@@ -4,14 +4,13 @@ from dataclasses import asdict
 
 from ..structures.core import Spec
 from ..utils import (
-    MSGPACK_MIME_TYPE,
     UNCHANGED,
     DictView,
     ListView,
     OneShotCachedMap,
-    safe_json_dumps,
+    safe_json_dump,
 )
-from .cache import Revalidate, verify_cache
+from .utils import MSGPACK_MIME_TYPE, handle_error
 
 
 class MetadataRevisions:
@@ -30,11 +29,13 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        content = self.context.http_client.get(
-            self._link,
-            headers={"Accept": MSGPACK_MIME_TYPE},
-            params={"page[offset]": 0, "page[limit]": 0},
-        )
+        content = handle_error(
+            self.context.http_client.get(
+                self._link,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"page[offset]": 0, "page[limit]": 0},
+            )
+        ).json()
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
@@ -46,12 +47,13 @@ class MetadataRevisions:
             offset = item_
             limit = 1
 
-            content = self.context.http_client.get(
-                self._link,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"page[offset]": offset, "page[limit]": limit},
-            )
-
+            content = handle_error(
+                self.context.http_client.get(
+                    self._link,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={"page[offset]": offset, "page[limit]": limit},
+                )
+            ).json()
             (result,) = content["data"]
             return result
 
@@ -68,10 +70,12 @@ class MetadataRevisions:
             next_page = self._link + params
             result = []
             while next_page is not None:
-                content = self.context.http_client.get(
-                    next_page,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                )
+                content = handle_error(
+                    self.context.http_client.get(
+                        next_page,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                    )
+                ).json()
                 if len(result) == 0:
                     result = content.copy()
                 else:
@@ -81,7 +85,9 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-        self.context.http_client.delete(self._link, None, params={"number": n})
+        handle_error(
+            self.context.http_client.delete(self._link, None, params={"number": n})
+        )
 
 
 class BaseClient:
@@ -214,9 +220,11 @@ class BaseClient:
             "specs": normalized_specs,
         }
 
-        content = self.context.http_client.put(
-            self.item["links"]["self"], content=safe_json_dumps(data)
-        )
+        content = handle_error(
+            self.context.http_client.put(
+                self.item["links"]["self"], content=safe_json_dump(data)
+            )
+        ).json()
 
         if metadata is not None:
             if "metadata" in content:
