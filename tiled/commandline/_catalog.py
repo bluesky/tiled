@@ -51,7 +51,7 @@ def init(
         except UninitializedDatabase:
             # Create tables and stamp (alembic) revision.
             typer.echo(
-                f"Database {redacted_url} is new. Creating tables and marking revision {REQUIRED_REVISION}.",
+                f"Database {redacted_url} is new. Creating tables.",
                 err=True,
             )
             await initialize_database(engine)

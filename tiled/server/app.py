@@ -898,6 +898,14 @@ def print_admin_api_key_if_generated(web_app, host, port):
 """,
             file=sys.stderr,
         )
+    if settings.allow_anonymous_access:
+        print(
+            """    Because this server is public, the '?api_key=...' portion of
+    the URL is needed only for _writing_ data (if applicable).
+
+""",
+            file=sys.stderr,
+        )
 
 
 class UnscalableConfig(Exception):

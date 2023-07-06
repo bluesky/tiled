@@ -208,6 +208,12 @@ or use an existing one:
         )
         raise typer.Abort()
 
+    if write is None:
+        typer.echo(
+            "This catalog will be served as read-only. "
+            "To make it writable, specify a writable directory with --write.",
+            err=True,
+        )
     tree_kwargs = {}
     server_settings = {}
     if object_cache_available_bytes is not None:
