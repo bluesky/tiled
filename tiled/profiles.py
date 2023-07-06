@@ -19,7 +19,15 @@ import jsonschema
 
 from .utils import parse
 
-__all__ = ["list_profiles", "load_profiles", "paths"]
+__all__ = [
+    "list_profiles",
+    "load_profiles",
+    "paths",
+    "create_profile",
+    "delete_profile",
+    "set_default_profile_name",
+    "get_default_profile_name",
+]
 
 
 @lru_cache(maxsize=1)
@@ -243,9 +251,86 @@ def list_profiles():
     return {name: source_filepath for name, (source_filepath, _) in profiles.items()}
 
 
+def _compose_profile(name, *, uri, verify):
+    "Compose profile YAML."
+    import yaml
+
+    content = {name: {"uri": uri, "verify": verify}}
+    return yaml.dump(content)
+
+
+def create_profile(uri, name, verify=True, overwrite=False):
+    """
+    Create a new profile.
+
+    This only includes the most commonly-used options. (More could be added.)
+    """
+    text = _compose_profile(name, uri=uri, verify=verify)
+    filepath = paths[-1] / f"{name}.yml"
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if overwrite:
+        mode = "wt"
+    else:
+        mode = "xt"
+    try:
+        with open(filepath, mode) as file:
+            file.write(text)
+    except FileExistsError:
+        raise ProfileExists(
+            f"Profile named {name} already exists at {filepath}. "
+            "Use overwite=True to overwrite it."
+        )
+    return filepath
+
+
+def delete_profile(name):
+    """
+    Delete a profile by name.
+
+    This will walk the search path, starting with the highest precedence
+    directory, and delete only the first match it finds.
+    """
+    for path in paths:
+        # All profiles created by create_profile have extension .yml but
+        # a user-written one may have extension .yaml.
+        for ext in {".yml", ".yaml"}:
+            filepath = path / f"{name}{ext}"
+            if filepath.exists():
+                filepath.unlink()
+                return filepath
+
+
+def get_default_profile_name():
+    """
+    Return the name of the current default profile.
+    """
+    filepath = paths[-1].parent / "default_profile"
+    try:
+        return filepath.read_text()
+    except FileNotFoundError:
+        return None
+
+
+def set_default_profile_name(name):
+    filepath = paths[-1].parent / "default_profile"
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if name is None:
+        if filepath.exists():
+            filepath.unlink()
+        return
+    if name not in list_profiles():
+        raise ProfileNotFound(name)
+    with open(filepath, "w") as file:
+        file.write(name)
+
+
 class ProfileNotFound(KeyError):
     pass
 
 
 class ProfileError(ValueError):
+    pass
+
+
+class ProfileExists(ValueError):
     pass

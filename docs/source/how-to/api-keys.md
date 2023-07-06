@@ -52,7 +52,7 @@ ALICE_PASSWORD=secret1 tiled serve config example_configs/toy_authentication.yml
 Using the Tiled commandline interface, log in as `alice` using the password `secret1`.
 
 ```
-$ tiled connect http://localhost:8000
+$ tiled profile create http://localhost:8000
 $ tiled login
 Username: alice
 Password:

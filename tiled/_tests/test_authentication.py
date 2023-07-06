@@ -10,6 +10,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.auth import CannotRefreshAuthentication
+from ..client.context import clear_default_identity, get_default_identity
 from ..server import authentication
 from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
@@ -420,3 +421,31 @@ def test_session_limit(enter_password, config):
                     context.authenticate(username="alice")
     finally:
         authentication.SESSION_LIMIT = original_limit
+
+
+def test_sticky_identity(enter_password, config):
+    # Log in as Alice.
+    with Context.from_app(build_app_from_config(config)) as context:
+        get_default_identity(context.api_uri) is None
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+        assert context.whoami()["identities"][0]["id"] == "alice"
+    # The default identity is now set. The log was "sticky".
+    with Context.from_app(build_app_from_config(config)) as context:
+        get_default_identity(context.api_uri) is not None
+        context.authenticate()
+        assert context.whoami()["identities"][0]["id"] == "alice"
+    # Opt out of the stickiness (set_default=False).
+    with Context.from_app(build_app_from_config(config)) as context:
+        get_default_identity(context.api_uri) is None
+        with enter_password("secret2"):
+            context.authenticate(username="bob", set_default=False)
+        assert context.whoami()["identities"][0]["id"] == "bob"
+    # The default is still Alice.
+    with Context.from_app(build_app_from_config(config)) as context:
+        get_default_identity(context.api_uri) is not None
+        context.authenticate()
+        assert context.whoami()["identities"][0]["id"] == "alice"
+    # Clear the default.
+    clear_default_identity(context.api_uri)
+    get_default_identity(context.api_uri) is None

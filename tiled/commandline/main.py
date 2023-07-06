@@ -26,6 +26,8 @@ which installs *everything* you might want. For other options, see:
 """
     ) from err
 
+from ..utils import UNSET
+
 cli_app = typer.Typer()
 
 from ._admin import admin_app  # noqa: E402
@@ -33,12 +35,7 @@ from ._api_key import api_key_app  # noqa: E402
 from ._catalog import catalog_app  # noqa: E402
 from ._profile import profile_app  # noqa: E402
 from ._serve import serve_app  # noqa: E402
-from ._utils import (  # noqa E402
-    CLI_CACHE_DIR,
-    get_context,
-    get_default_profile_name,
-    get_profile,
-)
+from ._utils import get_context, get_profile  # noqa E402
 
 cli_app.add_typer(
     catalog_app, name="catalog", help="Manage a catalog of data to be served by Tiled."
@@ -57,97 +54,13 @@ cli_app.add_typer(
 )
 
 
-@cli_app.command("connect")
-def connect(
-    uri_or_profile: str = typer.Argument(
-        ..., help="URI 'http[s]://...' or a profile name."
-    ),
-    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
-):
-    """
-    "Connect" to a Tiled server; set it as default.
-    """
-    from ..client.context import Context
-    from ..profiles import list_profiles, load_profiles, paths
-
-    user_profiles_dir = paths[-1]
-    if uri_or_profile.startswith("http://") or uri_or_profile.startswith("https://"):
-        # This looks like a URI.
-        uri = uri_or_profile
-        name = "auto"
-        Context.from_any_uri(uri, verify=not no_verify)
-        user_profiles_dir.mkdir(parents=True, exist_ok=True)
-        with open(user_profiles_dir / "auto.yml", "w") as file:
-            file.write(
-                f"""# This file is managed by the Tiled CLI.
-# Any edits made by hand may be discarded.
-auto:
-  uri: {uri}
-  verify: {"true" if not no_verify else "false"}
-"""
-            )
-    else:
-        # Is this a profile name?
-        if uri_or_profile in list_profiles():
-            name = uri_or_profile
-            _, profile = load_profiles()[name]
-            if "direct" in profile:
-                raise ValueError(
-                    f"Profile {profile} uses in a direct (in-process) Tiled server "
-                    "and cannot be connected to from the CLI."
-                )
-            options = {"verify": profile.get("verify", True)}
-            if no_verify:
-                options["verify"] = False
-            Context.from_any_uri(profile["uri"], **options)
-        else:
-            typer.echo(
-                f"Not sure what to do with tree {uri_or_profile!r}. "
-                "It does not look like a URI (it does not start with http[s]://) "
-                "and it does not match any profiles. Use `tiled profiles list` to "
-                "see profiles.",
-                err=True,
-            )
-            raise typer.Abort()
-    CLI_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CLI_CACHE_DIR / "active_profile", "w") as file:
-        file.write(name)
-    typer.echo(f"Tiled profile {name!r} is set as the default.")
-
-
-@cli_app.command("status")
-def status():
-    """
-    Show the current default Tiled server.
-    """
-    name = get_default_profile_name()
-    if name is None:
-        typer.echo("Not connected.", err=True)
-    else:
-        typer.echo(f"Using profile {name!r}\n", err=True)
-        import yaml
-
-        _, profile_content = get_profile(name)
-        typer.echo(yaml.dump(profile_content))
-
-
-@cli_app.command("disconnect")
-def disconnect():
-    """
-    "Disconnect" from the default Tiled server.
-    """
-    filepath = CLI_CACHE_DIR / "active_profile"
-    # filepath.unlink(missing_ok=False)  # Python 3.8+
-    try:
-        filepath.unlink()
-    except FileNotFoundError:
-        pass
-
-
 @cli_app.command("login")
 def login(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    set_default: bool = typer.Option(
+        True, help="Use this identity as the default for this API."
     ),
     show_secret_tokens: bool = typer.Option(
         False, "--show-secret-tokens", help="Show secret tokens after successful login."
@@ -156,19 +69,17 @@ def login(
     """
     Log in to an authenticated Tiled server.
     """
-    import json
-
     from ..client.context import Context
 
     profile_name, profile_content = get_profile(profile)
     options = {"verify": profile_content.get("verify", True)}
     context, _ = Context.from_any_uri(profile_content["uri"], **options)
-    provider_spec, username = context.authenticate()
-    filepath = CLI_CACHE_DIR / "profile_auths"
-    filepath.mkdir(parents=True, exist_ok=True)
-    with open(filepath / profile_name, "w") as file:
-        json.dump({"provider": provider_spec["provider"], "username": username}, file)
+    # Override sticky 'default_identity'.
+    # Always prompt user to specify who they want to log in as.
+    context.authenticate(username=None, provider=None, set_default=True)
     if show_secret_tokens:
+        import json
+
         typer.echo(json.dumps(dict(context.tokens), indent=4))
 
 
@@ -177,29 +88,24 @@ def logout(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
+    username: Optional[str] = typer.Option(None),
+    provider: Optional[str] = typer.Option(None),
 ):
     """
-    Log out from one or all authenticated Tiled servers.
+    Log out.
     """
-    import json
-
     from ..client.context import Context
 
     profile_name, profile_content = get_profile(profile)
-    filepath = CLI_CACHE_DIR / "profile_auths" / profile_name
     context, _ = Context.from_any_uri(
         profile_content["uri"], verify=profile_content.get("verify", True)
     )
-    if filepath.is_file():
-        with open(filepath, "r") as file:
-            auth = json.load(file)
-        context.authenticate(auth["username"], auth["provider"])
+    if username is None:
+        username = UNSET
+    if provider is None:
+        provider = UNSET
+    context.authenticate(username=username, provider=provider, set_default=False)
     context.logout()
-    # filepath.unlink(missing_ok=False)  # Python 3.8+
-    try:
-        filepath.unlink()
-    except FileNotFoundError:
-        pass
 
 
 @cli_app.command("tree")

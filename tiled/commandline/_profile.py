@@ -53,3 +53,91 @@ def profile_show(profile_name: str):
     print(f"Source: {filepath}", file=sys.stderr)
     print("--", file=sys.stderr)
     print(yaml.dump(content), file=sys.stdout)
+
+
+@profile_app.command("create")
+def create(
+    uri: str = typer.Argument(..., help="URI 'http[s]://...'"),
+    name: str = typer.Option("auto", help="Profile name, a short convenient alias"),
+    set_default: bool = typer.Option(
+        True, help="Set new profile as the default profile."
+    ),
+    overwrite: bool = typer.Option(
+        False, "--overwrite", help="Overwrite an existing profile of this name."
+    ),
+    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
+):
+    """
+    Create a 'profile' that can be used to connect to a Tiled server.
+    """
+    from ..profiles import ProfileExists, create_profile, set_default_profile_name
+
+    try:
+        create_profile(name=name, uri=uri, verify=not no_verify, overwrite=overwrite)
+    except ProfileExists:
+        typer.echo(
+            f"A profile named {name!r} already exists. Use --overwrite to overwrite it."
+        )
+        raise typer.Abort()
+    if set_default:
+        set_default_profile_name(name)
+        typer.echo(f"Tiled profile {name!r} created and set as the default.", err=True)
+    else:
+        typer.echo(f"Tiled profile {name!r} created.", err=True)
+
+
+@profile_app.command("delete")
+def delete(
+    name: str = typer.Argument(..., help="Profile name"),
+):
+    from ..profiles import (
+        delete_profile,
+        get_default_profile_name,
+        set_default_profile_name,
+    )
+
+    # Unset the default if this profile is currently the default.
+    default = get_default_profile_name()
+    if default == name:
+        set_default_profile_name(None)
+    delete_profile(name)
+    typer.echo(f"Tiled profile {name!r} deleted.", err=True)
+
+
+@profile_app.command("get-default")
+def get_default():
+    """
+    Show the current default Tiled profile.
+    """
+    from ..profiles import get_default_profile_name, load_profiles
+
+    name = get_default_profile_name()
+    if name is None:
+        typer.echo("No default.", err=True)
+    else:
+        import yaml
+
+        source_filepath, profile_content = load_profiles()[name]
+        typer.echo(f"# Profile name: {name!r}")
+        typer.echo(f"# {source_filepath} \n")
+        typer.echo(yaml.dump(profile_content))
+
+
+@profile_app.command("set-default")
+def set_default(profile_name: str):
+    """
+    Set the default Tiled profile.
+    """
+    from ..profiles import set_default_profile_name
+
+    set_default_profile_name(profile_name)
+
+
+@profile_app.command("clear-default")
+def clear_default():
+    """
+    Clear the default Tiled profile.
+    """
+    from ..profiles import set_default_profile_name
+
+    set_default_profile_name(None)

@@ -1,5 +1,6 @@
 import contextlib
 import getpass
+import json
 import os
 import re
 import sys
@@ -8,17 +9,13 @@ import urllib.parse
 import warnings
 from pathlib import Path
 
+import appdirs
 import httpx
 import msgpack
 
 from .._version import __version__ as tiled_version
-from ..utils import DictView, Sentinel, safe_json_dump
-from .auth import (
-    DEFAULT_TOKEN_CACHE,
-    CannotRefreshAuthentication,
-    TiledAuth,
-    build_refresh_request,
-)
+from ..utils import UNSET, DictView, safe_json_dump
+from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
 from .cache import Revalidate
 from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
@@ -30,8 +27,8 @@ from .utils import (
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
-UNSET = Sentinel("UNSET")
 PROMPT_FOR_REAUTHENTICATION = None
+TILED_CACHE_DIR = Path(os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled")))
 
 
 class Context:
@@ -61,7 +58,7 @@ class Context:
         # version is too old.
         headers.setdefault("user-agent", USER_AGENT)
         if token_cache is None:
-            token_cache = DEFAULT_TOKEN_CACHE
+            token_cache = TILED_CACHE_DIR / "tokens"
 
         # If ?api_key=... is present, move it from the query into a header.
         # The server would accept it in the query parameter, but using
@@ -673,7 +670,11 @@ class Context:
         )
 
     def authenticate(
-        self, username=None, provider=None, prompt_for_reauthentication=UNSET
+        self,
+        username=UNSET,
+        provider=UNSET,
+        prompt_for_reauthentication=UNSET,
+        set_default=True,
     ):
         """
         See login. This is for programmatic use.
@@ -682,6 +683,15 @@ class Context:
             prompt_for_reauthentication = PROMPT_FOR_REAUTHENTICATION
         if prompt_for_reauthentication is None:
             prompt_for_reauthentication = _can_prompt()
+        if (username is UNSET) and (provider is UNSET):
+            default_identity = get_default_identity(self.api_uri)
+            if default_identity is not None:
+                username = default_identity["username"]
+                provider = default_identity["provider"]
+        if username is UNSET:
+            username = None
+        if provider is UNSET:
+            provider = None
         providers = self.server_info["authentication"]["providers"]
         spec = _choose_identity_provider(providers, provider)
         provider = spec["provider"]
@@ -809,6 +819,10 @@ and enter the code:
         confirmation_message = spec.get("confirmation_message")
         if confirmation_message:
             print(confirmation_message.format(id=username))
+        if set_default:
+            set_default_identity(
+                self.api_uri, username=username, provider=spec["provider"]
+            )
         return spec, username
 
     def login(self, username=None, provider=None, prompt_for_reauthentication=UNSET):
@@ -1004,3 +1018,37 @@ def _can_prompt():
         if IPython.get_ipython() is not None:
             return True
     return False
+
+
+def _default_identity_filepath(api_uri):
+    return Path(
+        TILED_CACHE_DIR, "default_identities", urllib.parse.quote_plus(str(api_uri))
+    )
+
+
+def set_default_identity(api_uri, provider, username):
+    """
+    Stash the identity used with this API so that we can reuse it by default.
+    """
+    filepath = _default_identity_filepath(api_uri)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, "w") as file:
+        json.dump({"username": username, "provider": provider}, file)
+
+
+def get_default_identity(api_uri):
+    """
+    Look up the default identity to use with this API.
+    """
+    filepath = _default_identity_filepath(api_uri)
+    if filepath.exists():
+        return json.loads(filepath.read_text())
+
+
+def clear_default_identity(api_uri):
+    """
+    Clear the cached default identity for this API.
+    """
+    filepath = _default_identity_filepath(api_uri)
+    if filepath.exists():
+        filepath.unlink()
