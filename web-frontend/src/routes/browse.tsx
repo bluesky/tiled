@@ -83,7 +83,7 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
     const attributes = props.item.data!.attributes!;
     const structureFamily = attributes.structure_family;
     switch (structureFamily) {
-      case "node":
+      case "container":
         return (
           <DownloadNode
             name={props.item.data!.id}
@@ -126,7 +126,7 @@ const OverviewDispatch: React.FunctionComponent<DispatchProps> = (props) => {
   if (props.item !== undefined) {
     const structureFamily = props.item!.data!.attributes!.structure_family;
     switch (structureFamily) {
-      case "node":
+      case "container":
         return <NodeOverview segments={props.segments} item={props.item} />;
       case "array":
         return (
