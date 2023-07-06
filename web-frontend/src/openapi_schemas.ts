@@ -215,7 +215,7 @@ export interface components {
      * @enum {string}
      */
     StructureFamilies:
-      | "node"
+      | "container"
       | "array"
       | "dataframe"
       | "xarray_data_array"
