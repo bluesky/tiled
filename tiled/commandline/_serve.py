@@ -185,6 +185,24 @@ def serve_catalog(
             err=True,
         )
         database = f"sqlite+aiosqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
+
+        # Because this is a tempfile we know this is a fresh database and we do not
+        # need to check its current state.
+        # We _will_ go ahead and stamp it with a revision because it is possible the
+        # user will copy it into a permanent location.
+
+        import asyncio
+
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from ..alembic_utils import stamp_head
+        from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+        from ..catalog.core import initialize_database
+
+        engine = create_async_engine(database)
+        asyncio.run(initialize_database(engine))
+        stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
+
         if write is None:
             write = directory / DATA_SUBDIRECTORY
             write.mkdir()
@@ -225,7 +243,6 @@ or use an existing one:
         database,
         writable_storage=write,
         readable_storage=read,
-        initialize_database_at_startup=temp,
         **tree_kwargs,
     )
     web_app = build_app(
