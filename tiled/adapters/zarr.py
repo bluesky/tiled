@@ -1,5 +1,6 @@
 import builtins
 from pathlib import Path
+from urllib import parse
 
 import zarr.storage
 
@@ -22,9 +23,12 @@ class ZarrAdapter(ArrayAdapter):
             chunks=zarr_chunks,
             dtype=dtype,
         )
+        data_uri = parse.urlunparse(
+            ("file", "localhost", str(Path(directory).absolute()), "", "", None)
+        )
         return [
             Asset(
-                data_uri=f"file://localhost{Path(directory).absolute()}",
+                data_uri=data_uri,
                 is_directory=True,
             )
         ]

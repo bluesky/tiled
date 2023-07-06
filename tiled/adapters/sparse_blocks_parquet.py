@@ -1,5 +1,6 @@
 import itertools
 from pathlib import Path
+from urllib import parse
 
 import numpy
 import pandas
@@ -51,10 +52,16 @@ class SparseBlocksParquetAdapter:
 
         abs_directory = Path(directory).absolute()
         abs_directory.mkdir()
+        abs_directory_parse = parse.urlunparse(
+            ("file", "localhost", str(Path(directory).absolute()), "", "", None)
+        )
+
         num_blocks = (range(len(n)) for n in chunks)
         block_uris = []
         for block in itertools.product(*num_blocks):
-            filepath = abs_directory / f"block-{'.'.join(map(str, block))}.parquet"
+            filepath = (
+                abs_directory_parse / f"block-{'.'.join(map(str, block))}.parquet"
+            )
             uri = f"file://localhost{filepath}"
             block_uris.append(uri)
         assets = [
