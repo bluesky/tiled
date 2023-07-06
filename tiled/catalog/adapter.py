@@ -36,7 +36,7 @@ from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, UnsupportedQueryType, import_object
 from . import orm
-from .base import Base
+from .core import initialize_database
 from .explain import ExplainAsyncSession
 from .node import Node
 
@@ -92,21 +92,6 @@ CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
         ).SparseBlocksParquetAdapter.init_storage,
     }
 )
-
-
-async def initialize_database(engine):
-    # The definitions in .orm alter Base.metadata.
-    from . import orm  # noqa: F401
-
-    async with engine.connect() as connection:
-        # Create all tables.
-        await connection.run_sync(Base.metadata.create_all)
-        if engine.dialect.name == "sqlite":
-            # Use write-ahead log mode. This persists across all future connections
-            # until/unless manually switched.
-            # https://www.sqlite.org/wal.html
-            await connection.execute(text("PRAGMA journal_mode=WAL;"))
-        await connection.commit()
 
 
 class RootNode:
