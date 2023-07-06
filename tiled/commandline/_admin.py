@@ -17,19 +17,22 @@ def initialize_database(database_uri: str):
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from ..database.core import (
+    from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
+    from ..authn_database.alembic_constants import (
+        ALEMBIC_DIR,
+        ALEMBIC_INI_TEMPLATE_PATH,
+    )
+    from ..authn_database.core import (
+        ALL_REVISIONS,
         REQUIRED_REVISION,
-        UninitializedDatabase,
-        check_database,
         initialize_database,
-        stamp_head,
     )
 
     async def do_setup():
         engine = create_async_engine(database_uri)
         redacted_url = engine.url._replace(password="[redacted]")
         try:
-            await check_database(engine)
+            await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
         except UninitializedDatabase:
             # Create tables and stamp (alembic) revision.
             typer.echo(
@@ -44,7 +47,7 @@ def initialize_database(database_uri: str):
         await engine.dispose()
 
     asyncio.run(do_setup())
-    stamp_head(database_uri)
+    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri)
 
 
 @admin_app.command("upgrade-database")
@@ -60,7 +63,11 @@ def upgrade_database(
     """
     from sqlalchemy import create_engine
 
-    from ..database.core import get_current_revision, upgrade
+    from ..alembic_utils import get_current_revision, upgrade
+    from ..authn_database.alembic_constants import (
+        ALEMBIC_DIR,
+        ALEMBIC_INI_TEMPLATE_PATH,
+    )
 
     engine = create_engine(database_uri)
     redacted_url = engine.url._replace(password="[redacted]")
@@ -72,7 +79,7 @@ def upgrade_database(
             err=True,
         )
         raise typer.Abort()
-    upgrade(engine.url, revision or "head")
+    upgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, engine.url, revision or "head")
 
 
 @admin_app.command("downgrade-database")
@@ -85,7 +92,11 @@ def downgrade_database(
     """
     from sqlalchemy import create_engine
 
-    from ..database.core import downgrade, get_current_revision
+    from ..alembic_utils import downgrade, get_current_revision
+    from ..authn_database.alembic_constants import (
+        ALEMBIC_DIR,
+        ALEMBIC_INI_TEMPLATE_PATH,
+    )
 
     engine = create_engine(database_uri)
     redacted_url = engine.url._replace(password="[redacted]")
@@ -97,7 +108,7 @@ def downgrade_database(
             err=True,
         )
         raise typer.Abort()
-    downgrade(engine.url, revision)
+    downgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, engine.url, revision)
 
 
 @admin_app.command("check-config")

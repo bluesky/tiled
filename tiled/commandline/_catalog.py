@@ -35,10 +35,31 @@ def init(
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from ..catalog.adapter import initialize_database
+    from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
 
     parsed = urllib.parse.urlparse(uri)
     if parsed.scheme in ("", "file"):
         uri = f"sqlite+aiosqlite:///{parsed.path}"
     engine = create_async_engine(uri)
-    asyncio.run(initialize_database(engine))
+
+    async def do_setup():
+        redacted_url = engine.url._replace(password="[redacted]")
+        try:
+            await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
+        except UninitializedDatabase:
+            # Create tables and stamp (alembic) revision.
+            typer.echo(
+                f"Database {redacted_url} is new. Creating tables.",
+                err=True,
+            )
+            await initialize_database(engine)
+            typer.echo("Database initialized.", err=True)
+        else:
+            typer.echo(f"Database at {redacted_url} is already initialized.", err=True)
+            raise typer.Abort()
+        await engine.dispose()
+
+    asyncio.run(do_setup())
+    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, uri)

@@ -36,7 +36,7 @@ from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, UnsupportedQueryType, import_object
 from . import orm
-from .base import Base
+from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .node import Node
 
@@ -92,21 +92,6 @@ CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
         ).SparseBlocksParquetAdapter.init_storage,
     }
 )
-
-
-async def initialize_database(engine):
-    # The definitions in .orm alter Base.metadata.
-    from . import orm  # noqa: F401
-
-    async with engine.connect() as connection:
-        # Create all tables.
-        await connection.run_sync(Base.metadata.create_all)
-        if engine.dialect.name == "sqlite":
-            # Use write-ahead log mode. This persists across all future connections
-            # until/unless manually switched.
-            # https://www.sqlite.org/wal.html
-            await connection.execute(text("PRAGMA journal_mode=WAL;"))
-        await connection.commit()
 
 
 class RootNode:
@@ -282,7 +267,6 @@ class BaseAdapter:
         conditions=None,
         sorting=None,
         access_policy=None,
-        initialize_database_at_startup=False,
     ):
         self.context = context
         self.engine = self.context.engine
@@ -299,13 +283,18 @@ class BaseAdapter:
         self.metadata = node.metadata
         self.specs = node.specs
         self.access_policy = access_policy
-        self.initialize_database_at_startup = initialize_database_at_startup
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
 
     async def startup(self):
-        if self.initialize_database_at_startup:
+        if (self.context.engine.dialect.name == "sqlite") and (
+            self.context.engine.url.database == ":memory:"
+        ):
+            # Special-case for in-memory SQLite: Because it is transient we can
+            # skip over anything related to migrations.
             await initialize_database(self.context.engine)
+        else:
+            await check_catalog_database(self.context.engine)
 
     async def shutdown(self):
         await self.context.engine.dispose()
@@ -773,8 +762,6 @@ def in_memory(
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         echo=echo,
-        # An in-memory database will always need initialization.
-        initialize_database_at_startup=True,
     )
 
 
@@ -786,7 +773,6 @@ def from_uri(
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
-    initialize_database_at_startup=False,
 ):
     engine = create_async_engine(uri, echo=echo)
     if engine.dialect.name == "sqlite":
@@ -794,7 +780,6 @@ def from_uri(
     return CatalogNodeAdapter(
         Context(engine, writable_storage, readable_storage),
         RootNode(metadata, specs, access_policy),
-        initialize_database_at_startup=initialize_database_at_startup,
         access_policy=access_policy,
     )
 

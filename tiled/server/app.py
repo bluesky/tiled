@@ -518,12 +518,16 @@ confusing behavior due to ambiguous encodings.
         if settings.database_uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
 
-            from ..database import orm
-            from ..database.connection_pool import open_database_connection_pool
-            from ..database.core import (
+            from ..alembic_utils import (
                 DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
+            )
+            from ..authn_database import orm
+            from ..authn_database.connection_pool import open_database_connection_pool
+            from ..authn_database.core import (
+                ALL_REVISIONS,
+                REQUIRED_REVISION,
                 initialize_database,
                 make_admin_by_identity,
                 purge_expired,
@@ -541,7 +545,7 @@ confusing behavior due to ambiguous encodings.
             else:
                 redacted_url = engine.url._replace(password="[redacted]")
                 try:
-                    await check_database(engine)
+                    await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     print(
                         f"""
@@ -619,7 +623,7 @@ Back up the database, and then run:
 
         settings = app.dependency_overrides[get_settings]()
         if settings.database_uri is not None:
-            from ..database.connection_pool import close_database_connection_pool
+            from ..authn_database.connection_pool import close_database_connection_pool
 
             for task in app.state.tasks:
                 task.cancel()
@@ -890,6 +894,14 @@ def print_admin_api_key_if_generated(web_app, host, port):
     Navigate a web browser or connect a Tiled client to:
 
     http://{host}:{port}?api_key={settings.single_user_api_key}
+
+""",
+            file=sys.stderr,
+        )
+    if settings.allow_anonymous_access:
+        print(
+            """    Because this server is public, the '?api_key=...' portion of
+    the URL is needed only for _writing_ data (if applicable).
 
 """,
             file=sys.stderr,
