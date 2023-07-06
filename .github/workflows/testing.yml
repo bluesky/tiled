@@ -7,7 +7,7 @@ on:
       - cron: '00 4 * * *'  # daily at 4AM
 
 jobs:
-  build:
+  linux:
 
     runs-on: ubuntu-latest
     strategy:
@@ -40,3 +40,31 @@ jobs:
         set -vxeuo pipefail
         coverage run -m pytest -v
         coverage report
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+      fail-fast: false
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install
+      run: |
+        python -m pip install '.[all]'
+        python -m pip list
+
+    - name: Install test requirements
+      run: |
+        python -m pip install .[dev]
+        python -m pip list
+
+    - name: Test with pytest
+      run: pytest -v
