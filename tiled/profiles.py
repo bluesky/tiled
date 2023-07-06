@@ -29,8 +29,6 @@ __all__ = [
     "get_default_profile_name",
 ]
 
-TILED_CACHE_DIR = Path(os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled")))
-
 
 @lru_cache(maxsize=1)
 def schema():
@@ -306,7 +304,7 @@ def get_default_profile_name():
     """
     Return the name of the current default profile.
     """
-    filepath = TILED_CACHE_DIR / "default_profile"
+    filepath = paths[-1].parent / "default_profile"
     try:
         return filepath.read_text()
     except FileNotFoundError:
@@ -314,7 +312,7 @@ def get_default_profile_name():
 
 
 def set_default_profile_name(name):
-    filepath = TILED_CACHE_DIR / "default_profile"
+    filepath = paths[-1].parent / "default_profile"
     filepath.parent.mkdir(parents=True, exist_ok=True)
     if name is None:
         if filepath.exists():
@@ -324,44 +322,6 @@ def set_default_profile_name(name):
         raise ProfileNotFound(name)
     with open(filepath, "w") as file:
         file.write(name)
-
-
-def stash_profile_auth(profile_name, username, provider):
-    """
-    Stash the username and provider last used to authenticate with a profile.
-
-    This does not contain any credentials are secrets, just the most recently used identity.
-    """
-    import json
-
-    filepath = TILED_CACHE_DIR / "profile_auths" / profile_name
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    with open(filepath, "w") as file:
-        json.dump({"username": username, "provider": provider}, file)
-
-
-def get_profile_auth(profile_name):
-    """
-    Get the username and provider last used to authenticate with a profile.
-
-    This does not contain any credentials are secrets, just the most recently used identity.
-    """
-    import json
-
-    filepath = TILED_CACHE_DIR / "profile_auths" / profile_name
-    try:
-        return json.loads(filepath.read_text())
-    except FileNotFoundError:
-        return {}
-
-
-def clear_profile_auth(profile_name):
-    """
-    Clear stashed profile auth.
-    """
-    filepath = TILED_CACHE_DIR / "profile_auths" / profile_name
-    if filepath.exists():
-        filepath.unlink()
 
 
 class ProfileNotFound(KeyError):

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -27,10 +28,10 @@ def set_auth_token_cache_dir(tmpdir):
     """
     Use a tmpdir instead of ~/.cache/tiled/tokens
     """
-    original = context.DEFAULT_TOKEN_CACHE
-    context.DEFAULT_TOKEN_CACHE = str(tmpdir)
+    original = context.TILED_CACHE_DIR
+    context.TILED_CACHE_DIR = Path(tmpdir)
     yield
-    context.DEFAULT_TOKEN_CACHE = original
+    context.TILED_CACHE_DIR = original
 
 
 @pytest.fixture

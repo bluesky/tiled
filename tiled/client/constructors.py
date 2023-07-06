@@ -5,7 +5,7 @@ import httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
-from .context import DEFAULT_TIMEOUT_PARAMS, DEFAULT_TOKEN_CACHE, UNSET, Context
+from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
 from .utils import ClientError, client_for_item
 
 
@@ -15,10 +15,9 @@ def from_uri(
     *,
     cache=None,
     offline=False,
-    username=None,
-    auth_provider=None,
+    username=UNSET,
+    auth_provider=UNSET,
     api_key=None,
-    token_cache=DEFAULT_TOKEN_CACHE,
     verify=True,
     prompt_for_reauthentication=UNSET,
     headers=None,
@@ -40,15 +39,15 @@ def from_uri(
     offline : bool, optional
         False by default. If True, rely on cache only.
     username : str, optional
-        Username for authenticated access.
+        Username for authenticated access. If UNSET, use default if available
+        (typically, the most recently used).
     auth_provider : str, optional
-        Name of an authentication provider. If None and the server supports
+        Name of an authentication provider. IF UNSET, use default if available
+        (typically, the most recently used). If None and the server supports
         multiple provides, the user will be interactively prompted to
         choose from a list.
     api_key : str, optional
         API key based authentication. Cannot mix with username/auth_provider.
-    token_cache : str, optional
-        Path to directory for storing refresh tokens.
     verify : bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
@@ -70,7 +69,6 @@ def from_uri(
         headers=headers,
         timeout=timeout,
         verify=verify,
-        token_cache=token_cache,
     )
     return from_context(
         context,
@@ -86,8 +84,8 @@ def from_context(
     context,
     structure_clients="numpy",
     prompt_for_reauthentication=UNSET,
-    username=None,
-    auth_provider=None,
+    username=UNSET,
+    auth_provider=UNSET,
     node_path_parts=None,
 ):
     """
@@ -106,7 +104,7 @@ def from_context(
         raise an error. By default, attempt to detect whether terminal is
         interactive (is a TTY).
     """
-    if (username is not None) or (auth_provider is not None):
+    if (username is not UNSET) or (auth_provider is not UNSET):
         if context.api_key is not None:
             raise ValueError("Use api_key or username/auth_provider, not both.")
     node_path_parts = node_path_parts or []
@@ -129,7 +127,7 @@ Set an api_key as in:
 >>> c = from_uri("...", api_key="...")
 """
         )
-    if username is not None:
+    if username is not UNSET:
         context.authenticate(
             username=username,
             provider=auth_provider,

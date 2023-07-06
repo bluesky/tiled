@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import appdirs
 import httpx
 
 from .utils import SerializableLock, handle_error
@@ -9,11 +8,6 @@ from .utils import SerializableLock, handle_error
 
 class CannotRefreshAuthentication(Exception):
     pass
-
-
-DEFAULT_TOKEN_CACHE = os.getenv(
-    "TILED_TOKEN_CACHE", os.path.join(appdirs.user_cache_dir("tiled"), "tokens")
-)
 
 
 class TiledAuth(httpx.Auth):

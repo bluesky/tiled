@@ -176,9 +176,10 @@ properties:
     type: string
     description: |
       Filepath to directory of access tokens.
-      Default location is usually suitable.
-      The default is system-dependent and can be inspected at
-      `tiled.client.context.DEFAULT_TOKEN_CACHE`.
+      Default location is usually suitable. It is in the tokens
+      subdirectory of `TILED_CACHE_DIR`, which is
+      system-dependent and can be inspected at
+      `tiled.client.context.TILED_CACHE_DIR`.
   verify:
     type: boolean
     description: |

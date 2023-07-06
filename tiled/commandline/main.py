@@ -57,6 +57,9 @@ def login(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
+    set_default: bool = typer.Option(
+        True, help="Use this identity as the default for this API."
+    ),
     show_secret_tokens: bool = typer.Option(
         False, "--show-secret-tokens", help="Show secret tokens after successful login."
     ),
@@ -65,15 +68,13 @@ def login(
     Log in to an authenticated Tiled server.
     """
     from ..client.context import Context
-    from ..profiles import stash_profile_auth
 
     profile_name, profile_content = get_profile(profile)
     options = {"verify": profile_content.get("verify", True)}
     context, _ = Context.from_any_uri(profile_content["uri"], **options)
-    provider_spec, username = context.authenticate()
-    stash_profile_auth(
-        profile_name, username=username, provider=provider_spec["provider"]
-    )
+    # Override sticky 'default_identity'.
+    # Always prompt user to specify who they want to log in as.
+    context.authenticate(username=None, provider=None, set_default_identity=True)
     if show_secret_tokens:
         import json
 
