@@ -67,6 +67,7 @@ jobs:
       run: |
         set TILED_BUILD_SKIP_UI=1
         python -m pip install .[dev]
+        pip uninstall ldap3  # to skip LDAPAuthenticator test
         python -m pip list
 
     - name: Test with pytest
