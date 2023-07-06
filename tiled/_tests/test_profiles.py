@@ -13,7 +13,6 @@ def test_integration(tmp_profiles_dir):
     create_profile(name="test", uri=URI)
     assert "test" in list_profiles()
     _, profile_content = load_profiles()["test"]
-    print(profile_content)
     assert profile_content["uri"] == URI
     assert get_default_profile_name() is None
     set_default_profile_name("test")
