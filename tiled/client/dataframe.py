@@ -4,7 +4,7 @@ import dask.dataframe
 from ..serialization.dataframe import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
 from .base import BaseStructureClient
-from .utils import ClientError, client_for_item, export_util
+from .utils import MSGPACK_MIME_TYPE, ClientError, client_for_item, export_util
 
 
 class _DaskDataFrameClient(BaseStructureClient):
@@ -29,8 +29,9 @@ class _DaskDataFrameClient(BaseStructureClient):
             # for long.
             TIMEOUT = 0.2  # seconds
             try:
-                content = self.context.get_json(
+                content = self.context.http_client.get(
                     self.uri,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
                     params={"fields": "structure.macro"},
                     timeout=TIMEOUT,
                 )
@@ -65,8 +66,10 @@ class _DaskDataFrameClient(BaseStructureClient):
             # Use cached structure.
             return structure.macro.columns
         try:
-            content = self.context.get_json(
-                self.uri, params={"fields": "structure.macro"}
+            content = self.context.http_client.get(
+                self.uri,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"fields": "structure.macro"},
             )
             columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
         except Exception:
@@ -94,7 +97,7 @@ class _DaskDataFrameClient(BaseStructureClient):
             # Note: The singular/plural inconsistency here is due to the fact that
             # ["A", "B"] will be encoded in the URL as field=A&field=B
             params["field"] = columns
-        content = self.context.get_content(
+        content = self.context.http_client.get(
             self.item["links"]["partition"],
             headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
             params=params,
@@ -160,8 +163,9 @@ class _DaskDataFrameClient(BaseStructureClient):
             self_link = self.item["links"]["self"]
             if self_link.endswith("/"):
                 self_link = self_link[:-1]
-            content = self.context.get_json(
+            content = self.context.http_client.get(
                 self_link + f"/{column}",
+                headers={"Accept": MSGPACK_MIME_TYPE},
             )
         except ClientError as err:
             if err.response.status_code == 404:
@@ -177,14 +181,14 @@ class _DaskDataFrameClient(BaseStructureClient):
     # of rows" which is expensive to compute.
 
     def write(self, dataframe):
-        self.context.put_content(
+        self.context.http_client.put(
             self.item["links"]["full"],
             content=bytes(serialize_arrow(dataframe, {})),
             headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
         )
 
     def write_partition(self, dataframe, partition):
-        self.context.put_content(
+        self.context.http_client.put(
             self.item["links"]["partition"].format(index=partition),
             content=bytes(serialize_arrow(dataframe, {})),
             headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
@@ -211,7 +215,7 @@ class _DaskDataFrameClient(BaseStructureClient):
         return export_util(
             filepath,
             format,
-            self.context.get_content,
+            self.context.http_client.get,
             self.item["links"]["full"],
             params=params,
         )

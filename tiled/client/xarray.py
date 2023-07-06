@@ -42,10 +42,10 @@ class DaskDatasetClient(Container):
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
         coords_fetcher = _WideTableFetcher(
-            self.context.get_content, self.item["links"]["full"]
+            self.context.http_client.get, self.item["links"]["full"]
         )
         data_vars_fetcher = _WideTableFetcher(
-            self.context.get_content, self.item["links"]["full"]
+            self.context.http_client.get, self.item["links"]["full"]
         )
         array_clients = {}
         array_structures = {}

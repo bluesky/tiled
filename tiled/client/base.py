@@ -3,7 +3,14 @@ import time
 from dataclasses import asdict
 
 from ..structures.core import Spec
-from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dumps
+from ..utils import (
+    MSGPACK_MIME_TYPE,
+    UNCHANGED,
+    DictView,
+    ListView,
+    OneShotCachedMap,
+    safe_json_dumps,
+)
 from .cache import Revalidate, verify_cache
 
 
@@ -23,8 +30,10 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        content = self.context.get_json(
-            self._link, params={"page[offset]": 0, "page[limit]": 0}
+        content = self.context.http_client.get(
+            self._link,
+            headers={"Accept": MSGPACK_MIME_TYPE},
+            params={"page[offset]": 0, "page[limit]": 0},
         )
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
@@ -37,8 +46,10 @@ class MetadataRevisions:
             offset = item_
             limit = 1
 
-            content = self.context.get_json(
-                self._link, params={"page[offset]": offset, "page[limit]": limit}
+            content = self.context.http_client.get(
+                self._link,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"page[offset]": offset, "page[limit]": limit},
             )
 
             (result,) = content["data"]
@@ -57,7 +68,10 @@ class MetadataRevisions:
             next_page = self._link + params
             result = []
             while next_page is not None:
-                content = self.context.get_json(next_page)
+                content = self.context.http_client.get(
+                    next_page,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                )
                 if len(result) == 0:
                     result = content.copy()
                 else:
@@ -67,7 +81,7 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-        self.context.delete_content(self._link, None, params={"number": n})
+        self.context.http_client.delete(self._link, None, params={"number": n})
 
 
 class BaseClient:

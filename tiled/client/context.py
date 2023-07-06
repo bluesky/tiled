@@ -1,4 +1,3 @@
-import contextlib
 import getpass
 import json
 import os
@@ -11,16 +10,15 @@ from pathlib import Path
 
 import appdirs
 import httpx
-import msgpack
 
 from .._version import __version__ as tiled_version
-from ..utils import UNSET, DictView, safe_json_dump
+from ..utils import UNSET, DictView
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
 from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
     DEFAULT_TIMEOUT_PARAMS,
     EVENT_HOOKS,
-    NotAvailableOffline,
+    MSGPACK_MIME_TYPE,
     handle_error,
 )
 
@@ -142,7 +140,9 @@ class Context:
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        self.server_info = self.get_json(self.api_uri)
+        self.server_info = self.http_client.get(
+            self.api_uri, headers={"Accept": MSGPACK_MIME_TYPE}
+        )
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
@@ -338,7 +338,10 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        return self.get_json(self.server_info["authentication"]["links"]["apikey"])
+        return self.http_client.get(
+            self.server_info["authentication"]["links"]["apikey"],
+            headers={"Accept": MSGPACK_MIME_TYPE},
+        )
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
@@ -356,9 +359,10 @@ class Context:
         note : Optional[str]
             Description (for humans).
         """
-        return self.post_json(
+        return self.http_client.post(
             self.server_info["authentication"]["links"]["apikey"],
-            {"scopes": scopes, "expires_in": expires_in, "note": note},
+            headers={"Accept": MSGPACK_MIME_TYPE},
+            json={"scopes": scopes, "expires_in": expires_in, "note": note},
         )
 
     def revoke_api_key(self, first_eight):
@@ -627,7 +631,10 @@ and enter the code:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return self.get_json(self.server_info["authentication"]["links"]["whoami"])
+        return self.http_client.get(
+            self.server_info["authentication"]["links"]["whoami"],
+            headers={"Accept": MSGPACK_MIME_TYPE},
+        )
 
     def logout(self):
         """

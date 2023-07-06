@@ -6,7 +6,7 @@ import httpx
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
-from .utils import ClientError, client_for_item
+from .utils import MSGPACK_MIME_TYPE, ClientError, client_for_item
 
 
 def from_uri(
@@ -136,7 +136,9 @@ Set an api_key as in:
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
     try:
-        content = context.get_json(item_uri)
+        content = context.http_client.get(
+            item_uri, headers={"Accept": MSGPACK_MIME_TYPE}
+        )
     except ClientError as err:
         if (
             (err.response.status_code == 401)
@@ -144,7 +146,9 @@ Set an api_key as in:
             and (context.http_client.auth is None)
         ):
             context.authenticate()
-            content = context.get_json(item_uri)
+            content = context.http_client.get(
+                item_uri, headers={"Accept": MSGPACK_MIME_TYPE}
+            )
         else:
             raise
     item = content["data"]
