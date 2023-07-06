@@ -518,12 +518,16 @@ confusing behavior due to ambiguous encodings.
         if settings.database_uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
 
-            from ..auth_database import orm
-            from ..auth_database.connection_pool import open_database_connection_pool
-            from ..auth_database.core import (
+            from ..alembic_utils import (
                 DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
+            )
+            from ..auth_database import orm
+            from ..auth_database.connection_pool import open_database_connection_pool
+            from ..auth_database.core import (
+                ALL_REVISIONS,
+                REQUIRED_REVISION,
                 initialize_database,
                 make_admin_by_identity,
                 purge_expired,
@@ -541,7 +545,7 @@ confusing behavior due to ambiguous encodings.
             else:
                 redacted_url = engine.url._replace(password="[redacted]")
                 try:
-                    await check_database(engine)
+                    await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
                     print(
                         f"""
