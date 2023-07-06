@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib import parse
 
 import dask.dataframe
 
@@ -38,10 +39,11 @@ class ParquetDatasetAdapter:
     def init_storage(cls, directory, npartitions):
         from ..server.schemas import Asset
 
-        Path(directory).mkdir()
+        directory.mkdir()
+        data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         assets = [
             Asset(
-                data_uri=f"file://localhost{Path(directory).absolute()}/partition-{i}.parquet",
+                data_uri=f"{data_uri}/partition-{i}.parquet",
                 is_directory=False,
             )
             for i in range(npartitions)

@@ -6,7 +6,9 @@ docs/build/
 docs/source/reference/generated/
 
 # Builds
+/build
 /dist
+/tiled.egg-info
 /web-frontend/dist
 
 # pytest

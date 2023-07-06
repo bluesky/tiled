@@ -4,7 +4,6 @@ import importlib
 import operator
 import os
 import re
-import sys
 import uuid
 from functools import partial
 from pathlib import Path
@@ -39,6 +38,7 @@ from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .node import Node
+from .utils import ensure_uri, safe_path
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -128,17 +128,15 @@ class Context:
         self.engine = engine
         readable_storage = readable_storage or []
         if writable_storage:
-            writable_storage = httpx.URL(str(writable_storage))
-            if not writable_storage.scheme:
-                writable_storage = writable_storage.copy_with(scheme="file")
+            writable_storage = ensure_uri(str(writable_storage))
             if not writable_storage.scheme == "file":
                 raise NotImplementedError(
                     "Only file://... writable storage is currently supported."
                 )
             # If it is writable, it is automatically also readable.
-            readable_storage.append(writable_storage.path)
+            readable_storage.append(writable_storage)
         self.writable_storage = writable_storage
-        self.readable_storage = [Path(p).absolute() for p in readable_storage or []]
+        self.readable_storage = readable_storage
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
         if mimetype_detection_hook is not None:
@@ -378,10 +376,11 @@ class CatalogNodeAdapter(BaseAdapter):
                     # Protect against misbehaving clients reading from unintended
                     # parts of the filesystem.
                     for readable_storage in self.context.readable_storage:
-                        if (
-                            Path(os.path.commonpath([readable_storage, data_uri.path]))
-                            == readable_storage
-                        ):
+                        if Path(
+                            os.path.commonpath(
+                                [safe_path(readable_storage), safe_path(data_uri)]
+                            )
+                        ) == safe_path(readable_storage):
                             break
                     else:
                         raise RuntimeError(
@@ -394,7 +393,7 @@ class CatalogNodeAdapter(BaseAdapter):
                     raise NotImplementedError(
                         f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
                     )
-                paths.append(data_uri.path)
+                paths.append(safe_path(data_uri))
             kwargs = dict(data_source.parameters)
             kwargs["specs"] = node.specs
             kwargs["metadata"] = node.metadata
@@ -500,19 +499,19 @@ class CatalogNodeAdapter(BaseAdapter):
                     init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
                     if structure_family == StructureFamily.array:
                         init_storage_args = (
-                            httpx.URL(data_uri).path,
+                            safe_path(data_uri),
                             data_source.structure.micro.to_numpy_dtype(),
                             data_source.structure.macro.shape,
                             data_source.structure.macro.chunks,
                         )
                     elif structure_family == StructureFamily.dataframe:
                         init_storage_args = (
-                            httpx.URL(data_uri).path,
+                            safe_path(data_uri),
                             data_source.structure.macro.npartitions,
                         )
                     elif structure_family == StructureFamily.sparse:
                         init_storage_args = (
-                            httpx.URL(data_uri).path,
+                            safe_path(data_uri),
                             data_source.structure.chunks,
                         )
                     else:
@@ -635,12 +634,6 @@ def order_by_clauses(sorting):
             clause = clause.desc()
         clauses.append(clause)
     return clauses
-
-
-def _safe_path(path):
-    if sys.platform == "win32" and path[0] == "/":
-        path = path[1:]
-    return Path(path)
 
 
 _TYPE_CONVERSION_MAP = {

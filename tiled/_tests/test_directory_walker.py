@@ -1,4 +1,5 @@
 import shutil
+import sys
 import time
 from pathlib import Path
 
@@ -83,6 +84,9 @@ def test_item_added(example_data_dir):
         assert "added_file_in_new_subdir" in client["more"]["new_subdir"]
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win"), reason="Windows disallows removing a file in use"
+)
 def test_item_removed(example_data_dir):
     """Test that file and directory removal are detected."""
     config = {
@@ -164,6 +168,9 @@ def test_collision_after_startup(example_data_dir):
         assert "a" in client
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win"), reason="Windows disallows removing a file in use"
+)
 def test_remove_and_re_add(example_data_dir):
     """Test that removing and re-adding a file does not constitute a collision."""
     config = {

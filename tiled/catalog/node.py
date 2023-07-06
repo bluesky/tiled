@@ -16,6 +16,7 @@ from ..server.schemas import (
     SortingItem,
 )
 from . import orm
+from .utils import safe_path
 
 
 class Node(NodeAttributes):
@@ -172,9 +173,10 @@ class Node(NodeAttributes):
 def delete_asset(asset):
     url = urlparse(asset.data_uri)
     if url.scheme == "file":
+        path = safe_path(asset.data_uri)
         if asset.is_directory:
-            shutil.rmtree(url.path)
+            shutil.rmtree(path)
         else:
-            Path(url.path).unlink()
+            Path(path).unlink()
     else:
         raise NotImplementedError(url.scheme)
