@@ -14,14 +14,14 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
-from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr
+from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
     ClientError,
     client_for_item,
-    handle_error,
     export_util,
+    handle_error,
 )
 
 
@@ -170,7 +170,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 # Used the cached value and do not make any request.
                 return length
         content = handle_error(
-            self.context.http_client.getread(
+            self.context.http_client.get(
                 self.item["links"]["search"],
                 headers={"Accept": MSGPACK_MIME_TYPE},
                 params={
@@ -603,7 +603,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         body = dict(item["attributes"])
         if key is not None:
             body["id"] = key
-        document = handle_error(self.context.http_client.post(self.uri, content=body))
+        document = handle_error(
+            self.context.http_client.post(self.uri, content=safe_json_dump(body))
+        ).json()
         item["attributes"]["structure"] = structure
 
         # if server returned modified metadata update the local copy

@@ -10,6 +10,7 @@ from ..serialization.dataframe import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .container import Container
+from .utils import handle_error
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -181,10 +182,12 @@ class _WideTableFetcher:
         return self._dataframe
 
     def _fetch_variables(self, variables):
-        content = self.get(
-            self.link,
-            params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
-        )
+        content = handle_error(
+            self.get(
+                self.link,
+                params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
+            )
+        ).read()
         return deserialize_arrow(content)
 
 
