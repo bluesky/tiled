@@ -287,7 +287,9 @@ class BaseAdapter:
         self.shutdown_tasks = [self.shutdown]
 
     async def startup(self):
-        if self.context.engine.url.database == ":memory:":
+        if (self.context.engine.dialect.name == "sqlite") and (
+            self.context.engine.url.database == ":memory:"
+        ):
             # Special-case for in-memory SQLite: Because it is transient we can
             # skip over anything related to migrations.
             await initialize_database(self.context.engine)
