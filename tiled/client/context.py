@@ -143,8 +143,8 @@ class Context:
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        self.server_info = self.http_client.get(
-            self.api_uri, headers={"Accept": MSGPACK_MIME_TYPE}
+        self.server_info = handle_error(
+            self.http_client.get(self.api_uri, headers={"Accept": MSGPACK_MIME_TYPE})
         ).json()
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
@@ -341,10 +341,12 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        return self.http_client.get(
-            self.server_info["authentication"]["links"]["apikey"],
-            headers={"Accept": MSGPACK_MIME_TYPE},
-        )
+        return handle_error(
+            self.http_client.get(
+                self.server_info["authentication"]["links"]["apikey"],
+                headers={"Accept": MSGPACK_MIME_TYPE},
+            )
+        ).json()
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
@@ -362,21 +364,22 @@ class Context:
         note : Optional[str]
             Description (for humans).
         """
-        return self.http_client.post(
-            self.server_info["authentication"]["links"]["apikey"],
-            headers={"Accept": MSGPACK_MIME_TYPE},
-            json={"scopes": scopes, "expires_in": expires_in, "note": note},
-        )
+        return handle_error(
+            self.http_client.post(
+                self.server_info["authentication"]["links"]["apikey"],
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                json={"scopes": scopes, "expires_in": expires_in, "note": note},
+            )
+        ).json()
 
     def revoke_api_key(self, first_eight):
-        request = self.http_client.build_request(
-            "DELETE",
-            self.server_info["authentication"]["links"]["apikey"],
-            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-            params={"first_eight": first_eight},
+        handle_error(
+            self.http_client.delete(
+                self.server_info["authentication"]["links"]["apikey"],
+                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+                params={"first_eight": first_eight},
+            )
         )
-        response = self.http_client.send(request)
-        handle_error(response)
 
     @property
     def app(self):
@@ -527,6 +530,8 @@ and enter the code:
                 time.sleep(verification["interval"])
                 if time.monotonic() > deadline:
                     raise Exception("Deadline expired.")
+                # Intentionally do not wrap this in handle_error(...).
+                # Check status codes manually below.
                 access_response = self.http_client.post(
                     verification["verification_uri"],
                     json={
@@ -634,10 +639,12 @@ and enter the code:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return self.http_client.get(
-            self.server_info["authentication"]["links"]["whoami"],
-            headers={"Accept": MSGPACK_MIME_TYPE},
-        )
+        return handle_error(
+            self.http_client.get(
+                self.server_info["authentication"]["links"]["whoami"],
+                headers={"Accept": MSGPACK_MIME_TYPE},
+            )
+        ).json()
 
     def logout(self):
         """
@@ -649,7 +656,7 @@ and enter the code:
             return
 
         # Revoke the current session.
-        self.http_client.post(f"{self.api_uri}auth/logout")
+        handle_error(self.http_client.post(f"{self.api_uri}auth/logout"))
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
@@ -665,15 +672,14 @@ and enter the code:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        request = self.http_client.build_request(
-            "DELETE",
-            self.server_info["authentication"]["links"]["revoke_session"].format(
-                session_id=session_id
-            ),
-            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+        handle_error(
+            self.http_client.delete(
+                self.server_info["authentication"]["links"]["revoke_session"].format(
+                    session_id=session_id
+                ),
+                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+            )
         )
-        response = self.http_client.send(request)
-        handle_error(response)
 
 
 def _choose_identity_provider(providers, provider=None):
@@ -724,19 +730,17 @@ class Admin:
     def list_principals(self, offset=0, limit=100):
         "List Principals (users and services) in the authenticaiton database."
         params = dict(offset=offset, limit=limit)
-        response = self.context.http_client.get(
-            f"{self.base_url}/auth/principal", params=params
-        )
-        handle_error(response)
-        return response.json()
+        return handle_error(
+            self.context.http_client.get(
+                f"{self.base_url}/auth/principal", params=params
+            )
+        ).json()
 
     def show_principal(self, uuid):
         "Show one Principal (user or service) in the authenticaiton database."
-        response = self.context.http_client.get(
-            f"{self.base_url}/auth/principal/{uuid}"
-        )
-        handle_error(response)
-        return response.json()
+        return handle_error(
+            self.context.http_client.get(f"{self.base_url}/auth/principal/{uuid}")
+        ).json()
 
 
 class CannotPrompt(Exception):

@@ -5,7 +5,7 @@ import dask.array
 import numpy
 
 from .base import BaseStructureClient
-from .utils import export_util, params_from_slice
+from .utils import export_util, handle_error, params_from_slice
 
 
 class _DaskArrayClient(BaseStructureClient):
@@ -90,13 +90,15 @@ class _DaskArrayClient(BaseStructureClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
-        content = self.context.http_client.get(
-            self.item["links"]["block"],
-            headers={"Accept": media_type},
-            params={
-                "block": ",".join(map(str, block)),
-                "expected_shape": expected_shape,
-            },
+        content = handle_error(
+            self.context.http_client.get(
+                self.item["links"]["block"],
+                headers={"Accept": media_type},
+                params={
+                    "block": ",".join(map(str, block)),
+                    "expected_shape": expected_shape,
+                },
+            )
         ).read()
         return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
@@ -159,17 +161,21 @@ class _DaskArrayClient(BaseStructureClient):
         return dask_array
 
     def write(self, array):
-        self.context.http_client.put(
-            self.item["links"]["full"],
-            content=array.tobytes(),
-            headers={"Content-Type": "application/octet-stream"},
+        handle_error(
+            self.context.http_client.put(
+                self.item["links"]["full"],
+                content=array.tobytes(),
+                headers={"Content-Type": "application/octet-stream"},
+            )
         )
 
     def write_block(self, array, block):
-        self.context.http_client.put(
-            self.item["links"]["block"].format(*block),
-            content=array.tobytes(),
-            headers={"Content-Type": "application/octet-stream"},
+        handle_error(
+            self.context.http_client.put(
+                self.item["links"]["block"].format(*block),
+                content=array.tobytes(),
+                headers={"Content-Type": "application/octet-stream"},
+            )
         )
 
     def __getitem__(self, slice):
