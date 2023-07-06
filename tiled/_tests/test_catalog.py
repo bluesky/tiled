@@ -15,6 +15,7 @@ import xarray
 from ..adapters.dataframe import ArrayAdapter, DataFrameAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog.explain import record_explanations
+from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
@@ -219,9 +220,7 @@ async def test_write_array_external(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[
-                    Asset(data_uri=f"file://localhost{filepath}", is_directory=False)
-                ],
+                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
             )
         ],
     )
@@ -248,9 +247,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[
-                    Asset(data_uri=f"file://localhost{filepath}", is_directory=False)
-                ],
+                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
             )
         ],
     )

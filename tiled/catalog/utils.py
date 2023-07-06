@@ -26,7 +26,7 @@ def safe_path(uri):
 
 def ensure_uri(uri_or_path):
     "Accept a URI or file path (Windows- or POSIX-style) and return a URI."
-    if not SCHEME_PATTERN.match(uri_or_path):
+    if not SCHEME_PATTERN.match(str(uri_or_path)):
         # Interpret this as a filepath.
         path = uri_or_path
         uri_str = parse.urlunparse(("file", "localhost", str(path), "", "", None))
