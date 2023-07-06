@@ -3,7 +3,7 @@ import time
 from dataclasses import asdict
 
 from ..structures.core import Spec
-from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
+from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dumps
 from .cache import Revalidate, verify_cache
 
 
@@ -200,7 +200,9 @@ class BaseClient:
             "specs": normalized_specs,
         }
 
-        content = self.context.put_json(self.item["links"]["self"], data)
+        content = self.context.http_client.put(
+            self.item["links"]["self"], content=safe_json_dumps(data)
+        )
 
         if metadata is not None:
             if "metadata" in content:
