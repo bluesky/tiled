@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from .. import profiles
 from ..catalog import from_uri, in_memory
 from ..client import context
 from ..server.settings import get_settings
@@ -24,7 +25,7 @@ def reset_settings():
 
 
 @pytest.fixture(autouse=True)
-def set_auth_token_cache_dir(tmpdir):
+def set_tiled_cache_dir(tmpdir):
     """
     Use a tmpdir instead of ~/.cache/tiled/tokens
     """
@@ -32,6 +33,17 @@ def set_auth_token_cache_dir(tmpdir):
     context.TILED_CACHE_DIR = Path(tmpdir)
     yield
     context.TILED_CACHE_DIR = original
+
+
+@pytest.fixture(autouse=True)
+def set_tiled_profiles_dir(tmpdir):
+    """
+    Use a tmpdir instead of ~/.config/tiled/profiles
+    """
+    original = profiles.paths
+    profiles.paths = [Path(tmpdir)]
+    yield
+    profiles.paths = original
 
 
 @pytest.fixture
