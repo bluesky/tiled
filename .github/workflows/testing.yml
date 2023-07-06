@@ -58,6 +58,7 @@ jobs:
 
     - name: Install
       run: |
+        git fetch --tags --unshallow  # to set __version__ correctly
         set TILED_BUILD_SKIP_UI=1
         python -m pip install '.[all]'
         python -m pip list
