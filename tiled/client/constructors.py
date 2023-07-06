@@ -132,9 +132,7 @@ Set an api_key as in:
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
     try:
         content = handle_error(
-            context.http_client.get(
-                item_uri, headers={"Accept": MSGPACK_MIME_TYPE}
-            )
+            context.http_client.get(item_uri, headers={"Accept": MSGPACK_MIME_TYPE})
         ).json()
     except ClientError as err:
         if (
@@ -144,9 +142,7 @@ Set an api_key as in:
         ):
             context.authenticate()
             content = handle_error(
-                context.http_client.get(
-                    item_uri, headers={"Accept": MSGPACK_MIME_TYPE}
-                )
+                context.http_client.get(item_uri, headers={"Accept": MSGPACK_MIME_TYPE})
             ).json()
         else:
             raise

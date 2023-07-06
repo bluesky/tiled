@@ -316,7 +316,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def delete(self, key):
         self._cached_len = None
-        handle_error(self.context.http_client.delete(f"{self.uri}/{key}", None))
+        handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
 
     # The following two methods are used by keys(), values(), items().
 

@@ -3,13 +3,7 @@ import time
 from dataclasses import asdict
 
 from ..structures.core import Spec
-from ..utils import (
-    UNCHANGED,
-    DictView,
-    ListView,
-    OneShotCachedMap,
-    safe_json_dump,
-)
+from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
 
@@ -85,9 +79,7 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-        handle_error(
-            self.context.http_client.delete(self._link, None, params={"number": n})
-        )
+        handle_error(self.context.http_client.delete(self._link, params={"number": n}))
 
 
 class BaseClient:
@@ -259,33 +251,6 @@ class BaseStructureClient(BaseClient):
             attributes = self.item["attributes"]
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
             self._structure = structure_type.from_json(attributes["structure"])
-
-    def download(self):
-        """
-        Download all data into the cache.
-
-        This causes it to be cached if the context is configured with a cache.
-        """
-        verify_cache(self.context.cache)
-        repr(self)
-        self.read()
-
-    def refresh(self, force=False):
-        """
-        Refresh cached data for this node.
-
-        Parameters
-        ----------
-        force: bool
-            If False, (default) refresh only expired cache entries.
-            If True, refresh all cache entries.
-        """
-        if force:
-            revalidate = Revalidate.FORCE
-        else:
-            revalidate = Revalidate.IF_EXPIRED
-        with self.context.revalidation(revalidate):
-            self.download()
 
     def structure(self):
         """
