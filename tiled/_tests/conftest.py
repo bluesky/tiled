@@ -41,9 +41,11 @@ def set_tiled_profiles_dir(tmpdir):
     Use a tmpdir instead of ~/.config/tiled/profiles
     """
     original = profiles.paths
-    profiles.paths = [Path(tmpdir)]
+    profiles.paths.clear()
+    profiles.paths.extend([Path(tmpdir)])
     yield
-    profiles.paths = original
+    profiles.paths.clear()
+    profiles.paths.extend(original)
 
 
 @pytest.fixture
