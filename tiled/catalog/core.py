@@ -1,5 +1,6 @@
 from sqlalchemy import text
 
+from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
 from .base import Base
 
 ALL_REVISIONS = ["6825c778aa3c"]
@@ -19,3 +20,23 @@ async def initialize_database(engine):
             # https://www.sqlite.org/wal.html
             await connection.execute(text("PRAGMA journal_mode=WAL;"))
         await connection.commit()
+
+
+async def check_catalog_database(engine):
+    redacted_url = engine.url._replace(password="[redacted]")
+    try:
+        await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
+    except UninitializedDatabase:
+        raise UninitializedDatabase(
+            f"""
+
+No catalog database found at {redacted_url}
+
+To create one, run:
+
+tiled catalog init {redacted_url}
+""",
+        )
+    except DatabaseUpgradeNeeded:
+        # No upgrades have been made yet.
+        raise NotImplementedError

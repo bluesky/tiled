@@ -36,7 +36,7 @@ from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, UnsupportedQueryType, import_object
 from . import orm
-from .core import initialize_database
+from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .node import Node
 
@@ -291,6 +291,7 @@ class BaseAdapter:
     async def startup(self):
         if self.initialize_database_at_startup:
             await initialize_database(self.context.engine)
+        await check_catalog_database(self.context.engine)
 
     async def shutdown(self):
         await self.context.engine.dispose()
