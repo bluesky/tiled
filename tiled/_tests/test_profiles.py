@@ -8,7 +8,7 @@ from ..profiles import (
 )
 
 
-def test_integration():
+def test_integration(tmp_profiles_dir):
     URI = "http://example.com/api/v1"
     create_profile(name="test", uri=URI)
     assert "test" in list_profiles()

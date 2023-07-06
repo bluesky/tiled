@@ -35,14 +35,15 @@ def set_tiled_cache_dir(tmpdir):
     context.TILED_CACHE_DIR = original
 
 
-@pytest.fixture(autouse=True)
-def set_tiled_profiles_dir(tmpdir):
+@pytest.fixture
+def tmp_profiles_dir(tmpdir):
     """
     Use a tmpdir instead of ~/.config/tiled/profiles
     """
     original = profiles.paths
     profiles.paths.clear()
     profiles.paths.extend([Path(tmpdir)])
+    profiles.load_profiles.cache_clear()
     yield
     profiles.paths.clear()
     profiles.paths.extend(original)
