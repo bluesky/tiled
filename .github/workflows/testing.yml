@@ -58,11 +58,13 @@ jobs:
 
     - name: Install
       run: |
+        set TILED_BUILD_SKIP_UI=1
         python -m pip install '.[all]'
         python -m pip list
 
     - name: Install test requirements
       run: |
+        set TILED_BUILD_SKIP_UI=1
         python -m pip install .[dev]
         python -m pip list
 
