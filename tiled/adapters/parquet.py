@@ -39,10 +39,8 @@ class ParquetDatasetAdapter:
     def init_storage(cls, directory, npartitions):
         from ..server.schemas import Asset
 
-        Path(directory).mkdir()
-        data_uri = parse.urlunparse(
-            ("file", "localhost", str(Path(directory).absolute()), "", "", None)
-        )
+        directory.mkdir()
+        data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         assets = [
             Asset(
                 data_uri=f"{data_uri}/partition-{i}.parquet",

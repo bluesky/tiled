@@ -4,7 +4,6 @@ import importlib
 import operator
 import os
 import re
-import sys
 import uuid
 from functools import partial
 from pathlib import Path
@@ -39,10 +38,10 @@ from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .node import Node
+from .utils import ensure_uri, safe_path
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-SCHEME_PATTERN = re.compile(r"^[a-z0-9]+:\/\/.*$")
 ZARR_MIMETYPE = "application/x-zarr"
 PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet-sparse"  # HACK!
@@ -129,7 +128,7 @@ class Context:
         self.engine = engine
         readable_storage = readable_storage or []
         if writable_storage:
-            writable_storage = _ensure_uri(str(writable_storage))
+            writable_storage = ensure_uri(str(writable_storage))
             if not writable_storage.scheme == "file":
                 raise NotImplementedError(
                     "Only file://... writable storage is currently supported."
@@ -379,9 +378,9 @@ class CatalogNodeAdapter(BaseAdapter):
                     for readable_storage in self.context.readable_storage:
                         if Path(
                             os.path.commonpath(
-                                [_safe_path(readable_storage), _safe_path(data_uri)]
+                                [safe_path(readable_storage), safe_path(data_uri)]
                             )
-                        ) == _safe_path(readable_storage):
+                        ) == safe_path(readable_storage):
                             break
                     else:
                         raise RuntimeError(
@@ -394,7 +393,7 @@ class CatalogNodeAdapter(BaseAdapter):
                     raise NotImplementedError(
                         f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
                     )
-                paths.append(_safe_path(data_uri))
+                paths.append(safe_path(data_uri))
             kwargs = dict(data_source.parameters)
             kwargs["specs"] = node.specs
             kwargs["metadata"] = node.metadata
@@ -500,19 +499,19 @@ class CatalogNodeAdapter(BaseAdapter):
                     init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
                     if structure_family == StructureFamily.array:
                         init_storage_args = (
-                            _safe_path(data_uri),
+                            safe_path(data_uri),
                             data_source.structure.micro.to_numpy_dtype(),
                             data_source.structure.macro.shape,
                             data_source.structure.macro.chunks,
                         )
                     elif structure_family == StructureFamily.dataframe:
                         init_storage_args = (
-                            _safe_path(data_uri),
+                            safe_path(data_uri),
                             data_source.structure.macro.npartitions,
                         )
                     elif structure_family == StructureFamily.sparse:
                         init_storage_args = (
-                            _safe_path(data_uri),
+                            safe_path(data_uri),
                             data_source.structure.chunks,
                         )
                     else:
@@ -635,22 +634,6 @@ def order_by_clauses(sorting):
             clause = clause.desc()
         clauses.append(clause)
     return clauses
-
-
-def _safe_path(uri):
-    raw_path = httpx.URL(uri).path
-    if sys.platform == "win32" and raw_path[0] == "/":
-        path = raw_path[1:]
-    return Path(path)
-
-
-def _ensure_uri(uri):
-    if not SCHEME_PATTERN.match(uri):
-        uri = "file://localhost/" + str(Path(uri).absolute())
-    uri = httpx.URL(uri)
-    if uri.scheme == "file":
-        uri = uri.copy_with(host="localhost")
-    return uri
 
 
 _TYPE_CONVERSION_MAP = {
