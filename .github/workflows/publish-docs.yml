@@ -27,9 +27,10 @@ jobs:
         fetch-depth: 1000  # should be enough to reach the most recent tag
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
 
     - name: Install
       shell: bash -l {0}
