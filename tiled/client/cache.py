@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import threading
 import typing as tp
 from contextlib import closing
 from datetime import datetime
@@ -22,6 +23,17 @@ def get_cache_key(request: httpx.Request) -> str:
         str: httpx.Request.url
     """
     return str(request.url)
+
+
+def get_size(response, content=None):
+    # get content or stream_content
+    if hasattr(response, "_content"):
+        size = len(response.content)
+    elif content is None:
+        raise httpx.ResponseNotRead()
+    else:
+        size = len(content)
+    return size
 
 
 def dump(response, content=None):
@@ -67,6 +79,56 @@ def load(row, request=None):
     return response
 
 
+def _create_tables(conn):
+    with closing(conn) as cur:
+        cur.execute(
+            """CREATE TABLE responses (
+cache_key TEXT,
+status_code INTEGER,
+headers JSON,
+body BLOB,
+is_stream INTEGER,
+encoding TEXT,
+size INTEGER,
+time_created REAL,
+time_last_accessed REAL
+)"""
+        )
+        cur.execute("CREATE TABLE tiled_http_response_cache_version (version INTEGER)")
+        cur.execute(
+            "INSERT INTO tiled_http_response_cache_version (version) VALUES (?)",
+            (CACHE_DATABASE_SCHEMA_VERSION,),
+        )
+        conn.commit()
+
+
+def _prepare_database(filepath):
+    conn = sqlite3.connect(filepath, check_same_thread=False)
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = [row[0] for row in cursor.fetchall()]
+    if not tables:
+        # We have an empty database.
+        _create_tables(conn)
+    elif "tiled_http_response_cache_version" not in tables:
+        # We have a nonempty database that we do not recognize.
+        raise RuntimeError(
+            f"Database at {filepath} is not empty and not recognized as a tiled HTTP response cache."
+        )
+    else:
+        # We have a nonempty database that we recognize.
+        cursor = conn.execute("SELECT * FROM tiled_http_response_cache_version;")
+        (version,) = cursor.fetchone()
+        if version != CACHE_DATABASE_SCHEMA_VERSION:
+            # It is likely that this cache database will be very stable; we
+            # *may* never need to change the schema. But if we do, we will
+            # not bother with migrations. The cache is highly disposable.
+            # Just silently blow it away and start over.
+            Path(filepath).unlink()
+            conn = sqlite3.connect(filepath, check_same_thread=False)
+            _create_tables(conn)
+    return conn
+
+
 class Cache:
     def __init__(
         self,
@@ -83,6 +145,8 @@ class Cache:
         self.max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
+        self._owner_thread = threading.current_thread().ident
+        self._conn = _prepare_database(filepath)
 
     def __getstate__(self):
         return (self.filepath, self.total_capacity, self.max_item_size, self._readonly)
@@ -93,57 +157,8 @@ class Cache:
         self.max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
-
-    def _prepare_database(self):
-        cursor = self._db.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [row[0] for row in cursor.fetchall()]
-        if not tables:
-            # We have an empty database.
-            self._create_tables()
-        elif "tiled_http_response_cache_version" not in tables:
-            # We have a nonempty database that we do not recognize.
-            print(tables)
-            raise RuntimeError(
-                f"Database at {self.filepath} is not empty and not recognized as a tiled HTTP response cache."
-            )
-        else:
-            # We have a nonempty database that we recognize.
-            cursor = self._db.execute(
-                "SELECT * FROM tiled_http_response_cache_version;"
-            )
-            (version,) = cursor.fetchone()
-            if version != CACHE_DATABASE_SCHEMA_VERSION:
-                # It is likely that this cache database will be very stable; we
-                # *may* never need to change the schema. But if we do, we will
-                # not bother with migrations. The cache is highly disposable.
-                # Just silently blow it away and start over.
-                Path(self.filepath).unlink()
-                self._db = sqlite3.connect(self.filepath)
-                self._create_tables()
-
-    def _create_tables(self):
-        with closing(self._db.cursor()) as cur:
-            cur.execute(
-                """CREATE TABLE responses (
-cache_key TEXT,
-status_code INTEGER,
-headers JSON,
-body BLOB,
-is_stream INTEGER,
-encoding TEXT,
-size INTEGER,
-time_created REAL,
-time_last_accessed REAL
-)"""
-            )
-            cur.execute(
-                "CREATE TABLE tiled_http_response_cache_version (version INTEGER)"
-            )
-            cur.execute(
-                "INSERT INTO tiled_http_response_cache_version (version) VALUES (?)",
-                (CACHE_DATABASE_SCHEMA_VERSION,),
-            )
-            self._db.commit()
+        self._owner_thread = threading.current_thread().ident
+        self._conn = _prepare_database(filepath)
 
     @property
     def readonly(self):
@@ -152,20 +167,6 @@ time_last_accessed REAL
     @property
     def filepath(self):
         return self._filepath
-
-    def connect(self):
-        self._db = sqlite3.connect(self.filepath)
-        self._prepare_database()
-
-    async def aconnect(self):
-        # This is a blocking call inside an async method!
-        # (1) This is a client-side cache, not a multi-tenant server cache,
-        #     so we are not getting in anyone else's way.
-        # (2) A SQLite connection can only be used from the thread it is
-        #     created on. Here, we are creating it on the thread owned by
-        #     the app portal.
-        self._db = sqlite3.connect(self.filepath)
-        self._prepare_database()
 
     def get(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
         """Get cached response from Cache.
@@ -178,7 +179,7 @@ time_last_accessed REAL
         Returns:
             tp.Optional[httpx.Response]
         """
-        with closing(self._db.cursor()) as cur:
+        with closing(self._conn.cursor()) as cur:
             cache_key = get_cache_key(request)
             row = cur.execute(
                 """SELECT
@@ -190,7 +191,8 @@ WHERE cache_key = ?""",
             ).fetchone()
             if row is None:
                 return None
-            return load(row)
+            self._conn.commit()
+        return load(row)
 
     def set(
         self,
@@ -210,7 +212,11 @@ WHERE cache_key = ?""",
             content (bytes, optional): Defaults to None, should be provided in case
                 response that not have yet content.
         """
-        with closing(self._db.cursor()) as cur:
+        if threading.current_thread().ident != self._owner_thread:
+            # SQLite is not threadsafe for concurrent _writes_.
+            # Skip the acache.
+            return
+        with closing(self._conn.cursor()) as cur:
             cur.execute(
                 """INSERT INTO responses
 (cache_key, status_code, headers, body, is_stream, encoding, size, time_created, time_last_accessed)
@@ -218,7 +224,7 @@ VALUES
 (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (get_cache_key(request),) + dump(response, content),
             )
-            self._db.commit()
+            self._conn.commit()
 
     def delete(self, request: httpx.Request) -> None:
         """Delete an entry from cache.
@@ -226,20 +232,15 @@ VALUES
         Args:
             request: httpx.Request
         """
-        with closing(self._db.cursor()) as cur:
+        with closing(self._conn.cursor()) as cur:
             cur.execute(
                 "DELETE FROM responses WHERE cache_key=?", (get_cache_key(request),)
             )
-            self._db.commit()
+            self._conn.commit()
 
     def close(self) -> None:
         """Close cache."""
-        self._db.close()
-
-    async def aclose(self) -> None:
-        """(Async) Close cache."""
-        # See comments on aconnect about this blocking call in an async method.
-        self._db.close()
+        self._conn.close()
 
     # async def aget(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
     #     """(Async) Get cached response from Cache.
@@ -278,3 +279,5 @@ VALUES
     #     Args:
     #         request: httpx.Request
     #     """
+    # async def aclose(self) -> None:
+    #     """(Async) Close cache."""

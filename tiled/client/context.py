@@ -41,7 +41,7 @@ class Context:
         *,
         headers=None,
         api_key=None,
-        cache=None,
+        cache=UNSET,
         timeout=None,
         verify=True,
         token_cache=None,
@@ -88,15 +88,14 @@ class Context:
         )
         if timeout is None:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
-        if cache is None:
+        if cache is UNSET:
             # TODO Detect filesystem of TILED_CACHE_DIR. If it is a networked filesystem
             # use a temporary database instead.
             filepath = TILED_CACHE_DIR / "http_response_cache.db"
             cache = Cache(filepath=filepath)
         if app is None:
-            cache.connect()
             client = httpx.Client(
-                transport=Transport(),
+                transport=Transport(cache=cache),
                 verify=verify,
                 event_hooks=EVENT_HOOKS,
                 timeout=timeout,
@@ -105,11 +104,6 @@ class Context:
             )
         else:
             from ._testclient import TestClient
-
-            # The Cache's SQLite database must connect on the app (portal)
-            # thread, not this thread.
-            app.state.tasks["startup"].append(cache.aconnect)
-            app.state.tasks["shutdown"].append(cache.aclose)
 
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
@@ -120,7 +114,7 @@ class Context:
                 raise_server_exceptions=raise_server_exceptions,
             )
             client.follow_redirects = True
-            client._transport = Transport(transport=client._transport)
+            client._transport = Transport(transport=client._transport, cache=cache)
             client.__enter__()
             # The TestClient is meant to be used only as a context manager,
             # where the context starts and stops and the wrapped ASGI app.
@@ -151,7 +145,10 @@ class Context:
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         self.server_info = handle_error(
-            self.http_client.get(self.api_uri, headers={"Accept": MSGPACK_MIME_TYPE})
+            self.http_client.get(
+                self.api_uri,
+                headers={"Accept": MSGPACK_MIME_TYPE, "Cache-Control": "no-cache"},
+            )
         ).json()
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
@@ -229,7 +226,7 @@ class Context:
         *,
         headers=None,
         api_key=None,
-        cache=None,
+        cache=UNSET,
         timeout=None,
         verify=True,
         token_cache=None,
@@ -285,7 +282,7 @@ class Context:
         cls,
         app,
         *,
-        cache=None,
+        cache=UNSET,
         token_cache=None,
         headers=None,
         timeout=None,

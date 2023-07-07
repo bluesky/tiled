@@ -13,7 +13,7 @@ def from_uri(
     uri,
     structure_clients="numpy",
     *,
-    cache=None,
+    cache=UNSET,
     username=UNSET,
     auth_provider=UNSET,
     api_key=None,
