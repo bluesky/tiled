@@ -1,31 +1,13 @@
 import json
 import sqlite3
 import typing as tp
-import urllib
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
 import httpx
 
-from . import context
-
-VERSION = 1
-
-
-def default_cache_filepath(api_uri):
-    "Return default cache filepath for this API."
-    # TO DO: If TILED_CACHE_DIR is on NFS, use a sqlite temporary database instead.
-
-    # We access TILED_CACHE_DIR as context.TILED_CACHE_DIR rather than
-    # importing it as its own object. This is important because the test suite
-    # monkey-patches context.TILED_CACHE_DIR to an isolated temporary directory
-    # for each test, and we want that to apply here too.
-    return Path(
-        context.TILED_CACHE_DIR,
-        "http_response_cache",
-        urllib.parse.quote_plus(str(api_uri)),
-    )
+CACHE_DATABASE_SCHEMA_VERSION = 1
 
 
 def get_cache_key(request: httpx.Request) -> str:
@@ -101,7 +83,18 @@ class Cache:
         self.max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
-        self._db = sqlite3.connect(filepath)
+
+    def __getstate__(self):
+        return (self.filepath, self.total_capacity, self.max_item_size, self._readonly)
+
+    def __setstate__(self, state):
+        (filepath, total_capacity, max_item_size, readonly) = state
+        self.total_capacity = total_capacity
+        self.max_item_size = max_item_size
+        self._readonly = readonly
+        self._filepath = filepath
+
+    def _prepare_database(self):
         cursor = self._db.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = [row[0] for row in cursor.fetchall()]
         if not tables:
@@ -111,7 +104,7 @@ class Cache:
             # We have a nonempty database that we do not recognize.
             print(tables)
             raise RuntimeError(
-                f"Database at {filepath} is not empty and not recognized as a tiled HTTP response cache."
+                f"Database at {self.filepath} is not empty and not recognized as a tiled HTTP response cache."
             )
         else:
             # We have a nonempty database that we recognize.
@@ -119,13 +112,13 @@ class Cache:
                 "SELECT * FROM tiled_http_response_cache_version;"
             )
             (version,) = cursor.fetchone()
-            if version != VERSION:
+            if version != CACHE_DATABASE_SCHEMA_VERSION:
                 # It is likely that this cache database will be very stable; we
                 # *may* never need to change the schema. But if we do, we will
                 # not bother with migrations. The cache is highly disposable.
                 # Just silently blow it away and start over.
-                Path(filepath).unlink()
-                self._db = sqlite3.connect(filepath)
+                Path(self.filepath).unlink()
+                self._db = sqlite3.connect(self.filepath)
                 self._create_tables()
 
     def _create_tables(self):
@@ -148,7 +141,7 @@ time_last_accessed REAL
             )
             cur.execute(
                 "INSERT INTO tiled_http_response_cache_version (version) VALUES (?)",
-                (VERSION,),
+                (CACHE_DATABASE_SCHEMA_VERSION,),
             )
             self._db.commit()
 
@@ -159,6 +152,20 @@ time_last_accessed REAL
     @property
     def filepath(self):
         return self._filepath
+
+    def connect(self):
+        self._db = sqlite3.connect(self.filepath)
+        self._prepare_database()
+
+    async def aconnect(self):
+        # This is a blocking call inside an async method!
+        # (1) This is a client-side cache, not a multi-tenant server cache,
+        #     so we are not getting in anyone else's way.
+        # (2) A SQLite connection can only be used from the thread it is
+        #     created on. Here, we are creating it on the thread owned by
+        #     the app portal.
+        self._db = sqlite3.connect(self.filepath)
+        self._prepare_database()
 
     def get(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
         """Get cached response from Cache.
@@ -229,6 +236,11 @@ VALUES
         """Close cache."""
         self._db.close()
 
+    async def aclose(self) -> None:
+        """(Async) Close cache."""
+        # See comments on aconnect about this blocking call in an async method.
+        self._db.close()
+
     # async def aget(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
     #     """(Async) Get cached response from Cache.
 
@@ -266,6 +278,3 @@ VALUES
     #     Args:
     #         request: httpx.Request
     #     """
-
-    # async def aclose(self) -> None:
-    #     """(Async) Close cache."""

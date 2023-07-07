@@ -10,8 +10,6 @@ from weakref import WeakValueDictionary
 
 import httpx
 
-from ..utils import modules_available
-
 # By default, the token in the authentication header is redacted from the logs.
 # Set thie env var to 1 to show it for debugging purposes.
 TILED_LOG_AUTH_TOKEN = int(os.getenv("TILED_LOG_AUTH_TOKEN", False))

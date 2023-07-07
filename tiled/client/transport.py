@@ -8,7 +8,7 @@ import typing as tp
 import httpx
 import msgpack
 
-from .cache import Cache, default_cache_filepath
+from .cache import Cache
 from .cache_control import ByteStreamWrapper, CacheControl
 from .utils import MSGPACK_MIME_TYPE
 
@@ -53,15 +53,14 @@ class Transport(httpx.BaseTransport):
             always_cache=always_cache,
         )
         self.transport = transport or httpx.HTTPTransport()
-        self.cache = cache or Cache(filepath="test.db")
+        self.cache = cache
 
     def close(self) -> None:
-        self.cache.close()
         self.transport.close()
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         # check if request is cacheable
-        if self.controller.is_request_cacheable(request):
+        if (self.cache is not None) and self.controller.is_request_cacheable(request):
             logger.debug(f"Checking cache for: {request}")
             cached_response = self.cache.get(request)
             if cached_response is not None:
@@ -80,7 +79,9 @@ class Transport(httpx.BaseTransport):
         # Request is not in cache, call original transport
         response = self.transport.handle_request(request)
 
-        if self.controller.is_response_cacheable(request=request, response=response):
+        if (self.cache is not None) and self.controller.is_response_cacheable(
+            request=request, response=response
+        ):
             if hasattr(response, "_content"):
                 logger.debug(f"Caching response for: {request}")
                 self.cache.set(request=request, response=response)

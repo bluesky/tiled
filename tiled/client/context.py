@@ -14,6 +14,7 @@ import httpx
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
+from .cache import Cache
 from .transport import Transport
 from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
@@ -87,7 +88,13 @@ class Context:
         )
         if timeout is None:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
+        if cache is None:
+            # TODO Detect filesystem of TILED_CACHE_DIR. If it is a networked filesystem
+            # use a temporary database instead.
+            filepath = TILED_CACHE_DIR / "http_response_cache.db"
+            cache = Cache(filepath=filepath)
         if app is None:
+            cache.connect()
             client = httpx.Client(
                 transport=Transport(),
                 verify=verify,
@@ -98,6 +105,11 @@ class Context:
             )
         else:
             from ._testclient import TestClient
+
+            # The Cache's SQLite database must connect on the app (portal)
+            # thread, not this thread.
+            app.state.tasks["startup"].append(cache.aconnect)
+            app.state.tasks["shutdown"].append(cache.aclose)
 
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
@@ -114,11 +126,6 @@ class Context:
             # where the context starts and stops and the wrapped ASGI app.
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
-            #
-            # Given a blank slate, we may not have chosen to support this at
-            # all; we may insist on using this only within a context manager.
-            # But for now it is necessary to suppot a smooth transition for
-            # databroker. We may revisit it later.
             if sys.version_info < (3, 9):
                 import atexit
 
