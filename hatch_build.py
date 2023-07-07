@@ -42,8 +42,17 @@ class CustomHook(BuildHookInterface):
             f"Building Tiled web UI using {npm_path!r}. (Set TILED_BUILD_SKIP_UI=1 to skip.)",
             file=sys.stderr,
         )
-        subprocess.check_call([npm_path, "install"], cwd="web-frontend")
-        subprocess.check_call([npm_path, "run", "build"], cwd="web-frontend")
-        if Path(artifact_path).exists():
-            shutil.rmtree(artifact_path)
-        shutil.copytree("web-frontend/dist", artifact_path)
+        try:
+            subprocess.check_call([npm_path, "install"], cwd="web-frontend")
+            subprocess.check_call([npm_path, "run", "build"], cwd="web-frontend")
+            if Path(artifact_path).exists():
+                shutil.rmtree(artifact_path)
+            shutil.copytree("web-frontend/dist", artifact_path)
+        except Exception:
+            print(
+                f"There was an error while building the Tiled web UI using {npm_path!r}. "
+                "If you do not need the web UI, you can TILED_BUILD_SKIP_UI=1 to skip it; "
+                "the Python aspects will work fine without it.",
+                file=sys.stderr,
+            )
+            raise
