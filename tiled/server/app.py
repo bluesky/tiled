@@ -194,7 +194,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # If we reach here, the no configuration problems were found.
 
     app = FastAPI()
-    app.state.tasks = tasks
 
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
@@ -472,7 +471,7 @@ confusing behavior due to ambiguous encodings.
             await task()
 
         # Stash these to cancel this on shutdown.
-        app.state.tasks["background"] = []
+        app.state.tasks = []
         # Trees and Authenticators can run tasks in the background.
         background_tasks = []
         background_tasks.extend(tasks.get("background_tasks", []))
@@ -480,7 +479,7 @@ confusing behavior due to ambiguous encodings.
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
         for task in background_tasks or []:
             asyncio_task = asyncio.create_task(task())
-            app.state.tasks["background"].append(asyncio_task)
+            app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
         object_cache_logger.setLevel(settings.object_cache_log_level.upper())
@@ -612,7 +611,7 @@ Back up the database, and then run:
                             )
                     await asyncio.sleep(PURGE_INTERVAL)
 
-            app.state.tasks["background"].append(
+            app.state.tasks.append(
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
             )
 
@@ -626,7 +625,7 @@ Back up the database, and then run:
         if settings.database_uri is not None:
             from ..authn_database.connection_pool import close_database_connection_pool
 
-            for task in app.state.tasks["background"]:
+            for task in app.state.tasks:
                 task.cancel()
             await close_database_connection_pool(settings.database_settings)
 
