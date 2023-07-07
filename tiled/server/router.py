@@ -216,17 +216,16 @@ async def distinct(
     specs: bool = False,
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
-    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
+    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.adapter),
     query_registry=Depends(get_query_registry),
     **filters,
 ):
     if hasattr(entry, "get_distinct"):
-        distinct = apply_search(entry, filters, query_registry).get_distinct(
-            metadata=metadata,
-            structure_families=structure_families,
-            specs=specs,
-            counts=counts,
+        filtered = apply_search(entry, filters, query_registry)
+        distinct = await ensure_awaitable(
+            filtered.get_distinct, metadata, structure_families, specs, counts
         )
+
         return json_or_msgpack(
             request, schemas.GetDistinctResponse.parse_obj(distinct).dict()
         )

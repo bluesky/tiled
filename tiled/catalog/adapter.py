@@ -452,6 +452,55 @@ class CatalogNodeAdapter(BaseAdapter):
     def sort(self, sorting):
         return self.new_variation(sorting=sorting)
 
+    async def get_distinct(self, metadata, structure_families, specs, counts):
+        data = {}
+
+        async with self.context.session() as db:
+            if metadata:
+                data["metadata"] = {}
+                for key in metadata:
+                    clause = orm.Node.metadata_
+                    for segment in key.split("."):
+                        clause = clause[segment]
+                    if counts:
+                        columns = (clause, func.count(clause))
+                    else:
+                        columns = (clause,)
+                    statement = select(*columns).group_by(clause)
+                    for condition in self.conditions:
+                        statement = statement.filter(condition)
+                    results = (await db.execute(statement)).all()
+                    data["metadata"][key] = format_distinct_result(results, counts)
+
+            if structure_families:
+                if counts:
+                    columns = (
+                        orm.Node.structure_family,
+                        func.count(orm.Node.structure_family),
+                    )
+                else:
+                    columns = (orm.Node.structure_family,)
+                statement = select(*columns).group_by(orm.Node.structure_family)
+                for condition in self.conditions:
+                    statement = statement.filter(condition)
+                results = (await db.execute(statement)).all()
+
+                data["structure_families"] = format_distinct_result(results, counts)
+
+            if specs:
+                if counts:
+                    columns = (orm.Node.specs, func.count(orm.Node.specs))
+                else:
+                    columns = (orm.Node.specs,)
+                statement = select(*columns).group_by(orm.Node.specs)
+                for condition in self.conditions:
+                    statement = statement.filter(condition)
+                results = (await db.execute(statement)).all()
+
+                data["specs"] = format_distinct_result(results, counts)
+
+        return data
+
     async def create_container(
         self,
         structure_family,
@@ -782,3 +831,13 @@ def _set_sqlite_pragma(conn, record):
     # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+def format_distinct_result(results, counts):
+    if counts:
+        formatted_result = [
+            {"value": value, "count": count} for value, count in results
+        ]
+    else:
+        formatted_result = [{"value": value} for value, in results]
+    return formatted_result
