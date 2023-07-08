@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -32,7 +33,14 @@ def set_tiled_cache_dir():
     """
     # Do not use tempdir pytest fixture because it would use the same tmpdir
     # as the one used by the test, and mix the files up.
-    with tempfile.TemporaryDirectory() as tmpdir:
+    # Windows will not remove the directory while the http_response_cache.db
+    # is still open. It is closed by transport shutdown, but not all tests
+    # correctly shut down the transport. This is probably related to the
+    # thread-leaking issue.
+    ignore_cleanup_errors = sys.platform.startswith("win")
+    with tempfile.TemporaryDirectory(
+        ignore_cleanup_errors=ignore_cleanup_errors
+    ) as tmpdir:
         original = context.TILED_CACHE_DIR
         context.TILED_CACHE_DIR = Path(tmpdir)
         yield
