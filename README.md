@@ -41,7 +41,7 @@ dataset).
 | Distribution   | Where to get it                                              |
 | -------------- | ------------------------------------------------------------ |
 | PyPI           | `pip install tiled`                                          |
-| Conda          | Coming Soon                                                  |
+| Conda          | `conda install -c conda-forge tiled-client tiled-server`     |
 | Source code    | [github.com/bluesky/tiled](https://github.com/bluesky/tiled) |
 | Documentation  | [blueskyproject.io/tiled](https://blueskyproject.io/tiled)   |
 
