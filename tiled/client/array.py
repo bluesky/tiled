@@ -188,10 +188,6 @@ class _DaskArrayClient(BaseStructureClient):
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.shape[0]
 
-    def download(self):
-        super().download()
-        self.read().compute()
-
     def export(
         self, filepath, *, format=None, slice=None, link=None, template_vars=None
     ):
@@ -268,9 +264,3 @@ class ArrayClient(DaskArrayClient):
         Optionally, access only a slice *within* this block.
         """
         return super().read_block(block, slice).compute()
-
-    def download(self):
-        # Do not run super().download() because DaskArrayClient calls compute()
-        # which does not apply here.
-        BaseStructureClient.download(self)
-        self.read()

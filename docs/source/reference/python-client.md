@@ -79,16 +79,6 @@ It adds these methods, which return a new Container instance.
    tiled.client.container.Container.sort
 ```
 
-It adds these methods for downloading and refreshing cached data.
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.container.Container.download
-   tiled.client.container.Container.refresh
-```
-
 It adds this method, which returns the unique metadata keys,
 structure_families, and specs of its children along with their counts.
 
@@ -129,8 +119,6 @@ Tiled currently includes two clients for each structure family:
    tiled.client.base.BaseClient.logout
    tiled.client.base.BaseClient.new_variation
    tiled.client.base.BaseClient.specs
-   tiled.client.base.BaseStructureClient.download
-   tiled.client.base.BaseStructureClient.refresh
    tiled.client.base.BaseStructureClient.structure
 ```
 
@@ -232,5 +220,5 @@ Tiled currently includes two clients for each structure family:
    :toctree: generated
 
    tiled.client.cache.Cache
-   tiled.client.cache.clear
+   tiled.client.cache.Cache.clear
 ```

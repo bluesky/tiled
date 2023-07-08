@@ -155,10 +155,3 @@ from the Tiled server directly over HTTP? Tiled supports efficient
 formats (e.g. numpy C buffers, Apache Arrow DataFrames) and universal
 interchange formats (e.g. CSV, JSON) and perhaps one of those will be the
 fastest way to get data into your program.
-
-## Comparison to caching
-
-This tutorial demonstrated *deliberate export*, where Tiled generates a file on
-disk and leaves it to the user to manage that file and do something with it
-outside of Tiled. This is different from {doc}`caching`, where Tiled takes
-control of a local cache of data in order to improve Tiled's own operation.

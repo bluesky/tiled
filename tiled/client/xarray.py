@@ -5,7 +5,6 @@ import dask.array
 import pandas
 import xarray
 
-from ..client.base import BaseStructureClient
 from ..serialization.dataframe import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
@@ -31,11 +30,6 @@ class DaskDatasetClient(Container):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         return list(self)
-
-    def download(self):
-        super().download()
-        list(self)
-        self.read().compute()
 
     def _build_arrays(self, variables, optimize_wide_table):
         data_vars = {}
@@ -116,13 +110,6 @@ class DatasetClient(DaskDatasetClient):
             .read(variables=variables, optimize_wide_table=optimize_wide_table)
             .load()
         )
-
-    def download(self):
-        # Do not run super().download() because DaskDatasetClient calls compute()
-        # which does not apply here.
-        BaseStructureClient.download(self)
-        self._ipython_key_completions_()
-        self.read()
 
 
 URL_CHARACTER_LIMIT = 2000  # number of characters

@@ -135,27 +135,6 @@ def tree(
         print(line)
 
 
-@cli_app.command("download")
-def download(
-    profile: Optional[str] = typer.Option(
-        None, help="If you use more than one Tiled server, use this to specify which."
-    ),
-    cache_path: str = typer.Argument(..., help="Local directory for cache storage"),
-    capacity: Optional[int] = typer.Argument(None, help="Max capacity in bytes"),
-):
-    """
-    Download content from a Tree to an on-disk cache.
-    """
-    from ..client.cache import Cache, download
-    from ..client.constructors import from_profile
-
-    profile_name, _ = get_profile(profile)
-
-    cache = Cache.on_disk(cache_path, capacity=capacity)
-    client = from_profile(profile_name, cache=cache)
-    download(client)
-
-
 main = cli_app
 
 

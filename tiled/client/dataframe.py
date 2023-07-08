@@ -91,11 +91,6 @@ class _DaskDataFrameClient(BaseStructureClient):
     def columns(self):
         return self.structure().macro.columns
 
-    def download(self):
-        super().download()
-        self._ipython_key_completions_()
-        self.read().compute()
-
     def _get_partition(self, partition, columns):
         """
         Fetch the actual data for one partition in a partitioned (dask) dataframe.
@@ -264,10 +259,3 @@ class DataFrameClient(_DaskDataFrameClient):
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
         return super().read(columns).compute()
-
-    def download(self):
-        # Do not run super().download() because DaskDataFrameClient calls compute()
-        # which does not apply here.
-        BaseStructureClient.download(self)
-        self._ipython_key_completions_()
-        self.read()
