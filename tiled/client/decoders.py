@@ -19,7 +19,6 @@ if modules_available("blosc"):
 
 
 if modules_available("zstandard"):
-
     import zstandard
 
     class ZStandardDecoder:

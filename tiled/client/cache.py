@@ -294,6 +294,18 @@ VALUES
             )
             self._conn.commit()
 
+    def size(self):
+        "Size of response bodies in bytes (does not count headers and other auxiliary info)"
+        with closing(self._conn.cursor()) as cur:
+            (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
+        return total_size
+
+    def count(self):
+        "Number of responses cached"
+        with closing(self._conn.cursor()) as cur:
+            (count,) = cur.execute("SELECT COUNT(*) FROM responses").fetchone()
+        return count
+
     def close(self) -> None:
         """Close cache."""
         self._conn.close()
