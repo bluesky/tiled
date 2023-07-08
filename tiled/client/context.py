@@ -143,7 +143,10 @@ class Context:
         self.server_info = handle_error(
             self.http_client.get(
                 self.api_uri,
-                headers={"Accept": MSGPACK_MIME_TYPE, "Cache-Control": "no-cache"},
+                headers={
+                    "Accept": MSGPACK_MIME_TYPE,
+                    "Cache-Control": "no-cache, no-store",
+                },
             )
         ).json()
         self.api_key = api_key  # property setter sets Authorization header

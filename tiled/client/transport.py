@@ -181,8 +181,8 @@ class Transport(httpx.BaseTransport):
         self.cache = cache
 
     def close(self) -> None:
-        self.cache.close()
         self.transport.close()
+        self.cache.close()
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         # check if request is cacheable
