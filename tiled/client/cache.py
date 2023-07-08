@@ -175,7 +175,9 @@ class Cache:
         return self._filepath
 
     def clear(self):
-        "Drop all items from cache."
+        """
+        Drop all entries from HTTP response cache.
+        """
         with closing(self._conn.cursor()) as cur:
             cur.execute("DELETE FROM responses")
             self._conn.commit()
@@ -204,7 +206,7 @@ WHERE cache_key = ?""",
             if row is None:
                 return None
             self._conn.commit()
-        return load(row)
+        return load(row, request)
 
     def set(
         self,

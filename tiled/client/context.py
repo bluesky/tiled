@@ -19,7 +19,6 @@ from .transport import Transport
 from .utils import (
     DEFAULT_ACCEPTED_ENCODINGS,
     DEFAULT_TIMEOUT_PARAMS,
-    EVENT_HOOKS,
     MSGPACK_MIME_TYPE,
     handle_error,
 )
@@ -97,7 +96,6 @@ class Context:
             client = httpx.Client(
                 transport=Transport(cache=cache),
                 verify=verify,
-                event_hooks=EVENT_HOOKS,
                 timeout=timeout,
                 headers=headers,
                 follow_redirects=True,
@@ -108,7 +106,6 @@ class Context:
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
                 app=app,
-                event_hooks=EVENT_HOOKS,
                 timeout=timeout,
                 headers=headers,
                 raise_server_exceptions=raise_server_exceptions,
@@ -208,7 +205,6 @@ class Context:
             )
         self.http_client = httpx.Client(
             verify=verify,
-            event_hooks=EVENT_HOOKS,
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -313,17 +309,6 @@ class Context:
             context.api_key = api_key
         return context
 
-    def clear_cache(self):
-        """
-        Drop all entries from HTTP response cache.
-        """
-        cache = self.http_client._transport.cache
-        if cache is None:
-            raise RuntimeError(
-                "An client HTTP response cache is not being used; there is nothing to clear."
-            )
-        cache.clear()
-
     @property
     def tokens(self):
         "A view of the current access and refresh tokens."
@@ -348,7 +333,11 @@ class Context:
 
     @property
     def cache(self):
-        return self._cache
+        return self.http_client._transport.cache
+
+    @cache.setter
+    def cache(self, cache):
+        self.http_client._transport.cache = cache
 
     def which_api_key(self):
         """
