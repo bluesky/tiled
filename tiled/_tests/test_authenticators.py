@@ -1,8 +1,13 @@
 import asyncio
+import os
 
 import pytest
 
 from ..authenticators import LDAPAuthenticator
+
+# Set this if there is an LDAP container running for testing.
+# See continuous_integration/docker-configs/ldap-docker-compose.yml
+TILED_TEST_LDAP = os.getenv("TILED_TEST_LDAP")
 
 
 # fmt: off
@@ -26,7 +31,8 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
     TODO: The test could be extended with enabled TLS or SSL, but it requires configuration
     of the LDAP server.
     """
-    pytest.importorskip("ldap3")
+    if not TILED_TEST_LDAP:
+        pytest.skip("Run an LDAP container and set TILED_TEST_LDAP to run")
     authenticator = LDAPAuthenticator(
         ldap_server_address,
         ldap_server_port,
