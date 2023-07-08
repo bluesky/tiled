@@ -154,6 +154,14 @@ class Cache:
         self._owner_thread = threading.current_thread().ident
         self._conn = _prepare_database(filepath)
 
+    def write_safe(self):
+        """
+        Check that it is safe to write.
+
+        SQLite is not threadsafe for concurrent _writes_.
+        """
+        return threading.current_thread().ident == self._owner_thread
+
     def __getstate__(self):
         return (self.filepath, self.total_capacity, self.max_item_size, self._readonly)
 
@@ -178,6 +186,8 @@ class Cache:
         """
         Drop all entries from HTTP response cache.
         """
+        if self.readonly:
+            raise RuntimeError("Cannot clear read-only cache")
         with closing(self._conn.cursor()) as cur:
             cur.execute("DELETE FROM responses")
             self._conn.commit()
@@ -205,7 +215,15 @@ WHERE cache_key = ?""",
             ).fetchone()
             if row is None:
                 return None
+            if (not self.readonly) and self.write_safe():
+                cur.execute(
+                    """UPDATE responses
+    SET time_last_accessed = ?
+    WHERE cache_key = ?""",
+                    (datetime.now().timestamp(), cache_key),
+                )
             self._conn.commit()
+
         return load(row, request)
 
     def set(
@@ -226,10 +244,10 @@ WHERE cache_key = ?""",
             content (bytes, optional): Defaults to None, should be provided in case
                 response that not have yet content.
         """
-        if threading.current_thread().ident != self._owner_thread:
-            # SQLite is not threadsafe for concurrent _writes_.
-            # Skip the acache.
-            return
+        if self.readonly:
+            raise RuntimeError("Cache is readonly")
+        if not self.write_safe():
+            raise RuntimeError("Write is not safe from another thread")
         with closing(self._conn.cursor()) as cur:
             cur.execute(
                 """INSERT OR REPLACE INTO responses
@@ -246,6 +264,10 @@ VALUES
         Args:
             request: httpx.Request
         """
+        if self.readonly:
+            raise RuntimeError("Cache is readonly")
+        if not self.write_safe():
+            raise RuntimeError("Write is not safe from another thread")
         with closing(self._conn.cursor()) as cur:
             cur.execute(
                 "DELETE FROM responses WHERE cache_key=?", (get_cache_key(request),)

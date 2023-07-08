@@ -137,23 +137,23 @@ class CacheControl:
             True if request cacheable else False
         """
         if request.url.is_relative_url:
-            logger.debug(
-                f"Only absolute urls are supported, got '{request.url}'. "
-                "Request is not cacheable!"
-            )
+            # logger.debug(
+            #     f"Only absolute urls are supported, got '{request.url}'. "
+            #     "Request is not cacheable!"
+            # )
             return False
         if request.method not in self.cacheable_methods:
-            logger.debug(
-                f"Request method '{request.method}' is not supported, only "
-                f"'{self.cacheable_methods}' are supported. Request is not cacheable!"
-            )
+            # logger.debug(
+            #     f"Request method '{request.method}' is not supported, only "
+            #     f"'{self.cacheable_methods}' are supported. Request is not cacheable!"
+            # )
             return False
         cc = parse_cache_control_headers(request.headers)
         if "no-cache" in cc or cc.get("max-age") == 0:
-            logger.debug(
-                "Request cache-control headers has a 'no-cache' directive. "
-                "Request is not cacheable!"
-            )
+            # logger.debug(
+            #     "Request cache-control headers has a 'no-cache' directive. "
+            #     "Request is not cacheable!"
+            # )
             return False
         return True
 
@@ -172,10 +172,10 @@ class CacheControl:
 
         # check if response is a permanenet redirect
         if response.status_code in _PERMANENT_REDIRECT_STATUSES:
-            logger.debug(
-                "Cached response with permanent redirect status "
-                f"'{response.status_code}' is always fresh."
-            )
+            # logger.debug(
+            #     "Cached response with permanent redirect status "
+            #     f"'{response.status_code}' is always fresh."
+            # )
             return True
 
         # check that we do have a response Date header
@@ -193,69 +193,69 @@ class CacheControl:
         # check max-age in response
         if isinstance(req_max_age, int):
             max_freshness_age = timedelta(seconds=req_max_age)
-            logger.debug(
-                "Evaluating response freshness from request cache-control "
-                "'max-age' header directive."
-            )
+            # logger.debug(
+            #     "Evaluating response freshness from request cache-control "
+            #     "'max-age' header directive."
+            # )
 
         elif isinstance(resp_max_age, int):
             max_freshness_age = timedelta(seconds=resp_max_age)
-            logger.debug(
-                "Evaluating response freshness from response cache-control "
-                "'max-age' header directive."
-            )
+            # logger.debug(
+            #     "Evaluating response freshness from response cache-control "
+            #     "'max-age' header directive."
+            # )
         elif "expires" in response.headers and response_date is None:
-            logger.warning(
-                "Response is missing a valid 'Date' header, couldn't evaluate "
-                "response freshness. Response is not fresh!"
-            )
+            # logger.warning(
+            #     "Response is missing a valid 'Date' header, couldn't evaluate "
+            #     "response freshness. Response is not fresh!"
+            # )
             return False
         elif "expires" in response.headers:
             resp_expires = parse_headers_date(response.headers.get("expires"))
             if resp_expires is None:
-                logger.warning(
-                    "Response has an invalid 'Expires' header, couldn't evaluate "
-                    "response freshness. Response is not fresh!"
-                )
+                # logger.warning(
+                #     "Response has an invalid 'Expires' header, couldn't evaluate "
+                #     "response freshness. Response is not fresh!"
+                # )
                 return False
 
             max_freshness_age = resp_expires - response_date  # type: ignore
-            logger.debug(
-                "Evaluating response freshness from response 'expires' header."
-            )
+            # logger.debug(
+            #     "Evaluating response freshness from response 'expires' header."
+            # )
 
         else:
-            logger.debug(
-                "Request/Response pair has no cache-control headers. Assuming "
-                "response is fresh!"
-            )
+            # logger.debug(
+            #     "Request/Response pair has no cache-control headers. Assuming "
+            #     "response is fresh!"
+            # )
             return True
 
         if response_date is None:
-            logger.warning(
-                "Response is missing a valid 'Date' header, couldn't evaluate "
-                "response freshness. Response is not fresh!"
-            )
+            # logger.warning(
+            #     "Response is missing a valid 'Date' header, couldn't evaluate "
+            #     "response freshness. Response is not fresh!"
+            # )
             return False
 
         # get response age (timedelta)
         now = datetime.now(tz=timezone.utc)
         response_age = now - response_date
         if isinstance(req_min_fresh, int):
-            logger.debug(
-                f"Adjsting response age ({response_age}) using request cache-control "
-                "'min-fresh' header directive."
-            )
+            # logger.debug(
+            #     f"Adjsting response age ({response_age}) using request cache-control "
+            #     "'min-fresh' header directive."
+            # )
             response_age += timedelta(seconds=req_min_fresh)
 
-        logger.debug(f"Response age is: {response_age}")
-        logger.debug(f"Response allowed max-age is: {max_freshness_age}")
+        # logger.debug(f"Response age is: {response_age}")
+        # logger.debug(f"Response allowed max-age is: {max_freshness_age}")
 
         if response_age > max_freshness_age:
-            logger.debug("Response is not fresh!")
+            # logger.debug("Response is not fresh!")
             return False
 
-        logger.debug("Response is fresh.")
+        # logger.debug("Response is fresh.")
         return True
 
     def is_response_cacheable(
@@ -281,30 +281,30 @@ class CacheControl:
             wether response is cacheable or not.
         """
         if request.url.is_relative_url:
-            logger.debug(
-                f"Only absolute urls are supported, got '{request.url}'. "
-                "Request is not cacheable!"
-            )
+            # logger.debug(
+            #     f"Only absolute urls are supported, got '{request.url}'. "
+            #     "Request is not cacheable!"
+            # )
             return False
 
         if request.method not in self.cacheable_methods:
-            logger.debug(
-                f"Request method '{request.method}' is not supported, only "
-                f"'{self.cacheable_methods}' are supported. Request is not cacheable!"
-            )
+            # logger.debug(
+            #     f"Request method '{request.method}' is not supported, only "
+            #     f"'{self.cacheable_methods}' are supported. Request is not cacheable!"
+            # )
             return False
 
         if response.status_code not in self.cacheable_status_codes:
-            logger.debug(
-                f"Response status_code '{response.status_code}' is not cacheable, only "
-                f"'{self.cacheable_status_codes}' are cacheable. Response is not "
-                "cacheable!"
-            )
+            # logger.debug(
+            #     f"Response status_code '{response.status_code}' is not cacheable, only "
+            #     f"'{self.cacheable_status_codes}' are cacheable. Response is not "
+            #     "cacheable!"
+            # )
             return False
 
         # always cache request, eevent if 'no-store' is set as header
         if self.always_cache:
-            logger.debug("Caching Response because 'always_cache' is set to True.'")
+            # logger.debug("Caching Response because 'always_cache' is set to True.'")
             return True
 
         # extract cache_control for both request and response
@@ -312,10 +312,10 @@ class CacheControl:
         response_cc = parse_cache_control_headers(response.headers)
 
         if "no-store" in request_cc or "no-store" in response_cc:
-            logger.debug(
-                "Request/Response cache-control headers has a 'no-store' directive. "
-                "Response is not cacheable!"
-            )
+            # logger.debug(
+            #     "Request/Response cache-control headers has a 'no-store' directive. "
+            #     "Response is not cacheable!"
+            # )
             return False
 
         return True

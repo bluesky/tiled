@@ -188,11 +188,9 @@ class Transport(httpx.BaseTransport):
         # check if request is cacheable
         if (self.cache is not None) and self.controller.is_request_cacheable(request):
             if __debug__:
-                logger.debug(f"Checking cache for: {request}")
+                logger.debug("Checking cache for: %s", request)
             cached_response = self.cache.get(request)
             if cached_response is not None:
-                if __debug__:
-                    logger.debug(f"Found cached response for: {request}")
                 if self.controller.is_response_fresh(
                     request=request, response=cached_response
                 ):
@@ -200,14 +198,16 @@ class Transport(httpx.BaseTransport):
                         request=request, response=cached_response
                     ):
                         if __debug__:
-                            logger.debug("Using cached response without revalidation")
+                            logger.debug("Using cached response for: %s", request)
                             log_request(request)
                             collect_request(request)
                         return cached_response
+                    if __debug__:
+                        logger.debug("Revalidating cached response for: %s", request)
                     request.headers["If-None-Match"] = cached_response.headers["ETag"]
                 else:
                     if __debug__:
-                        logger.debug(f"Cached response is stale, deleting: {request}")
+                        logger.debug("Cached response is stale, deleting: %s", request)
                     self.cache.delete(request)
             else:
                 if __debug__:
@@ -228,32 +228,45 @@ class Transport(httpx.BaseTransport):
         if self.cache is not None:
             if response.status_code == 304:
                 if __debug__:
-                    logger.debug(f"Server validated fresh cached entry for: {request}")
+                    logger.debug(
+                        "Server validated as fresh cached entry for: %s", request
+                    )
                     collect_response(cached_response)
                 return cached_response
             if __debug__:
-                logger.debug(f"Server invalidated stale cached entry for: {request}")
+                logger.debug(
+                    "Server invalidated as stale cached entry for: %s", request
+                )
                 collect_response(response)
 
             if self.controller.is_response_cacheable(
                 request=request, response=response
             ):
-                if hasattr(response, "_content"):
+                if self.cache.readonly:
                     if __debug__:
-                        logger.debug(f"Caching response for: {request}")
-                    self.cache.set(request=request, response=response)
-                else:
-                    # Wrap the response with cache callback:
-                    def _callback(content: bytes) -> None:
-                        if __debug__:
-                            logger.debug(f"Caching response for: {request}")
-                        self.cache.set(
-                            request=request, response=response, content=content
+                        logger.debug("Cache is read-only; will not store")
+                elif not self.cache.write_safe():
+                    if __debug__:
+                        logger.debug(
+                            "Cannot write to cache from another thread; will not store"
                         )
+                else:
+                    if hasattr(response, "_content"):
+                        if __debug__:
+                            logger.debug("Caching response for: %s", request)
+                        self.cache.set(request=request, response=response)
+                    else:
+                        # Wrap the response with cache callback:
+                        def _callback(content: bytes) -> None:
+                            if __debug__:
+                                logger.debug("Caching response for: %s", request)
+                            self.cache.set(
+                                request=request, response=response, content=content
+                            )
 
-                    response.stream = ByteStreamWrapper(
-                        stream=response.stream, callback=_callback  # type: ignore
-                    )
+                        response.stream = ByteStreamWrapper(
+                            stream=response.stream, callback=_callback  # type: ignore
+                        )
         return response
 
 
@@ -296,17 +309,17 @@ class Transport(httpx.BaseTransport):
 #     async def handle_async_request(self, request: httpx.Request) -> TiledResponse:
 #         # check if request is cacheable
 #         if self.controller.is_request_cacheable(request):
-#             logger.debug(f"Checking cache for: {request}")
+#             logger.debug(f"Checking cache for: %s", request)
 #             cached_response = await self.cache.aget(request)
 #             if cached_response is not None:
-#                 logger.debug(f"Found cached response for: {request}")
+#                 logger.debug(f"Found cached response for: %s", request)
 #                 if self.controller.is_response_fresh(
 #                     request=request, response=cached_response
 #                 ):
 #                     setattr(cached_response, "from_cache", True)
 #                     return cached_response
 #                 else:
-#                     logger.debug(f"Cached response is stale, deleting: {request}")
+#                     logger.debug(f"Cached response is stale, deleting: %s", request)
 #                     await self.cache.adelete(request)
 #
 #         # Request is not in cache, call original transport
@@ -314,12 +327,12 @@ class Transport(httpx.BaseTransport):
 #
 #         if self.controller.is_response_cacheable(request=request, response=response):
 #             if hasattr(response, "_content"):
-#                 logger.debug(f"Caching response for: {request}")
+#                 logger.debug(f"Caching response for: %s", request)
 #                 await self.cache.aset(request=request, response=response)
 #             else:
 #                 # Wrap the response with cache callback:
 #                 async def _callback(content: bytes) -> None:
-#                     logger.debug(f"Caching response for: {request}")
+#                     logger.debug(f"Caching response for: %s", request)
 #                     await self.cache.aset(
 #                         request=request, response=response, content=content
 #                     )
