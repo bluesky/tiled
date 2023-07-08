@@ -139,7 +139,7 @@ class Cache:
     def __init__(
         self,
         filepath,
-        total_capacity=500_000_000,
+        capacity=500_000_000,
         max_item_size=500_000,
         readonly=False,
     ):
@@ -147,7 +147,9 @@ class Cache:
             raise NotImplementedError(
                 "readonly cache is planned but not yet implemented"
             )
-        self.total_capacity = total_capacity
+        if capacity <= max_item_size:
+            raise ValueError("capacity must be greater than max_item_size")
+        self.capacity = capacity
         self.max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
@@ -163,11 +165,11 @@ class Cache:
         return threading.current_thread().ident == self._owner_thread
 
     def __getstate__(self):
-        return (self.filepath, self.total_capacity, self.max_item_size, self._readonly)
+        return (self.filepath, self.capacity, self.max_item_size, self._readonly)
 
     def __setstate__(self, state):
-        (filepath, total_capacity, max_item_size, readonly) = state
-        self.total_capacity = total_capacity
+        (filepath, capacity, max_item_size, readonly) = state
+        self.capacity = capacity
         self.max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
@@ -248,7 +250,22 @@ WHERE cache_key = ?""",
             raise RuntimeError("Cache is readonly")
         if not self.write_safe():
             raise RuntimeError("Write is not safe from another thread")
+        incoming_size = get_size(response, content)
+        if incoming_size > self.max_item_size:
+            # Decline to store.
+            return False
         with closing(self._conn.cursor()) as cur:
+            (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
+            while (incoming_size + total_size) > self.capacity:
+                # Cull to make space.
+                (cache_key, size) = cur.execute(
+                    """SELECT
+cache_key, size
+FROM responses
+ORDER BY time_last_accessed ASC"""
+                ).fetchone()
+                cur.execute("DELETE FROM responses WHERE cache_key = ?", (cache_key,))
+                total_size -= size
             cur.execute(
                 """INSERT OR REPLACE INTO responses
 (cache_key, status_code, headers, body, is_stream, encoding, size, time_created, time_last_accessed)
@@ -257,6 +274,7 @@ VALUES
                 (get_cache_key(request),) + dump(response, content),
             )
             self._conn.commit()
+        return True
 
     def delete(self, request: httpx.Request) -> None:
         """Delete an entry from cache.

@@ -211,7 +211,9 @@ class Transport(httpx.BaseTransport):
                     self.cache.delete(request)
             else:
                 if __debug__:
-                    logger.debug("No valid cached response found in cache")
+                    logger.debug(
+                        "No valid cached response found in cache for: %s", request
+                    )
 
         # Call original transport
         if __debug__:
@@ -234,9 +236,6 @@ class Transport(httpx.BaseTransport):
                     collect_response(cached_response)
                 return cached_response
             if __debug__:
-                logger.debug(
-                    "Server invalidated as stale cached entry for: %s", request
-                )
                 collect_response(response)
 
             if self.controller.is_response_cacheable(
@@ -252,17 +251,28 @@ class Transport(httpx.BaseTransport):
                         )
                 else:
                     if hasattr(response, "_content"):
+                        is_stored = self.cache.set(request=request, response=response)
                         if __debug__:
-                            logger.debug("Caching response for: %s", request)
-                        self.cache.set(request=request, response=response)
+                            if is_stored:
+                                logger.debug("Caching response for: %s", request)
+                            else:
+                                logger.debug(
+                                    "Declined to store large response for: %s", request
+                                )
                     else:
                         # Wrap the response with cache callback:
                         def _callback(content: bytes) -> None:
-                            if __debug__:
-                                logger.debug("Caching response for: %s", request)
-                            self.cache.set(
+                            is_stored = self.cache.set(
                                 request=request, response=response, content=content
                             )
+                            if __debug__:
+                                if is_stored:
+                                    logger.debug("Caching response for: %s", request)
+                                else:
+                                    logger.debug(
+                                        "Declined to store large response for: %s",
+                                        request,
+                                    )
 
                         response.stream = ByteStreamWrapper(
                             stream=response.stream, callback=_callback  # type: ignore
