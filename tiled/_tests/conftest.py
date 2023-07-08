@@ -38,13 +38,10 @@ def set_tiled_cache_dir():
     # correctly shut down the transport. This is probably related to the
     # thread-leaking issue.
     # This option was added to TemporaryDirectory in Python 3.10
-    ignore_cleanup_errors = sys.platform.startswith("win") and sys.version_info >= (
-        3,
-        10,
-    )
-    with tempfile.TemporaryDirectory(
-        ignore_cleanup_errors=ignore_cleanup_errors
-    ) as tmpdir:
+    kwargs = {}
+    if sys.platform.startswith("win") and sys.version_info >= (3, 10):
+        kwargs["ignore_cleanup_errors"] = True
+    with tempfile.TemporaryDirectory(**kwargs) as tmpdir:
         original = context.TILED_CACHE_DIR
         context.TILED_CACHE_DIR = Path(tmpdir)
         yield
