@@ -319,3 +319,8 @@ class CacheControl:
             return False
 
         return True
+
+    def needs_revalidation(
+        self, *, request: httpx.Request, response: httpx.Response
+    ) -> bool:
+        return "ETag" in response.headers

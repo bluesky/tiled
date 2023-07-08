@@ -313,6 +313,17 @@ class Context:
             context.api_key = api_key
         return context
 
+    def clear_cache(self):
+        """
+        Drop all entries from HTTP response cache.
+        """
+        cache = self.http_client._transport.cache
+        if cache is None:
+            raise RuntimeError(
+                "An client HTTP response cache is not being used; there is nothing to clear."
+            )
+        cache.clear()
+
     @property
     def tokens(self):
         "A view of the current access and refresh tokens."

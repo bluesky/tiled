@@ -9,6 +9,7 @@ from threading import Lock
 from weakref import WeakValueDictionary
 
 import httpx
+import msgpack
 
 # By default, the token in the authentication header is redacted from the logs.
 # Set thie env var to 1 to show it for debugging purposes.
@@ -52,8 +53,14 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
-class NotAvailableOffline(Exception):
-    "Item looked for in offline cache was not found."
+class TiledResponse(httpx.Response):
+    def json(self):
+        if self.headers["Content-Type"] == MSGPACK_MIME_TYPE:
+            return msgpack.unpackb(
+                self.content,
+                timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
+            )
+        return super().json()
 
 
 class UnknownStructureFamily(KeyError):

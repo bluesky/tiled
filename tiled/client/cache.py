@@ -8,7 +8,13 @@ from pathlib import Path
 
 import httpx
 
+from .utils import TiledResponse
+
 CACHE_DATABASE_SCHEMA_VERSION = 1
+
+
+class CachedResponse(TiledResponse):
+    pass
 
 
 def get_cache_key(request: httpx.Request) -> str:
@@ -68,7 +74,7 @@ def load(row, request=None):
     else:
         content = body
         stream = None
-    response = httpx.Response(
+    response = CachedResponse(
         status_code, headers=headers, content=content, stream=stream
     )
     if encoding is not None:
@@ -83,7 +89,7 @@ def _create_tables(conn):
     with closing(conn) as cur:
         cur.execute(
             """CREATE TABLE responses (
-cache_key TEXT,
+cache_key TEXT PRIMARY KEY,
 status_code INTEGER,
 headers JSON,
 body BLOB,
@@ -168,6 +174,12 @@ class Cache:
     def filepath(self):
         return self._filepath
 
+    def clear(self):
+        "Drop all items from cache."
+        with closing(self._conn.cursor()) as cur:
+            cur.execute("DELETE FROM responses")
+            self._conn.commit()
+
     def get(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
         """Get cached response from Cache.
 
@@ -218,7 +230,7 @@ WHERE cache_key = ?""",
             return
         with closing(self._conn.cursor()) as cur:
             cur.execute(
-                """INSERT INTO responses
+                """INSERT OR REPLACE INTO responses
 (cache_key, status_code, headers, body, is_stream, encoding, size, time_created, time_last_accessed)
 VALUES
 (?, ?, ?, ?, ?, ?, ?, ?, ?)""",

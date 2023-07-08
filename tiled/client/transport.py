@@ -6,23 +6,12 @@ import logging
 import typing as tp
 
 import httpx
-import msgpack
 
 from .cache import Cache
 from .cache_control import ByteStreamWrapper, CacheControl
-from .utils import MSGPACK_MIME_TYPE
+from .utils import TiledResponse
 
 logger = logging.getLogger(__name__)
-
-
-class TiledResponse(httpx.Response):
-    def json(self):
-        if self.headers["Content-Type"] == MSGPACK_MIME_TYPE:
-            return msgpack.unpackb(
-                self.content,
-                timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-            )
-        return super().json()
 
 
 class Transport(httpx.BaseTransport):
@@ -69,16 +58,26 @@ class Transport(httpx.BaseTransport):
                 if self.controller.is_response_fresh(
                     request=request, response=cached_response
                 ):
-                    setattr(cached_response, "from_cache", True)
-                    cached_response.__class__ = TiledResponse
-                    return cached_response
+                    if not self.controller.needs_revalidation(
+                        request=request, response=cached_response
+                    ):
+                        logger.debug("Using cached response without revalidation")
+                        return cached_response
+                    request.headers["If-None-Match"] = cached_response.headers["ETag"]
                 else:
                     logger.debug(f"Cached response is stale, deleting: {request}")
                     self.cache.delete(request)
-            logger.debug("No valid cached response found in cache...")
+            else:
+                logger.debug("No valid cached response found in cache")
 
-        # Request is not in cache, call original transport
+        # Call original transport
         response = self.transport.handle_request(request)
+
+        if response.status_code == 304:
+            logger.debug(f"Server revalidated fresh entry for: {request}")
+            # TODO Update headers?
+            return cached_response
+        logger.debug(f"Server invalidated stale entry for: {request}")
 
         if (self.cache is not None) and self.controller.is_response_cacheable(
             request=request, response=response
@@ -95,7 +94,6 @@ class Transport(httpx.BaseTransport):
                 response.stream = ByteStreamWrapper(
                     stream=response.stream, callback=_callback  # type: ignore
                 )
-        setattr(response, "from_cache", False)
         response.__class__ = TiledResponse
         return response
 
