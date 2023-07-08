@@ -148,14 +148,6 @@ class BaseClient:
         "Direct link to this entry"
         return self.item["links"]["self"]
 
-    @property
-    def offline(self):
-        return self.context.offline
-
-    @offline.setter
-    def offline(self, value):
-        self.context.offline = bool(value)
-
     def new_variation(self, structure_clients=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.

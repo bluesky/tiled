@@ -31,12 +31,11 @@ to use third party services for login, such as Google, ORCID. or any OIDC
 or SAML authentication providers.
 
 Tiled facilitates **client-side caching** in a standard web browser or in
-Tiled's Python client, making efficient use of bandwidth and enabling an offline
-"airplane mode." It uses **service-side caching** of "hot" datasets and
-resources to expedite both repeat requests (e.g. when several users are requesting
-the same chunks of data) and distinct requests for different parts of the same
-dataset (e.g. when the user is requesting various slices or columns from a
-dataset).
+Tiled's Python client, making efficient use of bandwidth. It uses
+**service-side caching** of "hot" datasets and resources to expedite both
+repeat requests (e.g. when several users are requesting the same chunks of
+data) and distinct requests for different parts of the same dataset (e.g. when
+the user is requesting various slices or columns from a dataset).
 
 | Distribution   | Where to get it                                              |
 | -------------- | ------------------------------------------------------------ |

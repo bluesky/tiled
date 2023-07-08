@@ -208,31 +208,6 @@ Tiled currently includes two clients for each structure family:
    tiled.client.xarray.DatasetClient.read
 ```
 
-## Cache
-
-The module `tiled.client.cache` includes objects inspired by https://github.com/dask/cachey/
-
-We opted for an independent implementation because reusing cachey would have required:
-
-* An invasive subclass that could be a bit fragile
-* And also composition in order to get the public API we want
-* Carrying around some complexity/features that we do not use here
-
-The original cachey license (which, like Tiled's, is 3-clause BSD) is included in
-the same source directory as the `tiled.client.cache` module. (Cachey itself
-*is* used in the server, where the use case is a better fit.)
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.client.cache.Cache
-   tiled.client.cache.Cache.in_memory
-   tiled.client.cache.Cache.on_disk
-   tiled.client.cache.download
-   tiled.client.cache.Scorer
-```
-
 ## Context
 
 ```{eval-rst}
@@ -243,9 +218,19 @@ the same source directory as the `tiled.client.cache` module. (Cachey itself
    tiled.client.context.Context.from_any_uri
    tiled.client.context.Context.from_app
    tiled.client.context.Context.authenticate
-   tiled.client.context.Context.offline
+   tiled.client.context.Context.cache
    tiled.client.context.Context.force_auth_refresh
    tiled.client.context.Context.login
    tiled.client.context.Context.logout
    tiled.client.context.Context.tokens
+```
+
+## Cache
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.cache.Cache
+   tiled.client.cache.clear
 ```
