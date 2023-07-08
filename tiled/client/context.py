@@ -15,14 +15,13 @@ from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
 from .cache import Cache
+from .decoders import SUPPORTED_DECODERS
 from .transport import Transport
-from .utils import (
-    DEFAULT_ACCEPTED_ENCODINGS,
-    DEFAULT_TIMEOUT_PARAMS,
-    MSGPACK_MIME_TYPE,
-    handle_error,
-)
+from .utils import DEFAULT_TIMEOUT_PARAMS, MSGPACK_MIME_TYPE, handle_error
 
+ACCEPT_ENCODING = ", ".join(
+    [key for key in SUPPORTED_DECODERS.keys() if key != "identity"]
+)
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 PROMPT_FOR_REAUTHENTICATION = None
@@ -50,7 +49,7 @@ class Context:
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
         headers = headers or {}
-        headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
+        headers.setdefault("accept-encoding", ACCEPT_ENCODING)
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
         headers.setdefault("user-agent", USER_AGENT)

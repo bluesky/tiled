@@ -8,11 +8,6 @@ from weakref import WeakValueDictionary
 import httpx
 import msgpack
 
-DEFAULT_ACCEPTED_ENCODINGS = ["gzip"]
-# if modules_available("blosc"):
-#     DEFAULT_ACCEPTED_ENCODINGS.append("blosc")
-# if modules_available("zstandard"):
-#     DEFAULT_ACCEPTED_ENCODINGS.append("zstd")
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
 

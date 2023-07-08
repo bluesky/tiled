@@ -256,6 +256,7 @@ WHERE cache_key = ?""",
             return False
         with closing(self._conn.cursor()) as cur:
             (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
+            total_size = total_size or 0  # may be None
             while (incoming_size + total_size) > self.capacity:
                 # Cull to make space.
                 (cache_key, size) = cur.execute(
