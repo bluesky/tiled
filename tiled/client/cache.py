@@ -109,6 +109,7 @@ time_last_accessed REAL
 
 
 def _prepare_database(filepath):
+    Path(filepath).mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(filepath, check_same_thread=False)
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = [row[0] for row in cursor.fetchall()]
