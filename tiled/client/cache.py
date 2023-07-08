@@ -108,9 +108,17 @@ time_last_accessed REAL
         conn.commit()
 
 
-def _prepare_database(filepath):
+def _prepare_database(filepath, readonly):
     Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(filepath, check_same_thread=False)
+    if readonly:
+        # The methods in Cache will not try to write when in readonly mode.
+        # For extra safety we open a readonly connection to the database, so
+        # that SQLite itself will prohibit writing.
+        conn = sqlite3.connect(
+            f"file:{filepath}?mode=ro", uri=True, check_same_thread=False
+        )
+    else:
+        conn = sqlite3.connect(filepath, check_same_thread=False)
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = [row[0] for row in cursor.fetchall()]
     if not tables:
@@ -144,10 +152,6 @@ class Cache:
         max_item_size=500_000,
         readonly=False,
     ):
-        if readonly:
-            raise NotImplementedError(
-                "readonly cache is planned but not yet implemented"
-            )
         if capacity <= max_item_size:
             raise ValueError("capacity must be greater than max_item_size")
         self.capacity = capacity
@@ -155,7 +159,7 @@ class Cache:
         self._readonly = readonly
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
-        self._conn = _prepare_database(filepath)
+        self._conn = _prepare_database(filepath, readonly)
 
     def write_safe(self):
         """
@@ -175,7 +179,7 @@ class Cache:
         self._readonly = readonly
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
-        self._conn = _prepare_database(filepath)
+        self._conn = _prepare_database(filepath, readonly)
 
     @property
     def readonly(self):
