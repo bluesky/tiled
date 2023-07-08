@@ -39,6 +39,7 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
+        export TILED_TEST_LDAP=1  # Opt in to LDAPAuthenticator tests.
         coverage run -m pytest -v
         coverage report
 
@@ -69,7 +70,6 @@ jobs:
       run: |
         set TILED_BUILD_SKIP_UI=1
         python -m pip install .[dev]
-        pip uninstall --yes ldap3  # to skip LDAPAuthenticator test
         python -m pip list
 
     - name: Test with pytest
