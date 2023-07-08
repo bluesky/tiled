@@ -86,7 +86,7 @@ def load(row, request=None):
 
 
 def _create_tables(conn):
-    with closing(conn) as cur:
+    with closing(conn.cursor()) as cur:
         cur.execute(
             """CREATE TABLE responses (
 cache_key TEXT PRIMARY KEY,
