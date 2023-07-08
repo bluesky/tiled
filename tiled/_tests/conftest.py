@@ -1,4 +1,6 @@
 import os
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -25,28 +27,42 @@ def reset_settings():
 
 
 @pytest.fixture(autouse=True)
-def set_tiled_cache_dir(tmpdir):
+def set_tiled_cache_dir():
     """
     Use a tmpdir instead of ~/.cache/tiled/tokens
     """
-    original = context.TILED_CACHE_DIR
-    context.TILED_CACHE_DIR = Path(tmpdir)
-    yield
-    context.TILED_CACHE_DIR = original
+    # Do not use tempdir pytest fixture because it would use the same tmpdir
+    # as the one used by the test, and mix the files up.
+    # Windows will not remove the directory while the http_response_cache.db
+    # is still open. It is closed by transport shutdown, but not all tests
+    # correctly shut down the transport. This is probably related to the
+    # thread-leaking issue.
+    # This option was added to TemporaryDirectory in Python 3.10
+    kwargs = {}
+    if sys.platform.startswith("win") and sys.version_info >= (3, 10):
+        kwargs["ignore_cleanup_errors"] = True
+    with tempfile.TemporaryDirectory(**kwargs) as tmpdir:
+        original = context.TILED_CACHE_DIR
+        context.TILED_CACHE_DIR = Path(tmpdir)
+        yield
+        context.TILED_CACHE_DIR = original
 
 
 @pytest.fixture
-def tmp_profiles_dir(tmpdir):
+def tmp_profiles_dir():
     """
     Use a tmpdir instead of ~/.config/tiled/profiles
     """
-    original = profiles.paths
-    profiles.paths.clear()
-    profiles.paths.extend([Path(tmpdir)])
-    profiles.load_profiles.cache_clear()
-    yield
-    profiles.paths.clear()
-    profiles.paths.extend(original)
+    # Do not use tempdir pytest fixture because it would use the same tmpdir
+    # as the one used by the test, and mix the files up.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original = profiles.paths
+        profiles.paths.clear()
+        profiles.paths.extend([Path(tmpdir)])
+        profiles.load_profiles.cache_clear()
+        yield
+        profiles.paths.clear()
+        profiles.paths.extend(original)
 
 
 @pytest.fixture

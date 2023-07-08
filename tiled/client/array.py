@@ -5,7 +5,7 @@ import dask.array
 import numpy
 
 from .base import BaseStructureClient
-from .utils import export_util, params_from_slice
+from .utils import export_util, handle_error, params_from_slice
 
 
 class _DaskArrayClient(BaseStructureClient):
@@ -90,14 +90,16 @@ class _DaskArrayClient(BaseStructureClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
-        content = self.context.get_content(
-            self.item["links"]["block"],
-            headers={"Accept": media_type},
-            params={
-                "block": ",".join(map(str, block)),
-                "expected_shape": expected_shape,
-            },
-        )
+        content = handle_error(
+            self.context.http_client.get(
+                self.item["links"]["block"],
+                headers={"Accept": media_type},
+                params={
+                    "block": ",".join(map(str, block)),
+                    "expected_shape": expected_shape,
+                },
+            )
+        ).read()
         return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
     def read_block(self, block, slice=None):
@@ -159,17 +161,21 @@ class _DaskArrayClient(BaseStructureClient):
         return dask_array
 
     def write(self, array):
-        self.context.put_content(
-            self.item["links"]["full"],
-            content=array.tobytes(),
-            headers={"Content-Type": "application/octet-stream"},
+        handle_error(
+            self.context.http_client.put(
+                self.item["links"]["full"],
+                content=array.tobytes(),
+                headers={"Content-Type": "application/octet-stream"},
+            )
         )
 
     def write_block(self, array, block):
-        self.context.put_content(
-            self.item["links"]["block"].format(*block),
-            content=array.tobytes(),
-            headers={"Content-Type": "application/octet-stream"},
+        handle_error(
+            self.context.http_client.put(
+                self.item["links"]["block"].format(*block),
+                content=array.tobytes(),
+                headers={"Content-Type": "application/octet-stream"},
+            )
         )
 
     def __getitem__(self, slice):
@@ -181,10 +187,6 @@ class _DaskArrayClient(BaseStructureClient):
     def __len__(self):
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().macro.shape[0]
-
-    def download(self):
-        super().download()
-        self.read().compute()
 
     def export(
         self, filepath, *, format=None, slice=None, link=None, template_vars=None
@@ -229,7 +231,7 @@ class _DaskArrayClient(BaseStructureClient):
         return export_util(
             filepath,
             format,
-            self.context.get_content,
+            self.context.http_client.get,
             self.item["links"][link].format(**template_vars),
             params=params,
         )
@@ -262,9 +264,3 @@ class ArrayClient(DaskArrayClient):
         Optionally, access only a slice *within* this block.
         """
         return super().read_block(block, slice).compute()
-
-    def download(self):
-        # Do not run super().download() because DaskArrayClient calls compute()
-        # which does not apply here.
-        BaseStructureClient.download(self)
-        self.read()

@@ -46,10 +46,6 @@ properties:
     additionalProperties: true
     description: |
       Extra HTTP headers
-  offline:
-    type: boolean
-    description: |
-      False by default. When true, rely solely on cache. Do not attempt to connect to server.
   direct:
     type: object
     description:

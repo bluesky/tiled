@@ -3,8 +3,8 @@ import time
 from dataclasses import asdict
 
 from ..structures.core import Spec
-from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap
-from .cache import Revalidate, verify_cache
+from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
+from .utils import MSGPACK_MIME_TYPE, handle_error
 
 
 class MetadataRevisions:
@@ -23,9 +23,13 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        content = self.context.get_json(
-            self._link, params={"page[offset]": 0, "page[limit]": 0}
-        )
+        content = handle_error(
+            self.context.http_client.get(
+                self._link,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"page[offset]": 0, "page[limit]": 0},
+            )
+        ).json()
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
@@ -37,10 +41,13 @@ class MetadataRevisions:
             offset = item_
             limit = 1
 
-            content = self.context.get_json(
-                self._link, params={"page[offset]": offset, "page[limit]": limit}
-            )
-
+            content = handle_error(
+                self.context.http_client.get(
+                    self._link,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={"page[offset]": offset, "page[limit]": limit},
+                )
+            ).json()
             (result,) = content["data"]
             return result
 
@@ -57,7 +64,12 @@ class MetadataRevisions:
             next_page = self._link + params
             result = []
             while next_page is not None:
-                content = self.context.get_json(next_page)
+                content = handle_error(
+                    self.context.http_client.get(
+                        next_page,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                    )
+                ).json()
                 if len(result) == 0:
                     result = content.copy()
                 else:
@@ -67,7 +79,7 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-        self.context.delete_content(self._link, None, params={"number": n})
+        handle_error(self.context.http_client.delete(self._link, params={"number": n}))
 
 
 class BaseClient:
@@ -136,14 +148,6 @@ class BaseClient:
         "Direct link to this entry"
         return self.item["links"]["self"]
 
-    @property
-    def offline(self):
-        return self.context.offline
-
-    @offline.setter
-    def offline(self, value):
-        self.context.offline = bool(value)
-
     def new_variation(self, structure_clients=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.
@@ -200,7 +204,11 @@ class BaseClient:
             "specs": normalized_specs,
         }
 
-        content = self.context.put_json(self.item["links"]["self"], data)
+        content = handle_error(
+            self.context.http_client.put(
+                self.item["links"]["self"], content=safe_json_dump(data)
+            )
+        ).json()
 
         if metadata is not None:
             if "metadata" in content:
@@ -235,33 +243,6 @@ class BaseStructureClient(BaseClient):
             attributes = self.item["attributes"]
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
             self._structure = structure_type.from_json(attributes["structure"])
-
-    def download(self):
-        """
-        Download all data into the cache.
-
-        This causes it to be cached if the context is configured with a cache.
-        """
-        verify_cache(self.context.cache)
-        repr(self)
-        self.read()
-
-    def refresh(self, force=False):
-        """
-        Refresh cached data for this node.
-
-        Parameters
-        ----------
-        force: bool
-            If False, (default) refresh only expired cache entries.
-            If True, refresh all cache entries.
-        """
-        if force:
-            revalidate = Revalidate.FORCE
-        else:
-            revalidate = Revalidate.IF_EXPIRED
-        with self.context.revalidation(revalidate):
-            self.download()
 
     def structure(self):
         """

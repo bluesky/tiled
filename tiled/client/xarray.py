@@ -5,11 +5,11 @@ import dask.array
 import pandas
 import xarray
 
-from ..client.base import BaseStructureClient
 from ..serialization.dataframe import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .container import Container
+from .utils import handle_error
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -31,21 +31,16 @@ class DaskDatasetClient(Container):
         """
         return list(self)
 
-    def download(self):
-        super().download()
-        list(self)
-        self.read().compute()
-
     def _build_arrays(self, variables, optimize_wide_table):
         data_vars = {}
         coords = {}
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
         coords_fetcher = _WideTableFetcher(
-            self.context.get_content, self.item["links"]["full"]
+            self.context.http_client.get, self.item["links"]["full"]
         )
         data_vars_fetcher = _WideTableFetcher(
-            self.context.get_content, self.item["links"]["full"]
+            self.context.http_client.get, self.item["links"]["full"]
         )
         array_clients = {}
         array_structures = {}
@@ -116,13 +111,6 @@ class DatasetClient(DaskDatasetClient):
             .load()
         )
 
-    def download(self):
-        # Do not run super().download() because DaskDatasetClient calls compute()
-        # which does not apply here.
-        BaseStructureClient.download(self)
-        self._ipython_key_completions_()
-        self.read()
-
 
 URL_CHARACTER_LIMIT = 2000  # number of characters
 _EXTRA_CHARS_PER_ITEM = len("&field=")
@@ -181,10 +169,12 @@ class _WideTableFetcher:
         return self._dataframe
 
     def _fetch_variables(self, variables):
-        content = self.get(
-            self.link,
-            params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
-        )
+        content = handle_error(
+            self.get(
+                self.link,
+                params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
+            )
+        ).read()
         return deserialize_arrow(content)
 
 

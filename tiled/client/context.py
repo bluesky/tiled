@@ -1,4 +1,3 @@
-import contextlib
 import getpass
 import json
 import os
@@ -11,20 +10,18 @@ from pathlib import Path
 
 import appdirs
 import httpx
-import msgpack
 
 from .._version import __version__ as tiled_version
-from ..utils import UNSET, DictView, safe_json_dump
+from ..utils import UNSET, DictView
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
-from .cache import Revalidate
-from .utils import (
-    DEFAULT_ACCEPTED_ENCODINGS,
-    DEFAULT_TIMEOUT_PARAMS,
-    EVENT_HOOKS,
-    NotAvailableOffline,
-    handle_error,
-)
+from .cache import Cache
+from .decoders import SUPPORTED_DECODERS
+from .transport import Transport
+from .utils import DEFAULT_TIMEOUT_PARAMS, MSGPACK_MIME_TYPE, handle_error
 
+ACCEPT_ENCODING = ", ".join(
+    [key for key in SUPPORTED_DECODERS.keys() if key != "identity"]
+)
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 PROMPT_FOR_REAUTHENTICATION = None
@@ -42,8 +39,7 @@ class Context:
         *,
         headers=None,
         api_key=None,
-        cache=None,
-        offline=False,
+        cache=UNSET,
         timeout=None,
         verify=True,
         token_cache=None,
@@ -53,7 +49,7 @@ class Context:
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
         headers = headers or {}
-        headers.setdefault("accept-encoding", ",".join(DEFAULT_ACCEPTED_ENCODINGS))
+        headers.setdefault("accept-encoding", ACCEPT_ENCODING)
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
         headers.setdefault("user-agent", USER_AGENT)
@@ -90,10 +86,15 @@ class Context:
         )
         if timeout is None:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
+        if cache is UNSET:
+            # TODO Detect filesystem of TILED_CACHE_DIR. If it is a networked filesystem
+            # use a temporary database instead.
+            filepath = TILED_CACHE_DIR / "http_response_cache.db"
+            cache = Cache(filepath=filepath)
         if app is None:
             client = httpx.Client(
+                transport=Transport(cache=cache),
                 verify=verify,
-                event_hooks=EVENT_HOOKS,
                 timeout=timeout,
                 headers=headers,
                 follow_redirects=True,
@@ -104,22 +105,17 @@ class Context:
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
                 app=app,
-                event_hooks=EVENT_HOOKS,
                 timeout=timeout,
                 headers=headers,
                 raise_server_exceptions=raise_server_exceptions,
             )
             client.follow_redirects = True
+            client._transport = Transport(transport=client._transport, cache=cache)
             client.__enter__()
             # The TestClient is meant to be used only as a context manager,
             # where the context starts and stops and the wrapped ASGI app.
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
-            #
-            # Given a blank slate, we may not have chosen to support this at
-            # all; we may insist on using this only within a context manager.
-            # But for now it is necessary to suppot a smooth transition for
-            # databroker. We may revisit it later.
             if sys.version_info < (3, 9):
                 import atexit
 
@@ -137,8 +133,6 @@ class Context:
         self.http_client = client
         self._verify = verify
         self._cache = cache
-        self._revalidate = Revalidate.IF_WE_MUST
-        self._offline = offline
         self._token_cache = Path(token_cache)
 
         # Make an initial "safe" request to:
@@ -146,12 +140,15 @@ class Context:
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        if offline:
-            self.server_info = self.get_json(self.api_uri)
-        else:
-            # We need a CSRF token.
-            with self.disable_cache(allow_read=False, allow_write=True):
-                self.server_info = self.get_json(self.api_uri)
+        self.server_info = handle_error(
+            self.http_client.get(
+                self.api_uri,
+                headers={
+                    "Accept": MSGPACK_MIME_TYPE,
+                    "Cache-Control": "no-cache, no-store",
+                },
+            )
+        ).json()
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
@@ -178,8 +175,6 @@ class Context:
             self.http_client.timeout,
             self.http_client.auth,
             self._verify,
-            self.offline,
-            self._revalidate,
             self._token_cache,
             self.server_info,
             self.cache,
@@ -194,8 +189,6 @@ class Context:
             timeout,
             auth,
             verify,
-            offline,
-            revalidate,
             token_cache,
             server_info,
             cache,
@@ -214,18 +207,15 @@ class Context:
             )
         self.http_client = httpx.Client(
             verify=verify,
-            event_hooks=EVENT_HOOKS,
             cookies=cookies,
             timeout=timeout,
             headers=headers,
             follow_redirects=True,
             auth=auth,
         )
-        self._revalidate = revalidate
         self._token_cache = token_cache
         self._cache = cache
         self.server_info = server_info
-        self.offline = offline
 
     @classmethod
     def from_any_uri(
@@ -234,8 +224,7 @@ class Context:
         *,
         headers=None,
         api_key=None,
-        cache=None,
-        offline=False,
+        cache=UNSET,
         timeout=None,
         verify=True,
         token_cache=None,
@@ -279,7 +268,6 @@ class Context:
             headers=headers,
             api_key=api_key,
             cache=cache,
-            offline=offline,
             timeout=timeout,
             verify=verify,
             token_cache=token_cache,
@@ -292,8 +280,7 @@ class Context:
         cls,
         app,
         *,
-        cache=None,
-        offline=False,
+        cache=UNSET,
         token_cache=None,
         headers=None,
         timeout=None,
@@ -308,7 +295,6 @@ class Context:
             headers=headers,
             api_key=api_key,
             cache=cache,
-            offline=offline,
             timeout=timeout,
             token_cache=token_cache,
             app=app,
@@ -349,29 +335,11 @@ class Context:
 
     @property
     def cache(self):
-        return self._cache
+        return self.http_client._transport.cache
 
-    @property
-    def offline(self):
-        return self._offline
-
-    @offline.setter
-    def offline(self, value):
-        offline = bool(value)
-        if offline and (self._cache is None):
-            raise RuntimeError(
-                """To use offline mode,  Tiled must be configured with a Cache, as in
-
->>> from tiled.client import from_uri
->>> from tiled.client.cache import Cache
->>> client = from_uri("...", cache=Cache.on_disk("my_cache"))
-"""
-            )
-        self._offline = offline
-        if not self._offline:
-            # We need a CSRF token.
-            with self.disable_cache(allow_read=False, allow_write=True):
-                self.server_info = self.get_json(self.api_uri)
+    @cache.setter
+    def cache(self, cache):
+        self.http_client._transport.cache = cache
 
     def which_api_key(self):
         """
@@ -379,7 +347,12 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        return self.get_json(self.server_info["authentication"]["links"]["apikey"])
+        return handle_error(
+            self.http_client.get(
+                self.server_info["authentication"]["links"]["apikey"],
+                headers={"Accept": MSGPACK_MIME_TYPE},
+            )
+        ).json()
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
@@ -397,20 +370,22 @@ class Context:
         note : Optional[str]
             Description (for humans).
         """
-        return self.post_json(
-            self.server_info["authentication"]["links"]["apikey"],
-            {"scopes": scopes, "expires_in": expires_in, "note": note},
-        )
+        return handle_error(
+            self.http_client.post(
+                self.server_info["authentication"]["links"]["apikey"],
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                json={"scopes": scopes, "expires_in": expires_in, "note": note},
+            )
+        ).json()
 
     def revoke_api_key(self, first_eight):
-        request = self.http_client.build_request(
-            "DELETE",
-            self.server_info["authentication"]["links"]["apikey"],
-            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-            params={"first_eight": first_eight},
+        handle_error(
+            self.http_client.delete(
+                self.server_info["authentication"]["links"]["apikey"],
+                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+                params={"first_eight": first_eight},
+            )
         )
-        response = self.http_client.send(request)
-        handle_error(response)
 
     @property
     def app(self):
@@ -439,235 +414,6 @@ class Context:
             stacklevel=2,
         )
         return self.http_client.event_hooks
-
-    @property
-    def revalidate(self):
-        """
-        This controls how aggressively to check whether cache entries are out of date.
-
-        - FORCE: Always revalidate (generally too aggressive and expensive)
-        - IF_EXPIRED: Revalidate if the "Expire" date provided by the server has passed
-        - IF_WE_MUST: Only revalidate if the server indicated that is is a
-          particularly volatile entry, such as a search result to a dynamic query.
-        """
-        return self._revalidate
-
-    @revalidate.setter
-    def revalidate(self, value):
-        self._revalidate = Revalidate(value)
-
-    @contextlib.contextmanager
-    def revalidation(self, revalidate):
-        """
-        Temporarily change the 'revalidate' property in a context.
-
-        Parameters
-        ----------
-        revalidate: string or tiled.client.cache.Revalidate enum member
-        """
-        try:
-            member = Revalidate(revalidate)
-        except ValueError as err:
-            # This raises a more helpful error that lists the valid options.
-            raise ValueError(
-                f"Revalidation {revalidate} not recognized. Must be one of {set(Revalidate.__members__)}"
-            ) from err
-        original = self.revalidate
-        self.revalidate = member
-        yield
-        # Upon leaving context, set it back.
-        self.revalidate = original
-
-    @contextlib.contextmanager
-    def disable_cache(self, allow_read=False, allow_write=False):
-        self._disable_cache_read = not allow_read
-        self._disable_cache_write = not allow_write
-        yield
-        self._disable_cache_read = False
-        self._disable_cache_write = False
-
-    def get_content(self, path, accept=None, stream=False, revalidate=None, **kwargs):
-        send_kwargs = {}
-        if "auth" in kwargs:
-            send_kwargs["auth"] = kwargs.pop("auth")
-        if revalidate is None:
-            # Fallback to context default.
-            revalidate = self.revalidate
-        request = self.http_client.build_request("GET", path, **kwargs)
-        if accept:
-            request.headers["Accept"] = accept
-        url = request.url
-        if self._offline:
-            # We must rely on the cache alone.
-            # The role of a 'reservation' is to ensure that the content
-            # of interest is not evicted from the cache between the moment
-            # that we start verifying its validity and the moment that
-            # we actually read the content. It is used more extensively
-            # below.
-            reservation = self._cache.get_reservation(url)
-            if reservation is None:
-                raise NotAvailableOffline(url)
-            content = reservation.load_content()
-            if content is None:
-                # TODO Do we ever get here?
-                raise NotAvailableOffline(url)
-            return content
-        if self._cache is None:
-            # No cache, so we can use the client straightforwardly.
-            response = self.http_client.send(request, stream=stream)
-            handle_error(response)
-            if response.headers.get("content-encoding") == "blosc":
-                import blosc
-
-                return blosc.decompress(response.content)
-            return response.content
-        # If we get this far, we have an online client and a cache.
-        # Parse Cache-Control header directives.
-        cache_control = {
-            directive.lstrip(" ")
-            for directive in request.headers.get("Cache-Control", "").split(",")
-        }
-        if "no-cache" in cache_control:
-            reservation = None
-        else:
-            reservation = self._cache.get_reservation(url)
-        try:
-            if reservation is not None:
-                is_stale = reservation.is_stale()
-                if not (
-                    # This condition means "client user wants us to unconditionally revalidate"
-                    (revalidate == Revalidate.FORCE)
-                    or
-                    # This condition means "client user wants us to revalidate if expired"
-                    (is_stale and (revalidate == Revalidate.IF_EXPIRED))
-                    or
-                    # This condition means "server really wants us to revalidate"
-                    (is_stale and reservation.item.must_revalidate)
-                    or self._disable_cache_read
-                ):
-                    # Short-circuit. Do not even bother consulting the server.
-                    return reservation.load_content()
-                if not self._disable_cache_read:
-                    request.headers["If-None-Match"] = reservation.item.etag
-            response = self.http_client.send(request, stream=stream, **send_kwargs)
-            handle_error(response)
-            if response.status_code == 304:  # HTTP 304 Not Modified
-                # Update the expiration time.
-                reservation.renew(response.headers.get("expires"))
-                # Read from the cache
-                return reservation.load_content()
-            elif not response.is_error:
-                etag = response.headers.get("ETag")
-                encoding = response.headers.get("Content-Encoding")
-                content = response.content
-                # httpx handles standard HTTP encodings transparently, but we have to
-                # handle "blosc" manually.
-                if encoding == "blosc":
-                    import blosc
-
-                    content = blosc.decompress(content)
-                if (
-                    ("no-store" not in cache_control)
-                    and (etag is not None)
-                    and (not self._disable_cache_write)
-                ):
-                    # Write to cache.
-                    self._cache.put(
-                        url,
-                        response.headers,
-                        content,
-                    )
-                return content
-            else:
-                raise NotImplementedError(
-                    f"Unexpected status_code {response.status_code}"
-                )
-        finally:
-            if reservation is not None:
-                reservation.ensure_released()
-
-    def get_json(self, path, stream=False, **kwargs):
-        return msgpack.unpackb(
-            self.get_content(
-                path, accept="application/x-msgpack", stream=stream, **kwargs
-            ),
-            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-        )
-
-    def post_json(self, path, content, params=None):
-        request = self.http_client.build_request(
-            "POST",
-            path,
-            content=safe_json_dump(content),
-            # Submit CSRF token in both header and cookie.
-            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-            headers={
-                "x-csrf": self.http_client.cookies["tiled_csrf"],
-                "accept": "application/x-msgpack",
-            },
-            params=params,
-        )
-        response = self.http_client.send(request)
-        handle_error(response)
-        return msgpack.unpackb(
-            response.content,
-            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-        )
-
-    def put_json(self, path, content):
-        request = self.http_client.build_request(
-            "PUT",
-            path,
-            content=safe_json_dump(content),
-            # Submit CSRF token in both header and cookie.
-            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-            headers={
-                "x-csrf": self.http_client.cookies["tiled_csrf"],
-                "accept": "application/x-msgpack",
-            },
-        )
-        response = self.http_client.send(request)
-        handle_error(response)
-        return msgpack.unpackb(
-            response.content,
-            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-        )
-
-    def put_content(self, path, content, headers=None, params=None):
-        # Submit CSRF token in both header and cookie.
-        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        headers = headers or {}
-        headers.setdefault("x-csrf", self.http_client.cookies["tiled_csrf"])
-        headers.setdefault("accept", "application/x-msgpack")
-        request = self.http_client.build_request(
-            "PUT",
-            path,
-            content=content,
-            headers=headers,
-            params=params,
-        )
-        response = self.http_client.send(request)
-        handle_error(response)
-        return msgpack.unpackb(
-            response.content,
-            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-        )
-
-    def delete_content(self, path, content, headers=None, params=None):
-        # Submit CSRF token in both header and cookie.
-        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        headers = headers or {}
-        headers.setdefault("x-csrf", self.http_client.cookies["tiled_csrf"])
-        headers.setdefault("accept", "application/x-msgpack")
-        request = self.http_client.build_request(
-            "DELETE", path, content=None, headers=headers, params=params
-        )
-        response = self.http_client.send(request)
-        handle_error(response)
-        return msgpack.unpackb(
-            response.content,
-            timestamp=3,  # Decode msgpack Timestamp as datetime.datetime object.
-        )
 
     def authenticate(
         self,
@@ -790,6 +536,8 @@ and enter the code:
                 time.sleep(verification["interval"])
                 if time.monotonic() > deadline:
                     raise Exception("Deadline expired.")
+                # Intentionally do not wrap this in handle_error(...).
+                # Check status codes manually below.
                 access_response = self.http_client.post(
                     verification["verification_uri"],
                     json={
@@ -897,7 +645,12 @@ and enter the code:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return self.get_json(self.server_info["authentication"]["links"]["whoami"])
+        return handle_error(
+            self.http_client.get(
+                self.server_info["authentication"]["links"]["whoami"],
+                headers={"Accept": MSGPACK_MIME_TYPE},
+            )
+        ).json()
 
     def logout(self):
         """
@@ -909,7 +662,7 @@ and enter the code:
             return
 
         # Revoke the current session.
-        self.http_client.post(f"{self.api_uri}auth/logout")
+        handle_error(self.http_client.post(f"{self.api_uri}auth/logout"))
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
@@ -925,15 +678,14 @@ and enter the code:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        request = self.http_client.build_request(
-            "DELETE",
-            self.server_info["authentication"]["links"]["revoke_session"].format(
-                session_id=session_id
-            ),
-            headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+        handle_error(
+            self.http_client.delete(
+                self.server_info["authentication"]["links"]["revoke_session"].format(
+                    session_id=session_id
+                ),
+                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+            )
         )
-        response = self.http_client.send(request)
-        handle_error(response)
 
 
 def _choose_identity_provider(providers, provider=None):
@@ -984,19 +736,17 @@ class Admin:
     def list_principals(self, offset=0, limit=100):
         "List Principals (users and services) in the authenticaiton database."
         params = dict(offset=offset, limit=limit)
-        response = self.context.http_client.get(
-            f"{self.base_url}/auth/principal", params=params
-        )
-        handle_error(response)
-        return response.json()
+        return handle_error(
+            self.context.http_client.get(
+                f"{self.base_url}/auth/principal", params=params
+            )
+        ).json()
 
     def show_principal(self, uuid):
         "Show one Principal (user or service) in the authenticaiton database."
-        response = self.context.http_client.get(
-            f"{self.base_url}/auth/principal/{uuid}"
-        )
-        handle_error(response)
-        return response.json()
+        return handle_error(
+            self.context.http_client.get(f"{self.base_url}/auth/principal/{uuid}")
+        ).json()
 
 
 class CannotPrompt(Exception):

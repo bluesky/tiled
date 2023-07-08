@@ -6,15 +6,14 @@ import httpx
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
-from .utils import ClientError, client_for_item
+from .utils import MSGPACK_MIME_TYPE, ClientError, client_for_item, handle_error
 
 
 def from_uri(
     uri,
     structure_clients="numpy",
     *,
-    cache=None,
-    offline=False,
+    cache=UNSET,
     username=UNSET,
     auth_provider=UNSET,
     api_key=None,
@@ -36,8 +35,6 @@ def from_uri(
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
     cache : Cache, optional
-    offline : bool, optional
-        False by default. If True, rely on cache only.
     username : str, optional
         Username for authenticated access. If UNSET, use default if available
         (typically, the most recently used).
@@ -65,7 +62,6 @@ def from_uri(
         uri,
         api_key=api_key,
         cache=cache,
-        offline=offline,
         headers=headers,
         timeout=timeout,
         verify=verify,
@@ -115,8 +111,7 @@ def from_context(
     if isinstance(structure_clients, str):
         structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
     if (
-        (not context.offline)
-        and (context.api_key is None)
+        (context.api_key is None)
         and context.server_info["authentication"]["required"]
         and (not context.server_info["authentication"]["providers"])
     ):
@@ -136,7 +131,9 @@ Set an api_key as in:
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
     try:
-        content = context.get_json(item_uri)
+        content = handle_error(
+            context.http_client.get(item_uri, headers={"Accept": MSGPACK_MIME_TYPE})
+        ).json()
     except ClientError as err:
         if (
             (err.response.status_code == 401)
@@ -144,7 +141,9 @@ Set an api_key as in:
             and (context.http_client.auth is None)
         ):
             context.authenticate()
-            content = context.get_json(item_uri)
+            content = handle_error(
+                context.http_client.get(item_uri, headers={"Accept": MSGPACK_MIME_TYPE})
+            ).json()
         else:
             raise
     item = content["data"]

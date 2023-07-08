@@ -5,7 +5,7 @@ from ndindex import ndindex
 from ..serialization.dataframe import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .base import BaseStructureClient
-from .utils import export_util, params_from_slice
+from .utils import export_util, handle_error, params_from_slice
 
 
 class SparseClient(BaseStructureClient):
@@ -49,11 +49,13 @@ class SparseClient(BaseStructureClient):
         structure = self.structure()
         params = params_from_slice(slice)
         params["block"] = ",".join(map(str, block))
-        content = self.context.get_content(
-            self.item["links"]["block"],
-            accept=APACHE_ARROW_FILE_MIME_TYPE,
-            params=params,
-        )
+        content = handle_error(
+            self.context.http_client.get(
+                self.item["links"]["block"],
+                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                params=params,
+            )
+        ).read()
         df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
@@ -73,11 +75,13 @@ class SparseClient(BaseStructureClient):
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
         params = params_from_slice(slice)
-        content = self.context.get_content(
-            self.item["links"]["full"],
-            accept=APACHE_ARROW_FILE_MIME_TYPE,
-            params=params,
-        )
+        content = handle_error(
+            self.context.http_client.get(
+                self.item["links"]["full"],
+                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                params=params,
+            )
+        ).read()
         df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
@@ -98,10 +102,12 @@ class SparseClient(BaseStructureClient):
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
         d["data"] = data
         df = pandas.DataFrame(d)
-        self.context.put_content(
-            self.item["links"]["full"],
-            content=bytes(serialize_arrow(df, {})),
-            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+        handle_error(
+            self.context.http_client.put(
+                self.item["links"]["full"],
+                content=bytes(serialize_arrow(df, {})),
+                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+            )
         )
 
     def write_block(self, coords, data, block):
@@ -110,10 +116,12 @@ class SparseClient(BaseStructureClient):
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
         d["data"] = data
         df = pandas.DataFrame(d)
-        self.context.put_content(
-            self.item["links"]["block"].format(*block),
-            content=bytes(serialize_arrow(df, {})),
-            headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+        handle_error(
+            self.context.http_client.put(
+                self.item["links"]["block"].format(*block),
+                content=bytes(serialize_arrow(df, {})),
+                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+            )
         )
 
     def __getitem__(self, slice):
@@ -151,7 +159,7 @@ class SparseClient(BaseStructureClient):
         return export_util(
             filepath,
             format,
-            self.context.get_content,
+            self.context.http_client.get,
             self.item["links"]["full"],
             params=params,
         )

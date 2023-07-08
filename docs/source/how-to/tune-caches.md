@@ -1,8 +1,5 @@
 # Tune Caches to Balance Speed and Memory Usage
 
-This section describes a feature of the Tiled *server*. For client-side caching,
-see {doc}`../tutorials/caching`.
-
 ## Object Cache
 
 The Tiled server stores objects such as file handles for frequently-opened
