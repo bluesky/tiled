@@ -50,4 +50,4 @@ WORKDIR /deploy
 
 EXPOSE 8000
 
-CMD ["tiled", "serve", "config", "--host", "0.0.0.0", "--port", "8000", "--scalable", "/deploy"]
+CMD ["tiled", "serve", "config", "--host", "0.0.0.0", "--port", "8000", "--scalable"]
