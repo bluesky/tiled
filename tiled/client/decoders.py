@@ -4,10 +4,12 @@ from httpx._decoders import SUPPORTED_DECODERS
 from ..utils import modules_available
 
 if modules_available("blosc"):
-    import blosc
 
     class BloscDecoder:
         def decode(self, data: bytes) -> bytes:
+            # Hide this here to defer the numpy import that it triggers.
+            import blosc
+
             return blosc.decompress(data)
 
         def flush(self) -> bytes:
