@@ -7,7 +7,6 @@
 tutorials/installation
 tutorials/navigation
 tutorials/slicing
-tutorials/caching
 tutorials/export
 tutorials/login
 tutorials/serving-files
