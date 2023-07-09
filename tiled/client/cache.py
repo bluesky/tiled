@@ -261,7 +261,7 @@ WHERE cache_key = ?""",
             return False
         with closing(self._conn.cursor()) as cur:
             (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
-            total_size = total_size or 0  # may be None
+            total_size = total_size or 0  # If empty, total_size is None.
             while (incoming_size + total_size) > self.capacity:
                 # Cull to make space.
                 (cache_key, size) = cur.execute(
@@ -302,13 +302,13 @@ VALUES
         "Size of response bodies in bytes (does not count headers and other auxiliary info)"
         with closing(self._conn.cursor()) as cur:
             (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
-        return total_size
+        return total_size or 0  # If emtpy, total_size is None.
 
     def count(self):
         "Number of responses cached"
         with closing(self._conn.cursor()) as cur:
             (count,) = cur.execute("SELECT COUNT(*) FROM responses").fetchone()
-        return count
+        return count or 0  # If empty, count is None.
 
     def close(self) -> None:
         """Close cache."""

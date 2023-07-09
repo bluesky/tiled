@@ -160,3 +160,12 @@ def test_readonly_cache(client):
     with pytest.raises(sqlite3.OperationalError):
         with closing(ro_cache._conn.cursor()) as cur:
             cur.execute("DELETE FROM responses")
+
+
+def test_clear_cache(client):
+    cache = client.context.cache
+    client.values()[0]
+    assert cache.size() > 0
+    assert cache.count() > 0
+    cache.clear()
+    assert cache.size() == cache.count() == 0
