@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -119,12 +120,24 @@ async def adapter(request, tmpdir):
             raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
         # Create temporary database.
         async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "tiled",
+                    "catalog",
+                    "init",
+                    uri_with_database_name,
+                ],
+                check=True,
+                capture_output=True,
+            )
             # Build an adapter on it.
             adapter = from_uri(
                 uri_with_database_name,
                 writable_storage=str(tmpdir),
-                initialize_database_at_startup=True,
             )
             yield adapter
+            await adapter.shutdown()
     else:
         assert False
