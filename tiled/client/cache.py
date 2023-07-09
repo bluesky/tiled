@@ -154,8 +154,8 @@ class Cache:
     ):
         if capacity <= max_item_size:
             raise ValueError("capacity must be greater than max_item_size")
-        self.capacity = capacity
-        self.max_item_size = max_item_size
+        self._capacity = capacity
+        self._max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
@@ -174,8 +174,8 @@ class Cache:
 
     def __setstate__(self, state):
         (filepath, capacity, max_item_size, readonly) = state
-        self.capacity = capacity
-        self.max_item_size = max_item_size
+        self._capacity = capacity
+        self._max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
@@ -183,11 +183,31 @@ class Cache:
 
     @property
     def readonly(self):
+        "If True, cache be read but not updated."
         return self._readonly
 
     @property
     def filepath(self):
+        "Filepath of SQLite database storing cache data"
         return self._filepath
+
+    @property
+    def capacity(self):
+        "Max capacity in bytes. Includes response bodies only."
+        return self._capacity
+
+    @capacity.setter
+    def capacity(self, capacity):
+        self._capacity = capacity
+
+    @property
+    def max_item_size(self):
+        "Max size of a response body eligible for caching."
+        return self._max_item_size
+
+    @max_item_size.setter
+    def max_item_size(self, max_item_size):
+        self._max_item_size = max_item_size
 
     def clear(self):
         """
@@ -245,11 +265,12 @@ WHERE cache_key = ?""",
         In case the response does not yet have a '_content' property, content should
         be provided in the optional 'content' kwarg (usually using a callback)
 
-        Args:
-            request: httpx.Request
-            response: httpx.Response, to cache
-            content (bytes, optional): Defaults to None, should be provided in case
-                response that not have yet content.
+        Parameters
+        ----------
+        request: httpx.Request
+        response: httpx.Response, to cache
+        content (bytes, optional): Defaults to None, should be provided in case
+            response that not have yet content.
         """
         if self.readonly:
             raise RuntimeError("Cache is readonly")

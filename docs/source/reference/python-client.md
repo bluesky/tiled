@@ -220,5 +220,16 @@ Tiled currently includes two clients for each structure family:
    :toctree: generated
 
    tiled.client.cache.Cache
+   tiled.client.cache.Cache.capacity
    tiled.client.cache.Cache.clear
+   tiled.client.cache.Cache.close
+   tiled.client.cache.Cache.count
+   tiled.client.cache.Cache.delete
+   tiled.client.cache.Cache.filepath
+   tiled.client.cache.Cache.get
+   tiled.client.cache.Cache.max_item_size
+   tiled.client.cache.Cache.readonly
+   tiled.client.cache.Cache.set
+   tiled.client.cache.Cache.size
+   tiled.client.cache.Cache.write_safe
 ```
