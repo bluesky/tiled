@@ -47,6 +47,7 @@ all = [
     "aiosqlite",
     "alembic",
     "anyio",
+    "asyncpg",
     "appdirs",
     "blosc",
     "cachetools",
