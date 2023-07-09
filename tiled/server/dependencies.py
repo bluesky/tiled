@@ -125,7 +125,7 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
 
 def block(
     # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., regex="^[0-9]*(,[0-9]+)*$"),
+    block: str = Query(..., pattern="^[0-9]*(,[0-9]+)*$"),
 ):
     "Specify and parse a block index parameter."
     if not block:
@@ -135,7 +135,7 @@ def block(
 
 def expected_shape(
     expected_shape: Optional[str] = Query(
-        None, min_length=1, regex="^[0-9]+(,[0-9]+)*$|^scalar$"
+        None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"
     ),
 ):
     "Specify and parse an expected_shape parameter."
@@ -147,7 +147,7 @@ def expected_shape(
 
 
 def slice_(
-    slice: str = Query(None, regex="^[-0-9,:]*$"),
+    slice: str = Query(None, pattern="^[-0-9,:]*$"),
 ):
     "Specify and parse a block index parameter."
     import numpy
