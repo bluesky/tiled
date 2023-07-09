@@ -108,9 +108,17 @@ time_last_accessed REAL
         conn.commit()
 
 
-def _prepare_database(filepath):
+def _prepare_database(filepath, readonly):
     Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(filepath, check_same_thread=False)
+    if readonly:
+        # The methods in Cache will not try to write when in readonly mode.
+        # For extra safety we open a readonly connection to the database, so
+        # that SQLite itself will prohibit writing.
+        conn = sqlite3.connect(
+            f"file:{filepath}?mode=ro", uri=True, check_same_thread=False
+        )
+    else:
+        conn = sqlite3.connect(filepath, check_same_thread=False)
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = [row[0] for row in cursor.fetchall()]
     if not tables:
@@ -144,18 +152,14 @@ class Cache:
         max_item_size=500_000,
         readonly=False,
     ):
-        if readonly:
-            raise NotImplementedError(
-                "readonly cache is planned but not yet implemented"
-            )
         if capacity <= max_item_size:
             raise ValueError("capacity must be greater than max_item_size")
-        self.capacity = capacity
-        self.max_item_size = max_item_size
+        self._capacity = capacity
+        self._max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
-        self._conn = _prepare_database(filepath)
+        self._conn = _prepare_database(filepath, readonly)
 
     def write_safe(self):
         """
@@ -170,20 +174,40 @@ class Cache:
 
     def __setstate__(self, state):
         (filepath, capacity, max_item_size, readonly) = state
-        self.capacity = capacity
-        self.max_item_size = max_item_size
+        self._capacity = capacity
+        self._max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
-        self._conn = _prepare_database(filepath)
+        self._conn = _prepare_database(filepath, readonly)
 
     @property
     def readonly(self):
+        "If True, cache be read but not updated."
         return self._readonly
 
     @property
     def filepath(self):
+        "Filepath of SQLite database storing cache data"
         return self._filepath
+
+    @property
+    def capacity(self):
+        "Max capacity in bytes. Includes response bodies only."
+        return self._capacity
+
+    @capacity.setter
+    def capacity(self, capacity):
+        self._capacity = capacity
+
+    @property
+    def max_item_size(self):
+        "Max size of a response body eligible for caching."
+        return self._max_item_size
+
+    @max_item_size.setter
+    def max_item_size(self, max_item_size):
+        self._max_item_size = max_item_size
 
     def clear(self):
         """
@@ -241,11 +265,12 @@ WHERE cache_key = ?""",
         In case the response does not yet have a '_content' property, content should
         be provided in the optional 'content' kwarg (usually using a callback)
 
-        Args:
-            request: httpx.Request
-            response: httpx.Response, to cache
-            content (bytes, optional): Defaults to None, should be provided in case
-                response that not have yet content.
+        Parameters
+        ----------
+        request: httpx.Request
+        response: httpx.Response, to cache
+        content (bytes, optional): Defaults to None, should be provided in case
+            response that not have yet content.
         """
         if self.readonly:
             raise RuntimeError("Cache is readonly")
@@ -257,7 +282,7 @@ WHERE cache_key = ?""",
             return False
         with closing(self._conn.cursor()) as cur:
             (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
-            total_size = total_size or 0  # may be None
+            total_size = total_size or 0  # If empty, total_size is None.
             while (incoming_size + total_size) > self.capacity:
                 # Cull to make space.
                 (cache_key, size) = cur.execute(
@@ -298,54 +323,14 @@ VALUES
         "Size of response bodies in bytes (does not count headers and other auxiliary info)"
         with closing(self._conn.cursor()) as cur:
             (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
-        return total_size
+        return total_size or 0  # If emtpy, total_size is None.
 
     def count(self):
         "Number of responses cached"
         with closing(self._conn.cursor()) as cur:
             (count,) = cur.execute("SELECT COUNT(*) FROM responses").fetchone()
-        return count
+        return count or 0  # If empty, count is None.
 
     def close(self) -> None:
         """Close cache."""
         self._conn.close()
-
-    # async def aget(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
-    #     """(Async) Get cached response from Cache.
-
-    #     We use the httpx.Request.url as key.
-
-    #     Args:
-    #         request: httpx.Request
-
-    #     Returns:
-    #         tp.Optional[httpx.Response]
-    #     """
-
-    # async def aset(
-    #     self,
-    #     *,
-    #     request: httpx.Request,
-    #     response: httpx.Response,
-    #     content: tp.Optional[bytes] = None,
-    # ) -> None:
-    #     """(Async) Set new response entry in cache.
-
-    #     In case the response does not yet have a '_content' property, content should
-    #     be provided in the optional 'content' kwarg (usually using a callback)
-
-    #     Args:
-    #         request: httpx.Request
-    #         response: httpx.Response, to cache
-    #         content (bytes, optional): Defaults to None, should be provided in case
-    #             response that not have yet content.
-    #     """
-
-    # async def adelete(self, request: httpx.Request) -> None:
-    #     """(Async) Delete an entry from cache.
-
-    #     Args:
-    #         request: httpx.Request
-    #     """
-    # async def aclose(self) -> None:
-    #     """(Async) Close cache."""
