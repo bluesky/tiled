@@ -465,11 +465,6 @@ async def create_tokens_from_session(settings, db, session, provider, state_data
             for identity in principal.identities
         ],
     }
-    if state_data:
-        # add a custom claim for state if exists, this way tiled Adapter
-        # can have access to a state object that were created by Authenticators without
-        # having to store it in the database
-        data["state"] = state_data
     access_token = create_access_token(
         data=data,
         expires_delta=settings.access_token_max_age,
