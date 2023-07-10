@@ -18,11 +18,11 @@ tutorials/plotly-integration
 ```{toctree}
 :caption: How To Guides
 
+how-to/profiles
 how-to/client-logger
 how-to/configuration
 how-to/read-custom-formats
 how-to/custom-export-formats
-how-to/profiles
 how-to/api-keys
 how-to/custom-clients
 how-to/metrics

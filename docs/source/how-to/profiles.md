@@ -9,7 +9,7 @@ parameters in a file and gives them an alias, so that something like this:
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-client = from_uri("http://some_server_address", cache=Cache.on_disk("path/to/cache"))
+client = from_uri("https://tiled-demo.blueskyproject.io")
 ```
 
 can be replaced with the more memorable and succinct
@@ -17,19 +17,37 @@ can be replaced with the more memorable and succinct
 ```py
 from tiled.client import from_profile
 
-client = from_profile("my_data")
+client = from_profile("demo")
 ```
 
-where `my_data` can be any name you wish and the parameters are written down
-once like so:
 
-```yaml
-my_data:
-    uri: "http://some_server_address"
-    cache:
-        disk:
-            path: "path/to/cache"
+## Create a profile
+
 ```
+$ tiled profile create --name demo https://tiled-demo.blueskyproject.io
+```
+
+## Review profiles
+
+To list the names of the profiles on your system, along with the path to the
+file where each one is defined...
+
+```
+$ tiled profile list
+```
+
+To show the contents of a profile...
+
+```
+$ tiled profile show PROFILE_NAME
+```
+
+See `$ tiled profile --help` for more commands.
+
+## Advanced Options
+
+You can edit the profile in a text editor to apply more advanced options.
+See {doc}`../reference/client-profiles` for a comprehensive reference.
 
 ## Where are profiles kept?
 
@@ -45,17 +63,10 @@ Tiled will also look for profiles in locations specific to the
 operating system and the software environment,
 [in accordance](https://pypi.org/project/appdirs/) with
 [standards](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html).
-To see the full list on your system, use the command line:
+To see the full list on your system:
 
 ```
 $ tiled profile paths
-```
-
-or Python:
-
-```py
->>> from tiled.profiles import paths
->>> paths
 ```
 
 Within these directories, you may have:
@@ -85,81 +96,6 @@ Tiled always looks in three places for profiles:
 The default locations for (1) and (3) can be overridden by setting the
 environment variables `TILED_SITE_PROFILES` and `TILED_PROFILES`, respectively,
 to the desired path.
-```
-
-## Create and use a profile
-
-Place a file in one of the directories listed in the previous section.
-The last directory in the list, the "user" one, is a good place to start.
-The filename can be anything. To start, `profiles.yml` is as good a name as any.
-
-As an example, use the content:
-
-```yaml
-# profiles.yml
-local:
-   uri: "http://localhost:8000"
-   cache:
-       memory:
-           available_bytes: 2_000_000_000  # 2 GB
-local_dask:
-   uri: "http://localhost:8000"
-   structure_clients: "dask"
-   cache:
-       memory:
-           available_bytes: 2_000_000_000  # 2 GB
-```
-
-Now we have two profiles that aim at a local server, one with default (numpy)
-clients and one with dask clients. While running a local tiled server such as
-
-```
-tiled serve pyobject --public tiled.examples.generated_minimal:tree
-```
-
-we can succinctly create clients like
-
-```py
-from tiled.client import from_profile
-
-client = from_profile("local")
-lazy_client = from_profile("local_dask")
-```
-
-## List profiles
-
-To list the names of the profiles on your system, along with the path to the
-file where each one is defined...
-
-From the shell:
-
-```
-$ tiled profile list
-```
-
-From Python:
-
-```py
->>> from tiled.profiles import list_profiles
->>> list_profiles()
-```
-
-## View profiles
-
-To show the contents of a profile...
-
-From the shell:
-
-```
-$ tiled profile show PROFILE_NAME
-```
-
-From Python:
-
-```py
->>> from tiled.profiles import load_profiles
->>> load_profiles()  # show all, given as {profile_name: (filepath, content)}
->>> load_profiles()[PROFILE_NAME]  # show one (filepath, content)
 ```
 
 ## Merging rules
