@@ -3,12 +3,9 @@ from typing import Protocol
 from fastapi import Request
 
 
-
-
 @dataclass
 class UserSessionState:
     """Data transfer class to communicate custom session state infromation."""
-
 
     user_name: str
     state: dict = None
