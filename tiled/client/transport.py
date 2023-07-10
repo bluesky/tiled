@@ -97,8 +97,6 @@ class Transport(httpx.BaseTransport):
                     )
                     collect_response(cached_response)
                 return cached_response
-            if __debug__:
-                collect_response(response)
 
             if self.controller.is_response_cacheable(
                 request=request, response=response
@@ -139,6 +137,8 @@ class Transport(httpx.BaseTransport):
                         response.stream = ByteStreamWrapper(
                             stream=response.stream, callback=_callback  # type: ignore
                         )
+        if __debug__:
+            collect_response(response)
         return response
 
 

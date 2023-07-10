@@ -19,9 +19,6 @@ from .decoders import SUPPORTED_DECODERS
 from .transport import Transport
 from .utils import DEFAULT_TIMEOUT_PARAMS, MSGPACK_MIME_TYPE, handle_error
 
-ACCEPT_ENCODING = ", ".join(
-    [key for key in SUPPORTED_DECODERS.keys() if key != "identity"]
-)
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 PROMPT_FOR_REAUTHENTICATION = None
@@ -49,6 +46,11 @@ class Context:
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
         headers = headers or {}
+        # Define this here instead of at module scope so that the SUPPORTED_DECODERS
+        # may be modified before Context instantiation.
+        ACCEPT_ENCODING = ", ".join(
+            [key for key in SUPPORTED_DECODERS.keys() if key != "identity"]
+        )
         headers.setdefault("accept-encoding", ACCEPT_ENCODING)
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
@@ -96,9 +98,10 @@ class Context:
                 transport=Transport(cache=cache),
                 verify=verify,
                 timeout=timeout,
-                headers=headers,
                 follow_redirects=True,
             )
+            # Do this in the setter to avoid being overwritten.
+            client.headers = headers
         else:
             from ._testclient import TestClient
 
@@ -106,9 +109,10 @@ class Context:
             client = TestClient(
                 app=app,
                 timeout=timeout,
-                headers=headers,
                 raise_server_exceptions=raise_server_exceptions,
             )
+            client.headers = headers
+            # Do this in the setter to avoid being overwritten.
             client.follow_redirects = True
             client._transport = Transport(transport=client._transport, cache=cache)
             client.__enter__()
