@@ -61,25 +61,31 @@ def upgrade_database(
     """
     Upgrade the database schema to the latest version.
     """
-    from sqlalchemy import create_engine
+    import asyncio
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import get_current_revision, upgrade
     from ..authn_database.alembic_constants import (
         ALEMBIC_DIR,
         ALEMBIC_INI_TEMPLATE_PATH,
     )
+    from ..authn_database.core import ALL_REVISIONS
 
-    engine = create_engine(database_uri)
-    redacted_url = engine.url._replace(password="[redacted]")
-    current_revision = get_current_revision(engine)
-    if current_revision is None:
-        # Create tables and stamp (alembic) revision.
-        typer.echo(
-            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`.",
-            err=True,
-        )
-        raise typer.Abort()
-    upgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, engine.url, revision or "head")
+    async def do_setup():
+        engine = create_async_engine(database_uri)
+        redacted_url = engine.url._replace(password="[redacted]")
+        current_revision = await get_current_revision(engine, ALL_REVISIONS)
+        await engine.dispose()
+        if current_revision is None:
+            # Create tables and stamp (alembic) revision.
+            typer.echo(
+                f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`.",
+                err=True,
+            )
+            raise typer.Abort()
+
+    asyncio.run(do_setup())
+    upgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri, revision or "head")
 
 
 @admin_app.command("downgrade-database")
@@ -90,25 +96,31 @@ def downgrade_database(
     """
     Upgrade the database schema to the latest version.
     """
-    from sqlalchemy import create_engine
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import downgrade, get_current_revision
     from ..authn_database.alembic_constants import (
         ALEMBIC_DIR,
         ALEMBIC_INI_TEMPLATE_PATH,
     )
+    from ..authn_database.core import ALL_REVISIONS
 
-    engine = create_engine(database_uri)
-    redacted_url = engine.url._replace(password="[redacted]")
-    current_revision = get_current_revision(engine)
-    if current_revision is None:
-        # Create tables and stamp (alembic) revision.
-        typer.echo(
-            f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`.",
-            err=True,
-        )
-        raise typer.Abort()
-    downgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, engine.url, revision)
+    async def do_setup():
+        engine = create_async_engine(database_uri)
+        redacted_url = engine.url._replace(password="[redacted]")
+        current_revision = await get_current_revision(engine, ALL_REVISIONS)
+        if current_revision is None:
+            # Create tables and stamp (alembic) revision.
+            typer.echo(
+                f"Database {redacted_url} has not been initialized. Use `tiled admin initialize-database`.",
+                err=True,
+            )
+            raise typer.Abort()
+
+    asyncio.run(do_setup())
+    downgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri, revision)
 
 
 @admin_app.command("check-config")
