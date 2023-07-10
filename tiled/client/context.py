@@ -14,7 +14,6 @@ import httpx
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
-from .cache import Cache
 from .decoders import SUPPORTED_DECODERS
 from .transport import Transport
 from .utils import DEFAULT_TIMEOUT_PARAMS, MSGPACK_MIME_TYPE, handle_error
@@ -22,7 +21,6 @@ from .utils import DEFAULT_TIMEOUT_PARAMS, MSGPACK_MIME_TYPE, handle_error
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 PROMPT_FOR_REAUTHENTICATION = None
-TILED_CACHE_DIR = Path(os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled")))
 
 
 class Context:
@@ -50,6 +48,11 @@ class Context:
         # may be modified before Context instantiation.
         ACCEPT_ENCODING = ", ".join(
             [key for key in SUPPORTED_DECODERS.keys() if key != "identity"]
+        )
+        # Resolve this here, not at module scope, because the test suite
+        # injects TILED_CACHE_DIR env var to use a temporary directory.
+        TILED_CACHE_DIR = Path(
+            os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
         )
         headers.setdefault("accept-encoding", ACCEPT_ENCODING)
         # Set the User Agent to help the server fail informatively if the client
@@ -89,10 +92,7 @@ class Context:
         if timeout is None:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
         if cache is UNSET:
-            # TODO Detect filesystem of TILED_CACHE_DIR. If it is a networked filesystem
-            # use a temporary database instead.
-            filepath = TILED_CACHE_DIR / "http_response_cache.db"
-            cache = Cache(filepath=filepath)
+            cache = None
         if app is None:
             client = httpx.Client(
                 transport=Transport(cache=cache),
@@ -775,6 +775,11 @@ def _can_prompt():
 
 
 def _default_identity_filepath(api_uri):
+    # Resolve this here, not at module scope, because the test suite
+    # injects TILED_CACHE_DIR env var to use a temporary directory.
+    TILED_CACHE_DIR = Path(
+        os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+    )
     return Path(
         TILED_CACHE_DIR, "default_identities", urllib.parse.quote_plus(str(api_uri))
     )

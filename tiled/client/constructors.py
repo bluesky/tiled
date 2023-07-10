@@ -196,25 +196,7 @@ def from_profile(name, structure_clients=None, **kwargs):
         if isinstance(cache_config, collections.abc.Mapping):
             # All necessary validation has already been performed
             # in load_profiles().
-            ((key, value),) = cache_config.items()
-            # For back-compat, rename "available_bytes" to "capacity".
-            available_bytes = value.pop("available_bytes", None)
-            if available_bytes:
-                if "capacity" in value:
-                    raise ValueError(
-                        "Cannot specific both 'capacity' and its deprecated alias 'available_bytes'."
-                    )
-                value["capacity"] = available_bytes
-                import warnings
-
-                warnings.warn(
-                    "Profile specifies 'available_bytes'. Use new name 'capacity' instead. "
-                    "Support for the old name, 'available_bytes', will be removed in the future."
-                )
-            if key == "memory":
-                cache = Cache.in_memory(**value)
-            elif key == "disk":
-                cache = Cache.on_disk(**value)
+            cache = Cache(**cache_config)
         else:
             # Interpret this as a Cache object passed in directly.
             cache = cache_config

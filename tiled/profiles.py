@@ -103,12 +103,6 @@ def gather_profiles(paths, strict=True):
                                     f"ValidationError while parsing profile {profile_name} "
                                     f"in file {filepath!s}: {original_msg}"
                                 ) from validation_err
-                            if len(profile_content.get("cache", {})) > 1:
-                                raise ProfileError(
-                                    "The profile's 'cache' property contains "
-                                    f"{len(profile_content['cache'])} items: {list(profile_content['cache'])} "
-                                    "At most one is allowed."
-                                )
                 except Exception as err:
                     if strict:
                         raise

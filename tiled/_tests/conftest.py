@@ -9,7 +9,6 @@ import pytest_asyncio
 
 from .. import profiles
 from ..catalog import from_uri, in_memory
-from ..client import context
 from ..server.settings import get_settings
 from .utils import enter_password as utils_enter_password
 from .utils import temp_postgres
@@ -43,10 +42,9 @@ def set_tiled_cache_dir():
     if sys.platform.startswith("win") and sys.version_info >= (3, 10):
         kwargs["ignore_cleanup_errors"] = True
     with tempfile.TemporaryDirectory(**kwargs) as tmpdir:
-        original = context.TILED_CACHE_DIR
-        context.TILED_CACHE_DIR = Path(tmpdir)
+        os.environ["TILED_CACHE_DIR"] = str(tmpdir)
         yield
-        context.TILED_CACHE_DIR = original
+        del os.environ["TILED_CACHE_DIR"]
 
 
 @pytest.fixture

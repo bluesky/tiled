@@ -94,60 +94,43 @@ properties:
     type: object
     additionalProperties: false
     properties:
-      # These properties are mutually exclusive, but encoding this
-      # in jsonschema is complex and therefore in tension with the goal
-      # of this file stated at the top. The mutual exclusion *is* enforced,
-      # but in the Python code that parses the profiles, not here.
-      memory:
-        type: object
-        anyOf:
-          - required:
-            - capacity
-          - required:
-            - available_bytes  # deprecated alias for 'capacity'
-        properties:
-          capacity:
-            type: number
-            description: |
-              Maximum memory (in bytes) that the cache may consume.
+      filepath:
+        type: string
+        description: |
+          Location of cache file on disk.
+          Default location is `$XDG_CACHE_HOME/tiled/http_response_cache.db`.
+      capacity:
+        type: number
+        description: |
+          Maximum size (in bytes) that the cache may allocate for response bodies.
+          The total size of a cache may be slightly higher. Default is 500 MB.
 
-              For readability it is recommended to use `_` for thousands separators.
-              Example:
+          For readability it is recommended to use `_` for thousands separators.
+          Example:
 
-              ```yaml
-              available_bytes: 2_000_000_000  # 2GB
-              ```
+          ```yaml
+          capacity: 500_000_000  # 500 MB
+          ```
 
-          available_bytes:
-            type: number
-            description: Deprecated alias for "capacity"
-      disk:
-        type: object
-        required:
-          - path
-        properties:
-          path:
-            type: string
-            description: |
-              A directory will be created at this path if it does not yet exist.
-              It is safe to reuse an existing cache directory and to share a cache
-              directory between multiple processes.
-              available_bytes:
-          capacity:
-            type: number
-            description: |
-              Maximum storage space (in bytes) that the cache may consume.
+      max_item_size:
+        type: number
+        description: |
+          Maximum size (in bytes) of any individual cached response body.
+          This limit is designed to prevent one a couple very large responses from
+          using up the entire capacity.
 
-              For readability it is recommended to use `_` for thousands separators.
-              Example:
+          For readability it is recommended to use `_` for thousands separators.
+          Example:
 
-              ```yaml
-              available_bytes: 2_000_000_000  # 2GB
-              ```
+          ```yaml
+          capacity: 500_000  # 500 kB
+          ```
 
-          available_bytes:
-            type: number
-            description: Deprecated alias for "capacity"
+      readonly:
+        type: boolean
+        description: |
+          Open the cache in read-only mode.
+          Do not add, remove, or update contents.
   timeout:
     description: |
       Configure timeouts for the HTTP client.
