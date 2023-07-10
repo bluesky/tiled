@@ -432,7 +432,7 @@ async def create_session(
     session = orm.Session(
         principal_id=principal.id,
         expiration_time=utcnow() + settings.session_max_age,
-        state=state,
+        state=state or {},
     )
     db.add(session)
     await db.commit()
