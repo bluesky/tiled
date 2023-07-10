@@ -15,7 +15,7 @@ from ..server.schemas import (
     Revision,
     SortingItem,
 )
-from ..utils import NoteToClient
+from ..utils import Conflicts
 from . import orm
 from .utils import safe_path
 
@@ -97,7 +97,9 @@ class Node(NodeAttributes):
                 await db.execute(select(func.count(orm.Node.key)).where(is_child))
             ).scalar()
             if num_children:
-                raise NoteToClient("Cannot delete node that has children")
+                raise Conflicts(
+                    "Cannot delete container that is not empty. Delete contents first."
+                )
             for data_source in self.data_sources:
                 if data_source.management != Management.external:
                     # TODO Handle case where the same Asset is associated

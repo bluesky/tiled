@@ -545,8 +545,8 @@ class UnsupportedQueryType(TypeError):
     pass
 
 
-class NoteToClient(Exception):
-    "A generic way to pass an error message from server-side code to client"
+class Conflicts(Exception):
+    "Prompts the server to send 409 Conflicts with message"
     pass
 
 
