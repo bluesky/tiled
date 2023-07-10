@@ -27,7 +27,7 @@ client = from_profile("demo")
 $ tiled profile create --name demo https://tiled-demo.blueskyproject.io
 ```
 
-## Review profiles
+## Review and edit profiles
 
 To list the names of the profiles on your system, along with the path to the
 file where each one is defined...
@@ -42,6 +42,12 @@ To show the contents of a profile...
 $ tiled profile show PROFILE_NAME
 ```
 
+To open a profile in your default plain text editor...
+
+```
+$ tiled profile edit PROFILE_NAME
+```
+
 See `$ tiled profile --help` for more commands.
 
 ## Advanced Options
@@ -49,7 +55,7 @@ See `$ tiled profile --help` for more commands.
 You can edit the profile in a text editor to apply more advanced options.
 See {doc}`../reference/client-profiles` for a comprehensive reference.
 
-## Where are profiles kept?
+## Where are profiles stored?
 
 Profiles are specified in YAML files located in any of several locations,
 including:

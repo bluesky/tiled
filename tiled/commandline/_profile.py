@@ -55,6 +55,37 @@ def profile_show(profile_name: str):
     print(yaml.dump(content), file=sys.stdout)
 
 
+@profile_app.command("edit")
+def profile_edit(profile_name: str):
+    "Show the content of a profile."
+    import sys
+
+    from ..profiles import load_profiles
+
+    profiles = load_profiles()
+    try:
+        filepath, content = profiles[profile_name]
+    except KeyError:
+        typer.echo(
+            f"The profile {profile_name!r} could not be found. "
+            "Use tiled profile list to see profile names.",
+            err=True,
+        )
+        raise typer.Abort()
+    print(f"Opening {filepath} in default text editor...", file=sys.stderr)
+
+    import os
+    import platform
+    import subprocess
+
+    if platform.system() == "Darwin":
+        subprocess.call(("open", filepath))
+    elif platform.system() == "Windows":
+        os.startfile(filepath)
+    else:
+        subprocess.call(("xdg-open", filepath))
+
+
 @profile_app.command("create")
 def create(
     uri: str = typer.Argument(..., help="URI 'http[s]://...'"),
