@@ -113,6 +113,11 @@ def serve_catalog(
         "--temp",
         help="Make a new catalog in a temporary directory.",
     ),
+    init: bool = typer.Option(
+        False,
+        "--init",
+        help="Initialize a new catalog database.",
+    ),
     public: bool = typer.Option(
         False,
         "--public",
@@ -240,6 +245,7 @@ or use an existing one:
         database,
         writable_storage=write,
         readable_storage=read,
+        init=init,
         **tree_kwargs,
     )
     web_app = build_app(

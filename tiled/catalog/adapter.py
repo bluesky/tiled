@@ -4,6 +4,7 @@ import importlib
 import operator
 import os
 import re
+import sys
 import uuid
 from functools import partial
 from pathlib import Path
@@ -809,13 +810,27 @@ def in_memory(
 
 def from_uri(
     uri,
+    *,
     metadata=None,
     specs=None,
     access_policy=None,
     writable_storage=None,
     readable_storage=None,
+    init_if_empty=False,
     echo=DEFAULT_ECHO,
 ):
+    if init_if_empty:
+        # The alembic stamping can only be does synchronously.
+        # The cleanest option available is to start a subprocess
+        # because SQLite is allergic to threads.
+        import subprocess
+
+        # TODO Check if catalog exists.
+        subprocess.run(
+            [sys.executable, "-m", "tiled", "catalog", "init", uri],
+            capture_output=True,
+            check=True,
+        )
     engine = create_async_engine(uri, echo=echo)
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)

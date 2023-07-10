@@ -7,5 +7,14 @@ trees:
   - path: /
     tree: catalog
     args:
-      uri: /storage/catalog.db
+      uri: sqlite+aiosqlite:////storage/catalog.db
       writable_storage: /storage/data
+      # This creates the database if it does not exist. This is convenient, but in
+      # a horizonally-scaled deployment, this can be a race condition and multiple
+      # containers may simultanouesly attempt to create the database.
+      # If that is a problem, set this to false, and run:
+      #
+      # tiled catalog init URI
+      #
+      # separately.
+      init_if_empty: true
