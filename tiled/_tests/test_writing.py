@@ -346,3 +346,31 @@ async def test_delete(tree):
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
             key="x",
         )
+
+
+@pytest.mark.asyncio
+async def test_delete_non_empty_node(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        a = client.create_container("a")
+        b = a.create_container("b")
+        c = b.create_container("c")
+        d = c.create_container("d")
+
+        # Cannot delete non-empty nodes
+        assert "a" in client
+        with fail_with_status_code(409):
+            client.delete("a")
+        assert "b" in a
+        with fail_with_status_code(409):
+            a.delete("b")
+        assert "c" in b
+        with fail_with_status_code(409):
+            b.delete("c")
+        assert "d" in c
+        assert not list(d)  # leaf is empty
+        # Delete from the bottom up.
+        c.delete("d")
+        b.delete("c")
+        a.delete("b")
+        client.delete("a")

@@ -25,7 +25,7 @@ from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
-from ..utils import SHARE_TILED_PATH, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import validation_registry as default_validation_registry
 from . import schemas
 from .authentication import get_current_principal
@@ -271,8 +271,15 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             async def tiled_ui_settings():
                 return ui_settings
 
+    @app.exception_handler(Conflicts)
+    async def conflicts_exception_handler(request: Request, exc: Conflicts):
+        message = exc.args[0]
+        return JSONResponse(status_code=409, content={"detail": message})
+
     @app.exception_handler(UnsupportedQueryType)
-    async def unicorn_exception_handler(request: Request, exc: UnsupportedQueryType):
+    async def unsupported_query_type_exception_handler(
+        request: Request, exc: UnsupportedQueryType
+    ):
         query_type = exc.args[0]
         return JSONResponse(
             status_code=400,

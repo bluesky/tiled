@@ -545,6 +545,11 @@ class UnsupportedQueryType(TypeError):
     pass
 
 
+class Conflicts(Exception):
+    "Prompts the server to send 409 Conflicts with message"
+    pass
+
+
 # Arrow obtained an official MIME type 2021-06-23.
 # https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
 APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"
