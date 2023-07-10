@@ -22,7 +22,7 @@ tree = MapAdapter(
 @pytest.fixture
 def client():
     app = build_app(tree)
-    with Context.from_app(app) as context:
+    with Context.from_app(app, cache=Cache()) as context:
         yield from_context(context)
 
 

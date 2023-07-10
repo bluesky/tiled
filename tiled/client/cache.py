@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import threading
 import typing as tp
@@ -6,6 +7,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
+import appdirs
 import httpx
 
 from .utils import TiledResponse
@@ -147,11 +149,20 @@ def _prepare_database(filepath, readonly):
 class Cache:
     def __init__(
         self,
-        filepath,
+        filepath=None,
         capacity=500_000_000,
         max_item_size=500_000,
         readonly=False,
     ):
+        if filepath is None:
+            # Resolve this here, not at module scope, because the test suite
+            # injects TILED_CACHE_DIR env var to use a temporary directory.
+            TILED_CACHE_DIR = Path(
+                os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+            )
+            # TODO Detect filesystem of TILED_CACHE_DIR. If it is a networked filesystem
+            # use a temporary database instead.
+            filepath = TILED_CACHE_DIR / "http_response_cache.db"
         if capacity <= max_item_size:
             raise ValueError("capacity must be greater than max_item_size")
         self._capacity = capacity
@@ -160,6 +171,9 @@ class Cache:
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
         self._conn = _prepare_database(filepath, readonly)
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {str(self._filepath)!r}>"
 
     def write_safe(self):
         """
@@ -215,6 +229,10 @@ class Cache:
         """
         if self.readonly:
             raise RuntimeError("Cannot clear read-only cache")
+        if not self.write_safe():
+            raise RuntimeError(
+                "Cannot clear cache from a different thread than the one it was created on"
+            )
         with closing(self._conn.cursor()) as cur:
             cur.execute("DELETE FROM responses")
             self._conn.commit()
