@@ -545,6 +545,11 @@ class UnsupportedQueryType(TypeError):
     pass
 
 
+class NoteToClient(Exception):
+    "A generic way to pass an error message from server-side code to client"
+    pass
+
+
 # Arrow obtained an official MIME type 2021-06-23.
 # https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
 APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"
