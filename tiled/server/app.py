@@ -274,7 +274,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     @app.exception_handler(Conflicts)
     async def conflicts_exception_handler(request: Request, exc: Conflicts):
         message = exc.args[0]
-        return JSONResponse(status_code=400, content={"detail": message})
+        return JSONResponse(status_code=409, content={"detail": message})
 
     @app.exception_handler(UnsupportedQueryType)
     async def unsupported_query_type_exception_handler(

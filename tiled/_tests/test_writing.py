@@ -359,13 +359,13 @@ async def test_delete_non_empty_node(tree):
 
         # Cannot delete non-empty nodes
         assert "a" in client
-        with pytest.raises(Exception):
+        with fail_with_status_code(409):
             client.delete("a")
         assert "b" in a
-        with pytest.raises(Exception):
+        with fail_with_status_code(409):
             a.delete("b")
         assert "c" in b
-        with pytest.raises(Exception):
+        with fail_with_status_code(409):
             b.delete("c")
         assert "d" in c
         assert not list(d)  # leaf is empty
