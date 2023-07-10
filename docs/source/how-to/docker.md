@@ -4,62 +4,60 @@ To run tiled using docker we must first obtain a docker image containing a tiled
 To do this run
 
 ```
-docker pull ghcr.io/bluesky/tiled:main
+docker pull ghcr.io/bluesky/tiled:latest
 ```
 
-In this example we will use the docker image to serve a directory of files as explained [here](../tutorials/serving-files.md).
+It is best practice to use a specific tag instead of `latest`.
+See the [list of tiled image versions on GitHub](https://github.com/bluesky/tiled/pkgs/container/tiled)
+for tags.
 
-First generate a directory of example files using a utility provided by Tiled.
+
+## Example: A writable catalog
 
 ```
-python -m tiled.examples.generate_files example_files/
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  ghcr.io/bluesky/tiled:latest
 ```
 
-The docker container runs tiled via [gunicorn](https://gunicorn.org/) which provides horizontal scaling over workers.
-Because of this we cannot configure tiled using commandline arguments and must specify a config file.
+**The data and database are inside the container and will be deleted when the
+container stops running.** Read on to persist it.
 
-Take the following server configuration below:
-```yaml
-# config.yml
-trees:
-  - path: /
-    tree: tiled.adapters.files:DirectoryAdapter.from_directory
-    args:
-      directory: "example_files"
-authentication:
-  allow_anonymous_access: true
-  single_user_api_key: SECRET
-```
-and serve it using the docker container
-```
-docker run --rm -p 8000:8000 \
-  --mount type=bind,source="$(pwd)",target=/deploy \
-  --env TILED_CONFIG=/deploy/config.yml \
-  ghcr.io/bluesky/tiled:main
-```
-Note that we make the data and the configuration file available to the
-container via bind mounds and point tiled to the configuration file using the
-`TILED_CONFIG` environment variable.
-We must supply the `single_user_api_key` in the configuration so that all
-workers use the same key.
+## Example: A persistent writable catalog
 
-This invocation can be simplified by writing a `docker-compose.yml` file.
-
-```yaml
-# docker-compose.yml
-
-version: "3.2" # higher config versions may also work; lower will not
-services:
-  tiled-server:
-    image: ghcr.io/bluesky/tiled:main
-    volumes:
-      - type: bind
-        source: .
-        target: /deploy
-    environment:
-      - TILED_CONFIG=/deploy/config.yml
-    ports:
-      - 8000:8000
 ```
+mkdir storage/
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./storage:/storage ghcr.io/bluesky/tiled:latest
+```
+
+## Example: Serve a directory of existing files
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./files:/files:ro ghcr.io/bluesky/tiled:latest \
+  tiled serve directory --host 0.0.0.0 /files
+```
+
+## Example: Custom configuration
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./config:/deploy/config:ro
+  tiled serve directory --host 0.0.0.0 /files
+```
+
+You may need to mount additional volumes as well.
+
+## Example: Run a dashboard with metrics.
+
+See the file `docker-compose.yml` in the Tiled repository root.
 
 With this file the tiled server can be brought up by simply running `docker-compose up`.

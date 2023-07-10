@@ -1,0 +1,11 @@
+authentication:
+  # The default is false. Set to true to enable any HTTP client that can
+  # connect to _read_. An API key is still required to write.
+  allow_anonymous_access: false
+  single_user_api_key: ${TILED_SINGLE_USER_API_KEY}
+trees:
+  - path: /
+    tree: catalog
+    args:
+      uri: /storage/catalog.db
+      writable_storage: /storage/data

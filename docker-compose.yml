@@ -2,12 +2,7 @@ version: "3.2"
 services:
   tiled:
     image: ghcr.io/bluesky/tiled:v0.1.0a96
-    volumes:
-      - type: bind
-        source: ./example_configs/
-        target: /deploy
     environment:
-      - TILED_CONFIG=/deploy/small_single_user_demo.yml
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
     ports:
       - 8000:8000

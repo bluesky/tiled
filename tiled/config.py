@@ -104,7 +104,10 @@ def construct_build_app_kwargs(
         else:
             root_access_policy = None
         # TODO Enable entrypoint to extend aliases?
-        tree_aliases = {"files": "tiled.adapters.files:DirectoryAdapter.from_directory"}
+        tree_aliases = {
+            "files": "tiled.adapters.files:DirectoryAdapter.from_directory",
+            "catalog": "tiled.catalog:from_uri",
+        }
         trees = {}
         for item in config.get("trees", []):
             access_control = item.get("access_control", {}) or {}
