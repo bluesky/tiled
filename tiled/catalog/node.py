@@ -91,6 +91,12 @@ class Node(NodeAttributes):
 
     async def delete(self):
         async with self._context.session() as db:
+            is_child = orm.Node.ancestors == self.ancestors + [self.key]
+            num_children = (
+                await db.execute(select(func.count(orm.Node.key)).where(is_child))
+            ).scalar()
+            if num_children:
+                raise NotImplementedError("Cannot delete node that has children")
             for data_source in self.data_sources:
                 if data_source.management != Management.external:
                     # TODO Handle case where the same Asset is associated
