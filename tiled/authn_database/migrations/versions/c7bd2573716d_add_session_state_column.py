@@ -5,11 +5,10 @@ Revises: 4a9dfaba4a98
 Create Date: 2023-07-10 13:57:12.476131
 
 """
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from alembic import op
 
-from tiled.authn_database.orm import Session, JSONVariant
+from tiled.authn_database.orm import JSONVariant, Session
 
 # revision identifiers, used by Alembic.
 revision = "c7bd2573716d"

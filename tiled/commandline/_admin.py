@@ -62,6 +62,7 @@ def upgrade_database(
     Upgrade the database schema to the latest version.
     """
     import asyncio
+
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import get_current_revision, upgrade
