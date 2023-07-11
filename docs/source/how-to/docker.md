@@ -1,7 +1,6 @@
 # Run Tiled using Docker
 
-To run tiled using docker we must first obtain a docker image containing a tiled installation.
-To do this run
+Download the Tiled container image.
 
 ```
 docker pull ghcr.io/bluesky/tiled:latest
@@ -21,13 +20,17 @@ docker run \
   ghcr.io/bluesky/tiled:latest
 ```
 
-**The data and database are inside the container and will be deleted when the
-container stops running.** Read on to persist it.
+**The data and database are inside the container and will not persist outside
+it.** Read on to persist it.
 
 ## Example: A persistent writable catalog
 
+We will mount a local directory, which will be used to hold uploaded data and #
+a (SQLite) database to index the metadata.
+
 ```
 mkdir storage/
+
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \

@@ -48,9 +48,9 @@ def init(
     if not re.compile("^[a-z0-1+]+.*$").match(uri):
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
-    engine = create_async_engine(uri)
 
     async def do_setup():
+        engine = create_async_engine(uri)
         redacted_url = engine.url._replace(password="[redacted]")
         try:
             await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
@@ -67,8 +67,9 @@ def init(
                 typer.echo(
                     f"Database at {redacted_url} is already initialized.", err=True
                 )
-            raise typer.Abort()
-        await engine.dispose()
+                raise typer.Abort()
+        finally:
+            await engine.dispose()
 
     asyncio.run(do_setup())
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, uri)
