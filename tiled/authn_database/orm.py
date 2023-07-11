@@ -2,6 +2,7 @@ import json
 import uuid as uuid_module
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
@@ -12,12 +13,16 @@ from sqlalchemy import (
     Table,
     Unicode,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
 
 from ..server.schemas import PrincipalType
 from .base import Base
+
+# Use JSON with SQLite and JSONB with PostgreSQL.
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
 class JSONList(TypeDecorator):
@@ -201,7 +206,8 @@ class Session(Timestamped, Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
-
+    # State allows for custom  authenticator information to be stored in the session.
+    state = Column(JSONVariant, nullable=False)
     principal = relationship("Principal", back_populates="sessions", lazy="joined")
 
 

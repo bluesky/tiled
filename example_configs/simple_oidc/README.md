@@ -8,11 +8,12 @@ use in production.**
    follows.
 
 ```
-docker run --rm -p 9000:9000 -v $(pwd):/config -e CONFIG_FILE=/config/oidc_provider_config.json -e USERS_FILE=/config/users.json qlik/simple-oidc-provider:0.2.4
+docker run --rm -p 9000:9000 -v $(pwd):/config -e CONFIG_FILE=/config/oidc_provider_config.json -e USERS_FILE=/config/users.json docker.io/qlik/simple-oidc-provider:0.2.4
 ```
 
-2. From a web browser or commandline, access `http://localhost:9000`. These
-   contain public keys which _reset every time the container is (re)started_.
+2. From a web browser or commandline, access
+   `http://localhost:9000/certs`. This contains
+   public keys which _reset every time the container is (re)started_.
    Fill them into the Tiled configuration in this directory, `config.yml`,
    under `public_keys:`.
 

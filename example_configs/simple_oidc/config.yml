@@ -1,0 +1,30 @@
+# Must set environment variables:
+# - OIDC_CLIENT_ID
+# - OIDC_CLIENT_SECRET
+# - OIDC_BASE_URL (e.g. http://localhost:9000)
+# and update 'public_keys' section below to match values at http://localhost:9000/certs
+#
+authentication:
+  providers:
+  - provider: simple_oidc
+    authenticator: tiled.authenticators:OIDCAuthenticator
+    args:
+      # These values come from https://orcid.org/developer-tools
+      client_id: ${OIDC_CLIENT_ID}
+      client_secret: ${OIDC_CLIENT_SECRET}
+      # These values come from https://orcid.org/.well-known/openid-configuration
+      # Obtain them directly from ORCID. They may change over time.
+      token_uri: "${OIDC_BASE_URL}/token"
+      authorization_endpoint: "${OIDC_BASE_URL}/auth"
+      public_keys:
+        - kty: "RSA"
+          e: "AQAB"
+          kid: "<Enter kid value from simple oidc web page http://localhost:9000/certs>"
+          n: "<Enger n from simple oidc web page http://localhost:9000/certs>"
+          alg: RS256
+      confirmation_message: "You have logged in with Simple OIDC as {id}."
+trees:
+ # Just some arbitrary example data...
+ # The point of this example is the authenticaiton above.
+ - tree: tiled.examples.generated_minimal:tree
+   path: /

@@ -1,0 +1,9 @@
+authentication:
+  providers:
+  - provider: example
+    authenticator: custom:Authenticator
+trees:
+- tree: custom:Adapter
+  path: /
+  args:
+    base_url: https://example.com
