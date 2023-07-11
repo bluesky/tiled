@@ -127,6 +127,8 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
+        if isinstance(readable_storage, str):
+            raise ValueError("readable_storage should be a list of paths, not a path")
         readable_storage = readable_storage or []
         if writable_storage:
             writable_storage = ensure_uri(str(writable_storage))
@@ -137,7 +139,7 @@ class Context:
             # If it is writable, it is automatically also readable.
             readable_storage.append(writable_storage)
         self.writable_storage = writable_storage
-        self.readable_storage = readable_storage
+        self.readable_storage = [ensure_uri(path) for path in readable_storage]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
         if mimetype_detection_hook is not None:
@@ -705,6 +707,8 @@ def _get_value(value, type):
 
 def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict and base64-encode binary values."
+    if structure is None:
+        return None
     structure = structure.dict()
     if structure_family == StructureFamily.dataframe:
         structure["micro"]["meta"] = base64.b64encode(

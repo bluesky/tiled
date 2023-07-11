@@ -29,9 +29,11 @@ def ensure_uri(uri_or_path):
     if not SCHEME_PATTERN.match(str(uri_or_path)):
         # Interpret this as a filepath.
         path = uri_or_path
-        uri_str = parse.urlunparse(("file", "localhost", str(path), "", "", None))
+        uri_str = parse.urlunparse(
+            ("file", "localhost", str(Path(path).absolute()), "", "", None)
+        )
     else:
-        # Innterpret this as a URI.
+        # Interpret this as a URI.
         uri_str = uri_or_path
     uri = httpx.URL(uri_str)
     # Ensure that, if the scheme is file, it meets the techincal standard for

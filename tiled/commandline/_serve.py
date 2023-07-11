@@ -5,6 +5,9 @@ import typer
 
 serve_app = typer.Typer()
 
+SQLITE_CATALOG_FILENAME = "catalog.db"
+DATA_SUBDIRECTORY = "data"
+
 
 @serve_app.command("directory")
 def serve_directory(
@@ -65,7 +68,34 @@ def serve_directory(
     ),
 ):
     "Serve a Tree instance from a directory of files."
-    from ..adapters.files import DirectoryAdapter
+    import tempfile
+
+    temp_directory = Path(tempfile.TemporaryDirectory().name)
+    temp_directory.mkdir()
+    typer.echo(
+        f"Creating catalog database at {temp_directory / SQLITE_CATALOG_FILENAME}",
+        err=True,
+    )
+    database = f"sqlite+aiosqlite:///{Path(temp_directory, SQLITE_CATALOG_FILENAME)}"
+
+    # Because this is a tempfile we know this is a fresh database and we do not
+    # need to check its current state.
+    # We _will_ go ahead and stamp it with a revision because it is possible the
+    # user will copy it into a permanent location.
+
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from ..alembic_utils import stamp_head
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import initialize_database
+
+    engine = create_async_engine(database)
+    asyncio.run(initialize_database(engine))
+    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
+
+    from ..catalog import from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     tree_kwargs = {}
@@ -81,9 +111,19 @@ def serve_directory(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    tree = DirectoryAdapter.from_directory(directory, **tree_kwargs)
+    catalog_adapter = from_uri(database, readable_storage=[directory], **tree_kwargs)
+
+    from ..catalog.register import walk
+
+    typer.echo(f"Indexing {directory}...")
+    asyncio.run(walk(catalog_adapter, directory))
+
+    typer.echo("Indexing complete. Starting server...")
     web_app = build_app(
-        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+        catalog_adapter,
+        {"allow_anonymous_access": public},
+        server_settings,
+        scalable=scalable,
     )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
@@ -176,8 +216,6 @@ def serve_catalog(
 
         directory = Path(tempfile.TemporaryDirectory().name)
         directory.mkdir()
-        SQLITE_CATALOG_FILENAME = "catalog.db"
-        DATA_SUBDIRECTORY = "data"
         typer.echo(
             f"Creating catalog database at {directory / SQLITE_CATALOG_FILENAME}",
             err=True,
