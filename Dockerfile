@@ -47,6 +47,10 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 
 WORKDIR /deploy
+RUN mkdir /deploy/config
+RUN mkdir -p /storage
+COPY ./example_configs/single_catalog_single_user.yml /deploy/config
+ENV TILED_CONFIG=/deploy/config
 
 EXPOSE 8000
 

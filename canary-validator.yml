@@ -9,30 +9,25 @@ apiVersion: container-canary.nvidia.com/v2
 kind: Validator
 name: tiled
 description: Validate that Tiled container image is operational.
-env: []
+env:
+ - name: TILED_SINGLE_USER_API_KEY
+   value: secret
 ports:
  - port: 8000
    protocol: TCP
 volumes: []
-command:
-  - tiled
-  - serve
-  - catalog
-  - --temp
-  - --host
-  - 0.0.0.0
 checks:
  - name: http
    description: Exposes an HTTP interface on port 8000
    probe:
      httpGet:
-       path: /api/v1
+       path: /
        port: 8000
      initialDelaySeconds: 5
      timeoutSeconds: 10
      failureThreshold: 3
  - name: http
-   description: Serves a REST API at /api/v1
+   description: Serves a REST API with a public endpoint /api/v1
    probe:
      httpGet:
        path: /api/v1
@@ -40,6 +35,18 @@ checks:
      initialDelaySeconds: 5
      timeoutSeconds: 10
      failureThreshold: 3
+ - name: http
+   description: Serves a REST API with an authenticated endpoint /api/v1/search
+   probe:
+     httpGet:
+       path: /api/v1
+       port: 8000
+     initialDelaySeconds: 5
+     timeoutSeconds: 10
+     failureThreshold: 3
+     httpHeaders:
+      - name: Authorization
+        value: Apikey secret
  - name: http
    description: Serves a UI at /ui/browse
    probe:
@@ -49,3 +56,6 @@ checks:
      initialDelaySeconds: 5
      timeoutSeconds: 10
      failureThreshold: 3
+     httpHeaders:
+      - name: Authorization
+        value: Apikey secret

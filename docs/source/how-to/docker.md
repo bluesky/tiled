@@ -1,65 +1,88 @@
-# Run Tiled using Docker
+# Run Tiled Server in a Container
 
-To run tiled using docker we must first obtain a docker image containing a tiled installation.
-To do this run
+There is an official Tiled container image for use with
+[Docker](https://www.docker.com/) or [podman](https://podman.io/).
 
-```
-docker pull ghcr.io/bluesky/tiled:main
-```
-
-In this example we will use the docker image to serve a directory of files as explained [here](../tutorials/serving-files.md).
-
-First generate a directory of example files using a utility provided by Tiled.
+Download the Tiled container image.
 
 ```
-python -m tiled.examples.generate_files example_files/
+docker pull ghcr.io/bluesky/tiled:latest
 ```
 
-The docker container runs tiled via [gunicorn](https://gunicorn.org/) which provides horizontal scaling over workers.
-Because of this we cannot configure tiled using commandline arguments and must specify a config file.
+It is best practice to use a specific tag instead of `latest`.
+See the [list of tiled image versions on GitHub](https://github.com/bluesky/tiled/pkgs/container/tiled)
+for tags.
 
-Take the following server configuration below:
-```yaml
-# config.yml
-trees:
-  - path: /
-    tree: tiled.adapters.files:DirectoryAdapter.from_directory
-    args:
-      directory: "example_files"
-authentication:
-  allow_anonymous_access: true
-  single_user_api_key: SECRET
+
+## Example: A writable catalog
+
 ```
-and serve it using the docker container
-```
-docker run --rm -p 8000:8000 \
-  --mount type=bind,source="$(pwd)",target=/deploy \
-  --env TILED_CONFIG=/deploy/config.yml \
-  ghcr.io/bluesky/tiled:main
-```
-Note that we make the data and the configuration file available to the
-container via bind mounds and point tiled to the configuration file using the
-`TILED_CONFIG` environment variable.
-We must supply the `single_user_api_key` in the configuration so that all
-workers use the same key.
-
-This invocation can be simplified by writing a `docker-compose.yml` file.
-
-```yaml
-# docker-compose.yml
-
-version: "3.2" # higher config versions may also work; lower will not
-services:
-  tiled-server:
-    image: ghcr.io/bluesky/tiled:main
-    volumes:
-      - type: bind
-        source: .
-        target: /deploy
-    environment:
-      - TILED_CONFIG=/deploy/config.yml
-    ports:
-      - 8000:8000
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  ghcr.io/bluesky/tiled:latest
 ```
 
-With this file the tiled server can be brought up by simply running `docker-compose up`.
+**The data and database are inside the container and will not persist outside
+it.** Read on to persist it.
+
+## Example: A persistent writable catalog
+
+We will create and mount a local directory, `./storage` which will be used to
+hold uploaded data and # a (SQLite) database to index the metadata.
+
+```
+mkdir storage/
+
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./storage:/storage ghcr.io/bluesky/tiled:latest
+```
+
+## Example: Serve a directory of existing files
+
+We will point Tiled at a (read-only) directory of files and ask it to crawl and
+serve them. If you don't have scientific data files at hand to try this with, you can
+quickly generate some with:
+
+```
+# Optional: Generate sample files... TIFF, Excel, HDF5, etc.
+python -m tiled.examples.generate_files files/
+```
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./files:/files:ro ghcr.io/bluesky/tiled:latest \
+  tiled serve directory --host 0.0.0.0 /files
+```
+
+## Example: Custom configuration
+
+There are configuration examples locate in the directory `example_configs`
+under the Tiled repository root. The container image has one in particular,
+`single_user_single_catalog.yml`, copied into the container under
+`/deploy/config/`. Override it by mounting a local directory an
+`/deploy/config` as shown:
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./config:/deploy/config:ro
+```
+
+You may need to mount additional volumes as well.
+
+## Example: Run Tiled with a dashboard of metrics
+
+See {doc}`../how-to/metrics`.
+
+## Next Steps
+
+See {doc}`../explanations/security` and {doc}`../explanations/access-control`
+for examples addressing authentication and authorization.
+
+See {doc}`../reference/service-configuration` for a comprehensive reference.
