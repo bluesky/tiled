@@ -165,7 +165,7 @@ async def _walk(
 ):
     files = []
     subdirectories = []
-    logger.info("Walking %s", path)
+    logger.info("  Walking '%s'", path)
     for item in path.iterdir():
         if item.is_dir():
             subdirectories.append(item)
@@ -176,18 +176,22 @@ async def _walk(
             file, mimetypes_by_file_ext, mimetype_detection_hook
         )
         if mimetype is None:
-            logger.info("Could not resolve mimetype for %s", file)
+            logger.info("    SKIPPED: Could not resolve mimetype for '%s'", file)
             continue
-        logger.info("Resolved mimetype %s for %s", mimetype, file)
         if mimetype not in readers_by_mimetype:
-            logger.info("No adapter found for mimetype %s", mimetype)
+            logger.info(
+                "    SKIPPED: Resolved mimetype '%s' but no adapter found for '%s'",
+                mimetype,
+                file,
+            )
             continue
         adapter_factory = readers_by_mimetype[mimetype]
+        logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, file)
         try:
             adapter = adapter_factory(file)
             key = key_from_filename(file.name)
         except Exception:
-            logger.exception("Error adapting %s", file)
+            logger.exception("    SKIPPED: Error adapting '%s'", file)
         await catalog.create_node(
             key=key,
             structure_family=adapter.structure_family,
@@ -208,7 +212,7 @@ async def _walk(
             ],
         )
     for subdirectory in subdirectories:
-        key = key_from_filename(key)
+        key = key_from_filename(subdirectory.name)
         await catalog.create_node(
             structure_family=StructureFamily.container,
             metadata={},

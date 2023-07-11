@@ -241,6 +241,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # which must only return a result if 'a' is contained in the search results.
         if not isinstance(keys, tuple):
             keys = (keys,)
+        for key in keys:
+            raise TypeError("Containers can only be indexed strings")
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
