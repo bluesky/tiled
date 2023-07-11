@@ -11,7 +11,7 @@ name: tiled
 description: Validate that Tiled container image is operational.
 env:
  - name: TILED_SINGLE_USER_API_KEY
- - value: secret
+   value: secret
 ports:
  - port: 8000
    protocol: TCP
