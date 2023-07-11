@@ -1,0 +1,30 @@
+# Must set environment variables:
+# - OIDC_CLIENT_ID
+# - OIDC_CLIENT_SECRET
+# - OIDC_BASE_URL (e.g. http://localhost:9000)
+# and update 'public_keys' section below to match values at http://localhost:9000/certs
+#
+authentication:
+  providers:
+  - provider: simple_oidc
+    authenticator: tiled.authenticators:OIDCAuthenticator
+    args:
+      # These values come from https://orcid.org/developer-tools
+      client_id: ${OIDC_CLIENT_ID}
+      client_secret: ${OIDC_CLIENT_SECRET}
+      # These values come from https://orcid.org/.well-known/openid-configuration
+      # Obtain them directly from ORCID. They may change over time.
+      token_uri: "${OIDC_BASE_URL}/token"
+      authorization_endpoint: "${OIDC_BASE_URL}/auth"
+      public_keys:
+        - kty: "RSA"
+          e: "AQAB"
+          kid: "E4XC5wXCxI2TpmNVuYq_97Z14elH_BtIjp0Wx_Ktyyw"
+          n: "5CGXulzBOt_CuAq-F3COgA8x1GYgsewz-y_fFfcgmbWIVOCqCrvsqu48ee2ZkZacPFuslCndnYVfksVUJVTkc89NIMkIs6a029YGesIecTwMxsa0PSoimCdBaiPidjgU-IfRvvpANkRftrjp6oRhs5JUuw_6qUte0IHxznGyJnzxP6I8LRyuwR2Eep7l-OlQSv4LapPiEA16kZ6CtYFQpkrkThduLaGa09krt0-JmS55ht8TLdQOr5KP8xExkLv89daDnx4U2peQijDph2IsRoVLsg1GtbLJDnZPjqQrwpe5EDxoC1JjfeV4RV7HB6hf80npZGAbRj91dfzPpRxAPw"
+          alg: RS256
+      confirmation_message: "You have logged in with Simple OIDC as {id}."
+trees:
+ # Just some arbitrary example data...
+ # The point of this example is the authenticaiton above.
+ - tree: tiled.examples.generated_minimal:tree
+   path: /
