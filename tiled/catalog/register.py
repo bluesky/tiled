@@ -1,5 +1,6 @@
 import collections
 import importlib
+import logging
 import mimetypes
 from dataclasses import asdict
 from pathlib import Path
@@ -9,6 +10,8 @@ from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
 from ..utils import OneShotCachedMap, import_object
+
+logger = logging.getLogger(__name__)
 
 
 def strip_suffixes(filename):
@@ -162,6 +165,7 @@ async def _walk(
 ):
     files = []
     subdirectories = []
+    logger.info("Walking %s", path)
     for item in path.iterdir():
         if item.is_dir():
             subdirectories.append(item)
@@ -171,9 +175,19 @@ async def _walk(
         mimetype = resolve_mimetype(
             file, mimetypes_by_file_ext, mimetype_detection_hook
         )
+        if mimetype is None:
+            logger.info("Could not resolve mimetype for %s", file)
+            continue
+        logger.info("Resolved mimetype %s for %s", mimetype, file)
+        if mimetype not in readers_by_mimetype:
+            logger.info("No adapter found for mimetype %s", mimetype)
+            continue
         adapter_factory = readers_by_mimetype[mimetype]
-        adapter = adapter_factory(file)
-        key = key_from_filename(file.name)
+        try:
+            adapter = adapter_factory(file)
+            key = key_from_filename(file.name)
+        except Exception:
+            logger.exception("Error adapting %s", file)
         await catalog.create_node(
             key=key,
             structure_family=adapter.structure_family,

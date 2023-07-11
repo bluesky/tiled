@@ -113,9 +113,14 @@ def serve_directory(
         ] = object_cache_available_bytes
     catalog_adapter = from_uri(database, readable_storage=[directory], **tree_kwargs)
 
+    from logging import StreamHandler
+
+    from ..catalog.register import logger as register_logger
     from ..catalog.register import walk
 
     typer.echo(f"Indexing {directory}...")
+    register_logger.addHandler(StreamHandler())
+    register_logger.setLevel("INFO")
     asyncio.run(walk(catalog_adapter, directory))
 
     typer.echo("Indexing complete. Starting server...")
