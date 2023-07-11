@@ -413,9 +413,9 @@ class CatalogNodeAdapter(BaseAdapter):
                 kwargs["shape"] = data_source.structure.shape
                 kwargs["dims"] = data_source.structure.dims
             else:
-                raise NotImplementedError(node.structure_family)
+                pass
+            kwargs["access_policy"] = self.access_policy
             adapter = adapter_factory(*paths, **kwargs)
-            adapter.access_policy = self.access_policy  # HACK
             return adapter
         else:  # num_data_sources == 0
             if node.structure_family != StructureFamily.container:

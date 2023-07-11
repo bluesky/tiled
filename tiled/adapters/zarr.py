@@ -40,6 +40,7 @@ class ZarrAdapter(ArrayAdapter):
         dims=None,
         metadata=None,
         specs=None,
+        access_policy=None,
     ):
         array = zarr.open_array(str(directory), "r+")
         return cls(
@@ -49,6 +50,7 @@ class ZarrAdapter(ArrayAdapter):
             dims=dims,
             metadata=metadata,
             specs=specs,
+            access_policy=access_policy,
         )
 
     def _stencil(self):

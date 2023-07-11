@@ -11,7 +11,16 @@ class COOAdapter:
     structure_family = StructureFamily.sparse
 
     @classmethod
-    def from_arrays(cls, coords, data, shape, dims=None, metadata=None, specs=None):
+    def from_arrays(
+        cls,
+        coords,
+        data,
+        shape,
+        dims=None,
+        metadata=None,
+        specs=None,
+        access_policy=None,
+    ):
         """
         Simplest constructor. Single chunk from coords, data arrays.
         """
@@ -22,10 +31,11 @@ class COOAdapter:
             dims=dims,
             metadata=metadata,
             specs=specs,
+            access_policy=access_policy,
         )
 
     @classmethod
-    def from_coo(cls, coo, *, dims=None, metadata=None, specs=None):
+    def from_coo(cls, coo, *, dims=None, metadata=None, specs=None, access_policy=None):
         "Construct from sparse.COO object."
         return cls.from_arrays(
             coords=coo.coords,
@@ -34,6 +44,7 @@ class COOAdapter:
             dims=dims,
             metadata=metadata,
             specs=specs,
+            access_policy=access_policy,
         )
 
     @classmethod
@@ -46,6 +57,7 @@ class COOAdapter:
         dims=None,
         metadata=None,
         specs=None,
+        access_policy=None,
     ):
         """
         Construct from blocks with coords given in global reference frame.
@@ -65,6 +77,7 @@ class COOAdapter:
             dims=dims,
             metadata=metadata,
             specs=specs,
+            access_policy=access_policy,
         )
 
     def __init__(
@@ -76,6 +89,7 @@ class COOAdapter:
         dims=None,
         metadata=None,
         specs=None,
+        access_policy=None,
     ):
         """
         Construct from blocks with coords given in block-local reference frame.
@@ -86,6 +100,7 @@ class COOAdapter:
         self.dims = dims
         self.metadata = metadata or {}
         self.specs = specs or []
+        self.access_policy = access_policy
 
     def structure(self):
         return COOStructure(

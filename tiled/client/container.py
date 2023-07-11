@@ -242,7 +242,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if not isinstance(keys, tuple):
             keys = (keys,)
         for key in keys:
-            raise TypeError("Containers can only be indexed strings")
+            if not isinstance(key, str):
+                raise TypeError("Containers can only be indexed strings")
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
