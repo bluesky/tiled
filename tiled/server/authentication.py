@@ -451,7 +451,7 @@ async def create_session(
     return fully_loaded_session
 
 
-async def create_tokens_from_session(settings, db, session, provider, state_data: dict):
+async def create_tokens_from_session(settings, db, session, provider):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -460,6 +460,7 @@ async def create_tokens_from_session(settings, db, session, provider, state_data
         "sub": principal.uuid.hex,
         "sub_typ": principal.type,  # Why is this str and not Enum?
         "scp": list(set().union(*[role.scopes for role in principal.roles])),
+        "state": session.state,
         "ids": [
             {"id": identity.id, "idp": identity.provider}
             for identity in principal.identities
@@ -506,10 +507,16 @@ def build_auth_code_route(authenticator, provider):
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        username = await authenticator.authenticate(request)
-        if not username:
+        user_session_state = await authenticator.authenticate(request)
+        if not user_session_state:
             raise HTTPException(status_code=401, detail="Authentication failure")
-        session = await create_session(settings, db, provider, username)
+        session = await create_session(
+            settings,
+            db,
+            provider,
+            user_session_state.user_name,
+            user_session_state.state,
+        )
         tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
@@ -615,8 +622,8 @@ def build_device_code_user_code_submit_route(authenticator, provider):
                 },
                 status_code=401,
             )
-        username = await authenticator.authenticate(request)
-        if not username:
+        user_session_state = await authenticator.authenticate(request)
+        if not user_session_state:
             return templates.TemplateResponse(
                 "device_code_failure.html",
                 {
@@ -628,7 +635,13 @@ def build_device_code_user_code_submit_route(authenticator, provider):
                 },
                 status_code=401,
             )
-        session = await create_session(settings, db, provider, username)
+        session = await create_session(
+            settings,
+            db,
+            provider,
+            user_session_state.user_name,
+            user_session_state.state,
+        )
         pending_session.session_id = session.id
         db.add(pending_session)
         await db.commit()
@@ -707,9 +720,7 @@ def build_handle_credentials_route(
             user_session_state.user_name,
             state=user_session_state.state,
         )
-        tokens = await create_tokens_from_session(
-            settings, db, session, provider, state_data=user_session_state.state
-        )
+        tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
     return route
@@ -940,6 +951,7 @@ async def slide_session(refresh_token, settings, db):
         "sub": session.principal.uuid.hex,
         "sub_typ": session.principal.type,  # Why is this str and not Enum?
         "scp": list(set().union(*[role.scopes for role in session.principal.roles])),
+        "state": session.state,
         "ids": [
             {"id": identity.id, "idp": identity.provider}
             for identity in session.principal.identities
