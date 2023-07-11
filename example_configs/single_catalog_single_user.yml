@@ -17,4 +17,4 @@ trees:
       # tiled catalog init URI
       #
       # separately.
-      init_if_empty: true
+      init_if_not_exists: true

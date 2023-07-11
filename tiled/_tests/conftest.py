@@ -121,7 +121,7 @@ async def adapter(request, tmpdir):
             adapter = from_uri(
                 uri_with_database_name,
                 writable_storage=str(tmpdir),
-                init_if_empty=True,
+                init_if_not_exists=True,
             )
             yield adapter
             await adapter.shutdown()

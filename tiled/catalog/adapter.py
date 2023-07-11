@@ -816,10 +816,10 @@ def from_uri(
     access_policy=None,
     writable_storage=None,
     readable_storage=None,
-    init_if_empty=False,
+    init_if_not_exists=False,
     echo=DEFAULT_ECHO,
 ):
-    if init_if_empty:
+    if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
         # The cleanest option available is to start a subprocess
         # because SQLite is allergic to threads.
@@ -827,10 +827,13 @@ def from_uri(
 
         # TODO Check if catalog exists.
         subprocess.run(
-            [sys.executable, "-m", "tiled", "catalog", "init", uri],
+            [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri],
             capture_output=True,
             check=True,
         )
+    if not re.compile("^[a-z0-1+]+.*$").match(uri):
+        # Interpret URI as filepath.
+        uri = f"sqlite+aiosqlite:///{uri}"
     engine = create_async_engine(uri, echo=echo)
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
