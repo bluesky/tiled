@@ -82,7 +82,7 @@ DEFAULT_MIMETYPES_BY_FILE_EXT = {
 }
 
 
-def resolve_mimetype(path, mimetypes_by_file_ext=None, mimetype_detection_hook=None):
+def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
     # First, try to infer the mimetype from the file extension.
     # For compound suffixes like '.u1.strict_disabled.avif' (a real example)
     # consider in order:
