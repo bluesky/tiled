@@ -1,4 +1,7 @@
-# Run Tiled using Docker
+# Run Tiled Server in a Container
+
+There is an official Tiled container image for use with
+[Docker](https://www.docker.com/) or [podman](https://podman.io/).
 
 Download the Tiled container image.
 
@@ -25,8 +28,8 @@ it.** Read on to persist it.
 
 ## Example: A persistent writable catalog
 
-We will mount a local directory, which will be used to hold uploaded data and #
-a (SQLite) database to index the metadata.
+We will create and mount a local directory, `./storage` which will be used to
+hold uploaded data and # a (SQLite) database to index the metadata.
 
 ```
 mkdir storage/
@@ -38,6 +41,15 @@ docker run \
 ```
 
 ## Example: Serve a directory of existing files
+
+We will point Tiled at a (read-only) directory of files and ask it to crawl and
+serve them. If you don't have scientific data files at hand to try this with, you can
+quickly generate some with:
+
+```
+# Optional: Generate sample files... TIFF, Excel, HDF5, etc.
+python -m tiled.examples.generate_files files/
+```
 
 ```
 docker run \
@@ -64,8 +76,13 @@ docker run \
 
 You may need to mount additional volumes as well.
 
-## Example: Run a dashboard with metrics.
+## Example: Run Tiled with a dashboard of metrics
 
-See the file `docker-compose.yml` in the Tiled repository root.
+See {doc}`../how-to/metrics`.
 
-With this file the tiled server can be brought up by simply running `docker-compose up`.
+## Next Steps
+
+See {doc}`../explanations/security` and {doc}`../explanations/access-control`
+for examples addressing authentication and authorization.
+
+See {doc}`../reference/service-configuration` for a comprehensive reference.
