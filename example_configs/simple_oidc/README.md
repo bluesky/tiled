@@ -12,7 +12,7 @@ docker run --rm -p 9000:9000 -v $(pwd):/config -e CONFIG_FILE=/config/oidc_provi
 ```
 
 2. From a web browser or commandline, access
-   `http://localhost:9000/keys`. This contains
+   `http://localhost:9000/certs`. This contains
    public keys which _reset every time the container is (re)started_.
    Fill them into the Tiled configuration in this directory, `config.yml`,
    under `public_keys:`.
