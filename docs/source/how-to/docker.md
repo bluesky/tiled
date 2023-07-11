@@ -13,6 +13,22 @@ It is best practice to use a specific tag instead of `latest`.
 See the [list of tiled image versions on GitHub](https://github.com/bluesky/tiled/pkgs/container/tiled)
 for tags.
 
+```{note}
+
+Some of the examples below set an environment variable
+`TILED_SINGLE_USER_API_KEY` to `secret`, as a placeholder. For actual use, use
+a difficult-to-guess secret. Two equally good ways to generate a secure
+secret...
+
+With ``openssl``:
+
+    openssl rand -hex 32
+
+With ``python``:
+
+    python -c "import secrets; print(secrets.token_hex(32))"
+
+```
 
 ## Example: A writable catalog
 
