@@ -19,7 +19,8 @@ depends_on = None
 
 def upgrade():
     op.add_column(
-        Session.__tablename__, sa.Column("state", JSONVariant, nullable=False)
+        Session.__tablename__,
+        sa.Column("state", JSONVariant, nullable=False, server_default="{}"),
     )
 
 
