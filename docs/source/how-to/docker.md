@@ -49,12 +49,17 @@ docker run \
 
 ## Example: Custom configuration
 
+There are configuration examples locate in the directory `example_configs`
+under the Tiled repository root. The container image has one in particular,
+`single_user_single_catalog.yml`, copied into the container under
+`/deploy/config/`. Override it by mounting a local directory an
+`/deploy/config` as shown:
+
 ```
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
   -v ./config:/deploy/config:ro
-  tiled serve directory --host 0.0.0.0 /files
 ```
 
 You may need to mount additional volumes as well.
