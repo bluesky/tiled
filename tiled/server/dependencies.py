@@ -76,9 +76,10 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
         path_parts = [segment for segment in path.split("/") if segment]
         entry = root_tree
 
-        # if the entry/adapter can take a session state, pass it in
+        # If the entry/adapter can take a session state, pass it in.
+        # The entry/adapter may return itself or a different object.
         if hasattr(entry, "with_session_state") and session_state:
-            entry.with_session_state(session_state)
+            entry = entry.with_session_state(session_state)
         try:
             # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
             for i, segment in enumerate(path_parts):
