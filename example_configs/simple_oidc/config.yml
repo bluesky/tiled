@@ -19,8 +19,8 @@ authentication:
       public_keys:
         - kty: "RSA"
           e: "AQAB"
-          kid: "E4XC5wXCxI2TpmNVuYq_97Z14elH_BtIjp0Wx_Ktyyw"
-          n: "5CGXulzBOt_CuAq-F3COgA8x1GYgsewz-y_fFfcgmbWIVOCqCrvsqu48ee2ZkZacPFuslCndnYVfksVUJVTkc89NIMkIs6a029YGesIecTwMxsa0PSoimCdBaiPidjgU-IfRvvpANkRftrjp6oRhs5JUuw_6qUte0IHxznGyJnzxP6I8LRyuwR2Eep7l-OlQSv4LapPiEA16kZ6CtYFQpkrkThduLaGa09krt0-JmS55ht8TLdQOr5KP8xExkLv89daDnx4U2peQijDph2IsRoVLsg1GtbLJDnZPjqQrwpe5EDxoC1JjfeV4RV7HB6hf80npZGAbRj91dfzPpRxAPw"
+          kid: "<Enter kid value from simple oidc web page http://localhost:9000/certs>"
+          n: "<Enger n from simple oidc web page http://localhost:9000/certs>"
           alg: RS256
       confirmation_message: "You have logged in with Simple OIDC as {id}."
 trees:
