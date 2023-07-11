@@ -502,7 +502,7 @@ class CatalogNodeAdapter(BaseAdapter):
 
         return data
 
-    async def create_container(
+    async def create_node(
         self,
         structure_family,
         metadata,

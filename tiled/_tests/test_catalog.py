@@ -43,14 +43,14 @@ async def client(adapter):
 
 @pytest.mark.asyncio
 async def test_nested_node_creation(a):
-    await a.create_container(
+    await a.create_node(
         key="b",
         metadata={},
         structure_family=StructureFamily.container,
         specs=[],
     )
     b = await a.lookup_adapter(["b"])
-    await b.create_container(
+    await b.create_node(
         key="c",
         metadata={},
         structure_family=StructureFamily.container,
@@ -80,7 +80,7 @@ async def test_sorting(a):
     assert sorted(shuffled_letters) != shuffled_letters
 
     for letter, number in zip(shuffled_letters, shuffled_numbers):
-        await a.create_container(
+        await a.create_node(
             key=letter,
             metadata={"letter": letter, "number": number},
             structure_family=StructureFamily.container,
@@ -125,7 +125,7 @@ async def test_sorting(a):
 @pytest.mark.asyncio
 async def test_search(a):
     for letter, number in zip(string.ascii_lowercase[:5], range(5)):
-        await a.create_container(
+        await a.create_node(
             key=letter,
             metadata={"letter": letter, "number": number, "x": {"y": {"z": letter}}},
             structure_family=StructureFamily.container,
@@ -146,7 +146,7 @@ async def test_search(a):
     # Created nested nodes and search on them.
     d = await a.lookup_adapter(["d"])
     for letter, number in zip(string.ascii_lowercase[:5], range(10, 15)):
-        await d.create_container(
+        await d.create_node(
             key=letter,
             metadata={"letter": letter, "number": number},
             structure_family=StructureFamily.container,
@@ -159,7 +159,7 @@ async def test_search(a):
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(a):
     for i in range(10):
-        await a.create_container(
+        await a.create_node(
             metadata={
                 "number": i,
                 "number_as_string": str(i),
@@ -210,7 +210,7 @@ async def test_write_array_external(a, tmpdir):
     structure = asdict(
         ArrayStructure(macro=ad.macrostructure(), micro=ad.microstructure())
     )
-    await a.create_container(
+    await a.create_node(
         key="x",
         structure_family="array",
         metadata={},
@@ -237,7 +237,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
     structure = asdict(
         DataFrameStructure(macro=dfa.macrostructure(), micro=dfa.microstructure())
     )
-    await a.create_container(
+    await a.create_node(
         key="x",
         structure_family="dataframe",
         metadata={},
@@ -262,7 +262,7 @@ async def test_write_array_internal_direct(a, tmpdir):
     structure = asdict(
         ArrayStructure(macro=ad.macrostructure(), micro=ad.microstructure())
     )
-    await a.create_container(
+    await a.create_node(
         key="x",
         structure_family="array",
         metadata={},
