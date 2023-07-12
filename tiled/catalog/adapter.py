@@ -11,6 +11,7 @@ from functools import partial
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
+import anyio
 import httpx
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, select, text, type_coerce, update
@@ -379,9 +380,23 @@ class CatalogNodeAdapter(BaseAdapter):
             statement = statement.filter(condition)
         async with self.context.session() as db:
             node = (await db.execute(statement.filter(orm.Node.key == key))).scalar()
-            # TODO Do binary search or use some tricky JSON query to find where
-            # database stops and (for example) HDF5 file begins.
         if node is None:
+            # Maybe the node does not exist, or maybe we have jumped _inside_ a file
+            # whose internal contents are not indexed.
+
+            # TODO As a performance optimization, do binary search or use some
+            # tricky JSON query to find where database stops and (for example)
+            # HDF5 file begins.
+
+            for i in range(len(segments)):
+                catalog_adapter = await self.lookup_adapter(segments[:i])
+                if catalog_adapter.data_sources:
+                    adapter = catalog_adapter.get_adapter()
+                    for segment in segments[i:]:
+                        adapter = await anyio.to_thread.run_sync(adapter.get, segment)
+                        if adapter is None:
+                            break
+                    return adapter
             return None
         return type(self)(self.context, node, access_policy=self.access_policy)
 
@@ -653,6 +668,8 @@ class CatalogNodeAdapter(BaseAdapter):
         )
 
     async def keys_range(self, offset, limit):
+        if self.data_sources:
+            return self.get_adapter().keys()[offset : offset + limit]  # noqa: E203
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)
@@ -670,6 +687,8 @@ class CatalogNodeAdapter(BaseAdapter):
             )
 
     async def items_range(self, offset, limit):
+        if self.data_sources:
+            return self.get_adapter().items()[offset : offset + limit]  # noqa: E203
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)
