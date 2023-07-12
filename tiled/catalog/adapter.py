@@ -117,7 +117,7 @@ class RootNode:
         self.metadata_ = metadata or {}
         self.specs = [Spec.parse_obj(spec) for spec in specs or []]
         self.ancestors = []
-        self.id = None
+        self.key = None
         self.data_sources = None
 
 
@@ -277,7 +277,7 @@ class BaseAdapter:
         self.context = context
         self.engine = self.context.engine
         self.node = node
-        if node.id is None:
+        if node.key is None:
             # Special case for RootNode
             self.segments = []
         else:
@@ -289,7 +289,7 @@ class BaseAdapter:
         self.metadata = node.metadata_
         self.specs = [Spec.parse_obj(spec) for spec in node.specs]
         self.ancestors = node.ancestors
-        self.key = node.id
+        self.key = node.key
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
