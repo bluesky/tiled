@@ -33,10 +33,7 @@ from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import DataSource, Management, Revision, Spec
 from ..server.utils import ensure_awaitable
-from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
-from ..structures.dataframe import DataFrameStructure
-from ..structures.sparse import SparseStructure
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -340,31 +337,24 @@ class CatalogNodeAdapter(BaseAdapter):
 
     @property
     def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in self.node.data_sources]
+        return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
 
     def microstructure(self):
-        if self.node.data_sources:
-            assert len(self.node.data_sources) == 1  # more not yet implemented
-            model = STRUCTURES[self.node.structure_family]
-            return getattr(
-                model.from_json(self.node.data_sources[0].structure), "micro", None
-            )
+        if self.data_sources:
+            assert len(self.data_sources) == 1  # more not yet implemented
+            return getattr(self.data_sources[0].structure, "micro", None)
         return None
 
     def macrostructure(self):
         if self.node.data_sources:
-            assert len(self.node.data_sources) == 1  # more not yet implemented
-            model = STRUCTURES[self.node.structure_family]
-            return getattr(
-                model.from_json(self.node.data_sources[0].structure), "macro", None
-            )
+            assert len(self.data_sources) == 1  # more not yet implemented
+            return getattr(self.data_sources[0].structure, "macro", None)
         return None
 
     def structure(self):
-        if self.node.data_sources:
-            assert len(self.node.data_sources) == 1  # more not yet implemented
-            model = STRUCTURES[self.node.structure_family]
-            return model.from_json(self.node.data_sources[0].structure)
+        if self.data_sources:
+            assert len(self.data_sources) == 1  # more not yet implemented
+            return self.data_sources[0].structure
         return None
 
     async def async_len(self):
@@ -396,11 +386,11 @@ class CatalogNodeAdapter(BaseAdapter):
         return type(self)(self.context, node, access_policy=self.access_policy)
 
     def get_adapter(self):
-        num_data_sources = len(self.node.data_sources)
+        num_data_sources = len(self.data_sources)
         if num_data_sources > 1:
             raise NotImplementedError
         if num_data_sources == 1:
-            (data_source,) = self.node.data_sources
+            (data_source,) = self.data_sources
             adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
             data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
             for data_uri in data_uris:
@@ -431,28 +421,16 @@ class CatalogNodeAdapter(BaseAdapter):
             kwargs["metadata"] = self.node.metadata
             if self.node.structure_family == StructureFamily.array:
                 # kwargs["dtype"] = data_source.structure.micro.to_numpy_dtype()
-                kwargs["shape"] = ArrayStructure.from_json(
-                    data_source.structure
-                ).macro.shape
-                kwargs["chunks"] = ArrayStructure.from_json(
-                    data_source.structure
-                ).macro.chunks
-                kwargs["dims"] = ArrayStructure.from_json(
-                    data_source.structure
-                ).macro.dims
+                kwargs["shape"] = data_source.structure.macro.shape
+                kwargs["chunks"] = data_source.structure.macro.chunks
+                kwargs["dims"] = data_source.structure.macro.dims
             elif self.node.structure_family == StructureFamily.dataframe:
-                kwargs["meta"] = DataFrameStructure.from_json(
-                    data_source.structure
-                ).micro.meta
-                kwargs["divisions"] = DataFrameStructure.from_json(
-                    data_source.structure
-                ).micro.divisions
+                kwargs["meta"] = data_source.structure.micro.meta
+                kwargs["divisions"] = data_source.structure.micro.divisions
             elif self.node.structure_family == StructureFamily.sparse:
-                kwargs["chunks"] = SparseStructure.from_json(
-                    data_source.structure
-                ).chunks
-                kwargs["shape"] = SparseStructure.from_json(data_source.structure).shape
-                kwargs["dims"] = SparseStructure.from_json(data_source.structure).dims
+                kwargs["chunks"] = data_source.structure.chunks
+                kwargs["shape"] = data_source.structure.shape
+                kwargs["dims"] = data_source.structure.dims
             else:
                 pass
             kwargs["access_policy"] = self.access_policy
@@ -488,17 +466,17 @@ class CatalogNodeAdapter(BaseAdapter):
         )
 
     def search(self, query):
-        if self.node.data_sources:
+        if self.data_sources:
             return self.get_adapter().search(query)
         return self.query_registry(query, self)
 
     def sort(self, sorting):
-        if self.node.data_sources:
+        if self.data_sources:
             return self.get_adapter().sort(sorting)
         return self.new_variation(sorting=sorting)
 
     async def get_distinct(self, metadata, structure_families, specs, counts):
-        if self.node.data_sources:
+        if self.data_sources:
             return self.get_adapter().get_disinct(
                 metadata, structure_families, specs, counts
             )
@@ -641,27 +619,34 @@ class CatalogNodeAdapter(BaseAdapter):
     #     ...
 
     async def read(self, *args, **kwargs):
-        if not self.node.data_sources:
+        if not self.data_sources:
             return self.search(KeysFilter(kwargs.get("fields")))
         return await ensure_awaitable(self.get_adapter().read, *args, **kwargs)
 
     async def read_block(self, *args, **kwargs):
-        if not self.node.data_sources:
+        if not self.data_sources:
             raise NotImplementedError
         return await ensure_awaitable(self.get_adapter().read_block, *args, **kwargs)
 
+    async def read_partition(self, *args, **kwargs):
+        if not self.data_sources:
+            raise NotImplementedError
+        return await ensure_awaitable(
+            self.get_adapter().read_partition, *args, **kwargs
+        )
+
     async def write(self, *args, **kwargs):
-        if not self.node.data_sources:
+        if not self.data_sources:
             raise NotImplementedError
         return await ensure_awaitable(self.get_adapter().write, *args, **kwargs)
 
     async def write_block(self, *args, **kwargs):
-        if not self.node.data_sources:
+        if not self.data_sources:
             raise NotImplementedError
         return await ensure_awaitable(self.get_adapter().write_block, *args, **kwargs)
 
     async def write_partition(self, *args, **kwargs):
-        if not self.node.data_sources:
+        if not self.data_sources:
             raise NotImplementedError
         return await ensure_awaitable(
             self.get_adapter().write_partition, *args, **kwargs
@@ -1036,10 +1021,3 @@ def format_distinct_result(results, counts):
     else:
         formatted_result = [{"value": value} for value, in results]
     return formatted_result
-
-
-STRUCTURES = {
-    StructureFamily.array: ArrayStructure,
-    StructureFamily.dataframe: DataFrameStructure,
-    StructureFamily.sparse: SparseStructure,
-}

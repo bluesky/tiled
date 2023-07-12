@@ -2,7 +2,6 @@ import random
 import string
 from dataclasses import asdict
 
-import anyio
 import dask.array
 import numpy
 import pandas
@@ -274,8 +273,8 @@ async def test_write_array_internal_direct(a, tmpdir):
         ],
     )
     x = await a.lookup_adapter(["x"])
-    await anyio.to_thread.run_sync(x.write, arr)
-    assert numpy.array_equal(arr, x.read())
+    await x.write(arr)
+    assert numpy.array_equal(await x.read(), arr)
 
 
 def test_write_array_internal_via_client(client):
