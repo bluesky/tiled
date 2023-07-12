@@ -147,7 +147,7 @@ class DataSource(pydantic.BaseModel):
         else:
             structure = orm.structure
         return cls(
-            id=orm.d,
+            id=orm.id,
             structure=structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
