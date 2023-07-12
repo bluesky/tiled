@@ -30,7 +30,6 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
-    EntryKind,
     SecureEntry,
     block,
     expected_shape,
@@ -153,7 +152,7 @@ async def search(
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
     show_sources: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.adapter),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
     **filters,
@@ -216,7 +215,7 @@ async def distinct(
     specs: bool = False,
     metadata: Optional[List[str]] = Query(default=[]),
     counts: bool = False,
-    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.adapter),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
     query_registry=Depends(get_query_registry),
     **filters,
 ):
@@ -310,7 +309,7 @@ async def metadata(
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
     show_sources: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
+    entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
 ):
     "Fetch the metadata and structure information for one entry."
@@ -617,7 +616,7 @@ async def post_metadata(
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
-    entry=SecureEntry(scopes=["write:metadata", "create"], kind=EntryKind.adapter),
+    entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
     if not getattr(entry, "writable", False):
         raise HTTPException(
@@ -689,7 +688,7 @@ async def post_metadata(
     links["self"] = f"{base_url}/metadata/{path_str}"
     if body.structure_family == StructureFamily.array:
         block_template = ",".join(
-            f"{{{index}}}" for index in range(len(node.structure.macro.shape))
+            f"{{{index}}}" for index in range(len(node.macrostructure().shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -697,7 +696,7 @@ async def post_metadata(
         # Different from array because of structure.macro.shape vs structure.shape
         # Can be unified if we drop macro/micro namespace.
         block_template = ",".join(
-            f"{{{index}}}" for index in range(len(node.structure.shape))
+            f"{{{index}}}" for index in range(len(node.structure().shape))
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
@@ -724,7 +723,7 @@ async def post_metadata(
 @router.delete("/metadata/{path:path}")
 async def delete(
     request: Request,
-    entry=SecureEntry(scopes=["write:data", "write:metadata"], kind=EntryKind.node),
+    entry=SecureEntry(scopes=["write:data", "write:metadata"]),
 ):
     if hasattr(entry, "delete"):
         await entry.delete()
@@ -835,7 +834,7 @@ async def put_metadata(
     body: schemas.PutMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
-    entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
+    entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if not hasattr(entry, "update_metadata"):
         raise HTTPException(
@@ -894,7 +893,7 @@ async def get_revisions(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    entry=SecureEntry(scopes=["read:metadata"], kind=EntryKind.node),
+    entry=SecureEntry(scopes=["read:metadata"]),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
@@ -918,7 +917,7 @@ async def get_revisions(
 async def delete_revision(
     request: Request,
     number: int,
-    entry=SecureEntry(scopes=["write:metadata"], kind=EntryKind.node),
+    entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(

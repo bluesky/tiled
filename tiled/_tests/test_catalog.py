@@ -225,7 +225,7 @@ async def test_write_array_external(a, tmpdir):
         ],
     )
     x = await a.lookup_adapter(["x"])
-    assert numpy.array_equal(arr, x.read())
+    assert numpy.array_equal(await x.read(), arr)
 
 
 @pytest.mark.asyncio
@@ -252,7 +252,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
         ],
     )
     x = await a.lookup_adapter(["x"])
-    pandas.testing.assert_frame_equal(df, x.read())
+    pandas.testing.assert_frame_equal(await x.read(), df)
 
 
 @pytest.mark.asyncio

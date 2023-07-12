@@ -120,8 +120,8 @@ def is_coroutine_callable(call: Callable[..., Any]) -> bool:
     return inspect.iscoroutinefunction(dunder_call)
 
 
-async def ensure_awaitable(func, *args):
+async def ensure_awaitable(func, *args, **kwargs):
     if is_coroutine_callable(func):
-        return await func(*args)
+        return await func(*args, **kwargs)
     else:
-        return await anyio.to_thread.run_sync(func, *args)
+        return await anyio.to_thread.run_sync(func, *args, **kwargs)

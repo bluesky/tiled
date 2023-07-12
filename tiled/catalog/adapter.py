@@ -4,18 +4,18 @@ import importlib
 import operator
 import os
 import re
+import shutil
 import sys
 import uuid
 from functools import partial
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import httpx
 from fastapi import HTTPException
-from sqlalchemy import event, func, text, type_coerce
+from sqlalchemy import delete, event, func, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.future import select
 
 from tiled.queries import (
     Comparison,
@@ -31,14 +31,22 @@ from tiled.queries import (
 
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
-from ..server.schemas import Management
+from ..server.schemas import DataSource, Management, Revision, Spec
 from ..server.utils import ensure_awaitable
+from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
-from ..utils import UNCHANGED, OneShotCachedMap, UnsupportedQueryType, import_object
+from ..structures.dataframe import DataFrameStructure
+from ..structures.sparse import SparseStructure
+from ..utils import (
+    UNCHANGED,
+    Conflicts,
+    OneShotCachedMap,
+    UnsupportedQueryType,
+    import_object,
+)
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
-from .node import Node
 from .utils import ensure_uri, safe_path
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
@@ -109,10 +117,10 @@ class RootNode:
     structure_family = StructureFamily.container
 
     def __init__(self, metadata, specs, access_policy):
-        self.metadata = metadata or {}
-        self.specs = specs or []
+        self.metadata_ = metadata or {}
+        self.specs = [Spec.parse_obj(spec) for spec in specs or []]
         self.ancestors = []
-        self.key = None
+        self.id = None
         self.data_sources = None
 
 
@@ -272,7 +280,7 @@ class BaseAdapter:
         self.context = context
         self.engine = self.context.engine
         self.node = node
-        if node.key is None:
+        if node.id is None:
             # Special case for RootNode
             self.segments = []
         else:
@@ -281,8 +289,10 @@ class BaseAdapter:
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.structure_family = node.structure_family
-        self.metadata = node.metadata
-        self.specs = node.specs
+        self.metadata = node.metadata_
+        self.specs = [Spec.parse_obj(spec) for spec in node.specs]
+        self.ancestors = node.ancestors
+        self.key = node.id
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
@@ -328,6 +338,35 @@ class CatalogNodeAdapter(BaseAdapter):
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar().all()
 
+    @property
+    def data_sources(self):
+        return [DataSource.from_orm(ds) for ds in self.node.data_sources]
+
+    def microstructure(self):
+        if self.node.data_sources:
+            assert len(self.node.data_sources) == 1  # more not yet implemented
+            model = STRUCTURES[self.node.structure_family]
+            return getattr(
+                model.from_json(self.node.data_sources[0].structure), "micro", None
+            )
+        return None
+
+    def macrostructure(self):
+        if self.node.data_sources:
+            assert len(self.node.data_sources) == 1  # more not yet implemented
+            model = STRUCTURES[self.node.structure_family]
+            return getattr(
+                model.from_json(self.node.data_sources[0].structure), "macro", None
+            )
+        return None
+
+    def structure(self):
+        if self.node.data_sources:
+            assert len(self.node.data_sources) == 1  # more not yet implemented
+            model = STRUCTURES[self.node.structure_family]
+            return model.from_json(self.node.data_sources[0].structure)
+        return None
+
     async def async_len(self):
         statement = select(func.count(orm.Node.key)).filter(
             orm.Node.ancestors == self.segments
@@ -337,7 +376,7 @@ class CatalogNodeAdapter(BaseAdapter):
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
-    async def lookup_node(
+    async def lookup_adapter(
         self, segments
     ):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
@@ -354,24 +393,14 @@ class CatalogNodeAdapter(BaseAdapter):
             # database stops and (for example) HDF5 file begins.
         if node is None:
             return None
-        return Node.from_orm(
-            node, self.context, access_policy=self.access_policy, sorting=self.sorting
-        )
+        return type(self)(self.context, node, access_policy=self.access_policy)
 
-    async def lookup_adapter(
-        self, segments
-    ):  # TODO: Accept filter for predicate-pushdown.
-        node = await self.lookup_node(segments)
-        if node is None:
-            return None
-        return self.adapter_from_node(node)
-
-    def adapter_from_node(self, node):
-        num_data_sources = len(node.data_sources)
+    def get_adapter(self):
+        num_data_sources = len(self.node.data_sources)
         if num_data_sources > 1:
             raise NotImplementedError
         if num_data_sources == 1:
-            (data_source,) = node.data_sources
+            (data_source,) = self.node.data_sources
             adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
             data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
             for data_uri in data_uris:
@@ -398,30 +427,39 @@ class CatalogNodeAdapter(BaseAdapter):
                     )
                 paths.append(safe_path(data_uri))
             kwargs = dict(data_source.parameters)
-            kwargs["specs"] = node.specs
-            kwargs["metadata"] = node.metadata
-            if node.structure_family == StructureFamily.array:
+            kwargs["specs"] = self.node.specs
+            kwargs["metadata"] = self.node.metadata
+            if self.node.structure_family == StructureFamily.array:
                 # kwargs["dtype"] = data_source.structure.micro.to_numpy_dtype()
-                kwargs["shape"] = data_source.structure.macro.shape
-                kwargs["chunks"] = data_source.structure.macro.chunks
-                kwargs["dims"] = node.structure.macro.dims
-            elif node.structure_family == StructureFamily.dataframe:
-                kwargs["meta"] = data_source.structure.micro.meta_decoded
-                kwargs["divisions"] = data_source.structure.micro.divisions_decoded
-            elif node.structure_family == StructureFamily.sparse:
-                kwargs["chunks"] = data_source.structure.chunks
-                kwargs["shape"] = data_source.structure.shape
-                kwargs["dims"] = data_source.structure.dims
+                kwargs["shape"] = ArrayStructure.from_json(
+                    data_source.structure
+                ).macro.shape
+                kwargs["chunks"] = ArrayStructure.from_json(
+                    data_source.structure
+                ).macro.chunks
+                kwargs["dims"] = ArrayStructure.from_json(
+                    data_source.structure
+                ).macro.dims
+            elif self.node.structure_family == StructureFamily.dataframe:
+                kwargs["meta"] = DataFrameStructure.from_json(
+                    data_source.structure
+                ).micro.meta
+                kwargs["divisions"] = DataFrameStructure.from_json(
+                    data_source.structure
+                ).micro.divisions
+            elif self.node.structure_family == StructureFamily.sparse:
+                kwargs["chunks"] = SparseStructure.from_json(
+                    data_source.structure
+                ).chunks
+                kwargs["shape"] = SparseStructure.from_json(data_source.structure).shape
+                kwargs["dims"] = SparseStructure.from_json(data_source.structure).dims
             else:
                 pass
             kwargs["access_policy"] = self.access_policy
             adapter = adapter_factory(*paths, **kwargs)
             return adapter
         else:  # num_data_sources == 0
-            if node.structure_family != StructureFamily.container:
-                raise NotImplementedError  # array or dataframe that is uninitialized
-            # A node with no underlying data source
-            return type(self)(self.context, node, access_policy=self.access_policy)
+            assert False
 
     def new_variation(
         self,
@@ -450,12 +488,20 @@ class CatalogNodeAdapter(BaseAdapter):
         )
 
     def search(self, query):
+        if self.node.data_sources:
+            return self.get_adapter().search(query)
         return self.query_registry(query, self)
 
     def sort(self, sorting):
+        if self.node.data_sources:
+            return self.get_adapter().sort(sorting)
         return self.new_variation(sorting=sorting)
 
     async def get_distinct(self, metadata, structure_families, specs, counts):
+        if self.node.data_sources:
+            return self.get_adapter().get_disinct(
+                metadata, structure_families, specs, counts
+            )
         data = {}
 
         async with self.context.session() as db:
@@ -589,18 +635,37 @@ class CatalogNodeAdapter(BaseAdapter):
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            return key, Node.from_orm(
-                node,
-                self.context,
-                access_policy=self.access_policy,
-                sorting=self.sorting,
-            )
+            return key, type(self)(self.context, node, access_policy=self.access_policy)
 
     # async def patch_node(datasources=None):
     #     ...
 
-    async def read(self, fields=None):
-        return self.search(KeysFilter(fields))
+    async def read(self, *args, **kwargs):
+        if not self.node.data_sources:
+            return self.search(KeysFilter(kwargs.get("fields")))
+        return await ensure_awaitable(self.get_adapter().read, *args, **kwargs)
+
+    async def read_block(self, *args, **kwargs):
+        if not self.node.data_sources:
+            raise NotImplementedError
+        return await ensure_awaitable(self.get_adapter().read_block, *args, **kwargs)
+
+    async def write(self, *args, **kwargs):
+        if not self.node.data_sources:
+            raise NotImplementedError
+        return await ensure_awaitable(self.get_adapter().write, *args, **kwargs)
+
+    async def write_block(self, *args, **kwargs):
+        if not self.node.data_sources:
+            raise NotImplementedError
+        return await ensure_awaitable(self.get_adapter().write_block, *args, **kwargs)
+
+    async def write_partition(self, *args, **kwargs):
+        if not self.node.data_sources:
+            raise NotImplementedError
+        return await ensure_awaitable(
+            self.get_adapter().write_partition, *args, **kwargs
+        )
 
     async def keys_range(self, offset, limit):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
@@ -638,14 +703,122 @@ class CatalogNodeAdapter(BaseAdapter):
             return [
                 (
                     node.key,
-                    Node.from_orm(node, self.context, access_policy=self.access_policy),
+                    type(self)(self.context, node, access_policy=self.access_policy),
                 )
                 for node in nodes
             ]
 
-    async def adapters_range(self, offset, limit):
-        items = await self.items_range(offset, limit)
-        return [(key, self.adapter_from_node(value)) for key, value in items]
+    async def revisions(self, offset, limit):
+        async with self.context.session() as db:
+            revision_orms = (
+                await db.execute(
+                    select(orm.Revision)
+                    .where(orm.Revision.node_id == self.node.id)
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            return [Revision.from_orm(o[0]) for o in revision_orms]
+
+    async def delete(self):
+        async with self.context.session() as db:
+            is_child = orm.Node.ancestors == self.ancestors + [self.key]
+            num_children = (
+                await db.execute(select(func.count(orm.Node.key)).where(is_child))
+            ).scalar()
+            if num_children:
+                raise Conflicts(
+                    "Cannot delete container that is not empty. Delete contents first."
+                )
+            for data_source in self.data_sources:
+                if data_source.management != Management.external:
+                    # TODO Handle case where the same Asset is associated
+                    # with multiple DataSources. This is not possible yet
+                    # but it is expected to become possible in the future.
+                    for asset in data_source.assets:
+                        delete_asset(asset)
+                        await db.execute(
+                            delete(orm.Asset).where(orm.Asset.id == asset.id)
+                        )
+            result = await db.execute(
+                delete(orm.Node).where(orm.Node.id == self.node.id)
+            )
+            if result.rowcount == 0:
+                # TODO Abstract this from FastAPI?
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No node {self.node.id}",
+                )
+            assert (
+                result.rowcount == 1
+            ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            await db.commit()
+
+    async def delete_revision(self, number):
+        async with self.context.session() as db:
+            result = await db.execute(
+                delete(orm.Revision)
+                .where(orm.Revision.node_id == self.node.id)
+                .where(orm.Revision.revision_number == number)
+            )
+            if result.rowcount == 0:
+                # TODO Abstract this from FastAPI?
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No revision {number} for node {self.node.id}",
+                )
+            assert (
+                result.rowcount == 1
+            ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            await db.commit()
+
+    async def update_metadata(self, metadata=None, specs=None):
+        values = {}
+        if metadata is not None:
+            # Trailing underscore in 'metadata_' avoids collision with
+            # SQLAlchemy reserved word 'metadata'.
+            values["metadata_"] = metadata
+        if specs is not None:
+            values["specs"] = [s.dict() for s in specs]
+        async with self.context.session() as db:
+            current = (
+                await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
+            ).scalar_one()
+            next_revision_number = 1 + (
+                (
+                    await db.execute(
+                        select(func.max(orm.Revision.revision_number)).where(
+                            orm.Revision.node_id == self.node.id
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
+            revision = orm.Revision(
+                # Trailing underscore in 'metadata_' avoids collision with
+                # SQLAlchemy reserved word 'metadata'.
+                metadata_=current.metadata_,
+                specs=current.specs,
+                node_id=current.id,
+                revision_number=next_revision_number,
+            )
+            db.add(revision)
+            await db.execute(
+                update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
+            )
+            await db.commit()
+
+
+def delete_asset(asset):
+    url = urlparse(asset.data_uri)
+    if url.scheme == "file":
+        path = safe_path(asset.data_uri)
+        if asset.is_directory:
+            shutil.rmtree(path)
+        else:
+            Path(path).unlink()
+    else:
+        raise NotImplementedError(url.scheme)
 
 
 _STANDARD_SORT_KEYS = {
@@ -863,3 +1036,10 @@ def format_distinct_result(results, counts):
     else:
         formatted_result = [{"value": value} for value, in results]
     return formatted_result
+
+
+STRUCTURES = {
+    StructureFamily.array: ArrayStructure,
+    StructureFamily.dataframe: DataFrameStructure,
+    StructureFamily.sparse: SparseStructure,
+}

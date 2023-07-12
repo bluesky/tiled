@@ -2,7 +2,6 @@ import collections
 import importlib
 import logging
 import mimetypes
-from dataclasses import asdict
 from pathlib import Path
 
 from ..catalog.utils import ensure_uri
@@ -10,6 +9,7 @@ from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
 from ..utils import OneShotCachedMap, import_object
+from .utils import get_structure
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ async def _walk(
             data_sources=[
                 DataSource(
                     mimetype=mimetype,
-                    structure=_get_structure(adapter),
+                    structure=get_structure(adapter),
                     parameters={},
                     management=Management.external,
                     assets=[
@@ -227,15 +227,3 @@ async def _walk(
             mimetype_detection_hook,
             key_from_filename,
         )
-
-
-def _get_structure(adapter):
-    if hasattr(adapter, "structure"):
-        return asdict(adapter.structure())
-    elif hasattr(adapter, "microstructure"):
-        return {
-            "micro": asdict(adapter.microstructure()),
-            "macro": asdict(adapter.macrostructure()),
-        }
-    else:
-        return None
