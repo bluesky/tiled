@@ -245,7 +245,7 @@ or use an existing one:
         database,
         writable_storage=write,
         readable_storage=read,
-        init=init,
+        init_if_not_exists=init,
         **tree_kwargs,
     )
     web_app = build_app(
