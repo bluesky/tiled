@@ -425,8 +425,8 @@ class CatalogNodeAdapter(BaseAdapter):
                 kwargs["chunks"] = data_source.structure.macro.chunks
                 kwargs["dims"] = data_source.structure.macro.dims
             elif self.node.structure_family == StructureFamily.dataframe:
-                kwargs["meta"] = data_source.structure.micro.meta
-                kwargs["divisions"] = data_source.structure.micro.divisions
+                kwargs["meta"] = data_source.structure.micro.meta_decoded
+                kwargs["divisions"] = data_source.structure.micro.divisions_decoded
             elif self.node.structure_family == StructureFamily.sparse:
                 kwargs["chunks"] = data_source.structure.chunks
                 kwargs["shape"] = data_source.structure.shape
