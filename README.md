@@ -1,7 +1,5 @@
 # Tiled
 
-*Disclaimer: This is very early work, still in the process of defining scope.*
-
 Tiled is a **data access** service for data-aware portals and data science tools.
 Tiled has a Python client and integrates naturally with Python data science
 libraries, but nothing about the service is Python-specific; it also works from
