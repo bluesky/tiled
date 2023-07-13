@@ -12,14 +12,11 @@ DATA_SUBDIRECTORY = "data"
 @serve_app.command("directory")
 def serve_directory(
     directory: str,
-    public: bool = typer.Option(
+    verbose: bool = typer.Option(
         False,
-        "--public",
-        help=(
-            "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with "
-            "this option selected."
-        ),
+        "--verbose",
+        "-v",
+        help=("Log details of directory traversal and file registration."),
     ),
     keep_ext: bool = typer.Option(
         False,
@@ -32,12 +29,13 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
-    poll_interval: float = typer.Option(
-        None,
-        "--poll-interval",
+    public: bool = typer.Option(
+        False,
+        "--public",
         help=(
-            "Time in seconds between scans of the directory for removed or "
-            "changed files. If 0, do not poll for changes."
+            "Turns off requirement for API key authentication for reading. "
+            "However, the API key is still required for writing, so data cannot be modified even with "
+            "this option selected."
         ),
     ),
     host: str = typer.Option(
@@ -57,13 +55,6 @@ def serve_directory(
             "1_000_000 or as a fraction of system RAM (total physical memory) as in "
             "0.3. Set to 0 to disable this cache. By default, it will use up to "
             "0.15 (15%) of RAM."
-        ),
-    ),
-    scalable: bool = typer.Option(
-        False,
-        "--scalable",
-        help=(
-            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
 ):
@@ -104,8 +95,6 @@ def serve_directory(
         from ..adapters.files import identity
 
         tree_kwargs.update({"key_from_filename": identity})
-    if poll_interval is not None:
-        tree_kwargs.update({"poll_interval": poll_interval})
     if object_cache_available_bytes is not None:
         server_settings["object_cache"] = {}
         server_settings["object_cache"][
@@ -119,8 +108,9 @@ def serve_directory(
     from ..catalog.register import walk
 
     typer.echo(f"Indexing {directory}...")
-    register_logger.addHandler(StreamHandler())
-    register_logger.setLevel("INFO")
+    if verbose:
+        register_logger.addHandler(StreamHandler())
+        register_logger.setLevel("INFO")
     asyncio.run(walk(catalog_adapter, directory))
 
     typer.echo("Indexing complete. Starting server...")
@@ -128,7 +118,6 @@ def serve_directory(
         catalog_adapter,
         {"allow_anonymous_access": public},
         server_settings,
-        scalable=scalable,
     )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 

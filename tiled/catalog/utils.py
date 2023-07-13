@@ -6,7 +6,7 @@ from urllib import parse
 
 import httpx
 
-SCHEME_PATTERN = re.compile(r"^[a-z0-9]+:\/\/.*$")
+SCHEME_PATTERN = re.compile(r"^[a-z0-9+]+:\/\/.*$")
 
 
 def safe_path(uri):

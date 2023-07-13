@@ -1,5 +1,4 @@
 import asyncio
-import re
 from pathlib import Path
 
 import typer
@@ -15,7 +14,7 @@ DEFAULT_SQLITE_CATALOG_FILENAME = "catalog.db"
 
 @catalog_app.command("init")
 def init(
-    uri: str = typer.Argument(
+    database: str = typer.Argument(
         Path.cwd() / DEFAULT_SQLITE_CATALOG_FILENAME, help="A filepath or database URI"
     ),
     if_not_exists: bool = typer.Option(
@@ -44,13 +43,14 @@ def init(
     from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
+    from ..catalog.utils import SCHEME_PATTERN
 
-    if not re.compile("^[a-z0-1+]+.*$").match(uri):
+    if not SCHEME_PATTERN.match(database):
         # Interpret URI as filepath.
-        uri = f"sqlite+aiosqlite:///{uri}"
+        database = f"sqlite+aiosqlite:///{database}"
 
     async def do_setup():
-        engine = create_async_engine(uri)
+        engine = create_async_engine(database)
         redacted_url = engine.url._replace(password="[redacted]")
         try:
             await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
@@ -72,4 +72,52 @@ def init(
             await engine.dispose()
 
     asyncio.run(do_setup())
-    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, uri)
+    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
+
+
+@catalog_app.command("register")
+def register(
+    database: str = typer.Argument(..., help="A filepath or database URI"),
+    filepath: str = typer.Argument(..., help="A file or directory to register"),
+    keep_ext: bool = typer.Option(
+        False,
+        "--keep-ext",
+        help=(
+            "Serve a file like 'measurements.csv' as its full filepath with extension, "
+            "instead of the default which would serve it as 'measurements'. "
+            "This is discouraged because it leaks details about the storage "
+            "format to the client, such that changing the storage in the future "
+            "may break user (client-side) code."
+        ),
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=("Log details of directory traversal and file registration."),
+    ),
+):
+    from ..catalog.utils import SCHEME_PATTERN
+
+    if not SCHEME_PATTERN.match(database):
+        # Interpret URI as filepath.
+        database = f"sqlite+aiosqlite:///{database}"
+
+    from ..catalog import from_uri
+
+    tree_kwargs = {}
+    if keep_ext:
+        from ..adapters.files import identity
+
+        tree_kwargs.update({"key_from_filename": identity})
+    catalog_adapter = from_uri(database, **tree_kwargs)
+
+    from logging import StreamHandler
+
+    from ..catalog.register import logger as register_logger
+    from ..catalog.register import walk
+
+    if verbose:
+        register_logger.addHandler(StreamHandler())
+        register_logger.setLevel("INFO")
+    asyncio.run(walk(catalog_adapter, filepath))

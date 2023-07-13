@@ -45,7 +45,7 @@ from ..utils import (
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
-from .utils import ensure_uri, safe_path
+from .utils import SCHEME_PATTERN, ensure_uri, safe_path
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -1033,7 +1033,7 @@ def from_uri(
             capture_output=True,
             check=True,
         )
-    if not re.compile("^[a-z0-1+]+.*$").match(uri):
+    if not SCHEME_PATTERN.match(uri):
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
     engine = create_async_engine(uri, echo=echo)
