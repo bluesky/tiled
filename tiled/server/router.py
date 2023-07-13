@@ -11,6 +11,7 @@ from pydantic import BaseSettings
 
 from .. import __version__
 from ..structures.core import StructureFamily
+from ..utils import ensure_awaitable
 from ..validation_registration import ValidationError
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
@@ -40,13 +41,7 @@ from .dependencies import (
     slice_,
 )
 from .settings import get_settings
-from .utils import (
-    ensure_awaitable,
-    filter_for_access,
-    get_base_url,
-    get_structure,
-    record_timing,
-)
+from .utils import filter_for_access, get_base_url, get_structure, record_timing
 
 router = APIRouter()
 

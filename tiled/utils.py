@@ -4,10 +4,14 @@ import contextlib
 import enum
 import importlib
 import importlib.util
+import inspect
 import operator
 import os
 import sys
 import threading
+from typing import Any, Callable
+
+import anyio
 
 
 class ListView(collections.abc.Sequence):
@@ -630,3 +634,19 @@ def bytesize_repr(num):
                 s = f"{num:.1f} {x}"
             return s
         num /= 1024.0
+
+
+def is_coroutine_callable(call: Callable[..., Any]) -> bool:
+    if inspect.isroutine(call):
+        return inspect.iscoroutinefunction(call)
+    if inspect.isclass(call):
+        return False
+    dunder_call = getattr(call, "__call__", None)  # noqa: B004
+    return inspect.iscoroutinefunction(dunder_call)
+
+
+async def ensure_awaitable(func, *args, **kwargs):
+    if is_coroutine_callable(func):
+        return await func(*args, **kwargs)
+    else:
+        return await anyio.to_thread.run_sync(func, *args, **kwargs)

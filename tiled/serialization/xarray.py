@@ -1,7 +1,7 @@
 import io
 
 from ..media_type_registration import serialization_registry
-from ..utils import modules_available
+from ..utils import ensure_awaitable, modules_available
 from .container import walk
 from .dataframe import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -25,16 +25,11 @@ async def as_dataset(node):
         items = node.items()
     for key, array_adapter in items:
         spec_names = set(spec.name for spec in array_adapter.specs)
+        arr = await ensure_awaitable(array_adapter.read)
         if "xarray_data_var" in spec_names:
-            data_vars[key] = (
-                array_adapter.macrostructure().dims,
-                array_adapter.read(),
-            )
+            data_vars[key] = (array_adapter.macrostructure().dims, arr)
         elif "xarray_coord" in spec_names:
-            coords[key] = (
-                array_adapter.macrostructure().dims,
-                array_adapter.read(),
-            )
+            coords[key] = (array_adapter.macrostructure().dims, arr)
         else:
             raise ValueError(
                 "Child nodes of xarray_dataset should include spec "

@@ -30,11 +30,12 @@ from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
     UnsupportedShape,
+    ensure_awaitable,
     safe_json_dump,
 )
 from . import schemas
 from .etag import tokenize
-from .utils import ensure_awaitable, record_timing
+from .utils import record_timing
 
 del queries
 register_builtin_serializers()

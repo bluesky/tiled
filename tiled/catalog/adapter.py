@@ -33,13 +33,13 @@ from tiled.queries import (
 from ..query_registration import QueryTranslationRegistry
 from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import DataSource, Management, Revision, Spec
-from ..server.utils import ensure_awaitable
 from ..structures.core import StructureFamily
 from ..utils import (
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
     UnsupportedQueryType,
+    ensure_awaitable,
     import_object,
 )
 from . import orm
@@ -272,6 +272,7 @@ class BaseAdapter:
         node,
         *,
         conditions=None,
+        queries=None,
         sorting=None,
         access_policy=None,
     ):
@@ -286,6 +287,7 @@ class BaseAdapter:
         self.sorting = sorting or [("", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
+        self.queries = queries or []
         self.structure_family = node.structure_family
         self.metadata = node.metadata_
         self.specs = [Spec.parse_obj(spec) for spec in node.specs]
@@ -452,6 +454,8 @@ class CatalogNodeAdapter(BaseAdapter):
             adapter = await anyio.to_thread.run_sync(
                 partial(adapter_factory, *paths, **kwargs)
             )
+            for query in self.queries:
+                adapter = adapter.search(query)
             return adapter
         else:  # num_data_sources == 0
             assert False
@@ -461,6 +465,7 @@ class CatalogNodeAdapter(BaseAdapter):
         *args,
         sorting=UNCHANGED,
         conditions=UNCHANGED,
+        queries=UNCHANGED,
         # must_revalidate=UNCHANGED,
         **kwargs,
     ):
@@ -470,6 +475,8 @@ class CatalogNodeAdapter(BaseAdapter):
         #     must_revalidate = self.must_revalidate
         if conditions is UNCHANGED:
             conditions = self.conditions
+        if queries is UNCHANGED:
+            queries = self.queries
         return type(self)(
             self.context,
             node=self.node,
@@ -483,6 +490,11 @@ class CatalogNodeAdapter(BaseAdapter):
         )
 
     def search(self, query):
+        if self.data_sources:
+            # Stand queries, which will be passed down to the adapter
+            # when / if get_adapter() is called.
+            self.queries.append(query)
+            return self
         return self.query_registry(query, self)
 
     def sort(self, sorting):
