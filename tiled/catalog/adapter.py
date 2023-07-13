@@ -391,7 +391,7 @@ class CatalogNodeAdapter(BaseAdapter):
             for i in range(len(segments)):
                 catalog_adapter = await self.lookup_adapter(segments[:i])
                 if catalog_adapter.data_sources:
-                    adapter = catalog_adapter.get_adapter()
+                    adapter = await catalog_adapter.get_adapter()
                     for segment in segments[i:]:
                         adapter = await anyio.to_thread.run_sync(adapter.get, segment)
                         if adapter is None:
@@ -400,7 +400,7 @@ class CatalogNodeAdapter(BaseAdapter):
             return None
         return type(self)(self.context, node, access_policy=self.access_policy)
 
-    def get_adapter(self):
+    async def get_adapter(self):
         num_data_sources = len(self.data_sources)
         if num_data_sources > 1:
             raise NotImplementedError
@@ -449,7 +449,9 @@ class CatalogNodeAdapter(BaseAdapter):
             else:
                 pass
             kwargs["access_policy"] = self.access_policy
-            adapter = adapter_factory(*paths, **kwargs)
+            adapter = await anyio.to_thread.run_sync(
+                partial(adapter_factory, *paths, **kwargs)
+            )
             return adapter
         else:  # num_data_sources == 0
             assert False
@@ -481,18 +483,14 @@ class CatalogNodeAdapter(BaseAdapter):
         )
 
     def search(self, query):
-        if self.data_sources:
-            return self.get_adapter().search(query)
         return self.query_registry(query, self)
 
     def sort(self, sorting):
-        if self.data_sources:
-            return self.get_adapter().sort(sorting)
         return self.new_variation(sorting=sorting)
 
     async def get_distinct(self, metadata, structure_families, specs, counts):
         if self.data_sources:
-            return self.get_adapter().get_disinct(
+            return (await self.get_adapter()).get_disinct(
                 metadata, structure_families, specs, counts
             )
         data = {}
@@ -635,41 +633,50 @@ class CatalogNodeAdapter(BaseAdapter):
 
     async def read(self, *args, **kwargs):
         if not self.data_sources:
-            return self.search(KeysFilter(kwargs.get("fields")))
-        return await ensure_awaitable(self.get_adapter().read, *args, **kwargs)
+            fields = kwargs.get("fields")
+            if fields:
+                return self.search(KeysFilter(fields))
+            return self
+        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
     async def read_block(self, *args, **kwargs):
         if not self.data_sources:
             raise NotImplementedError
-        return await ensure_awaitable(self.get_adapter().read_block, *args, **kwargs)
+        return await ensure_awaitable(
+            (await self.get_adapter()).read_block, *args, **kwargs
+        )
 
     async def read_partition(self, *args, **kwargs):
         if not self.data_sources:
             raise NotImplementedError
         return await ensure_awaitable(
-            self.get_adapter().read_partition, *args, **kwargs
+            (await self.get_adapter()).read_partition, *args, **kwargs
         )
 
     async def write(self, *args, **kwargs):
         if not self.data_sources:
             raise NotImplementedError
-        return await ensure_awaitable(self.get_adapter().write, *args, **kwargs)
+        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
 
     async def write_block(self, *args, **kwargs):
         if not self.data_sources:
             raise NotImplementedError
-        return await ensure_awaitable(self.get_adapter().write_block, *args, **kwargs)
+        return await ensure_awaitable(
+            (await self.get_adapter()).write_block, *args, **kwargs
+        )
 
     async def write_partition(self, *args, **kwargs):
         if not self.data_sources:
             raise NotImplementedError
         return await ensure_awaitable(
-            self.get_adapter().write_partition, *args, **kwargs
+            (await self.get_adapter()).write_partition, *args, **kwargs
         )
 
     async def keys_range(self, offset, limit):
         if self.data_sources:
-            return self.get_adapter().keys()[offset : offset + limit]  # noqa: E203
+            return (await self.get_adapter()).keys()[
+                offset : offset + limit  # noqa: E203
+            ]
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)
@@ -688,7 +695,9 @@ class CatalogNodeAdapter(BaseAdapter):
 
     async def items_range(self, offset, limit):
         if self.data_sources:
-            return self.get_adapter().items()[offset : offset + limit]  # noqa: E203
+            return (await self.get_adapter()).items()[
+                offset : offset + limit  # noqa: E203
+            ]
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)

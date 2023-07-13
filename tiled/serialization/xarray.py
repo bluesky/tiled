@@ -19,8 +19,8 @@ async def as_dataset(node):
 
     data_vars = {}
     coords = {}
-    if hasattr(node, "adapters_range"):
-        items = await node.adapters_range(0, None)
+    if hasattr(node, "items_range"):
+        items = await node.items_range(0, None)
     else:
         items = node.items()
     for key, array_adapter in items:
