@@ -60,6 +60,9 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         "application/x-hdf5": lambda: importlib.import_module(
             "...adapters.hdf5", __name__
         ).HDF5Adapter.from_file,
+        "application/x-netcdf": lambda: importlib.import_module(
+            "...adapters.netcdf", __name__
+        ).read_netcdf,
     }
 )
 
