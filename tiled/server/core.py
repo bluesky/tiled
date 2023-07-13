@@ -42,6 +42,7 @@ register_builtin_serializers()
 
 _FILTER_PARAM_PATTERN = re.compile(r"filter___(?P<name>.*)___(?P<field>[^\d\W][\w\d]+)")
 _LOCAL_TZINFO = dateutil.tz.gettz()
+RANGE_REGEX = re.compile(r"^bytes=(?P<start>\d+)-(?P<end>\d*)$")
 
 # Pragmatic limit on how "wide" a node can be before the server refuses to
 # inline its contents.
@@ -374,8 +375,30 @@ async def construct_data_response(
         response_class = PatchedStreamingResponse
     else:
         response_class = PatchedResponse
+    # Respect Range request.
+    status_code = 200
+    if isinstance(content, types.GeneratorType):
+        response_class = PatchedStreamingResponse
+    else:
+        response_class = PatchedResponse
+        if "Range" in request.headers:
+            full_size = len(content)
+            match = RANGE_REGEX.search(request.headers["Range"])
+            if not match:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Malformed range header {request.headers['Range']}",
+                )
+            raw_start, raw_end = match.group("start"), match.group("end")
+            start = int(raw_start) if raw_start is not None else None
+            end = int(raw_end) if raw_end is not None else None
+            if not (0 <= start <= full_size) or not (0 <= end <= full_size):
+                raise HTTPException(416)  # Range Not Satisfiable
+            content = content[start : 1 + end if end else None]  # noqa: E203
+            headers["Content-Range"] = f"bytes {start}-{end}/{full_size}"
     return response_class(
-        content,
+        status_code=status_code,
+        content=content,
         media_type=media_type,
         headers=headers,
     )
