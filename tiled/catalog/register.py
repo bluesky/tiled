@@ -115,6 +115,7 @@ async def walk(
     catalog,
     path,
     prefix="/",
+    walkers=None,
     readers_by_mimetype=None,
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
@@ -136,6 +137,8 @@ async def walk(
     merged_mimetypes_by_file_ext = collections.ChainMap(
         mimetypes_by_file_ext or {}, DEFAULT_MIMETYPES_BY_FILE_EXT
     )
+    if walkers is None:
+        walkers = [one_file_at_a_time]
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
         child = await catalog.lookup_adapter([segment])
@@ -151,6 +154,7 @@ async def walk(
     await _walk(
         catalog,
         Path(path),
+        walkers,
         merged_readers_by_mimetype,
         merged_mimetypes_by_file_ext,
         mimetype_detection_hook,
@@ -161,25 +165,67 @@ async def walk(
 async def _walk(
     catalog,
     path,
+    walkers,
     readers_by_mimetype,
     mimetypes_by_file_ext,
     mimetype_detection_hook,
     key_from_filename,
 ):
     files = []
-    subdirectories = []
+    directories = []
     logger.info("  Walking '%s'", path)
     for item in path.iterdir():
         if item.is_dir():
-            subdirectories.append(item)
+            directories.append(item)
         else:
             files.append(item)
+    for walker in walkers:
+        files, directories = await walker(
+            catalog,
+            files,
+            directories,
+            readers_by_mimetype,
+            mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
+        )
+    for directory in directories:
+        key = key_from_filename(directory.name)
+        await catalog.create_node(
+            structure_family=StructureFamily.container,
+            metadata={},
+            key=key,
+        )
+        child = await catalog.lookup_adapter([key])
+        await _walk(
+            child,
+            directory,
+            walkers,
+            readers_by_mimetype,
+            mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
+        )
+
+
+async def one_file_at_a_time(
+    catalog,
+    files,
+    directories,
+    readers_by_mimetype,
+    mimetypes_by_file_ext,
+    mimetype_detection_hook,
+    key_from_filename,
+):
+    unhandled_files = []
+    unhandled_directories = directories
     for file in files:
         mimetype = resolve_mimetype(
             file, mimetypes_by_file_ext, mimetype_detection_hook
         )
         if mimetype is None:
             logger.info("    SKIPPED: Could not resolve mimetype for '%s'", file)
+            unhandled_files.append(file)
             continue
         if mimetype not in readers_by_mimetype:
             logger.info(
@@ -187,6 +233,7 @@ async def _walk(
                 mimetype,
                 file,
             )
+            unhandled_files.append(file)
             continue
         adapter_factory = readers_by_mimetype[mimetype]
         logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, file)
@@ -214,19 +261,4 @@ async def _walk(
                 )
             ],
         )
-    for subdirectory in subdirectories:
-        key = key_from_filename(subdirectory.name)
-        await catalog.create_node(
-            structure_family=StructureFamily.container,
-            metadata={},
-            key=key,
-        )
-        child = await catalog.lookup_adapter([key])
-        await _walk(
-            child,
-            subdirectory,
-            readers_by_mimetype,
-            mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-        )
+    return unhandled_files, unhandled_directories
