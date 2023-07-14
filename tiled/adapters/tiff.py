@@ -82,20 +82,56 @@ class TiffAdapter:
 class TiffSequenceAdapter:
     structure_family = "array"
 
-    def __init__(self, seq, *, specs=None, access_policy=None):
+    @classmethod
+    def from_files(
+        cls,
+        *files,
+        shape=None,
+        chunks=None,
+        specs=None,
+        metadata=None,
+        dims=None,
+        access_policy=None,
+    ):
+        seq = tifffile.TiffSequence(files)
+        return cls(
+            seq,
+            shape=shape,
+            chunks=chunks,
+            specs=specs,
+            metadata=metadata,
+            dims=dims,
+            access_policy=access_policy,
+        )
+
+    def __init__(
+        self,
+        seq,
+        *,
+        shape=None,
+        chunks=None,
+        specs=None,
+        metadata=None,
+        dims=None,
+        access_policy=None,
+    ):
         self._seq = seq
         self._metadata = {}
         self._cache_key = (
             type(self).__module__,
             type(self).__qualname__,
-            hashlib.md5(str(seq.files).encode()).hexdigest(),
+            hashlib.md5(str(self._seq.files).encode()).hexdigest(),
         )
+        # TODO Check shape, chunks against reality.
         self.specs = specs or []
+        self._provided_metadata = metadata or {}
+        self.dims = dims
         self.access_policy = access_policy
 
     @property
     def metadata(self):
-        return self._metadata
+        # TODO How to deal with the many headers?
+        return self._provided_metadata
 
     def read(self, slice=None):
         """Return a numpy array
@@ -187,50 +223,3 @@ class TiffSequenceAdapter:
             # one chunks per underlying TIFF file
             chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
         )
-
-
-class SubdirectoryError(Exception):
-    """
-    Raised when checking a path for tiffs will raise and error
-    """
-
-    pass
-
-
-def subdirectory_handler(path):
-    """
-    Sniff a subdirectory for TIFF sequences.
-    """
-    # Max fraction of files that do not look like TIFF sequence files
-    RELATIVE_THRESHOLD = 0.2
-    # Max number of files that do not look like TIFF sequence files
-    ABSOLUTE_THRESHOLD = 10
-    filepaths = []
-    outliers = 0
-    for filepath in path.iterdir():
-        if not filepath.is_file():
-            # Skip directories.
-            continue
-        if filepath.name.startswith("."):
-            # Skip hidden files.
-            continue
-        if (filepath.suffix in (".tif", ".tiff")) and filepath.stem[-3:].isdigit():
-            # This looks like something123.tif.
-            filepaths.append(filepath)
-            continue
-        outliers += 1
-
-    # Avoid divide by zero error and raise with a hint about the offending path
-    total_files = outliers + len(filepaths)
-    if total_files == 0:
-        raise SubdirectoryError(f"No files found in {str(path)}")
-
-    fraction = outliers / total_files
-    if (outliers <= ABSOLUTE_THRESHOLD) and (fraction <= RELATIVE_THRESHOLD):
-        # This looks like a TIFF sequence directory.
-        import tifffile
-
-        seq = tifffile.TiffSequence(sorted(filepaths))
-        return TiffSequenceAdapter(seq)
-
-    return None

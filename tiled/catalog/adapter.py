@@ -31,7 +31,6 @@ from tiled.queries import (
 )
 
 from ..query_registration import QueryTranslationRegistry
-from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
@@ -45,42 +44,14 @@ from ..utils import (
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
+from .mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, ZARR_MIMETYPE
 from .utils import SCHEME_PATTERN, ensure_uri, safe_path
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-ZARR_MIMETYPE = "application/x-zarr"
 PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet-sparse"  # HACK!
 
-# This maps MIME types (i.e. file formats) for appropriate Readers.
-# OneShotCachedMap is used to defer imports. We don't want to pay up front
-# for importing Readers that we will not actually use.
-DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
-    {
-        "image/tiff": lambda: importlib.import_module(
-            "...adapters.tiff", __name__
-        ).TiffAdapter,
-        "text/csv": lambda: importlib.import_module(
-            "...adapters.dataframe", __name__
-        ).DataFrameAdapter.read_csv,
-        XLSX_MIME_TYPE: lambda: importlib.import_module(
-            "...adapters.excel", __name__
-        ).ExcelAdapter.from_file,
-        "application/x-hdf5": lambda: importlib.import_module(
-            "...adapters.hdf5", __name__
-        ).HDF5Adapter.from_file,
-        ZARR_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.zarr", __name__
-        ).read_zarr,
-        PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.parquet", __name__
-        ).ParquetDatasetAdapter,
-        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.sparse_blocks_parquet", __name__
-        ).SparseBlocksParquetAdapter,
-    }
-)
 DEFAULT_CREATION_MIMETYPE = {
     "array": ZARR_MIMETYPE,
     "dataframe": PARQUET_MIMETYPE,

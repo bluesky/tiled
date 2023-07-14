@@ -1,15 +1,14 @@
 import collections
-import importlib
 import logging
 import mimetypes
 import re
 from pathlib import Path
 
 from ..catalog.utils import ensure_uri
-from ..serialization.dataframe import XLSX_MIME_TYPE
 from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
-from ..utils import OneShotCachedMap, import_object
+from ..utils import import_object
+from .mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
 from .utils import get_structure
 
 logger = logging.getLogger(__name__)
@@ -42,53 +41,6 @@ def identity(filename):
     This give the full filename (with suffixes) as the key.
     """
     return filename
-
-
-# This maps MIME types (i.e. file formats) for appropriate Readers.
-# OneShotCachedMap is used to defer imports. We don't want to pay up front
-# for importing Readers that we will not actually use.
-ZARR_MIMETYPE = "application/x-zarr"
-DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
-    {
-        "image/tiff": lambda: importlib.import_module(
-            "...adapters.tiff", __name__
-        ).TiffAdapter,
-        "text/csv": lambda: importlib.import_module(
-            "...adapters.dataframe", __name__
-        ).DataFrameAdapter.read_csv,
-        XLSX_MIME_TYPE: lambda: importlib.import_module(
-            "...adapters.excel", __name__
-        ).ExcelAdapter.from_file,
-        "application/x-hdf5": lambda: importlib.import_module(
-            "...adapters.hdf5", __name__
-        ).HDF5Adapter.from_file,
-        "application/x-netcdf": lambda: importlib.import_module(
-            "...adapters.netcdf", __name__
-        ).read_netcdf,
-        ZARR_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.zarr", __name__
-        ).read_zarr,
-    }
-)
-
-# We can mostly rely on mimetypes.types_map for the common ones
-# ('.csv' -> 'text/csv', etc.) but we supplement here for some
-# of the more exotic ones that not all platforms know about.
-DEFAULT_MIMETYPES_BY_FILE_EXT = {
-    # This is the "official" file extension.
-    ".h5": "application/x-hdf5",
-    # This is NeXus. We may want to invent a special media type
-    # like 'application/x-nexus' for this, but I'll punt that for now.
-    # Needs thought about how to encode the various types of NeXus
-    # (media type arguments, for example).
-    ".nxs": "application/x-hdf5",
-    # These are unofficial but common file extensions.
-    ".hdf": "application/x-hdf5",
-    ".hdf5": "application/x-hdf5",
-    # on opensuse csv -> text/x-comma-separated-values
-    ".csv": "text/csv",
-    ".zarr": ZARR_MIMETYPE,
-}
 
 
 def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
@@ -135,7 +87,7 @@ async def walk(
         if isinstance(value, str):
             readers_by_mimetype[key] = import_object(value)
     merged_readers_by_mimetype = collections.ChainMap(
-        readers_by_mimetype, DEFAULT_READERS_BY_MIMETYPE
+        readers_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
     )
     if isinstance(key_from_filename, str):
         key_from_filename = import_object(key_from_filename)
@@ -148,16 +100,16 @@ async def walk(
         walkers = [tiff_sequence, one_node_per_item]
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
-        child = await catalog.lookup_adapter([segment])
-        if child is None:
+        child_catalog = await catalog.lookup_adapter([segment])
+        if child_catalog is None:
             key = key_from_filename(segment)
             await catalog.create_node(
                 structure_family=StructureFamily.container,
                 metadata={},
                 key=key,
             )
-            child = await catalog.lookup_adapter([segment])
-        catalog = child
+            child_catalog = await catalog.lookup_adapter([segment])
+        catalog = child_catalog
     await _walk(
         catalog,
         Path(path),
@@ -314,24 +266,6 @@ async def _handle_single_item(
 TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(\D*)(\d+)$")
 
 
-def _group_tiff_sequences(filepaths):
-    "Group any TIFFs sequences by name."
-    unhandled = []
-    sequences = {}
-    for filepath in filepaths:
-        if filepath.is_file() and (filepath.suffix in (".tif", ".tiff")):
-            match = TIFF_SEQUENCE_STEM_PATTERN.match(filepath.name)
-            if match:
-                sequence_name, _sequence_number = match.groups()
-                sequences[sequence_name].append(filepath)
-                continue
-        unhandled.append(filepath)
-    sorted_sequences = {}
-    for name, sequence in sequences.items():
-        sorted_sequences[name] = sorted(sequence)
-    return sorted_sequences, unhandled
-
-
 async def tiff_sequence(
     catalog,
     path,
@@ -343,5 +277,39 @@ async def tiff_sequence(
     key_from_filename,
 ):
     unhandled_directories = directories
-    sequences, unhandled_files = _group_tiff_sequences(files)
+    unhandled_files = []
+    sequences = collections.defaultdict(list)
+    for file in files:
+        if file.is_file() and (file.suffix in (".tif", ".tiff")):
+            match = TIFF_SEQUENCE_STEM_PATTERN.match(file.stem)
+            if match:
+                sequence_name, _sequence_number = match.groups()
+                sequences[sequence_name].append(file)
+                continue
+        unhandled_files.append(file)
+    mimetype = "multipart/related;type=image/tiff"
+    for name, sequence in sequences.items():
+        adapter_class = readers_by_mimetype[mimetype]
+        key = key_from_filename(name)
+        adapter = adapter_class(*sequence)
+        await catalog.create_node(
+            key=key,
+            structure_family=adapter.structure_family,
+            metadata=dict(adapter.metadata),
+            data_sources=[
+                DataSource(
+                    mimetype=mimetype,
+                    structure=get_structure(adapter),
+                    parameters={},
+                    management=Management.external,
+                    assets=[
+                        Asset(
+                            data_uri=str(ensure_uri(str(item.absolute()))),
+                            is_directory=False,
+                        )
+                        for item in sorted(sequence)
+                    ],
+                )
+            ],
+        )
     return unhandled_files, unhandled_directories
