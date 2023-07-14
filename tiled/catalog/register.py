@@ -2,6 +2,7 @@ import collections
 import importlib
 import logging
 import mimetypes
+import re
 from pathlib import Path
 
 from ..catalog.utils import ensure_uri
@@ -126,6 +127,7 @@ async def walk(
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
 ):
+    "Walk a directory recursively and register its contents."
     # If readers_by_mimetype comes from a configuration file,
     # objects are given as importable strings, like "package.module:Reader".
     readers_by_mimetype = readers_by_mimetype or {}
@@ -143,7 +145,7 @@ async def walk(
         mimetypes_by_file_ext or {}, DEFAULT_MIMETYPES_BY_FILE_EXT
     )
     if walkers is None:
-        walkers = [one_item_at_a_time]
+        walkers = [tiff_sequence, one_node_per_item]
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
         child = await catalog.lookup_adapter([segment])
@@ -176,6 +178,7 @@ async def _walk(
     mimetype_detection_hook,
     key_from_filename,
 ):
+    "This is the recursive inner loop of walk."
     files = []
     directories = []
     logger.info("  Walking '%s'", path)
@@ -214,7 +217,7 @@ async def _walk(
         )
 
 
-async def one_item_at_a_time(
+async def one_node_per_item(
     catalog,
     path,
     files,
@@ -224,6 +227,7 @@ async def one_item_at_a_time(
     mimetype_detection_hook,
     key_from_filename,
 ):
+    "Process each file and directory as mapping to one logical 'node' in Tiled."
     unhandled_files = []
     unhandled_directories = []
     for file in files:
@@ -262,6 +266,7 @@ async def _handle_single_item(
     mimetype_detection_hook,
     key_from_filename,
 ):
+    "This is the inner loop of one_node_per_item"
     unhandled_items = []
     mimetype = resolve_mimetype(item, mimetypes_by_file_ext, mimetype_detection_hook)
     if mimetype is None:
@@ -303,3 +308,40 @@ async def _handle_single_item(
             )
         ],
     )
+
+
+# This is (optional) non-digits \D followed by digits \d.
+TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(\D*)(\d+)$")
+
+
+def _group_tiff_sequences(filepaths):
+    "Group any TIFFs sequences by name."
+    unhandled = []
+    sequences = {}
+    for filepath in filepaths:
+        if filepath.is_file() and (filepath.suffix in (".tif", ".tiff")):
+            match = TIFF_SEQUENCE_STEM_PATTERN.match(filepath.name)
+            if match:
+                sequence_name, _sequence_number = match.groups()
+                sequences[sequence_name].append(filepath)
+                continue
+        unhandled.append(filepath)
+    sorted_sequences = {}
+    for name, sequence in sequences.items():
+        sorted_sequences[name] = sorted(sequence)
+    return sorted_sequences, unhandled
+
+
+async def tiff_sequence(
+    catalog,
+    path,
+    files,
+    directories,
+    readers_by_mimetype,
+    mimetypes_by_file_ext,
+    mimetype_detection_hook,
+    key_from_filename,
+):
+    unhandled_directories = directories
+    sequences, unhandled_files = _group_tiff_sequences(files)
+    return unhandled_files, unhandled_directories
