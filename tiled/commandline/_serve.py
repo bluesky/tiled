@@ -11,7 +11,7 @@ DATA_SUBDIRECTORY = "data"
 
 @serve_app.command("directory")
 def serve_directory(
-    directory: str,
+    directory: str = typer.Argument(..., help="A directory to serve"),
     verbose: bool = typer.Option(
         False,
         "--verbose",

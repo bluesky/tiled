@@ -138,15 +138,15 @@ async def walk(
     )
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
-        child = catalog.lookup_adapter([segment])
+        child = await catalog.lookup_adapter([segment])
         if child is None:
-            key = key_from_filename(key)
+            key = key_from_filename(segment)
             await catalog.create_node(
                 structure_family=StructureFamily.container,
                 metadata={},
                 key=key,
             )
-            child = catalog.lookup_adapter([segment])
+            child = await catalog.lookup_adapter([segment])
         catalog = child
     await _walk(
         catalog,

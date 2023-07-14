@@ -77,8 +77,13 @@ def init(
 
 @catalog_app.command("register")
 def register(
-    database: str = typer.Argument(..., help="A filepath or database URI"),
+    database: str = typer.Argument(
+        ..., help="A filepath or database URI for the catalog"
+    ),
     filepath: str = typer.Argument(..., help="A file or directory to register"),
+    prefix: str = typer.Option(
+        "/", help="Location within the catalog's namespace to register these files"
+    ),
     keep_ext: bool = typer.Option(
         False,
         "--keep-ext",
@@ -120,4 +125,4 @@ def register(
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
-    asyncio.run(walk(catalog_adapter, filepath))
+    asyncio.run(walk(catalog_adapter, filepath, prefix=prefix))
