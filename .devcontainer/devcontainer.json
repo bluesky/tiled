@@ -1,6 +1,6 @@
 {
 	"name": "tiled-devcontainer",
-	"build": { 
+	"build": {
 		"context": "..",
 		"dockerfile": "../Dockerfile"
 	},
