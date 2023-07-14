@@ -72,7 +72,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).HDF5Adapter.from_file,
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
-        ).ZarrAdapter.from_directory,
+        ).read_zarr,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter,
@@ -90,7 +90,7 @@ CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
     {
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
-        ).ZarrAdapter.init_storage,
+        ).ZarrArrayAdapter.init_storage,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,

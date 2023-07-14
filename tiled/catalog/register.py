@@ -46,6 +46,7 @@ def identity(filename):
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
 # for importing Readers that we will not actually use.
+ZARR_MIMETYPE = "application/x-zarr"
 DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
     {
         "image/tiff": lambda: importlib.import_module(
@@ -63,6 +64,9 @@ DEFAULT_READERS_BY_MIMETYPE = OneShotCachedMap(
         "application/x-netcdf": lambda: importlib.import_module(
             "...adapters.netcdf", __name__
         ).read_netcdf,
+        ZARR_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.zarr", __name__
+        ).read_zarr,
     }
 )
 
@@ -82,6 +86,7 @@ DEFAULT_MIMETYPES_BY_FILE_EXT = {
     ".hdf5": "application/x-hdf5",
     # on opensuse csv -> text/x-comma-separated-values
     ".csv": "text/csv",
+    ".zarr": ZARR_MIMETYPE,
 }
 
 
@@ -138,9 +143,9 @@ async def walk(
         mimetypes_by_file_ext or {}, DEFAULT_MIMETYPES_BY_FILE_EXT
     )
     if walkers is None:
-        walkers = [one_file_at_a_time]
+        walkers = [one_item_at_a_time]
     prefix_parts = [segment for segment in prefix.split("/") if segment]
-    for segment in prefix_parts:
+    for segment in prefix_parts[:-1]:
         child = await catalog.lookup_adapter([segment])
         if child is None:
             key = key_from_filename(segment)
@@ -163,7 +168,7 @@ async def walk(
 
 
 async def _walk(
-    catalog,
+    parent_catalog,
     path,
     walkers,
     readers_by_mimetype,
@@ -181,7 +186,8 @@ async def _walk(
             files.append(item)
     for walker in walkers:
         files, directories = await walker(
-            catalog,
+            parent_catalog,
+            path,
             files,
             directories,
             readers_by_mimetype,
@@ -190,15 +196,8 @@ async def _walk(
             key_from_filename,
         )
     for directory in directories:
-        key = key_from_filename(directory.name)
-        await catalog.create_node(
-            structure_family=StructureFamily.container,
-            metadata={},
-            key=key,
-        )
-        child = await catalog.lookup_adapter([key])
         await _walk(
-            child,
+            parent_catalog,
             directory,
             walkers,
             readers_by_mimetype,
@@ -208,8 +207,9 @@ async def _walk(
         )
 
 
-async def one_file_at_a_time(
-    catalog,
+async def one_item_at_a_time(
+    parent_catalog,
+    path,
     files,
     directories,
     readers_by_mimetype,
@@ -217,48 +217,85 @@ async def one_file_at_a_time(
     mimetype_detection_hook,
     key_from_filename,
 ):
+    key = key_from_filename(path.name)
+    await parent_catalog.create_node(
+        key=key,
+        structure_family=StructureFamily.container,
+        metadata={},
+    )
+    catalog = await parent_catalog.lookup_adapter([key])
     unhandled_files = []
     unhandled_directories = directories
     for file in files:
-        mimetype = resolve_mimetype(
-            file, mimetypes_by_file_ext, mimetype_detection_hook
+        await _handle_single_item(
+            catalog,
+            file,
+            False,
+            readers_by_mimetype,
+            mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
         )
-        if mimetype is None:
-            logger.info("    SKIPPED: Could not resolve mimetype for '%s'", file)
-            unhandled_files.append(file)
-            continue
-        if mimetype not in readers_by_mimetype:
-            logger.info(
-                "    SKIPPED: Resolved mimetype '%s' but no adapter found for '%s'",
-                mimetype,
-                file,
-            )
-            unhandled_files.append(file)
-            continue
-        adapter_factory = readers_by_mimetype[mimetype]
-        logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, file)
-        try:
-            adapter = adapter_factory(file)
-            key = key_from_filename(file.name)
-        except Exception:
-            logger.exception("    SKIPPED: Error adapting '%s'", file)
-        await catalog.create_node(
-            key=key,
-            structure_family=adapter.structure_family,
-            metadata=dict(adapter.metadata),
-            data_sources=[
-                DataSource(
-                    mimetype=mimetype,
-                    structure=get_structure(adapter),
-                    parameters={},
-                    management=Management.external,
-                    assets=[
-                        Asset(
-                            data_uri=str(ensure_uri(str(file.absolute()))),
-                            is_directory=False,
-                        )
-                    ],
-                )
-            ],
+    for directory in directories:
+        await _handle_single_item(
+            catalog,
+            directory,
+            True,
+            readers_by_mimetype,
+            mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
         )
     return unhandled_files, unhandled_directories
+
+
+async def _handle_single_item(
+    catalog,
+    item,
+    is_directory,
+    readers_by_mimetype,
+    mimetypes_by_file_ext,
+    mimetype_detection_hook,
+    key_from_filename,
+):
+    unhandled_items = []
+    mimetype = resolve_mimetype(item, mimetypes_by_file_ext, mimetype_detection_hook)
+    if mimetype is None:
+        logger.info("    SKIPPED: Could not resolve mimetype for '%s'", item)
+        unhandled_items.append(item)
+        return
+    if mimetype not in readers_by_mimetype:
+        logger.info(
+            "    SKIPPED: Resolved mimetype '%s' but no adapter found for '%s'",
+            mimetype,
+            item,
+        )
+        unhandled_items.append(item)
+        return
+    adapter_factory = readers_by_mimetype[mimetype]
+    logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, item)
+    try:
+        adapter = adapter_factory(item)
+    except Exception:
+        logger.exception("    SKIPPED: Error adapting '%s'", item)
+        return
+    key = key_from_filename(item.name)
+    await catalog.create_node(
+        key=key,
+        structure_family=adapter.structure_family,
+        metadata=dict(adapter.metadata),
+        data_sources=[
+            DataSource(
+                mimetype=mimetype,
+                structure=get_structure(adapter),
+                parameters={},
+                management=Management.external,
+                assets=[
+                    Asset(
+                        data_uri=str(ensure_uri(str(item.absolute()))),
+                        is_directory=is_directory,
+                    )
+                ],
+            )
+        ],
+    )
