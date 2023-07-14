@@ -145,7 +145,7 @@ async def walk(
     if walkers is None:
         walkers = [one_item_at_a_time]
     prefix_parts = [segment for segment in prefix.split("/") if segment]
-    for segment in prefix_parts[:-1]:
+    for segment in prefix_parts:
         child = await catalog.lookup_adapter([segment])
         if child is None:
             key = key_from_filename(segment)
@@ -168,7 +168,7 @@ async def walk(
 
 
 async def _walk(
-    parent_catalog,
+    catalog,
     path,
     walkers,
     readers_by_mimetype,
@@ -186,7 +186,7 @@ async def _walk(
             files.append(item)
     for walker in walkers:
         files, directories = await walker(
-            parent_catalog,
+            catalog,
             path,
             files,
             directories,
@@ -196,8 +196,15 @@ async def _walk(
             key_from_filename,
         )
     for directory in directories:
+        key = key_from_filename(directory.name)
+        await catalog.create_node(
+            key=key,
+            structure_family=StructureFamily.container,
+            metadata={},
+        )
+        child_catalog = await catalog.lookup_adapter([key])
         await _walk(
-            parent_catalog,
+            child_catalog,
             directory,
             walkers,
             readers_by_mimetype,
@@ -208,7 +215,7 @@ async def _walk(
 
 
 async def one_item_at_a_time(
-    parent_catalog,
+    catalog,
     path,
     files,
     directories,
@@ -217,17 +224,10 @@ async def one_item_at_a_time(
     mimetype_detection_hook,
     key_from_filename,
 ):
-    key = key_from_filename(path.name)
-    await parent_catalog.create_node(
-        key=key,
-        structure_family=StructureFamily.container,
-        metadata={},
-    )
-    catalog = await parent_catalog.lookup_adapter([key])
     unhandled_files = []
-    unhandled_directories = directories
+    unhandled_directories = []
     for file in files:
-        await _handle_single_item(
+        result = await _handle_single_item(
             catalog,
             file,
             False,
@@ -236,8 +236,10 @@ async def one_item_at_a_time(
             mimetype_detection_hook,
             key_from_filename,
         )
+        if not result:
+            unhandled_files.append(file)
     for directory in directories:
-        await _handle_single_item(
+        result = await _handle_single_item(
             catalog,
             directory,
             True,
@@ -246,6 +248,8 @@ async def one_item_at_a_time(
             mimetype_detection_hook,
             key_from_filename,
         )
+        if not result:
+            unhandled_directories.append(directory)
     return unhandled_files, unhandled_directories
 
 
@@ -280,7 +284,7 @@ async def _handle_single_item(
         logger.exception("    SKIPPED: Error adapting '%s'", item)
         return
     key = key_from_filename(item.name)
-    await catalog.create_node(
+    return await catalog.create_node(
         key=key,
         structure_family=adapter.structure_family,
         metadata=dict(adapter.metadata),
