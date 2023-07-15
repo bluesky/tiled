@@ -717,6 +717,12 @@ class CatalogNodeAdapter(BaseAdapter):
             return [Revision.from_orm(o[0]) for o in revision_orms]
 
     async def delete(self):
+        """
+        Delete a single Node.
+
+        Any DataSources belonging to this Node and any Assets associated (only) with
+        those DataSources will also be deleted.
+        """
         async with self.context.session() as db:
             is_child = orm.Node.ancestors == self.ancestors + [self.key]
             num_children = (
@@ -749,6 +755,46 @@ class CatalogNodeAdapter(BaseAdapter):
                 result.rowcount == 1
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
+
+    async def delete_tree(self):
+        """
+        Delete a Node and of the Nodes beneath it in the tree.
+
+        That is, delete all Nodes that have this Node as an ancestor, any number
+        of "generators" up.
+
+        Any DataSources belonging to those Nodes and any Assets associated (only) with
+        those DataSources will also be deleted.
+        """
+        conditions = []
+        segments = self.ancestors + [self.key]
+        for generation in range(len(segments)):
+            conditions.append(orm.Node.ancestors[generation] == segments[0])
+        statement = delete(orm.Node.key)
+        for condition in conditions:
+            statement.fliter(condition)
+        async with self.context.session() as db:
+            result = await db.execute(statement)
+            for data_source in self.data_sources:
+                if data_source.management != Management.external:
+                    # TODO Handle case where the same Asset is associated
+                    # with multiple DataSources. This is not possible yet
+                    # but it is expected to become possible in the future.
+                    for asset in data_source.assets:
+                        delete_asset(asset)
+                        await db.execute(
+                            delete(orm.Asset).where(orm.Asset.id == asset.id)
+                        )
+            result = await db.execute(
+                delete(orm.Node).where(orm.Node.id == self.node.id)
+            )
+            if result.row_count == 0:
+                # TODO Abstract this from FastAPI?
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No node {self.node.id}",
+                )
+        return result.rowcount
 
     async def delete_revision(self, number):
         async with self.context.session() as db:
