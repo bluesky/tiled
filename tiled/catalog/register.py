@@ -44,6 +44,11 @@ def identity(filename):
 
 
 def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
+    """
+    Given a filepath (file or directory) detect the mimetype.
+
+    If no mimetype could be resolved, return None.
+    """
     # First, try to infer the mimetype from the file extension.
     # For compound suffixes like '.u1.strict_disabled.avif' (a real example)
     # consider in order:
@@ -289,6 +294,16 @@ async def tiff_sequence(
     mimetype_detection_hook,
     key_from_filename,
 ):
+    """
+    Group files in the given directory into TIFF sequences.
+
+    We are looking for any files:
+    - with file extension .tif or .tiff
+    - with file name ending in a number
+
+    We group these into sorted groups and make one Node for each.
+    A group may have one or more items.
+    """
     unhandled_directories = directories
     unhandled_files = []
     sequences = collections.defaultdict(list)
