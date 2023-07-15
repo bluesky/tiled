@@ -69,7 +69,7 @@ def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
     return mimetype
 
 
-async def walk(
+async def register(
     catalog,
     path,
     prefix="/",
@@ -79,7 +79,10 @@ async def walk(
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
 ):
-    "Walk a directory recursively and register its contents."
+    "Register a file or directory (recursively)."
+    path = Path(path)
+    if walkers is None:
+        walkers = DEFAULT_WALKERS
     # If readers_by_mimetype comes from a configuration file,
     # objects are given as importable strings, like "package.module:Reader".
     readers_by_mimetype = readers_by_mimetype or {}
@@ -96,8 +99,6 @@ async def walk(
     merged_mimetypes_by_file_ext = collections.ChainMap(
         mimetypes_by_file_ext or {}, DEFAULT_MIMETYPES_BY_FILE_EXT
     )
-    if walkers is None:
-        walkers = [tiff_sequence, one_node_per_item]
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
         child_catalog = await catalog.lookup_adapter([segment])
@@ -110,15 +111,27 @@ async def walk(
             )
             child_catalog = await catalog.lookup_adapter([segment])
         catalog = child_catalog
-    await _walk(
-        catalog,
-        Path(path),
-        walkers,
-        merged_readers_by_mimetype,
-        merged_mimetypes_by_file_ext,
-        mimetype_detection_hook,
-        key_from_filename,
-    )
+    if path.is_dir():
+        # Recursively enter the directory and any subdirectories.
+        await _walk(
+            catalog,
+            Path(path),
+            walkers,
+            merged_readers_by_mimetype,
+            merged_mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
+        )
+    else:
+        await register_single_item(
+            catalog,
+            path,
+            False,
+            merged_readers_by_mimetype,
+            merged_mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
+        )
 
 
 async def _walk(
@@ -183,7 +196,7 @@ async def one_node_per_item(
     unhandled_files = []
     unhandled_directories = []
     for file in files:
-        result = await _handle_single_item(
+        result = await register_single_item(
             catalog,
             file,
             False,
@@ -195,7 +208,7 @@ async def one_node_per_item(
         if not result:
             unhandled_files.append(file)
     for directory in directories:
-        result = await _handle_single_item(
+        result = await register_single_item(
             catalog,
             directory,
             True,
@@ -209,7 +222,7 @@ async def one_node_per_item(
     return unhandled_files, unhandled_directories
 
 
-async def _handle_single_item(
+async def register_single_item(
     catalog,
     item,
     is_directory,
@@ -218,7 +231,7 @@ async def _handle_single_item(
     mimetype_detection_hook,
     key_from_filename,
 ):
-    "This is the inner loop of one_node_per_item"
+    "Register a single file or directory as a node."
     unhandled_items = []
     mimetype = resolve_mimetype(item, mimetypes_by_file_ext, mimetype_detection_hook)
     if mimetype is None:
@@ -313,3 +326,6 @@ async def tiff_sequence(
             ],
         )
     return unhandled_files, unhandled_directories
+
+
+DEFAULT_WALKERS = [tiff_sequence, one_node_per_item]

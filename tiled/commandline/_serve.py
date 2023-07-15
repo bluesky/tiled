@@ -105,13 +105,13 @@ def serve_directory(
     from logging import StreamHandler
 
     from ..catalog.register import logger as register_logger
-    from ..catalog.register import walk
+    from ..catalog.register import register
 
     typer.echo(f"Indexing {directory}...")
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
-    asyncio.run(walk(catalog_adapter, directory))
+    asyncio.run(register(catalog_adapter, directory))
 
     typer.echo("Indexing complete. Starting server...")
     web_app = build_app(

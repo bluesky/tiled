@@ -120,9 +120,9 @@ def register(
     from logging import StreamHandler
 
     from ..catalog.register import logger as register_logger
-    from ..catalog.register import walk
+    from ..catalog.register import register
 
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
-    asyncio.run(walk(catalog_adapter, filepath, prefix=prefix))
+    asyncio.run(register(catalog_adapter, filepath, prefix=prefix))
