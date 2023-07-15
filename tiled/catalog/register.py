@@ -280,8 +280,9 @@ async def register_single_item(
     )
 
 
-# This is (optional) non-digits \D followed by digits \d.
-TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(\D*)(\d+)$")
+# Matches filename with (optional) non-digits \D followed by digits \d
+# and then the file extension .tif or .tiff.
+TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(\D*)(\d+)\.(?:tif|tiff)$")
 
 
 async def tiff_sequence(
@@ -308,8 +309,8 @@ async def tiff_sequence(
     unhandled_files = []
     sequences = collections.defaultdict(list)
     for file in files:
-        if file.is_file() and (file.suffix in (".tif", ".tiff")):
-            match = TIFF_SEQUENCE_STEM_PATTERN.match(file.stem)
+        if file.is_file():
+            match = TIFF_SEQUENCE_STEM_PATTERN.match(file.name)
             if match:
                 sequence_name, _sequence_number = match.groups()
                 sequences[sequence_name].append(file)
