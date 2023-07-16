@@ -107,9 +107,9 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
+        readable_storage = readable_storage or []
         if not isinstance(readable_storage, list):
             raise ValueError("readable_storage should be a list of URIs or paths")
-        readable_storage = readable_storage or []
         if writable_storage:
             writable_storage = ensure_uri(str(writable_storage))
             if not writable_storage.scheme == "file":
