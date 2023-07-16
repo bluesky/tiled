@@ -7,7 +7,7 @@ import pytest
 from ..catalog import in_memory
 from ..catalog.register import register
 from ..client import Context, from_context
-from ..server.app import build_app
+from ..server.app import build_app, build_app_from_config
 from ..server.object_cache import NO_CACHE, ObjectCache, get_object_cache
 
 
@@ -115,7 +115,7 @@ a,b,c
 
 
 @pytest.mark.asyncio
-def test_detect_content_changed_or_removed(tmpdir):
+async def test_detect_content_changed_or_removed(tmpdir):
     path = Path(tmpdir, "data.csv")
     with open(path, "w") as file:
         file.write(
@@ -139,7 +139,7 @@ a,b,c
     4,5,6
     """
             )
-        force_update(client)
+        await register(adapter, tmpdir)
         assert len(client["data"].read()) == 2
         with open(path, "w") as file:
             file.write(
@@ -150,11 +150,11 @@ a,b,c
     7,8,9
     """
             )
-        force_update(client)
+        await register(adapter, tmpdir)
         assert len(client["data"].read()) == 3
         # Remove file.
         path.unlink()
-        force_update(client)
+        await register(adapter, tmpdir)
         assert "data" not in client
         with pytest.raises(KeyError):
             client["data"]
@@ -162,7 +162,13 @@ a,b,c
 
 def test_cache_size_absolute(tmpdir):
     config = {
-        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {"uri": tmpdir / "catalog.db", "init_if_not_exists": True},
+            }
+        ],
         "object_cache": {"available_bytes": 1000},
     }
     with Context.from_app(build_app_from_config(config)):
@@ -173,7 +179,13 @@ def test_cache_size_absolute(tmpdir):
 def test_cache_size_relative(tmpdir):
     # As a fraction of system memory
     config = {
-        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {"uri": tmpdir / "catalog.db", "init_if_not_exists": True},
+            }
+        ],
         "object_cache": {"available_bytes": 0.1},
     }
     with Context.from_app(build_app_from_config(config)):

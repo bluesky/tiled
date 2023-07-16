@@ -790,6 +790,7 @@ class CatalogNodeAdapter(BaseAdapter):
                 if count_int_assets > 0:
                     raise WouldDeleteData(
                         "Some items in this tree are internally managed. "
+                        "Delete the records will also delete the underlying data files. "
                         "If you want to delete them, pass external_only=False."
                     )
             else:
@@ -814,12 +815,6 @@ class CatalogNodeAdapter(BaseAdapter):
             for condition in conditions:
                 del_node_statement.filter(condition)
             result = await db.execute(del_node_statement)
-            if result.rowcount == 0:
-                # TODO Abstract this from FastAPI?
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No node {self.node.id}",
-                )
             await db.commit()
         return result.rowcount
 
@@ -1065,6 +1060,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
 ):
+    uri = str(uri)
     if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
         # The cleanest option available is to start a subprocess

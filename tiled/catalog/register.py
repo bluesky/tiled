@@ -83,6 +83,7 @@ async def register(
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
+    overwrite=True,
 ):
     "Register a file or directory (recursively)."
     path = Path(path)
@@ -118,6 +119,8 @@ async def register(
         catalog = child_catalog
     if path.is_dir():
         # Recursively enter the directory and any subdirectories.
+        if overwrite:
+            await catalog.delete_tree()
         await _walk(
             catalog,
             Path(path),
