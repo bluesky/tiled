@@ -4,6 +4,8 @@ import mimetypes
 import re
 from pathlib import Path
 
+import watchfiles
+
 from ..catalog.utils import ensure_uri
 from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
@@ -120,6 +122,7 @@ async def register(
     if path.is_dir():
         # Recursively enter the directory and any subdirectories.
         if overwrite:
+            logger.info(f"Overwriting '/{'/'.join(prefix_parts)}'")
             await catalog.delete_tree()
         await _walk(
             catalog,
@@ -353,3 +356,21 @@ async def tiff_sequence(
 
 
 DEFAULT_WALKERS = [tiff_sequence, one_node_per_item]
+
+
+async def watch(
+    catalog,
+    path,
+    prefix="/",
+    walkers=None,
+    readers_by_mimetype=None,
+    mimetypes_by_file_ext=None,
+    mimetype_detection_hook=None,
+    key_from_filename=strip_suffixes,
+):
+    logger.info("Watching for changes in %s", path)
+    async for batch in watchfiles.awatch(path):
+        logger.info("Detected changes")
+        for change in batch:
+            change_type, change_path = change
+            logger.info("  CHANGED: %s '%s'", change_type.value, change_path)

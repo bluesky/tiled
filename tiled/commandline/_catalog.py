@@ -101,6 +101,12 @@ def register(
         "-v",
         help=("Log details of directory traversal and file registration."),
     ),
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        "-w",
+        help="Update catalog when files are added, removed, or changed.",
+    ),
 ):
     from ..catalog.utils import SCHEME_PATTERN
 
@@ -120,9 +126,11 @@ def register(
     from logging import StreamHandler
 
     from ..catalog.register import logger as register_logger
-    from ..catalog.register import register
+    from ..catalog.register import register, watch
 
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
     asyncio.run(register(catalog_adapter, filepath, prefix=prefix))
+    if watch:
+        asyncio.run(watch(catalog_adapter, filepath, prefix=prefix))
