@@ -6,6 +6,8 @@ from ..utils import OneShotCachedMap
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
 # for importing Readers that we will not actually use.
+PARQUET_MIMETYPE = "application/x-parquet"
+SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet-sparse"  # HACK!
 ZARR_MIMETYPE = "application/x-zarr"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
@@ -27,6 +29,12 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "application/x-netcdf": lambda: importlib.import_module(
             "...adapters.netcdf", __name__
         ).read_netcdf,
+        PARQUET_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.parquet", __name__
+        ).ParquetDatasetAdapter,
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.sparse_blocks_parquet", __name__
+        ).SparseBlocksParquetAdapter,
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).read_zarr,

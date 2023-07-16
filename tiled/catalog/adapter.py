@@ -44,13 +44,16 @@ from ..utils import (
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
-from .mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, ZARR_MIMETYPE
+from .mimetypes import (
+    DEFAULT_ADAPTERS_BY_MIMETYPE,
+    PARQUET_MIMETYPE,
+    SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    ZARR_MIMETYPE,
+)
 from .utils import SCHEME_PATTERN, ensure_uri, safe_path
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-PARQUET_MIMETYPE = "application/x-parquet"
-SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet-sparse"  # HACK!
 
 DEFAULT_CREATION_MIMETYPE = {
     "array": ZARR_MIMETYPE,
