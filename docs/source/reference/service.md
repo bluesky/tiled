@@ -18,17 +18,21 @@ or its dask counterpart.
    tiled.adapters.xarray.DatasetAdapter.from_dataset
 ```
 
-### File and Directory Adapters
+### File Adapters
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   tiled.adapters.files.DirectoryAdapter
    tiled.adapters.dataframe.DataFrameAdapter.read_csv
-   tiled.adapters.tiff.TiffAdapter
    tiled.adapters.excel.ExcelAdapter
    tiled.adapters.hdf5.HDF5Adapter
+   tiled.adapters.netcdf.read_netcdf
+   tiled.adapters.parquet.ParquetDatasetAdapter
+   tiled.adapters.sparse_blocks_parquet.SparseBlocksParquetAdapter
+   tiled.adapters.tiff.TiffAdapter
+   tiled.adapters.zarr.ZarrArrayAdapter
+   tiled.adapters.zarr.ZarrGroupAdapter
 ```
 
 ## Search Queries
