@@ -105,7 +105,6 @@ def construct_build_app_kwargs(
             root_access_policy = None
         # TODO Enable entrypoint to extend aliases?
         tree_aliases = {
-            "files": "tiled.adapters.files:DirectoryAdapter.from_directory",
             "catalog": "tiled.catalog:from_uri",
         }
         trees = {}
@@ -121,6 +120,12 @@ def construct_build_app_kwargs(
                 access_policy = None
             segments = tuple(segment for segment in item["path"].split("/") if segment)
             tree_spec = item["tree"]
+            if isinstance(tree_spec, str) and tree_spec == "files":
+                raise Exception(
+                    """The way that tiled serves files has changed.
+
+See documentation section "Serve a Directory of Files"."""
+                )
             import_path = tree_aliases.get(tree_spec, tree_spec)
             obj = import_object(import_path, accept_live_object=True)
             if (("args" in item) or ("access_policy" in item)) and (not callable(obj)):
