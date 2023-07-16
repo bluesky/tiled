@@ -391,6 +391,8 @@ async def watch(
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
     filter=None,
+    event_ready=None,
+    event_process_backlog=None,
 ):
     if filter is None:
         filter = default_filter
@@ -399,8 +401,32 @@ async def watch(
         return default_filter(Path(path))
 
     logger.info("Watching for changes in %s", path)
+    # If running in a subprocess, this tells the main process that we are ready
+    # and watching.
+    if event_ready is not None:
+        await event_ready.set()
+    # If running in a subprocess, the main process tells us when it is done
+    # with the initial walk and ready to process any changes that happened during
+    # the walk.
+    backlog = []
     async for batch in watchfiles.awatch(path, watch_filter=watch_filter):
-        logger.info("Detected changes")
-        for change in batch:
-            change_type, change_path = change
-            logger.info("  %s '%s'", change_type.name, change_path)
+        if (event_process_backlog is not None) and (backlog is not None):
+            # We are accumulating changes in a backlog,
+            # waiting for an initial scan to complete before processing them.
+            backlog.extend(batch)
+            if event_process_backlog.is_set() and backlog:
+                logger.info(
+                    "Processing backlog of changes that occurred during initial walk"
+                )
+                await process_changes(backlog)
+                backlog = None
+        else:
+            # We are caught up. Process changes immediately.
+            logger.info("Detected changes")
+            await process_changes(batch)
+
+
+async def process_changes(batch):
+    for change in batch:
+        change_type, change_path = change
+        logger.info("  %s '%s'", change_type.name, change_path)
