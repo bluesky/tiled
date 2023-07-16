@@ -45,6 +45,11 @@ def identity(filename):
     return filename
 
 
+def default_filter(path):
+    "By default, ignore only hidden files."
+    return not path.name.startswith(".")
+
+
 def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
     """
     Given a filepath (file or directory) detect the mimetype.
@@ -85,14 +90,15 @@ async def register(
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
+    filter=None,
     overwrite=True,
 ):
     "Register a file or directory (recursively)."
     path = Path(path)
     if walkers is None:
         walkers = DEFAULT_WALKERS
-    # If readers_by_mimetype comes from a configuration file,
-    # objects are given as importable strings, like "package.module:Reader".
+    # If parameters come from a configuration file, they are given
+    # are given as importable strings, like "package.module:Reader".
     readers_by_mimetype = readers_by_mimetype or {}
     for key, value in list((readers_by_mimetype).items()):
         if isinstance(value, str):
@@ -107,6 +113,10 @@ async def register(
     merged_mimetypes_by_file_ext = collections.ChainMap(
         mimetypes_by_file_ext or {}, DEFAULT_MIMETYPES_BY_FILE_EXT
     )
+    if filter is None:
+        filter = default_filter
+    if isinstance(filter, str):
+        filter = import_object(filter)
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
         child_catalog = await catalog.lookup_adapter([segment])
@@ -122,7 +132,7 @@ async def register(
     if path.is_dir():
         # Recursively enter the directory and any subdirectories.
         if overwrite:
-            logger.info(f"Overwriting '/{'/'.join(prefix_parts)}'")
+            logger.info(f"  Overwriting '/{'/'.join(prefix_parts)}'")
             await catalog.delete_tree()
         await _walk(
             catalog,
@@ -132,6 +142,7 @@ async def register(
             merged_mimetypes_by_file_ext,
             mimetype_detection_hook,
             key_from_filename,
+            filter,
         )
     else:
         await register_single_item(
@@ -142,6 +153,7 @@ async def register(
             merged_mimetypes_by_file_ext,
             mimetype_detection_hook,
             key_from_filename,
+            filter,
         )
 
 
@@ -153,12 +165,15 @@ async def _walk(
     mimetypes_by_file_ext,
     mimetype_detection_hook,
     key_from_filename,
+    filter,
 ):
     "This is the recursive inner loop of walk."
     files = []
     directories = []
     logger.info("  Walking '%s'", path)
     for item in path.iterdir():
+        if not filter(item):
+            continue
         if item.is_dir():
             directories.append(item)
         else:
@@ -173,6 +188,7 @@ async def _walk(
             mimetypes_by_file_ext,
             mimetype_detection_hook,
             key_from_filename,
+            filter,
         )
     for directory in directories:
         key = key_from_filename(directory.name)
@@ -190,6 +206,7 @@ async def _walk(
             mimetypes_by_file_ext,
             mimetype_detection_hook,
             key_from_filename,
+            filter,
         )
 
 
@@ -202,6 +219,7 @@ async def one_node_per_item(
     mimetypes_by_file_ext,
     mimetype_detection_hook,
     key_from_filename,
+    filter,
 ):
     "Process each file and directory as mapping to one logical 'node' in Tiled."
     unhandled_files = []
@@ -215,6 +233,7 @@ async def one_node_per_item(
             mimetypes_by_file_ext,
             mimetype_detection_hook,
             key_from_filename,
+            filter,
         )
         if not result:
             unhandled_files.append(file)
@@ -227,6 +246,7 @@ async def one_node_per_item(
             mimetypes_by_file_ext,
             mimetype_detection_hook,
             key_from_filename,
+            filter,
         )
         if not result:
             unhandled_directories.append(directory)
@@ -241,13 +261,15 @@ async def register_single_item(
     mimetypes_by_file_ext,
     mimetype_detection_hook,
     key_from_filename,
+    filter,
 ):
     "Register a single file or directory as a node."
     unhandled_items = []
     mimetype = resolve_mimetype(item, mimetypes_by_file_ext, mimetype_detection_hook)
     if mimetype is None:
-        logger.info("    SKIPPED: Could not resolve mimetype for '%s'", item)
         unhandled_items.append(item)
+        if not is_directory:
+            logger.info("    SKIPPED: Could not resolve mimetype for '%s'", item)
         return
     if mimetype not in readers_by_mimetype:
         logger.info(
@@ -300,6 +322,7 @@ async def tiff_sequence(
     mimetypes_by_file_ext,
     mimetype_detection_hook,
     key_from_filename,
+    filter,
 ):
     """
     Group files in the given directory into TIFF sequences.
@@ -367,10 +390,17 @@ async def watch(
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
+    filter=None,
 ):
+    if filter is None:
+        filter = default_filter
+
+    def watch_filter(change, path):
+        return default_filter(Path(path))
+
     logger.info("Watching for changes in %s", path)
-    async for batch in watchfiles.awatch(path):
+    async for batch in watchfiles.awatch(path, watch_filter=watch_filter):
         logger.info("Detected changes")
         for change in batch:
             change_type, change_path = change
-            logger.info("  CHANGED: %s '%s'", change_type.value, change_path)
+            logger.info("  %s '%s'", change_type.name, change_path)
