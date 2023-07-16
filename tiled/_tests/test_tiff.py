@@ -5,7 +5,7 @@ import pytest
 import tifffile as tf
 
 from ..adapters.mapping import MapAdapter
-from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter, subdirectory_handler
+from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
 from ..client import Context, from_context
 from ..server.app import build_app, build_app_from_config
 

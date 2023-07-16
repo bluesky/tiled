@@ -13,6 +13,7 @@ import xarray
 
 from ..adapters.dataframe import ArrayAdapter, DataFrameAdapter
 from ..adapters.tiff import TiffAdapter
+from ..catalog.adapter import WouldDeleteData
 from ..catalog.explain import record_explanations
 from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
@@ -311,3 +312,40 @@ def test_write_xarray_dataset(client):
     dsc["temp"][:]
     dsc["time"][:]
     dsc.read()
+
+
+@pytest.mark.asyncio
+async def test_delete_tree(client):
+    tree = client.context.http_client.app.state.root_tree
+
+    a = client.create_container("a")
+    b = a.create_container("b")
+    b.write_array([1, 2, 3])
+    b.write_array([4, 5, 6])
+    c = b.create_container("c")
+    d = c.create_container("d")
+    d.write_array([7, 8, 9])
+
+    nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
+    assert len(nodes_before_delete) == 7
+    data_sources_before_delete = (
+        await tree.context.execute("SELECT * from data_sources")
+    ).all()
+    assert len(data_sources_before_delete) == 3
+    assets_before_delete = (await tree.context.execute("SELECT * from assets")).all()
+    assert len(assets_before_delete) == 3
+
+    with pytest.raises(WouldDeleteData):
+        await tree.delete_tree()  # external_only=True by default
+    with pytest.raises(WouldDeleteData):
+        await tree.delete_tree(external_only=True)
+    await tree.delete_tree(external_only=False)
+
+    nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
+    assert len(nodes_after_delete) == 0
+    data_sources_after_delete = (
+        await tree.context.execute("SELECT * from data_sources")
+    ).all()
+    assert len(data_sources_after_delete) == 0
+    assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+    assert len(assets_after_delete) == 0

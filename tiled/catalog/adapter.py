@@ -741,7 +741,7 @@ class CatalogNodeAdapter(BaseAdapter):
                     # with multiple DataSources. This is not possible yet
                     # but it is expected to become possible in the future.
                     for asset in data_source.assets:
-                        delete_asset(asset)
+                        delete_asset(asset.data_uri, asset.is_directory)
                         await db.execute(
                             delete(orm.Asset).where(orm.Asset.id == asset.id)
                         )
@@ -759,7 +759,7 @@ class CatalogNodeAdapter(BaseAdapter):
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def delete_tree(self):
+    async def delete_tree(self, external_only=True):
         """
         Delete a Node and of the Nodes beneath it in the tree.
 
@@ -773,30 +773,54 @@ class CatalogNodeAdapter(BaseAdapter):
         segments = self.ancestors + [self.key]
         for generation in range(len(segments)):
             conditions.append(orm.Node.ancestors[generation] == segments[0])
-        statement = delete(orm.Node.key)
-        for condition in conditions:
-            statement.fliter(condition)
         async with self.context.session() as db:
-            result = await db.execute(statement)
-            for data_source in self.data_sources:
-                if data_source.management != Management.external:
-                    # TODO Handle case where the same Asset is associated
-                    # with multiple DataSources. This is not possible yet
-                    # but it is expected to become possible in the future.
-                    for asset in data_source.assets:
-                        delete_asset(asset)
-                        await db.execute(
-                            delete(orm.Asset).where(orm.Asset.id == asset.id)
-                        )
-            result = await db.execute(
-                delete(orm.Node).where(orm.Node.id == self.node.id)
-            )
-            if result.row_count == 0:
+            if external_only:
+                count_int_asset_statement = select(
+                    func.count(orm.Asset.data_uri)
+                ).filter(
+                    orm.Asset.data_sources.any(
+                        orm.DataSource.management != Management.external
+                    )
+                )
+                for condition in conditions:
+                    count_int_asset_statement.filter(condition)
+                count_int_assets = (
+                    await db.execute(count_int_asset_statement)
+                ).scalar()
+                if count_int_assets > 0:
+                    raise WouldDeleteData(
+                        "Some items in this tree are internally managed. "
+                        "If you want to delete them, pass external_only=False."
+                    )
+            else:
+                sel_int_asset_statement = select(
+                    orm.Asset.data_uri, orm.Asset.is_directory
+                ).filter(
+                    orm.Asset.data_sources.any(
+                        orm.DataSource.management != Management.external
+                    )
+                )
+                for condition in conditions:
+                    sel_int_asset_statement.filter(condition)
+                int_assets = (await db.execute(sel_int_asset_statement)).all()
+                for data_uri, is_directory in int_assets:
+                    delete_asset(data_uri, is_directory)
+            # TODO Deal with Assets belonging to multiple DataSources.
+            del_asset_statement = delete(orm.Asset)
+            for condition in conditions:
+                del_asset_statement.filter(condition)
+            await db.execute(del_asset_statement)
+            del_node_statement = delete(orm.Node)
+            for condition in conditions:
+                del_node_statement.filter(condition)
+            result = await db.execute(del_node_statement)
+            if result.rowcount == 0:
                 # TODO Abstract this from FastAPI?
                 raise HTTPException(
                     status_code=404,
                     detail=f"No node {self.node.id}",
                 )
+            await db.commit()
         return result.rowcount
 
     async def delete_revision(self, number):
@@ -854,11 +878,11 @@ class CatalogNodeAdapter(BaseAdapter):
             await db.commit()
 
 
-def delete_asset(asset):
-    url = urlparse(asset.data_uri)
+def delete_asset(data_uri, is_directory):
+    url = urlparse(data_uri)
     if url.scheme == "file":
-        path = safe_path(asset.data_uri)
-        if asset.is_directory:
+        path = safe_path(data_uri)
+        if is_directory:
             shutil.rmtree(path)
         else:
             Path(path).unlink()
@@ -1081,3 +1105,7 @@ def format_distinct_result(results, counts):
     else:
         formatted_result = [{"value": value} for value, in results]
     return formatted_result
+
+
+class WouldDeleteData(RuntimeError):
+    pass
