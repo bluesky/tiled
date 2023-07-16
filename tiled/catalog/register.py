@@ -259,7 +259,7 @@ async def register_single_item(
     try:
         adapter = adapter_factory(item)
     except Exception:
-        logger.exception("    SKIPPED: Error adapting '%s'", item)
+        logger.exception("    SKIPPED: Error constructing adapter for '%s'", item)
         return
     key = key_from_filename(item.name)
     return await catalog.create_node(
@@ -320,10 +320,15 @@ async def tiff_sequence(
                 continue
         unhandled_files.append(file)
     mimetype = "multipart/related;type=image/tiff"
-    for name, sequence in sequences.items():
+    for name, sequence in sorted(sequences.items()):
+        logger.info("    Grouped %d TIFFs into a sequence '%s'", len(sequence), name)
         adapter_class = readers_by_mimetype[mimetype]
         key = key_from_filename(name)
-        adapter = adapter_class(*sequence)
+        try:
+            adapter = adapter_class(*sequence)
+        except Exception:
+            logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
+            return
         await catalog.create_node(
             key=key,
             structure_family=adapter.structure_family,
