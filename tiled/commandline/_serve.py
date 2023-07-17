@@ -18,6 +18,12 @@ def serve_directory(
         "-v",
         help=("Log details of directory traversal and file registration."),
     ),
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        "-w",
+        help="Update catalog when files are added, removed, or changed.",
+    ),
     keep_ext: bool = typer.Option(
         False,
         "--keep-ext",
@@ -106,12 +112,48 @@ def serve_directory(
 
     from ..catalog.register import logger as register_logger
     from ..catalog.register import register
+    from ..catalog.register import watch as watch_
 
-    typer.echo(f"Indexing {directory}...")
+    typer.echo(f"Indexing '{directory}' ...")
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
-    asyncio.run(register(catalog_adapter, directory))
+    if watch:
+        from multiprocessing import Event, Process
+
+        def target(sync_mp_event):
+            import anyio
+
+            class _AsyncEventWrapper:
+                def __init__(self, event):
+                    self.event = event
+
+                async def set(self):
+                    return await anyio.to_thread.run_sync(self.event.set)
+
+                def is_set(self):
+                    return self.event.is_set()
+
+            event = _AsyncEventWrapper(sync_mp_event)
+
+            async def f(event):
+                await event.set()
+
+            asyncio.run(
+                watch_(catalog_adapter, directory, initial_walk_complete_event=event)
+            )
+            # asyncio.run(f(event))
+
+        sync_mp_event = Event()
+
+        process = Process(target=target, args=(sync_mp_event,))
+        process.start()
+        # Block until initial walk is complete.
+        print("BLOCKING")
+        sync_mp_event.wait()
+        print("UNBLOCKED")
+    else:
+        asyncio.run(register(catalog_adapter, directory))
 
     typer.echo("Indexing complete. Starting server...")
     web_app = build_app(

@@ -126,11 +126,13 @@ def register(
     from logging import StreamHandler
 
     from ..catalog.register import logger as register_logger
-    from ..catalog.register import register, watch
+    from ..catalog.register import register
+    from ..catalog.register import watch as watch_
 
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
-    asyncio.run(register(catalog_adapter, filepath, prefix=prefix))
     if watch:
-        asyncio.run(watch(catalog_adapter, filepath, prefix=prefix))
+        asyncio.run(watch_(catalog_adapter, filepath, prefix=prefix))
+    else:
+        asyncio.run(register(catalog_adapter, filepath, prefix=prefix))

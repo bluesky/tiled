@@ -4,6 +4,7 @@ import mimetypes
 import re
 from pathlib import Path
 
+import anyio
 import watchfiles
 
 from ..catalog.utils import ensure_uri
@@ -391,8 +392,61 @@ async def watch(
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
     filter=None,
-    event_ready=None,
-    event_process_backlog=None,
+    initial_walk_complete_event=None,
+):
+    if initial_walk_complete_event is None:
+        initial_walk_complete_event = anyio.Event()
+    ready_event = anyio.Event()
+    stop_event = anyio.Event()
+    async with anyio.create_task_group() as tg:
+        # Begin listening for changes.
+        tg.start_soon(
+            _watch,
+            ready_event,
+            initial_walk_complete_event,
+            stop_event,
+            catalog,
+            path,
+            prefix,
+            walkers,
+            readers_by_mimetype,
+            mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
+            filter,
+        )
+        await ready_event.wait()
+        # We have begun listening for changes.
+        # Now do the initial walk.
+        await register(
+            catalog,
+            path,
+            prefix,
+            walkers,
+            readers_by_mimetype,
+            mimetypes_by_file_ext,
+            mimetype_detection_hook,
+            key_from_filename,
+            filter,
+        )
+        # Signal that initial walk is complete.
+        # Process any changes that were accumulated during the initial walk.
+        await initial_walk_complete_event.set()
+
+
+async def _watch(
+    ready_event,
+    initial_walk_complete_event,
+    stop_event,
+    catalog,
+    path,
+    prefix="/",
+    walkers=None,
+    readers_by_mimetype=None,
+    mimetypes_by_file_ext=None,
+    mimetype_detection_hook=None,
+    key_from_filename=strip_suffixes,
+    filter=None,
 ):
     if filter is None:
         filter = default_filter
@@ -400,27 +454,29 @@ async def watch(
     def watch_filter(change, path):
         return default_filter(Path(path))
 
-    logger.info("Watching for changes in %s", path)
-    # If running in a subprocess, this tells the main process that we are ready
-    # and watching.
-    if event_ready is not None:
-        await event_ready.set()
-    # If running in a subprocess, the main process tells us when it is done
-    # with the initial walk and ready to process any changes that happened during
-    # the walk.
+    await ready_event.set()
     backlog = []
-    async for batch in watchfiles.awatch(path, watch_filter=watch_filter):
-        if (event_process_backlog is not None) and (backlog is not None):
-            # We are accumulating changes in a backlog,
-            # waiting for an initial scan to complete before processing them.
+    async for batch in watchfiles.awatch(
+        path,
+        watch_filter=watch_filter,
+        yield_on_timeout=True,
+        stop_event=stop_event,
+        rust_timeout=1000,
+    ):
+        if (backlog is not None) and batch:
+            logger.info(
+                "Detected changes, waiting to process until initial walk completes"
+            )
             backlog.extend(batch)
-            if event_process_backlog.is_set() and backlog:
+        if (backlog is not None) and initial_walk_complete_event.is_set():
+            logger.info("Watching for changes in '%s'", path)
+            if backlog:
                 logger.info(
-                    "Processing backlog of changes that occurred during initial walk"
+                    "Processing backlog of changes that occurred during initial walk..."
                 )
                 await process_changes(backlog)
-                backlog = None
-        else:
+            backlog = None
+        elif batch:
             # We are caught up. Process changes immediately.
             logger.info("Detected changes")
             await process_changes(batch)
