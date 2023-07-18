@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from typing import List
 
 import typer
 
@@ -81,6 +82,18 @@ def register(
         ..., help="A filepath or database URI for the catalog"
     ),
     filepath: str = typer.Argument(..., help="A file or directory to register"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=("Log details of directory traversal and file registration."),
+    ),
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        "-w",
+        help="Update catalog when files are added, removed, or changed.",
+    ),
     prefix: str = typer.Option(
         "/", help="Location within the catalog's namespace to register these files"
     ),
@@ -95,17 +108,23 @@ def register(
             "may break user (client-side) code."
         ),
     ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help=("Log details of directory traversal and file registration."),
+    ext: List[str] = typer.Option(
+        [],
+        "--ext",
+        help=(
+            "Support custom file extension, mapping it to a known mimetype. "
+            "Spell like '.tif:image/tiff'. Include the leading '.' in the file "
+            "extension."
+        ),
     ),
-    watch: bool = typer.Option(
-        False,
-        "--watch",
-        "-w",
-        help="Update catalog when files are added, removed, or changed.",
+    mimetype_detection_hook: str = typer.Option(
+        None,
+        "--mimetype-hook",
+        help=(
+            "ADVANCED: Custom mimetype detection Python function. "
+            "Expected interface: detect_mimetype(filepath, mimetype) -> mimetype "
+            "Specify here as 'package.module:function'"
+        ),
     ),
 ):
     from ..catalog.utils import SCHEME_PATTERN
@@ -129,10 +148,27 @@ def register(
     from ..catalog.register import register
     from ..catalog.register import watch as watch_
 
+    mimetypes_by_file_ext = {}
+    for item in ext:
+        try:
+            ext, mimetype = item.split(":", 1)
+        except Exception:
+            raise ValueError(
+                f"Failed parsing --ext option {item}, expected format '.ext:mimetype'"
+            )
+        mimetypes_by_file_ext[ext] = mimetype
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
     if watch:
-        asyncio.run(watch_(catalog_adapter, filepath, prefix=prefix))
+        asyncio.run(
+            watch_(
+                catalog_adapter,
+                filepath,
+                prefix=prefix,
+                mimetype_detection_hook=mimetype_detection_hook,
+                mimetypes_by_file_ext=mimetypes_by_file_ext,
+            )
+        )
     else:
         asyncio.run(register(catalog_adapter, filepath, prefix=prefix))

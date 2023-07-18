@@ -24,6 +24,15 @@ def serve_directory(
         "-w",
         help="Update catalog when files are added, removed, or changed.",
     ),
+    public: bool = typer.Option(
+        False,
+        "--public",
+        help=(
+            "Turns off requirement for API key authentication for reading. "
+            "However, the API key is still required for writing, so data cannot be modified even with "
+            "this option selected."
+        ),
+    ),
     keep_ext: bool = typer.Option(
         False,
         "--keep-ext",
@@ -35,13 +44,22 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
-    public: bool = typer.Option(
-        False,
-        "--public",
+    ext: List[str] = typer.Option(
+        [],
+        "--ext",
         help=(
-            "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with "
-            "this option selected."
+            "Support custom file extension, mapping it to a known mimetype. "
+            "Spell like '.tif:image/tiff'. Include the leading '.' in the file "
+            "extension."
+        ),
+    ),
+    mimetype_detection_hook: str = typer.Option(
+        None,
+        "--mimetype-hook",
+        help=(
+            "ADVANCED: Custom mimetype detection Python function. "
+            "Expected interface: detect_mimetype(filepath, mimetype) -> mimetype "
+            "Specify here as 'package.module:function'"
         ),
     ),
     host: str = typer.Option(
@@ -114,6 +132,15 @@ def serve_directory(
     from ..catalog.register import register
     from ..catalog.register import watch as watch_
 
+    mimetypes_by_file_ext = {}
+    for item in ext:
+        try:
+            ext, mimetype = item.split(":", 1)
+        except Exception:
+            raise ValueError(
+                f"Failed parsing --ext option {item}, expected format '.ext:mimetype'"
+            )
+        mimetypes_by_file_ext[ext] = mimetype
     typer.echo(f"Indexing '{directory}' ...")
     if verbose:
         register_logger.addHandler(StreamHandler())
@@ -140,9 +167,14 @@ def serve_directory(
                 await event.set()
 
             asyncio.run(
-                watch_(catalog_adapter, directory, initial_walk_complete_event=event)
+                watch_(
+                    catalog_adapter,
+                    directory,
+                    initial_walk_complete_event=event,
+                    mimetype_detection_hook=mimetype_detection_hook,
+                    mimetypes_by_file_ext=mimetypes_by_file_ext,
+                )
             )
-            # asyncio.run(f(event))
 
         sync_mp_event = Event()
 
@@ -151,7 +183,14 @@ def serve_directory(
         # Block until initial walk is complete.
         sync_mp_event.wait()
     else:
-        asyncio.run(register(catalog_adapter, directory))
+        asyncio.run(
+            register(
+                catalog_adapter,
+                directory,
+                mimetype_detection_hook=mimetype_detection_hook,
+                mimetypes_by_file_ext=mimetypes_by_file_ext,
+            )
+        )
 
     typer.echo("Indexing complete. Starting server...")
     web_app = build_app(

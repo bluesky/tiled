@@ -55,9 +55,9 @@ We use a configuration file like this:
 ```yaml
 # config.yml
 trees:
-- tree: files
+- tree: catalog
+  path: /
   args:
-    directory: path/to/directory
     mimetypes_by_file_ext:
       .stuff: text/csv
 ```
