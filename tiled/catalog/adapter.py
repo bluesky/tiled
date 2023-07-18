@@ -103,7 +103,6 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
-        mimetype_detection_hook=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
@@ -122,8 +121,6 @@ class Context:
         self.readable_storage = [ensure_uri(path) for path in readable_storage]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
-        if mimetype_detection_hook is not None:
-            mimetype_detection_hook = import_object(mimetype_detection_hook)
         # If adapters_by_mimetype comes from a configuration file,
         # objects are given as importable strings, like "package.module:Reader".
         for key, value in list(adapters_by_mimetype.items()):
@@ -1059,6 +1056,7 @@ def from_uri(
     readable_storage=None,
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
+    adapters_by_mimetype=None,
 ):
     uri = str(uri)
     if init_if_not_exists:
@@ -1080,7 +1078,7 @@ def from_uri(
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogNodeAdapter(
-        Context(engine, writable_storage, readable_storage),
+        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
     )

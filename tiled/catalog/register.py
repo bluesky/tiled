@@ -85,7 +85,7 @@ def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
 
 @dataclasses.dataclass(frozen=True)
 class Settings:
-    readers_by_mimetype: dict
+    adapters_by_mimetype: dict
     mimetypes_by_file_ext: dict
     mimetype_detection_hook: callable
     key_from_filename: callable
@@ -94,7 +94,7 @@ class Settings:
     @classmethod
     def init(
         cls,
-        readers_by_mimetype=None,
+        adapters_by_mimetype=None,
         mimetypes_by_file_ext=None,
         mimetype_detection_hook=None,
         key_from_filename=strip_suffixes,
@@ -102,12 +102,12 @@ class Settings:
     ):
         # If parameters come from a configuration file, they are given
         # are given as importable strings, like "package.module:Reader".
-        readers_by_mimetype = readers_by_mimetype or {}
-        for key, value in list((readers_by_mimetype).items()):
+        adapters_by_mimetype = adapters_by_mimetype or {}
+        for key, value in list((adapters_by_mimetype).items()):
             if isinstance(value, str):
-                readers_by_mimetype[key] = import_object(value)
-        merged_readers_by_mimetype = collections.ChainMap(
-            readers_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
+                adapters_by_mimetype[key] = import_object(value)
+        merged_adapters_by_mimetype = collections.ChainMap(
+            adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         if isinstance(key_from_filename, str):
             key_from_filename = import_object(key_from_filename)
@@ -121,7 +121,7 @@ class Settings:
         if isinstance(filter, str):
             filter = import_object(filter)
         return cls(
-            readers_by_mimetype=merged_readers_by_mimetype,
+            adapters_by_mimetype=merged_adapters_by_mimetype,
             mimetypes_by_file_ext=merged_mimetypes_by_file_ext,
             mimetype_detection_hook=mimetype_detection_hook,
             key_from_filename=key_from_filename,
@@ -134,7 +134,7 @@ async def register(
     path,
     prefix="/",
     walkers=None,
-    readers_by_mimetype=None,
+    adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
@@ -143,7 +143,7 @@ async def register(
 ):
     "Register a file or directory (recursively)."
     settings = Settings.init(
-        readers_by_mimetype=readers_by_mimetype,
+        adapters_by_mimetype=adapters_by_mimetype,
         mimetypes_by_file_ext=mimetypes_by_file_ext,
         mimetype_detection_hook=mimetype_detection_hook,
         key_from_filename=key_from_filename,
@@ -272,7 +272,7 @@ async def register_single_item(
         if not is_directory:
             logger.info("    SKIPPED: Could not resolve mimetype for '%s'", item)
         return
-    if mimetype not in settings.readers_by_mimetype:
+    if mimetype not in settings.adapters_by_mimetype:
         logger.info(
             "    SKIPPED: Resolved mimetype '%s' but no adapter found for '%s'",
             mimetype,
@@ -280,7 +280,7 @@ async def register_single_item(
         )
         unhandled_items.append(item)
         return
-    adapter_factory = settings.readers_by_mimetype[mimetype]
+    adapter_factory = settings.adapters_by_mimetype[mimetype]
     logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, item)
     try:
         adapter = adapter_factory(item)
@@ -345,7 +345,7 @@ async def tiff_sequence(
     mimetype = "multipart/related;type=image/tiff"
     for name, sequence in sorted(sequences.items()):
         logger.info("    Grouped %d TIFFs into a sequence '%s'", len(sequence), name)
-        adapter_class = settings.readers_by_mimetype[mimetype]
+        adapter_class = settings.adapters_by_mimetype[mimetype]
         key = settings.key_from_filename(name)
         try:
             adapter = adapter_class(*sequence)
@@ -383,7 +383,7 @@ async def watch(
     path,
     prefix="/",
     walkers=None,
-    readers_by_mimetype=None,
+    adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
     key_from_filename=strip_suffixes,
@@ -391,7 +391,7 @@ async def watch(
     initial_walk_complete_event=None,
 ):
     settings = Settings.init(
-        readers_by_mimetype=readers_by_mimetype,
+        adapters_by_mimetype=adapters_by_mimetype,
         mimetypes_by_file_ext=mimetypes_by_file_ext,
         mimetype_detection_hook=mimetype_detection_hook,
         key_from_filename=key_from_filename,
@@ -422,7 +422,7 @@ async def watch(
             path,
             prefix,
             walkers,
-            readers_by_mimetype=settings.readers_by_mimetype,
+            adapters_by_mimetype=settings.adapters_by_mimetype,
             mimetypes_by_file_ext=settings.mimetypes_by_file_ext,
             mimetype_detection_hook=settings.mimetype_detection_hook,
             key_from_filename=settings.key_from_filename,
@@ -508,7 +508,7 @@ async def process_changes(
             path,
             prefix,
             walkers,
-            readers_by_mimetype=settings.readers_by_mimetype,
+            adapters_by_mimetype=settings.adapters_by_mimetype,
             mimetypes_by_file_ext=settings.mimetypes_by_file_ext,
             mimetype_detection_hook=settings.mimetype_detection_hook,
             key_from_filename=settings.key_from_filename,

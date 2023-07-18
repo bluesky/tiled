@@ -228,7 +228,7 @@ DataFrameAdapter(..., specs=["xdi"])
 
 Our configuration file should use `mimetypes_by_file_ext` (Case 1) or
 `mimetype_detection_hook` (Case 2) to recognize this custom file.
-Additionally, it should add a section `readers_by_mimetype` to
+Additionally, it should add a section `adapters_by_mimetype` to
 map our MIME type `application/x-stuff` to our custom function.
 
 Again, Tiled will find `custom.py` if it is placed in the same directory as
@@ -238,13 +238,14 @@ needed.
 ```yaml
 # config.yml
 trees:
-- tree: catalog
-  path: /
-  args:
-    uri: ./catalog.db
-    readable_storage: path/to/directory
-    readers_by_mimetype:
-      application/x-stuff: custom:read_custom_format
+  - tree: catalog
+    path: /
+    args:
+      uri: ./catalog.db
+      readable_storage:
+        - path/to/directory
+      adapters_by_mimetype:
+        application/x-stuff: custom:read_custom_format
 ```
 
 We then use the configuration file like this:

@@ -95,8 +95,8 @@ trees:
     tree: tiled.catalog:from_uri
     args:
       uri: ./catalog.db
-      readable_storage: data/
-      readers_by_mimetype:
+        - readable_storage: ./data/
+      adapters_by_mimetype:
         application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
 ```
 
@@ -109,7 +109,7 @@ tiled serve config --public config.yml
 And register the files:
 
 ```
-tiled catalog register catalog.db data/ --ext: '.xdi:application/x-xdi'
+tiled catalog register catalog.db --config config.yml --ext '.xdi:application/x-xdi' data/
 ```
 
 As is, we can access the data as CSV, for example.
@@ -210,8 +210,9 @@ trees:
     tree: tiled.catalog:from_uri
     args:
       uri: ./catalog.db
-      readable_storage: data/
-      readers_by_mimetype:
+      readable_storage:
+        - ./data/
+      adapters_by_mimetype:
         application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
 media_types:
   xdi:
