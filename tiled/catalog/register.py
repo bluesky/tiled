@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 import logging
 import mimetypes
 import re
@@ -82,6 +83,52 @@ def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
     return mimetype
 
 
+@dataclasses.dataclass(frozen=True)
+class Settings:
+    readers_by_mimetype: dict
+    mimetypes_by_file_ext: dict
+    mimetype_detection_hook: callable
+    key_from_filename: callable
+    filter: callable
+
+    @classmethod
+    def init(
+        cls,
+        readers_by_mimetype=None,
+        mimetypes_by_file_ext=None,
+        mimetype_detection_hook=None,
+        key_from_filename=strip_suffixes,
+        filter=None,
+    ):
+        # If parameters come from a configuration file, they are given
+        # are given as importable strings, like "package.module:Reader".
+        readers_by_mimetype = readers_by_mimetype or {}
+        for key, value in list((readers_by_mimetype).items()):
+            if isinstance(value, str):
+                readers_by_mimetype[key] = import_object(value)
+        merged_readers_by_mimetype = collections.ChainMap(
+            readers_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
+        )
+        if isinstance(key_from_filename, str):
+            key_from_filename = import_object(key_from_filename)
+        if mimetype_detection_hook is not None:
+            mimetype_detection_hook = import_object(mimetype_detection_hook)
+        merged_mimetypes_by_file_ext = collections.ChainMap(
+            mimetypes_by_file_ext or {}, DEFAULT_MIMETYPES_BY_FILE_EXT
+        )
+        if filter is None:
+            filter = default_filter
+        if isinstance(filter, str):
+            filter = import_object(filter)
+        return cls(
+            readers_by_mimetype=merged_readers_by_mimetype,
+            mimetypes_by_file_ext=merged_mimetypes_by_file_ext,
+            mimetype_detection_hook=mimetype_detection_hook,
+            key_from_filename=key_from_filename,
+            filter=filter,
+        )
+
+
 async def register(
     catalog,
     path,
@@ -95,29 +142,16 @@ async def register(
     overwrite=True,
 ):
     "Register a file or directory (recursively)."
+    settings = Settings.init(
+        readers_by_mimetype=readers_by_mimetype,
+        mimetypes_by_file_ext=mimetypes_by_file_ext,
+        mimetype_detection_hook=mimetype_detection_hook,
+        key_from_filename=key_from_filename,
+        filter=filter,
+    )
     path = Path(path)
     if walkers is None:
         walkers = DEFAULT_WALKERS
-    # If parameters come from a configuration file, they are given
-    # are given as importable strings, like "package.module:Reader".
-    readers_by_mimetype = readers_by_mimetype or {}
-    for key, value in list((readers_by_mimetype).items()):
-        if isinstance(value, str):
-            readers_by_mimetype[key] = import_object(value)
-    merged_readers_by_mimetype = collections.ChainMap(
-        readers_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
-    )
-    if isinstance(key_from_filename, str):
-        key_from_filename = import_object(key_from_filename)
-    if mimetype_detection_hook is not None:
-        mimetype_detection_hook = import_object(mimetype_detection_hook)
-    merged_mimetypes_by_file_ext = collections.ChainMap(
-        mimetypes_by_file_ext or {}, DEFAULT_MIMETYPES_BY_FILE_EXT
-    )
-    if filter is None:
-        filter = default_filter
-    if isinstance(filter, str):
-        filter = import_object(filter)
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
         child_catalog = await catalog.lookup_adapter([segment])
@@ -139,22 +173,14 @@ async def register(
             catalog,
             Path(path),
             walkers,
-            merged_readers_by_mimetype,
-            merged_mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            settings=settings,
         )
     else:
         await register_single_item(
             catalog,
             path,
-            False,
-            merged_readers_by_mimetype,
-            merged_mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            is_directory=False,
+            settings=settings,
         )
 
 
@@ -162,18 +188,14 @@ async def _walk(
     catalog,
     path,
     walkers,
-    readers_by_mimetype,
-    mimetypes_by_file_ext,
-    mimetype_detection_hook,
-    key_from_filename,
-    filter,
+    settings,
 ):
     "This is the recursive inner loop of walk."
     files = []
     directories = []
     logger.info("  Walking '%s'", path)
     for item in path.iterdir():
-        if not filter(item):
+        if not settings.filter(item):
             continue
         if item.is_dir():
             directories.append(item)
@@ -185,14 +207,10 @@ async def _walk(
             path,
             files,
             directories,
-            readers_by_mimetype,
-            mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            settings,
         )
     for directory in directories:
-        key = key_from_filename(directory.name)
+        key = settings.key_from_filename(directory.name)
         await catalog.create_node(
             key=key,
             structure_family=StructureFamily.container,
@@ -203,11 +221,7 @@ async def _walk(
             child_catalog,
             directory,
             walkers,
-            readers_by_mimetype,
-            mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            settings,
         )
 
 
@@ -216,11 +230,7 @@ async def one_node_per_item(
     path,
     files,
     directories,
-    readers_by_mimetype,
-    mimetypes_by_file_ext,
-    mimetype_detection_hook,
-    key_from_filename,
-    filter,
+    settings,
 ):
     "Process each file and directory as mapping to one logical 'node' in Tiled."
     unhandled_files = []
@@ -229,12 +239,8 @@ async def one_node_per_item(
         result = await register_single_item(
             catalog,
             file,
-            False,
-            readers_by_mimetype,
-            mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            is_directory=False,
+            settings=settings,
         )
         if not result:
             unhandled_files.append(file)
@@ -242,12 +248,8 @@ async def one_node_per_item(
         result = await register_single_item(
             catalog,
             directory,
-            True,
-            readers_by_mimetype,
-            mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            is_directory=True,
+            settings=settings,
         )
         if not result:
             unhandled_directories.append(directory)
@@ -258,21 +260,19 @@ async def register_single_item(
     catalog,
     item,
     is_directory,
-    readers_by_mimetype,
-    mimetypes_by_file_ext,
-    mimetype_detection_hook,
-    key_from_filename,
-    filter,
+    settings,
 ):
     "Register a single file or directory as a node."
     unhandled_items = []
-    mimetype = resolve_mimetype(item, mimetypes_by_file_ext, mimetype_detection_hook)
+    mimetype = resolve_mimetype(
+        item, settings.mimetypes_by_file_ext, settings.mimetype_detection_hook
+    )
     if mimetype is None:
         unhandled_items.append(item)
         if not is_directory:
             logger.info("    SKIPPED: Could not resolve mimetype for '%s'", item)
         return
-    if mimetype not in readers_by_mimetype:
+    if mimetype not in settings.readers_by_mimetype:
         logger.info(
             "    SKIPPED: Resolved mimetype '%s' but no adapter found for '%s'",
             mimetype,
@@ -280,14 +280,14 @@ async def register_single_item(
         )
         unhandled_items.append(item)
         return
-    adapter_factory = readers_by_mimetype[mimetype]
+    adapter_factory = settings.readers_by_mimetype[mimetype]
     logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, item)
     try:
         adapter = adapter_factory(item)
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s'", item)
         return
-    key = key_from_filename(item.name)
+    key = settings.key_from_filename(item.name)
     return await catalog.create_node(
         key=key,
         structure_family=adapter.structure_family,
@@ -319,11 +319,7 @@ async def tiff_sequence(
     path,
     files,
     directories,
-    readers_by_mimetype,
-    mimetypes_by_file_ext,
-    mimetype_detection_hook,
-    key_from_filename,
-    filter,
+    settings,
 ):
     """
     Group files in the given directory into TIFF sequences.
@@ -349,8 +345,8 @@ async def tiff_sequence(
     mimetype = "multipart/related;type=image/tiff"
     for name, sequence in sorted(sequences.items()):
         logger.info("    Grouped %d TIFFs into a sequence '%s'", len(sequence), name)
-        adapter_class = readers_by_mimetype[mimetype]
-        key = key_from_filename(name)
+        adapter_class = settings.readers_by_mimetype[mimetype]
+        key = settings.key_from_filename(name)
         try:
             adapter = adapter_class(*sequence)
         except Exception:
@@ -394,6 +390,13 @@ async def watch(
     filter=None,
     initial_walk_complete_event=None,
 ):
+    settings = Settings.init(
+        readers_by_mimetype=readers_by_mimetype,
+        mimetypes_by_file_ext=mimetypes_by_file_ext,
+        mimetype_detection_hook=mimetype_detection_hook,
+        key_from_filename=key_from_filename,
+        filter=filter,
+    )
     if initial_walk_complete_event is None:
         initial_walk_complete_event = anyio.Event()
     ready_event = anyio.Event()
@@ -409,11 +412,7 @@ async def watch(
             path,
             prefix,
             walkers,
-            readers_by_mimetype,
-            mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            settings,
         )
         await ready_event.wait()
         # We have begun listening for changes.
@@ -423,11 +422,11 @@ async def watch(
             path,
             prefix,
             walkers,
-            readers_by_mimetype,
-            mimetypes_by_file_ext,
-            mimetype_detection_hook,
-            key_from_filename,
-            filter,
+            readers_by_mimetype=settings.readers_by_mimetype,
+            mimetypes_by_file_ext=settings.mimetypes_by_file_ext,
+            mimetype_detection_hook=settings.mimetype_detection_hook,
+            key_from_filename=settings.key_from_filename,
+            filter=settings.filter,
         )
         # Signal that initial walk is complete.
         # Process any changes that were accumulated during the initial walk.
@@ -440,19 +439,12 @@ async def _watch(
     stop_event,
     catalog,
     path,
-    prefix="/",
-    walkers=None,
-    readers_by_mimetype=None,
-    mimetypes_by_file_ext=None,
-    mimetype_detection_hook=None,
-    key_from_filename=strip_suffixes,
-    filter=None,
+    prefix,
+    walkers,
+    settings,
 ):
-    if filter is None:
-        filter = default_filter
-
     def watch_filter(change, path):
-        return default_filter(Path(path))
+        return settings.filter(Path(path))
 
     await ready_event.set()
     backlog = []
@@ -474,15 +466,51 @@ async def _watch(
                 logger.info(
                     "Processing backlog of changes that occurred during initial walk..."
                 )
-                await process_changes(backlog)
+                await process_changes(
+                    batch,
+                    catalog,
+                    path,
+                    prefix,
+                    walkers,
+                    settings,
+                )
             backlog = None
         elif batch:
             # We are caught up. Process changes immediately.
             logger.info("Detected changes")
-            await process_changes(batch)
+            await process_changes(
+                batch,
+                catalog,
+                path,
+                prefix,
+                walkers,
+                settings,
+            )
 
 
-async def process_changes(batch):
+async def process_changes(
+    batch,
+    catalog,
+    path,
+    prefix,
+    walkers,
+    settings,
+):
     for change in batch:
         change_type, change_path = change
         logger.info("  %s '%s'", change_type.name, change_path)
+        # TODO Be more selective.
+        # We should be able to re-register only a select portion of the
+        # full tree. For now, we ignore the change batch content and just
+        # use the change as a timing signal to re-register the whole tree.
+        await register(
+            catalog,
+            path,
+            prefix,
+            walkers,
+            readers_by_mimetype=settings.readers_by_mimetype,
+            mimetypes_by_file_ext=settings.mimetypes_by_file_ext,
+            mimetype_detection_hook=settings.mimetype_detection_hook,
+            key_from_filename=settings.key_from_filename,
+            filter=settings.filter,
+        )

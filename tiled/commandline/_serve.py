@@ -149,9 +149,7 @@ def serve_directory(
         process = Process(target=target, args=(sync_mp_event,))
         process.start()
         # Block until initial walk is complete.
-        print("BLOCKING")
         sync_mp_event.wait()
-        print("UNBLOCKED")
     else:
         asyncio.run(register(catalog_adapter, directory))
 
