@@ -78,17 +78,18 @@ def tmpdir_module(request, tmpdir_factory):
     return tmpdir_factory.mktemp(request.module.__name__)
 
 
-# This can un-commented to debug leaked threads.
-# import threading
-# import time
-#
-# def poll_enumerate():
-#     while True:
-#         time.sleep(1)
-#         print("THREAD COUNT", len(threading.enumerate()))
-#
-# thread = threading.Thread(target=poll_enumerate, daemon=True)
-# thread.start()
+# Use this with pytest -s option.
+if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
+    import threading
+    import time
+
+    def poll_enumerate():
+        while True:
+            time.sleep(1)
+            print("THREAD COUNT", len(threading.enumerate()))
+
+    thread = threading.Thread(target=poll_enumerate, daemon=True)
+    thread.start()
 
 
 # To test with postgres, start a container like:
