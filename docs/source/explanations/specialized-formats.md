@@ -1,7 +1,5 @@
 # Case Study: Reading and Exporting a Specialized Format
 
-
-
 For this guide, we'll take the example of
 [XDI](https://github.com/XraySpectroscopy/XAS-Data-Interchange/blob/master/specification/spec.md#example-xdi-file),
 which is a formalized text-based format for X-ray Spectroscopy data.
@@ -94,11 +92,10 @@ Now take the following simple server configuration:
 # config.yml
 trees:
   - path: /
-    tree: tiled.adapters.files:DirectoryAdapter.from_directory
+    tree: tiled.catalog:from_uri
     args:
-      directory: "data"
-      mimetypes_by_file_ext:
-        .xdi: application/x-xdi
+      uri: ./catalog.db
+      readable_storage: data/
       readers_by_mimetype:
         application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
 ```
@@ -107,6 +104,12 @@ and serve it:
 
 ```
 tiled serve config --public config.yml
+```
+
+And register the files:
+
+```
+tiled catalog register catalog.db data/ --ext: '.xdi:application/x-xdi'
 ```
 
 As is, we can access the data as CSV, for example.
@@ -204,14 +207,12 @@ Add new sections to the configuration as follows.
 ```yaml
 trees:
   - path: /
-    tree: tiled.adapters.files:DirectoryAdapter.from_directory
+    tree: tiled.catalog:from_uri
     args:
-      directory: "data"
-      mimetypes_by_file_ext:
-        .xdi: application/x-xdi
+      uri: ./catalog.db
+      readable_storage: data/
       readers_by_mimetype:
         application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
-
 media_types:
   xdi:
     application/x-xdi: tiled.examples.xdi:write_xdi

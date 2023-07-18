@@ -31,7 +31,7 @@ properties:
           description: |
             Type of tree to serve. This may be:
 
-            - The string `files`, a shorthand for serving a directory of files.
+            - The string `catalog`, a shorthand for `tiled.catalog:from_uri`
             - An import path to a Tree *instance*.
             - An import path to a callable (function or type) that returns a
               Tree. For these, the `args:` parameter below must be used as well.
@@ -47,7 +47,7 @@ properties:
                 my_python_module:my_tree_instance
 
                 # Callables that return Tree instances
-                tiled.adapters.files:DirectoryAdapter.from_directory
+                tiled.catalog:from_uri
                 my_python_module:CustomTree
 
         path:
@@ -69,9 +69,9 @@ properties:
 
             ```yaml
             - path: "/"
-              tree: tiled.adapters.files:DirectoryAdapter.from_directory
+              tree: catalog
               args:
-                directory: "path/to/files"
+                uri: "catalog.db"
             ```
         access_control:
           description: |
