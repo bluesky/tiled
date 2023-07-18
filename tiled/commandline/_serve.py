@@ -45,7 +45,7 @@ def serve_directory(
         ),
     ),
     ext: List[str] = typer.Option(
-        [],
+        None,
         "--ext",
         help=(
             "Support custom file extension, mapping it to a known mimetype. "
@@ -133,7 +133,7 @@ def serve_directory(
     from ..catalog.register import watch as watch_
 
     mimetypes_by_file_ext = {}
-    for item in ext:
+    for item in ext or []:
         try:
             ext, mimetype = item.split(":", 1)
         except Exception:
