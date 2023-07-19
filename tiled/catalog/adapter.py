@@ -379,7 +379,14 @@ class CatalogNodeAdapter(BaseAdapter):
             raise NotImplementedError
         if num_data_sources == 1:
             (data_source,) = self.data_sources
-            adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
+            try:
+                adapter_factory = self.context.adapters_by_mimetype[
+                    data_source.mimetype
+                ]
+            except KeyError:
+                RuntimeError(
+                    f"Server configuration has no adapter for mimetype {data_source.mimetype}"
+                )
             data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
             for data_uri in data_uris:
                 if data_uri.scheme == "file":
