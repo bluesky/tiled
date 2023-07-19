@@ -10,7 +10,7 @@ import zarr.storage
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import StructureFamily
-from ..utils import DictView, node_repr
+from ..utils import node_repr
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
@@ -136,9 +136,8 @@ class ZarrGroupAdapter(collections.abc.Mapping, IndexersMixin):
     def access_policy(self):
         return self._access_policy
 
-    @property
     def metadata(self):
-        return DictView(self._node.attrs)
+        return self._node.attrs
 
     def __iter__(self):
         yield from self._node

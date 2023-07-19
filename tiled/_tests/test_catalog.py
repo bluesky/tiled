@@ -113,8 +113,8 @@ async def test_sorting(a):
     items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_range(
         0, 10
     )
-    numbers = [v.metadata["number"] for k, v in items]
-    letters = [v.metadata["letter"] for k, v in items]
+    numbers = [v.metadata()["number"] for k, v in items]
+    letters = [v.metadata()["letter"] for k, v in items]
     keys = [k for k, v in items]
     # Numbers are sorted.
     numbers = sorted(numbers)

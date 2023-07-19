@@ -21,7 +21,7 @@ from ..queries import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..structures.core import StructureFamily
-from ..utils import UNCHANGED, DictView
+from ..utils import UNCHANGED
 from .utils import IndexersMixin
 
 
@@ -116,13 +116,12 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
     def access_policy(self, value):
         self._access_policy = value
 
-    @property
     def metadata(self):
         "Metadata about this Adapter."
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
         # persistent.
-        return DictView(self._metadata)
+        return self._metadata
 
     @property
     def sorting(self):
@@ -240,7 +239,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
                 mapping = dict(
                     sorted(
                         mapping.items(),
-                        key=lambda item: item[1].metadata.get(key, _HIGH_SORTER),
+                        key=lambda item: item[1].metadata().get(key, _HIGH_SORTER),
                     )
                 )
             if direction < 0:
@@ -316,7 +315,7 @@ def counter_to_dict(counter, counts):
 
 def iter_child_metadata(query_key, tree):
     for key, value in tree.items():
-        term = value.metadata
+        term = value.metadata()
         for subkey in query_key.split("."):
             if subkey not in term:
                 term = None
@@ -341,7 +340,7 @@ def full_text_search(query, tree):
     for key, value in tree.items():
         words = set(
             word
-            for s in walk_string_values(value.metadata)
+            for s in walk_string_values(value.metadata())
             for word in maybe_lower(s).split()
         )
         # Note that `not set.isdisjoint` is faster than `set.intersection`. At

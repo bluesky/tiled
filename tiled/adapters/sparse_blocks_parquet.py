@@ -39,7 +39,7 @@ class SparseBlocksParquetAdapter:
         self.dims = dims
         self.shape = shape
         self.chunks = chunks
-        self.metadata = metadata or {}
+        self._metadata = metadata or {}
         self.specs = list(specs or [])
         self.access_policy = access_policy
 
@@ -67,6 +67,9 @@ class SparseBlocksParquetAdapter:
             for uri in block_uris
         ]
         return assets
+
+    def metadata(self):
+        return self._metadata
 
     def write_block(self, data, block):
         uri = self.blocks[block]

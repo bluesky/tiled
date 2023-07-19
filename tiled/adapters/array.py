@@ -5,7 +5,6 @@ from dask.array.core import normalize_chunks
 from ..server.object_cache import get_object_cache
 from ..structures.array import ArrayMacroStructure, BuiltinDtype, StructDtype
 from ..structures.core import StructureFamily
-from ..utils import DictView, ListView
 
 
 class ArrayAdapter:
@@ -85,11 +84,10 @@ class ArrayAdapter:
 
     @property
     def dims(self):
-        return ListView(self._dims)
+        return self._dims
 
-    @property
     def metadata(self):
-        return DictView(self._metadata)
+        return self._metadata
 
     def macrostructure(self):
         "Structures of the layout of blocks of this array"

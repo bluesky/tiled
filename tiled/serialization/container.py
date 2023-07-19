@@ -62,12 +62,12 @@ if modules_available("h5py"):
                     else:
                         group = group.create_group(key)
                         try:
-                            group.attrs.update(node.metadata)
+                            group.attrs.update(node.metadata())
                         except TypeError:
                             raise SerializationError(MSG)
                 data = array_adapter.read()
                 dataset = group.create_dataset(key_path[-1], data=data)
-                for k, v in array_adapter.metadata.items():
+                for k, v in array_adapter.metadata().items():
                     dataset.attrs.create(k, v)
         return buffer.getbuffer()
 
@@ -80,7 +80,7 @@ if modules_available("orjson"):
     async def serialize_json(node, metadata, filter_for_access):
         "Export node to JSON, with each node having a 'contents' and 'metadata' sub-key."
         root_node = node
-        to_serialize = {"contents": {}, "metadata": dict(root_node.metadata)}
+        to_serialize = {"contents": {}, "metadata": dict(root_node.metadata())}
         async for key_path, array_adapter in walk(node, filter_for_access):
             d = to_serialize["contents"]
             node = root_node
@@ -90,7 +90,7 @@ if modules_available("orjson"):
                 else:
                     node = node[key]
                 if key not in d:
-                    d[key] = {"contents": {}, "metadata": dict(node.metadata)}
+                    d[key] = {"contents": {}, "metadata": dict(node.metadata())}
                 d = d[key]["contents"]
         return safe_json_dump(to_serialize)
 

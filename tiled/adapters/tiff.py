@@ -38,7 +38,6 @@ class TiffAdapter:
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
 
-    @property
     def metadata(self):
         # This contains some enums, but Python's built-in JSON serializer
         # handles them fine (converting  to str or int as appropriate).
@@ -128,7 +127,6 @@ class TiffSequenceAdapter:
         self.dims = dims
         self.access_policy = access_policy
 
-    @property
     def metadata(self):
         # TODO How to deal with the many headers?
         return self._provided_metadata
