@@ -4,10 +4,11 @@ import numpy
 import psutil
 import pytest
 
+from ..catalog import in_memory
+from ..catalog.register import register
 from ..client import Context, from_context
-from ..server.app import build_app_from_config
+from ..server.app import build_app, build_app_from_config
 from ..server.object_cache import NO_CACHE, ObjectCache, get_object_cache
-from .utils import force_update
 
 
 def test_tallying_hits_and_misses():
@@ -61,7 +62,8 @@ def test_eviction():
     assert "arr2" in cache
 
 
-def test_object_cache_hit_and_miss(tmpdir):
+@pytest.mark.asyncio
+async def test_object_cache_hit_and_miss(tmpdir):
     with open(Path(tmpdir, "data.csv"), "w") as file:
         file.write(
             """
@@ -69,8 +71,9 @@ a,b,c
 1,2,3
 """
         )
-    config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
-    with Context.from_app(build_app_from_config(config)) as context:
+    adapter = in_memory(readable_storage=[tmpdir])
+    with Context.from_app(build_app(adapter)) as context:
+        await register(adapter, tmpdir)
         client = from_context(context)
         cache = get_object_cache()
         assert cache.hits == cache.misses == 0
@@ -90,7 +93,8 @@ a,b,c
         assert cache.hits == 4
 
 
-def test_object_cache_disabled(tmpdir):
+@pytest.mark.asyncio
+async def test_object_cache_disabled(tmpdir):
     with open(Path(tmpdir, "data.csv"), "w") as file:
         file.write(
             """
@@ -98,18 +102,20 @@ a,b,c
 1,2,3
 """
         )
-    config = {
-        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
-        "object_cache": {"available_bytes": 0},
-    }
-    with Context.from_app(build_app_from_config(config)) as context:
+    adapter = in_memory(readable_storage=[tmpdir])
+    server_settings = {"object_cache": {"available_bytes": 0}}
+    with Context.from_app(
+        build_app(adapter, server_settings=server_settings)
+    ) as context:
+        await register(adapter, tmpdir)
         client = from_context(context)
         cache = get_object_cache()
         assert cache is NO_CACHE
         client["data"]
 
 
-def test_detect_content_changed_or_removed(tmpdir):
+@pytest.mark.asyncio
+async def test_detect_content_changed_or_removed(tmpdir):
     path = Path(tmpdir, "data.csv")
     with open(path, "w") as file:
         file.write(
@@ -118,8 +124,9 @@ a,b,c
 1,2,3
 """
         )
-    config = {"trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}]}
-    with Context.from_app(build_app_from_config(config)) as context:
+    adapter = in_memory(readable_storage=[tmpdir])
+    with Context.from_app(build_app(adapter)) as context:
+        await register(adapter, tmpdir)
         client = from_context(context)
         cache = get_object_cache()
         assert cache.hits == cache.misses == 0
@@ -132,7 +139,7 @@ a,b,c
     4,5,6
     """
             )
-        force_update(client)
+        await register(adapter, tmpdir)
         assert len(client["data"].read()) == 2
         with open(path, "w") as file:
             file.write(
@@ -143,11 +150,11 @@ a,b,c
     7,8,9
     """
             )
-        force_update(client)
+        await register(adapter, tmpdir)
         assert len(client["data"].read()) == 3
         # Remove file.
         path.unlink()
-        force_update(client)
+        await register(adapter, tmpdir)
         assert "data" not in client
         with pytest.raises(KeyError):
             client["data"]
@@ -155,7 +162,13 @@ a,b,c
 
 def test_cache_size_absolute(tmpdir):
     config = {
-        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {"uri": tmpdir / "catalog.db", "init_if_not_exists": True},
+            }
+        ],
         "object_cache": {"available_bytes": 1000},
     }
     with Context.from_app(build_app_from_config(config)):
@@ -166,7 +179,13 @@ def test_cache_size_absolute(tmpdir):
 def test_cache_size_relative(tmpdir):
     # As a fraction of system memory
     config = {
-        "trees": [{"tree": "files", "path": "/", "args": {"directory": tmpdir}}],
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {"uri": tmpdir / "catalog.db", "init_if_not_exists": True},
+            }
+        ],
         "object_cache": {"available_bytes": 0.1},
     }
     with Context.from_app(build_app_from_config(config)):

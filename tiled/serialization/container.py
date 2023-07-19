@@ -53,8 +53,8 @@ if modules_available("h5py"):
                 group = file
                 node = root_node
                 for key in key_path[:-1]:
-                    if hasattr(node, "lookup_node"):
-                        node = await node.lookup_node([key])
+                    if hasattr(node, "lookup_adapter"):
+                        node = await node.lookup_adapter([key])
                     else:
                         node = node[key]
                     if key in group:
@@ -85,8 +85,8 @@ if modules_available("orjson"):
             d = to_serialize["contents"]
             node = root_node
             for key in key_path:
-                if hasattr(node, "lookup_node"):
-                    node = await node.lookup_node([key])
+                if hasattr(node, "lookup_adapter"):
+                    node = await node.lookup_adapter([key])
                 else:
                     node = node[key]
                 if key not in d:

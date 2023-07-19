@@ -30,6 +30,7 @@ class SparseBlocksParquetAdapter:
         chunks=None,
         dims=None,
         specs=None,
+        access_policy=None,
     ):
         num_blocks = (range(len(n)) for n in chunks)
         self.blocks = {}
@@ -40,6 +41,7 @@ class SparseBlocksParquetAdapter:
         self.chunks = chunks
         self.metadata = metadata or {}
         self.specs = list(specs or [])
+        self.access_policy = access_policy
 
     @classmethod
     def init_storage(

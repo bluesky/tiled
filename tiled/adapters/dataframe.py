@@ -29,9 +29,13 @@ class DataFrameAdapter:
     structure_family = StructureFamily.dataframe
 
     @classmethod
-    def from_pandas(cls, *args, metadata=None, specs=None, **kwargs):
+    def from_pandas(
+        cls, *args, metadata=None, specs=None, access_policy=None, **kwargs
+    ):
         ddf = dask.dataframe.from_pandas(*args, **kwargs)
-        return cls.from_dask_dataframe(ddf, metadata=metadata, specs=specs)
+        return cls.from_dask_dataframe(
+            ddf, metadata=metadata, specs=specs, access_policy=access_policy
+        )
 
     @classmethod
     def from_dask_dataframe(
@@ -39,6 +43,7 @@ class DataFrameAdapter:
         ddf,
         metadata=None,
         specs=None,
+        access_policy=None,
     ):
         # Danger: using internal attribute _meta here.
         return cls(
@@ -47,6 +52,7 @@ class DataFrameAdapter:
             ddf.divisions,
             metadata=metadata,
             specs=specs,
+            access_policy=access_policy,
         )
 
     @classmethod
@@ -57,6 +63,7 @@ class DataFrameAdapter:
         meta=None,
         divisions=None,
         specs=None,
+        access_policy=None,
         **kwargs,
     ):
         """
@@ -79,7 +86,9 @@ class DataFrameAdapter:
         cache = get_object_cache()
         if cache is not NO_CACHE:
             cache.discard_dask(ddf.__dask_keys__())
-        return cls.from_dask_dataframe(ddf, metadata=metadata, specs=specs)
+        return cls.from_dask_dataframe(
+            ddf, metadata=metadata, specs=specs, access_policy=access_policy
+        )
 
     read_csv.__doc__ = (
         """
@@ -89,12 +98,22 @@ class DataFrameAdapter:
         + dask.dataframe.read_csv.__doc__
     )
 
-    def __init__(self, partitions, meta, divisions, *, metadata=None, specs=None):
+    def __init__(
+        self,
+        partitions,
+        meta,
+        divisions,
+        *,
+        metadata=None,
+        specs=None,
+        access_policy=None,
+    ):
         self._metadata = metadata or {}
         self._partitions = list(partitions)
         self._meta = meta
         self._divisions = divisions
         self.specs = specs or []
+        self.access_policy = access_policy
 
     def __repr__(self):
         return f"{type(self).__name__}({self._meta.columns!r})"

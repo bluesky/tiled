@@ -79,9 +79,6 @@ class AuthenticatedAdapter:
         # or something custom, or another AuthenticatedAdapter...
         return ArrayAdapter(data, metadata=metadata)
 
-    # TODO This can be a fast-path.
-    lookup_node = lookup_adapter
-
     async def keys_range(self, offset, limit):
         url = ...  # based on self._segments
         return await self._client.get_contents(url, token=self._token)

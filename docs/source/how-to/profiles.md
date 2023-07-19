@@ -168,12 +168,12 @@ Here is a complete example.
 ```yaml
 # profiles.yml
 my_profile:
-    direct:
-        trees:
-            - path: /
-            tree: tiled.adapters.files:DirectoryAdapter.from_directory
-            args:
-                directory: "path/to/files"
+  direct:
+     trees:
+       - path: /
+         tree: tiled.catalog:from_uri
+         args:
+           uri: "/path/to/catalog.db"
 ```
 
 This takes the place of the `uri:` parameter. A profile must contain
@@ -184,15 +184,14 @@ usual client-side configuration, such as
 ```yaml
 # profiles.yml
 my_profile:
-    direct:
-        trees:
-            - path: /
-            tree: tiled.adapters.files:DirectoryAdapter.from_directory
-            args:
-                directory: "path/to/files"
-    cache:
-        memory:
-            available_bytes: 2_000_000_000 # 2 GB
+  direct:
+    trees:
+      - path: /
+        tree: tiled.catalog:from_uri
+        args:
+          directory: "/path/to/catalog.db"
+  cache:
+    capacity: 2_000_000_000 # 2 GB
 ```
 
 ## Reference

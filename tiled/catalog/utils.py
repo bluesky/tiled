@@ -1,11 +1,12 @@
 import re
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from urllib import parse
 
 import httpx
 
-SCHEME_PATTERN = re.compile(r"^[a-z0-9]+:\/\/.*$")
+SCHEME_PATTERN = re.compile(r"^[a-z0-9+]+:\/\/.*$")
 
 
 def safe_path(uri):
@@ -29,9 +30,11 @@ def ensure_uri(uri_or_path):
     if not SCHEME_PATTERN.match(str(uri_or_path)):
         # Interpret this as a filepath.
         path = uri_or_path
-        uri_str = parse.urlunparse(("file", "localhost", str(path), "", "", None))
+        uri_str = parse.urlunparse(
+            ("file", "localhost", str(Path(path).absolute()), "", "", None)
+        )
     else:
-        # Innterpret this as a URI.
+        # Interpret this as a URI.
         uri_str = uri_or_path
     uri = httpx.URL(uri_str)
     # Ensure that, if the scheme is file, it meets the techincal standard for
@@ -39,3 +42,16 @@ def ensure_uri(uri_or_path):
     if uri.scheme == "file":
         uri = uri.copy_with(host="localhost")
     return uri
+
+
+def get_structure(adapter):
+    "Work around variety in structure API across adapters."
+    if hasattr(adapter, "structure"):
+        return asdict(adapter.structure())
+    elif hasattr(adapter, "microstructure"):
+        return {
+            "micro": asdict(adapter.microstructure()),
+            "macro": asdict(adapter.macrostructure()),
+        }
+    else:
+        return None

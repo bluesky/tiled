@@ -1,13 +1,18 @@
+import base64
 import builtins
 import collections.abc
 import contextlib
 import enum
 import importlib
 import importlib.util
+import inspect
 import operator
 import os
 import sys
 import threading
+from typing import Any, Callable
+
+import anyio
 
 
 class ListView(collections.abc.Sequence):
@@ -503,11 +508,14 @@ def prepend_to_sys_path(*paths):
 
 def safe_json_dump(content):
     """
-    Try to use native orjson path; fall back to going through Python list.
+    Baes64-encode raw bytes, and provide a fallback if orjson numpy handling fails.
     """
     import orjson
 
     def default(content):
+        if isinstance(content, bytes):
+            content = f"data:application/octet-stream;base64,{base64.b64encode(content).decode('utf-8')}"
+            return content
         # No need to import numpy if it hasn't been used already.
         numpy = sys.modules.get("numpy", None)
         if numpy is not None:
@@ -630,3 +638,19 @@ def bytesize_repr(num):
                 s = f"{num:.1f} {x}"
             return s
         num /= 1024.0
+
+
+def is_coroutine_callable(call: Callable[..., Any]) -> bool:
+    if inspect.isroutine(call):
+        return inspect.iscoroutinefunction(call)
+    if inspect.isclass(call):
+        return False
+    dunder_call = getattr(call, "__call__", None)  # noqa: B004
+    return inspect.iscoroutinefunction(dunder_call)
+
+
+async def ensure_awaitable(func, *args, **kwargs):
+    if is_coroutine_callable(func):
+        return await func(*args, **kwargs)
+    else:
+        return await anyio.to_thread.run_sync(func, *args, **kwargs)

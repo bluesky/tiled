@@ -50,17 +50,27 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
 
     structure_family = StructureFamily.container
 
-    def __init__(self, node, *, specs=None, access_policy=None):
+    def __init__(self, node, *, metadata=None, specs=None, access_policy=None):
         self._node = node
         self._access_policy = access_policy
         self.specs = specs or []
+        self._provided_metadata = metadata or {}
         super().__init__()
 
     @classmethod
-    def from_file(cls, file, *, swmr=SWMR_DEFAULT, libver="latest", specs=None):
+    def from_file(
+        cls,
+        file,
+        *,
+        metadata=None,
+        swmr=SWMR_DEFAULT,
+        libver="latest",
+        specs=None,
+        access_policy=None,
+    ):
         if not isinstance(file, h5py.File):
             file = h5py.File(file, "r", swmr=swmr, libver=libver)
-        return cls(file, specs=specs)
+        return cls(file, metadata=metadata, specs=specs, access_policy=access_policy)
 
     def __repr__(self):
         return node_repr(self, list(self))
@@ -76,6 +86,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
             # Convert any bytes to str.
             if isinstance(v, bytes):
                 d[k] = v.decode()
+        d.update(self._provided_metadata)
         return DictView(d)
 
     def __iter__(self):

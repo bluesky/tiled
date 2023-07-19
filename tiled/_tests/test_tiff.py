@@ -5,9 +5,11 @@ import pytest
 import tifffile as tf
 
 from ..adapters.mapping import MapAdapter
-from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter, subdirectory_handler
+from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
+from ..catalog import in_memory
+from ..catalog.register import register
 from ..client import Context, from_context
-from ..server.app import build_app, build_app_from_config
+from ..server.app import build_app
 
 COLOR_SHAPE = (11, 17, 3)
 
@@ -58,52 +60,49 @@ def test_tiff_sequence_block(client, block_input, correct_shape):
     assert arr.shape == correct_shape
 
 
-def test_tiff_sequence_with_directory_walker(tmpdir):
+@pytest.mark.asyncio
+async def test_tiff_sequence_with_directory_walker(tmpdir):
     """
     directory/
-      sequence/  # should trigger subdirectory_handler
-      other_stuff/  # should not
-      other_file1.csv  # should not
-      other_file2.csv  # should not
+      single_image.tif
+      image00001.tif
+      image00002.tif
+      ...
+      image00010.tif
+      other_image00001.tif
+      other_image00002.tif
+      ...
+      other_image00010.tif
+      other_file1.csv
+      other_file2.csv
+      stuff.csv
     """
-    data = numpy.random.random((100, 101))
-    # This directory should be detected as a TIFF sequence.
-    Path(tmpdir, "sequence").mkdir()
+    data = numpy.random.random((3, 5))
     for i in range(10):
-        tf.imwrite(Path(tmpdir, "sequence", f"image{i:05}.tif"), data)
-    # This directory should *not* be detected as a TIFF sequence.
-    Path(tmpdir, "other_stuff").mkdir()
-    tf.imwrite(Path(tmpdir, "other_stuff", "image.tif"), data)
-    for target in ["other_stuff/stuff.csv", "other_file1.csv", "other_file2.csv"]:
-        with open(Path(tmpdir, target), "w") as file:
+        tf.imwrite(Path(tmpdir / f"image{i:05}.tif"), data)
+        tf.imwrite(Path(tmpdir / f"other_image{i:05}.tif"), data)
+    tf.imwrite(Path(tmpdir / "single_image.tif"), data)
+    for target in ["stuff.csv", "other_file1.csv", "other_file2.csv"]:
+        with open(Path(tmpdir / target), "w") as file:
             file.write(
                 """
 a,b,c
 1,2,3
 """
             )
-    config = {
-        "trees": [
-            {
-                "tree": "files",
-                "path": "/",
-                "args": {
-                    "directory": tmpdir,
-                    "subdirectory_handler": subdirectory_handler,
-                },
-            }
-        ]
-    }
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
+    adapter = in_memory(readable_storage=[tmpdir])
+    with Context.from_app(build_app(adapter)) as context:
+        await register(adapter, tmpdir)
         client = from_context(context)
-        # This whole directory of files is one dataset.
-        assert client["sequence"].read().shape == (10, 100, 101)
-        # This directory has one dataset per file, in the normal fashion.
-        client["other_stuff"]["image"].read()
-        assert list(client["other_stuff"]["stuff"].read().columns) == ["a", "b", "c"]
-        assert list(client["other_file1"].read().columns) == ["a", "b", "c"]
-        assert list(client["other_file2"].read().columns) == ["a", "b", "c"]
+        # Single image is its own node.
+        assert client["single_image"].shape == (3, 5)
+        # Each sequence is grouped into a node.
+        assert client["image"].shape == (10, 3, 5)
+        assert client["other_image"].shape == (10, 3, 5)
+        # Other files are single nodes.
+        assert client["stuff"].columns == ["a", "b", "c"]
+        assert client["other_file1"].columns == ["a", "b", "c"]
+        assert client["other_file2"].columns == ["a", "b", "c"]
 
 
 def test_rgb(client):

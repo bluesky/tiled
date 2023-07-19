@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -5,10 +6,25 @@ import typer
 
 serve_app = typer.Typer()
 
+SQLITE_CATALOG_FILENAME = "catalog.db"
+DATA_SUBDIRECTORY = "data"
+
 
 @serve_app.command("directory")
 def serve_directory(
-    directory: str,
+    directory: str = typer.Argument(..., help="A directory to serve"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=("Log details of directory traversal and file registration."),
+    ),
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        "-w",
+        help="Update catalog when files are added, removed, or changed.",
+    ),
     public: bool = typer.Option(
         False,
         "--public",
@@ -29,12 +45,30 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
-    poll_interval: float = typer.Option(
+    ext: List[str] = typer.Option(
         None,
-        "--poll-interval",
+        "--ext",
         help=(
-            "Time in seconds between scans of the directory for removed or "
-            "changed files. If 0, do not poll for changes."
+            "Support custom file extension, mapping it to a known mimetype. "
+            "Spell like '.tif=image/tiff'. Include the leading '.' in the file "
+            "extension."
+        ),
+    ),
+    mimetype_detection_hook: str = typer.Option(
+        None,
+        "--mimetype-hook",
+        help=(
+            "ADVANCED: Custom mimetype detection Python function. "
+            "Expected interface: detect_mimetype(filepath, mimetype) -> mimetype "
+            "Specify here as 'package.module:function'"
+        ),
+    ),
+    adapters: List[str] = typer.Option(
+        None,
+        "--adapter",
+        help=(
+            "ADVANCED: Custom Tiled Adapter for reading a given format"
+            "Specify here as 'mimetype=package.module:function'"
         ),
     ),
     host: str = typer.Option(
@@ -56,40 +90,137 @@ def serve_directory(
             "0.15 (15%) of RAM."
         ),
     ),
-    scalable: bool = typer.Option(
-        False,
-        "--scalable",
-        help=(
-            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
-        ),
-    ),
 ):
     "Serve a Tree instance from a directory of files."
-    from ..adapters.files import DirectoryAdapter
+    import tempfile
+
+    temp_directory = Path(tempfile.TemporaryDirectory().name)
+    temp_directory.mkdir()
+    typer.echo(
+        f"Creating catalog database at {temp_directory / SQLITE_CATALOG_FILENAME}",
+        err=True,
+    )
+    database = f"sqlite+aiosqlite:///{Path(temp_directory, SQLITE_CATALOG_FILENAME)}"
+
+    # Because this is a tempfile we know this is a fresh database and we do not
+    # need to check its current state.
+    # We _will_ go ahead and stamp it with a revision because it is possible the
+    # user will copy it into a permanent location.
+
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from ..alembic_utils import stamp_head
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import initialize_database
+
+    engine = create_async_engine(database)
+    asyncio.run(initialize_database(engine))
+    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
+
+    from ..catalog import from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
-    tree_kwargs = {}
     server_settings = {}
     if keep_ext:
         from ..adapters.files import identity
 
-        tree_kwargs.update({"key_from_filename": identity})
-    if poll_interval is not None:
-        tree_kwargs.update({"poll_interval": poll_interval})
+        key_from_filename = identity
+    else:
+        key_from_filename = None
     if object_cache_available_bytes is not None:
         server_settings["object_cache"] = {}
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    tree = DirectoryAdapter.from_directory(directory, **tree_kwargs)
-    web_app = build_app(
-        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+
+    from logging import StreamHandler
+
+    from ..catalog.register import logger as register_logger
+    from ..catalog.register import register
+    from ..catalog.register import watch as watch_
+
+    mimetypes_by_file_ext = {}
+    EXT_PATTERN = re.compile(r"(.*) *= *(.*)")
+    for item in ext or []:
+        match = EXT_PATTERN.match(item)
+        if match is None:
+            raise ValueError(
+                f"Failed parsing --ext option {item}, expected format '.ext=mimetype'"
+            )
+        ext, mimetype = match.groups()
+        mimetypes_by_file_ext[ext] = mimetype
+    adapters_by_mimetype = {}
+    ADAPTER_PATTERN = re.compile(r"(.*) *= *(.*)")
+    for item in adapters or []:
+        match = ADAPTER_PATTERN.match(item)
+        if match is None:
+            raise ValueError(
+                f"Failed parsing --adapter option {item}, expected format 'mimetype=package.module:obj'"
+            )
+        mimetype, obj_ref = match.groups()
+        adapters_by_mimetype[mimetype] = obj_ref
+    catalog_adapter = from_uri(
+        database,
+        readable_storage=[directory],
+        adapters_by_mimetype=adapters_by_mimetype,
     )
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+    typer.echo(f"Indexing '{directory}' ...")
+    if verbose:
+        register_logger.addHandler(StreamHandler())
+        register_logger.setLevel("INFO")
+    web_app = build_app(
+        catalog_adapter,
+        {"allow_anonymous_access": public},
+        server_settings,
+    )
+    if watch:
 
-    import uvicorn
+        async def walk_and_serve():
+            import anyio
 
-    uvicorn.run(web_app, host=host, port=port)
+            event = anyio.Event()
+            asyncio.create_task(
+                watch_(
+                    catalog_adapter,
+                    directory,
+                    initial_walk_complete_event=event,
+                    mimetype_detection_hook=mimetype_detection_hook,
+                    mimetypes_by_file_ext=mimetypes_by_file_ext,
+                    adapters_by_mimetype=adapters_by_mimetype,
+                    key_from_filename=key_from_filename,
+                )
+            )
+            await event.wait()
+            typer.echo("Initial indexing complete. Starting server...")
+            print_admin_api_key_if_generated(web_app, host=host, port=port)
+
+            import uvicorn
+
+            config = uvicorn.Config(web_app, host=host, port=port)
+            server = uvicorn.Server(config)
+            await server.serve()
+
+        asyncio.run(walk_and_serve())
+    else:
+        asyncio.run(
+            register(
+                catalog_adapter,
+                directory,
+                mimetype_detection_hook=mimetype_detection_hook,
+                mimetypes_by_file_ext=mimetypes_by_file_ext,
+                adapters_by_mimetype=adapters_by_mimetype,
+                key_from_filename=key_from_filename,
+            )
+        )
+
+        typer.echo("Indexing complete. Starting server...")
+        print_admin_api_key_if_generated(web_app, host=host, port=port)
+
+        import uvicorn
+
+        uvicorn.run(web_app, host=host, port=port)
 
 
 def serve_catalog(
@@ -176,8 +307,6 @@ def serve_catalog(
 
         directory = Path(tempfile.TemporaryDirectory().name)
         directory.mkdir()
-        SQLITE_CATALOG_FILENAME = "catalog.db"
-        DATA_SUBDIRECTORY = "data"
         typer.echo(
             f"Creating catalog database at {directory / SQLITE_CATALOG_FILENAME}",
             err=True,
@@ -234,7 +363,6 @@ or use an existing one:
             "To make it writable, specify a writable directory with --write.",
             err=True,
         )
-    tree_kwargs = {}
     server_settings = {}
     if object_cache_available_bytes is not None:
         server_settings["object_cache"] = {}
@@ -246,7 +374,6 @@ or use an existing one:
         writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
-        **tree_kwargs,
     )
     web_app = build_app(
         tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable

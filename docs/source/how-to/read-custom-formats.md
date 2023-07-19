@@ -18,7 +18,8 @@ But starting with files is a good way to get rolling with Tiled.
 ## Formats are named using "MIME types"
 
 Tiled refers to formats using a web standard called
-[MIME types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types).
+[MIME types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
+a.k.a. "media types".
 MIME types look like:
 
 ```
@@ -50,16 +51,9 @@ told that it should read `*.stuff` files like CSVs.
 
 ### Map the unfamiliar file extension to a MIME type
 
-We use a configuration file like this:
 
-```yaml
-# config.yml
-trees:
-- tree: files
-  args:
-    directory: path/to/directory
-    mimetypes_by_file_ext:
-      .stuff: text/csv
+```
+tiled serve directory path/to/directory --ext '.stuff=text/csv'
 ```
 
 We are mapping the file extension, `.stuff` (including the leading `.`) to
@@ -67,14 +61,7 @@ the MIME type `text/csv`.
 
 Multiple file extensions can be mapped to the same MIME type. For example,
 Tiled's default configuration maps both `.tif` and `.tiff` to `image/tiff`.
-
-We then use the configuration file like this:
-
-```
-tiled serve config config.yml
-```
-
-The configuration file `config.yml` can be named anything you like.
+Multiple custom mapping can be specified by using `--ext` repeatedly.
 
 ## Case 2: No File Extension
 
@@ -122,40 +109,18 @@ its file extension. Therefore, this function can be used to catch files that
 have no file extension or to _override_ the determination based file extension
 if it is wrong.
 
-If the Python script `custom.py` is placed in the same directory as
-`config.yml`, Tiled will find it. (Tiled temporarily adds the directory
-containing the configuration file(s) to the Python import path while
-it parses the configuration.)
-
-```yaml
-# config.yml
-trees:
-- tree: files
-  args:
-    directory: path/to/directory
-    mimetype_detection_hook: custom:detect_mimetype
-```
-
-Alternatively, if the function can be defined in some external Python package
-like `my_package.my_module.func` and configured like
+Place `custom.py` in the current working directory and reference it like this:
 
 ```
-mimetype_detection_hook: my_package.my_module:func
+tiled serve directory path/to/directory --mimetype-hook custom:detect_mimetype
 ```
 
-Note that the packages are separated by `.` but the final object (`func`) is
-preceded by a `:`. If you forget this, Tiled will raise a clear error to remind
-you.
-
-The names `custom.py` and `detect_mimetype` are arbitrary. The
-`mimetype_detection_hook` may be used in combination with
-`mimetypes_by_file_ext`.
-
-As in Case 1, we use the configuration file like this:
-
-```
-tiled serve config config.yml
-```
+* The names `custom.py` and `detect_mimetype` are arbitrary.
+* The function may be in the any importable location; it does not have to be
+  in the current working directory. Functions in nested packages can referenced
+  like `package.module.submodule:function_name`. Notice the `.`s between
+  modules and the `:` before the function.
+* The `--mimetype-hook` may be used in combination with `--ext` above.
 
 ## Case 3: Custom Format
 
@@ -259,11 +224,11 @@ Specify them as an argument to the Adapter, as in:
 DataFrameAdapter(..., specs=["xdi"])
 ```
 
-### Configure Tiled to use this Adapter
+### Configure Tiled Server to use this Adapter
 
 Our configuration file should use `mimetypes_by_file_ext` (Case 1) or
 `mimetype_detection_hook` (Case 2) to recognize this custom file.
-Additionally, it should add a section `readers_by_mimetype` to
+Additionally, it should add a section `adapters_by_mimetype` to
 map our MIME type `application/x-stuff` to our custom function.
 
 Again, Tiled will find `custom.py` if it is placed in the same directory as
@@ -273,16 +238,27 @@ needed.
 ```yaml
 # config.yml
 trees:
-- tree: files
-  args:
-    directory: path/to/directory
-    mimetype_detection_hook: custom:detect_mimetype
-    readers_by_mimetype:
-      application/x-stuff: custom:read_custom_format
+  - tree: catalog
+    path: /
+    args:
+      uri: ./catalog.db
+      readable_storage:
+        - path/to/directory
+      adapters_by_mimetype:
+        application/x-stuff: custom:read_custom_format
 ```
 
 We then use the configuration file like this:
 
 ```
 tiled serve config config.yml
+```
+
+and register the files in a separate step. Use `--ext` and/or `--mimetype-hook`
+described above to register files as your custom MIME type (e.g.
+`application/x-stuff`). For example:
+
+
+```
+tiled catalog register catalog.db --ext '.stuff=application/x-stuff' path/to/directory
 ```

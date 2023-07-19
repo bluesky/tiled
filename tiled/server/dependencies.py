@@ -1,4 +1,3 @@
-from enum import Enum
 from functools import lru_cache
 from typing import Optional
 
@@ -49,15 +48,7 @@ def get_root_tree():
     )
 
 
-# A node implements the kinds of things we need for JSON descriptions.
-# An adapter implements the kind of things we need to send binary data.
-# These should both become 'protocols' in Python.
-EntryKind = Enum("EntryKind", ["adapter", "node"])
-
-
-def SecureEntry(scopes, kind=EntryKind.adapter):
-    kind = EntryKind(kind)
-
+def SecureEntry(scopes):
     async def inner(
         path: str,
         request: Request,
@@ -91,10 +82,7 @@ def SecureEntry(scopes, kind=EntryKind.adapter):
                 # It can jump directly to the node of interest.
 
                 if hasattr(entry, "lookup_adapter"):
-                    if kind == EntryKind.adapter:
-                        entry = await entry.lookup_adapter(path_parts[i:])
-                    else:  # kind == EntryKind.node
-                        entry = await entry.lookup_node(path_parts[i:])
+                    entry = await entry.lookup_adapter(path_parts[i:])
                     if entry is None:
                         raise NoEntry(path_parts)
                     break

@@ -135,8 +135,10 @@ class DataSource(pydantic.BaseModel):
 
     @classmethod
     def from_orm(cls, orm):
-        # if isinstance(orm.structure, DataFrameStructure):
-        if "meta" in orm.structure.get("micro", {}):
+        if orm.structure is None:
+            structure = None
+        # elif isinstance(orm.structure, DataFrameStructure):
+        elif "meta" in orm.structure.get("micro", {}):
             structure = copy.deepcopy(orm.structure)
             structure["micro"]["meta"] = base64.b64decode(structure["micro"]["meta"])
             structure["micro"]["divisions"] = base64.b64decode(
