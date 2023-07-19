@@ -40,6 +40,7 @@ from ..utils import (
     UnsupportedQueryType,
     ensure_awaitable,
     import_object,
+    safe_json_dump,
 )
 from . import orm
 from .core import check_catalog_database, initialize_database
@@ -1081,7 +1082,7 @@ def from_uri(
     if not SCHEME_PATTERN.match(uri):
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
-    engine = create_async_engine(uri, echo=echo)
+    engine = create_async_engine(uri, echo=echo, json_serializer=safe_json_dump)
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogNodeAdapter(
