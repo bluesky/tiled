@@ -104,7 +104,7 @@ async def client(request, tmpdir_module):
                 client = from_context(context)
                 # Write data into catalog.
                 for k, v in mapping.items():
-                    client.write_array(v.read(), key=k, metadata=dict(v.metadata))
+                    client.write_array(v.read(), key=k, metadata=dict(v.metadata()))
                 yield client
     else:
         assert False
