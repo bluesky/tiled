@@ -384,8 +384,8 @@ class CatalogNodeAdapter(BaseAdapter):
                     data_source.mimetype
                 ]
             except KeyError:
-                RuntimeError(
-                    f"Server configuration has no adapter for mimetype {data_source.mimetype}"
+                raise RuntimeError(
+                    f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
                 )
             data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
             for data_uri in data_uris:
@@ -413,7 +413,7 @@ class CatalogNodeAdapter(BaseAdapter):
                 paths.append(safe_path(data_uri))
             kwargs = dict(data_source.parameters)
             kwargs["specs"] = self.node.specs
-            kwargs["metadata"] = self.node.metadata
+            kwargs["metadata"] = self.node.metadata_
             if self.node.structure_family == StructureFamily.array:
                 # kwargs["dtype"] = data_source.structure.micro.to_numpy_dtype()
                 kwargs["shape"] = data_source.structure.macro.shape

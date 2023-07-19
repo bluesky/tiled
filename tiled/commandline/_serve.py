@@ -133,7 +133,6 @@ def serve_directory(
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    catalog_adapter = from_uri(database, readable_storage=[directory])
 
     from logging import StreamHandler
 
@@ -160,6 +159,11 @@ def serve_directory(
                 f"Failed parsing --adapter option {item}, expected format 'mimetype:package.module:obj'"
             )
         adapters_by_mimetype[mimetype] = obj_ref
+    catalog_adapter = from_uri(
+        database,
+        readable_storage=[directory],
+        adapters_by_mimetype=adapters_by_mimetype,
+    )
     typer.echo(f"Indexing '{directory}' ...")
     if verbose:
         register_logger.addHandler(StreamHandler())
