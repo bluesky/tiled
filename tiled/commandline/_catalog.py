@@ -126,21 +126,50 @@ def register(
             "Specify here as 'package.module:function'"
         ),
     ),
+    adapters: List[str] = typer.Option(
+        None,
+        "--adapter",
+        help=(
+            "ADVANCED: Custom Tiled Adapter for reading a given format"
+            "Specify here as 'mimetype:package.module:function'"
+        ),
+    ),
 ):
     from ..catalog.utils import SCHEME_PATTERN
 
     if not SCHEME_PATTERN.match(database):
         # Interpret URI as filepath.
         database = f"sqlite+aiosqlite:///{database}"
-
-    from ..catalog import from_uri
-
-    tree_kwargs = {}
     if keep_ext:
         from ..adapters.files import identity
 
-        tree_kwargs.update({"key_from_filename": identity})
-    catalog_adapter = from_uri(database, **tree_kwargs)
+        key_from_filename = identity
+    else:
+        key_from_filename = None
+    mimetypes_by_file_ext = {}
+    for item in ext or []:
+        try:
+            # item is like '.tif:image/tiff'
+            ext, mimetype = item.split(":", 1)
+        except Exception:
+            raise ValueError(
+                f"Failed parsing --ext option {item}, expected format '.ext:mimetype'"
+            )
+        mimetypes_by_file_ext[ext] = mimetype
+    adapters_by_mimetype = {}
+    for item in adapters or []:
+        try:
+            # item is like 'image/tiff:package.module:read_tiff'
+            mimetype, obj_ref = item.split(":", 1)
+        except Exception:
+            raise ValueError(
+                f"Failed parsing --adapter option {item}, expected format 'mimetype:package.module:obj'"
+            )
+        adapters_by_mimetype[mimetype] = obj_ref
+
+    from ..catalog import from_uri
+
+    catalog_adapter = from_uri(database)
 
     from logging import StreamHandler
 
@@ -148,15 +177,6 @@ def register(
     from ..catalog.register import register
     from ..catalog.register import watch as watch_
 
-    mimetypes_by_file_ext = {}
-    for item in ext or []:
-        try:
-            ext, mimetype = item.split(":", 1)
-        except Exception:
-            raise ValueError(
-                f"Failed parsing --ext option {item}, expected format '.ext:mimetype'"
-            )
-        mimetypes_by_file_ext[ext] = mimetype
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
@@ -168,7 +188,19 @@ def register(
                 prefix=prefix,
                 mimetype_detection_hook=mimetype_detection_hook,
                 mimetypes_by_file_ext=mimetypes_by_file_ext,
+                adapters_by_mimetype=adapters_by_mimetype,
+                key_from_filename=key_from_filename,
             )
         )
     else:
-        asyncio.run(register(catalog_adapter, filepath, prefix=prefix))
+        asyncio.run(
+            register(
+                catalog_adapter,
+                filepath,
+                prefix=prefix,
+                mimetype_detection_hook=mimetype_detection_hook,
+                mimetypes_by_file_ext=mimetypes_by_file_ext,
+                adapters_by_mimetype=adapters_by_mimetype,
+                key_from_filename=key_from_filename,
+            )
+        )

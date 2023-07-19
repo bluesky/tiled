@@ -97,7 +97,7 @@ class Settings:
         adapters_by_mimetype=None,
         mimetypes_by_file_ext=None,
         mimetype_detection_hook=None,
-        key_from_filename=strip_suffixes,
+        key_from_filename=None,
         filter=None,
     ):
         # If parameters come from a configuration file, they are given
@@ -111,6 +111,8 @@ class Settings:
         )
         if isinstance(key_from_filename, str):
             key_from_filename = import_object(key_from_filename)
+        elif key_from_filename is None:
+            key_from_filename = strip_suffixes
         if mimetype_detection_hook is not None:
             mimetype_detection_hook = import_object(mimetype_detection_hook)
         merged_mimetypes_by_file_ext = collections.ChainMap(
@@ -137,7 +139,7 @@ async def register(
     adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
-    key_from_filename=strip_suffixes,
+    key_from_filename=None,
     filter=None,
     overwrite=True,
 ):
@@ -386,7 +388,7 @@ async def watch(
     adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
-    key_from_filename=strip_suffixes,
+    key_from_filename=None,
     filter=None,
     initial_walk_complete_event=None,
 ):

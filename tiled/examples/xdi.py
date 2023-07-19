@@ -7,6 +7,7 @@ Source: https://github.com/XraySpectroscopy/XAS-Data-Interchange
 import collections
 import io
 import re
+from pathlib import Path
 
 import dask
 import pandas as pd
@@ -16,7 +17,7 @@ from tiled.adapters.dataframe import DataFrameAdapter
 
 def read_xdi(file):
     "Read XDI-formatted file given a filepath or a readable buffer."
-    if isinstance(file, str):
+    if isinstance(file, (str, Path)):
         # Treat file as filepath.
         with open(file, "r") as file_:
             return _read_xdi(file_)

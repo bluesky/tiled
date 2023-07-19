@@ -62,6 +62,14 @@ def serve_directory(
             "Specify here as 'package.module:function'"
         ),
     ),
+    adapters: List[str] = typer.Option(
+        None,
+        "--adapter",
+        help=(
+            "ADVANCED: Custom Tiled Adapter for reading a given format"
+            "Specify here as 'mimetype:package.module:function'"
+        ),
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -113,18 +121,19 @@ def serve_directory(
     from ..catalog import from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
-    tree_kwargs = {}
     server_settings = {}
     if keep_ext:
         from ..adapters.files import identity
 
-        tree_kwargs.update({"key_from_filename": identity})
+        key_from_filename = identity
+    else:
+        key_from_filename = None
     if object_cache_available_bytes is not None:
         server_settings["object_cache"] = {}
         server_settings["object_cache"][
             "available_bytes"
         ] = object_cache_available_bytes
-    catalog_adapter = from_uri(database, readable_storage=[directory], **tree_kwargs)
+    catalog_adapter = from_uri(database, readable_storage=[directory])
 
     from logging import StreamHandler
 
@@ -141,6 +150,16 @@ def serve_directory(
                 f"Failed parsing --ext option {item}, expected format '.ext:mimetype'"
             )
         mimetypes_by_file_ext[ext] = mimetype
+    adapters_by_mimetype = {}
+    for item in adapters or []:
+        try:
+            # item is like 'image/tiff:package.module:read_tiff'
+            mimetype, obj_ref = item.split(":", 1)
+        except Exception:
+            raise ValueError(
+                f"Failed parsing --adapter option {item}, expected format 'mimetype:package.module:obj'"
+            )
+        adapters_by_mimetype[mimetype] = obj_ref
     typer.echo(f"Indexing '{directory}' ...")
     if verbose:
         register_logger.addHandler(StreamHandler())
@@ -173,6 +192,8 @@ def serve_directory(
                     initial_walk_complete_event=event,
                     mimetype_detection_hook=mimetype_detection_hook,
                     mimetypes_by_file_ext=mimetypes_by_file_ext,
+                    adapters_by_mimetype=adapters_by_mimetype,
+                    key_from_filename=key_from_filename,
                 )
             )
 
@@ -189,6 +210,8 @@ def serve_directory(
                 directory,
                 mimetype_detection_hook=mimetype_detection_hook,
                 mimetypes_by_file_ext=mimetypes_by_file_ext,
+                adapters_by_mimetype=adapters_by_mimetype,
+                key_from_filename=key_from_filename,
             )
         )
 
@@ -345,7 +368,6 @@ or use an existing one:
             "To make it writable, specify a writable directory with --write.",
             err=True,
         )
-    tree_kwargs = {}
     server_settings = {}
     if object_cache_available_bytes is not None:
         server_settings["object_cache"] = {}
@@ -357,7 +379,6 @@ or use an existing one:
         writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
-        **tree_kwargs,
     )
     web_app = build_app(
         tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
