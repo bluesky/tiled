@@ -85,7 +85,3 @@ array([[1., 1., 1., ..., 1., 1., 1.],
 1  2  5
 2  3  6
 ```
-
-Try deleting, moving, or adding files, and notice that the ``client`` object
-updates its structure. It continually watches the filesystem for changes in an
-efficient fashion.
