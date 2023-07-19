@@ -233,7 +233,7 @@ class Context:
             return result
 
 
-class BaseAdapter:
+class CatalogNodeAdapter:
     query_registry = QueryTranslationRegistry()
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
@@ -289,13 +289,6 @@ class BaseAdapter:
     def __repr__(self):
         return f"<{type(self).__name__} {self.segments}>"
 
-
-class UnallocatedAdapter(BaseAdapter):
-    # Raise clear error if you try to read or write chunks.
-    pass
-
-
-class CatalogNodeAdapter(BaseAdapter):
     async def __aiter__(self):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
@@ -372,7 +365,9 @@ class CatalogNodeAdapter(BaseAdapter):
                             break
                     return adapter
             return None
-        return type(self)(self.context, node, access_policy=self.access_policy)
+        return STRUCTURES[node.structure_family](
+            self.context, node, access_policy=self.access_policy
+        )
 
     async def get_adapter(self):
         num_data_sources = len(self.data_sources)
@@ -616,96 +611,6 @@ class CatalogNodeAdapter(BaseAdapter):
     # async def patch_node(datasources=None):
     #     ...
 
-    async def read(self, *args, **kwargs):
-        if not self.data_sources:
-            fields = kwargs.get("fields")
-            if fields:
-                return self.search(KeysFilter(fields))
-            return self
-        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
-
-    async def read_block(self, *args, **kwargs):
-        if not self.data_sources:
-            raise NotImplementedError
-        return await ensure_awaitable(
-            (await self.get_adapter()).read_block, *args, **kwargs
-        )
-
-    async def read_partition(self, *args, **kwargs):
-        if not self.data_sources:
-            raise NotImplementedError
-        return await ensure_awaitable(
-            (await self.get_adapter()).read_partition, *args, **kwargs
-        )
-
-    async def write(self, *args, **kwargs):
-        if not self.data_sources:
-            raise NotImplementedError
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
-
-    async def write_block(self, *args, **kwargs):
-        if not self.data_sources:
-            raise NotImplementedError
-        return await ensure_awaitable(
-            (await self.get_adapter()).write_block, *args, **kwargs
-        )
-
-    async def write_partition(self, *args, **kwargs):
-        if not self.data_sources:
-            raise NotImplementedError
-        return await ensure_awaitable(
-            (await self.get_adapter()).write_partition, *args, **kwargs
-        )
-
-    async def keys_range(self, offset, limit):
-        if self.data_sources:
-            return (await self.get_adapter()).keys()[
-                offset : offset + limit  # noqa: E203
-            ]
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
-        for condition in self.conditions:
-            statement = statement.filter(condition)
-        async with self.context.session() as db:
-            return (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-    async def items_range(self, offset, limit):
-        if self.data_sources:
-            return (await self.get_adapter()).items()[
-                offset : offset + limit  # noqa: E203
-            ]
-        statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
-        for condition in self.conditions:
-            statement = statement.filter(condition)
-        async with self.context.session() as db:
-            nodes = (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            return [
-                (
-                    node.key,
-                    type(self)(self.context, node, access_policy=self.access_policy),
-                )
-                for node in nodes
-            ]
-
     async def revisions(self, offset, limit):
         async with self.context.session() as db:
             revision_orms = (
@@ -870,6 +775,110 @@ class CatalogNodeAdapter(BaseAdapter):
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
             await db.commit()
+
+
+class CatalogContainerAdapter(CatalogNodeAdapter):
+    async def keys_range(self, offset, limit):
+        if self.data_sources:
+            return (await self.get_adapter()).keys()[
+                offset : offset + limit  # noqa: E203
+            ]
+        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        for condition in self.conditions:
+            statement = statement.filter(condition)
+        async with self.context.session() as db:
+            return (
+                (
+                    await db.execute(
+                        statement.order_by(*self.order_by_clauses)
+                        .offset(offset)
+                        .limit(limit)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+    async def items_range(self, offset, limit):
+        if self.data_sources:
+            return (await self.get_adapter()).items()[
+                offset : offset + limit  # noqa: E203
+            ]
+        statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
+        for condition in self.conditions:
+            statement = statement.filter(condition)
+        async with self.context.session() as db:
+            nodes = (
+                (
+                    await db.execute(
+                        statement.order_by(*self.order_by_clauses)
+                        .offset(offset)
+                        .limit(limit)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [
+                (
+                    node.key,
+                    type(self)(self.context, node, access_policy=self.access_policy),
+                )
+                for node in nodes
+            ]
+
+    async def read(self, *args, **kwargs):
+        if not self.data_sources:
+            fields = kwargs.get("fields")
+            if fields:
+                return self.search(KeysFilter(fields))
+            return self
+        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+
+
+class CatalogArrayAdapter(CatalogNodeAdapter):
+    async def read(self, *args, **kwargs):
+        if not self.data_sources:
+            fields = kwargs.get("fields")
+            if fields:
+                return self.search(KeysFilter(fields))
+            return self
+        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+
+    async def read_block(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).read_block, *args, **kwargs
+        )
+
+    async def write(self, *args, **kwargs):
+        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+
+    async def write_block(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).write_block, *args, **kwargs
+        )
+
+
+class CatalogSparseAdapter(CatalogArrayAdapter):
+    pass
+
+
+class CatalogDataFrameAdapter(CatalogNodeAdapter):
+    async def read(self, *args, **kwargs):
+        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+
+    async def write(self, *args, **kwargs):
+        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+
+    async def read_partition(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).read_partition, *args, **kwargs
+        )
+
+    async def write_partition(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).write_partition, *args, **kwargs
+        )
 
 
 def delete_asset(data_uri, is_directory):
@@ -1080,7 +1089,7 @@ def from_uri(
     engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    return CatalogNodeAdapter(
+    return CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
@@ -1115,3 +1124,11 @@ class Collision(Conflicts):
 def json_serializer(obj):
     "The PostgreSQL JSON serializer requires str, not bytes."
     return safe_json_dump(obj).decode()
+
+
+STRUCTURES = {
+    StructureFamily.container: CatalogContainerAdapter,
+    StructureFamily.array: CatalogArrayAdapter,
+    StructureFamily.dataframe: CatalogDataFrameAdapter,
+    StructureFamily.sparse: CatalogSparseAdapter,
+}
