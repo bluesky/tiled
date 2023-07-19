@@ -22,7 +22,7 @@ jobs:
         export REPOSITORY_NAME=${GITHUB_REPOSITORY#*/}
         echo "REPOSITORY_NAME=${REPOSITORY_NAME}" >> $GITHUB_ENV
 
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 1000  # should be enough to reach the most recent tag
 
