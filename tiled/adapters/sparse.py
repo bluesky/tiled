@@ -98,9 +98,12 @@ class COOAdapter:
         self.chunks = chunks
         self.shape = shape
         self.dims = dims
-        self.metadata = metadata or {}
+        self._metadata = metadata or {}
         self.specs = specs or []
         self.access_policy = access_policy
+
+    def metadata(self):
+        return self._metadata
 
     def structure(self):
         return COOStructure(

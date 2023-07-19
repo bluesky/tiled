@@ -6,7 +6,6 @@ from ..serialization.dataframe import serialize_arrow
 from ..server.object_cache import NO_CACHE, get_object_cache
 from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
-from ..utils import DictView
 from .array import ArrayAdapter
 
 
@@ -128,9 +127,8 @@ class DataFrameAdapter:
             for key in self._meta.columns
         )
 
-    @property
     def metadata(self):
-        return DictView(self._metadata)
+        return self._metadata
 
     def macrostructure(self):
         return DataFrameMacroStructure(

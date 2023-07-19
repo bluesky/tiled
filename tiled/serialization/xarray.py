@@ -36,7 +36,7 @@ async def as_dataset(node):
                 "'xarray_coord' or 'xarray_data_var'."
             )
     return xarray.Dataset(
-        data_vars=data_vars, coords=coords, attrs=node.metadata["attrs"]
+        data_vars=data_vars, coords=coords, attrs=node.metadata()["attrs"]
     )
 
 
@@ -126,9 +126,9 @@ if modules_available("h5py"):
                         group = group[key]
                     else:
                         group = group.create_group(key)
-                        group.attrs.update(node.metadata["attrs"])
+                        group.attrs.update(node.metadata()["attrs"])
                 data = array_adapter.read()
                 dataset = group.create_dataset(key_path[-1], data=data)
-                for k, v in array_adapter.metadata["attrs"].items():
+                for k, v in array_adapter.metadata()["attrs"].items():
                     dataset.attrs.create(k, v)
         return buffer.getbuffer()

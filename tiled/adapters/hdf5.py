@@ -8,7 +8,7 @@ import numpy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import StructureFamily
-from ..utils import DictView, node_repr
+from ..utils import node_repr
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -79,7 +79,6 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     def access_policy(self):
         return self._access_policy
 
-    @property
     def metadata(self):
         d = dict(self._node.attrs)
         for k, v in list(d.items()):
@@ -87,7 +86,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
             if isinstance(v, bytes):
                 d[k] = v.decode()
         d.update(self._provided_metadata)
-        return DictView(d)
+        return d
 
     def __iter__(self):
         yield from self._node

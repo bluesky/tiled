@@ -261,13 +261,15 @@ class CatalogNodeAdapter:
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
-        self.metadata = node.metadata_
         self.specs = [Spec.parse_obj(spec) for spec in node.specs]
         self.ancestors = node.ancestors
         self.key = node.key
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
+
+    def metadata(self):
+        return self.node.metadata_
 
     async def startup(self):
         if (self.context.engine.dialect.name == "sqlite") and (

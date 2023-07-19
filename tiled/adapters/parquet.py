@@ -22,9 +22,12 @@ class ParquetDatasetAdapter:
         self.partition_paths = sorted(partition_paths)
         self.meta = meta
         self.divisions = divisions
-        self.metadata = metadata or {}
+        self._metadata = metadata or {}
         self.specs = list(specs or [])
         self.access_policy = access_policy
+
+    def metadata(self):
+        return self._metadata
 
     @property
     def dataframe_adapter(self):

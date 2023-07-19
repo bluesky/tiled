@@ -75,7 +75,7 @@ async def client(request, tmpdir_module):
         with Context.from_app(app) as context:
             client = from_context(context)
             for k, v in mapping.items():
-                client.write_array(v.read(), key=k, metadata=dict(v.metadata))
+                client.write_array(v.read(), key=k, metadata=dict(v.metadata()))
             yield client
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:

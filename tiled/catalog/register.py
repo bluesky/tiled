@@ -296,7 +296,7 @@ async def register_single_item(
         catalog,
         key=key,
         structure_family=adapter.structure_family,
-        metadata=dict(adapter.metadata),
+        metadata=dict(adapter.metadata()),
         data_sources=[
             DataSource(
                 mimetype=mimetype,
@@ -361,7 +361,7 @@ async def tiff_sequence(
             catalog,
             key=key,
             structure_family=adapter.structure_family,
-            metadata=dict(adapter.metadata),
+            metadata=dict(adapter.metadata()),
             data_sources=[
                 DataSource(
                     mimetype=mimetype,
