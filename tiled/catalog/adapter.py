@@ -1076,7 +1076,8 @@ def from_uri(
     if not SCHEME_PATTERN.match(uri):
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
-    engine = create_async_engine(uri, echo=echo, json_serializer=safe_json_dump)
+
+    engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogNodeAdapter(
@@ -1109,3 +1110,8 @@ class WouldDeleteData(RuntimeError):
 
 class Collision(Conflicts):
     pass
+
+
+def json_serializer(obj):
+    "The PostgreSQL JSON serializer requires str, not bytes."
+    return safe_json_dump(obj).decode()
