@@ -168,28 +168,18 @@ def serve_directory(
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
+    web_app = build_app(
+        catalog_adapter,
+        {"allow_anonymous_access": public},
+        server_settings,
+    )
     if watch:
-        from multiprocessing import Event, Process
 
-        def target(sync_mp_event):
+        async def walk_and_serve():
             import anyio
 
-            class _AsyncEventWrapper:
-                def __init__(self, event):
-                    self.event = event
-
-                async def set(self):
-                    return await anyio.to_thread.run_sync(self.event.set)
-
-                def is_set(self):
-                    return self.event.is_set()
-
-            event = _AsyncEventWrapper(sync_mp_event)
-
-            async def f(event):
-                await event.set()
-
-            asyncio.run(
+            event = anyio.Event()
+            asyncio.create_task(
                 watch_(
                     catalog_adapter,
                     directory,
@@ -200,13 +190,17 @@ def serve_directory(
                     key_from_filename=key_from_filename,
                 )
             )
+            await event.wait()
+            typer.echo("Initial indexing complete. Starting server...")
+            print_admin_api_key_if_generated(web_app, host=host, port=port)
 
-        sync_mp_event = Event()
+            import uvicorn
 
-        process = Process(target=target, args=(sync_mp_event,))
-        process.start()
-        # Block until initial walk is complete.
-        sync_mp_event.wait()
+            config = uvicorn.Config(web_app, host=host, port=port)
+            server = uvicorn.Server(config)
+            await server.serve()
+
+        asyncio.run(walk_and_serve())
     else:
         asyncio.run(
             register(
@@ -219,17 +213,12 @@ def serve_directory(
             )
         )
 
-    typer.echo("Indexing complete. Starting server...")
-    web_app = build_app(
-        catalog_adapter,
-        {"allow_anonymous_access": public},
-        server_settings,
-    )
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+        typer.echo("Indexing complete. Starting server...")
+        print_admin_api_key_if_generated(web_app, host=host, port=port)
 
-    import uvicorn
+        import uvicorn
 
-    uvicorn.run(web_app, host=host, port=port)
+        uvicorn.run(web_app, host=host, port=port)
 
 
 def serve_catalog(
