@@ -26,7 +26,7 @@ RUN python3 -m venv $VIRTUAL_ENV
 # in ENTRYPOINT or CMD.
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN pip install --upgrade --no-cache-dir cython pip wheel
+RUN pip install --upgrade --no-cache-dir "cython<3" pip wheel
 
 COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
