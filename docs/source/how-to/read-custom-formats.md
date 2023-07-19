@@ -53,7 +53,7 @@ told that it should read `*.stuff` files like CSVs.
 
 
 ```
-tiled serve directory path/to/directory --ext '.stuff:text/csv'
+tiled serve directory path/to/directory --ext '.stuff=text/csv'
 ```
 
 We are mapping the file extension, `.stuff` (including the leading `.`) to
@@ -260,5 +260,5 @@ described above to register files as your custom MIME type (e.g.
 
 
 ```
-tiled catalog register catalog.db --ext '.stuff:application/x-stuff' path/to/directory
+tiled catalog register catalog.db --ext '.stuff=application/x-stuff' path/to/directory
 ```

@@ -8,12 +8,12 @@ from pathlib import Path
 import anyio
 import watchfiles
 
-from ..catalog.utils import ensure_uri
 from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
 from ..utils import import_object
+from .adapter import Collision
 from .mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
-from .utils import get_structure
+from .utils import ensure_uri, get_structure
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,8 @@ async def register(
         child_catalog = await catalog.lookup_adapter([segment])
         if child_catalog is None:
             key = key_from_filename(segment)
-            await catalog.create_node(
+            await create_node_safe(
+                catalog,
                 structure_family=StructureFamily.container,
                 metadata={},
                 key=key,
@@ -213,7 +214,8 @@ async def _walk(
         )
     for directory in directories:
         key = settings.key_from_filename(directory.name)
-        await catalog.create_node(
+        await create_node_safe(
+            catalog,
             key=key,
             structure_family=StructureFamily.container,
             metadata={},
@@ -285,12 +287,13 @@ async def register_single_item(
     adapter_factory = settings.adapters_by_mimetype[mimetype]
     logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, item)
     try:
-        adapter = adapter_factory(item)
+        adapter = await anyio.to_thread.run_sync(adapter_factory, item)
     except Exception:
-        logger.exception("    SKIPPED: Error constructing adapter for '%s'", item)
+        logger.exception("    SKIPPED: Error constructing adapter for '%s':", item)
         return
     key = settings.key_from_filename(item.name)
-    return await catalog.create_node(
+    return await create_node_safe(
+        catalog,
         key=key,
         structure_family=adapter.structure_family,
         metadata=dict(adapter.metadata),
@@ -354,7 +357,8 @@ async def tiff_sequence(
         except Exception:
             logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
             return
-        await catalog.create_node(
+        await create_node_safe(
+            catalog,
             key=key,
             structure_family=adapter.structure_family,
             metadata=dict(adapter.metadata),
@@ -515,4 +519,23 @@ async def process_changes(
             mimetype_detection_hook=settings.mimetype_detection_hook,
             key_from_filename=settings.key_from_filename,
             filter=settings.filter,
+        )
+
+
+async def create_node_safe(
+    catalog,
+    *args,
+    key,
+    **kwargs,
+):
+    "Call catalog.create_node(...) and if there is a collision remove the original."
+    try:
+        return await catalog.create_node(*args, key=key, **kwargs)
+    except Collision as err:
+        # To avoid ambiguity include _neither_ the original nor the new one.
+        offender = await catalog.lookup_adapter([key])
+        await offender.delete_tree()
+        logger.warning(
+            "   COLLISION: Multiple files would result in node at '%s'. Skipping all.",
+            err.args[0],
         )

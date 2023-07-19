@@ -560,13 +560,7 @@ class CatalogNodeAdapter(BaseAdapter):
                 UNIQUE_CONSTRAINT_FAILED = "gkpj"
                 if exc.code == UNIQUE_CONSTRAINT_FAILED:
                     await db.rollback()
-                    raise HTTPException(
-                        status_code=409,
-                        detail=(
-                            "Cannot create new node here because path is already taken: "
-                            f"{'/'.join(self.segments + [key])}"
-                        ),
-                    )
+                    raise Collision(f"/{'/'.join(self.segments + [key])}")
                 raise
             await db.refresh(node)
             for data_source in data_sources:
@@ -1110,4 +1104,8 @@ def format_distinct_result(results, counts):
 
 
 class WouldDeleteData(RuntimeError):
+    pass
+
+
+class Collision(Conflicts):
     pass
