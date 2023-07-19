@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from typing import List
 
@@ -147,24 +148,24 @@ def register(
     else:
         key_from_filename = None
     mimetypes_by_file_ext = {}
+    EXT_PATTERN = re.compile(r"(.*) *= *(.*)")
     for item in ext or []:
-        try:
-            # item is like '.tif:image/tiff'
-            ext, mimetype = item.split(":", 1)
-        except Exception:
+        match = EXT_PATTERN.match(item)
+        if match is None:
             raise ValueError(
-                f"Failed parsing --ext option {item}, expected format '.ext:mimetype'"
+                f"Failed parsing --ext option {item}, expected format '.ext=mimetype'"
             )
+        ext, mimetype = match.groups()
         mimetypes_by_file_ext[ext] = mimetype
     adapters_by_mimetype = {}
+    ADAPTER_PATTERN = re.compile(r"(.*) *= *(.*)")
     for item in adapters or []:
-        try:
-            # item is like 'image/tiff:package.module:read_tiff'
-            mimetype, obj_ref = item.split(":", 1)
-        except Exception:
+        match = ADAPTER_PATTERN.match(item)
+        if match is None:
             raise ValueError(
-                f"Failed parsing --adapter option {item}, expected format 'mimetype:package.module:obj'"
+                f"Failed parsing --adapter option {item}, expected format 'mimetype=package.module:obj'"
             )
+        mimetype, obj_ref = match.groups()
         adapters_by_mimetype[mimetype] = obj_ref
 
     from ..catalog import from_uri

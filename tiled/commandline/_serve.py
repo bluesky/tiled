@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -49,7 +50,7 @@ def serve_directory(
         "--ext",
         help=(
             "Support custom file extension, mapping it to a known mimetype. "
-            "Spell like '.tif:image/tiff'. Include the leading '.' in the file "
+            "Spell like '.tif=image/tiff'. Include the leading '.' in the file "
             "extension."
         ),
     ),
@@ -67,7 +68,7 @@ def serve_directory(
         "--adapter",
         help=(
             "ADVANCED: Custom Tiled Adapter for reading a given format"
-            "Specify here as 'mimetype:package.module:function'"
+            "Specify here as 'mimetype=package.module:function'"
         ),
     ),
     host: str = typer.Option(
@@ -141,23 +142,24 @@ def serve_directory(
     from ..catalog.register import watch as watch_
 
     mimetypes_by_file_ext = {}
+    EXT_PATTERN = re.compile(r"(.*) *= *(.*)")
     for item in ext or []:
-        try:
-            ext, mimetype = item.split(":", 1)
-        except Exception:
+        match = EXT_PATTERN.match(item)
+        if match is None:
             raise ValueError(
-                f"Failed parsing --ext option {item}, expected format '.ext:mimetype'"
+                f"Failed parsing --ext option {item}, expected format '.ext=mimetype'"
             )
+        ext, mimetype = match.groups()
         mimetypes_by_file_ext[ext] = mimetype
     adapters_by_mimetype = {}
+    ADAPTER_PATTERN = re.compile(r"(.*) *= *(.*)")
     for item in adapters or []:
-        try:
-            # item is like 'image/tiff:package.module:read_tiff'
-            mimetype, obj_ref = item.split(":", 1)
-        except Exception:
+        match = ADAPTER_PATTERN.match(item)
+        if match is None:
             raise ValueError(
-                f"Failed parsing --adapter option {item}, expected format 'mimetype:package.module:obj'"
+                f"Failed parsing --adapter option {item}, expected format 'mimetype=package.module:obj'"
             )
+        mimetype, obj_ref = match.groups()
         adapters_by_mimetype[mimetype] = obj_ref
     catalog_adapter = from_uri(
         database,
