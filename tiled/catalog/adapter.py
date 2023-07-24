@@ -1,4 +1,3 @@
-import base64
 import collections
 import importlib
 import operator
@@ -418,8 +417,7 @@ class CatalogNodeAdapter:
                 kwargs["chunks"] = data_source.structure.macro.chunks
                 kwargs["dims"] = data_source.structure.macro.dims
             elif self.node.structure_family == StructureFamily.dataframe:
-                kwargs["meta"] = data_source.structure.micro.meta_decoded
-                kwargs["divisions"] = data_source.structure.micro.divisions_decoded
+                kwargs["arrow_schema"] = data_source.structure.micro.arrow_schema
             elif self.node.structure_family == StructureFamily.sparse:
                 kwargs["chunks"] = data_source.structure.chunks
                 kwargs["shape"] = data_source.structure.shape
@@ -953,18 +951,10 @@ def _get_value(value, type):
 
 
 def _prepare_structure(structure_family, structure):
-    "Convert from pydantic model to dict and base64-encode binary values."
+    "Convert from pydantic model to dict."
     if structure is None:
         return None
-    structure = structure.dict()
-    if structure_family == StructureFamily.dataframe:
-        structure["micro"]["meta"] = base64.b64encode(
-            structure["micro"]["meta"]
-        ).decode()
-        structure["micro"]["divisions"] = base64.b64encode(
-            structure["micro"]["divisions"]
-        ).decode()
-    return structure
+    return structure.dict()
 
 
 def binary_op(query, tree, operation):

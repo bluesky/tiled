@@ -2,7 +2,6 @@ import dask.base
 import dask.dataframe
 import pandas
 
-from ..serialization.dataframe import serialize_arrow
 from ..server.object_cache import NO_CACHE, get_object_cache
 from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameMacroStructure, DataFrameMicroStructure
@@ -44,11 +43,10 @@ class DataFrameAdapter:
         specs=None,
         access_policy=None,
     ):
-        # Danger: using internal attribute _meta here.
+        arrow_schema = DataFrameMicroStructure.from_dask_dataframe(ddf).arrow_schema
         return cls(
             ddf.partitions,
-            ddf._meta,
-            ddf.divisions,
+            arrow_schema=arrow_schema,
             metadata=metadata,
             specs=specs,
             access_policy=access_policy,
@@ -58,9 +56,8 @@ class DataFrameAdapter:
     def read_csv(
         cls,
         *args,
+        arrow_schema=None,
         metadata=None,
-        meta=None,
-        divisions=None,
         specs=None,
         access_policy=None,
         **kwargs,
@@ -100,8 +97,7 @@ class DataFrameAdapter:
     def __init__(
         self,
         partitions,
-        meta,
-        divisions,
+        arrow_schema,
         *,
         metadata=None,
         specs=None,
@@ -109,13 +105,15 @@ class DataFrameAdapter:
     ):
         self._metadata = metadata or {}
         self._partitions = list(partitions)
-        self._meta = meta
-        self._divisions = divisions
+        self._arrow_schema = arrow_schema
+        self._columns = DataFrameMicroStructure(
+            arrow_schema=arrow_schema
+        ).arrow_schema_decoded.names
         self.specs = specs or []
         self.access_policy = access_policy
 
     def __repr__(self):
-        return f"{type(self).__name__}({self._meta.columns!r})"
+        return f"{type(self).__name__}({self._columns!r})"
 
     def __getitem__(self, key):
         # Must compute to determine shape.
@@ -124,7 +122,7 @@ class DataFrameAdapter:
     def items(self):
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
-            for key in self._meta.columns
+            for key in self._columns
         )
 
     def metadata(self):
@@ -132,15 +130,11 @@ class DataFrameAdapter:
 
     def macrostructure(self):
         return DataFrameMacroStructure(
-            columns=list(self._meta.columns), npartitions=len(self._partitions)
+            columns=list(self._columns), npartitions=len(self._partitions)
         )
 
     def microstructure(self):
-        meta = bytes(serialize_arrow(self._meta, {}))
-        divisions = bytes(
-            serialize_arrow(pandas.DataFrame({"divisions": list(self._divisions)}), {})
-        )
-        return DataFrameMicroStructure(meta=meta, divisions=divisions)
+        return DataFrameMicroStructure(arrow_schema=self._arrow_schema)
 
     def read(self, fields=None):
         if any(p is None for p in self._partitions):

@@ -13,16 +13,14 @@ class ParquetDatasetAdapter:
     def __init__(
         self,
         *partition_paths,
-        meta,
-        divisions,
+        arrow_schema,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
         self.partition_paths = sorted(partition_paths)
-        self.meta = meta
-        self.divisions = divisions
         self._metadata = metadata or {}
+        self.arrow_schema = arrow_schema
         self.specs = list(specs or [])
         self.access_policy = access_policy
 
@@ -38,7 +36,7 @@ class ParquetDatasetAdapter:
             else:
                 partition = dask.dataframe.read_parquet(path)
             partitions.append(partition)
-        return DataFrameAdapter(partitions, meta=self.meta, divisions=self.divisions)
+        return DataFrameAdapter(partitions, arrow_schema=self.arrow_schema)
 
     @classmethod
     def init_storage(cls, directory, npartitions):

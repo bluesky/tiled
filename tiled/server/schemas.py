@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import copy
 import enum
 import uuid
 from datetime import datetime
@@ -135,20 +133,9 @@ class DataSource(pydantic.BaseModel):
 
     @classmethod
     def from_orm(cls, orm):
-        if orm.structure is None:
-            structure = None
-        # elif isinstance(orm.structure, DataFrameStructure):
-        elif "meta" in orm.structure.get("micro", {}):
-            structure = copy.deepcopy(orm.structure)
-            structure["micro"]["meta"] = base64.b64decode(structure["micro"]["meta"])
-            structure["micro"]["divisions"] = base64.b64decode(
-                structure["micro"]["divisions"]
-            )
-        else:
-            structure = orm.structure
         return cls(
             id=orm.id,
-            structure=structure,
+            structure=orm.structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
             assets=[Asset.from_orm(asset) for asset in orm.assets],

@@ -1,53 +1,62 @@
+import base64
+import io
 from typing import List, Tuple, Union
 
-import pandas
 from pydantic import BaseModel
 
-from ..media_type_registration import deserialization_registry
-from ..serialization.dataframe import deserialize_arrow, serialize_arrow
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE
+from ..structures.dataframe import B64_ENCODED_PREFIX
 
 
 class DataFrameMicroStructure(BaseModel):
-    meta: bytes
-    divisions: bytes
+    # This holds a Arrow schema, base64-encoded so that it can be transported
+    # as JSON. For clarity, the encoded data (...) is prefixed like:
+    #
+    # data:application/vnd.apache.arrow.file;base64,...
+    #
+    # Arrow does not support an official JSON serialization, but it
+    # could in the future: https://github.com/apache/arrow/pull/7110
+    # If it does, we could switch to using that here.
+    arrow_schema: str
 
     @classmethod
     def from_dask_dataframe(cls, ddf):
-        # Make an *empty* DataFrame with the same structure as ddf.
-        # TODO Look at make_meta_nonempty to see if the "objects" are str or
-        # datetime or actually generic objects.
         import dask.dataframe.utils
+        import pyarrow
 
-        meta = bytes(serialize_arrow(dask.dataframe.utils.make_meta(ddf), {}))
-        divisions = bytes(
-            serialize_arrow(pandas.DataFrame({"divisions": list(ddf.divisions)}), {})
-        )
-        return cls(meta=meta, divisions=divisions)
+        # Make a pandas DataFrame with 0 rows.
+        # We can use this to define an Arrow schema without loading any row data.
+        meta = dask.dataframe.utils.make_meta(ddf)
+        schema_bytes = pyarrow.Table.from_pandas(meta).schema.serialize()
+        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
+        data_uri = B64_ENCODED_PREFIX + schema_b64
+        return cls(arrow_schema=data_uri)
 
     @classmethod
-    def from_dataframe(cls, df):
-        # Make an *empty* DataFrame with the same structure as ddf.
-        # TODO Look at make_meta_nonempty to see if the "objects" are str or
-        # datetime or actually generic objects.
-        import dask.dataframe
-        import dask.dataframe.utils
+    def from_pandas(cls, df):
+        import pyarrow
 
-        ddf = dask.dataframe.from_pandas(df, npartitions=1)
-        meta = bytes(serialize_arrow(dask.dataframe.utils.make_meta(ddf), {}))
-        divisions = bytes(
-            serialize_arrow(pandas.DataFrame({"divisions": list(ddf.divisions)}), {})
+        schema_bytes = pyarrow.Table.from_pandas(df).schema.serialize()
+        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
+        data_uri = B64_ENCODED_PREFIX + schema_b64
+        return cls(arrow_schema=data_uri)
+
+    @property
+    def arrow_schema_decoded(self):
+        import pyarrow
+
+        if not self.arrow_schema.startswith(B64_ENCODED_PREFIX):
+            raise ValueError(
+                f"Expected base64-encoded data prefixed with {B64_ENCODED_PREFIX}."
+            )
+
+        payload = self.arrow_schema[len(B64_ENCODED_PREFIX) :].encode(  # noqa: 203
+            "utf-8"
         )
-        return cls(meta=meta, divisions=divisions)
+        return pyarrow.ipc.read_schema(io.BytesIO(base64.b64decode(payload)))
 
     @property
-    def meta_decoded(self):
-        return deserialize_arrow(self.meta)
-
-    @property
-    def divisions_decoded(self):
-        divisions_wrapped_in_df = deserialize_arrow(self.divisions)
-        return tuple(divisions_wrapped_in_df["divisions"].values)
+    def meta(self):
+        return self.arrow_schema_decoded.empty_table().to_pandas()
 
 
 class DataFrameMacroStructure(BaseModel):
@@ -66,14 +75,7 @@ class DataFrameStructure(BaseModel):
 
     @classmethod
     def from_json(cls, content):
-        divisions_wrapped_in_df = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content["micro"]["divisions"]
-        )
-        divisions = tuple(divisions_wrapped_in_df["divisions"].values)
-        meta = deserialization_registry(
-            "dataframe", APACHE_ARROW_FILE_MIME_TYPE, content["micro"]["meta"]
-        )
         return cls(
-            micro=DataFrameMicroStructure(meta=meta, divisions=divisions),
+            micro=DataFrameMicroStructure(**content["micro"]),
             macro=DataFrameMacroStructure(**content["macro"]),
         )

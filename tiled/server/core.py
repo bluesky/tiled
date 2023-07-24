@@ -1,4 +1,3 @@
-import base64
 import collections.abc
 import dataclasses
 import itertools
@@ -513,7 +512,7 @@ async def construct_resource(
                 # This arises from back-compat...needs revisiting.
                 structure_maybe_method = entry.structure
                 if callable(structure_maybe_method):
-                    structure = asdict(structure_maybe_method())
+                    structure = asdict(entry.structure())
                 else:
                     structure = asdict(structure_maybe_method)
                 shape = structure.get("shape")
@@ -539,23 +538,6 @@ async def construct_resource(
                     if entry.structure_family == StructureFamily.container:
                         assert False  # not sure if this ever happens
                         pass
-                    elif entry.structure_family == StructureFamily.dataframe:
-                        microstructure = entry.microstructure()
-                        meta = microstructure.meta
-                        divisions = microstructure.divisions
-                        if media_type == "application/json":
-                            # For JSON, base64-encode the binary Arrow-encoded data,
-                            # and indicate that this has been done in the data URI.
-                            data_uri = f"data:{APACHE_ARROW_FILE_MIME_TYPE};base64,"
-                            meta = data_uri + base64.b64encode(meta).decode()
-                            divisions = data_uri + base64.b64encode(divisions).decode()
-                        else:
-                            # In msgpack, we can encode the binary Arrow-encoded data directly.
-                            assert media_type == "application/x-msgpack"
-                        structure["micro"] = {
-                            "meta": meta,
-                            "divisions": divisions,
-                        }
                     else:
                         microstructure = entry.microstructure()
                         if microstructure is not None:
