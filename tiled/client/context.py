@@ -103,14 +103,17 @@ class Context:
             # Do this in the setter to avoid being overwritten.
             client.headers = headers
         else:
-            from ._testclient import TestClient
+            # Set up an ASGI client.
+            # Because we have been handed an app, we can infer that
+            # starlette is available.
+            from starlette.testclient import TestClient
 
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
                 app=app,
-                timeout=timeout,
                 raise_server_exceptions=raise_server_exceptions,
             )
+            client.timeout = timeout
             client.headers = headers
             # Do this in the setter to avoid being overwritten.
             client.follow_redirects = True
