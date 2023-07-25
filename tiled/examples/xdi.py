@@ -7,7 +7,7 @@ Source: https://github.com/XraySpectroscopy/XAS-Data-Interchange
 import collections
 import io
 import re
-from pathlib import Path
+import pathlib
 
 import dask
 import pandas as pd
@@ -15,9 +15,9 @@ import pandas as pd
 from tiled.adapters.dataframe import DataFrameAdapter
 
 
-def read_xdi(file):
+def read_xdi(file, metadata=None, specs=None, meta=None, divisions=None, access_policy=None):
     "Read XDI-formatted file given a filepath or a readable buffer."
-    if isinstance(file, (str, Path)):
+    if isinstance(file, (str,pathlib.Path)):
         # Treat file as filepath.
         with open(file, "r") as file_:
             return _read_xdi(file_)
@@ -31,6 +31,9 @@ def _read_xdi(f):
     metadata = {}
     fields = collections.defaultdict(dict)
 
+    #if isinstance(f, pathlib.PosixPath):
+    #    line = f.read_text().split('\n')[0]
+    #else:
     line = f.readline()
     m = re.match(r"#\s*XDI/(\S*)\s*(\S*)?", line)
     if not m:
@@ -87,28 +90,7 @@ def _read_xdi(f):
 
     df = pd.read_table(f, delim_whitespace=True, names=col_labels)
 
-    return df, metadata
-
-
-class XDIDataFrameAdapter(DataFrameAdapter):
-    specs = ["xdi"]
-
-    @classmethod
-    def from_file(
-        cls,
-        file,
-        metadata=None,
-        specs=None,
-        schema=None,
-        access_policy=None,
-    ):
-        df, metadata_from_file = read_xdi(file)
-        metadata_from_file.update(metadata or {})
-        return cls.from_dask_dataframe(
-            dask.dataframe.from_pandas(df, npartitions=1),
-            metadata=metadata_from_file,
-            access_policy=access_policy,
-        )
+    return DataFrameAdapter.from_pandas(df, npartitions=1, metadata=metadata, specs=["xdi"])
 
 
 def write_xdi(df, metadata):
