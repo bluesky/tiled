@@ -93,7 +93,9 @@ def test_streaming_export(client):
     client["C"].export(buffer, format="application/json-seq")
     # Verify that output is valid newline-delimited JSON.
     buffer.seek(0)
-    for line in buffer.read().decode().splitlines():
+    lines = buffer.read().decode().splitlines()
+    assert len(lines) == 100
+    for line in lines:
         json.loads(line)
 
 
