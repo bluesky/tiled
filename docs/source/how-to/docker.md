@@ -98,19 +98,7 @@ Create a place outside the container to store the "catalog", `catalog.db`.
 mkdir storage/
 ```
 
-Register the files in the directory `files/` with this catalog.
-
-```
-docker run \
-  -p 8000:8000 \
-  -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./files:/files:ro \
-  -v ./storage:/storage \
-  ghcr.io/bluesky/tiled:latest
-  tiled catalog register /storage/catalog.db files/
-```
-
-Start the server.
+Start the server, potentially multiple on different ports.
 
 ```
 docker run \
@@ -121,7 +109,16 @@ docker run \
   ghcr.io/bluesky/tiled:latest
 ```
 
-Potentially start multiple servers on different ports, staring access to `files/` and `storage/`.
+Register the files in the directory `files/` with the catalog.
+
+```
+docker run \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./files:/files:ro \
+  -v ./storage:/storage \
+  ghcr.io/bluesky/tiled:latest \
+  tiled catalog register /storage/catalog.db /files --verbose
+```
 
 ### Scalable to Multiple Hosts
 
@@ -146,35 +143,34 @@ Replace the line:
 uri: "sqlite+aiosqlite:////storage/catalog.db"
 ```
 
-with a PostgreSQL database URI:
+with a PostgreSQL database URI, such as:
 
 ```yaml
-uri: "postgresql+asyncpg://username:${TILED_DATABASE_PASSWORD}@host:port/database_name"
+uri: "postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@localhost:5432"
+```
+
+Start the server, potentially multiple across many hosts.
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -e TILED_DATABASE_PASSWORD=secret \
+  -v ./config:/deploy/config:ro \
+  -v ./files:/files:ro \
+  ghcr.io/bluesky/tiled:latest
 ```
 
 Register the files in the directory `files/` with this catalog.
 
 ```
 docker run \
-  -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
   -e TILED_DATABASE_PASSWORD=secret \
   -v ./config:/deploy/config:ro
   -v ./files:/files:ro \
   ghcr.io/bluesky/tiled:latest \
-  tiled catalog register /storage/catalog.db files/
-```
-
-Start the server.
-
-```
-docker run \
-  -p 8000:8000 \
-  -e TILED_SINGLE_USER_API_KEY=secret \
-  -e TILED_DATABASE_PASSWORD=secret \
-  -v ./config:/deploy/config:ro
-  -v ./files:/files:ro \
-  ghcr.io/bluesky/tiled:latest
+  tiled catalog register /storage/catalog.db /files --verbose
 ```
 
 ## Example: Custom configuration
