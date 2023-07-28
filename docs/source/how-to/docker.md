@@ -67,17 +67,119 @@ quickly generate some with:
 python -m tiled.examples.generate_files files/
 ```
 
+### Quick Start (Not Scalable)
+
+This approach is nice for development and rapid iteration. It indexes the files
+at server startup.
+
 ```
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./files:/files:ro ghcr.io/bluesky/tiled:latest \
+  -v ./files:/files:ro \
+  ghcr.io/bluesky/tiled:latest \
   tiled serve directory --host 0.0.0.0 /files
+```
+
+Two problems with this one-line approach:
+
+* If you restart the server, all the indexing work is done from scratch.
+* If you horizontally scale with multiple containers, each one will crawl the
+  filesystem individually, putting load on the filesystem and potentially getting
+  views of the filesystem that are out of sync.
+
+Read on for a scalable approach.
+
+### Scalable to Multiple Processes
+
+Create a place outside the container to store the "catalog", `catalog.db`.
+
+```
+mkdir storage/
+```
+
+Register the files in the directory `files/` with this catalog.
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./files:/files:ro \
+  -v ./storage:/storage \
+  ghcr.io/bluesky/tiled:latest
+  tiled catalog register /storage/catalog.db files/
+```
+
+Start the server.
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./files:/files:ro \
+  -v ./storage:/storage \
+  ghcr.io/bluesky/tiled:latest
+```
+
+Potentially start multiple servers on different ports, staring access to `files/` and `storage/`.
+
+### Scalable to Multiple Hosts
+
+Instead of the default SQLite database, we need to use a PostgreSQL database.
+One way to run a PostgresSQL database is:
+
+```
+docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=secret -d docker.io/postgres
+```
+
+```
+mkdir config/
+```
+
+Place a copy of `example_config/single_user_single_catalog.yml`, from the Tiled
+repository root, in this `config/` directory.
+
+Replace the line:
+
+
+```yaml
+uri: "sqlite+aiosqlite:////storage/catalog.db"
+```
+
+with a PostgreSQL database URI:
+
+```yaml
+uri: "postgresql+asyncpg://username:${TILED_DATABASE_PASSWORD}@host:port/database_name"
+```
+
+Register the files in the directory `files/` with this catalog.
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -e TILED_DATABASE_PASSWORD=secret \
+  -v ./config:/deploy/config:ro
+  -v ./files:/files:ro \
+  ghcr.io/bluesky/tiled:latest \
+  tiled catalog register /storage/catalog.db files/
+```
+
+Start the server.
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -e TILED_DATABASE_PASSWORD=secret \
+  -v ./config:/deploy/config:ro
+  -v ./files:/files:ro \
+  ghcr.io/bluesky/tiled:latest
 ```
 
 ## Example: Custom configuration
 
-There are configuration examples locate in the directory `example_configs`
+There are configuration examples located in the directory `example_configs`
 under the Tiled repository root. The container image has one in particular,
 `single_user_single_catalog.yml`, copied into the container under
 `/deploy/config/`. Override it by mounting a local directory an
