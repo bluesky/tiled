@@ -256,7 +256,7 @@ $ http :8000/metadata/long_table | jq .data.attributes.structure
     "resizable": false
   },
   "micro": {
-    "schema": "data:application/vnd.apache.arrow.file;base64,...",
+    "arrow_schema": "data:application/vnd.apache.arrow.file;base64,...",
   }
 }
 ```
