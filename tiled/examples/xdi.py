@@ -99,8 +99,7 @@ class XDIDataFrameAdapter(DataFrameAdapter):
         file,
         metadata=None,
         specs=None,
-        meta=None,
-        divisions=None,
+        schema=None,
         access_policy=None,
     ):
         df, metadata_from_file = read_xdi(file)

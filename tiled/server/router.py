@@ -1,4 +1,3 @@
-import base64
 import dataclasses
 import inspect
 from datetime import datetime, timedelta
@@ -616,16 +615,6 @@ async def post_metadata(
     if not getattr(entry, "writable", False):
         raise HTTPException(
             status_code=405, detail=f"Data cannot be written at the path {path}"
-        )
-
-    if body.structure_family == StructureFamily.dataframe:
-        # Decode meta for pydantic validation
-        # TODO This is fragile.
-        body.data_sources[0].structure.micro.meta = base64.b64decode(
-            body.data_sources[0].structure.micro.meta
-        )
-        body.data_sources[0].structure.micro.divisions = base64.b64decode(
-            body.data_sources[0].structure.micro.divisions
         )
 
     metadata, structure_family, specs = (

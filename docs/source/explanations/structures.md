@@ -256,31 +256,17 @@ $ http :8000/metadata/long_table | jq .data.attributes.structure
     "resizable": false
   },
   "micro": {
-    "meta": "data:application/vnd.apache.arrow.file;base64,...",
-    "divisions": "data:application/vnd.apache.arrow.file;base64,...",
+    "arrow_schema": "data:application/vnd.apache.arrow.file;base64,...",
   }
 }
 ```
 
-Notice that the microstructure contains base64-encoded data.
-The correct way to encode dataframes and their data types in a cross-language
-way is with Apache Arrow.  Apache Arrow is a binary format. It explicitly
-does not support JSON.  (There is a JSON implementation, but the documentation
-states that it is intended only for integration testing and should not be used
-by external code.) Therefore, when JSON is requested, we base64-encode it.
-When binary msgpack is requested instead of JSON, we pack the binary data directly.
-
-The microstructure has two parts:
-
-* `meta` --- This contains the names and data types of the columns and index. To
-  generate this we build a dataframe with zero rows in it but the same columns
-  and indexes as the original, and then serialize that with Arrow.
-* `divisions` --- This contains the index values that delineate each partition.
-  We generate this in a similar way.
-
-Both of the concepts (and their names) are borrowed directly from
-dask.dataframe. They should enable any client, including in languages other than
-Python, to perform the same function.
+The microstructure contains a base64-encoded Apache Arrow schema. Apache Arrow
+is a binary format. It explicitly does not support JSON.  (There is a JSON
+implementation, but the documentation states that it is intended only for
+integration testing and should not be used by external code.) Therefore, when
+JSON is requested, we base64-encode it. When binary msgpack is requested
+instead of JSON, we pack the binary data directly.
 
 ### Container
 

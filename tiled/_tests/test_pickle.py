@@ -10,6 +10,7 @@ from packaging.version import parse
 from ..client import from_context
 from ..client.context import Context
 
+MIN_VERSION = "0.1.0a104"
 API_URL = "https://tiled-demo.blueskyproject.io/api/v1/"
 
 
@@ -29,7 +30,7 @@ def test_pickle_clients(structure_clients):
     except Exception:
         raise pytest.skip(f"Could not connect to {API_URL}")
     with Context(API_URL) as context:
-        if parse(context.server_info["library_version"]) < parse("0.1.0a98"):
+        if parse(context.server_info["library_version"]) < parse(MIN_VERSION):
             raise pytest.skip(
                 f"Server at {API_URL} is running too old a version to test against."
             )

@@ -1,4 +1,3 @@
-import base64
 import collections
 import collections.abc
 import importlib
@@ -589,20 +588,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "data_sources": data_sources,
             }
         }
-
-        if structure_family == StructureFamily.dataframe:
-            # send bytes base64 encoded
-            item["attributes"]["data_sources"][0]["structure"]["micro"][
-                "meta"
-            ] = base64.b64encode(
-                item["attributes"]["data_sources"][0]["structure"]["micro"]["meta"]
-            ).decode()
-            item["attributes"]["data_sources"][0]["structure"]["micro"][
-                "divisions"
-            ] = base64.b64encode(
-                item["attributes"]["data_sources"][0]["structure"]["micro"]["divisions"]
-            ).decode()
-
         body = dict(item["attributes"])
         if key is not None:
             body["id"] = key
@@ -841,9 +826,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             conform to some named standard specification.
         """
         import dask.dataframe
-        import pandas
 
-        from ..serialization.dataframe import serialize_arrow
         from ..structures.dataframe import (
             DataFrameMacroStructure,
             DataFrameMicroStructure,
@@ -854,16 +837,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs = specs or []
 
         if isinstance(dataframe, dask.dataframe.DataFrame):
-            meta = bytes(serialize_arrow(dataframe._meta, {}))
-            divisions = bytes(
-                serialize_arrow(
-                    pandas.DataFrame({"divisions": list(dataframe.divisions)}), {}
-                )
-            )
-            micro = DataFrameMicroStructure(meta=meta, divisions=divisions)
+            micro = DataFrameMicroStructure.from_dask_dataframe(dataframe)
             npartitions = dataframe.npartitions
         else:
-            micro = DataFrameMicroStructure.from_dataframe(dataframe)
+            micro = DataFrameMicroStructure.from_pandas(dataframe)
             npartitions = 1
 
         structure = DataFrameStructure(
