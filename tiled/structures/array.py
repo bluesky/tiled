@@ -70,26 +70,6 @@ class Kind(str, enum.Enum):
 
 
 @dataclass
-class ArrayMacroStructure:
-    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
-    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
-    dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
-    resizable: Union[bool, Tuple[bool, ...]] = False
-
-    @classmethod
-    def from_json(cls, structure):
-        dims = structure["dims"]
-        if dims is not None:
-            dims = tuple(dims)
-        return cls(
-            chunks=tuple(map(tuple, structure["chunks"])),
-            shape=tuple(structure["shape"]),
-            dims=dims,
-            resizable=structure.get("resizable", False),
-        )
-
-
-@dataclass
 class BuiltinDtype:
     endianness: Endianness
     kind: Kind
@@ -230,16 +210,25 @@ class StructDtype:
 
 @dataclass
 class ArrayStructure:
-    macro: ArrayMacroStructure
-    micro: Union[BuiltinDtype, StructDtype]
+    data_type: Union[BuiltinDtype, StructDtype]
+    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
+    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
+    dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):
-        if "fields" in structure["micro"]:
-            micro = StructDtype.from_json(structure["micro"])
+        if "fields" in structure["data_type"]:
+            data_type = StructDtype.from_json(structure["micro"])
         else:
-            micro = BuiltinDtype.from_json(structure["micro"])
+            data_type = BuiltinDtype.from_json(structure["micro"])
+        dims = structure["dims"]
+        if dims is not None:
+            dims = tuple(dims)
         return cls(
-            macro=ArrayMacroStructure.from_json(structure["macro"]),
-            micro=micro,
+            data_type=data_type,
+            chunks=tuple(map(tuple, structure["chunks"])),
+            shape=tuple(structure["shape"]),
+            dims=dims,
+            resizable=structure.get("resizable", False),
         )

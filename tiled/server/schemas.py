@@ -52,8 +52,6 @@ class EntryFields(str, enum.Enum):
     metadata = "metadata"
     structure_family = "structure_family"
     structure = "structure"
-    microstructure = "structure.micro"
-    macrostructure = "structure.macro"
     count = "count"
     sorting = "sorting"
     specs = "specs"

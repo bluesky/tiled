@@ -248,7 +248,7 @@ class BaseStructureClient(BaseClient):
         """
         Return a dataclass describing the structure of the data.
         """
-        if getattr(getattr(self._structure, "macro", None), "resizable", None):
+        if getattr(self._structure, "resizable", None):
             # In the future, conditionally fetch updated information.
             raise NotImplementedError(
                 "The server has indicated that this has a dynamic, resizable "

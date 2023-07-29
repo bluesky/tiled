@@ -7,7 +7,7 @@ B64_ENCODED_PREFIX = "data:application/vnd.apache.arrow.file;base64,"
 
 
 @dataclass
-class DataFrameMicroStructure:
+class DataFrameStructure:
     # This holds a Arrow schema, base64-encoded so that it can be transported
     # as JSON. For clarity, the encoded data (...) is prefixed like:
     #
@@ -17,6 +17,9 @@ class DataFrameMicroStructure:
     # could in the future: https://github.com/apache/arrow/pull/7110
     # If it does, we could switch to using that here.
     arrow_schema: str
+    npartitions: int
+    columns: List[str]
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_dask_dataframe(cls, ddf):
@@ -29,7 +32,7 @@ class DataFrameMicroStructure:
         schema_bytes = pyarrow.Table.from_pandas(meta).schema.serialize()
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
-        return cls(arrow_schema=data_uri)
+        return cls(arrow_schema=data_uri, npartitions=ddf.npartitions, columns=list(ddf.columns))
 
     @classmethod
     def from_pandas(cls, df):
@@ -38,7 +41,7 @@ class DataFrameMicroStructure:
         schema_bytes = pyarrow.Table.from_pandas(df).schema.serialize()
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
-        return cls(arrow_schema=data_uri)
+        return cls(arrow_schema=data_uri, npartitions=1, columns=list(df.columns))
 
     @property
     def arrow_schema_decoded(self):
@@ -57,27 +60,3 @@ class DataFrameMicroStructure:
     @property
     def meta(self):
         return self.arrow_schema_decoded.empty_table().to_pandas()
-
-
-@dataclass
-class DataFrameMacroStructure:
-    npartitions: int
-    columns: List[str]
-    resizable: Union[bool, Tuple[bool, ...]] = False
-
-    @classmethod
-    def from_dask_dataframe(cls, ddf):
-        return cls(npartitions=ddf.npartitions, columns=list(ddf.columns))
-
-
-@dataclass
-class DataFrameStructure:
-    micro: DataFrameMicroStructure
-    macro: DataFrameMacroStructure
-
-    @classmethod
-    def from_json(cls, content):
-        return cls(
-            micro=DataFrameMicroStructure(**content["micro"]),
-            macro=DataFrameMacroStructure(**content["macro"]),
-        )

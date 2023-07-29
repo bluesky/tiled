@@ -28,8 +28,8 @@ class _DaskDataFrameClient(BaseStructureClient):
         See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
         """
         structure = self.structure()
-        if not structure.macro.resizable:
-            p.text(f"<{type(self).__name__} {structure.macro.columns}>")
+        if not structure.resizable:
+            p.text(f"<{type(self).__name__} {structure.columns}>")
         else:
             # Try to get the column names, but give up quickly to avoid blocking
             # for long.
@@ -39,7 +39,7 @@ class _DaskDataFrameClient(BaseStructureClient):
                     self.context.http_client.get(
                         self.uri,
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        params={"fields": "structure.macro"},
+                        params={"fields": "structure"},
                         timeout=TIMEOUT,
                     )
                 ).json()
@@ -53,9 +53,7 @@ class _DaskDataFrameClient(BaseStructureClient):
                 )
             else:
                 try:
-                    columns = content["data"]["attributes"]["structure"]["macro"][
-                        "columns"
-                    ]
+                    columns = content["data"]["attributes"]["structure"]["columns"]
                 except Exception as err:
                     p.text(
                         f"<{type(self).__name__} Loading column names raised error {err!r}>"
@@ -70,18 +68,18 @@ class _DaskDataFrameClient(BaseStructureClient):
         See http://ipython.readthedocs.io/en/stable/config/integrating.html#tab-completion
         """
         structure = self.structure()
-        if not structure.macro.resizable:
+        if not structure.resizable:
             # Use cached structure.
-            return structure.macro.columns
+            return structure.columns
         try:
             content = handle_error(
                 self.context.http_client.get(
                     self.uri,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={"fields": "structure.macro"},
+                    params={"fields": "structure"},
                 )
             ).json()
-            columns = content["data"]["attributes"]["structure"]["macro"]["columns"]
+            columns = content["data"]["attributes"]["structure"]["columns"]
         except Exception:
             # Do not print messy traceback from thread. Just fail silently.
             return []
@@ -89,7 +87,7 @@ class _DaskDataFrameClient(BaseStructureClient):
 
     @property
     def columns(self):
-        return self.structure().macro.columns
+        return self.structure().columns
 
     def _get_partition(self, partition, columns):
         """
@@ -118,10 +116,10 @@ class _DaskDataFrameClient(BaseStructureClient):
         Optionally select a subset of the columns.
         """
         structure = self.structure()
-        npartitions = structure.macro.npartitions
+        npartitions = structure.npartitions
         if not (0 <= partition < npartitions):
             raise IndexError(f"partition {partition} out of range")
-        meta = structure.micro.meta
+        meta = structure.meta
         if columns is not None:
             meta = meta[columns]
         return dask.dataframe.from_delayed(
@@ -142,9 +140,9 @@ class _DaskDataFrameClient(BaseStructureClient):
         name = f"remote-dask-dataframe-{self.item['links']['self']}"
         dask_tasks = {
             (name, partition): (self._get_partition, partition, columns)
-            for partition in range(structure.macro.npartitions)
+            for partition in range(structure.npartitions)
         }
-        meta = structure.micro.meta
+        meta = structure.meta
 
         if columns is not None:
             meta = meta[columns]
@@ -152,7 +150,7 @@ class _DaskDataFrameClient(BaseStructureClient):
             dask_tasks,
             name=name,
             meta=meta,
-            divisions=(None,) * (1 + structure.macro.npartitions),
+            divisions=(None,) * (1 + structure.npartitions),
         )
         if columns is not None:
             ddf = ddf[columns]
@@ -184,7 +182,7 @@ class _DaskDataFrameClient(BaseStructureClient):
         return client_for_item(self.context, self.structure_clients, item)
 
     def __iter__(self):
-        yield from self.structure().macro.columns
+        yield from self.structure().columns
 
     # __len__ is intentionally not implemented. For DataFrames it means "number
     # of rows" which is expensive to compute.

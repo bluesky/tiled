@@ -526,9 +526,7 @@ async def construct_resource(
                     "block"
                 ] = f"{base_url}/array/block/{path_str}?block={block_template}"
             else:
-                if (schemas.EntryFields.macrostructure in fields) or (
-                    schemas.EntryFields.structure in fields
-                ):
+                if schemas.EntryFields.structure in fields:
                     macrostructure = entry.macrostructure()
                     if macrostructure is not None:
                         structure["macro"] = asdict(macrostructure)

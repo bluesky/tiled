@@ -308,18 +308,6 @@ class CatalogNodeAdapter:
     def data_sources(self):
         return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
 
-    def microstructure(self):
-        if self.data_sources:
-            assert len(self.data_sources) == 1  # more not yet implemented
-            return getattr(self.data_sources[0].structure, "micro", None)
-        return None
-
-    def macrostructure(self):
-        if self.node.data_sources:
-            assert len(self.data_sources) == 1  # more not yet implemented
-            return getattr(self.data_sources[0].structure, "macro", None)
-        return None
-
     def structure(self):
         if self.data_sources:
             assert len(self.data_sources) == 1  # more not yet implemented
@@ -412,12 +400,12 @@ class CatalogNodeAdapter:
             kwargs["specs"] = self.node.specs
             kwargs["metadata"] = self.node.metadata_
             if self.node.structure_family == StructureFamily.array:
-                # kwargs["dtype"] = data_source.structure.micro.to_numpy_dtype()
-                kwargs["shape"] = data_source.structure.macro.shape
-                kwargs["chunks"] = data_source.structure.macro.chunks
-                kwargs["dims"] = data_source.structure.macro.dims
+                # kwargs["dtype"] = data_source.structure.data_type.to_numpy_dtype()
+                kwargs["shape"] = data_source.structure.shape
+                kwargs["chunks"] = data_source.structure.chunks
+                kwargs["dims"] = data_source.structure.dims
             elif self.node.structure_family == StructureFamily.dataframe:
-                kwargs["arrow_schema"] = data_source.structure.micro.arrow_schema
+                kwargs["arrow_schema"] = data_source.structure.arrow_schema
             elif self.node.structure_family == StructureFamily.sparse:
                 kwargs["chunks"] = data_source.structure.chunks
                 kwargs["shape"] = data_source.structure.shape
@@ -569,14 +557,14 @@ class CatalogNodeAdapter:
                     if structure_family == StructureFamily.array:
                         init_storage_args = (
                             safe_path(data_uri),
-                            data_source.structure.micro.to_numpy_dtype(),
-                            data_source.structure.macro.shape,
-                            data_source.structure.macro.chunks,
+                            data_source.structure.data_type.to_numpy_dtype(),
+                            data_source.structure.shape,
+                            data_source.structure.chunks,
                         )
                     elif structure_family == StructureFamily.dataframe:
                         init_storage_args = (
                             safe_path(data_uri),
-                            data_source.structure.macro.npartitions,
+                            data_source.structure.npartitions,
                         )
                     elif structure_family == StructureFamily.sparse:
                         init_storage_args = (
