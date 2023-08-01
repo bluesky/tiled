@@ -124,7 +124,7 @@ def test_too_wide_for_inline():
     a = numpy.array([1])
     tree = MapAdapter(
         {
-            f"item{i:05}": ArrayAdapter(i * a)
+            f"item{i:05}": ArrayAdapter.from_array(i * a)
             for i in range(1 + 2 * INLINED_CONTENTS_LIMIT)
         }
     )

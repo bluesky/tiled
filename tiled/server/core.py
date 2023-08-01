@@ -493,7 +493,6 @@ async def construct_resource(
         ](**d)
     else:
         links = {"self": f"{base_url}/metadata/{path_str}"}
-        structure = {}
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Tree and not values.
@@ -506,57 +505,29 @@ async def construct_resource(
                     for link, template in FULL_LINKS[entry.structure_family].items()
                 }
             )
+            structure = asdict(entry.structure())
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
             if entry.structure_family == StructureFamily.sparse:
-                # This arises from back-compat...needs revisiting.
-                structure_maybe_method = entry.structure
-                if callable(structure_maybe_method):
-                    structure = asdict(entry.structure())
-                else:
-                    structure = asdict(structure_maybe_method)
                 shape = structure.get("shape")
-                if schemas.EntryFields.structure not in fields:
-                    # We needed to access the structure to get the shape for
-                    # use in constructing links below, but we are not supposed
-                    # to include in the response.
-                    structure = None
                 block_template = ",".join(f"{{{index}}}" for index in range(len(shape)))
                 links[
                     "block"
                 ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            else:
-                if schemas.EntryFields.structure in fields:
-                    macrostructure = entry.macrostructure()
-                    if macrostructure is not None:
-                        structure["macro"] = asdict(macrostructure)
-                if (schemas.EntryFields.microstructure in fields) or (
-                    schemas.EntryFields.structure in fields
-                ):
-                    if entry.structure_family == StructureFamily.container:
-                        assert False  # not sure if this ever happens
-                        pass
-                    else:
-                        microstructure = entry.microstructure()
-                        if microstructure is not None:
-                            structure["micro"] = asdict(microstructure)
-                if entry.structure_family == StructureFamily.array:
-                    shape = structure.get("macro", {}).get("shape")
-                    if shape is None:
-                        # The client did not request structure so we have not yet
-                        # accessed it, and we have access it specifically to construct this link.
-                        shape = entry.macrostructure().shape
-                    block_template = ",".join(
-                        f"{{index_{index}}}" for index in range(len(shape))
-                    )
-                    links[
-                        "block"
-                    ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-                elif entry.structure_family == StructureFamily.dataframe:
-                    links[
-                        "partition"
-                    ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
-            attributes["structure"] = structure
+            elif entry.structure_family == StructureFamily.array:
+                shape = structure.get("shape")
+                block_template = ",".join(
+                    f"{{index_{index}}}" for index in range(len(shape))
+                )
+                links[
+                    "block"
+                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
+            elif entry.structure_family == StructureFamily.dataframe:
+                links[
+                    "partition"
+                ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
+            if schemas.EntryFields.structure in fields:
+                attributes["structure"] = structure
         else:
             # We only have entry names, not structure_family, so
             ResourceLinksT = schemas.SelfLinkOnly

@@ -59,7 +59,7 @@ arr_with_zero_dim = numpy.array([]).reshape((0, 100, 1, 10))
 with warnings.catch_warnings():
     zero_tree = MapAdapter(
         {
-            "example": ArrayAdapter(
+            "example": ArrayAdapter.from_array(
                 dask.array.from_array(arr_with_zero_dim, chunks=arr_with_zero_dim.shape)
             )
         }

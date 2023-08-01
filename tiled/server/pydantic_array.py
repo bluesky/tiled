@@ -14,96 +14,13 @@ that just imports ArrayStructure from tiled.structures.array and then deprecate
 it.
 """
 
-import enum
-import os
 import sys
 from typing import List, Optional, Tuple, Union
 
 import numpy
 from pydantic import BaseModel
 
-
-class Endianness(str, enum.Enum):
-    """
-    An enum of endian values: big, little, not_applicable.
-    """
-
-    big = "big"
-    little = "little"
-    not_applicable = "not_applicable"
-
-
-class ObjectArrayTypeDisabled(ValueError):
-    pass
-
-
-class Kind(str, enum.Enum):
-    """
-    See https://numpy.org/devdocs/reference/arrays.interface.html#object.__array_interface__
-
-    The term "kind" comes from the numpy API as well.
-
-    Note: At import time, the environment variable ``TILED_ALLOW_OBJECT_ARRAYS``
-    is checked. If it is set to anything other than ``"0"``, then this
-    Enum gets an additional member::
-
-        object = "O"
-
-    to support numpy 'object'-type arrays which hold generic Python objects.
-    Numpy 'object'-type arrays are not enabled by default because their binary
-    representation is not interpretable by clients other than Python.  It is
-    recommended to convert your data to a non-object type if possible so that it
-    can be read by non-Python clients.
-    """
-
-    bit_field = "t"
-    boolean = "b"
-    integer = "i"
-    unsigned_integer = "u"
-    floating_point = "f"
-    complex_floating_point = "c"
-    timedelta = "m"
-    datetime = "M"
-    string = "S"  # fixed-length sequence of char
-    unicode = "U"  # fixed-length sequence of Py_UNICODE
-    other = "V"  # "V" is for "void" -- generic fixed-size chunk of memory
-
-    # By default, do not tolerate numpy objectg arrays
-    if os.getenv("TILED_ALLOW_OBJECT_ARRAYS", "0") != "0":
-        object = "O"  # Object (i.e. the memory contains a pointer to PyObject)
-
-    @classmethod
-    def _missing_(cls, key):
-        if key == "O":
-            raise ObjectArrayTypeDisabled(
-                "Numpy 'object'-type arrays are not enabled by default "
-                "because their binary representation is not interpretable "
-                "by clients other than Python. "
-                "It is recommended to convert your data to a non-object type "
-                "if possible so that it can be read by non-Python clients. "
-                "If this is not possible, you may enable 'object'-type arrays "
-                "by setting the environment variable TILED_ALLOW_OBJECT_ARRAYS=1 "
-                "in the server."
-            )
-
-
-class ArrayMacroStructure(BaseModel):
-    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
-    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
-    dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
-    resizable: Union[bool, Tuple[bool, ...]] = False
-
-    @classmethod
-    def from_json(cls, structure):
-        dims = structure["dims"]
-        if dims is not None:
-            dims = tuple(dims)
-        return cls(
-            chunks=tuple(map(tuple, structure["chunks"])),
-            shape=tuple(structure["shape"]),
-            dims=dims,
-            resizable=structure.get("resizable", False),
-        )
+from ..structures.array import Endianness, Kind
 
 
 class BuiltinDtype(BaseModel):
@@ -240,16 +157,25 @@ Field.update_forward_refs()
 
 
 class ArrayStructure(BaseModel):
-    macro: ArrayMacroStructure
-    micro: Union[BuiltinDtype, StructDtype]
+    data_type: Union[BuiltinDtype, StructDtype]
+    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
+    shape: Tuple[int, ...]  # tuple of ints like (3, 3)
+    dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
+    resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
     def from_json(cls, structure):
-        if "fields" in structure["micro"]:
-            micro = StructDtype.from_json(structure["micro"])
+        if "fields" in structure["data_type"]:
+            data_type = StructDtype.from_json(structure["data_type"])
         else:
-            micro = BuiltinDtype.from_json(structure["micro"])
+            data_type = BuiltinDtype.from_json(structure["data_type"])
+        dims = structure["dims"]
+        if dims is not None:
+            dims = tuple(dims)
         return cls(
-            macro=ArrayMacroStructure.from_json(structure["macro"]),
-            micro=micro,
+            data_type=data_type,
+            chunks=tuple(map(tuple, structure["chunks"])),
+            shape=tuple(structure["shape"]),
+            dims=dims,
+            resizable=structure.get("resizable", False),
         )

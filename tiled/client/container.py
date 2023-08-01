@@ -670,7 +670,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         import numpy
         from dask.array.core import normalize_chunks
 
-        from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
+        from ..structures.array import ArrayStructure, BuiltinDtype
 
         if not (hasattr(array, "shape") and hasattr(array, "dtype")):
             # This does not implement enough of the array-like interface.
@@ -825,9 +825,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         import dask.dataframe
 
-        from ..structures.dataframe import (
-            DataFrameStructure,
-        )
+        from ..structures.dataframe import DataFrameStructure
 
         metadata = metadata or {}
         specs = specs or []

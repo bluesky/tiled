@@ -219,9 +219,9 @@ class ArrayStructure:
     @classmethod
     def from_json(cls, structure):
         if "fields" in structure["data_type"]:
-            data_type = StructDtype.from_json(structure["micro"])
+            data_type = StructDtype.from_json(structure["data_type"])
         else:
-            data_type = BuiltinDtype.from_json(structure["micro"])
+            data_type = BuiltinDtype.from_json(structure["data_type"])
         dims = structure["dims"]
         if dims is not None:
             dims = tuple(dims)
@@ -231,4 +231,34 @@ class ArrayStructure:
             shape=tuple(structure["shape"]),
             dims=dims,
             resizable=structure.get("resizable", False),
+        )
+
+    @classmethod
+    def from_array(cls, array, shape=None, chunks=None, dims=None):
+        from dask.array.core import normalize_chunks
+
+        # Why would shape ever be different from array.shape, you ask?
+        # Some formats (notably Zarr) force shape to be a multiple of
+        # a chunk size, such that array.shape may include a margin beyond the
+        # actual data.
+        if shape is None:
+            shape = array.shape
+        if chunks is None:
+            if hasattr(array, "chunks"):
+                chunks = array.chunks  # might be None
+            else:
+                chunks = None
+            if chunks is None:
+                chunks = ("auto",) * len(shape)
+        normalized_chunks = normalize_chunks(
+            chunks,
+            shape=shape,
+            dtype=array.dtype,
+        )
+        if array.dtype.fields is not None:
+            data_type = StructDtype.from_numpy_dtype(array.dtype)
+        else:
+            data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
+        return ArrayStructure(
+            data_type=data_type, shape=shape, chunks=normalized_chunks, dims=dims
         )

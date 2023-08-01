@@ -77,14 +77,14 @@ class ZarrArrayAdapter(ArrayAdapter):
 
     def _stencil(self):
         "Trims overflow because Zarr always has equal-sized chunks."
-        return tuple(builtins.slice(0, dim) for dim in self.macrostructure().shape)
+        return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
     def read(self, slice=...):
         return self._array[self._stencil()][slice]
 
     def read_block(self, block, slice=...):
         block_slice, _ = slice_and_shape_from_block_and_chunks(
-            block, self.macrostructure().chunks
+            block, self.structure().chunks
         )
         # Slice the block out of the whole array,
         # and optionally a sub-slice therein.
@@ -99,7 +99,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         if slice is not ...:
             raise NotImplementedError
         block_slice, shape = slice_and_shape_from_block_and_chunks(
-            block, self.macrostructure().chunks
+            block, self.structure().chunks
         )
         self._array[block_slice] = data
 

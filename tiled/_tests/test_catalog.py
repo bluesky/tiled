@@ -22,9 +22,7 @@ from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app
 from ..server.schemas import Asset, DataSource
-from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
-from ..structures.dataframe import DataFrameStructure
 
 
 @pytest_asyncio.fixture
@@ -208,9 +206,7 @@ async def test_write_array_external(a, tmpdir):
     filepath = tmpdir / "file.tiff"
     tifffile.imwrite(str(filepath), arr)
     ad = TiffAdapter(str(filepath))
-    structure = asdict(
-        ArrayStructure(macro=ad.macrostructure(), micro=ad.microstructure())
-    )
+    structure = asdict(ad.structure())
     await a.create_node(
         key="x",
         structure_family="array",
@@ -235,9 +231,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
     dfa = DataFrameAdapter.read_csv(filepath)
-    structure = asdict(
-        DataFrameStructure(macro=dfa.macrostructure(), micro=dfa.microstructure())
-    )
+    structure = asdict(dfa.structure())
     await a.create_node(
         key="x",
         structure_family="dataframe",
@@ -259,10 +253,8 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 @pytest.mark.asyncio
 async def test_write_array_internal_direct(a, tmpdir):
     arr = numpy.ones((5, 3))
-    ad = ArrayAdapter(arr)
-    structure = asdict(
-        ArrayStructure(macro=ad.macrostructure(), micro=ad.microstructure())
-    )
+    ad = ArrayAdapter.from_array(arr)
+    structure = asdict(ad.structure())
     await a.create_node(
         key="x",
         structure_family="array",

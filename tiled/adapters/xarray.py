@@ -57,7 +57,7 @@ class _DatasetMap(collections.abc.Mapping):
             spec = Spec("xarray_coord")
         else:
             spec = Spec("xarray_data_var")
-        return ArrayAdapter(
+        return ArrayAdapter.from_array(
             data_array.data,
             metadata={"attrs": data_array.attrs},
             dims=data_array.dims,

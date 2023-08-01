@@ -396,25 +396,13 @@ class CatalogNodeAdapter:
                         f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
                     )
                 paths.append(safe_path(data_uri))
-            kwargs = dict(data_source.parameters)
-            kwargs["specs"] = self.node.specs
-            kwargs["metadata"] = self.node.metadata_
-            if self.node.structure_family == StructureFamily.array:
-                # kwargs["dtype"] = data_source.structure.data_type.to_numpy_dtype()
-                kwargs["shape"] = data_source.structure.shape
-                kwargs["chunks"] = data_source.structure.chunks
-                kwargs["dims"] = data_source.structure.dims
-            elif self.node.structure_family == StructureFamily.dataframe:
-                kwargs["arrow_schema"] = data_source.structure.arrow_schema
-            elif self.node.structure_family == StructureFamily.sparse:
-                kwargs["chunks"] = data_source.structure.chunks
-                kwargs["shape"] = data_source.structure.shape
-                kwargs["dims"] = data_source.structure.dims
-            else:
-                pass
-            kwargs["access_policy"] = self.access_policy
+            adapter_kwargs = dict(data_source.parameters)
+            adapter_kwargs["specs"] = self.node.specs
+            adapter_kwargs["metadata"] = self.node.metadata_
+            adapter_kwargs["structure"] = data_source.structure
+            adapter_kwargs["access_policy"] = self.access_policy
             adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, *paths, **kwargs)
+                partial(adapter_factory, *paths, **adapter_kwargs)
             )
             for query in self.queries:
                 adapter = adapter.search(query)

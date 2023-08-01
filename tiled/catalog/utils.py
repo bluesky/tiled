@@ -1,6 +1,5 @@
 import re
 import sys
-from dataclasses import asdict
 from pathlib import Path
 from urllib import parse
 

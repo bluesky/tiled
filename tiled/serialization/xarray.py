@@ -27,9 +27,9 @@ async def as_dataset(node):
         spec_names = set(spec.name for spec in array_adapter.specs)
         arr = await ensure_awaitable(array_adapter.read)
         if "xarray_data_var" in spec_names:
-            data_vars[key] = (array_adapter.macrostructure().dims, arr)
+            data_vars[key] = (array_adapter.structure().dims, arr)
         elif "xarray_coord" in spec_names:
-            coords[key] = (array_adapter.macrostructure().dims, arr)
+            coords[key] = (array_adapter.structure().dims, arr)
         else:
             raise ValueError(
                 "Child nodes of xarray_dataset should include spec "

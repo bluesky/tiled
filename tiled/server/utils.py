@@ -3,9 +3,6 @@ import time
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
-from ..structures.array import ArrayStructure
-from ..structures.core import StructureFamily
-from ..structures.dataframe import DataFrameStructure
 
 EMPTY_NODE = MapAdapter({})
 API_KEY_COOKIE_NAME = "tiled_api_key"

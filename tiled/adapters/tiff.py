@@ -4,7 +4,7 @@ import hashlib
 import tifffile
 
 from ..server.object_cache import with_object_cache
-from ..structures.array import ArrayMacroStructure, BuiltinDtype
+from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 
 
@@ -66,16 +66,17 @@ class TiffAdapter:
             arr = arr[slice]
         return arr
 
-    def microstructure(self):
-        return BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype)
-
-    def macrostructure(self):
+    def structure(self):
         if self._file.is_shaped:
             shape = tuple(self._file.shaped_metadata[0]["shape"])
         else:
             arr = with_object_cache(self._cache_key, self._file.asarray)
             shape = arr.shape
-        return ArrayMacroStructure(shape=shape, chunks=tuple((dim,) for dim in shape))
+        return ArrayStructure(
+            shape=shape,
+            chunks=tuple((dim,) for dim in shape),
+            data_type=BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype),
+        )
 
 
 class TiffSequenceAdapter:
@@ -210,14 +211,12 @@ class TiffSequenceAdapter:
             arr = arr[slice]
         return arr
 
-    def microstructure(self):
-        # Assume all files have the same data type
-        return BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype)
-
-    def macrostructure(self):
+    def structure(self):
         shape = (len(self._seq), *self.read(slice=0).shape)
-        return ArrayMacroStructure(
+        return ArrayStructure(
             shape=shape,
             # one chunks per underlying TIFF file
             chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
+            # Assume all files have the same data type
+            data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
         )

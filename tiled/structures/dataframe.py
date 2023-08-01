@@ -32,7 +32,11 @@ class DataFrameStructure:
         schema_bytes = pyarrow.Table.from_pandas(meta).schema.serialize()
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
-        return cls(arrow_schema=data_uri, npartitions=ddf.npartitions, columns=list(ddf.columns))
+        return cls(
+            arrow_schema=data_uri,
+            npartitions=ddf.npartitions,
+            columns=list(ddf.columns),
+        )
 
     @classmethod
     def from_pandas(cls, df):
