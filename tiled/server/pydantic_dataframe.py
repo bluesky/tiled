@@ -64,3 +64,12 @@ class DataFrameStructure(BaseModel):
     @property
     def meta(self):
         return self.arrow_schema_decoded.empty_table().to_pandas()
+
+    @classmethod
+    def from_json(cls, content):
+        return cls(
+            arrow_schema=content["arrow_schema"],
+            npartitions=content["npartitions"],
+            columns=content["columns"],
+            resizable=content["resizable"],
+        )
