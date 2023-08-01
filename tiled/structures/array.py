@@ -237,6 +237,12 @@ class ArrayStructure:
     def from_array(cls, array, shape=None, chunks=None, dims=None):
         from dask.array.core import normalize_chunks
 
+        if not hasattr(array, "__array__"):
+            # may be a list of something; convert to array
+            import numpy
+
+            array = numpy.asanyarray(array)
+
         # Why would shape ever be different from array.shape, you ask?
         # Some formats (notably Zarr) force shape to be a multiple of
         # a chunk size, such that array.shape may include a margin beyond the
