@@ -14,7 +14,7 @@ import { useState } from "react";
 interface DownloadArrayProps {
   name: string;
   structureFamily: string;
-  macrostructure: any;
+  structure: any;
   specs: string[];
   link: string;
 }
@@ -119,7 +119,7 @@ const DownloadArray: React.FunctionComponent<DownloadArrayProps> = (props) => {
     <Box>
       <Stack spacing={2} direction="column">
         <Container>
-          Dimensions: {props.macrostructure.shape.join(" × ")}
+          Dimensions: {props.structure.shape.join(" × ")}
         </Container>
         <Stack spacing={1} direction="row">
           <TextField
@@ -142,7 +142,7 @@ const DownloadArray: React.FunctionComponent<DownloadArrayProps> = (props) => {
         {format !== undefined &&
         (format.mimetype.startsWith("image/") ||
           format.mimetype.startsWith("text/")) &&
-        props.macrostructure.shape.length !== 2 ? (
+        props.structure.shape.length !== 2 ? (
           <Alert sx={{ mt: 2 }} severity="warning">
             This is a multidimensional array. It may be necessary to slice a
             portion of this array to successfully export it as an image or

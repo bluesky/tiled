@@ -11,7 +11,11 @@ from ..server.app import build_app
 def client():
     metadata = {str(i): {str(j): j for j in range(100)} for i in range(100)}
     tree = MapAdapter(
-        {"compresses_well": ArrayAdapter(numpy.zeros((100, 100)), metadata=metadata)},
+        {
+            "compresses_well": ArrayAdapter.from_array(
+                numpy.zeros((100, 100)), metadata=metadata
+            )
+        },
     )
     app = build_app(tree)
     with Context.from_app(app) as context:

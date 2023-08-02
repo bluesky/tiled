@@ -46,7 +46,7 @@ def test_dataframe_basic(context):
     client = from_context(context)
     expected = tree["basic"].read()
     actual = client["basic"].read()
-    assert client["basic"].structure().macro.npartitions == 3
+    assert client["basic"].structure().npartitions == 3
     pandas.testing.assert_frame_equal(actual, expected)
     assert client["basic"].columns == list(expected.columns) == list(actual.columns)
 
@@ -64,7 +64,7 @@ def test_dataframe_single_partition(context):
     client = from_context(context)
     expected = tree["single_partition"].read()
     actual = client["single_partition"].read()
-    assert client["single_partition"].structure().macro.npartitions == 1
+    assert client["single_partition"].structure().npartitions == 1
     pandas.testing.assert_frame_equal(actual, expected)
 
 

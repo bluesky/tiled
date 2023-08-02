@@ -670,7 +670,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         import numpy
         from dask.array.core import normalize_chunks
 
-        from ..structures.array import ArrayMacroStructure, ArrayStructure, BuiltinDtype
+        from ..structures.array import ArrayStructure, BuiltinDtype
 
         if not (hasattr(array, "shape") and hasattr(array, "dtype")):
             # This does not implement enough of the array-like interface.
@@ -696,12 +696,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
 
         structure = ArrayStructure(
-            macro=ArrayMacroStructure(
-                shape=array.shape,
-                chunks=chunks,
-                dims=dims,
-            ),
-            micro=BuiltinDtype.from_numpy_dtype(array.dtype),
+            shape=array.shape,
+            chunks=chunks,
+            dims=dims,
+            data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
         )
         client = self.new(
             StructureFamily.array,
@@ -827,29 +825,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         import dask.dataframe
 
-        from ..structures.dataframe import (
-            DataFrameMacroStructure,
-            DataFrameMicroStructure,
-            DataFrameStructure,
-        )
+        from ..structures.dataframe import DataFrameStructure
 
         metadata = metadata or {}
         specs = specs or []
 
         if isinstance(dataframe, dask.dataframe.DataFrame):
-            micro = DataFrameMicroStructure.from_dask_dataframe(dataframe)
-            npartitions = dataframe.npartitions
+            structure = DataFrameStructure.from_dask_dataframe(dataframe)
         else:
-            micro = DataFrameMicroStructure.from_pandas(dataframe)
-            npartitions = 1
-
-        structure = DataFrameStructure(
-            micro=micro,
-            macro=DataFrameMacroStructure(
-                npartitions=npartitions, columns=list(dataframe.columns)
-            ),
-        )
-
+            structure = DataFrameStructure.from_pandas(dataframe)
         client = self.new(
             StructureFamily.dataframe,
             structure,

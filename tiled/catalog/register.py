@@ -13,7 +13,7 @@ from ..structures.core import StructureFamily
 from ..utils import import_object
 from .adapter import Collision
 from .mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
-from .utils import ensure_uri, get_structure
+from .utils import ensure_uri
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +300,7 @@ async def register_single_item(
         data_sources=[
             DataSource(
                 mimetype=mimetype,
-                structure=get_structure(adapter),
+                structure=dataclasses.asdict(adapter.structure()),
                 parameters={},
                 management=Management.external,
                 assets=[
@@ -365,7 +365,7 @@ async def tiff_sequence(
             data_sources=[
                 DataSource(
                     mimetype=mimetype,
-                    structure=get_structure(adapter),
+                    structure=dataclasses.asdict(adapter.structure()),
                     parameters={},
                     management=Management.external,
                     assets=[

@@ -308,18 +308,6 @@ class CatalogNodeAdapter:
     def data_sources(self):
         return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
 
-    def microstructure(self):
-        if self.data_sources:
-            assert len(self.data_sources) == 1  # more not yet implemented
-            return getattr(self.data_sources[0].structure, "micro", None)
-        return None
-
-    def macrostructure(self):
-        if self.node.data_sources:
-            assert len(self.data_sources) == 1  # more not yet implemented
-            return getattr(self.data_sources[0].structure, "macro", None)
-        return None
-
     def structure(self):
         if self.data_sources:
             assert len(self.data_sources) == 1  # more not yet implemented
@@ -408,25 +396,13 @@ class CatalogNodeAdapter:
                         f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
                     )
                 paths.append(safe_path(data_uri))
-            kwargs = dict(data_source.parameters)
-            kwargs["specs"] = self.node.specs
-            kwargs["metadata"] = self.node.metadata_
-            if self.node.structure_family == StructureFamily.array:
-                # kwargs["dtype"] = data_source.structure.micro.to_numpy_dtype()
-                kwargs["shape"] = data_source.structure.macro.shape
-                kwargs["chunks"] = data_source.structure.macro.chunks
-                kwargs["dims"] = data_source.structure.macro.dims
-            elif self.node.structure_family == StructureFamily.dataframe:
-                kwargs["arrow_schema"] = data_source.structure.micro.arrow_schema
-            elif self.node.structure_family == StructureFamily.sparse:
-                kwargs["chunks"] = data_source.structure.chunks
-                kwargs["shape"] = data_source.structure.shape
-                kwargs["dims"] = data_source.structure.dims
-            else:
-                pass
-            kwargs["access_policy"] = self.access_policy
+            adapter_kwargs = dict(data_source.parameters)
+            adapter_kwargs["specs"] = self.node.specs
+            adapter_kwargs["metadata"] = self.node.metadata_
+            adapter_kwargs["structure"] = data_source.structure
+            adapter_kwargs["access_policy"] = self.access_policy
             adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, *paths, **kwargs)
+                partial(adapter_factory, *paths, **adapter_kwargs)
             )
             for query in self.queries:
                 adapter = adapter.search(query)
@@ -569,14 +545,14 @@ class CatalogNodeAdapter:
                     if structure_family == StructureFamily.array:
                         init_storage_args = (
                             safe_path(data_uri),
-                            data_source.structure.micro.to_numpy_dtype(),
-                            data_source.structure.macro.shape,
-                            data_source.structure.macro.chunks,
+                            data_source.structure.data_type.to_numpy_dtype(),
+                            data_source.structure.shape,
+                            data_source.structure.chunks,
                         )
                     elif structure_family == StructureFamily.dataframe:
                         init_storage_args = (
                             safe_path(data_uri),
-                            data_source.structure.macro.npartitions,
+                            data_source.structure.npartitions,
                         )
                     elif structure_family == StructureFamily.sparse:
                         init_storage_args = (

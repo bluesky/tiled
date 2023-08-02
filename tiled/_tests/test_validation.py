@@ -31,7 +31,7 @@ def validate_foo(metadata, structure_family, structure, spec):
     if structure_family != "dataframe":
         raise ValidationError(f"structure family for spec {spec} must be dataframe")
 
-    if list(structure.macro.columns) != ["a", "b"]:
+    if list(structure.columns) != ["a", "b"]:
         raise ValidationError(f"structure for spec {spec} must have columns ['a', 'b']")
 
     metadata, metadata_modified = lower_case_dict(metadata)

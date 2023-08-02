@@ -40,7 +40,7 @@ from .dependencies import (
     slice_,
 )
 from .settings import get_settings
-from .utils import filter_for_access, get_base_url, get_structure, record_timing
+from .utils import filter_for_access, get_base_url, record_timing
 
 router = APIRouter()
 
@@ -354,7 +354,7 @@ async def array_block(
     Fetch a chunk of array-like data.
     """
     if entry.structure_family == "array":
-        shape = entry.macrostructure().shape
+        shape = entry.structure().shape
     elif entry.structure_family == "sparse":
         shape = entry.structure().shape
     else:
@@ -377,7 +377,7 @@ async def array_block(
         if shape != ():
             raise HTTPException(
                 status_code=400,
-                detail=f"Requested scalar but shape is {entry.macrostructure().shape}",
+                detail=f"Requested scalar but shape is {entry.structure().shape}",
             )
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read)
@@ -670,15 +670,7 @@ async def post_metadata(
     path_parts = [segment for segment in path.split("/") if segment] + [key]
     path_str = "/".join(path_parts)
     links["self"] = f"{base_url}/metadata/{path_str}"
-    if body.structure_family == StructureFamily.array:
-        block_template = ",".join(
-            f"{{{index}}}" for index in range(len(node.macrostructure().shape))
-        )
-        links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
-        links["full"] = f"{base_url}/array/full/{path_str}"
-    elif body.structure_family == StructureFamily.sparse:
-        # Different from array because of structure.macro.shape vs structure.shape
-        # Can be unified if we drop macro/micro namespace.
+    if body.structure_family in {StructureFamily.array, StructureFamily.sparse}:
         block_template = ",".join(
             f"{{{index}}}" for index in range(len(node.structure().shape))
         )
@@ -731,8 +723,8 @@ async def put_array_full(
         )
     media_type = request.headers["content-type"]
     if entry.structure_family == "array":
-        dtype = entry.microstructure().to_numpy_dtype()
-        shape = entry.macrostructure().shape
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        shape = entry.structure().shape
         deserializer = deserialization_registry.dispatch("array", media_type)
         data = await ensure_awaitable(deserializer, body, dtype, shape)
     elif entry.structure_family == "sparse":
@@ -760,9 +752,9 @@ async def put_array_block(
     body = await request.body()
     media_type = request.headers["content-type"]
     if entry.structure_family == "array":
-        dtype = entry.microstructure().to_numpy_dtype()
+        dtype = entry.structure().data_type.to_numpy_dtype()
         _, shape = slice_and_shape_from_block_and_chunks(
-            block, entry.macrostructure().chunks
+            block, entry.structure().chunks
         )
         deserializer = deserialization_registry.dispatch("array", media_type)
         data = await ensure_awaitable(deserializer, body, dtype, shape)
@@ -828,7 +820,7 @@ async def put_metadata(
     metadata, structure_family, structure, specs = (
         body.metadata if body.metadata is not None else entry.metadata(),
         entry.structure_family,
-        get_structure(entry),
+        entry.structure(),
         body.specs if body.specs is not None else entry.specs,
     )
 

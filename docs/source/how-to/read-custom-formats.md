@@ -221,7 +221,7 @@ See :doc:`../explanations/metadata` for more information on Specs.
 Specify them as an argument to the Adapter, as in:
 
 ```py
-DataFrameAdapter(..., specs=["xdi"])
+DataFrameAdapter.from_pandas(..., specs=["xdi"])
 ```
 
 ### Configure Tiled Server to use this Adapter

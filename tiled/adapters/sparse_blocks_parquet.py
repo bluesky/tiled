@@ -7,7 +7,6 @@ import sparse
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..structures.core import StructureFamily
-from ..structures.sparse import COOStructure
 
 
 def load_block(uri):
@@ -25,20 +24,16 @@ class SparseBlocksParquetAdapter:
     def __init__(
         self,
         *block_uris,
+        structure,
         metadata=None,
-        shape=None,
-        chunks=None,
-        dims=None,
         specs=None,
         access_policy=None,
     ):
-        num_blocks = (range(len(n)) for n in chunks)
+        num_blocks = (range(len(n)) for n in structure.chunks)
         self.blocks = {}
         for block, uri in zip(itertools.product(*num_blocks), sorted(block_uris)):
             self.blocks[block] = uri
-        self.dims = dims
-        self.shape = shape
-        self.chunks = chunks
+        self._structure = structure
         self._metadata = metadata or {}
         self.specs = list(specs or [])
         self.access_policy = access_policy
@@ -96,21 +91,15 @@ class SparseBlocksParquetAdapter:
         arr = sparse.COO(
             data=numpy.concatenate(all_data),
             coords=numpy.concatenate(all_coords, axis=-1),
-            shape=self.shape,
+            shape=self._structure.shape,
         )
         return arr[slice]
 
     def read_block(self, block, slice=...):
         coords, data = load_block(self.blocks[block])
-        _, shape = slice_and_shape_from_block_and_chunks(block, self.chunks)
+        _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
         return arr[slice]
 
     def structure(self):
-        # Convert pydantic implementation to dataclass implemenetation
-        # expected by server.
-        return COOStructure(
-            shape=self.shape,
-            chunks=self.chunks,
-            dims=self.dims,
-        )
+        return self._structure

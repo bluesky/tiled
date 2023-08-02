@@ -17,7 +17,7 @@ interface IProps {
 }
 
 const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
-  if (props.structure!.micro!.fields) {
+  if (props.structure!.data_type!.hasOwnProperty("fields")) {
     return (
       <Alert severity="warning">
         This is a "record array" with a{" "}
@@ -33,7 +33,7 @@ const ArrayOverview: React.FunctionComponent<IProps> = (props) => {
       </Alert>
     );
   }
-  const shape = props.structure!.macro!.shape as number[];
+  const shape = props.structure!.shape as number[];
   switch (shape.length < 2) {
     case true:
       return (

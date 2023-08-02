@@ -3,9 +3,6 @@ import time
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
-from ..structures.array import ArrayStructure
-from ..structures.core import StructureFamily
-from ..structures.dataframe import DataFrameStructure
 
 EMPTY_NODE = MapAdapter({})
 API_KEY_COOKIE_NAME = "tiled_api_key"
@@ -83,25 +80,3 @@ def filter_for_access(entry, principal, scopes, metrics):
                 for query in queries:
                     entry = entry.search(query)
     return entry
-
-
-def get_structure(entry):
-    "Abtract over the fact that some have micro/macrostructure."
-    structure_family = entry.structure_family
-    if structure_family == StructureFamily.container:
-        structure = None
-    elif structure_family == "array":
-        structure = ArrayStructure(
-            macro=entry.macrostructure(),
-            micro=entry.microstructure(),
-        )
-    elif structure_family == "dataframe":
-        structure = DataFrameStructure(
-            macro=entry.macrostructure(),
-            micro=entry.microstructure(),
-        )
-    elif structure_family == "sparse":
-        structure = entry.structure()
-    else:
-        raise ValueError(f"Unrecognized structure family {structure_family}")
-    return structure

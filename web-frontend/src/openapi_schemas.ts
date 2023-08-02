@@ -103,8 +103,8 @@ export interface components {
     EntryFields:
       | "metadata"
       | "structure_family"
-      | "structure.micro"
-      | "structure.macro"
+      | "structure"
+      | "structure"
       | "count"
       | "sorting"
       | "specs"
@@ -204,10 +204,7 @@ export interface components {
     };
     /** Structure */
     Structure: {
-      /** Micro */
-      micro?: { [key: string]: unknown };
-      /** Macro */
-      macro?: { [key: string]: unknown };
+      [key: string]: unknown
     };
     /**
      * StructureFamilies

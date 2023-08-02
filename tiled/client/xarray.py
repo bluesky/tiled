@@ -51,8 +51,8 @@ class DaskDatasetClient(Container):
             array_clients[name] = array_client
             array_structure = array_client.structure()
             array_structures[name] = array_structure
-            if array_structure.macro.shape:
-                first_dims.append(array_structure.macro.shape[0])
+            if array_structure.shape:
+                first_dims.append(array_structure.shape[0])
             else:
                 first_dims.append(None)
         if len(set(first_dims)) > 1:
@@ -60,7 +60,7 @@ class DaskDatasetClient(Container):
             optimize_wide_table = False
         for name, array_client in array_clients.items():
             array_structure = array_structures[name]
-            shape = array_structure.macro.shape
+            shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
             if optimize_wide_table and (
                 (not shape)  # empty
@@ -134,8 +134,8 @@ class _WideTableFetcher:
         # TODO Can we avoid .values here?
         return dask.array.from_delayed(
             dask.delayed(self.dataframe)()[name].values,
-            shape=array_structure.macro.shape,
-            dtype=array_structure.micro.to_numpy_dtype(),
+            shape=array_structure.shape,
+            dtype=array_structure.data_type.to_numpy_dtype(),
         )
 
     def dataframe(self):

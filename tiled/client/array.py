@@ -16,45 +16,45 @@ class _DaskArrayClient(BaseStructureClient):
 
     @property
     def dims(self):
-        return self.structure().macro.dims
+        return self.structure().dims
 
     @property
     def shape(self):
-        return self.structure().macro.shape
+        return self.structure().shape
 
     @property
     def size(self):
-        return numpy.product(self.structure().macro.shape)
+        return numpy.product(self.structure().shape)
 
     @property
     def dtype(self):
-        return self.structure().micro.to_numpy_dtype()
+        return self.structure().data_type.to_numpy_dtype()
 
     @property
     def nbytes(self):
         structure = self.structure()
         return (
-            numpy.product(structure.macro.shape)
-            * structure.micro.to_numpy_dtype().itemsize
+            numpy.product(structure.shape)
+            * structure.data_type.to_numpy_dtype().itemsize
         )
 
     @property
     def chunks(self):
-        return self.structure().macro.chunks
+        return self.structure().chunks
 
     @property
     def ndim(self):
-        return len(self.structure().macro.shape)
+        return len(self.structure().shape)
 
     def __repr__(self):
         structure = self.structure()
         attrs = {
-            "shape": structure.macro.shape,
-            "chunks": structure.macro.chunks,
-            "dtype": structure.micro.to_numpy_dtype(),
+            "shape": structure.shape,
+            "chunks": structure.chunks,
+            "dtype": structure.data_type.to_numpy_dtype(),
         }
-        if structure.macro.dims:
-            attrs["dims"] = structure.macro.dims
+        if structure.dims:
+            attrs["dims"] = structure.dims
         return (
             f"<{type(self).__name__}"
             + "".join(f" {k}={v}" for k, v in attrs.items())
@@ -109,8 +109,8 @@ class _DaskArrayClient(BaseStructureClient):
         Optionally, access only a slice *within* this block.
         """
         structure = self.structure()
-        chunks = structure.macro.chunks
-        dtype = structure.micro.to_numpy_dtype()
+        chunks = structure.chunks
+        dtype = structure.data_type.to_numpy_dtype()
         try:
             shape = tuple(chunks[dim][i] for dim, i in enumerate(block))
         except IndexError:
@@ -132,12 +132,12 @@ class _DaskArrayClient(BaseStructureClient):
         The array will be internally chunked with dask.
         """
         structure = self.structure()
-        shape = structure.macro.shape
-        dtype = structure.micro.to_numpy_dtype()
+        shape = structure.shape
+        dtype = structure.data_type.to_numpy_dtype()
         # Build a client-side dask array whose chunks pull from a server-side
         # dask array.
         name = "remote-dask-array-" f"{self.uri}"
-        chunks = structure.macro.chunks
+        chunks = structure.chunks
         # Count the number of blocks along each axis.
         num_blocks = (range(len(n)) for n in chunks)
         # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---
@@ -186,7 +186,7 @@ class _DaskArrayClient(BaseStructureClient):
 
     def __len__(self):
         # As with numpy, len(arr) is the size of the zeroth axis.
-        return self.structure().macro.shape[0]
+        return self.structure().shape[0]
 
     def export(
         self, filepath, *, format=None, slice=None, link=None, template_vars=None

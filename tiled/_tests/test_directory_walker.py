@@ -1,3 +1,5 @@
+import platform
+import time
 from pathlib import Path
 
 import pytest
@@ -37,6 +39,12 @@ async def test_collision(example_data_dir, tmpdir):
 
         # And omits the colliding entries.
         assert "a" not in client
+
+        # Windows will fail to unlink the file, below, if it is still being used:
+        # PermissionError: [WinError 32] The process cannot access the file because
+        # it is being used by another process: '...'
+        if platform.system() == "Windows":
+            time.sleep(2)
 
         # Resolve the collision.
         p.unlink()

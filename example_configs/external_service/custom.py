@@ -77,7 +77,7 @@ class AuthenticatedAdapter:
         data = await self._client.get_data(data_url, token=self._token)
         # This could alternatively be some file-based adapter with HDF5Adapter
         # or something custom, or another AuthenticatedAdapter...
-        return ArrayAdapter(data, metadata=metadata)
+        return ArrayAdapter.from_array(data, metadata=metadata)
 
     async def keys_range(self, offset, limit):
         url = ...  # based on self._segments

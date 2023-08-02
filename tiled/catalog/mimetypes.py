@@ -18,8 +18,8 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
             "...adapters.tiff", __name__
         ).TiffSequenceAdapter.from_files,
         "text/csv": lambda: importlib.import_module(
-            "...adapters.dataframe", __name__
-        ).DataFrameAdapter.read_csv,
+            "...adapters.csv", __name__
+        ).read_csv,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.excel", __name__
         ).ExcelAdapter.from_file,

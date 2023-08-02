@@ -1,9 +1,7 @@
 import dask.array
-import numpy
-from dask.array.core import normalize_chunks
 
 from ..server.object_cache import get_object_cache
-from ..structures.array import ArrayMacroStructure, BuiltinDtype, StructDtype
+from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 
 
@@ -16,9 +14,9 @@ class ArrayAdapter:
 
     Wrap any array-like.
 
-    >>> ArrayAdapter(numpy.random.random((100, 100)))
+    >>> ArrayAdapter.from_array(numpy.random.random((100, 100)))
 
-    >>> ArrayAdapter(dask.array.from_array(numpy.random.random((100, 100)), chunks=(100, 50)))
+    >>> ArrayAdapter.from_array(dask.array.from_array(numpy.random.random((100, 100)), chunks=(100, 50)))
 
     """
 
@@ -27,36 +25,15 @@ class ArrayAdapter:
     def __init__(
         self,
         array,
+        structure,
         *,
-        shape=None,
-        chunks=None,
         metadata=None,
-        dims=None,
         specs=None,
         access_policy=None,
     ):
-        # Why would shape ever be different from array.shape, you ask?
-        # Some formats (notably Zarr) force shape to be a multiple of
-        # a chunk size, such that array.shape may include a margin beyond the
-        # actual data.
-        if shape is None:
-            shape = array.shape
-        self._shape = shape
-        if chunks is None:
-            if hasattr(array, "chunks"):
-                chunks = array.chunks  # might be None
-            else:
-                chunks = None
-            if chunks is None:
-                chunks = ("auto",) * len(shape)
-        self._chunks = normalize_chunks(
-            chunks,
-            shape=shape,
-            dtype=array.dtype,
-        )
         self._array = array
+        self._structure = structure
         self._metadata = metadata or {}
-        self._dims = dims
         self.specs = specs or []
 
     @classmethod
@@ -64,17 +41,20 @@ class ArrayAdapter:
         cls,
         array,
         *,
+        shape=None,
         chunks=None,
-        metadata=None,
         dims=None,
+        metadata=None,
         specs=None,
         access_policy=None,
     ):
+        structure = ArrayStructure.from_array(
+            array, shape=shape, chunks=chunks, dims=dims
+        )
         return cls(
-            numpy.asarray(array),
-            chunks=chunks,
+            array,
+            structure=structure,
             metadata=metadata,
-            dims=dims,
             specs=specs,
             access_policy=access_policy,
         )
@@ -84,24 +64,13 @@ class ArrayAdapter:
 
     @property
     def dims(self):
-        return self._dims
+        return self._structure.dims
 
     def metadata(self):
         return self._metadata
 
-    def macrostructure(self):
-        "Structures of the layout of blocks of this array"
-        return ArrayMacroStructure(
-            shape=self._shape, chunks=self._chunks, dims=self._dims
-        )
-
-    def microstructure(self):
-        "Internal structure of a block of this array --- i.e. its data type"
-        if self._array.dtype.fields is not None:
-            micro = StructDtype.from_numpy_dtype(self._array.dtype)
-        else:
-            micro = BuiltinDtype.from_numpy_dtype(self._array.dtype)
-        return micro
+    def structure(self):
+        return self._structure
 
     def read(self, slice=None):
         array = self._array
@@ -116,7 +85,7 @@ class ArrayAdapter:
 
     def read_block(self, block, slice=None):
         # Slice the whole array to get this block.
-        slice_, _ = slice_and_shape_from_block_and_chunks(block, self._chunks)
+        slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         array = self._array[slice_]
         # Slice within the block.
         if slice is not None:

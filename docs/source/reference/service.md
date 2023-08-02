@@ -24,7 +24,7 @@ or its dask counterpart.
 .. autosummary::
    :toctree: generated
 
-   tiled.adapters.dataframe.DataFrameAdapter.read_csv
+   tiled.adapters.csv.read_csv
    tiled.adapters.excel.ExcelAdapter
    tiled.adapters.hdf5.HDF5Adapter
    tiled.adapters.netcdf.read_netcdf
@@ -94,37 +94,19 @@ requests for slices of data and decode the responses.
 
 See {doc}`../explanations/structures` for more context.
 
-### Array
-
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
    tiled.structures.array.ArrayStructure
-   tiled.structures.array.ArrayMacroStructure
    tiled.structures.array.BuiltinDtype
-   tiled.structures.array.Kind
    tiled.structures.array.Endianness
-```
-
-### Sparse Array
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.structures.sparse.COOStructure
-```
-
-### DataFrame
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
+   tiled.structures.array.Kind
+   tiled.structures.container.ContainerStructure
+   tiled.structures.core.Spec
+   tiled.structures.core.StructureFamily
    tiled.structures.dataframe.DataFrameStructure
-   tiled.structures.dataframe.DataFrameMacroStructure
-   tiled.structures.dataframe.DataFrameMicroStructure
+   tiled.structures.sparse.COOStructure
 ```
 
 ## Configuration Parsing
