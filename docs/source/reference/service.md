@@ -24,7 +24,7 @@ or its dask counterpart.
 .. autosummary::
    :toctree: generated
 
-   tiled.adapters.dataframe.DataFrameAdapter.read_csv
+   tiled.adapters.csv.read_csv
    tiled.adapters.excel.ExcelAdapter
    tiled.adapters.hdf5.HDF5Adapter
    tiled.adapters.netcdf.read_netcdf

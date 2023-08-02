@@ -2,7 +2,7 @@ import dask.base
 import dask.dataframe
 import pandas
 
-from ..server.object_cache import NO_CACHE, get_object_cache
+from ..server.object_cache import get_object_cache
 from ..structures.core import StructureFamily
 from ..structures.dataframe import DataFrameStructure
 from .array import ArrayAdapter
@@ -18,10 +18,6 @@ class DataFrameAdapter:
     >>> df = pandas.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
     >>> DataFrameAdapter.from_pandas(df, npartitions=1)
 
-    Read a CSV (uses dask.dataframe.read_csv).
-
-    >>> DataFrameAdapter.read_csv("myfiles.*.csv")
-    >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
     """
 
     structure_family = StructureFamily.dataframe
@@ -51,48 +47,6 @@ class DataFrameAdapter:
             specs=specs,
             access_policy=access_policy,
         )
-
-    @classmethod
-    def read_csv(
-        cls,
-        *args,
-        arrow_schema=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-        **kwargs,
-    ):
-        """
-        Read a CSV.
-
-        Internally, this uses dask.dataframe.read_csv.
-        It forward all parameters to that function. See
-        https://docs.dask.org/en/latest/dataframe-api.html#dask.dataframe.read_csv
-
-        Examples
-        --------
-
-        >>> DataFrameAdapter.read_csv("myfiles.*.csv")
-        >>> DataFrameAdapter.read_csv("s3://bucket/myfiles.*.csv")
-        """
-        ddf = dask.dataframe.read_csv(*args, **kwargs)
-        # If an instance has previously been created using the same parameters,
-        # then we are here because the caller wants a *fresh* view on this data.
-        # Therefore, we should clear any cached data.
-        cache = get_object_cache()
-        if cache is not NO_CACHE:
-            cache.discard_dask(ddf.__dask_keys__())
-        return cls.from_dask_dataframe(
-            ddf, metadata=metadata, specs=specs, access_policy=access_policy
-        )
-
-    read_csv.__doc__ = (
-        """
-    This wraps dask.dataframe.read_csv. Original docstring:
-
-    """
-        + dask.dataframe.read_csv.__doc__
-    )
 
     def __init__(
         self,

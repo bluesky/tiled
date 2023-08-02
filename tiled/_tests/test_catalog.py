@@ -11,7 +11,8 @@ import pytest_asyncio
 import tifffile
 import xarray
 
-from ..adapters.dataframe import ArrayAdapter, DataFrameAdapter
+from ..adapters.csv import read_csv
+from ..adapters.dataframe import ArrayAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
 from ..catalog.adapter import WouldDeleteData
@@ -230,7 +231,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = tmpdir / "file.csv"
     df.to_csv(filepath, index=False)
-    dfa = DataFrameAdapter.read_csv(filepath)
+    dfa = read_csv(filepath)
     structure = asdict(dfa.structure())
     await a.create_node(
         key="x",
