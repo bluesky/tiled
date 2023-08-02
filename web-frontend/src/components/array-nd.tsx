@@ -18,7 +18,7 @@ interface IProps {
 }
 
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
-  const shape = props.structure!.macro!.shape as number[];
+  const shape = props.structure!.shape as number[];
   const ndim = shape.length;
   // Find the middle slice in all dimensions except the last two.
   const middles = shape

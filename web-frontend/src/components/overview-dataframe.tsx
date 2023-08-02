@@ -22,11 +22,11 @@ interface IProps {
 }
 
 const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
-  const npartitions = props.item.data.attributes.structure.macro.npartitions;
+  const npartitions = props.item.data.attributes.structure.npartitions;
   const [partition, setPartition] = useState<number | string>(0);
   const [rows, setRows] = useState<any[]>([]);
   const [rowsAreLoaded, setRowsAreLoaded] = useState<boolean>(false);
-  const columns = props.item.data.attributes.structure.macro.columns;
+  const columns = props.item.data.attributes.structure.columns;
   useEffect(() => {
     const controller = new AbortController();
     const templated_link = props.item.data.links.partition.replace(

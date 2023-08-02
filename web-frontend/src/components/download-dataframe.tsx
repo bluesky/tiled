@@ -14,7 +14,7 @@ import { useState } from "react";
 interface DownloadDataFrameProps {
   name: string;
   structureFamily: string;
-  macrostructure: any;
+  structure: any;
   specs: string[];
   partition_link: string;
   full_link: string;
@@ -23,12 +23,12 @@ interface DownloadDataFrameProps {
 const DownloadDataFrame: React.FunctionComponent<DownloadDataFrameProps> = (
   props
 ) => {
-  const npartitions = props.macrostructure.npartitions;
+  const npartitions = props.structure.npartitions;
   const [format, setFormat] = useState<Format>();
   const [partition, setPartition] = useState<number>(0);
   const [full, setFull] = useState<boolean>(npartitions === 1);
   const [columns, setColumns] = useState<string[]>(
-    props.macrostructure.columns
+    props.structure.columns
   );
   var link: string;
   if (format !== undefined && columns.length !== 0) {
@@ -44,7 +44,7 @@ const DownloadDataFrame: React.FunctionComponent<DownloadDataFrameProps> = (
     // We use .join(",") here so we can use string equality.
     // You wouldn't believe me if I told you how difficult it is
     // to check Array equality in Javascript.
-    if (columns.join(",") !== props.macrostructure.columns.join(",")) {
+    if (columns.join(",") !== props.structure.columns.join(",")) {
       const field_params = columns
         .map((column) => {
           return `&field=${column}`;
@@ -66,7 +66,7 @@ const DownloadDataFrame: React.FunctionComponent<DownloadDataFrameProps> = (
         <Stack spacing={1} direction="row">
           <ColumnList
             heading="Columns"
-            allColumns={props.macrostructure.columns}
+            allColumns={props.structure.columns}
             columns={columns}
             setColumns={setColumns}
           />

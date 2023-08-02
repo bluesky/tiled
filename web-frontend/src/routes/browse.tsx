@@ -97,7 +97,7 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
           <DownloadArray
             name={props.item.data!.id}
             structureFamily={structureFamily}
-            macrostructure={attributes.structure!.macro!}
+            structure={attributes.structure!}
             specs={attributes.specs as string[]}
             link={props.item.data!.links!.full! as string}
           />
@@ -107,7 +107,7 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
           <DownloadDataFrame
             name={props.item.data!.id}
             structureFamily={structureFamily}
-            macrostructure={attributes.structure!.macro!}
+            structure={attributes.structure!}
             specs={attributes.specs as string[]}
             full_link={props.item.data!.links!.full! as string}
             partition_link={props.item.data!.links!.partition! as string}
@@ -188,8 +188,7 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
       // Request all the attributes.
       var result = await metadata(settings.api_url, props.segments, controller.signal, [
         "structure_family",
-        "structure.macro",
-        "structure.micro",
+        "structure",
         "specs",
       ]);
       if (result !== undefined) {
@@ -211,8 +210,7 @@ const NodeTabs: React.FunctionComponent<IProps> = (props) => {
       // Request all the attributes.
       var result = await metadata(settings.api_url, props.segments, controller.signal, [
         "structure_family",
-        "structure.macro",
-        "structure.micro",
+        "structure",
         "specs",
         "metadata",
         "sorting",
