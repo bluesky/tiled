@@ -5,7 +5,6 @@ from .dataframe import DataFrameAdapter
 
 
 def read_csv(
-    cls,
     *args,
     structure=None,
     metadata=None,

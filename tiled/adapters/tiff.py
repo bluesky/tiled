@@ -30,6 +30,10 @@ class TiffAdapter:
         access_policy=None,
     ):
         self._file = tifffile.TiffFile(path)
+        self._cache_key = (type(self).__module__, type(self).__qualname__, path)
+        self.specs = specs or []
+        self._provided_metadata = metadata or {}
+        self.access_policy = access_policy
         if structure is None:
             if self._file.is_shaped:
                 shape = tuple(self._file.shaped_metadata[0]["shape"])
@@ -42,10 +46,6 @@ class TiffAdapter:
                 data_type=BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype),
             )
         self._structure = structure
-        self._cache_key = (type(self).__module__, type(self).__qualname__, path)
-        self.specs = specs or []
-        self._provided_metadata = metadata or {}
-        self.access_policy = access_policy
 
     def metadata(self):
         # This contains some enums, but Python's built-in JSON serializer
@@ -94,7 +94,7 @@ class TiffSequenceAdapter:
         seq = tifffile.TiffSequence(files)
         return cls(
             seq,
-            structure,
+            structure=structure,
             specs=specs,
             metadata=metadata,
             access_policy=access_policy,
@@ -109,16 +109,6 @@ class TiffSequenceAdapter:
         specs=None,
         access_policy=None,
     ):
-        if structure is None:
-            shape = (len(self._seq), *self.read(slice=0).shape)
-            structure = ArrayStructure(
-                shape=shape,
-                # one chunks per underlying TIFF file
-                chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
-                # Assume all files have the same data type
-                data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
-            )
-        self._structure = structure
         self._seq = seq
         self._cache_key = (
             type(self).__module__,
@@ -129,6 +119,16 @@ class TiffSequenceAdapter:
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
+        if structure is None:
+            shape = (len(self._seq), *self.read(slice=0).shape)
+            structure = ArrayStructure(
+                shape=shape,
+                # one chunks per underlying TIFF file
+                chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
+                # Assume all files have the same data type
+                data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
+            )
+        self._structure = structure
 
     def metadata(self):
         # TODO How to deal with the many headers?
