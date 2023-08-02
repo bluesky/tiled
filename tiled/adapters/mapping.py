@@ -20,6 +20,7 @@ from ..queries import (
     StructureFamilyQuery,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..structures.container import ContainerStructure
 from ..structures.core import StructureFamily
 from ..utils import UNCHANGED
 from .utils import IndexersMixin
@@ -149,6 +150,9 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
     def items(self):
         return ItemsView(lambda: len(self), self._items_slice)
+
+    def structure(self):
+        return ContainerStructure(count=len(self._mapping))
 
     @property
     def metadata_stale_at(self):

@@ -53,10 +53,8 @@ class ZarrArrayAdapter(ArrayAdapter):
     def from_directory(
         cls,
         directory,
+        structure,
         *,
-        shape=None,
-        chunks=None,
-        dims=None,
         metadata=None,
         specs=None,
         access_policy=None,
@@ -67,9 +65,7 @@ class ZarrArrayAdapter(ArrayAdapter):
             array = directory
         return cls(
             array,
-            shape=shape,
-            chunks=chunks,
-            dims=dims,
+            structure,
             metadata=metadata,
             specs=specs,
             access_policy=access_policy,

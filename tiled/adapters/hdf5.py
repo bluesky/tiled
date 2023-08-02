@@ -15,9 +15,8 @@ SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
-class HDF5DatasetAdapter(ArrayAdapter):
-    def __init__(self, dataset):
-        super().__init__(dataset, metadata=getattr(dataset, "attrs", {}))
+def from_dataset(dataset):
+    return ArrayAdapter.from_array(dataset, metadata=getattr(dataset, "attrs", {}))
 
 
 class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
@@ -113,9 +112,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                     dataset_names = value.file[self._node.name + "/" + key][...][()]
                     if value.size == 1:
                         arr = numpy.array(dataset_names)
-                        return HDF5DatasetAdapter(arr)
-                return HDF5DatasetAdapter(numpy.array([]))
-            return HDF5DatasetAdapter(value)
+                        return from_dataset(arr)
+                return from_dataset(numpy.array([]))
+            return from_dataset(value)
 
     def __len__(self):
         return len(self._node)

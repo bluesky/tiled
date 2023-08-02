@@ -24,17 +24,26 @@ class TiffAdapter:
         self,
         path,
         *,
-        shape=None,
-        chunks=None,
-        specs=None,
+        structure=None,
         metadata=None,
-        dims=None,
+        specs=None,
         access_policy=None,
     ):
         self._file = tifffile.TiffFile(path)
+        if structure is None:
+            if self._file.is_shaped:
+                shape = tuple(self._file.shaped_metadata[0]["shape"])
+            else:
+                arr = with_object_cache(self._cache_key, self._file.asarray)
+                shape = arr.shape
+            structure = ArrayStructure(
+                shape=shape,
+                chunks=tuple((dim,) for dim in shape),
+                data_type=BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype),
+            )
+        self._structure = structure
         self._cache_key = (type(self).__module__, type(self).__qualname__, path)
         self.specs = specs or []
-        self.dims = dims
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
 
@@ -67,16 +76,7 @@ class TiffAdapter:
         return arr
 
     def structure(self):
-        if self._file.is_shaped:
-            shape = tuple(self._file.shaped_metadata[0]["shape"])
-        else:
-            arr = with_object_cache(self._cache_key, self._file.asarray)
-            shape = arr.shape
-        return ArrayStructure(
-            shape=shape,
-            chunks=tuple((dim,) for dim in shape),
-            data_type=BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype),
-        )
+        return self._structure
 
 
 class TiffSequenceAdapter:
@@ -86,21 +86,17 @@ class TiffSequenceAdapter:
     def from_files(
         cls,
         *files,
-        shape=None,
-        chunks=None,
-        specs=None,
+        structure=None,
         metadata=None,
-        dims=None,
+        specs=None,
         access_policy=None,
     ):
         seq = tifffile.TiffSequence(files)
         return cls(
             seq,
-            shape=shape,
-            chunks=chunks,
+            structure,
             specs=specs,
             metadata=metadata,
-            dims=dims,
             access_policy=access_policy,
         )
 
@@ -108,15 +104,22 @@ class TiffSequenceAdapter:
         self,
         seq,
         *,
-        shape=None,
-        chunks=None,
-        specs=None,
+        structure=None,
         metadata=None,
-        dims=None,
+        specs=None,
         access_policy=None,
     ):
+        if structure is None:
+            shape = (len(self._seq), *self.read(slice=0).shape)
+            structure = ArrayStructure(
+                shape=shape,
+                # one chunks per underlying TIFF file
+                chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
+                # Assume all files have the same data type
+                data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
+            )
+        self._structure = structure
         self._seq = seq
-        self._metadata = {}
         self._cache_key = (
             type(self).__module__,
             type(self).__qualname__,
@@ -125,7 +128,6 @@ class TiffSequenceAdapter:
         # TODO Check shape, chunks against reality.
         self.specs = specs or []
         self._provided_metadata = metadata or {}
-        self.dims = dims
         self.access_policy = access_policy
 
     def metadata(self):
@@ -212,11 +214,4 @@ class TiffSequenceAdapter:
         return arr
 
     def structure(self):
-        shape = (len(self._seq), *self.read(slice=0).shape)
-        return ArrayStructure(
-            shape=shape,
-            # one chunks per underlying TIFF file
-            chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
-            # Assume all files have the same data type
-            data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
-        )
+        return self._structure

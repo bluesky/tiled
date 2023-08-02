@@ -300,7 +300,7 @@ async def register_single_item(
         data_sources=[
             DataSource(
                 mimetype=mimetype,
-                structure=adapter.structure(),
+                structure=dataclasses.asdict(adapter.structure()),
                 parameters={},
                 management=Management.external,
                 assets=[
@@ -365,7 +365,7 @@ async def tiff_sequence(
             data_sources=[
                 DataSource(
                     mimetype=mimetype,
-                    structure=adapter.structure(),
+                    structure=dataclasses.asdict(adapter.structure()),
                     parameters={},
                     management=Management.external,
                     assets=[
