@@ -5,7 +5,7 @@ import dask.array
 import pandas
 import xarray
 
-from ..serialization.dataframe import deserialize_arrow
+from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .container import Container

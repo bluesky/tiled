@@ -235,7 +235,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
     structure = asdict(dfa.structure())
     await a.create_node(
         key="x",
-        structure_family="dataframe",
+        structure_family=StructureFamily.table,
         metadata={},
         data_sources=[
             DataSource(

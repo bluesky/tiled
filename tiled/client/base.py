@@ -2,7 +2,7 @@ import importlib
 import time
 from dataclasses import asdict
 
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
@@ -260,13 +260,13 @@ class BaseStructureClient(BaseClient):
 
 STRUCTURE_TYPES = OneShotCachedMap(
     {
-        "array": lambda: importlib.import_module(
+        StructureFamily.array: lambda: importlib.import_module(
             "...structures.array", BaseStructureClient.__module__
         ).ArrayStructure,
-        "dataframe": lambda: importlib.import_module(
-            "...structures.dataframe", BaseStructureClient.__module__
-        ).DataFrameStructure,
-        "sparse": lambda: importlib.import_module(
+        StructureFamily.table: lambda: importlib.import_module(
+            "...structures.table", BaseStructureClient.__module__
+        ).TableStructure,
+        StructureFamily.sparse: lambda: importlib.import_module(
             "...structures.sparse", BaseStructureClient.__module__
         ).SparseStructure,
     }

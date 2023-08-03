@@ -1,13 +1,13 @@
 import base64
 import io
-from dataclasses import dataclass
 from typing import List, Tuple, Union
 
-B64_ENCODED_PREFIX = "data:application/vnd.apache.arrow.file;base64,"
+from pydantic import BaseModel
+
+from ..structures.table import B64_ENCODED_PREFIX
 
 
-@dataclass
-class DataFrameStructure:
+class TableStructure(BaseModel):
     # This holds a Arrow schema, base64-encoded so that it can be transported
     # as JSON. For clarity, the encoded data (...) is prefixed like:
     #
@@ -26,7 +26,7 @@ class DataFrameStructure:
         import dask.dataframe.utils
         import pyarrow
 
-        # Make a pandas DataFrame with 0 rows.
+        # Make a pandas Table with 0 rows.
         # We can use this to define an Arrow schema without loading any row data.
         meta = dask.dataframe.utils.make_meta(ddf)
         schema_bytes = pyarrow.Table.from_pandas(meta).schema.serialize()

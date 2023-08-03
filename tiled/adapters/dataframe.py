@@ -3,12 +3,12 @@ import dask.dataframe
 import pandas
 
 from ..server.object_cache import get_object_cache
-from ..structures.core import StructureFamily
-from ..structures.dataframe import DataFrameStructure
+from ..structures.core import Spec, StructureFamily
+from ..structures.table import TableStructure
 from .array import ArrayAdapter
 
 
-class DataFrameAdapter:
+class TableAdapter:
     """
     Wrap a dataframe-like object in an interface that Tiled can serve.
 
@@ -20,13 +20,15 @@ class DataFrameAdapter:
 
     """
 
-    structure_family = StructureFamily.dataframe
+    structure_family = StructureFamily.table
 
     @classmethod
     def from_pandas(
         cls, *args, metadata=None, specs=None, access_policy=None, **kwargs
     ):
         ddf = dask.dataframe.from_pandas(*args, **kwargs)
+        if specs is None:
+            specs = [Spec("dataframe")]
         return cls.from_dask_dataframe(
             ddf, metadata=metadata, specs=specs, access_policy=access_policy
         )
@@ -39,7 +41,9 @@ class DataFrameAdapter:
         specs=None,
         access_policy=None,
     ):
-        structure = DataFrameStructure.from_dask_dataframe(ddf)
+        structure = TableStructure.from_dask_dataframe(ddf)
+        if specs is None:
+            specs = [Spec("dataframe")]
         return cls(
             ddf.partitions,
             structure,
@@ -112,3 +116,6 @@ class DataFrameAdapter:
             with get_object_cache().dask_context:
                 return partition.compute()
         return partition
+
+
+DataFrameAdapter = TableAdapter

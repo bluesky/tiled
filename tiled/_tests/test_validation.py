@@ -8,6 +8,7 @@ import pytest
 
 from ..client import Context, from_context
 from ..config import merge
+from ..structures.core import StructureFamily
 from ..server.app import build_app_from_config
 from ..validation_registration import ValidationError
 from .utils import fail_with_status_code
@@ -28,8 +29,8 @@ def lower_case_dict(d):
 
 
 def validate_foo(metadata, structure_family, structure, spec):
-    if structure_family != "dataframe":
-        raise ValidationError(f"structure family for spec {spec} must be dataframe")
+    if structure_family != StructureFamily.table:
+        raise ValidationError(f"structure family for spec {spec} must be 'table'")
 
     if list(structure.columns) != ["a", "b"]:
         raise ValidationError(f"structure for spec {spec} must have columns ['a', 'b']")

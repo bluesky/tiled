@@ -56,9 +56,9 @@ DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 DEFAULT_CREATION_MIMETYPE = {
-    "array": ZARR_MIMETYPE,
-    "dataframe": PARQUET_MIMETYPE,
-    "sparse": SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    StructureFamily.array: ZARR_MIMETYPE,
+    StructureFamily.table: PARQUET_MIMETYPE,
+    StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
 CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
     {
@@ -549,7 +549,7 @@ class CatalogNodeAdapter:
                             data_source.structure.shape,
                             data_source.structure.chunks,
                         )
-                    elif structure_family == StructureFamily.dataframe:
+                    elif structure_family == StructureFamily.table:
                         init_storage_args = (
                             safe_path(data_uri),
                             data_source.structure.npartitions,
@@ -839,7 +839,7 @@ class CatalogSparseAdapter(CatalogArrayAdapter):
     pass
 
 
-class CatalogDataFrameAdapter(CatalogNodeAdapter):
+class CatalogTableAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
@@ -1097,6 +1097,6 @@ def json_serializer(obj):
 STRUCTURES = {
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.array: CatalogArrayAdapter,
-    StructureFamily.dataframe: CatalogDataFrameAdapter,
+    StructureFamily.table: CatalogTableAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
 }

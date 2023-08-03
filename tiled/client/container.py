@@ -825,17 +825,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         import dask.dataframe
 
-        from ..structures.dataframe import DataFrameStructure
+        from ..structures.table import TableStructure
 
         metadata = metadata or {}
         specs = specs or []
 
         if isinstance(dataframe, dask.dataframe.DataFrame):
-            structure = DataFrameStructure.from_dask_dataframe(dataframe)
+            structure = TableStructure.from_dask_dataframe(dataframe)
         else:
-            structure = DataFrameStructure.from_pandas(dataframe)
+            structure = TableStructure.from_pandas(dataframe)
         client = self.new(
-            StructureFamily.dataframe,
+            StructureFamily.table,
             structure,
             key=key,
             metadata=metadata,
@@ -925,6 +925,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
             "sparse": _LazyLoad(("..sparse", Container.__module__), "SparseClient"),
+            "table": _LazyLoad(
+                ("..dataframe", Container.__module__), "DataFrameClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DatasetClient"
             ),
@@ -938,6 +941,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
             ),
             "sparse": _LazyLoad(("..sparse", Container.__module__), "SparseClient"),
+            "table": _LazyLoad(
+                ("..dataframe", Container.__module__), "DaskDataFrameClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DaskDatasetClient"
             ),
