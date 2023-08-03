@@ -18,12 +18,12 @@ import { SettingsContext } from "../context/settings";
 import { useParams } from "react-router-dom";
 
 const ArrayOverview = lazy(() => import("../components/overview-array"));
-const DataFrameOverview = lazy(
-  () => import("../components/overview-dataframe")
+const TableOverview = lazy(
+  () => import("../components/overview-table")
 );
 const DownloadArray = lazy(() => import("../components/download-array"));
-const DownloadDataFrame = lazy(
-  () => import("../components/download-dataframe")
+const DownloadTable = lazy(
+  () => import("../components/download-table")
 );
 const DownloadNode = lazy(() => import("../components/download-node"));
 const JSONViewer = lazy(() => import("../components/json-viewer"));
@@ -102,9 +102,9 @@ const DownloadDispatch: React.FunctionComponent<DispatchProps> = (props) => {
             link={props.item.data!.links!.full! as string}
           />
         );
-      case "dataframe":
+      case "table":
         return (
-          <DownloadDataFrame
+          <DownloadTable
             name={props.item.data!.id}
             structureFamily={structureFamily}
             structure={attributes.structure!}
@@ -137,9 +137,9 @@ const OverviewDispatch: React.FunctionComponent<DispatchProps> = (props) => {
             structure={props.item.data!.attributes!.structure!}
           />
         );
-      case "dataframe":
+      case "table":
         return (
-          <DataFrameOverview segments={props.segments} item={props.item} />
+          <TableOverview segments={props.segments} item={props.item} />
         );
       default:
         return <div>Unknown structure family "{structureFamily}"</div>;

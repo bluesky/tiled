@@ -11,7 +11,7 @@ import FormGroup from "@mui/material/FormGroup";
 import Stack from "@mui/material/Stack";
 import { useState } from "react";
 
-interface DownloadDataFrameProps {
+interface DownloadTableProps {
   name: string;
   structureFamily: string;
   structure: any;
@@ -20,7 +20,7 @@ interface DownloadDataFrameProps {
   full_link: string;
 }
 
-const DownloadDataFrame: React.FunctionComponent<DownloadDataFrameProps> = (
+const DownloadTable: React.FunctionComponent<DownloadTableProps> = (
   props
 ) => {
   const npartitions = props.structure.npartitions;
@@ -106,4 +106,4 @@ const DownloadDataFrame: React.FunctionComponent<DownloadDataFrameProps> = (
   );
 };
 
-export default DownloadDataFrame;
+export default DownloadTable;
