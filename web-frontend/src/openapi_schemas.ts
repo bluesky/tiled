@@ -25,9 +25,9 @@ export interface paths {
     /** Fetch a slice of array-like data. */
     get: operations["full_array_api_array_full__path__get"];
   };
-  "/api/dataframe/partition/{path}": {
+  "/api/table/partition/{path}": {
     /** Fetch a partition (continuous block of rows) from a DataFrame. */
-    get: operations["dataframe_partition_api_dataframe_partition__path__get"];
+    get: operations["table_partition_api_table_partition__path__get"];
   };
   "/api/node/full/{path}": {
     /** Fetch the data below the given node. */
@@ -214,7 +214,7 @@ export interface components {
     StructureFamilies:
       | "container"
       | "array"
-      | "dataframe"
+      | "table"
       | "xarray_data_array"
       | "xarray_dataset";
     /** ValidationError */
@@ -344,7 +344,7 @@ export interface operations {
     };
   };
   /** Fetch a partition (continuous block of rows) from a DataFrame. */
-  dataframe_partition_api_dataframe_partition__path__get: {
+  table_partition_api_table_partition__path__get: {
     parameters: {
       path: {
         path: string;

@@ -26,7 +26,7 @@ structure_families:
       - mimetype: application/octet-stream
         display_name: C-ordered array
         extension: ""
-  dataframe:
+  table:
     formats:
       - mimetype: text/csv
         display_name: CSV

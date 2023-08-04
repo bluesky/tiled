@@ -57,9 +57,9 @@ array([[0.11429495, 0.64088521, 0.52347248, 0.28147347, 0.60528646],
        [0.58668817, 0.21471191, 0.05225715, 0.29506593, 0.31148442]])
 ```
 
-## Slicing DataFrames
+## Slicing Tables
 
-Navigate to a DataFrame dataset in the demo client.
+Navigate to a tabular dataset in the demo client.
 
 ```python
 >>> client['short_table']

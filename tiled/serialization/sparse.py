@@ -24,7 +24,7 @@ if modules_available("h5py"):
 if modules_available("pandas", "pyarrow"):
     import pandas
 
-    from .dataframe import (
+    from .table import (
         APACHE_ARROW_FILE_MIME_TYPE,
         XLSX_MIME_TYPE,
         deserialize_arrow,

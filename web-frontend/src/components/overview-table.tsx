@@ -21,7 +21,7 @@ interface IProps {
   item: any;
 }
 
-const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
+const TableOverview: React.FunctionComponent<IProps> = (props) => {
   const npartitions = props.item.data.attributes.structure.npartitions;
   const [partition, setPartition] = useState<number | string>(0);
   const [rows, setRows] = useState<any[]>([]);
@@ -73,8 +73,8 @@ const DataFrameOverview: React.FunctionComponent<IProps> = (props) => {
           {npartitions > 1 ? (
             <Box>
               <Alert severity="info">
-                This large dataframe available in <em>partitions</em> (chunks of
-                rows) because the full dataframe may be slow to download and
+                This large table is available in <em>partitions</em> (chunks of
+                rows) because the full table may be slow to download and
                 display.
                 <br />
                 In the "Download" tab, you can request the full table as a
@@ -173,4 +173,4 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   );
 };
 
-export default DataFrameOverview;
+export default TableOverview;

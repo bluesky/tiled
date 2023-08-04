@@ -44,7 +44,7 @@ async def test_collision(example_data_dir, tmpdir):
         # PermissionError: [WinError 32] The process cannot access the file because
         # it is being used by another process: '...'
         if platform.system() == "Windows":
-            time.sleep(2)
+            time.sleep(5)
 
         # Resolve the collision.
         p.unlink()

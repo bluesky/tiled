@@ -12,8 +12,8 @@ import pydantic.generics
 
 from ..structures.core import StructureFamily
 from .pydantic_array import ArrayStructure
-from .pydantic_dataframe import DataFrameStructure
 from .pydantic_sparse import SparseStructure
+from .pydantic_table import TableStructure
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
@@ -122,7 +122,7 @@ class Revision(pydantic.BaseModel):
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
     structure: Optional[
-        Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
+        Union[ArrayStructure, TableStructure, NodeStructure, SparseStructure]
     ] = None
     mimetype: Optional[str] = None
     parameters: dict = {}
@@ -147,7 +147,7 @@ class NodeAttributes(pydantic.BaseModel):
     specs: Optional[Specs]
     metadata: Optional[Dict]  # free-form, user-specified dict
     structure: Optional[
-        Union[ArrayStructure, DataFrameStructure, NodeStructure, SparseStructure]
+        Union[ArrayStructure, TableStructure, NodeStructure, SparseStructure]
     ]
     sorting: Optional[List[SortingItem]]
     data_sources: Optional[List[DataSource]]
@@ -187,10 +187,10 @@ class SparseLinks(pydantic.BaseModel):
 
 
 resource_links_type_by_structure_family = {
-    "container": ContainerLinks,
-    "array": ArrayLinks,
-    "dataframe": DataFrameLinks,
-    "sparse": SparseLinks,
+    StructureFamily.container: ContainerLinks,
+    StructureFamily.array: ArrayLinks,
+    StructureFamily.table: DataFrameLinks,
+    StructureFamily.sparse: SparseLinks,
 }
 
 

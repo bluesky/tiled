@@ -11,7 +11,7 @@ The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
-* dataframe --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
+* table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
 * container --- a of other structures, akin to a dictionary or a directory
 
@@ -215,13 +215,13 @@ representations are supported, this key will be used to indicate which is used.
 }
 ```
 
-### DataFrame
+### Table
 
-With dataframes, we speak of "partitions" instead of "chunks". There are a
+With tables, we speak of "partitions" instead of "chunks". There are a
 couple important distinctions. We always know the size of chunk before we ask
 for it, but we will not know the number of rows in a partition until we
 actually read it and enumerate them. Therefore, we cannot slice into
-dataframes the same way that we can slice in to arrays. We can ask for a
+table the same way that we can slice in to arrays. We can ask for a
 subset of the *columns*, and we can fetch partitions one at a time in any
 order, but we cannot make requests like "rows 100-200". (Dask has the same
 limitation, for the same reason.)

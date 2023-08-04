@@ -1,6 +1,6 @@
 import importlib
 
-from ..serialization.dataframe import XLSX_MIME_TYPE
+from ..serialization.table import XLSX_MIME_TYPE
 from ..utils import OneShotCachedMap
 
 # This maps MIME types (i.e. file formats) for appropriate Readers.

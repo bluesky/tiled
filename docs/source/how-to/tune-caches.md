@@ -75,9 +75,9 @@ The debug logs interleave with the access logs from uvicorn like this.
 ```
 OBJECT CACHE: Miss ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
 OBJECT CACHE: Store ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0) (cost=0.003, nbytes=200)
-INFO:     127.0.0.1:47744 - "GET /dataframe/full/file0001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47744 - "GET /table/full/file0001 HTTP/1.1" 200 OK
 OBJECT CACHE: Hit ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
-INFO:     127.0.0.1:47750 - "GET /dataframe/full/file0001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47750 - "GET /table/full/file0001 HTTP/1.1" 200 OK
 OBJECT CACHE: Hit ('dask', 'read-csv-c15bf1fe8e072d8bf571d9809d3f6bcc', 0)
-INFO:     127.0.0.1:47758 - "GET /dataframe/full/file0001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47758 - "GET /table/full/file0001 HTTP/1.1" 200 OK
 ```

@@ -147,7 +147,7 @@ of MIME types, so be specific.
 Tiled must represent the content of your file as:
 
 * An array + a dictionary of metadata
-* A table (dataframe) + dictionary of metadata
+* A table + dictionary of metadata
 * A nested structure (i.e. directory-like hierarchy) of the above
 
 You must choose which is appropriate for this data format. Examples
@@ -167,18 +167,18 @@ def read_custom_format(filepath):
     return ArrayAdapter.from_array(array, metadata=metadata)
 ```
 
-#### Simple Tabular (DataFrame) example
+#### Simple Tabular example
 
 ```py
 # custom.py
-from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.table import TableAdapter
 
 def read_custom_format(filepath):
     # Extract a DataFrame and an optional dictionary of metadata
     # from your file.
     df = ...  # a pandas DataFrame
     metadata = ...  # a dictionary or None
-    return DataFrameAdapter.from_pandas(df, npartitions=1, metadata=metadata)
+    return TableAdapter.from_pandas(df, npartitions=1, metadata=metadata)
 ```
 
 #### Simple Nested Structure example
@@ -186,18 +186,18 @@ def read_custom_format(filepath):
 ```py
 # custom.py
 from tiled.adapters.array import ArrayAdapter
-from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.table import TableAdapter
 from tiled.adapters.mapping import MapAdapter
 
 def read_custom_format(filepath):
 
-    # Build a dictionary (potentially nested) of arrays and/or dataframes.
-    # See examples above for ArrayAdapter and DataFrameAdapter usage.
+    # Build a dictionary (potentially nested) of arrays and/or tables.
+    # See examples above for ArrayAdapter and TableAdapter usage.
 
     return MapAdapter(
         {
             "stuff": ArrayAdapter.from_array(...),
-            "things": DataFrameAdapter.from_pandas(...),
+            "things": TableAdapter.from_pandas(...),
         }
         metadata={...},
     )
@@ -221,7 +221,7 @@ See :doc:`../explanations/metadata` for more information on Specs.
 Specify them as an argument to the Adapter, as in:
 
 ```py
-DataFrameAdapter.from_pandas(..., specs=["xdi"])
+TableAdapter.from_pandas(..., specs=["xdi"])
 ```
 
 ### Configure Tiled Server to use this Adapter

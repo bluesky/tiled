@@ -43,7 +43,6 @@ explanations/compression
 explanations/specialized-formats
 explanations/caching
 explanations/access-control
-explanations/scaling-down
 explanations/faq
 explanations/lineage
 ```

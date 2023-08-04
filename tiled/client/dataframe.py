@@ -1,7 +1,7 @@
 import dask
 import dask.dataframe
 
-from ..serialization.dataframe import deserialize_arrow, serialize_arrow
+from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
 from .base import BaseStructureClient
 from .utils import (

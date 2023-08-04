@@ -15,9 +15,9 @@ def register_builtin_serializers():
 
         del _array
     if modules_available("pandas", "pyarrow", "dask.dataframe"):
-        from ..serialization import dataframe as _dataframe  # noqa: F401
+        from ..serialization import table as _table  # noqa: F401
 
-        del _dataframe
+        del _table
     if modules_available("sparse"):
         from ..serialization import sparse as _sparse  # noqa: F401
 

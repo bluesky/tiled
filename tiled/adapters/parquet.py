@@ -8,7 +8,7 @@ from .dataframe import DataFrameAdapter
 
 
 class ParquetDatasetAdapter:
-    structure_family = StructureFamily.dataframe
+    structure_family = StructureFamily.table
 
     def __init__(
         self,

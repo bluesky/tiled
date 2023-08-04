@@ -224,7 +224,7 @@ async def distinct(
         )
     else:
         raise HTTPException(
-            status_code=405, detail="This path does not support distinct."
+            status_code=405, detail="This node does not support distinct."
         )
 
 
@@ -482,11 +482,11 @@ async def array_full(
 
 
 @router.get(
-    "/dataframe/partition/{path:path}",
+    "/table/partition/{path:path}",
     response_model=schemas.Response,
-    name="dataframe partition",
+    name="table partition",
 )
-async def dataframe_partition(
+async def table_partition(
     request: Request,
     partition: int,
     entry=SecureEntry(scopes=["read:data"]),
@@ -499,10 +499,10 @@ async def dataframe_partition(
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
     """
-    if entry.structure_family != "dataframe":
+    if entry.structure_family != StructureFamily.table:
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /dataframe/partition route.",
+            detail=f"Cannot read {entry.structure_family} structure with /table/partition route.",
         )
     try:
         # The singular/plural mismatch here of "fields" and "field" is
@@ -526,7 +526,7 @@ async def dataframe_partition(
     try:
         with record_timing(request.state.metrics, "pack"):
             return await construct_data_response(
-                "dataframe",
+                StructureFamily.table,
                 serialization_registry,
                 df,
                 entry.metadata(),
@@ -543,7 +543,7 @@ async def dataframe_partition(
 @router.get(
     "/node/full/{path:path}",
     response_model=schemas.Response,
-    name="full generic 'node' or 'dataframe'",
+    name="full 'container' or 'table'",
 )
 async def node_full(
     request: Request,
@@ -564,7 +564,7 @@ async def node_full(
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")
-    if (entry.structure_family == "dataframe") and (
+    if (entry.structure_family == StructureFamily.table) and (
         data.memory_usage().sum() > settings.response_bytesize_limit
     ):
         raise HTTPException(
@@ -676,10 +676,10 @@ async def post_metadata(
         )
         links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
         links["full"] = f"{base_url}/array/full/{path_str}"
-    elif body.structure_family == StructureFamily.dataframe:
+    elif body.structure_family == StructureFamily.table:
         links[
             "partition"
-        ] = f"{base_url}/dataframe/partition/{path_str}?partition={{index}}"
+        ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
         links["full"] = f"{base_url}/node/full/{path_str}"
     elif body.structure_family == StructureFamily.container:
         links["full"] = f"{base_url}/node/full/{path_str}"
@@ -705,7 +705,7 @@ async def delete(
         await entry.delete()
     else:
         raise HTTPException(
-            status_code=405, detail="This path does not support deletion."
+            status_code=405, detail="This node does not support deletion."
         )
     return json_or_msgpack(request, None)
 
@@ -719,7 +719,7 @@ async def put_array_full(
     body = await request.body()
     if not hasattr(entry, "write"):
         raise HTTPException(
-            status_code=405, detail="This path cannot accept array data."
+            status_code=405, detail="This node cannot accept array data."
         )
     media_type = request.headers["content-type"]
     if entry.structure_family == "array":
@@ -745,7 +745,7 @@ async def put_array_block(
 ):
     if not hasattr(entry, "write_block"):
         raise HTTPException(
-            status_code=405, detail="This path cannot accept array data."
+            status_code=405, detail="This node cannot accept array data."
         )
     from tiled.adapters.array import slice_and_shape_from_block_and_chunks
 
@@ -768,25 +768,25 @@ async def put_array_block(
 
 
 @router.put("/node/full/{path:path}")
-async def put_dataframe_full(
+async def put_node_full(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     if not hasattr(entry, "write"):
         raise HTTPException(
-            status_code=405, detail="This path cannot accept dataframe data."
+            status_code=405, detail="This node does not support writing."
         )
     body = await request.body()
     media_type = request.headers["content-type"]
-    deserializer = deserialization_registry.dispatch("dataframe", media_type)
+    deserializer = deserialization_registry.dispatch(StructureFamily.table, media_type)
     data = await ensure_awaitable(deserializer, body)
     await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
 
-@router.put("/dataframe/partition/{path:path}")
-async def put_dataframe_partition(
+@router.put("/table/partition/{path:path}")
+async def put_table_partition(
     partition: int,
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
@@ -794,11 +794,11 @@ async def put_dataframe_partition(
 ):
     if not hasattr(entry, "write_partition"):
         raise HTTPException(
-            status_code=405, detail="This path cannot accept dataframe data."
+            status_code=405, detail="This node does not supporting writing a partition."
         )
     body = await request.body()
     media_type = request.headers["content-type"]
-    deserializer = deserialization_registry.dispatch("dataframe", media_type)
+    deserializer = deserialization_registry.dispatch(StructureFamily.table, media_type)
     data = await ensure_awaitable(deserializer, body)
     await ensure_awaitable(entry.write_partition, data, partition)
     return json_or_msgpack(request, None)
@@ -814,7 +814,7 @@ async def put_metadata(
 ):
     if not hasattr(entry, "update_metadata"):
         raise HTTPException(
-            status_code=405, detail="This path does not support update of metadata."
+            status_code=405, detail="This node does not support update of metadata."
         )
 
     metadata, structure_family, structure, specs = (
@@ -873,7 +873,7 @@ async def get_revisions(
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
-            status_code=405, detail="This path does not support revisions."
+            status_code=405, detail="This node does not support revisions."
         )
 
     base_url = get_base_url(request)
@@ -898,7 +898,7 @@ async def delete_revision(
     if not hasattr(entry, "revisions"):
         raise HTTPException(
             status_code=405,
-            detail="This path does not support a del request for revisions.",
+            detail="This node does not support a del request for revisions.",
         )
 
     await entry.delete_revision(number)

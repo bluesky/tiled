@@ -13,7 +13,7 @@ or its dask counterpart.
 
    tiled.adapters.mapping.MapAdapter
    tiled.adapters.array.ArrayAdapter
-   tiled.adapters.dataframe.DataFrameAdapter
+   tiled.adapters.table.TableAdapter
    tiled.adapters.sparse.COOAdapter
    tiled.adapters.xarray.DatasetAdapter.from_dataset
 ```
@@ -105,7 +105,7 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.container.ContainerStructure
    tiled.structures.core.Spec
    tiled.structures.core.StructureFamily
-   tiled.structures.dataframe.DataFrameStructure
+   tiled.structures.table.TableStructure
    tiled.structures.sparse.COOStructure
 ```
 
@@ -139,7 +139,7 @@ Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
 Adapters that use the cache _must_ use a tuple of strings and/or numbers as a
 cache key and _should_ use a cache key of the form `(class.__module__,
 class.__qualname__, ...)` to avoid collisions with other Adapters. See
-`tiled.adapters.tiff` for a generic example and see `tiled.adapters.dataframe` for
+`tiled.adapters.tiff` for a generic example and see `tiled.adapters.table` for
 an example that uses integration with dask.
 
 ```{eval-rst}

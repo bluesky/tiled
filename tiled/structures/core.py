@@ -12,8 +12,8 @@ from typing import Optional
 class StructureFamily(str, enum.Enum):
     container = "container"
     array = "array"
-    dataframe = "dataframe"
     sparse = "sparse"
+    table = "table"
 
 
 @dataclass(frozen=True)

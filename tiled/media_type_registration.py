@@ -121,11 +121,12 @@ class SerializationRegistry:
                 media_types = media_type
             for m in media_types:
                 self._lookup[structure_family][m] = func
+            return func
 
         if func is None:
             # Return a decorator
             return dec
-        dec(func)
+        return dec(func)
 
     def register_alias(self, ext, media_type):
         self._custom_aliases_by_type[media_type].append(ext)
