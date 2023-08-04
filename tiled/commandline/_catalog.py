@@ -1,7 +1,7 @@
 import asyncio
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import typer
 
@@ -205,3 +205,71 @@ def register(
                 key_from_filename=key_from_filename,
             )
         )
+
+
+@catalog_app.command("upgrade-database")
+def upgrade_database(
+    database_uri: str,
+    revision: Optional[str] = typer.Argument(
+        None,
+        help="The ID of a revision to upgrade to. By default, upgrade to the latest one.",
+    ),
+):
+    """
+    Upgrade the catalog database schema to the latest version.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from ..alembic_utils import get_current_revision, upgrade
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import ALL_REVISIONS
+
+    async def do_setup():
+        engine = create_async_engine(database_uri)
+        redacted_url = engine.url._replace(password="[redacted]")
+        current_revision = await get_current_revision(engine, ALL_REVISIONS)
+        await engine.dispose()
+        if current_revision is None:
+            # Create tables and stamp (alembic) revision.
+            typer.echo(
+                f"Database {redacted_url} has not been initialized. Use `tiled catalog init`.",
+                err=True,
+            )
+            raise typer.Abort()
+
+    asyncio.run(do_setup())
+    upgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri, revision or "head")
+
+
+@catalog_app.command("downgrade-database")
+def downgrade_database(
+    database_uri: str,
+    revision: str = typer.Argument(..., help="The ID of a revision to downgrade to."),
+):
+    """
+    Upgrade the catalog database schema to the latest version.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from ..alembic_utils import downgrade, get_current_revision
+    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+    from ..catalog.core import ALL_REVISIONS
+
+    async def do_setup():
+        engine = create_async_engine(database_uri)
+        redacted_url = engine.url._replace(password="[redacted]")
+        current_revision = await get_current_revision(engine, ALL_REVISIONS)
+        if current_revision is None:
+            # Create tables and stamp (alembic) revision.
+            typer.echo(
+                f"Database {redacted_url} has not been initialized. Use `tiled catalog init`.",
+                err=True,
+            )
+            raise typer.Abort()
+
+    asyncio.run(do_setup())
+    downgrade(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri, revision)
