@@ -42,5 +42,16 @@ tiled catalog init {redacted_url}
 """,
         )
     except DatabaseUpgradeNeeded:
-        # No upgrades have been made yet.
-        raise NotImplementedError
+        raise DatabaseUpgradeNeeded(
+            f"""
+
+The catalog found at
+
+{redacted_url}
+
+was created using an older version of Tiled. It needs to be upgraded
+to work with this version. Back up the database, and the run:
+
+tiled catalog upgrade-database {redacted_url}
+""",
+        )

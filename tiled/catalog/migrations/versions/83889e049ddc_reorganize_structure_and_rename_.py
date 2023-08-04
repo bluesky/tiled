@@ -10,6 +10,7 @@ import base64
 import pyarrow
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
 
 from tiled.serialization.table import deserialize_arrow
 from tiled.structures.table import B64_ENCODED_PREFIX
@@ -20,29 +21,45 @@ down_revision = "6825c778aa3c"
 branch_labels = None
 depends_on = None
 
+# Use JSON with SQLite and JSONB with PostgreSQL.
+JSONVariant = sa.JSON().with_variant(JSONB(), "postgresql")
+
 # This is a *data migration* only. There are no changes to the SQL schema.
 
 
 def upgrade():
     connection = op.get_bind()
+
+    # Rename "dataframe" to "table".
     nodes = sa.Table(
         "nodes",
         sa.MetaData(),
-        sa.Column("structure_family", sa.String(32)),
-        sa.Column("structure", sa.Unicode(length=100)),
+        sa.Column("id", sa.Integer),
+        sa.Column("structure_family", sa.Unicode(32)),
     )
+    connection.execute(
+        nodes.update()
+        .where(nodes.c.structure_family == "dataframe")
+        .values(structure_family="table")
+    )
+
+    data_sources = sa.Table(
+        "data_sources",
+        sa.MetaData(),
+        sa.Column("id", sa.Integer),
+        sa.Column("node_id", sa.Integer),
+        sa.Column("structure", JSONVariant),
+    )
+    joined = data_sources.join(nodes, data_sources.c.node_id == nodes.c.id)
     results = connection.execute(
         sa.select(
-            [
-                nodes.c.id,
-                nodes.c.structure_family,
-                nodes.c.structure,
-            ]
-        )
+            data_sources.c.id,
+            data_sources.c.structure,
+            nodes.c.structure_family,
+        ).select_from(joined)
     ).fetchall()
-    for id_, structure_family, structure in results:
+    for id_, structure, structure_family in results:
         if structure_family == "array":
-            new_structure_family = structure_family
             # Consolidate "macro" and "micro".
             new_structure = {}
             new_structure["shape"] = structure["macro"]["shape"]
@@ -50,9 +67,7 @@ def upgrade():
             new_structure["chunks"] = structure["macro"]["chunks"]
             new_structure["resizable"] = structure["macro"]["resizable"]
             new_structure["data_type"] = structure["micro"]
-        if structure_family == "dataframe":
-            # Rename "dataframe" to "table".
-            new_structure_family = "table"
+        elif structure_family == "table":
             # Consolidate "macro" and "micro".
             new_structure = {}
             new_structure["columns"] = structure["macro"]["columns"]
@@ -66,15 +81,11 @@ def upgrade():
             data_uri = B64_ENCODED_PREFIX + schema_b64
             new_structure["arrow_schema"] = data_uri
         else:
-            new_structure_family = structure_family
-            new_structure = structure
+            continue
         connection.execute(
-            nodes.update()
-            .where(nodes.c.id == id_)
-            .values(
-                structure=new_structure,
-                structure_family=new_structure_family,
-            )
+            data_sources.update()
+            .where(data_sources.c.id == id_)
+            .values(structure=new_structure)
         )
 
 
