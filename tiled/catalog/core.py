@@ -3,8 +3,12 @@ from sqlalchemy import text
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
 from .base import Base
 
-ALL_REVISIONS = ["6825c778aa3c"]
-REQUIRED_REVISION = "6825c778aa3c"
+# This is the alembic revision ID of the database revision
+# required by this version of Tiled.
+REQUIRED_REVISION = "83889e049ddc"
+
+# This is list of all valid revisions (from current to oldest).
+ALL_REVISIONS = ["83889e049ddc", "6825c778aa3c"]
 
 
 async def initialize_database(engine):
