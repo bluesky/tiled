@@ -8,8 +8,8 @@ import pytest
 
 from ..client import Context, from_context
 from ..config import merge
-from ..structures.core import StructureFamily
 from ..server.app import build_app_from_config
+from ..structures.core import StructureFamily
 from ..validation_registration import ValidationError
 from .utils import fail_with_status_code
 

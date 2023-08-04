@@ -67,7 +67,9 @@ if modules_available("openpyxl", "pandas"):
         df.to_excel(file, index=preserve_index)
         return file.getbuffer()
 
-    deserialization_registry.register(StructureFamily.table, XLSX_MIME_TYPE, pandas.read_excel)
+    deserialization_registry.register(
+        StructureFamily.table, XLSX_MIME_TYPE, pandas.read_excel
+    )
     mimetypes.types_map.setdefault(".xlsx", XLSX_MIME_TYPE)
 if modules_available("orjson"):
     import orjson
@@ -112,4 +114,6 @@ if modules_available("orjson"):
 if modules_available("h5py"):
     from .container import serialize_hdf5
 
-    serialization_registry.register(StructureFamily.table, "application/x-hdf5", serialize_hdf5)
+    serialization_registry.register(
+        StructureFamily.table, "application/x-hdf5", serialize_hdf5
+    )
