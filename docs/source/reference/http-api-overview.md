@@ -24,8 +24,8 @@ a given node, with optional filtering (search). The ``GET /api/v1/node/full/{pat
 provides all the metadata and data below a given node.
 
 Specialized data access routes ``GET /api/v1/array/block/{path}``, ``GET /api/v1/array/full/{path}``,
-and ``GET /api/v1/dataframe/partition/{path}`` provide options for slicing and sub-selection
-specific to arrays and dataframes. Generic clients, like a web browser,
+and ``GET /api/v1/table/partition/{path}`` provide options for slicing and sub-selection
+specific to arrays and table. Generic clients, like a web browser,
 should use the "full" routes, which send the entire (sliced) result in one
 response. More sophisticated clients with some knowledge of Tiled may use the
 other routes, which enable parallel chunk-based access.

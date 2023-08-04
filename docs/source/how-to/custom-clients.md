@@ -7,7 +7,7 @@ This is transparent and automatic from the point view of the user.
 In the Python client, when a user accesses a given item, Tiled inspects the
 item to decide what type of object to use to represent it.
 In simple cases, this is just based on the `structure_family`: `"array"` goes
-to `tiled.client.array.ArrayClient`;  `"dataframe"` goes to
+to `tiled.client.array.ArrayClient`;  `"table"` goes to
 `tiled.client.dataframe.DataFrameClient`; `"container"` goes to
 `tiled.clide.container.Container`. Those classes then manage further communication
 with Tiled server to access their contents.
@@ -44,8 +44,8 @@ class XDIDatasetClient(tiled.client.dataframe.DataFrameClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Optional sanity check to ensure this cannot be accidentally
-        # registered for use with data that is not a dataframe.
-        assert self.item["attributes"]["structure_family"] == "dataframe"
+        # registered for use with data that is not a table.
+        assert self.item["attributes"]["structure_family"] == "table"
 
     def __repr__(self):
         md = self.metadata["XDI"]

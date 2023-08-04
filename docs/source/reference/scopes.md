@@ -7,10 +7,10 @@ with restricted scopes.
 ## List of Scopes
 
 * `read:metadata` --- List and search metadata.
-* `read:data` --- Fetch (array, dataframe) data.
+* `read:data` --- Fetch (array, table) data.
 * `create` --- Create a new node.
 * `write:metadata` --- Write metadata.
-* `write:data` --- Write (array, dataframe) data.
+* `write:data` --- Write (array, table) data.
 * `apikeys` --- Manage API keys for the currently-authenticated user or service.
 * `metrics` --- Access Prometheus metrics.
 * `admin:apikeys` --- Manage API keys on behalf of any user or service.

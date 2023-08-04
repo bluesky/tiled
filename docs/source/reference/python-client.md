@@ -91,7 +91,7 @@ structure_families, and specs of its children along with their counts.
 
 ## Structure Clients
 
-For each *structure family* ("array", "dataframe", etc.) there is a client
+For each *structure family* ("array", "table", etc.) there is a client
 object that understand how to request and decode chunks/partitions of data
 for this structure.
 

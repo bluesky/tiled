@@ -39,7 +39,7 @@ Requests (`->`) and responses (`<-`) will now be logged to the console, like so.
 16:58:22.681 <- 200 server:nginx/1.18.0 (Ubuntu) date:Tue, 01 Feb 2022 21:58:22 GMT content-type:application/x-msgpack content-length:944 connection:keep-alive etag:8d81b7891000606ceeb87fa89689c045 content-encoding:gzip vary:Accept-Encoding server-timing:acl;dur=0.0, tok;dur=0.1, pack;dur=0.0, compress;dur=0.1;ratio=4.5, app;dur=12.0
 
 >>> t.read()
-16:58:27.134 -> GET 'https://tiled-demo.blueskyproject.io/dataframe/partition/generated/short_table?partition=0' 'host:tiled-demo.blueskyproject.io' 'accept:application/vnd.apache.arrow.file' 'accept-encoding:gzip,blosc' 'connection:keep-alive' 'user-agent:python-tiled/0.1.0a49.post0.dev0+g6dd1e5f' 'cookie:tiled_csrf=-fyaLez0YkradgcEVYBJh4QotR5MNyzouV0SV0NWHmM'
+16:58:27.134 -> GET 'https://tiled-demo.blueskyproject.io/table/partition/generated/short_table?partition=0' 'host:tiled-demo.blueskyproject.io' 'accept:application/vnd.apache.arrow.file' 'accept-encoding:gzip,blosc' 'connection:keep-alive' 'user-agent:python-tiled/0.1.0a49.post0.dev0+g6dd1e5f' 'cookie:tiled_csrf=-fyaLez0YkradgcEVYBJh4QotR5MNyzouV0SV0NWHmM'
 16:58:27.205 <- 200 server:nginx/1.18.0 (Ubuntu) date:Tue, 01 Feb 2022 21:58:27 GMT content-type:application/vnd.apache.arrow.file content-length:3847 connection:keep-alive etag:954688a8ef55915b012bba1e93769710 content-encoding:blosc vary:Accept-Encoding server-timing:acl;dur=0.0, read;dur=1.4, tok;dur=0.2, pack;dur=0.8, compress;dur=0.0;ratio=1.4, app;dur=9.1
               A         B         C
 index

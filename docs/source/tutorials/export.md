@@ -79,7 +79,7 @@ Array:
 * TIFF `image/tiff`
 * HTML `text/html`
 
-DataFrame:
+Table:
 * Apache Arrow `application/vnd.apache.arrow.file`
 * Parquet `application/x-parqet`
 * CSV `text/csv`
@@ -92,7 +92,7 @@ DataFrame:
 Xarray Dataset:
 * NetCDF `application/netcdf`
 * HDF5 `application/x-hdf`
-* The DataFrame formats, by transforming `to_dataframe()`, which may or may not
+* The Table formats, by transforming `to_dataframe()`, which may or may not
   be an appropriate transformation depending on your data.
 
 ```{note}
@@ -152,6 +152,6 @@ work directly with numpy, pandas, and/or xarray structures directly.
 
 If your data analysis is in another language, can it access the data
 from the Tiled server directly over HTTP? Tiled supports efficient
-formats (e.g. numpy C buffers, Apache Arrow DataFrames) and universal
+formats (e.g. numpy C buffers, Apache Arrow Tables) and universal
 interchange formats (e.g. CSV, JSON) and perhaps one of those will be the
 fastest way to get data into your program.
