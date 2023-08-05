@@ -1,8 +1,8 @@
-"""Reorganize 'structure' and rename 'dataframe' to 'table'.
+"""Add 'table' to structurefamily enum.
 
-Revision ID: 83889e049ddc
-Revises: 6825c778aa3c
-Create Date: 2023-08-04 06:38:48.775874
+Revision ID: 88f2eb2a4fe0
+Revises: 83889e049ddc
+Create Date: 2023-08-05 17:39:25.714092
 
 """
 import base64
@@ -13,23 +13,21 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 from tiled.serialization.table import deserialize_arrow
+from tiled.structures.core import StructureFamily
 from tiled.structures.table import B64_ENCODED_PREFIX
 
 # revision identifiers, used by Alembic.
-revision = "83889e049ddc"
-down_revision = "6825c778aa3c"
+revision = "88f2eb2a4fe0"
+down_revision = "83889e049ddc"
 branch_labels = None
 depends_on = None
+
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = sa.JSON().with_variant(JSONB(), "postgresql")
 
-# This is a *data migration* only. There are no changes to the SQL schema.
-
 
 def upgrade():
-    connection = op.get_bind()
-
     # Rename "dataframe" to "table".
     nodes = sa.Table(
         "nodes",
@@ -37,10 +35,11 @@ def upgrade():
         sa.Column("id", sa.Integer),
         sa.Column("structure_family", sa.Unicode(32)),
     )
-    connection.execute(
-        nodes.update()
-        .where(nodes.c.structure_family == "dataframe")
-        .values(structure_family="table")
+    # Use a raw text query to work around type fussiness in postgres.
+    op.execute(
+        sa.text(
+            "UPDATE nodes SET structure_family='table' WHERE nodes.structure_family = 'dataframe'"
+        )
     )
 
     data_sources = sa.Table(
@@ -51,6 +50,7 @@ def upgrade():
         sa.Column("structure", JSONVariant),
     )
     joined = data_sources.join(nodes, data_sources.c.node_id == nodes.c.id)
+    connection = op.get_bind()
     results = connection.execute(
         sa.select(
             data_sources.c.id,
@@ -59,7 +59,7 @@ def upgrade():
         ).select_from(joined)
     ).fetchall()
     for id_, structure, structure_family in results:
-        if structure_family == "array":
+        if structure_family == StructureFamily.array:
             # Consolidate "macro" and "micro".
             new_structure = {}
             new_structure["shape"] = structure["macro"]["shape"]
@@ -67,7 +67,7 @@ def upgrade():
             new_structure["chunks"] = structure["macro"]["chunks"]
             new_structure["resizable"] = structure["macro"]["resizable"]
             new_structure["data_type"] = structure["micro"]
-        elif structure_family == "table":
+        elif structure_family == StructureFamily.table:
             # Consolidate "macro" and "micro".
             new_structure = {}
             new_structure["columns"] = structure["macro"]["columns"]
