@@ -16,19 +16,19 @@ depends_on = None
 
 
 def upgrade():
-    "This is a *data migration* only. There are no changes to the SQL schema."
     connection = op.get_bind()
 
     if connection.engine.dialect.name == "postgresql":
         from sqlalchemy import orm
 
         session = orm.Session(bind=connection)
-        session.execute(
-            sa.text(
-                "ALTER TYPE structurefamily ADD VALUE IF NOT EXISTS 'table' AFTER 'dataframe'"
+        with session.begin():
+            session.execute(
+                sa.text(
+                    "ALTER TYPE structurefamily ADD VALUE IF NOT EXISTS 'table' AFTER 'dataframe'"
+                )
             )
-        )
-        session.commit()
+            session.commit()
     # Nothing to do for SQLite
 
 
