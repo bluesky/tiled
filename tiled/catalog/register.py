@@ -300,7 +300,7 @@ async def register_single_item(
         data_sources=[
             DataSource(
                 mimetype=mimetype,
-                structure=dataclasses.asdict(adapter.structure()),
+                structure=dict_or_none(adapter.structure()),
                 parameters={},
                 management=Management.external,
                 assets=[
@@ -365,7 +365,7 @@ async def tiff_sequence(
             data_sources=[
                 DataSource(
                     mimetype=mimetype,
-                    structure=dataclasses.asdict(adapter.structure()),
+                    structure=dict_or_none(adapter.structure()),
                     parameters={},
                     management=Management.external,
                     assets=[
@@ -539,3 +539,9 @@ async def create_node_safe(
             "   COLLISION: Multiple files would result in node at '%s'. Skipping all.",
             err.args[0],
         )
+
+
+def dict_or_none(structure):
+    if structure is None:
+        return None
+    return dataclasses.asdict(structure)
