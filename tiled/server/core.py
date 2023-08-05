@@ -717,6 +717,8 @@ FULL_LINKS = {
 
 def asdict(dc):
     "Compat for converting dataclass or pydantic.BaseModel to dict."
+    if dc is None:
+        return None
     try:
         return dataclasses.asdict(dc)
     except TypeError:

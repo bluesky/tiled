@@ -102,7 +102,6 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.array.BuiltinDtype
    tiled.structures.array.Endianness
    tiled.structures.array.Kind
-   tiled.structures.container.ContainerStructure
    tiled.structures.core.Spec
    tiled.structures.core.StructureFamily
    tiled.structures.table.TableStructure
