@@ -52,17 +52,17 @@ Write array and tabular data.
 
 ```python
 # Write simple Python list (which gets converted to numpy.array).
->>> c.write_array([1, 2, 3], metadata={"color": "red", "barcode": 10})
+>>> client.write_array([1, 2, 3], metadata={"color": "red", "barcode": 10})
 <ArrayClient shape=(3,) chunks=((3,),) dtype=int64>
 
 # Write an array.
 >>> import numpy
->>> c.write_array(numpy.array([4, 5, 6]), metadata={"color": "blue", "barcode": 11})
+>>> client.write_array(numpy.array([4, 5, 6]), metadata={"color": "blue", "barcode": 11})
 <ArrayClient shape=(3,) chunks=((3,),) dtype=int64>
 
 # Write a table (DataFrame).
 >>> import pandas
->>> c.write_dataframe(pandas.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]}), metadata={"color": "green", "barcode": 12})
+>>> client.write_dataframe(pandas.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]}), metadata={"color": "green", "barcode": 12})
 <DataFrameClient ['x', 'y']>
 ```
 
@@ -70,14 +70,14 @@ Search to find the data again.
 
 ```py
 >>> from tiled.queries import Key
->>> c.search(Key("color") == "green").values().first()
+>>> client.search(Key("color") == "green").values().first()
 <DataFrameClient ['x', 'y']>
 ```
 
 Read the data.
 
 ```py
->>> c.search(Key("color") == "green").values().first().read()
+>>> client.search(Key("color") == "green").values().first().read()
    x  y
 0  1  4
 1  2  5
