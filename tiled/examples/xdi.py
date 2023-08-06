@@ -82,7 +82,6 @@ def read_xdi(filepath, structure=None, metadata=None, specs=None, access_policy=
 
     return DataFrameAdapter.from_pandas(
         df,
-        npartitions=1,
         metadata=metadata,
         specs=(specs or []) + [Spec("xdi", version="1.0")],
     )
