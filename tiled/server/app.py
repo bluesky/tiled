@@ -57,7 +57,7 @@ SENSITIVE_COOKIES = {
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
 
-MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a98")
+MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
