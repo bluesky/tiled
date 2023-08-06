@@ -265,5 +265,9 @@ described above to register files as your custom MIME type (e.g.
 
 
 ```
-tiled catalog register catalog.db --ext '.stuff=application/x-stuff' path/to/directory
+tiled catalog register catalog.db \
+  --verbose \
+  --ext '.stuff=application/x-stuff' \
+  --adapter 'application/x-stuff=custom:read_custom_format' \
+  path/to/directory
 ```
