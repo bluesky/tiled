@@ -9,6 +9,7 @@ import zarr.storage
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
+from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 from ..utils import node_repr
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
@@ -53,23 +54,16 @@ class ZarrArrayAdapter(ArrayAdapter):
     def from_directory(
         cls,
         directory,
-        structure,
-        *,
-        metadata=None,
-        specs=None,
-        access_policy=None,
+        structure=None,
+        **kwargs,
     ):
         if not isinstance(directory, zarr.core.Array):
             array = zarr.open_array(str(directory), "r+")
         else:
             array = directory
-        return cls(
-            array,
-            structure,
-            metadata=metadata,
-            specs=specs,
-            access_policy=access_policy,
-        )
+        if structure is None:
+            structure = ArrayStructure.from_array(array)
+        return cls(array, structure, **kwargs)
 
     def _stencil(self):
         "Trims overflow because Zarr always has equal-sized chunks."
@@ -103,7 +97,13 @@ class ZarrArrayAdapter(ArrayAdapter):
 class ZarrGroupAdapter(collections.abc.Mapping, IndexersMixin):
     structure_family = StructureFamily.container
 
-    def __init__(self, node, *, metadata=None, specs=None, access_policy=None):
+    def __init__(
+        self, node, *, structure=None, metadata=None, specs=None, access_policy=None
+    ):
+        if structure is not None:
+            raise ValueError(
+                f"structure is expected to be None for containers, not {structure}"
+            )
         self._node = node
         self._access_policy = access_policy
         self.specs = specs or []
@@ -111,19 +111,10 @@ class ZarrGroupAdapter(collections.abc.Mapping, IndexersMixin):
         super().__init__()
 
     @classmethod
-    def from_directory(
-        cls,
-        directory,
-        *,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+    def from_directory(cls, directory, **kwargs):
         if not isinstance(directory, zarr.hierarchy.Group):
             directory = zarr.open_group(directory, "r")
-        return cls(
-            directory, metadata=metadata, specs=specs, access_policy=access_policy
-        )
+        return cls(directory, **kwargs)
 
     def __repr__(self):
         return node_repr(self, list(self))
@@ -135,6 +126,9 @@ class ZarrGroupAdapter(collections.abc.Mapping, IndexersMixin):
     def metadata(self):
         return self._node.attrs
 
+    def structure(self):
+        return None
+
     def __iter__(self):
         yield from self._node
 
@@ -143,7 +137,7 @@ class ZarrGroupAdapter(collections.abc.Mapping, IndexersMixin):
         if isinstance(value, zarr.hierarchy.Group):
             return ZarrGroupAdapter(value)
         else:
-            return ZarrArrayAdapter(value)
+            return ZarrArrayAdapter.from_array(value)
 
     def __len__(self):
         return len(self._node)

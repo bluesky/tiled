@@ -49,7 +49,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
 
     structure_family = StructureFamily.container
 
-    def __init__(self, node, *, metadata=None, specs=None, access_policy=None):
+    def __init__(
+        self, node, *, structure=None, metadata=None, specs=None, access_policy=None
+    ):
         self._node = node
         self._access_policy = access_policy
         self.specs = specs or []
@@ -61,6 +63,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         cls,
         file,
         *,
+        structure=None,
         metadata=None,
         swmr=SWMR_DEFAULT,
         libver="latest",
@@ -77,6 +80,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     @property
     def access_policy(self):
         return self._access_policy
+
+    def structure(self):
+        return None
 
     def metadata(self):
         d = dict(self._node.attrs)

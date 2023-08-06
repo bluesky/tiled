@@ -8,7 +8,7 @@ from .dataframe import DataFrameAdapter
 
 class ExcelAdapter(MapAdapter):
     @classmethod
-    def from_file(cls, file, *, specs=None, access_policy=None):
+    def from_file(cls, file, **kwargs):
         """
         Read the sheets in an Excel file.
 
@@ -52,4 +52,4 @@ class ExcelAdapter(MapAdapter):
                 cache.discard(cache_key)  # parsed sheet content
                 cache.discard_dask(ddf.__dask_keys__())  # dask tasks
             mapping[sheet_name] = DataFrameAdapter.from_dask_dataframe(ddf)
-        return cls(mapping, specs=specs, access_policy=access_policy)
+        return cls(mapping, **kwargs)
