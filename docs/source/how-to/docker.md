@@ -133,7 +133,7 @@ docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=secret -
 mkdir config/
 ```
 
-Place a copy of `example_config/single_user_single_catalog.yml`, from the Tiled
+Place a copy of `example_configs/single_catalog_single_user.yml`, from the Tiled
 repository root, in this `config/` directory.
 
 Replace the line:
@@ -167,7 +167,7 @@ Register the files in the directory `files/` with this catalog.
 docker run \
   -e TILED_SINGLE_USER_API_KEY=secret \
   -e TILED_DATABASE_PASSWORD=secret \
-  -v ./config:/deploy/config:ro
+  -v ./config:/deploy/config:ro \
   -v ./files:/files:ro \
   ghcr.io/bluesky/tiled:latest \
   tiled catalog register /storage/catalog.db /files --verbose
