@@ -102,7 +102,11 @@ tiled serve config --public config.yml
 Register the files:
 
 ```
-tiled catalog register catalog.db --config config.yml --ext '.xdi=application/x-xdi' data/
+tiled catalog register catalog.db \
+  --verbose \
+  --ext '.xdi=application/x-xdi' \
+  --adapter 'application/x-xdi=tiled.examples.xdi:read_xdi' \
+  data/
 ```
 
 As is, we can access the data as CSV, for example.

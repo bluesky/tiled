@@ -114,7 +114,7 @@ def register(
         "--ext",
         help=(
             "Support custom file extension, mapping it to a known mimetype. "
-            "Spell like '.tif:image/tiff'. Include the leading '.' in the file "
+            "Spell like '.tif=image/tiff'. Include the leading '.' in the file "
             "extension."
         ),
     ),
@@ -132,7 +132,7 @@ def register(
         "--adapter",
         help=(
             "ADVANCED: Custom Tiled Adapter for reading a given format"
-            "Specify here as 'mimetype:package.module:function'"
+            "Specify here as 'mimetype=package.module:function'"
         ),
     ),
 ):
