@@ -4,6 +4,7 @@ For this guide, we'll take the example of
 [XDI](https://github.com/XraySpectroscopy/XAS-Data-Interchange/blob/master/specification/spec.md#example-xdi-file),
 which is a formalized text-based format for X-ray Spectroscopy data.
 An example XDI file is reproduced below.
+
 ```
 # XDI/1.0 GSE/1.0
 # Column.1: energy eV
@@ -46,6 +47,7 @@ An example XDI file is reproduced below.
   8879.0  117383.7  442810.120466  -1.327693
   8889.0  117185.7  443658.11566  -1.3312944
 ```
+
 As you can see , the file's contents comprise a single table
 and a header of key--value pairs. Therefore, it makes sense to export `dataframe`
 structures and their associated metadata into this format.
@@ -57,34 +59,25 @@ All code below is in `tiled/examples/xdi.py`.
 The code is reproduced for reference but running the examples only requires modifying `config.yaml`.
 ```
 
-## Define an Adapter
+## Read the XDI file
 
 The first step in exposing this data via tiled is to write a function which can
-read xdi formatted files. It MUST accept a filepath (string) and it SHOULD
-also accept a file buffer, which makes it easier to use in tests.
+read xdi formatted files.
 
 ```py
-def read_xdi(file):
-    ...
-    return df, metadata
+from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.structures.core import Spec
+
+def read_xdi(filepath, specs=None, **kwargs):
+    # Parse file into pandas.DataFrame and dict of metadata.
+    df = ...
+    metadata = ...
+
+    specs = (specs or []) + [Spec("xdi", version="1.0")],
+    return DataFrameAdapter.from_pandas(df, metadata=metadata, specs=specs, **kwargs)
 ```
 
 See the source code of `tiled.examples.xdi` for a fully-worked example.
-
-In order to indicate that this data has some additional metadata structure
-because it comes from an xdi file we subclass `DataFrameAdapter` and define the
-`specs` attribute.  We also define a classmethod `from_file` which uses our
-`read_xdi` function to construct an instance from a file.
-
-```py
-class XDIDataFrameAdapter(DataFrameAdapter):
-    specs = ["xdi"]
-
-    @classmethod
-    def from_file(cls, file):
-        df, metadata = read_xdi(file)
-        return cls(dask.dataframe.from_pandas(df, npartitions=1), metadata=metadata)
-```
 
 Now take the following simple server configuration:
 
@@ -97,7 +90,7 @@ trees:
       uri: ./catalog.db
         - readable_storage: ./data/
       adapters_by_mimetype:
-        application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
+        application/x-xdi: tiled.examples.xdi:read_xdi
 ```
 
 and serve it:
@@ -106,10 +99,14 @@ and serve it:
 tiled serve config --public config.yml
 ```
 
-And register the files:
+Register the files:
 
 ```
-tiled catalog register catalog.db --config config.yml --ext '.xdi=application/x-xdi' data/
+tiled catalog register catalog.db \
+  --verbose \
+  --ext '.xdi=application/x-xdi' \
+  --adapter 'application/x-xdi=tiled.examples.xdi:read_xdi' \
+  data/
 ```
 
 As is, we can access the data as CSV, for example.
@@ -213,7 +210,7 @@ trees:
       readable_storage:
         - ./data/
       adapters_by_mimetype:
-        application/x-xdi: tiled.examples.xdi:XDIDataFrameAdapter.from_file
+        application/x-xdi: tiled.examples.xdi:read_xdi
 media_types:
   xdi:
     application/x-xdi: tiled.examples.xdi:write_xdi

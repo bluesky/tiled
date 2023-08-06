@@ -24,9 +24,15 @@ class TableAdapter:
 
     @classmethod
     def from_pandas(
-        cls, *args, metadata=None, specs=None, access_policy=None, **kwargs
+        cls,
+        *args,
+        metadata=None,
+        specs=None,
+        access_policy=None,
+        npartitions=1,
+        **kwargs,
     ):
-        ddf = dask.dataframe.from_pandas(*args, **kwargs)
+        ddf = dask.dataframe.from_pandas(*args, npartitions=npartitions, **kwargs)
         if specs is None:
             specs = [Spec("dataframe")]
         return cls.from_dask_dataframe(

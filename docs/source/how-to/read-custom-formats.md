@@ -159,12 +159,13 @@ for each structure follow.
 # custom.py
 from tiled.adapters.array import ArrayAdapter
 
-def read_custom_format(filepath):
+def read_custom_format(filepath, metadata=None, **kwargs):
     # Extract an array and an optional dictionary of metadata
     # from your file.
     array = ...  # a numpy array
-    metadata = ...  # a dictionary or None
-    return ArrayAdapter.from_array(array, metadata=metadata)
+    if metadata is None:
+        metadata = ...  # a dictionary or None
+    return ArrayAdapter.from_array(array, metadata=metadata, **kwargs)
 ```
 
 #### Simple Tabular example
@@ -173,12 +174,13 @@ def read_custom_format(filepath):
 # custom.py
 from tiled.adapters.table import TableAdapter
 
-def read_custom_format(filepath):
+def read_custom_format(filepath, metadata=None, **kwargs):
     # Extract a DataFrame and an optional dictionary of metadata
     # from your file.
     df = ...  # a pandas DataFrame
-    metadata = ...  # a dictionary or None
-    return TableAdapter.from_pandas(df, npartitions=1, metadata=metadata)
+    if metadata is None:
+        metadata = ...  # a dictionary or None
+    return TableAdapter.from_pandas(df, npartitions=1, metadata=metadata, **kwargs)
 ```
 
 #### Simple Nested Structure example
@@ -189,17 +191,20 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.table import TableAdapter
 from tiled.adapters.mapping import MapAdapter
 
-def read_custom_format(filepath):
+def read_custom_format(filepath, metadata=None, **kwargs):
 
     # Build a dictionary (potentially nested) of arrays and/or tables.
     # See examples above for ArrayAdapter and TableAdapter usage.
 
+    if metadata is None:
+        metadata = ...  # a dictionary or None
     return MapAdapter(
         {
             "stuff": ArrayAdapter.from_array(...),
             "things": TableAdapter.from_pandas(...),
         }
-        metadata={...},
+        metadata=metadata,
+	**kwargs,
     )
 ```
 
@@ -260,5 +265,9 @@ described above to register files as your custom MIME type (e.g.
 
 
 ```
-tiled catalog register catalog.db --ext '.stuff=application/x-stuff' path/to/directory
+tiled catalog register catalog.db \
+  --verbose \
+  --ext '.stuff=application/x-stuff' \
+  --adapter 'application/x-stuff=custom:read_custom_format' \
+  path/to/directory
 ```

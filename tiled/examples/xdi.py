@@ -6,109 +6,85 @@ Source: https://github.com/XraySpectroscopy/XAS-Data-Interchange
 
 import collections
 import io
+import pathlib
 import re
-from pathlib import Path
 
-import dask
 import pandas as pd
 
 from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.structures.core import Spec
 
 
-def read_xdi(file):
-    "Read XDI-formatted file given a filepath or a readable buffer."
-    if isinstance(file, (str, Path)):
-        # Treat file as filepath.
-        with open(file, "r") as file_:
-            return _read_xdi(file_)
-    else:
-        # Treat file as readable buffer.
-        return _read_xdi(file)
+def read_xdi(filepath, structure=None, metadata=None, specs=None, access_policy=None):
+    "Read XDI-formatted file."
+    with open(filepath, "r") as file:
+        metadata = {}
+        fields = collections.defaultdict(dict)
 
+        # if isinstance(f, pathlib.PosixPath):
+        #    line = f.read_text().split('\n')[0]
+        # else:
+        line = file.readline()
+        m = re.match(r"#\s*XDI/(\S*)\s*(\S*)?", line)
+        if not m:
+            raise ValueError(
+                f"not an XDI file, no XDI versioning information in first line\n{line}"
+            )
 
-def _read_xdi(f):
-    "Parse XDI from a readable buffer. See read_xdi for public function."
-    metadata = {}
-    fields = collections.defaultdict(dict)
+        metadata["xdi_version"] = m[1]
+        metadata["extra_version"] = m[2]
 
-    line = f.readline()
-    m = re.match(r"#\s*XDI/(\S*)\s*(\S*)?", line)
-    if not m:
-        raise ValueError(
-            f"not an XDI file, no XDI versioning information in first line\n{line}"
-        )
+        field_end_re = re.compile(r"#\s*/{3,}")
+        header_end_re = re.compile(r"#\s*-{3,}")
 
-    metadata["xdi_version"] = m[1]
-    metadata["extra_version"] = m[2]
+        has_comments = False
 
-    field_end_re = re.compile(r"#\s*/{3,}")
-    header_end_re = re.compile(r"#\s*-{3,}")
-
-    has_comments = False
-
-    # read header
-    for line in f:
-        if line[0] != "#":
-            raise ValueError(f"reached invalid line in header\n{line}")
-        if re.match(field_end_re, line):
-            has_comments = True
-            break
-        elif re.match(header_end_re, line):
-            break
-
-        try:
-            key, val = line[1:].strip().split(":", 1)
-            val = val.strip()
-            namespace, tag = key.split(".")
-            # TODO coerce to lower case?
-        except ValueError:
-            print(f"error processing line\n{line}")
-            raise
-
-        fields[namespace][tag] = val
-
-    if has_comments:
-        comments = ""
-        for line in f:
-            if re.match(header_end_re, line):
+        # read header
+        for line in file:
+            if line[0] != "#":
+                raise ValueError(f"reached invalid line in header\n{line}")
+            if re.match(field_end_re, line):
+                has_comments = True
                 break
-            comments += line
+            elif re.match(header_end_re, line):
+                break
 
-        metadata["comments"] = comments
+            try:
+                key, val = line[1:].strip().split(":", 1)
+                val = val.strip()
+                namespace, tag = key.split(".")
+                # TODO coerce to lower case?
+            except ValueError:
+                print(f"error processing line\n{line}")
+                raise
 
-    metadata["fields"] = fields
+            fields[namespace][tag] = val
 
-    line = f.readline()
-    if line[0] != "#":
-        raise ValueError(f"expected column labels. got\n{line}")
-    col_labels = line[1:].split()
+        if has_comments:
+            comments = ""
+            for line in file:
+                if re.match(header_end_re, line):
+                    break
+                comments += line
 
-    # TODO validate
+            metadata["comments"] = comments
 
-    df = pd.read_table(f, delim_whitespace=True, names=col_labels)
+        metadata["fields"] = fields
 
-    return df, metadata
+        line = file.readline()
+        if line[0] != "#":
+            raise ValueError(f"expected column labels. got\n{line}")
+        col_labels = line[1:].split()
 
+        # TODO validate
 
-class XDIDataFrameAdapter(DataFrameAdapter):
-    specs = ["xdi"]
+        df = pd.read_table(file, delim_whitespace=True, names=col_labels)
 
-    @classmethod
-    def from_file(
-        cls,
-        file,
-        metadata=None,
-        specs=None,
-        schema=None,
-        access_policy=None,
-    ):
-        df, metadata_from_file = read_xdi(file)
-        metadata_from_file.update(metadata or {})
-        return cls.from_dask_dataframe(
-            dask.dataframe.from_pandas(df, npartitions=1),
-            metadata=metadata_from_file,
-            access_policy=access_policy,
-        )
+    return DataFrameAdapter.from_pandas(
+        df,
+        metadata=metadata,
+        specs=(specs or []) + [Spec("xdi", version="1.0")],
+    )
 
 
 def write_xdi(df, metadata):
@@ -184,8 +160,6 @@ data = """# XDI/1.0 GSE/1.0
 
 
 def main():
-    import pathlib
-
     pathlib.Path("data").mkdir()
     with open("data/example.xdi", "w") as f:
         f.write(data)

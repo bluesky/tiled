@@ -163,6 +163,7 @@ async def register(
                 catalog,
                 structure_family=StructureFamily.container,
                 metadata={},
+                specs=[],
                 key=key,
             )
             child_catalog = await catalog.lookup_adapter([segment])
@@ -219,6 +220,7 @@ async def _walk(
             key=key,
             structure_family=StructureFamily.container,
             metadata={},
+            specs=[],
         )
         child_catalog = await catalog.lookup_adapter([key])
         await _walk(
@@ -297,6 +299,7 @@ async def register_single_item(
         key=key,
         structure_family=adapter.structure_family,
         metadata=dict(adapter.metadata()),
+        specs=adapter.specs,
         data_sources=[
             DataSource(
                 mimetype=mimetype,
@@ -362,6 +365,7 @@ async def tiff_sequence(
             key=key,
             structure_family=adapter.structure_family,
             metadata=dict(adapter.metadata()),
+            specs=adapter.specs,
             data_sources=[
                 DataSource(
                     mimetype=mimetype,
