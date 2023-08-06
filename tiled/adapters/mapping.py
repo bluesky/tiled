@@ -54,6 +54,7 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         self,
         mapping,
         *,
+        structure=None,
         metadata=None,
         sorting=None,
         specs=None,
@@ -82,6 +83,10 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         must_revalidate : bool
             Whether the client should strictly refresh stale cache items.
         """
+        if structure is not None:
+            raise ValueError(
+                f"structure is expected to be None for containers, not {structure}"
+            )
         self._mapping = mapping
         if sorting is None:
             # This is a special case that means, "the given ordering".
