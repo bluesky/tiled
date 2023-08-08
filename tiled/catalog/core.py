@@ -5,10 +5,10 @@ from .base import Base
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
-REQUIRED_REVISION = "83889e049ddc"
+REQUIRED_REVISION = "0b033e7fbe30"
 
 # This is list of all valid revisions (from current to oldest).
-ALL_REVISIONS = ["83889e049ddc", "6825c778aa3c"]
+ALL_REVISIONS = ["0b033e7fbe30", "83889e049ddc", "6825c778aa3c"]
 
 
 async def initialize_database(engine):

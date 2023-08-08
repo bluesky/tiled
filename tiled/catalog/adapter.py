@@ -49,6 +49,7 @@ from .mimetypes import (
     PARQUET_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     ZARR_MIMETYPE,
+    ZIP_MIMETYPE,
 )
 from .utils import SCHEME_PATTERN, ensure_uri, safe_path
 
@@ -57,6 +58,7 @@ INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
+    StructureFamily.awkward: ZIP_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
@@ -65,6 +67,9 @@ CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrArrayAdapter.init_storage,
+        ZIP_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.awkward_buffers", __name__
+        ).AwkwardBuffersAdapter.init_storage,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,
@@ -820,6 +825,14 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
 
+class CatalogAwkwardAdapter(CatalogNodeAdapter):
+    async def read(self, *args, **kwargs):
+        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+
+    async def write(self, *args, **kwargs):
+        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+
+
 class CatalogSparseAdapter(CatalogArrayAdapter):
     pass
 
@@ -1082,6 +1095,7 @@ def json_serializer(obj):
 STRUCTURES = {
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.array: CatalogArrayAdapter,
+    StructureFamily.awkward: CatalogAwkwardAdapter,
     StructureFamily.table: CatalogTableAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
 }

@@ -731,6 +731,52 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
 
+    def write_awkward(
+        self,
+        array,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+    ):
+        """
+        Write an AwkwardArray.
+
+        Parameters
+        ----------
+        array: awkward.Array
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        dims : List[str], optional
+            A label for each dimension of the array.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+        import awkward
+
+        from ..structures.awkward import AwkwardStructure
+
+        form, length, container = awkward.to_buffers(array)
+        structure = AwkwardStructure(
+            length=length,
+            form=form.to_dict(),
+            suffixed_form_keys=list(container),
+        )
+        client = self.new(
+            StructureFamily.awkward,
+            structure,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+        client.write(container)
+        return client
+
     def write_sparse(
         self,
         coords,
@@ -921,6 +967,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
         {
             "container": _Wrap(Container),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
+            "awkward": _LazyLoad(
+                ("..awkward", Container.__module__), "AwkwardArrayClient"
+            ),
             "dataframe": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
@@ -937,6 +986,8 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
         {
             "container": _Wrap(Container),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
+            # TODO Create DaskAwkwardArrayClient
+            # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardArrayClient"),
             "dataframe": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
             ),

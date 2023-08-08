@@ -12,6 +12,7 @@ import pydantic.generics
 
 from ..structures.core import StructureFamily
 from .pydantic_array import ArrayStructure
+from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
 
@@ -122,7 +123,13 @@ class Revision(pydantic.BaseModel):
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
     structure: Optional[
-        Union[ArrayStructure, TableStructure, NodeStructure, SparseStructure]
+        Union[
+            ArrayStructure,
+            AwkwardStructure,
+            TableStructure,
+            NodeStructure,
+            SparseStructure,
+        ]
     ] = None
     mimetype: Optional[str] = None
     parameters: dict = {}
@@ -147,7 +154,13 @@ class NodeAttributes(pydantic.BaseModel):
     specs: Optional[Specs]
     metadata: Optional[Dict]  # free-form, user-specified dict
     structure: Optional[
-        Union[ArrayStructure, TableStructure, NodeStructure, SparseStructure]
+        Union[
+            ArrayStructure,
+            AwkwardStructure,
+            TableStructure,
+            NodeStructure,
+            SparseStructure,
+        ]
     ]
     sorting: Optional[List[SortingItem]]
     data_sources: Optional[List[DataSource]]
@@ -174,6 +187,11 @@ class ArrayLinks(pydantic.BaseModel):
     block: str
 
 
+class AwkwardLinks(pydantic.BaseModel):
+    self: str
+    full: str
+
+
 class DataFrameLinks(pydantic.BaseModel):
     self: str
     full: str
@@ -189,6 +207,7 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.container: ContainerLinks,
     StructureFamily.array: ArrayLinks,
+    StructureFamily.awkward: AwkwardLinks,
     StructureFamily.table: DataFrameLinks,
     StructureFamily.sparse: SparseLinks,
 }

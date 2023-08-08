@@ -8,6 +8,7 @@ from ..utils import OneShotCachedMap
 # for importing Readers that we will not actually use.
 PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet-sparse"  # HACK!
+ZIP_MIMETYPE = "application/zip"
 ZARR_MIMETYPE = "application/x-zarr"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
@@ -38,6 +39,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).read_zarr,
+        ZIP_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.awkward_buffers", __name__
+        ).AwkwardBuffersAdapter,
     }
 )
 

@@ -603,6 +603,62 @@ async def node_full(
         raise HTTPException(status_code=406, detail=err.args[0])
 
 
+@router.get(
+    "/awkward/full/{path:path}",
+    response_model=schemas.Response,
+    name="full awkward array",
+)
+async def awkward_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    # slice=Depends(slice_),
+    form_key: Optional[List[str]] = Query(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a slice of AwkwardArray data.
+    """
+    structure_family = entry.structure_family
+    if structure_family != StructureFamily.awkward:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /awkwrad/full route.",
+        )
+    with record_timing(request.state.metrics, "read"):
+        # The plural vs. singular mismatch is due to the way query parameters
+        # are given as ?form_key=A&form_key=B&form_key=C.
+        container = await ensure_awaitable(entry.read, form_key)
+    if (
+        sum(len(buffer) for buffer in container.values())
+        > settings.response_bytesize_limit
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
+    try:
+        with record_timing(request.state.metrics, "pack"):
+            return await construct_data_response(
+                structure_family,
+                serialization_registry,
+                container,
+                entry.metadata(),
+                request,
+                format,
+                specs=getattr(entry, "specs", []),
+                expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
+            )
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=err.args[0])
+
+
 @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
 async def post_metadata(
     request: Request,
@@ -684,6 +740,8 @@ async def post_metadata(
     elif body.structure_family == StructureFamily.container:
         links["full"] = f"{base_url}/node/full/{path_str}"
         links["search"] = f"{base_url}/search/{path_str}"
+    elif body.structure_family == StructureFamily.awkward:
+        links["full"] = f"{base_url}/awkward/full/{path_str}"
     else:
         raise NotImplementedError(body.structure_family)
     response_data = {
@@ -801,6 +859,28 @@ async def put_table_partition(
     deserializer = deserialization_registry.dispatch(StructureFamily.table, media_type)
     data = await ensure_awaitable(deserializer, body)
     await ensure_awaitable(entry.write_partition, data, partition)
+    return json_or_msgpack(request, None)
+
+
+@router.put("/awkward/full/{path:path}")
+async def put_awkward_full(
+    request: Request,
+    entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
+):
+    body = await request.body()
+    if entry.structure_family != StructureFamily.awkward:
+        raise HTTPException(
+            status_code=404, detail="This route is not applicable to this node."
+        )
+    if not hasattr(entry, "write"):
+        raise HTTPException(status_code=405, detail="This node cannot be written to.")
+    media_type = request.headers["content-type"]
+    deserializer = deserialization_registry.dispatch(
+        StructureFamily.awkward, media_type
+    )
+    data = await ensure_awaitable(deserializer, body)
+    await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
 

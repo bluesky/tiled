@@ -243,6 +243,7 @@ async def construct_entries_response(
 
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
+    StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
@@ -708,8 +709,9 @@ class WrongTypeForRoute(Exception):
 
 
 FULL_LINKS = {
-    StructureFamily.container: {"full": "{base_url}/node/full/{path}"},
     StructureFamily.array: {"full": "{base_url}/array/full/{path}"},
+    StructureFamily.awkward: {"full": "{base_url}/awkward/full/{path}"},
+    StructureFamily.container: {"full": "{base_url}/node/full/{path}"},
     StructureFamily.table: {"full": "{base_url}/node/full/{path}"},
     StructureFamily.sparse: {"full": "{base_url}/array/full/{path}"},
 }

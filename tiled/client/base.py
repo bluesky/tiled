@@ -261,6 +261,9 @@ STRUCTURE_TYPES = OneShotCachedMap(
         StructureFamily.array: lambda: importlib.import_module(
             "...structures.array", BaseClient.__module__
         ).ArrayStructure,
+        StructureFamily.awkward: lambda: importlib.import_module(
+            "...structures.awkward", BaseClient.__module__
+        ).AwkwardStructure,
         StructureFamily.table: lambda: importlib.import_module(
             "...structures.table", BaseClient.__module__
         ).TableStructure,

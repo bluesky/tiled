@@ -10,6 +10,7 @@ from typing import Optional
 
 
 class StructureFamily(str, enum.Enum):
+    awkward = "awkward"
     container = "container"
     array = "array"
     sparse = "sparse"
