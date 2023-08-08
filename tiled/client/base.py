@@ -83,13 +83,37 @@ class MetadataRevisions:
 
 
 class BaseClient:
-    def __init__(self, context, *, item, structure_clients):
+    def __init__(self, context, *, item, structure_clients, structure=None):
         self._context = context
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
         self._metadata_revisions = None
+        attributes = self.item["attributes"]
+        structure_family = attributes["structure_family"]
+        if structure is not None:
+            # Allow the caller to optionally hand us a structure that is already
+            # parsed from a dict into a structure dataclass.
+            self._structure = structure
+        elif structure_family == StructureFamily.container:
+            self._structure = None
+        else:
+            structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
+            self._structure = structure_type.from_json(attributes["structure"])
         super().__init__()
+
+    def structure(self):
+        """
+        Return a dataclass describing the structure of the data.
+        """
+        if getattr(self._structure, "resizable", None):
+            # In the future, conditionally fetch updated information.
+            raise NotImplementedError(
+                "The server has indicated that this has a dynamic, resizable "
+                "structure and this version of the Tiled Python client cannot "
+                "cope with that."
+            )
+        return self._structure
 
     def login(self, username=None, provider=None):
         """
@@ -232,42 +256,16 @@ class BaseClient:
         return self._metadata_revisions
 
 
-class BaseStructureClient(BaseClient):
-    def __init__(self, *args, structure=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if structure is not None:
-            # Allow the caller to optionally hand us a structure that is already
-            # parsed from a dict into a structure dataclass.
-            self._structure = structure
-        else:
-            attributes = self.item["attributes"]
-            structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
-            self._structure = structure_type.from_json(attributes["structure"])
-
-    def structure(self):
-        """
-        Return a dataclass describing the structure of the data.
-        """
-        if getattr(self._structure, "resizable", None):
-            # In the future, conditionally fetch updated information.
-            raise NotImplementedError(
-                "The server has indicated that this has a dynamic, resizable "
-                "structure and this version of the Tiled Python client cannot "
-                "cope with that."
-            )
-        return self._structure
-
-
 STRUCTURE_TYPES = OneShotCachedMap(
     {
         StructureFamily.array: lambda: importlib.import_module(
-            "...structures.array", BaseStructureClient.__module__
+            "...structures.array", BaseClient.__module__
         ).ArrayStructure,
         StructureFamily.table: lambda: importlib.import_module(
-            "...structures.table", BaseStructureClient.__module__
+            "...structures.table", BaseClient.__module__
         ).TableStructure,
         StructureFamily.sparse: lambda: importlib.import_module(
-            "...structures.sparse", BaseStructureClient.__module__
+            "...structures.sparse", BaseClient.__module__
         ).SparseStructure,
     }
 )

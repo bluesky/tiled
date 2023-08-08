@@ -4,11 +4,11 @@ from ndindex import ndindex
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
-from .base import BaseStructureClient
+from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice
 
 
-class SparseClient(BaseStructureClient):
+class SparseClient(BaseClient):
     @property
     def dims(self):
         return self.structure().dims

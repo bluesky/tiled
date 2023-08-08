@@ -119,7 +119,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.base.BaseClient.logout
    tiled.client.base.BaseClient.new_variation
    tiled.client.base.BaseClient.specs
-   tiled.client.base.BaseStructureClient.structure
+   tiled.client.base.BaseClient.structure
 ```
 
 
