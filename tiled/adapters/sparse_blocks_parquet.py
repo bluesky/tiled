@@ -42,13 +42,13 @@ class SparseBlocksParquetAdapter:
     def init_storage(
         cls,
         directory,
-        chunks,
+        structure,
     ):
         from ..server.schemas import Asset
 
         directory.mkdir()
 
-        num_blocks = (range(len(n)) for n in chunks)
+        num_blocks = (range(len(n)) for n in structure.chunks)
         block_uris = []
         for block in itertools.product(*num_blocks):
             filepath = directory / f"block-{'.'.join(map(str, block))}.parquet"

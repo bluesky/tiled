@@ -3,7 +3,7 @@ import dask.dataframe
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
-from .base import BaseStructureClient
+from .base import BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
     ClientError,
@@ -13,7 +13,7 @@ from .utils import (
 )
 
 
-class _DaskDataFrameClient(BaseStructureClient):
+class _DaskDataFrameClient(BaseClient):
     "Client-side wrapper around an dataframe-like that returns dask dataframes"
 
     def new_variation(self, structure=UNCHANGED, **kwargs):

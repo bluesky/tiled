@@ -536,32 +536,17 @@ class CatalogNodeAdapter:
             await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
+                    if structure_family == StructureFamily.container:
+                        raise NotImplementedError(structure_family)
                     data_source.mimetype = DEFAULT_CREATION_MIMETYPE[structure_family]
                     data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
                     init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
-                    if structure_family == StructureFamily.array:
-                        init_storage_args = (
-                            safe_path(data_uri),
-                            data_source.structure.data_type.to_numpy_dtype(),
-                            data_source.structure.shape,
-                            data_source.structure.chunks,
-                        )
-                    elif structure_family == StructureFamily.table:
-                        init_storage_args = (
-                            safe_path(data_uri),
-                            data_source.structure.npartitions,
-                        )
-                    elif structure_family == StructureFamily.sparse:
-                        init_storage_args = (
-                            safe_path(data_uri),
-                            data_source.structure.chunks,
-                        )
-                    else:
-                        raise NotImplementedError(structure_family)
-                    assets = await ensure_awaitable(init_storage, *init_storage_args)
+                    assets = await ensure_awaitable(
+                        init_storage, safe_path(data_uri), data_source.structure
+                    )
                     data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(
                     structure=_prepare_structure(

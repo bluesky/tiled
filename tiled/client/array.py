@@ -4,11 +4,11 @@ import dask
 import dask.array
 import numpy
 
-from .base import BaseStructureClient
+from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice
 
 
-class _DaskArrayClient(BaseStructureClient):
+class _DaskArrayClient(BaseClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
     def __init__(self, *args, item, **kwargs):
