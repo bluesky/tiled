@@ -159,14 +159,18 @@ def test_write_dataframe_partitioned(tree):
         assert result.specs == specs
 
 
-def test_write_sparse_full(tree):
+@pytest.mark.parametrize(
+    "coo",
+    [
+        sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,)),
+        sparse.COO(coords=[[0, 1], [2, 3]], data=[3.8, 4.0], shape=(4, 4)),
+    ],
+)
+def test_write_sparse_full(tree, coo):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
         client = from_context(context)
-
-        coo = sparse.COO(coords=[[0, 1], [2, 3]], data=[3.8, 4.0], shape=(4, 4))
-
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
         with record_history() as history:
