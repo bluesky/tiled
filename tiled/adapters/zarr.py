@@ -28,19 +28,19 @@ def read_zarr(filepath, **kwargs):
 
 class ZarrArrayAdapter(ArrayAdapter):
     @classmethod
-    def init_storage(cls, directory, dtype, shape, chunks):
+    def init_storage(cls, directory, structure):
         from ..server.schemas import Asset
 
-        # Zarr requires evently-sized chunks within each dimension.
+        # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
-        zarr_chunks = tuple(dim[0] for dim in chunks)
-        shape = tuple(dim[0] * len(dim) for dim in chunks)
+        zarr_chunks = tuple(dim[0] for dim in structure.chunks)
+        shape = tuple(dim[0] * len(dim) for dim in structure.chunks)
         storage = zarr.storage.DirectoryStore(str(directory))
         zarr.storage.init_array(
             storage,
             shape=shape,
             chunks=zarr_chunks,
-            dtype=dtype,
+            dtype=structure.data_type.to_numpy_dtype(),
         )
         data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         return [

@@ -39,7 +39,7 @@ class ParquetDatasetAdapter:
         return DataFrameAdapter(partitions, self._structure)
 
     @classmethod
-    def init_storage(cls, directory, npartitions):
+    def init_storage(cls, directory, structure):
         from ..server.schemas import Asset
 
         directory.mkdir()
@@ -49,7 +49,7 @@ class ParquetDatasetAdapter:
                 data_uri=f"{data_uri}/partition-{i}.parquet",
                 is_directory=False,
             )
-            for i in range(npartitions)
+            for i in range(structure.npartitions)
         ]
         return assets
 
