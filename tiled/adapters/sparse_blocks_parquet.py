@@ -73,7 +73,7 @@ class SparseBlocksParquetAdapter:
     def write(self, data):
         if len(self.blocks) > 1:
             raise NotImplementedError
-        uri = self.blocks[(0, 0)]
+        uri = self.blocks[(0,) * len(self._structure.shape)]
         data.to_parquet(uri)
 
     def read(self, slice=...):
