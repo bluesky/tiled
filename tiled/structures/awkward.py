@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List
 
 import awkward
 
@@ -7,7 +8,7 @@ import awkward
 class AwkwardStructure:
     length: int
     form: dict
-    suffixed_form_keys: list[str]
+    suffixed_form_keys: List[str]
 
     @classmethod
     def from_json(cls, structure):
