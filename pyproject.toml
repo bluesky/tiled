@@ -49,6 +49,7 @@ all = [
     "anyio",
     "asyncpg",
     "appdirs",
+    "awkward",
     "blosc",
     "cachetools",
     "cachey",
@@ -102,6 +103,7 @@ array = [
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
     "appdirs",
+    "awkward",
     "blosc",
     "click !=8.1.0",
     "dask[array]",
@@ -215,8 +217,9 @@ server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "asyncpg",
     "appdirs",
+    "asyncpg",
+    "awkward",
     "blosc",
     "cachetools",
     "cachey",
