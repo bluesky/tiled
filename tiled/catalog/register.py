@@ -154,6 +154,9 @@ async def register(
     path = Path(path)
     if walkers is None:
         walkers = DEFAULT_WALKERS
+    parsed_walkers = []
+    for walker in walkers:
+        parsed_walkers.append(import_object(walker))
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
         child_catalog = await catalog.lookup_adapter([segment])
@@ -176,7 +179,7 @@ async def register(
         await _walk(
             catalog,
             Path(path),
-            walkers,
+            parsed_walkers,
             settings=settings,
         )
     else:
