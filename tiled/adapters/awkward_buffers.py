@@ -3,6 +3,7 @@ A directory containing awkward buffers, one file per form key.
 """
 from urllib import parse
 
+from ..structures.awkward import suffixed_form_keys
 from ..structures.core import StructureFamily
 
 
@@ -40,19 +41,16 @@ class AwkwardBuffersAdapter:
                 file.write(value)
 
     def read(self, form_keys=None):
-        selected_suffixed_form_keys = []
-        if form_keys is None:
-            # Read all.
-            selected_suffixed_form_keys.extend(self._structure.suffixed_form_keys)
-        else:
-            for form_key in form_keys:
-                for suffixed_form_key in self._structure.suffixed_form_keys:
-                    if suffixed_form_key.startswith(form_key):
-                        selected_suffixed_form_keys.append(suffixed_form_key)
+        selected_suffixed_form_keys = [
+            suffixed_fk
+            for suffixed_fk in suffixed_form_keys(self._structure.form)
+            if (form_keys is None)
+            or any(suffixed_fk.startswith(fk) for fk in form_keys)
+        ]
         buffers = {}
-        for form_key in selected_suffixed_form_keys:
-            with open(self.directory / form_key, "rb") as file:
-                buffers[form_key] = file.read()
+        for suffixed_form_key in selected_suffixed_form_keys:
+            with open(self.directory / suffixed_form_key, "rb") as file:
+                buffers[suffixed_form_key] = file.read()
         return buffers
 
     def structure(self):

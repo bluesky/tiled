@@ -765,7 +765,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         structure = AwkwardStructure(
             length=length,
             form=form.to_dict(),
-            suffixed_form_keys=list(container),
         )
         client = self.new(
             StructureFamily.awkward,
