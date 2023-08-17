@@ -23,6 +23,7 @@ from .core import (
     WrongTypeForRoute,
     apply_search,
     construct_data_response,
+    construct_direct_read_response,
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
@@ -444,6 +445,17 @@ async def array_full(
     # for some use cases.
     import numpy
 
+    # TODO Refine this filter to include any full slice.
+    if slice == ():
+        response = await construct_direct_read_response(
+            request=request,
+            entry=entry,
+            format=format,
+            filename=filename,
+            serialization_registry=serialization_registry,
+        )
+        if response is not None:
+            return response
     try:
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read, slice)

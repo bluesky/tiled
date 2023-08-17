@@ -737,6 +737,11 @@ class CatalogNodeAdapter:
             )
             await db.commit()
 
+    async def read_raw(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).read_raw, *args, **kwargs
+        )
+
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
     async def keys_range(self, offset, limit):

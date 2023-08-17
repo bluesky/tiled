@@ -1,5 +1,6 @@
 import builtins
 import hashlib
+import pathlib
 
 import tifffile
 
@@ -63,6 +64,11 @@ class TiffAdapter:
         if slice is not None:
             arr = arr[slice]
         return arr
+
+    def read_raw(self, mimetype):
+        if mimetype != "image/tiff":
+            raise ValueError(f"Unsupported mimetype {mimetype}")
+        return pathlib.Path(self._file.filehandle.path).read_bytes()
 
     def read_block(self, block, slice=None):
         # For simplicity, this adapter always treat a single TIFF file as one

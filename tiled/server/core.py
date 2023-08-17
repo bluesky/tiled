@@ -279,6 +279,80 @@ async def construct_revisions_response(
     return schemas.Response(data=data, links=links, meta={"count": count})
 
 
+def parse_accepted_media_types(
+    format, accept, structure_family, serialization_registry
+):
+    default_media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
+    # Give priority to the `format` query parameter. Otherwise, consult Accept
+    # header.
+    if format is not None:
+        media_types_or_aliases = format.split(",")
+        # Resolve aliases, like "csv" -> "text/csv".
+        media_types = [
+            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
+        ]
+    else:
+        # The HTTP spec says these should be separated by ", " but some
+        # browsers separate with just "," (no space).
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
+        # That variation is what we are handling below with lstrip.
+        media_types = [s.lstrip(" ") for s in (accept or default_media_type).split(",")]
+    return media_types
+
+
+async def construct_direct_read_response(
+    *,
+    entry,
+    request,
+    format,
+    filename,
+    serialization_registry,
+):
+    if not hasattr(entry, "data_sources"):
+        # The Adapter does not expose how its underlying data is stored.
+        return None
+    native_media_types = set(data_source.mimetype for data_source in entry.data_sources)
+    accepted_media_types = parse_accepted_media_types(
+        format,
+        request.headers.get("Accept"),
+        entry.structure_family,
+        serialization_registry,
+    )
+    overlap = native_media_types.intersection(accepted_media_types)
+    if "*/*" in accepted_media_types:
+        overlap.update(native_media_types)
+    if "image/*" in accepted_media_types:
+        for media_type in native_media_types:
+            if media_type.startswith("image/"):
+                overlap.add(media_type)
+    if overlap:
+        # There may be more than one. Having no guidance on which one is
+        # best, take the one that sorts first.
+        media_type = sorted(overlap)[0]
+    else:
+        return None
+    with record_timing(request.state.metrics, "read"):
+        content = await ensure_awaitable(entry.read_raw, media_type)
+    with record_timing(request.state.metrics, "tok"):
+        etag = tokenize(content)
+    headers = {"ETag": etag}
+    expires = getattr(entry, "content_stale_at", None)
+    if expires is not None:
+        headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
+    if request.headers.get("If-None-Match", "") == etag:
+        # If the client already has this content, confirm that.
+        return Response(status_code=304, headers=headers)
+    if filename:
+        headers["Content-Disposition"] = f"attachment;filename={filename}"
+    # TODO Handle Range request.
+    return PatchedResponse(
+        status_code=200,
+        content=content,
+        media_type=media_type,
+        headers=headers,
+    )
+
+
 async def construct_data_response(
     structure_family,
     serialization_registry,
@@ -294,29 +368,14 @@ async def construct_data_response(
     request.state.endpoint = "data"
     if specs is None:
         specs = []
-    default_media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
-    # Give priority to the `format` query parameter. Otherwise, consult Accept
-    # header.
-    if format is not None:
-        media_types_or_aliases = format.split(",")
-        # Resolve aliases, like "csv" -> "text/csv".
-        media_types = [
-            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
-        ]
-    else:
-        # The HTTP spec says these should be separated by ", " but some
-        # browsers separate with just "," (no space).
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
-        # That variation is what we are handling below with lstrip.
-        media_types = [
-            s.lstrip(" ")
-            for s in request.headers.get("Accept", default_media_type).split(",")
-        ]
+    accepted_media_types = parse_accepted_media_types(
+        format, request.headers.get("Accept"), structure_family, serialization_registry
+    )
 
     # The client may give us a choice of media types. Find the first one
     # that we support.
     supported = set()
-    for media_type in media_types:
+    for media_type in accepted_media_types:
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
         elif structure_family == StructureFamily.array and media_type == "image/*":
@@ -339,7 +398,7 @@ async def construct_data_response(
         # to any of them.
         raise UnsupportedMediaTypes(
             f"None of the media types requested by the client are supported. "
-            f"Supported: {', '.join(supported)}. Requested: {', '.join(media_types)}.",
+            f"Supported: {', '.join(supported)}. Requested: {', '.join(accepted_media_types)}.",
         )
     with record_timing(request.state.metrics, "tok"):
         # Create an ETag that uniquely identifies this content and the media
