@@ -761,7 +761,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         from ..structures.awkward import AwkwardStructure
 
-        form, length, container = awkward.to_buffers(array)
+        packed = awkward.to_packed(array)
+        form, length, container = awkward.to_buffers(packed)
         structure = AwkwardStructure(
             length=length,
             form=form.to_dict(),
