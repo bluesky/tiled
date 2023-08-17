@@ -313,6 +313,7 @@ exclude = '''
   )/
   | versioneer.py
   | tiled/_version.py
+  | tiled/serialization/_zipfile_py39.py
   | docs/source/conf.py
   | share
   | web-frontend

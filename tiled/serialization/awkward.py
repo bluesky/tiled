@@ -1,5 +1,13 @@
 import io
-import zipfile
+import sys
+
+if sys.version_info < (3, 9):
+    # Python 3.8 has a bug in zipfile that is not easily matched. Import
+    # zipfile from a copy of the Python 3.9.17 version, vendored in the tiled
+    # source.
+    from . import _zipfile_py39 as zipfile
+else:
+    import zipfile
 
 from ..media_type_registration import deserialization_registry, serialization_registry
 

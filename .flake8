@@ -6,7 +6,8 @@ exclude =
     dist,
     versioneer.py,
     tiled/_version.py,
-    docs/source/conf.py
-    share
-    web-frontend
+    tiled/serialization/_zipfile_py39.py,
+    docs/source/conf.py,
+    share,
+    web-frontend,
 max-line-length = 115
