@@ -45,6 +45,7 @@ extensions = [
     "sphinx_click",
     "sphinx_copybutton",
     "myst_parser",
+    "sphinxcontrib.jquery",
 ]
 
 # Configuration options for plot_directive. See:
@@ -208,7 +209,6 @@ import yaml
 
 
 def generate_schema_documentation(header, schema, target):
-
     # header
     with open(header, "r") as f:
         header_md = f.readlines()
