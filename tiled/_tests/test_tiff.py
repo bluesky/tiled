@@ -61,6 +61,28 @@ def test_tiff_sequence_block(client, block_input, correct_shape):
 
 
 @pytest.mark.asyncio
+async def test_tiff_sequence_order(tmpdir):
+    """
+    directory/
+      00001.tif
+      00002.tif
+      ...
+      00010.tif
+    """
+    data = numpy.ones((4, 5))
+    num_files = 10
+    for i in range(num_files):
+        tf.imwrite(Path(tmpdir / f"image{i:05}.tif"), data * i)
+
+    adapter = in_memory(readable_storage=[tmpdir])
+    with Context.from_app(build_app(adapter)) as context:
+        await register(adapter, tmpdir)
+        client = from_context(context)
+        for i in range(num_files):
+            numpy.testing.assert_equal(client["image"][i], data * i)
+
+
+@pytest.mark.asyncio
 async def test_tiff_sequence_with_directory_walker(tmpdir):
     """
     directory/
