@@ -64,6 +64,10 @@ def test_tiff_sequence_block(client, block_input, correct_shape):
 async def test_tiff_sequence_with_directory_walker(tmpdir):
     """
     directory/
+      00001.tif
+      00002.tif
+      ...
+      00010.tif
       single_image.tif
       image00001.tif
       image00002.tif
@@ -73,6 +77,10 @@ async def test_tiff_sequence_with_directory_walker(tmpdir):
       other_image00002.tif
       ...
       other_image00010.tif
+      other_image2_00001.tif
+      other_image2_00002.tif
+      ...
+      other_image2_00010.tif
       other_file1.csv
       other_file2.csv
       stuff.csv
@@ -81,6 +89,8 @@ async def test_tiff_sequence_with_directory_walker(tmpdir):
     for i in range(10):
         tf.imwrite(Path(tmpdir / f"image{i:05}.tif"), data)
         tf.imwrite(Path(tmpdir / f"other_image{i:05}.tif"), data)
+        tf.imwrite(Path(tmpdir / f"{i:05}.tif"), data)
+        tf.imwrite(Path(tmpdir / f"other_image2_{i:05}.tif"), data)
     tf.imwrite(Path(tmpdir / "single_image.tif"), data)
     for target in ["stuff.csv", "other_file1.csv", "other_file2.csv"]:
         with open(Path(tmpdir / target), "w") as file:
@@ -99,6 +109,21 @@ a,b,c
         # Each sequence is grouped into a node.
         assert client["image"].shape == (10, 3, 5)
         assert client["other_image"].shape == (10, 3, 5)
+        assert client["other_image2_"].shape == (10, 3, 5)
+        # The sequence grouping digit-only files appears with a uuid
+        named_keys = [
+            "single_image",
+            "image",
+            "other_image",
+            "other_image2_",
+            "other_file1",
+            "other_file2",
+            "stuff",
+        ]
+        no_name_keys = [key for key in client.keys() if key not in named_keys]
+        # There is only a single one of this type
+        assert len(no_name_keys) == 1
+        assert client[no_name_keys[0]].shape == (10, 3, 5)
         # Other files are single nodes.
         assert client["stuff"].columns == ["a", "b", "c"]
         assert client["other_file1"].columns == ["a", "b", "c"]
