@@ -152,11 +152,10 @@ async def register(
         filter=filter,
     )
     path = Path(path)
-    if walkers is None:
-        walkers = DEFAULT_WALKERS
     parsed_walkers = []
-    for walker in walkers:
+    for walker in walkers or []:
         parsed_walkers.append(import_object(walker))
+    parsed_walkers.extend(DEFAULT_WALKERS)
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
         child_catalog = await catalog.lookup_adapter([segment])
@@ -386,6 +385,21 @@ async def tiff_sequence(
             ],
         )
     return unhandled_files, unhandled_directories
+
+
+async def skip_all(
+    catalog,
+    path,
+    files,
+    directories,
+    settings,
+):
+    """
+    Skip all files and directories without processing them.
+
+    This can be used to override the DEFAULT_WALKERS.
+    """
+    return files, directories
 
 
 DEFAULT_WALKERS = [tiff_sequence, one_node_per_item]
