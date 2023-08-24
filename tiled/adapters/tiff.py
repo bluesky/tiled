@@ -91,7 +91,7 @@ class TiffSequenceAdapter:
         specs=None,
         access_policy=None,
     ):
-        seq = tifffile.TiffSequence(files)
+        seq = tifffile.TiffSequence(sorted(files))
         return cls(
             seq,
             structure=structure,
