@@ -125,7 +125,6 @@ async def test_skip_all(tmpdir):
         client = from_context(context)
         assert "a" in client
 
-
     # With skip_all, it is not.
     with Context.from_app(build_app(tree)) as context:
         await register(tree, tmpdir, walkers=[skip_all])
