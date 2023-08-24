@@ -34,9 +34,10 @@ if modules_available("zstandard"):
     class ZStandardDecoder:
         def __init__(self):
             self._context = zstandard.ZstdDecompressor()
+            self._obj = self._context.decompressobj()
 
         def decode(self, data: bytes) -> bytes:
-            return self._context.decompress(data)
+            return self._obj.decompress(data)
 
         def flush(self) -> bytes:
             return b""
