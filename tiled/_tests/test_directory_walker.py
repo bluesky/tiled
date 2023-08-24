@@ -5,7 +5,7 @@ import pytest
 import tifffile
 
 from ..catalog import in_memory
-from ..catalog.register import identity, register, strip_suffixes
+from ..catalog.register import identity, register, skip_all, strip_suffixes
 from ..client import Context, from_context
 from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
@@ -112,3 +112,22 @@ async def test_mimetype_detection_hook(tmpdir):
         )
         client = from_context(context)
         assert set(client) == {"a0", "a.0.asfwoeijviojefeiofw", "c.csv"}
+
+
+@pytest.mark.asyncio
+async def test_skip_all(tmpdir):
+    "Using skip_all should override defaults."
+    df1.to_csv(Path(tmpdir, "a.csv"))
+    tree = in_memory()
+    # By default, a file is registered.
+    with Context.from_app(build_app(tree)) as context:
+        await register(tree, tmpdir)
+        client = from_context(context)
+        assert "a" in client
+
+
+    # With skip_all, it is not.
+    with Context.from_app(build_app(tree)) as context:
+        await register(tree, tmpdir, walkers=[skip_all])
+        client = from_context(context)
+        assert list(client) == []
