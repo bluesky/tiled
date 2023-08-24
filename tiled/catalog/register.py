@@ -401,9 +401,7 @@ async def skip_all(
     """
     for item in files:
         logger.info("    SKIP ALL: Nothing yet handled file '%s'", item)
-    for item in directories:
-        logger.info("    SKIP ALL: Nothing yet handled directory '%s'", item)
-    return [], []
+    return [], directories
 
 
 DEFAULT_WALKERS = [tiff_sequence, one_node_per_item]
