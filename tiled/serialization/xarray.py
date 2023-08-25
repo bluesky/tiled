@@ -97,7 +97,7 @@ if modules_available("orjson"):
 
     @serialization_registry.register("xarray_dataset", "application/json")
     async def serialize_json(node, metadata, filter_for_access):
-        df = await as_dataset(node).to_dataframe()
+        df = (await as_dataset(node)).to_dataframe()
         return orjson.dumps(
             {column: df[column].tolist() for column in df},
         )
