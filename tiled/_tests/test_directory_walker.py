@@ -5,7 +5,13 @@ import pytest
 import tifffile
 
 from ..catalog import in_memory
-from ..catalog.register import identity, register, strip_suffixes
+from ..catalog.register import (
+    identity,
+    register,
+    skip_all,
+    strip_suffixes,
+    tiff_sequence,
+)
 from ..client import Context, from_context
 from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
@@ -112,3 +118,30 @@ async def test_mimetype_detection_hook(tmpdir):
         )
         client = from_context(context)
         assert set(client) == {"a0", "a.0.asfwoeijviojefeiofw", "c.csv"}
+
+
+@pytest.mark.asyncio
+async def test_skip_all_in_combination(tmpdir):
+    "Using skip_all should override defaults, but not hinder other walkers"
+    df1.to_csv(Path(tmpdir, "a.csv"))
+    Path(tmpdir, "one").mkdir()
+    df1.to_csv(Path(tmpdir, "one", "a.csv"))
+
+    for i in range(2):
+        tifffile.imwrite(Path(tmpdir, "one", f"image{i:05}.tif"), data)
+
+    tree = in_memory()
+    # By default, both file and tiff sequence are registered.
+    with Context.from_app(build_app(tree)) as context:
+        await register(tree, tmpdir)
+        client = from_context(context)
+        assert "a" in client
+        assert "a" in client["one"]
+        assert "image" in client["one"]
+
+    # With skip_all, directories and tiff sequence are registered, but individual files are not
+    with Context.from_app(build_app(tree)) as context:
+        await register(tree, tmpdir, walkers=[tiff_sequence, skip_all])
+        client = from_context(context)
+        assert list(client) == ["one"]
+        assert "image" in client["one"]

@@ -71,6 +71,16 @@ def serve_directory(
             "Specify here as 'mimetype=package.module:function'"
         ),
     ),
+    walkers: List[str] = typer.Option(
+        None,
+        "--walker",
+        help=(
+            "ADVANCED: Custom Tiled Walker for traversing directories and "
+            "grouping files. This is used in conjunction with Adapters that operate "
+            "on groups of files. "
+            "Specify here as 'package.module:function'"
+        ),
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -189,6 +199,7 @@ def serve_directory(
                     mimetype_detection_hook=mimetype_detection_hook,
                     mimetypes_by_file_ext=mimetypes_by_file_ext,
                     adapters_by_mimetype=adapters_by_mimetype,
+                    walkers=walkers,
                     key_from_filename=key_from_filename,
                 )
             )
@@ -211,6 +222,7 @@ def serve_directory(
                 mimetype_detection_hook=mimetype_detection_hook,
                 mimetypes_by_file_ext=mimetypes_by_file_ext,
                 adapters_by_mimetype=adapters_by_mimetype,
+                walkers=walkers,
                 key_from_filename=key_from_filename,
             )
         )
