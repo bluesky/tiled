@@ -1,7 +1,7 @@
 version: "3.2"
 services:
   tiled:
-    image: ghcr.io/bluesky/tiled:v0.1.0a104
+    image: ghcr.io/bluesky/tiled:v0.1.0a105
     environment:
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
     ports:
