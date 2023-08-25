@@ -26,7 +26,6 @@ class AwkwardArrayClient(BaseClient):
         form = awkward.forms.from_dict(structure.form)
         typetracer, report = awkward.typetracer.typetracer_with_report(
             form,
-            forget_length=True,
         )
         proxy_array = awkward.Array(typetracer)
         # TODO Ask awkward to promote _touch_data to a public method.
