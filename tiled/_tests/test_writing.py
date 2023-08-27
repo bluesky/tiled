@@ -50,7 +50,7 @@ def test_write_array_full(tree):
         result_array = result.read()
 
         numpy.testing.assert_equal(result_array, a)
-        assert result.metadata == metadata
+        assert result.metadata() == metadata
         assert result.specs == specs
 
 
@@ -78,7 +78,7 @@ def test_write_large_array_full(tree):
             result_array = result.read()
 
             numpy.testing.assert_equal(result_array, a)
-            assert result.metadata == metadata
+            assert result.metadata() == metadata
             assert result.specs == specs
         finally:
             client._SUGGESTED_MAX_UPLOAD_SIZE = original
@@ -104,7 +104,7 @@ def test_write_array_chunked(tree):
         result_array = result.read()
 
         numpy.testing.assert_equal(result_array, a.compute())
-        assert result.metadata == metadata
+        assert result.metadata() == metadata
         assert result.specs == specs
 
 
@@ -129,7 +129,7 @@ def test_write_dataframe_full(tree):
         result_dataframe = result.read()
 
         pandas.testing.assert_frame_equal(result_dataframe, df)
-        assert result.metadata == metadata
+        assert result.metadata() == metadata
         assert result.specs == specs
 
 
@@ -155,7 +155,7 @@ def test_write_dataframe_partitioned(tree):
         result_dataframe = result.read()
 
         pandas.testing.assert_frame_equal(result_dataframe, df)
-        assert result.metadata == metadata
+        assert result.metadata() == metadata
         assert result.specs == specs
 
 
@@ -189,7 +189,7 @@ def test_write_sparse_full(tree, coo):
         result_array = result.read()
 
         numpy.testing.assert_equal(result_array.todense(), coo.todense())
-        assert result.metadata == metadata
+        assert result.metadata() == metadata
         assert result.specs == specs
 
 
@@ -226,7 +226,7 @@ def test_write_sparse_chunked(tree):
         )
 
         # numpy.testing.assert_equal(result_array, sparse.COO(coords=[0, 1, ]))
-        assert result.metadata == metadata
+        assert result.metadata() == metadata
         assert result.specs == specs
 
 
@@ -282,12 +282,12 @@ def test_metadata_revisions(tree):
         ac = client.write_array([1, 2, 3], key="revise_me")
         assert len(ac.metadata_revisions[:]) == 0
         ac.update_metadata(metadata={"a": 1})
-        assert ac.metadata["a"] == 1
-        client["revise_me"].metadata["a"] == 1
+        assert ac.metadata()["a"] == 1
+        client["revise_me"].metadata()["a"] == 1
         assert len(ac.metadata_revisions[:]) == 1
         ac.update_metadata(metadata={"a": 2})
-        assert ac.metadata["a"] == 2
-        client["revise_me"].metadata["a"] == 2
+        assert ac.metadata()["a"] == 2
+        client["revise_me"].metadata()["a"] == 2
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
@@ -386,7 +386,7 @@ async def test_bytes_in_metadata(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         client.create_container("a", metadata={"test": b"raw_bytes"})
-        value = client["a"].metadata["test"]
+        value = client["a"].metadata()["test"]
         assert value.startswith("data:application/octet-stream;base64,")
         label, encoded = value.split(",", 1)
         assert base64.b64decode(encoded) == b"raw_bytes"

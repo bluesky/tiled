@@ -197,7 +197,7 @@ def test_create_and_update_allowed(enter_password, context):
     # Update
     alice_client["c"]["x"].metadata
     alice_client["c"]["x"].update_metadata(metadata={"added_key": 3})
-    assert alice_client["c"]["x"].metadata["added_key"] == 3
+    assert alice_client["c"]["x"].metadata()["added_key"] == 3
 
     # Create
     alice_client["c"].write_array([1, 2, 3])

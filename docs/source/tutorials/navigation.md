@@ -132,15 +132,15 @@ and `(key, value)` pairs ("items").
 [('tiny_image', <ArrayClient>),
 ```
 
-Each item has ``metadata``, which is a simple dict.
+Each item has ``metadata`` method, which returns a simple dict.
 The content of this dict has no special meaning to Tiled; it's the user's
 space to use or not.
 
 ```python
->>> client.metadata  # happens to be empty
+>>> client.metadata()  # happens to be empty
 DictView({})
 
->>> client['short_table'].metadata  # happens to have some stuff
+>>> client['short_table'].metadata()  # happens to have some stuff
 DictView({'animal': 'dog', 'color': 'red'})
 ```
 

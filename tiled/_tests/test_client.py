@@ -87,33 +87,35 @@ def test_jump_down_tree():
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
     assert (
-        client["e"]["d"]["c"]["b"]["a"].metadata["number"]
-        == client["e", "d", "c", "b", "a"].metadata["number"]
+        client["e"]["d"]["c"]["b"]["a"].metadata()["number"]
+        == client["e", "d", "c", "b", "a"].metadata()["number"]
         == 1
     )
     assert (
-        client["e"]["d"]["c"]["b"].metadata["number"]
-        == client["e", "d", "c", "b"].metadata["number"]
+        client["e"]["d"]["c"]["b"].metadata()["number"]
+        == client["e", "d", "c", "b"].metadata()["number"]
         == 2
     )
     assert (
-        client["e"]["d"]["c"].metadata["number"]
-        == client["e", "d", "c"].metadata["number"]
+        client["e"]["d"]["c"].metadata()["number"]
+        == client["e", "d", "c"].metadata()["number"]
         == 3
     )
     assert (
-        client["e"]["d"].metadata["number"] == client["e", "d"].metadata["number"] == 4
+        client["e"]["d"].metadata()["number"]
+        == client["e", "d"].metadata()["number"]
+        == 4
     )
 
-    assert client["e"]["d", "c", "b"]["a"].metadata["number"] == 1
-    assert client["e"]["d", "c", "b", "a"].metadata["number"] == 1
-    assert client["e", "d", "c", "b"]["a"].metadata["number"] == 1
+    assert client["e"]["d", "c", "b"]["a"].metadata()["number"] == 1
+    assert client["e"]["d", "c", "b", "a"].metadata()["number"] == 1
+    assert client["e", "d", "c", "b"]["a"].metadata()["number"] == 1
     assert (
-        client.search(Key("number") == 5)["e", "d", "c", "b", "a"].metadata["number"]
+        client.search(Key("number") == 5)["e", "d", "c", "b", "a"].metadata()["number"]
         == 1
     )
     assert (
-        client["e"].search(Key("number") == 4)["d", "c", "b", "a"].metadata["number"]
+        client["e"].search(Key("number") == 4)["d", "c", "b", "a"].metadata()["number"]
         == 1
     )
 

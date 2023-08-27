@@ -99,7 +99,7 @@ class DaskDatasetClient(Container):
     def read(self, variables=None, *, optimize_wide_table=True):
         data_vars, coords = self._build_arrays(variables, optimize_wide_table)
         return xarray.Dataset(
-            data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
+            data_vars=data_vars, coords=coords, attrs=self.metadata()["attrs"]
         )
 
 

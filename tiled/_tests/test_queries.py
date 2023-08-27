@@ -146,7 +146,7 @@ def test_comparison(client):
 
 
 def test_contains(client):
-    if client.metadata["backend"] == "postgresql":
+    if client.metadata()["backend"] == "postgresql":
 
         def cm():
             return fail_with_status_code(400)
@@ -158,7 +158,7 @@ def test_contains(client):
 
 
 def test_full_text(client):
-    if client.metadata["backend"] in {"postgresql", "sqlite"}:
+    if client.metadata()["backend"] in {"postgresql", "sqlite"}:
 
         def cm():
             return fail_with_status_code(400)
@@ -170,7 +170,7 @@ def test_full_text(client):
 
 
 def test_regex(client):
-    if client.metadata["backend"] in {"postgresql", "sqlite"}:
+    if client.metadata()["backend"] in {"postgresql", "sqlite"}:
 
         def cm():
             return fail_with_status_code(400)
@@ -215,7 +215,7 @@ def test_not_and_and_or(client):
     ],
 )
 def test_in(client, query_values):
-    if client.metadata["backend"] == "postgresql":
+    if client.metadata()["backend"] == "postgresql":
 
         def cm():
             return fail_with_status_code(400)
@@ -240,7 +240,7 @@ def test_in(client, query_values):
     ],
 )
 def test_notin(client, query_values):
-    if client.metadata["backend"] == "postgresql":
+    if client.metadata()["backend"] == "postgresql":
 
         def cm():
             return fail_with_status_code(400)
@@ -263,7 +263,7 @@ def test_notin(client, query_values):
     ],
 )
 def test_specs(client, include_values, exclude_values):
-    if client.metadata["backend"] in {"postgresql", "sqlite"}:
+    if client.metadata()["backend"] in {"postgresql", "sqlite"}:
 
         def cm():
             return fail_with_status_code(400)

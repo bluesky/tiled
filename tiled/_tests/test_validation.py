@@ -89,14 +89,14 @@ def test_validators(client):
     metadata = {"id": 1, "foo": "bar"}
     df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
     result = client.write_dataframe(df, metadata=metadata, specs=["foo"])
-    assert result.metadata == metadata
+    assert result.metadata() == metadata
     result_df = result.read()
     pd.testing.assert_frame_equal(result_df, df)
 
     metadata_upper = {"ID": 2, "FOO": "bar"}
     metadata_lower, _ = lower_case_dict(metadata_upper)
     result = client.write_dataframe(df, metadata=metadata_upper, specs=["foo"])
-    assert result.metadata == metadata_lower
+    assert result.metadata() == metadata_lower
     result_df = result.read()
     pd.testing.assert_frame_equal(result_df, df)
 

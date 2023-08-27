@@ -53,8 +53,8 @@ def test_compound_search(client):
 
 def test_key_into_results(client):
     results = client.search(FullText("dog"))
-    assert "apple" in results["a"].metadata
-    assert "banana" in results["b"].metadata
+    assert "apple" in results["a"].metadata()
+    assert "banana" in results["b"].metadata()
     assert "c" not in results  # This *is* in the tree but not among the results.
 
 
@@ -69,4 +69,4 @@ def test_compound_key_into_results():
     with Context.from_app(app) as context:
         client = from_context(context)
         result = client.search(FullText("hot"))["i", "X", "a"]
-        assert "apple" in result.metadata
+        assert "apple" in result.metadata()

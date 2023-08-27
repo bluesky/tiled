@@ -26,8 +26,8 @@ Suppose data labeled with the `xdi` spec is guaranteed to have a metadata
 dictionary containing the following two entries:
 
 ```py
-x.metadata["XDI"]["Element"]["Symbol"]
-x.metadata["XDI"]["Element"]["Edge"]
+x.metadata()["XDI"]["Element"]["Symbol"]
+x.metadata()["XDI"]["Element"]["Edge"]
 ```
 
 When the Tiled client encounters this type of data, we would like to hand
@@ -48,7 +48,7 @@ class XDIDatasetClient(tiled.client.dataframe.DataFrameClient):
         assert self.item["attributes"]["structure_family"] == "table"
 
     def __repr__(self):
-        md = self.metadata["XDI"]
+        md = self.metadata()["XDI"]
         return f'<{x.item["id"]} {md["Element"]["Symbol"]} {md["Element"]["Edge"]}>'
 ```
 
@@ -159,7 +159,7 @@ to quickly access certain metadata.
 class CustomClient(...):
     @property
     def element(self):
-        return self.metadata["XDI"]["Element"]["Symbol"]
+        return self.metadata()["XDI"]["Element"]["Symbol"]
 ```
 
 We can add convenience methods that read certain sections of the data and perhaps do

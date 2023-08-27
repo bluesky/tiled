@@ -154,7 +154,7 @@ class BaseClient:
         "JSON payload describing this item. Mostly for internal use."
         return self._item
 
-    @property
+    # @property
     def metadata(self):
         "Metadata about this data source."
         # Ensure this is immutable (at the top level) to help the user avoid

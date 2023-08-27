@@ -50,19 +50,21 @@ def client():
     ],
 )
 def test_sort(client, key, sorted_list):
-    unsorted = [node.metadata[key] for node in client.values()]
+    unsorted = [node.metadata()[key] for node in client.values()]
     assert unsorted != sorted_list
-    sorted_ascending = [node.metadata[key] for node in client.sort((key, 1)).values()]
+    sorted_ascending = [node.metadata()[key] for node in client.sort((key, 1)).values()]
     assert sorted_ascending == sorted_list
-    sorted_descending = [node.metadata[key] for node in client.sort((key, -1)).values()]
+    sorted_descending = [
+        node.metadata()[key] for node in client.sort((key, -1)).values()
+    ]
     assert sorted_descending == list(reversed(sorted_list))
 
 
 def test_sort_two_columns(client):
     # Sort by (repeated) letter, then by number.
     client_sorted = client.sort(("repeated_letter", 1), ("number", 1))
-    letters_ = [node.metadata["repeated_letter"] for node in client_sorted.values()]
-    numbers_ = [node.metadata["number"] for node in client_sorted.values()]
+    letters_ = [node.metadata()["repeated_letter"] for node in client_sorted.values()]
+    numbers_ = [node.metadata()["number"] for node in client_sorted.values()]
     # Letters are sorted.
     assert letters_ == ["a"] * 5 + ["b"] * 5
     # Numbers *within* each block of letters are sorted
