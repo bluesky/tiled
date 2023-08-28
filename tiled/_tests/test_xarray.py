@@ -1,5 +1,6 @@
 import dask.array
 import numpy
+import orjson
 import pytest
 import xarray
 import xarray.testing
@@ -8,12 +9,8 @@ from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
 from ..client import xarray as xarray_client
+from ..serialization.xarray import serialize_json
 from ..server.app import build_app
-
-try:
-    from ..serialization.xarray import serialize_json
-except ImportError:
-    serialize_json = None
 
 image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -151,10 +148,6 @@ def test_url_limit_handling(client):
     assert highest_request_count > higher_request_count > normal_request_count
 
 
-@pytest.mark.skipif(
-    serialize_json is None,
-    reason="serialization.xarray.serialize_json() is not defined",
-)
 @pytest.mark.parametrize("key", list(tree))
 @pytest.mark.asyncio
 async def test_serialize_json(client, key):
@@ -163,7 +156,6 @@ async def test_serialize_json(client, key):
     filter_for_access = None  # Not used
 
     result = await serialize_json(xa_node, metadata, filter_for_access)
-    orjson = pytest.importorskip("orjson")
     result_data_keys = orjson.loads(result).keys()
 
     xa_coords_and_vars = set(xa_node)
