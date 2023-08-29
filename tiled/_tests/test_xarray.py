@@ -148,16 +148,18 @@ def test_url_limit_handling(client):
     assert highest_request_count > higher_request_count > normal_request_count
 
 
-@pytest.mark.parametrize("key", list(tree))
+@pytest.mark.parametrize("ds_node", tuple(tree.values()), ids=tuple(tree))
 @pytest.mark.asyncio
-async def test_serialize_json(client, key):
-    xa_node = client[key]
+async def test_serialize_json(ds_node: DatasetAdapter):
+    """Verify that serialized Dataset keys are a subset
+    of all coordinates and variables from the Dataset.
+    Index variables are removed by serialize_json().
+    """
     metadata = None  # Not used
     filter_for_access = None  # Not used
+    result = await serialize_json(ds_node, metadata, filter_for_access)
 
-    result = await serialize_json(xa_node, metadata, filter_for_access)
     result_data_keys = orjson.loads(result).keys()
+    ds_coords_and_vars = set(ds_node)
 
-    xa_coords_and_vars = set(xa_node)
-
-    assert set(result_data_keys).issubset(xa_coords_and_vars)
+    assert set(result_data_keys).issubset(ds_coords_and_vars)
