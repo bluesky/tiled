@@ -148,7 +148,7 @@ def test_url_limit_handling(client):
     assert highest_request_count > higher_request_count > normal_request_count
 
 
-@pytest.mark.parametrize("ds_node", tuple(tree.values()), ids=tuple(tree))
+@pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
 @pytest.mark.asyncio
 async def test_serialize_json(ds_node: DatasetAdapter):
     """Verify that serialized Dataset keys are a subset
