@@ -12,6 +12,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
 import UserContext, {userObjectContext} from './context/user';
+import { fetchServerInfo, ServerInfo } from './server-info';
 const Browse = lazy(() => import("./routes/browse"));
 
 
@@ -48,15 +49,23 @@ function App() {
   }, [])
 
 
-  const [settings, setSettings] = useState(emptySettings)
+  const [settings, setSettings] = useState(emptySettings);
+  const [serverInfo, setServerInfo] = useState(ServerInfo);
+
   useEffect( () => {
-    const controller = new AbortController()
+    const controller = new AbortController();
     async function initSettingsContext() {
-      var data = await fetchSettings(controller.signal)
-      setSettings(data)
+      var data = await fetchSettings(controller.signal);
+      setSettings(data);
     }
-    initSettingsContext()
-  } , []);
+
+    async function initServerInfoContext(){
+      var info = await fetchServerInfo(controller.signal, settings.api_url);
+      setServerInfo(info);
+    }
+
+    initSettingsContext();
+  }, []);
   return (
     <UserContext.Provider value={userContext} >
       <SettingsContext.Provider value={settings}>

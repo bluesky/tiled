@@ -1,24 +1,24 @@
 import * as React from "react";
 import { Paper, withStyles, Grid, TextField, Button, FormControlLabel, Checkbox } from '@mui/material';
 import {axiosInstance} from '../client';
-import { useState } from "react";
 import {ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY} from "../client";
-
+import { useContext, useState } from "react";
+import { SettingsContext } from "../context/settings";
 
 interface Props{
 }
 
 function Auth (props: Props) {
+    const settings = useContext(SettingsContext);
     async function login(){
         const loginData = new FormData();
         loginData.append("username", username);
         loginData.append("password", password);
 
-        const response = await axiosInstance.post("auth/provider/toy/token", loginData, {
+        const response = await axiosInstance.post(`${settings.api_url}/auth/provider/toy/token`, loginData, {
 
             headers: {
-                "Content-Type": "multipart/form-data",
-                "X-CSRF": 'm0rVhrUEgq1Z1kpmOKFLRzD_f6zRb8D5t5-fFifLbn8',
+                "Content-Type": "multipart/form-data"
             }});
 
         localStorage.setItem(REFRESH_TOKEN_KEY, response.data.refresh_token);
