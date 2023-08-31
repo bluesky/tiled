@@ -182,7 +182,7 @@ async def test_serialize_netcdf(ds_node: DatasetAdapter):
 
     file = _BytesIOThatIgnoresClose(bytes_)
 
-    result_data_keys = xarray.open_dataset(file,engine="scipy").keys()
+    result_data_keys = xarray.open_dataset(file, engine="scipy").keys()
     ds_coords_and_vars = set(ds_node)
 
     assert set(result_data_keys).issubset(ds_coords_and_vars)
