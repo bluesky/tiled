@@ -10,6 +10,8 @@ from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
 from ..client import xarray as xarray_client
 from ..serialization.xarray import serialize_json
+from ..serialization.xarray import serialize_netcdf
+from ..serialization.xarray import _BytesIOThatIgnoresClose
 from ..server.app import build_app
 
 image = numpy.random.random((3, 5))
@@ -160,6 +162,24 @@ async def test_serialize_json(ds_node: DatasetAdapter):
     result = await serialize_json(ds_node, metadata, filter_for_access)
 
     result_data_keys = orjson.loads(result).keys()
+    ds_coords_and_vars = set(ds_node)
+
+    assert set(result_data_keys).issubset(ds_coords_and_vars)
+
+@pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
+@pytest.mark.asyncio
+async def test_serialize_netcdf(ds_node: DatasetAdapter):
+    """Verify that serialized Dataset keys are a subset
+    of all coordinates and variables from the Dataset.
+    Index variables are removed by serialize_netcdf().
+    """
+    metadata = None  # Not used
+    filter_for_access = None  # Not used
+    bytes_ = await serialize_netcdf(ds_node, metadata, filter_for_access)
+
+    file = _BytesIOThatIgnoresClose(bytes_)
+
+    result_data_keys = xarray.open_dataset(file,engine='scipy').keys()
     ds_coords_and_vars = set(ds_node)
 
     assert set(result_data_keys).issubset(ds_coords_and_vars)
