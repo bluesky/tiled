@@ -89,7 +89,7 @@ trees:
     args:
       uri: ./catalog.db
         readable_storage:
-	 - ./data/
+          - ./data/
       adapters_by_mimetype:
         application/x-xdi: tiled.examples.xdi:read_xdi
 ```
