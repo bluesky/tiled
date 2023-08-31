@@ -9,9 +9,11 @@ from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
 from ..client import xarray as xarray_client
-from ..serialization.xarray import serialize_json
-from ..serialization.xarray import serialize_netcdf
-from ..serialization.xarray import _BytesIOThatIgnoresClose
+from ..serialization.xarray import (
+    _BytesIOThatIgnoresClose,
+    serialize_json,
+    serialize_netcdf,
+)
 from ..server.app import build_app
 
 image = numpy.random.random((3, 5))
@@ -166,6 +168,7 @@ async def test_serialize_json(ds_node: DatasetAdapter):
 
     assert set(result_data_keys).issubset(ds_coords_and_vars)
 
+
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
 @pytest.mark.asyncio
 async def test_serialize_netcdf(ds_node: DatasetAdapter):
@@ -179,7 +182,7 @@ async def test_serialize_netcdf(ds_node: DatasetAdapter):
 
     file = _BytesIOThatIgnoresClose(bytes_)
 
-    result_data_keys = xarray.open_dataset(file,engine='scipy').keys()
+    result_data_keys = xarray.open_dataset(file,engine="scipy").keys()
     ds_coords_and_vars = set(ds_node)
 
     assert set(result_data_keys).issubset(ds_coords_and_vars)
