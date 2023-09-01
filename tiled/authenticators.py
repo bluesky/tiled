@@ -51,9 +51,12 @@ additionalProperties: false
 properties:
   users_to_password:
     type: object
-  description: |
-    Mapping usernames to password. Environment variable expansion should be
-    used to avoid placing passwords directly in configuration.
+    description: |
+      Mapping usernames to password. Environment variable expansion should be
+      used to avoid placing passwords directly in configuration.
+  confirmation_message:
+    type: string
+    description: May be displayed by client after successful login.
 """
 
     def __init__(self, users_to_passwords, confirmation_message=""):
@@ -79,6 +82,9 @@ properties:
   service:
     type: string
     description: PAM service. Default is 'login'.
+  confirmation_message:
+    type: string
+    description: May be displayed by client after successful login.
 """
 
     def __init__(self, service="login", confirmation_message=""):
@@ -141,6 +147,9 @@ properties:
         - kty
         - n
         - use
+  confirmation_message:
+    type: string
+    description: May be displayed by client after successful login.
 """
 
     def __init__(
