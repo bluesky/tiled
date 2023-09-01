@@ -29,6 +29,9 @@ class DummyAuthenticator:
 
     mode = Mode.password
 
+    def __init__(self, confirmation_message=""):
+        self.confirmation_message = confirmation_message
+
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         return UserSessionState(username, {})
 
@@ -53,8 +56,9 @@ properties:
     used to avoid placing passwords directly in configuration.
 """
 
-    def __init__(self, users_to_passwords):
+    def __init__(self, users_to_passwords, confirmation_message=""):
         self._users_to_passwords = users_to_passwords
+        self.confirmation_message = confirmation_message
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         true_password = self._users_to_passwords.get(username)
@@ -77,12 +81,13 @@ properties:
     description: PAM service. Default is 'login'.
 """
 
-    def __init__(self, service="login"):
+    def __init__(self, service="login", confirmation_message=""):
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
             )
         self.service = service
+        self.confirmation_message = confirmation_message
         # TODO Try to open a PAM session.
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
