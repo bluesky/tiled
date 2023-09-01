@@ -263,7 +263,7 @@ class SAMLAuthenticator:
         self,
         saml_settings,  # See EXAMPLE_SAML_SETTINGS below.
         attribute_name,  # which SAML attribute to use as 'id' for Idenity
-        confirmation_message=None,
+        confirmation_message="",
     ):
         self.saml_settings = saml_settings
         self.attribute_name = attribute_name
@@ -494,6 +494,8 @@ class LDAPAuthenticator:
 
         This can be useful in an heterogeneous environment, when supplying a UNIX username
         to authenticate against AD.
+    confirmation_message: str
+        May be displayed by client after successful login.
 
     Examples
     --------
@@ -558,6 +560,7 @@ class LDAPAuthenticator:
         attributes=None,
         auth_state_attributes=None,
         use_lookup_dn_username=True,
+        confirmation_message="",
     ):
         self.use_ssl = use_ssl
         self.use_tls = use_tls
@@ -599,6 +602,7 @@ class LDAPAuthenticator:
         self.server_port = (
             server_port if server_port is not None else self._server_port_default()
         )
+        self.confirmation_message = confirmation_message
 
     def _server_port_default(self):
         if self.use_ssl:
