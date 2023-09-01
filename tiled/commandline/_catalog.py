@@ -152,7 +152,7 @@ def register(
         # Interpret URI as filepath.
         database = f"sqlite+aiosqlite:///{database}"
     if keep_ext:
-        from ..adapters.files import identity
+        from ..catalog.register import identity
 
         key_from_filename = identity
     else:
