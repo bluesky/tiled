@@ -29,6 +29,9 @@ class DummyAuthenticator:
 
     mode = Mode.password
 
+    def __init__(self, confirmation_message=""):
+        self.confirmation_message = confirmation_message
+
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         return UserSessionState(username, {})
 
@@ -48,13 +51,17 @@ additionalProperties: false
 properties:
   users_to_password:
     type: object
-  description: |
-    Mapping usernames to password. Environment variable expansion should be
-    used to avoid placing passwords directly in configuration.
+    description: |
+      Mapping usernames to password. Environment variable expansion should be
+      used to avoid placing passwords directly in configuration.
+  confirmation_message:
+    type: string
+    description: May be displayed by client after successful login.
 """
 
-    def __init__(self, users_to_passwords):
+    def __init__(self, users_to_passwords, confirmation_message=""):
         self._users_to_passwords = users_to_passwords
+        self.confirmation_message = confirmation_message
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         true_password = self._users_to_passwords.get(username)
@@ -75,14 +82,18 @@ properties:
   service:
     type: string
     description: PAM service. Default is 'login'.
+  confirmation_message:
+    type: string
+    description: May be displayed by client after successful login.
 """
 
-    def __init__(self, service="login"):
+    def __init__(self, service="login", confirmation_message=""):
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
             )
         self.service = service
+        self.confirmation_message = confirmation_message
         # TODO Try to open a PAM session.
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
@@ -136,6 +147,9 @@ properties:
         - kty
         - n
         - use
+  confirmation_message:
+    type: string
+    description: May be displayed by client after successful login.
 """
 
     def __init__(
@@ -249,7 +263,7 @@ class SAMLAuthenticator:
         self,
         saml_settings,  # See EXAMPLE_SAML_SETTINGS below.
         attribute_name,  # which SAML attribute to use as 'id' for Idenity
-        confirmation_message=None,
+        confirmation_message="",
     ):
         self.saml_settings = saml_settings
         self.attribute_name = attribute_name
@@ -480,6 +494,8 @@ class LDAPAuthenticator:
 
         This can be useful in an heterogeneous environment, when supplying a UNIX username
         to authenticate against AD.
+    confirmation_message: str
+        May be displayed by client after successful login.
 
     Examples
     --------
@@ -544,6 +560,7 @@ class LDAPAuthenticator:
         attributes=None,
         auth_state_attributes=None,
         use_lookup_dn_username=True,
+        confirmation_message="",
     ):
         self.use_ssl = use_ssl
         self.use_tls = use_tls
@@ -585,6 +602,7 @@ class LDAPAuthenticator:
         self.server_port = (
             server_port if server_port is not None else self._server_port_default()
         )
+        self.confirmation_message = confirmation_message
 
     def _server_port_default(self):
         if self.use_ssl:

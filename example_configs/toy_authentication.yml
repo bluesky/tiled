@@ -7,6 +7,7 @@ authentication:
         alice: ${ALICE_PASSWORD}
         bob: ${BOB_PASSWORD}
         cara: ${CARA_PASSWORD}
+      confirmation_message: "You have logged in as {id}."
   tiled_admins:
     - provider: toy
       id: alice
