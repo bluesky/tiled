@@ -1,3 +1,5 @@
+from io import BytesIO
+
 import dask.array
 import numpy
 import orjson
@@ -9,11 +11,7 @@ from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
 from ..client import xarray as xarray_client
-from ..serialization.xarray import (
-    _BytesIOThatIgnoresClose,
-    serialize_json,
-    serialize_netcdf,
-)
+from ..serialization.xarray import serialize_json, serialize_netcdf
 from ..server.app import build_app
 
 image = numpy.random.random((3, 5))
@@ -170,19 +168,17 @@ async def test_serialize_json(ds_node: DatasetAdapter):
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
+# Suppress warning from tiled.serialization.xarray._BytesIOThatIgnoresClose.close()
+@pytest.mark.filterwarnings("ignore:Exception ignored in")
 @pytest.mark.asyncio
 async def test_serialize_netcdf(ds_node: DatasetAdapter):
-    """Verify that serialized Dataset keys are a subset
-    of all coordinates and variables from the Dataset.
-    Index variables are removed by serialize_netcdf().
-    """
+    """Verify that Dataset serialized as netCDF can be reconstituted."""
     metadata = None  # Not used
     filter_for_access = None  # Not used
     bytes_ = await serialize_netcdf(ds_node, metadata, filter_for_access)
+    byte_stream = BytesIO(bytes_)
 
-    file = _BytesIOThatIgnoresClose(bytes_)
+    result = xarray.open_dataset(byte_stream, engine="scipy")
+    expected = ds_node
 
-    result_data_keys = xarray.open_dataset(file, engine="scipy").keys()
-    ds_coords_and_vars = set(ds_node)
-
-    assert set(result_data_keys).issubset(ds_coords_and_vars)
+    assert result == expected
