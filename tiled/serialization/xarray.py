@@ -56,8 +56,8 @@ if modules_available("scipy"):
         file = _BytesIOThatIgnoresClose()
         # Per the xarray.Dataset.to_netcdf documentation,
         # file-like objects are only supported by the scipy engine.
-        bytes_ = (await as_dataset(node)).to_netcdf(file, engine="scipy")
-        return bytes_
+        (await as_dataset(node)).to_netcdf(file, engine="scipy")
+        return file.getbuffer()
 
 
 # Support DataFrame formats by first converting to DataFrame.
