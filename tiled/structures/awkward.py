@@ -42,6 +42,10 @@ def project_form(form, form_keys_touched):
         elif len(step2) == 1:
             return step2[0]
         else:
+            raise NotImplementedError(
+                "Certain UnionForms are not yet supported. "
+                "See https://github.com/scikit-hep/awkward/issues/2666"
+            )
             return awkward.forms.UnionForm.simplified(
                 form.tags,
                 form.index,
