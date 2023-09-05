@@ -11,6 +11,8 @@ docs/source/reference/generated/
 /tiled.egg-info
 /web-frontend/dist
 
+/web-frontend/node_modules
+
 # pytest
 .pytest_cache/
 
