@@ -65,33 +65,3 @@ def project_form(form, form_keys_touched):
             return form.copy(content=project_form(form.content, form_keys_touched))
         else:
             return None
-
-
-ATTRIBUTES_BY_CLASS = {
-    "NumpyArray": ["data"],
-    "EmptyArray": [],
-    "ListOffsetArray": ["offsets"],
-    "ListArray": ["starts", "stops"],
-    "RegularArray": [],
-    "IndexedArray": ["index"],
-    "IndexedOptionArray": ["index"],
-    "ByteMaskedArray": ["mask"],
-    "BitMaskedArray": ["mask"],
-    "UnmaskedArray": [],
-    "RecordArray": [],
-    "UnionArray": ["tags", "index"],
-}
-
-
-def suffixed_form_keys(form):
-    "Given a form, extract suffixed form keys like 'node0-data'."
-    result = []
-    attributes = ATTRIBUTES_BY_CLASS[form["class"]]
-    for attribute in attributes:
-        result.append(f"{form['form_key']}-{attribute}")
-    if "content" in form:
-        result.extend(suffixed_form_keys(form["content"]))
-    elif "contents" in form:
-        for content in form["contents"]:
-            result.extend(suffixed_form_keys(content))
-    return result

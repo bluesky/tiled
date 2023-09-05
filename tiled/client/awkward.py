@@ -29,7 +29,7 @@ class AwkwardArrayClient(BaseClient):
         )
         proxy_array = awkward.Array(typetracer)
         # TODO Ask awkward to promote _touch_data to a public method.
-        ak.typetracer.touch_data(proxy_array[slice])
+        awkward.typetracer.touch_data(proxy_array[slice])
         form_keys_touched = set(report.data_touched)
         projected_form = project_form(form, form_keys_touched)
         # The order is not important, but sort so that the request is deterministic.

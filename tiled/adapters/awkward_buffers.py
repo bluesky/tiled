@@ -3,7 +3,8 @@ A directory containing awkward buffers, one file per form key.
 """
 from urllib import parse
 
-from ..structures.awkward import suffixed_form_keys
+import awkward.forms
+
 from ..structures.core import StructureFamily
 
 
@@ -41,9 +42,10 @@ class AwkwardBuffersAdapter:
                 file.write(value)
 
     def read(self, form_keys=None):
+        form = awkward.forms.from_dict(self._structure.form)
         selected_suffixed_form_keys = [
             suffixed_fk
-            for suffixed_fk in suffixed_form_keys(self._structure.form)
+            for suffixed_fk in form.expected_from_buffers()
             if (form_keys is None)
             or any(suffixed_fk.startswith(fk) for fk in form_keys)
         ]
