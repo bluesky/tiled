@@ -35,7 +35,20 @@ def project_form(form, form_keys_touched):
         return form.copy(fields=fields, contents=contents)
 
     elif isinstance(form, awkward.forms.UnionForm):
-        raise NotImplementedError
+        step1 = [project_form(x, form_keys_touched) for x in form.contents]
+        step2 = [x for x in step1 if x is not None]
+        if len(step2) == 0:
+            return None
+        elif len(step2) == 1:
+            return step2[0]
+        else:
+            return awkward.forms.UnionForm.simplified(
+                form.tags,
+                form.index,
+                step2,
+                parameters=form.parameters,
+                form_key=form.form_key,
+            )
 
     elif isinstance(form, (awkward.forms.NumpyForm, awkward.forms.EmptyForm)):
         if form.form_key in form_keys_touched:
