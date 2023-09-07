@@ -36,24 +36,32 @@ class AwkwardBuffersAdapter:
         data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         return [Asset(data_uri=data_uri, is_directory=True)]
 
-    def write(self, data):
-        for form_key, value in data.items():
+    def write(self, container):
+        for form_key, value in container.items():
             with open(self.directory / form_key, "wb") as file:
                 file.write(value)
 
-    def read(self, form_keys=None):
+    def read_buffers(self, form_keys=None):
         form = awkward.forms.from_dict(self._structure.form)
-        selected_suffixed_form_keys = [
-            suffixed_fk
-            for suffixed_fk in form.expected_from_buffers()
+        keys = [
+            key
+            for key in form.expected_from_buffers()
             if (form_keys is None)
-            or any(suffixed_fk.startswith(fk) for fk in form_keys)
+            or any(key.startswith(form_key) for form_key in form_keys)
         ]
-        buffers = {}
-        for suffixed_form_key in selected_suffixed_form_keys:
-            with open(self.directory / suffixed_form_key, "rb") as file:
-                buffers[suffixed_form_key] = file.read()
-        return buffers
+        container = {}
+        for key in keys:
+            with open(self.directory / key, "rb") as file:
+                container[key] = file.read()
+        return container
+
+    def read(self):
+        form = awkward.forms.from_dict(self._structure.form)
+        container = {}
+        for key in form.expected_from_buffers():
+            with open(self.directory / key, "rb") as file:
+                container[key] = file.read()
+        return container
 
     def structure(self):
         return self._structure

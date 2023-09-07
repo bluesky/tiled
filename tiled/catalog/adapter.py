@@ -829,6 +829,11 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
+    async def read_buffers(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).read_buffers, *args, **kwargs
+        )
+
     async def write(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
 

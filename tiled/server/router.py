@@ -621,6 +621,7 @@ async def awkward_buffers(
     Fetch a slice of AwkwardArray data.
     """
     structure_family = entry.structure_family
+    structure = entry.structure()
     if structure_family != StructureFamily.awkward:
         raise HTTPException(
             status_code=404,
@@ -629,11 +630,69 @@ async def awkward_buffers(
     with record_timing(request.state.metrics, "read"):
         # The plural vs. singular mismatch is due to the way query parameters
         # are given as ?form_key=A&form_key=B&form_key=C.
-        container = await ensure_awaitable(entry.read, form_key)
+        container = await ensure_awaitable(entry.read_buffers, form_key)
     if (
         sum(len(buffer) for buffer in container.values())
         > settings.response_bytesize_limit
     ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
+    components = (structure.form, structure.length, container)
+    try:
+        with record_timing(request.state.metrics, "pack"):
+            return await construct_data_response(
+                structure_family,
+                serialization_registry,
+                components,
+                entry.metadata(),
+                request,
+                format,
+                specs=getattr(entry, "specs", []),
+                expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
+            )
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=err.args[0])
+
+
+@router.get(
+    "/awkward/full/{path:path}",
+    response_model=schemas.Response,
+    name="Full AwkwardArray",
+)
+async def awkward_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    # slice=Depends(slice_),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a slice of AwkwardArray data.
+    """
+    structure_family = entry.structure_family
+    if structure_family != StructureFamily.awkward:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /awkward/full route.",
+        )
+    # Deferred import because this is not a required dependency of the server
+    # for some use cases.
+    import awkward
+
+    with record_timing(request.state.metrics, "read"):
+        container = await ensure_awaitable(entry.read)
+    structure = entry.structure()
+    components = (structure.form, structure.length, container)
+    array = awkward.from_buffers(*components)
+    if array.nbytes > settings.response_bytesize_limit:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -646,7 +705,7 @@ async def awkward_buffers(
             return await construct_data_response(
                 structure_family,
                 serialization_registry,
-                container,
+                components,
                 entry.metadata(),
                 request,
                 format,
@@ -879,7 +938,8 @@ async def put_awkward_full(
     deserializer = deserialization_registry.dispatch(
         StructureFamily.awkward, media_type
     )
-    data = await ensure_awaitable(deserializer, body)
+    structure = entry.structure()
+    data = await ensure_awaitable(deserializer, body, structure.form, structure.length)
     await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
