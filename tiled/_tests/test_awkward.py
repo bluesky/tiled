@@ -25,25 +25,26 @@ def test_slicing(tmpdir):
                 [{"x": 3.3, "y": [1, 2, 3]}],
             ]
         )
-        aac = client.write_awkward(array, key="test")
+        returned = client.write_awkward(array, key="test")
+        # Test with client returned, and with client from lookup.
+        for aac in [returned, client["test"]]:
+            # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+            assert awkward.almost_equal(aac.read(), array)
+            assert awkward.almost_equal(aac[:], array)
+            assert awkward.almost_equal(aac[0], array[0])
+            assert awkward.almost_equal(aac[0, "y"], array[0, "y"])
+            assert awkward.almost_equal(aac[0, "y", :1], array[0, "y", :1])
 
-        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
-        assert awkward.almost_equal(aac.read(), array)
-        assert awkward.almost_equal(aac[:], array)
-        assert awkward.almost_equal(aac[0], array[0])
-        assert awkward.almost_equal(aac[0, "y"], array[0, "y"])
-        assert awkward.almost_equal(aac[0, "y", :1], array[0, "y", :1])
-
-        # When sliced, the serer sends less data.
-        with record_history() as h:
-            aac[:]
-        assert len(h.responses) == 1  # sanity check
-        full_response_size = len(h.responses[0].content)
-        with record_history() as h:
-            aac[0, "y"]
-        assert len(h.responses) == 1  # sanity check
-        sliced_response_size = len(h.responses[0].content)
-        assert sliced_response_size < full_response_size
+            # When sliced, the serer sends less data.
+            with record_history() as h:
+                aac[:]
+            assert len(h.responses) == 1  # sanity check
+            full_response_size = len(h.responses[0].content)
+            with record_history() as h:
+                aac[0, "y"]
+            assert len(h.responses) == 1  # sanity check
+            sliced_response_size = len(h.responses[0].content)
+            assert sliced_response_size < full_response_size
 
 
 def test_export_json(tmpdir):
