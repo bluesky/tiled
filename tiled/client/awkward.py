@@ -36,7 +36,7 @@ class AwkwardArrayClient(BaseClient):
         params = {"form_key": sorted(list(form_keys_touched))}
         content = handle_error(
             self.context.http_client.get(
-                self.item["links"]["full"],
+                self.item["links"]["buffers"],
                 headers={"Accept": "application/zip"},
                 params=params,
             )

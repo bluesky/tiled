@@ -604,14 +604,13 @@ async def node_full(
 
 
 @router.get(
-    "/awkward/full/{path:path}",
+    "/awkward/buffers/{path:path}",
     response_model=schemas.Response,
-    name="full awkward array",
+    name="AwkwardArray buffers",
 )
-async def awkward_full(
+async def awkward_buffers(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
-    # slice=Depends(slice_),
     form_key: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -625,7 +624,7 @@ async def awkward_full(
     if structure_family != StructureFamily.awkward:
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /awkwrad/full route.",
+            detail=f"Cannot read {entry.structure_family} structure with /awkward/buffers route.",
         )
     with record_timing(request.state.metrics, "read"):
         # The plural vs. singular mismatch is due to the way query parameters
@@ -741,6 +740,7 @@ async def post_metadata(
         links["full"] = f"{base_url}/node/full/{path_str}"
         links["search"] = f"{base_url}/search/{path_str}"
     elif body.structure_family == StructureFamily.awkward:
+        links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
         links["full"] = f"{base_url}/awkward/full/{path_str}"
     else:
         raise NotImplementedError(body.structure_family)
