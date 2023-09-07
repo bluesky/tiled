@@ -3,7 +3,7 @@ import awkward
 from ..serialization.awkward import from_zipped_buffers, to_zipped_buffers
 from ..structures.awkward import project_form
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice
+from .utils import export_util, handle_error
 
 
 class AwkwardArrayClient(BaseClient):
@@ -52,7 +52,7 @@ class AwkwardArrayClient(BaseClient):
     def __getitem__(self, slice):
         return self.read(slice=slice)
 
-    def export(self, filepath, *, format=None, slice=None, template_vars=None):
+    def export(self, filepath, *, format=None):
         """
         Download data in some format and write to a file.
 
@@ -64,30 +64,23 @@ class AwkwardArrayClient(BaseClient):
             If format is None and `file` is a filepath, the format is inferred
             from the name, like 'table.csv' implies format="text/csv". The format
             may be given as a file extension ("csv") or a media type ("text/csv").
-        slice : List[slice], optional
-            List of slice objects. A convenient way to generate these is shown
-            in the examples.
-        template_vars: dict, optional
-            Used internally.
 
         Examples
         --------
 
-        Export all.
+        Export as Parquet.
 
-        >>> a.export("numbers.csv")
+        >>> a.export("awkward.parquet")
 
-        Export an N-dimensional slice.
+        Export as JSON.
 
-        >>> import numpy
-        >>> a.export("numbers.csv", slice=numpy.s_[:10, 50:100])
+        >>> a.export("awkward.json")
+
         """
-        template_vars = template_vars or {}
-        params = params_from_slice(slice)
         return export_util(
             filepath,
             format,
             self.context.http_client.get,
-            self.item["links"]["full"].format(**template_vars),
-            params=params,
+            self.item["links"]["full"],
+            params={},
         )
