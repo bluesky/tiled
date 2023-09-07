@@ -527,6 +527,8 @@ async def construct_resource(
                 links[
                     "partition"
                 ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
+            elif entry.structure_family == StructureFamily.awkward:
+                links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
             if schemas.EntryFields.structure in fields:
                 attributes["structure"] = structure
         else:

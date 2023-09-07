@@ -189,6 +189,7 @@ class ArrayLinks(pydantic.BaseModel):
 
 class AwkwardLinks(pydantic.BaseModel):
     self: str
+    buffers: str
     full: str
 
 
