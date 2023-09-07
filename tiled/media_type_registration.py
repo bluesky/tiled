@@ -35,6 +35,9 @@ class SerializationRegistry:
     DEFAULT_ALIASES = {
         "h5": "application/x-hdf5",
         "hdf5": "application/x-hdf5",
+        "parquet": "application/x-parquet",
+        "arrow": APACHE_ARROW_FILE_MIME_TYPE,
+        "feather": APACHE_ARROW_FILE_MIME_TYPE,
         "nc": "application/netcdf",
         "text": "text/plain",
         "txt": "text/plain",
