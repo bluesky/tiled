@@ -55,7 +55,7 @@ class AwkwardAdapter:
 
     def write(self, container):
         for form_key, value in container.items():
-            container[form_key] = value
+            self.container[form_key] = value
 
     def structure(self):
         return self._structure

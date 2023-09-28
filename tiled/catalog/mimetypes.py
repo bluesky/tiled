@@ -41,7 +41,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).read_zarr,
         ZIP_MIMETYPE: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
-        ).AwkwardBuffersAdapter,
+        ).AwkwardBuffersAdapter.from_directory,
     }
 )
 
