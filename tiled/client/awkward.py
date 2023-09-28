@@ -44,7 +44,10 @@ class AwkwardClient(BaseClient):
         ).read()
         container = from_zipped_buffers(content, projected_form, structure.length)
         projected_array = awkward.from_buffers(
-            projected_form, structure.length, container
+            projected_form,
+            structure.length,
+            container,
+            allow_noncanonical_form=True,
         )
         return projected_array[slice]
 
