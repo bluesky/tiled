@@ -10,10 +10,11 @@ potentially any language.
 The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
+* awkward --- nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
+* container --- a of other structures, akin to a dictionary or a directory
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
 * table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
-* container --- a of other structures, akin to a dictionary or a directory
 
 Support for sparse arrays and [Awkward Array](https://awkward-array.org/) are
 planned.
@@ -178,6 +179,70 @@ $ http :8000/api/v1/metadata/structured_data/pets | jq .data.attributes.structur
     ]
   }
 }
+```
+
+### Awkward
+
+[AwkwardArrays](https://awkward-array.org/) express nested, variable-sized
+data, including arbitrary-length lists, records, mixed types, and missing data.
+This often comes up in the context of event-based data, such as is used in
+high-energy physics, neutron experiments, quantum computing, and very high-rate
+detectors.
+
+AwkwardArrays are specified by:
+
+* An outer `length` (always an integer)
+* A JSON `form` (specified by AwkwardArray, giving the internal layout)
+* Named buffers of bytes, whose names match information in the `form`
+
+The first two are included in the structure.
+
+```
+$ http :8000/api/v1/metadata/awkward_array | jq .data.attributes.structure
+```
+
+```json
+{
+  "length": 3,
+  "form": {
+    "class": "ListOffsetArray",
+    "offsets": "i64",
+    "content": {
+      "class": "RecordArray",
+      "fields": [
+        "x",
+        "y"
+      ],
+      "contents": [
+        {
+          "class": "NumpyArray",
+          "primitive": "float64",
+          "inner_shape": [],
+          "parameters": {},
+          "form_key": "node2"
+        },
+        {
+          "class": "ListOffsetArray",
+          "offsets": "i64",
+          "content": {
+            "class": "NumpyArray",
+            "primitive": "int64",
+            "inner_shape": [],
+            "parameters": {},
+            "form_key": "node4"
+          },
+          "parameters": {},
+          "form_key": "node3"
+        }
+      ],
+      "parameters": {},
+      "form_key": "node1"
+    },
+    "parameters": {},
+    "form_key": "node0"
+  }
+}
+
 ```
 
 ### Sparse Array

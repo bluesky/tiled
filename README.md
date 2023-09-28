@@ -20,6 +20,7 @@ Tiled puts an emphasis on **structures** rather than formats, including:
 * N-dimensional strided arrays (i.e. numpy-like arrays)
 * Sparse arrays
 * Tabular data (e.g. pandas-like "dataframes")
+* Nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
 * Hierarchical structures thereof (e.g. xarrays, HDF5-compatible structures like NeXus)
 
 Tiled implements extensible **access control enforcement** based on web security
