@@ -3,12 +3,14 @@ import string
 import sys
 from datetime import timedelta
 
+import awkward
 import numpy
 import pandas
 import sparse
 import xarray
 
 from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.awkward import AwkwardAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.adapters.sparse import COOAdapter
@@ -34,6 +36,9 @@ lon = [[-99.83, -99.32], [-99.79, -99.23]]
 lat = [[42.25, 42.21], [42.63, 42.59]]
 sparse_arr = numpy.random.random((100, 100))
 sparse_arr[sparse_arr < 0.9] = 0  # fill most of the array with zeros
+awkward_arr = awkward.Array(
+    [[{"x": 1.1, "y": [1]}, {"x": 2.2, "y": [1, 2]}], [], [{"x": 3.3, "y": [1, 2, 3]}]]
+)
 
 print("Done generating example data.", file=sys.stderr)
 
@@ -42,6 +47,7 @@ mapping = {
     "small_image": ArrayAdapter.from_array(data["small_image"]),
     "medium_image": ArrayAdapter.from_array(data["medium_image"]),
     "sparse_image": COOAdapter.from_coo(sparse.COO(sparse_arr)),
+    "awkward_array": AwkwardAdapter.from_array(awkward_arr),
     "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
     "tiny_cube": ArrayAdapter.from_array(data["tiny_cube"]),
     "tiny_hypercube": ArrayAdapter.from_array(data["tiny_hypercube"]),
