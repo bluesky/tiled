@@ -57,7 +57,7 @@ a string label for each dimension.
 This `(10, 10)`-shaped array fits in a single `(10, 10)`-shaped chunk.
 
 ```
-$ http :8000/metadata/small_image | jq .data.attributes.structure
+$ http :8000/api/v1/metadata/small_image | jq .data.attributes.structure
 ```
 
 ```json
@@ -91,7 +91,7 @@ This `(10000, 10000)`-shaped array is subdivided into 4 × 4 = 16 chunks,
 which is why the size of each chunk is given explicitly.
 
 ```
-$ http :8000/metadata/big_image | jq .data.attributes.structure
+$ http :8000/api/v1/metadata/big_image | jq .data.attributes.structure
 ```
 
 ```json
@@ -130,7 +130,7 @@ This is a 1D array where each item has internal structure,
 as in numpy's [strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html)
 
 ```
-$ http :8000/metadata/structured_data/pets | jq .data.attributes.structure
+$ http :8000/api/v1/metadata/structured_data/pets | jq .data.attributes.structure
 ```
 
 ```json
@@ -227,7 +227,7 @@ order, but we cannot make requests like "rows 100-200". (Dask has the same
 limitation, for the same reason.)
 
 ```
-$ http :8000/metadata/long_table | jq .data.attributes.structure
+$ http :8000/api/v1/metadata/long_table | jq .data.attributes.structure
 ```
 
 ```json
