@@ -16,9 +16,6 @@ The structure families are:
 * table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
 
-Support for sparse arrays and [Awkward Array](https://awkward-array.org/) are
-planned.
-
 ## How structure is encoded
 
 Tiled can describe a structure---its shape, chunking, labels, and so on---for
