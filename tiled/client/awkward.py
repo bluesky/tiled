@@ -6,7 +6,7 @@ from .base import BaseClient
 from .utils import export_util, handle_error
 
 
-class AwkwardArrayClient(BaseClient):
+class AwkwardClient(BaseClient):
     def __repr__(self):
         # TODO Include some summary of the structure. Probably
         # lift __repr__ code from awkward itself here.

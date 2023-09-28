@@ -967,9 +967,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
         {
             "container": _Wrap(Container),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
-            "awkward": _LazyLoad(
-                ("..awkward", Container.__module__), "AwkwardArrayClient"
-            ),
+            "awkward": _LazyLoad(("..awkward", Container.__module__), "AwkwardClient"),
             "dataframe": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
@@ -986,8 +984,8 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
         {
             "container": _Wrap(Container),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
-            # TODO Create DaskAwkwardArrayClient
-            # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardArrayClient"),
+            # TODO Create DaskAwkwardClient
+            # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),
             "dataframe": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
             ),
