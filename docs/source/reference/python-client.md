@@ -89,6 +89,30 @@ structure_families, and specs of its children along with their counts.
    tiled.client.container.Container.distinct
 ```
 
+And, finally, there are convenience methods for writing:
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.container.Container.create_container
+   tiled.client.container.Container.write_array
+   tiled.client.container.Container.write_awkward
+   tiled.client.container.Container.write_dataframe
+   tiled.client.container.Container.write_sparse
+```
+
+and a low-level method for creating a new node to write into:
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.container.Container.new
+```
+
 ## Structure Clients
 
 For each *structure family* ("array", "table", etc.) there is a client
@@ -133,6 +157,32 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.DaskArrayClient.read_block
    tiled.client.array.DaskArrayClient.read
    tiled.client.array.DaskArrayClient.export
+   tiled.client.array.DaskArrayClient.write
+   tiled.client.array.DaskArrayClient.write_block
+```
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.array.ArrayClient
+   tiled.client.array.ArrayClient.read_block
+   tiled.client.array.ArrayClient.read
+   tiled.client.array.ArrayClient.export
+   tiled.client.array.ArrayClient.write
+   tiled.client.array.ArrayClient.write_block
+```
+
+### Awkward
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.awkward.AwkwardClient
+   tiled.client.awkward.AwkwardClient.read
+   tiled.client.awkward.AwkwardClient.write
+   tiled.client.awkward.AwkwardClient.export
 ```
 
 ```{eval-rst}
@@ -154,6 +204,8 @@ Tiled currently includes two clients for each structure family:
    tiled.client.sparse.SparseClient
    tiled.client.sparse.SparseClient.read
    tiled.client.sparse.SparseClient.export
+   tiled.client.sparse.SparseClient.write
+   tiled.client.sparse.SparseClient.write_block
 ```
 
 ### DataFrame
@@ -166,6 +218,8 @@ Tiled currently includes two clients for each structure family:
    tiled.client.dataframe.DaskDataFrameClient.read_partition
    tiled.client.dataframe.DaskDataFrameClient.read
    tiled.client.dataframe.DaskDataFrameClient.export
+   tiled.client.dataframe.DaskDataFrameClient.write
+   tiled.client.dataframe.DaskDataFrameClient.write_partition
 ```
 
 ```{eval-rst}
@@ -175,7 +229,9 @@ Tiled currently includes two clients for each structure family:
    tiled.client.dataframe.DataFrameClient
    tiled.client.dataframe.DataFrameClient.read_partition
    tiled.client.dataframe.DataFrameClient.read
-   tiled.client.dataframe.DaskDataFrameClient.export
+   tiled.client.dataframe.DataFrameClient.export
+   tiled.client.dataframe.DataFrameClient.write
+   tiled.client.dataframe.DataFrameClient.write_partition
 ```
 
 ### Xarray Dataset
