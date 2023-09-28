@@ -14,6 +14,10 @@ def register_builtin_serializers():
         from ..serialization import array as _array  # noqa: F401
 
         del _array
+    if modules_available("awkward"):
+        from ..serialization import awkward as _awkward  # noqa: F401
+
+        del _awkward
     if modules_available("pandas", "pyarrow", "dask.dataframe"):
         from ..serialization import table as _table  # noqa: F401
 

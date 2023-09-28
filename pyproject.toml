@@ -49,6 +49,7 @@ all = [
     "anyio",
     "asyncpg",
     "appdirs",
+    "awkward >=2.4.3",
     "blosc",
     "cachetools",
     "cachey",
@@ -102,6 +103,7 @@ array = [
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
     "appdirs",
+    "awkward >=2.4.3",
     "blosc",
     "click !=8.1.0",
     "dask[array]",
@@ -215,8 +217,9 @@ server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "asyncpg",
     "appdirs",
+    "asyncpg",
+    "awkward >=2.4.3",
     "blosc",
     "cachetools",
     "cachey",
@@ -310,6 +313,7 @@ exclude = '''
   )/
   | versioneer.py
   | tiled/_version.py
+  | tiled/serialization/_zipfile_py39.py
   | docs/source/conf.py
   | share
   | web-frontend

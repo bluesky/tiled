@@ -243,6 +243,7 @@ async def construct_entries_response(
 
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
+    StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
@@ -526,6 +527,8 @@ async def construct_resource(
                 links[
                     "partition"
                 ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
+            elif entry.structure_family == StructureFamily.awkward:
+                links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
             if schemas.EntryFields.structure in fields:
                 attributes["structure"] = structure
         else:
@@ -708,8 +711,9 @@ class WrongTypeForRoute(Exception):
 
 
 FULL_LINKS = {
-    StructureFamily.container: {"full": "{base_url}/node/full/{path}"},
     StructureFamily.array: {"full": "{base_url}/array/full/{path}"},
+    StructureFamily.awkward: {"full": "{base_url}/awkward/full/{path}"},
+    StructureFamily.container: {"full": "{base_url}/node/full/{path}"},
     StructureFamily.table: {"full": "{base_url}/node/full/{path}"},
     StructureFamily.sparse: {"full": "{base_url}/array/full/{path}"},
 }

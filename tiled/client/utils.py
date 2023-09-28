@@ -146,7 +146,7 @@ DEFAULT_TIMEOUT_PARAMS = {
 def params_from_slice(slice):
     "Generate URL query param ?slice=... from Python slice object."
     params = {}
-    if slice is not None:
+    if (slice is not None) and (slice is not ...):
         if isinstance(slice, (int, builtins.slice)):
             slice = [slice]
         slices = []
