@@ -14,6 +14,7 @@ if modules_available("blosc"):
 
         def decode(self, data: bytes) -> bytes:
             self._data.append(data)
+            return b""
 
         def flush(self) -> bytes:
             # Hide this here to defer the numpy import that it triggers.
