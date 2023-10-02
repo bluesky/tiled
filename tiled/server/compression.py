@@ -54,7 +54,8 @@ class CompressionResponder:
             # modify the outgoing headers correctly.
             self.initial_message = message
             headers = MutableHeaders(raw=self.initial_message["headers"])
-            media_type = headers.get("Content-Type")
+            # Strip off any MIME arguments, as in 'text/plain; charset=utf-8'.
+            media_type, *_ = headers.get("Content-Type", "").split(";", 1)
             for encoding in self.compression_registry.encodings(media_type):
                 if encoding in self.accepted:
                     file_factory = self.compression_registry.dispatch(
