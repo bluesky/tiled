@@ -225,7 +225,7 @@ for media_type in [
     "text/html",
 ]:
     compression_registry.register(
-        "application/octet-stream",
+        media_type,
         "gzip",
         # Use a lower compression level. High compression is extremely slow
         # (~60 seconds) on large array data.
