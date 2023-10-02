@@ -207,16 +207,15 @@ compression_registry = CompressionRegistry()
 "Global compression registry. See Registry for usage examples."
 
 
-compression_registry.register(
+for media_type in [
     "application/json",
-    "gzip",
-    lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
-)
-compression_registry.register(
     "application/x-msgpack",
-    "gzip",
-    lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
-)
+]:
+    compression_registry.register(
+        media_type,
+        "gzip",
+        lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
+    )
 for media_type in [
     "application/octet-stream",
     APACHE_ARROW_FILE_MIME_TYPE,
