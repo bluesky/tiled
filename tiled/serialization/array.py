@@ -127,9 +127,11 @@ if modules_available("tifffile"):
 def serialize_html(array, metadata):
     "Try to display as image. Fall back to CSV."
     try:
-        png_data = serialization_registry("array", "image/png", array, metadata)
+        png_data = serialization_registry.dispatch("array", "image/png")(
+            array, metadata
+        )
     except Exception:
-        csv_data = serialization_registry("array", "text/csv", array, metadata)
+        csv_data = serialization_registry.dispatch("array", "text/csv")(array, metadata)
         return "<html>" "<body>" f"{csv_data.decode()!s}" "</body>" "</html>"
     else:
         return (
