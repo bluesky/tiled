@@ -216,6 +216,7 @@ for media_type in [
         "gzip",
         lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
     )
+
 for media_type in [
     "application/octet-stream",
     APACHE_ARROW_FILE_MIME_TYPE,
