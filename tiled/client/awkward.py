@@ -34,12 +34,12 @@ class AwkwardClient(BaseClient):
         form_keys_touched = set(report.data_touched)
         projected_form = project_form(form, form_keys_touched)
         # The order is not important, but sort so that the request is deterministic.
-        params = {"form_key": sorted(list(form_keys_touched))}
+        form_keys = sorted(list(form_keys_touched))
         content = handle_error(
-            self.context.http_client.get(
+            self.context.http_client.post(
                 self.item["links"]["buffers"],
                 headers={"Accept": "application/zip"},
-                params=params,
+                json=form_keys,
             )
         ).read()
         container = from_zipped_buffers(content, projected_form, structure.length)

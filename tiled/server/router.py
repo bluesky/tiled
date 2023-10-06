@@ -608,7 +608,7 @@ async def node_full(
     response_model=schemas.Response,
     name="AwkwardArray buffers",
 )
-async def awkward_buffers(
+async def get_awkward_buffers(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     form_key: Optional[List[str]] = Query(None, min_length=1),
@@ -619,7 +619,69 @@ async def awkward_buffers(
 ):
     """
     Fetch a slice of AwkwardArray data.
+
+    Note that there is a POST route on this same path with equivalent functionality.
+    HTTP caches tends to engage with GET but not POST, so that GET route may be
+    preferred for that reason. However, HTTP clients, servers, and proxies
+    typically impose a length limit on URLs. (The HTTP spec does not specify
+    one, but this is a pragmatic measure.) For requests with large numbers of
+    form_key parameters, POST may be the only option.
     """
+    return await _awkward_buffers(
+        request=request,
+        entry=entry,
+        form_key=form_key,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+@router.post(
+    "/awkward/buffers/{path:path}",
+    response_model=schemas.Response,
+    name="AwkwardArray buffers",
+)
+async def post_awkward_buffers(
+    request: Request,
+    body: List[str],
+    entry=SecureEntry(scopes=["read:data"]),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a slice of AwkwardArray data.
+
+    Note that there is a GET route on this same path with equivalent functionality.
+    HTTP caches tends to engage with GET but not POST, so that GET route may be
+    preferred for that reason. However, HTTP clients, servers, and proxies
+    typically impose a length limit on URLs. (The HTTP spec does not specify
+    one, but this is a pragmatic measure.) For requests with large numbers of
+    form_key parameters, POST may be the only option.
+    """
+    return await _awkward_buffers(
+        request=request,
+        entry=entry,
+        form_key=body,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+async def _awkward_buffers(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    form_key: Optional[List[str]] = Query(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
     structure_family = entry.structure_family
     structure = entry.structure()
     if structure_family != StructureFamily.awkward:
