@@ -116,3 +116,14 @@ def test_export_parquet(tmpdir):
         actual = pyarrow.parquet.read_table(filepath)
         expected = awkward.to_arrow_table(array)
         assert actual == expected
+
+
+def test_long_url(tmpdir):
+    # https://github.com/bluesky/tiled/pull/577
+    catalog = in_memory(writable_storage=tmpdir)
+    app = build_app(catalog)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        array = awkward.Array([{f"key{i:05}": i for i in range(4000)}])
+        aac = client.write_awkward(array, key="test")
+        aac[0]
