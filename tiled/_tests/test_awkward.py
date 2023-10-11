@@ -1,12 +1,10 @@
 import io
+import json
 
 import awkward
 import pyarrow.feather
 import pyarrow.parquet
 import pytest
-
-from functools import partial
-from unittest.mock import Mock
 
 from ..catalog import in_memory
 from ..client import Context, from_context, record_history
@@ -126,49 +124,24 @@ def test_export_parquet(tmpdir, client):
     assert actual == expected
 
 
-@pytest.fixture
-def spy():
-    def mock_request(method, *args, **kwargs):
-        return method(*args, **kwargs)
-
-    spy = Mock(side_effect=mock_request)
-    yield spy
-
-
-@pytest.fixture
-def spy_client(client, spy):
-    original_http_client = client.context.http_client
-
-    spy_client = Mock(create=True)
-    # spy_client.__getattr__ = lambda attr_name: getattr(client, attr_name)
-
-    spy_client.get = Mock(side_effect=partial(spy, original_http_client.get))
-    spy_client.put = Mock(side_effect=partial(spy, original_http_client.put))
-    spy_client.post = Mock(side_effect=partial(spy, original_http_client.post))
-
-    client.context.http_client = spy_client
-    yield client
-
-    client.context.http_client = original_http_client
-
-
 @pytest.mark.parametrize(
-    "browser, url_length_limit", (
+    "browser, url_length_limit",
+    (
         # ("Chrome", 2_083),
         # ("Firefox", 65_536),
         ("Safari", 80_000),
         # ("Internet Explorer", 2_083),
-    )
+    ),
 )
-def test_long_url(spy_client, spy, url_length_limit, browser, num_keys=7_000):
+def test_large_number_of_form_keys(client, url_length_limit, browser, num_keys=7_000):
+    "Specifically, test that too many form_keys to fit in a URL."
     # https://github.com/bluesky/tiled/pull/577
     array = awkward.Array([{f"key{i:05}": i for i in range(num_keys)}])
-    aac = spy_client.write_awkward(array, key="test")
-    aac[0]
-
-    spy.assert_called()
-    spy_kwargs = spy.call_args.kwargs
-    form_keys = spy_kwargs.get("json") or spy_kwargs.get("params")
-    assert form_keys is not None
+    aac = client.write_awkward(array, key="test")
+    with record_history() as h:
+        aac[0]
+    (request,) = h.requests
+    assert request.method == "POST"
+    form_keys = json.loads(request.read())
     form_key_length = len(str(form_keys))
     assert form_key_length > url_length_limit
