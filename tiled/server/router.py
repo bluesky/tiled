@@ -675,12 +675,12 @@ async def post_awkward_buffers(
 
 async def _awkward_buffers(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
-    form_key: Optional[List[str]] = Query(None, min_length=1),
-    format: Optional[str] = None,
-    filename: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    entry,
+    form_key: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
+    settings: BaseSettings,
 ):
     structure_family = entry.structure_family
     structure = entry.structure()
