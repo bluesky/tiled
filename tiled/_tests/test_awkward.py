@@ -124,19 +124,16 @@ def test_export_parquet(tmpdir, client):
     assert actual == expected
 
 
-@pytest.mark.parametrize(
-    "browser, url_length_limit",
-    (
-        # ("Chrome", 2_083),
-        # ("Firefox", 65_536),
-        ("Safari", 80_000),
-        # ("Internet Explorer", 2_083),
-    ),
-)
-def test_large_number_of_form_keys(client, url_length_limit, browser, num_keys=7_000):
+def test_large_number_of_form_keys(client):
     "Specifically, test that too many form_keys to fit in a URL."
     # https://github.com/bluesky/tiled/pull/577
-    array = awkward.Array([{f"key{i:05}": i for i in range(num_keys)}])
+
+    # The HTTP spec itself has no limit, but tools impose a pragmatic one.
+    # Nginx defaults to 8k bytes. Chrome is around 2000.
+    # This is a representative value.
+    URL_LENGTH_LIMIT = 2000
+    NUM_KEYS = 7_000  # meant to achieve a large body of form_keys
+    array = awkward.Array([{f"key{i:05}": i for i in range(NUM_KEYS)}])
     aac = client.write_awkward(array, key="test")
     with record_history() as h:
         aac[0]
@@ -144,4 +141,4 @@ def test_large_number_of_form_keys(client, url_length_limit, browser, num_keys=7
     assert request.method == "POST"
     form_keys = json.loads(request.read())
     form_key_length = len(str(form_keys))
-    assert form_key_length > url_length_limit
+    assert form_key_length > URL_LENGTH_LIMIT
