@@ -132,7 +132,7 @@ def test_large_number_of_form_keys(client):
     # Nginx defaults to 8k bytes. Chrome is around 2000.
     # This is a representative value.
     URL_LENGTH_LIMIT = 2000
-    NUM_KEYS = 7_000  # meant to achieve a large body of form_keys
+    NUM_KEYS = 7000  # meant to achieve a large body of form_keys
     array = awkward.Array([{f"key{i:05}": i for i in range(NUM_KEYS)}])
     aac = client.write_awkward(array, key="test")
     with record_history() as h:
