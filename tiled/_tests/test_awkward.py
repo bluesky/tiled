@@ -125,7 +125,7 @@ def test_export_parquet(tmpdir, client):
 
 
 def test_large_number_of_form_keys(client):
-    "Specifically, test that too many form_keys to fit in a URL."
+    "Request should succeed even when too many form_keys to fit in a URL."
     # https://github.com/bluesky/tiled/pull/577
 
     # The HTTP spec itself has no limit, but tools impose a pragmatic one.
@@ -142,3 +142,5 @@ def test_large_number_of_form_keys(client):
     form_keys = json.loads(request.read())
     form_key_length = len(str(form_keys))
     assert form_key_length > URL_LENGTH_LIMIT
+    url_length = len(str(request.url))
+    assert url_length <= URL_LENGTH_LIMIT
