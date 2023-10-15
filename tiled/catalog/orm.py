@@ -176,13 +176,13 @@ class DataSource(Timestamped, Base):
     assets: Mapped[List["Asset"]] = relationship(
         secondary="data_source_asset_association",
         back_populates="data_sources",
+        cascade="all, delete",
+        lazy="selectin",
         viewonly=True,
     )
     # association between Asset -> Association -> DataSource
     asset_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
         back_populates="data_source",
-        cascade="all, delete",
-        lazy="selectin",
     )
 
 
@@ -211,7 +211,6 @@ class Asset(Timestamped, Base):
     # association between DataSource -> Association -> Asset
     data_source_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
         back_populates="asset",
-        passive_deletes=True,
     )
 
 
