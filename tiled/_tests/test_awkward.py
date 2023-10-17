@@ -1,6 +1,7 @@
 import io
 import json
 
+import numpy
 import awkward
 import pyarrow.feather
 import pyarrow.parquet
@@ -162,3 +163,15 @@ def test_more_slicing_1(client):
         assert awkward.almost_equal(aac.read(), array)
         assert awkward.almost_equal(aac[:], array)
         assert awkward.almost_equal(aac["file", "filename"], array["file", "filename"])
+
+
+def test_more_slicing_2(client):
+    array = awkward.from_numpy(numpy.arange(2*3*5).reshape(2, 3, 5), regulararray=True)
+    returned = client.write_awkward(array, key="test")
+    # Test with client returned, and with client from lookup.
+    for aac in [returned, client["test"]]:
+        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        assert awkward.almost_equal(aac.read(), array)
+        assert awkward.almost_equal(aac[:], array)
+        assert awkward.almost_equal(aac[1:], array[1:])
+        assert awkward.almost_equal(aac[1:, 1:], array[1:, 1:])

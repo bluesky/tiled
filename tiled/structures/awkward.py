@@ -60,6 +60,9 @@ def project_form(form, form_keys_touched):
         else:
             return None
 
+    elif isinstance(form, (awkward.forms.RegularForm, awkward.forms.UnmaskedForm)):
+        return form.copy(content=project_form(form.content, form_keys_touched))
+
     else:
         if form.form_key in form_keys_touched:
             return form.copy(content=project_form(form.content, form_keys_touched))
