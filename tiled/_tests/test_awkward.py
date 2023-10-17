@@ -1,8 +1,8 @@
 import io
 import json
 
-import numpy
 import awkward
+import numpy
 import pyarrow.feather
 import pyarrow.parquet
 import pytest
@@ -148,14 +148,16 @@ def test_large_number_of_form_keys(client):
 
 
 def test_more_slicing_1(client):
-    array = awkward.Array([
-        {
-            "stuff": 123,
-            "file": [
-               {"filename": 321, "other": 3.14},
-            ],
-        },
-    ])
+    array = awkward.Array(
+        [
+            {
+                "stuff": 123,
+                "file": [
+                    {"filename": 321, "other": 3.14},
+                ],
+            },
+        ]
+    )
     returned = client.write_awkward(array, key="test")
     # Test with client returned, and with client from lookup.
     for aac in [returned, client["test"]]:
@@ -166,7 +168,9 @@ def test_more_slicing_1(client):
 
 
 def test_more_slicing_2(client):
-    array = awkward.from_numpy(numpy.arange(2*3*5).reshape(2, 3, 5), regulararray=True)
+    array = awkward.from_numpy(
+        numpy.arange(2 * 3 * 5).reshape(2, 3, 5), regulararray=True
+    )
     returned = client.write_awkward(array, key="test")
     # Test with client returned, and with client from lookup.
     for aac in [returned, client["test"]]:
