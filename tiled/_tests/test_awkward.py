@@ -179,3 +179,19 @@ def test_more_slicing_2(client):
         assert awkward.almost_equal(aac[:], array)
         assert awkward.almost_equal(aac[1:], array[1:])
         assert awkward.almost_equal(aac[1:, 1:], array[1:, 1:])
+
+
+def test_more_slicing_3(client):
+    array = awkward.Array(
+        [
+            {"good": 123, "bad": 123},
+            {"good": 321, "bad": [1, 2, 3]},
+        ]
+    )
+    returned = client.write_awkward(array, key="test")
+    # Test with client returned, and with client from lookup.
+    for aac in [returned, client["test"]]:
+        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        assert awkward.almost_equal(aac.read(), array)
+        assert awkward.almost_equal(aac[:], array[:])
+        assert awkward.almost_equal(aac["good"], array["good"])

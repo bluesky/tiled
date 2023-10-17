@@ -41,6 +41,8 @@ def project_form(form, form_keys_touched):
             return None
         elif len(step2) == 1:
             return step2[0]
+        elif step2 == form.contents:
+            return form
         else:
             raise NotImplementedError(
                 "Certain UnionForms are not yet supported. "
