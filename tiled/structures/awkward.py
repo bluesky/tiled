@@ -27,7 +27,7 @@ def project_form(form, form_keys_touched):
             projected = project_form(content, form_keys_touched)
             if projected is not None:
                 fields.append(field)
-                contents.append(content)
+                contents.append(projected)
 
         if form.fields is None:
             fields = None

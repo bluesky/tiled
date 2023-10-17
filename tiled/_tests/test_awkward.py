@@ -144,3 +144,21 @@ def test_large_number_of_form_keys(client):
     assert form_key_length > URL_LENGTH_LIMIT
     url_length = len(str(request.url))
     assert url_length <= URL_LENGTH_LIMIT
+
+
+def test_more_slicing_1(client):
+    array = awkward.Array([
+        {
+            "stuff": 123,
+            "file": [
+               {"filename": 321, "other": 3.14},
+            ],
+        },
+    ])
+    returned = client.write_awkward(array, key="test")
+    # Test with client returned, and with client from lookup.
+    for aac in [returned, client["test"]]:
+        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        assert awkward.almost_equal(aac.read(), array)
+        assert awkward.almost_equal(aac[:], array)
+        assert awkward.almost_equal(aac["file", "filename"], array["file", "filename"])
