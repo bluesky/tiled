@@ -46,7 +46,7 @@ An array is described with a shape, chunk sizes, and a data type.
 The parameterization and spelling of the data type follows the
 [numpy `__array_interface__` protocol](https://numpy.org/doc/stable/reference/arrays.interface.html#object.__array_interface__).
 Both built-in data types and
-[strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html) are supported.
+[structured data types](https://numpy.org/doc/stable/user/basics.rec.html) are supported.
 
 
 An optional field, `dims` ("dimensions") may contain a list with
