@@ -83,7 +83,7 @@ class TiffSequenceAdapter:
     structure_family = "array"
 
     @classmethod
-    def from_files(
+    def from_filepaths(
         cls,
         filepaths,
         structure=None,

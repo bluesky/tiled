@@ -17,16 +17,16 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).TiffAdapter,
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
             "...adapters.tiff", __name__
-        ).TiffSequenceAdapter.from_files,
+        ).TiffSequenceAdapter.from_filepaths,
         "text/csv": lambda: importlib.import_module(
             "...adapters.csv", __name__
         ).read_csv,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.excel", __name__
-        ).ExcelAdapter.from_file,
+        ).ExcelAdapter.from_filepath,
         "application/x-hdf5": lambda: importlib.import_module(
             "...adapters.hdf5", __name__
-        ).HDF5Adapter.from_file,
+        ).HDF5Adapter.from_filepath,
         "application/x-netcdf": lambda: importlib.import_module(
             "...adapters.netcdf", __name__
         ).read_netcdf,
