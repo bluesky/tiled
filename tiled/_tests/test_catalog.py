@@ -21,8 +21,8 @@ from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
-from ..server.app import build_app, build_app_from_config
-from ..server.schemas import Asset, DataSource, DataSourceAssetAssociation
+from ..server.app import build_app
+from ..server.schemas import Asset, DataSource
 from ..structures.core import StructureFamily
 from .utils import enter_password
 
@@ -212,12 +212,11 @@ async def test_write_array_external(a, tmpdir):
                 parameters={},
                 management="external",
                 assets=[
-                    DataSourceAssetAssociation(
+                    Asset(
                         parameter="filepath",
                         num=None,
-                        asset=Asset(
-                            data_uri=str(ensure_uri(filepath)), is_directory=False
-                        ),
+                        data_uri=str(ensure_uri(filepath)),
+                        is_directory=False,
                     )
                 ],
             )
@@ -244,7 +243,14 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
+                assets=[
+                    Asset(
+                        parameter="filepath",
+                        num=None,
+                        data_uri=str(ensure_uri(filepath)),
+                        is_directory=False,
+                    )
+                ],
             )
         ],
     )

@@ -42,7 +42,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
 
         directory.mkdir(parents=True, exist_ok=True)
         data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
-        return [Asset(data_uri=data_uri, is_directory=True)]
+        return [Asset(data_uri=data_uri, is_directory=True, parameter="directory")]
 
     @classmethod
     def from_directory(

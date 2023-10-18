@@ -48,6 +48,7 @@ class ZarrArrayAdapter(ArrayAdapter):
             Asset(
                 data_uri=data_uri,
                 is_directory=True,
+                parameter="filepath",
             )
         ]
 

@@ -309,14 +309,11 @@ async def register_single_item(
                 parameters={},
                 management=Management.external,
                 assets=[
-                    {
-                        "parameter": "filepath",
-                        "num": None,
-                        "asset": Asset(
-                            data_uri=str(ensure_uri(str(item.absolute()))),
-                            is_directory=is_directory,
-                        ),
-                    }
+                    Asset(
+                        data_uri=str(ensure_uri(str(item.absolute()))),
+                        is_directory=is_directory,
+                        parameter="filepath",
+                    )
                 ],
             )
         ],
@@ -365,7 +362,7 @@ async def tiff_sequence(
         adapter_class = settings.adapters_by_mimetype[mimetype]
         key = settings.key_from_filename(name)
         try:
-            adapter = adapter_class(*sequence)
+            adapter = adapter_class(sequence)
         except Exception:
             logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
             return
@@ -385,8 +382,10 @@ async def tiff_sequence(
                         Asset(
                             data_uri=str(ensure_uri(str(item.absolute()))),
                             is_directory=False,
+                            parameter="filepaths",
+                            num=i,
                         )
-                        for item in sorted(sequence)
+                        for i, item in enumerate(sorted(sequence))
                     ],
                 )
             ],

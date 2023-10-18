@@ -390,8 +390,13 @@ class CatalogNodeAdapter:
                 raise RuntimeError(
                     f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
                 )
-            data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
-            for data_uri in data_uris:
+            parameters = collections.defaultdict(list)
+            for asset in data_source.assets:
+                data_uri = httpx.URL(asset.data_uri)
+                if data_uri.scheme != "file":
+                    raise NotImplementedError(
+                        f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
+                    )
                 if data_uri.scheme == "file":
                     # Protect against misbehaving clients reading from unintended
                     # parts of the filesystem.
@@ -407,20 +412,20 @@ class CatalogNodeAdapter:
                             f"Refusing to serve {data_uri} because it is outside "
                             "the readable storage area for this server."
                         )
-            paths = []
-            for data_uri in data_uris:
-                if data_uri.scheme != "file":
-                    raise NotImplementedError(
-                        f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
-                    )
-                paths.append(safe_path(data_uri))
-            adapter_kwargs = dict(data_source.parameters)
+                path = safe_path(data_uri)
+                if asset.num is None:
+                    parameters[asset.parameter] = path
+                else:
+                    # TODO Order these in SQL.
+                    parameters[asset.parameter].append(path)
+            adapter_kwargs = dict(parameters)
+            adapter_kwargs.update(data_source.parameters)
             adapter_kwargs["specs"] = self.node.specs
             adapter_kwargs["metadata"] = self.node.metadata_
             adapter_kwargs["structure"] = data_source.structure
             adapter_kwargs["access_policy"] = self.access_policy
             adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, *paths, **adapter_kwargs)
+                partial(adapter_factory, **adapter_kwargs)
             )
             for query in self.queries:
                 adapter = adapter.search(query)
@@ -581,7 +586,12 @@ class CatalogNodeAdapter:
                         data_uri=asset.data_uri,
                         is_directory=asset.is_directory,
                     )
-                    data_source_orm.assets.append(asset_orm)
+                    assoc_orm = orm.DataSourceAssetAssociation(
+                        asset=asset_orm,
+                        parameter=asset.parameter,
+                        num=asset.num,
+                    )
+                    data_source_orm.asset_associations.append(assoc_orm)
             db.add(node)
             await db.commit()
             await db.refresh(node)

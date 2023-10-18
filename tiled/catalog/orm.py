@@ -129,13 +129,17 @@ class DataSourceAssetAssociation(Base):
     data_source: Mapped["DataSource"] = relationship(
         back_populates="asset_associations"
     )
-    asset: Mapped["Asset"] = relationship(back_populates="data_source_associations")
+    asset: Mapped["Asset"] = relationship(
+        back_populates="data_source_associations", lazy="selectin"
+    )
 
     # TODO We should additionally ensure that, if there is a row with some
     # parameter P and num NULL, that there can be no rows with parameter P and
     # num <INT>. This may be possible with a trigger.
     __table_args__ = (
         UniqueConstraint(
+            "data_source_id",
+            "asset_id",
             "parameter",
             "num",
             name="parameter_num_unique_constraint",
@@ -183,6 +187,7 @@ class DataSource(Timestamped, Base):
     # association between Asset -> Association -> DataSource
     asset_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
         back_populates="data_source",
+        lazy="selectin",
     )
 
 

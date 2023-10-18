@@ -12,13 +12,13 @@ class ParquetDatasetAdapter:
 
     def __init__(
         self,
-        *partition_paths,
+        uris,
         structure,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
-        self.partition_paths = sorted(partition_paths)
+        self.partition_paths = uris
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
@@ -48,6 +48,8 @@ class ParquetDatasetAdapter:
             Asset(
                 data_uri=f"{data_uri}/partition-{i}.parquet",
                 is_directory=False,
+                parameter="uris",
+                num=i,
             )
             for i in range(structure.npartitions)
         ]

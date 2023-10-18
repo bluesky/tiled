@@ -88,11 +88,19 @@ Specs = pydantic.conlist(Spec, max_items=20)
 class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
+    parameter: Optional[str]
+    num: Optional[int] = None
     id: Optional[int] = None
 
     @classmethod
     def from_orm(cls, orm):
-        return cls(id=orm.id, data_uri=orm.data_uri, is_directory=orm.is_directory)
+        return cls(
+            data_uri=orm.asset.data_uri,
+            is_directory=orm.asset.is_directory,
+            parameter=orm.parameter,
+            num=orm.num,
+            id=orm.asset.id,
+        )
 
 
 class Management(str, enum.Enum):
@@ -120,20 +128,6 @@ class Revision(pydantic.BaseModel):
         )
 
 
-class DataSourceAssetAssociation(pydantic.BaseModel):
-    parameter: str
-    num: Optional[int]
-    asset: Asset
-
-    @classmethod
-    def from_orm(cls, orm):
-        return cls(
-            parameter=orm.parameter,
-            num=orm.num,
-            asset=Asset.from_orm(orm.asset),
-        )
-
-
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
     structure: Optional[
@@ -147,7 +141,7 @@ class DataSource(pydantic.BaseModel):
     ] = None
     mimetype: Optional[str] = None
     parameters: dict = {}
-    assets: List[DataSourceAssetAssociation] = []
+    assets: List[Asset] = []
     management: Management = Management.writable
 
     @classmethod
@@ -157,10 +151,7 @@ class DataSource(pydantic.BaseModel):
             structure=orm.structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
-            assets=[
-                DataSourceAssetAssociation.from_orm(assoc)
-                for assoc in orm.assets_associations
-            ],
+            assets=[Asset.from_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
         )
 

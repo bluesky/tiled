@@ -85,13 +85,13 @@ class TiffSequenceAdapter:
     @classmethod
     def from_files(
         cls,
-        *files,
+        filepaths,
         structure=None,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
-        seq = tifffile.TiffSequence(sorted(files))
+        seq = tifffile.TiffSequence(filepaths)
         return cls(
             seq,
             structure=structure,

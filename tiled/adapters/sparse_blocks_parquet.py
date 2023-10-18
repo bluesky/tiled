@@ -23,7 +23,7 @@ class SparseBlocksParquetAdapter:
 
     def __init__(
         self,
-        *block_uris,
+        block_uris,
         structure,
         metadata=None,
         specs=None,
@@ -58,8 +58,10 @@ class SparseBlocksParquetAdapter:
             Asset(
                 data_uri=uri,
                 is_directory=False,
+                parameter="block_uris",
+                num=i,
             )
-            for uri in block_uris
+            for i, uri in enumerate(block_uris)
         ]
         return assets
 
