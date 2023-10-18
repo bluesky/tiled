@@ -5,7 +5,7 @@ from .dataframe import DataFrameAdapter
 
 
 def read_csv(
-    *args,
+    filepath,
     structure=None,
     metadata=None,
     specs=None,
@@ -25,7 +25,7 @@ def read_csv(
     >>> read_csv("myfiles.*.csv")
     >>> read_csv("s3://bucket/myfiles.*.csv")
     """
-    ddf = dask.dataframe.read_csv(*args, **kwargs)
+    ddf = dask.dataframe.read_csv(filepath, **kwargs)
     # If an instance has previously been created using the same parameters,
     # then we are here because the caller wants a *fresh* view on this data.
     # Therefore, we should clear any cached data.

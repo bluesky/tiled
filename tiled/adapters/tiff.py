@@ -22,15 +22,15 @@ class TiffAdapter:
 
     def __init__(
         self,
-        path,
+        filepath,
         *,
         structure=None,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
-        self._file = tifffile.TiffFile(path)
-        self._cache_key = (type(self).__module__, type(self).__qualname__, path)
+        self._file = tifffile.TiffFile(filepath)
+        self._cache_key = (type(self).__module__, type(self).__qualname__, filepath)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy

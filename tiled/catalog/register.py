@@ -309,10 +309,14 @@ async def register_single_item(
                 parameters={},
                 management=Management.external,
                 assets=[
-                    Asset(
-                        data_uri=str(ensure_uri(str(item.absolute()))),
-                        is_directory=is_directory,
-                    )
+                    {
+                        "parameter": "filepath",
+                        "num": None,
+                        "asset": Asset(
+                            data_uri=str(ensure_uri(str(item.absolute()))),
+                            is_directory=is_directory,
+                        ),
+                    }
                 ],
             )
         ],

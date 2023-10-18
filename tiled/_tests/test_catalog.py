@@ -22,7 +22,7 @@ from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
-from ..server.schemas import Asset, DataSource
+from ..server.schemas import Asset, DataSource, DataSourceAssetAssociation
 from ..structures.core import StructureFamily
 from .utils import enter_password
 
@@ -211,7 +211,15 @@ async def test_write_array_external(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
+                assets=[
+                    DataSourceAssetAssociation(
+                        parameter="filepath",
+                        num=None,
+                        asset=Asset(
+                            data_uri=str(ensure_uri(filepath)), is_directory=False
+                        ),
+                    )
+                ],
             )
         ],
     )

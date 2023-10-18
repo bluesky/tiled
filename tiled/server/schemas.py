@@ -120,6 +120,20 @@ class Revision(pydantic.BaseModel):
         )
 
 
+class DataSourceAssetAssociation(pydantic.BaseModel):
+    parameter: str
+    num: Optional[int]
+    asset: Asset
+
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(
+            parameter=orm.parameter,
+            num=orm.num,
+            asset=Asset.from_orm(orm.asset),
+        )
+
+
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
     structure: Optional[
@@ -133,7 +147,7 @@ class DataSource(pydantic.BaseModel):
     ] = None
     mimetype: Optional[str] = None
     parameters: dict = {}
-    assets: List[Asset] = []
+    assets: List[DataSourceAssetAssociation] = []
     management: Management = Management.writable
 
     @classmethod
@@ -143,7 +157,10 @@ class DataSource(pydantic.BaseModel):
             structure=orm.structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
-            assets=[Asset.from_orm(asset) for asset in orm.assets],
+            assets=[
+                DataSourceAssetAssociation.from_orm(assoc)
+                for assoc in orm.assets_associations
+            ],
             management=orm.management,
         )
 
