@@ -2,6 +2,7 @@ import io
 import json
 
 import awkward
+import numpy
 import pyarrow.feather
 import pyarrow.parquet
 import pytest
@@ -144,3 +145,53 @@ def test_large_number_of_form_keys(client):
     assert form_key_length > URL_LENGTH_LIMIT
     url_length = len(str(request.url))
     assert url_length <= URL_LENGTH_LIMIT
+
+
+def test_more_slicing_1(client):
+    array = awkward.Array(
+        [
+            {
+                "stuff": 123,
+                "file": [
+                    {"filename": 321, "other": 3.14},
+                ],
+            },
+        ]
+    )
+    returned = client.write_awkward(array, key="test")
+    # Test with client returned, and with client from lookup.
+    for aac in [returned, client["test"]]:
+        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        assert awkward.almost_equal(aac.read(), array)
+        assert awkward.almost_equal(aac[:], array)
+        assert awkward.almost_equal(aac["file", "filename"], array["file", "filename"])
+
+
+def test_more_slicing_2(client):
+    array = awkward.from_numpy(
+        numpy.arange(2 * 3 * 5).reshape(2, 3, 5), regulararray=True
+    )
+    returned = client.write_awkward(array, key="test")
+    # Test with client returned, and with client from lookup.
+    for aac in [returned, client["test"]]:
+        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        assert awkward.almost_equal(aac.read(), array)
+        assert awkward.almost_equal(aac[:], array)
+        assert awkward.almost_equal(aac[1:], array[1:])
+        assert awkward.almost_equal(aac[1:, 1:], array[1:, 1:])
+
+
+def test_more_slicing_3(client):
+    array = awkward.Array(
+        [
+            {"good": 123, "bad": 123},
+            {"good": 321, "bad": [1, 2, 3]},
+        ]
+    )
+    returned = client.write_awkward(array, key="test")
+    # Test with client returned, and with client from lookup.
+    for aac in [returned, client["test"]]:
+        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        assert awkward.almost_equal(aac.read(), array)
+        assert awkward.almost_equal(aac[:], array[:])
+        assert awkward.almost_equal(aac["good"], array["good"])

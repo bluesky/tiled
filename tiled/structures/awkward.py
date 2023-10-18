@@ -27,7 +27,7 @@ def project_form(form, form_keys_touched):
             projected = project_form(content, form_keys_touched)
             if projected is not None:
                 fields.append(field)
-                contents.append(content)
+                contents.append(projected)
 
         if form.fields is None:
             fields = None
@@ -41,6 +41,8 @@ def project_form(form, form_keys_touched):
             return None
         elif len(step2) == 1:
             return step2[0]
+        elif step2 == form.contents:
+            return form
         else:
             raise NotImplementedError(
                 "Certain UnionForms are not yet supported. "
@@ -59,6 +61,9 @@ def project_form(form, form_keys_touched):
             return form.copy()
         else:
             return None
+
+    elif isinstance(form, (awkward.forms.RegularForm, awkward.forms.UnmaskedForm)):
+        return form.copy(content=project_form(form.content, form_keys_touched))
 
     else:
         if form.form_key in form_keys_touched:
