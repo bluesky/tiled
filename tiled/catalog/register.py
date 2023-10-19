@@ -326,7 +326,7 @@ TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(.*?)(\d+)\.(?:tif|tiff)$")
 TIFF_SEQUENCE_EMPTY_NAME_ROOT = "_unnamed"
 
 
-async def tiff_sequence(
+async def group_tiff_sequences(
     catalog,
     path,
     files,
@@ -356,41 +356,47 @@ async def tiff_sequence(
                 sequences[sequence_name].append(file)
                 continue
         unhandled_files.append(file)
-    mimetype = "multipart/related;type=image/tiff"
-    for name, sequence in sorted(sequences.items()):
-        logger.info("    Grouped %d TIFFs into a sequence '%s'", len(sequence), name)
-        adapter_class = settings.adapters_by_mimetype[mimetype]
-        key = settings.key_from_filename(name)
-        try:
-            adapter = adapter_class(sequence)
-        except Exception:
-            logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
-            return
-        await create_node_safe(
-            catalog,
-            key=key,
-            structure_family=adapter.structure_family,
-            metadata=dict(adapter.metadata()),
-            specs=adapter.specs,
-            data_sources=[
-                DataSource(
-                    mimetype=mimetype,
-                    structure=dict_or_none(adapter.structure()),
-                    parameters={},
-                    management=Management.external,
-                    assets=[
-                        Asset(
-                            data_uri=str(ensure_uri(str(item.absolute()))),
-                            is_directory=False,
-                            parameter="filepaths",
-                            num=i,
-                        )
-                        for i, item in enumerate(sorted(sequence))
-                    ],
-                )
-            ],
-        )
+    for name, sequence in sequences.items():
+        await register_tiff_sequence(catalog, name, sorted(sequence), settings)
     return unhandled_files, unhandled_directories
+
+
+TIFF_SEQ_MIMETYPE = "multipart/related;type=image/tiff"
+
+
+async def register_tiff_sequence(catalog, name, sequence, settings):
+    logger.info("    Grouped %d TIFFs into a sequence '%s'", len(sequence), name)
+    adapter_class = settings.adapters_by_mimetype[TIFF_SEQ_MIMETYPE]
+    key = settings.key_from_filename(name)
+    try:
+        adapter = adapter_class(sequence)
+    except Exception:
+        logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
+        return
+    await create_node_safe(
+        catalog,
+        key=key,
+        structure_family=adapter.structure_family,
+        metadata=dict(adapter.metadata()),
+        specs=adapter.specs,
+        data_sources=[
+            DataSource(
+                mimetype=TIFF_SEQ_MIMETYPE,
+                structure=dict_or_none(adapter.structure()),
+                parameters={},
+                management=Management.external,
+                assets=[
+                    Asset(
+                        data_uri=str(ensure_uri(str(item.absolute()))),
+                        is_directory=False,
+                        parameter="filepaths",
+                        num=i,
+                    )
+                    for i, item in enumerate(sequence)
+                ],
+            )
+        ],
+    )
 
 
 async def skip_all(
@@ -410,7 +416,7 @@ async def skip_all(
     return [], directories
 
 
-DEFAULT_WALKERS = [tiff_sequence, one_node_per_item]
+DEFAULT_WALKERS = [group_tiff_sequences, one_node_per_item]
 
 
 async def watch(

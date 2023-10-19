@@ -1069,12 +1069,14 @@ CatalogNodeAdapter.register_query(SpecsQuery, specs)
 
 
 def in_memory(
+    *,
     metadata=None,
     specs=None,
     access_policy=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
+    adapters_by_mimetype=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1085,6 +1087,7 @@ def in_memory(
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         echo=echo,
+        adapters_by_mimetype=adapters_by_mimetype,
     )
 
 
