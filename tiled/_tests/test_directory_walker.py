@@ -3,11 +3,13 @@ import platform
 import random
 from pathlib import Path
 
+import h5py
 import numpy
 import pytest
 import tifffile
 import yaml
 
+from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
 from ..catalog.register import (
@@ -237,3 +239,57 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
         client = from_context(context)
         assert numpy.array_equal(data, client["image"][:])
         assert client["image"].metadata["test_key"] == 3.0
+
+
+@pytest.mark.asyncio
+async def test_hdf5_virtual_datasets(tmpdir):
+    layout = h5py.VirtualLayout(shape=(4, 100), dtype="i4")
+
+    data_filepaths = []
+    for n in range(1, 5):
+        filepath = Path(tmpdir, f"{n}.h5")
+        data_filepaths.append(filepath)
+        vsource = h5py.VirtualSource(filepath, "data", shape=(100,))
+        layout[n - 1] = vsource
+
+    # Add virtual dataset to output file
+    filepath = Path(tmpdir, "VDS.h5")
+    with h5py.File(filepath, "w", libver="latest") as file:
+        file.create_virtual_dataset("data", layout, fillvalue=-5)
+
+    assets = [
+        Asset(
+            data_uri=str(ensure_uri(str(fp))),
+            is_directory=False,
+            parameter=None,  # an indirect dependency
+        )
+        for fp in data_filepaths
+    ]
+    assets.append(
+        Asset(
+            data_uri=str(ensure_uri(str(filepath))),
+            is_directory=False,
+            parameter="filepath",
+        )
+    )
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        adapter = HDF5Adapter.from_filepath(filepath)
+        await create_node_safe(
+            catalog,
+            key="VDS",
+            structure_family=adapter.structure_family,
+            metadata=dict(adapter.metadata()),
+            specs=adapter.specs,
+            data_sources=[
+                DataSource(
+                    mimetype="application/x-hdf5",
+                    structure=None,
+                    parameters={},
+                    management=Management.external,
+                    assets=assets,
+                )
+            ],
+        )
+        client = from_context(context)
+        client["VDS"]["data"][:]

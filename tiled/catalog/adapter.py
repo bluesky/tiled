@@ -392,6 +392,8 @@ class CatalogNodeAdapter:
                 )
             parameters = collections.defaultdict(list)
             for asset in data_source.assets:
+                if asset.parameter is None:
+                    continue
                 data_uri = httpx.URL(asset.data_uri)
                 if data_uri.scheme != "file":
                     raise NotImplementedError(
