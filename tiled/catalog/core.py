@@ -17,7 +17,7 @@ async def initialize_database(engine):
 
     async with engine.connect() as connection:
         # Install extensions
-        if (engine.dialect.name == "postgresql"):
+        if engine.dialect.name == "postgresql":
             await connection.execute(text("create extension btree_gin;"))
         # Create all tables.
         await connection.run_sync(Base.metadata.create_all)
