@@ -26,6 +26,7 @@ class ExcelAdapter(MapAdapter):
         Given a pandas.ExcelFile object
 
         >>> import pandas
+        >>> filepath = "path/to/excel_file.xlsx"
         >>> ef = pandas.ExcelFile(filepath)
         >>> ExcelAdapter.from_file(ef)
         """
