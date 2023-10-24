@@ -16,6 +16,9 @@ async def initialize_database(engine):
     from . import orm  # noqa: F401
 
     async with engine.connect() as connection:
+        # Install extensions
+        if (engine.dialect.name == "postgresql"):
+            await connection.execute(text("create extension btree_gin;"))
         # Create all tables.
         await connection.run_sync(Base.metadata.create_all)
         if engine.dialect.name == "sqlite":
