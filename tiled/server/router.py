@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 
@@ -545,7 +545,7 @@ async def table_partition(
     response_model=schemas.Response,
     name="full 'container' or 'table'",
 )
-async def node_full(
+async def get_node_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     principal: str = Depends(get_current_principal),
@@ -554,6 +554,59 @@ async def node_full(
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
     settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch the data below the given node.
+    """
+    return await _node_full(
+        request=request,
+        entry=entry,
+        principal=principal,
+        field=field,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+@router.post(
+    "/node/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'container' or 'table'",
+)
+async def post_node_full(
+    request: Request,
+    body: Optional[List[str]] = Body(None, min_length=1),
+    entry=SecureEntry(scopes=["read:data"]),
+    principal: str = Depends(get_current_principal),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch the data below the given node.
+    """
+    return await _node_full(
+        request=request,
+        entry=entry,
+        principal=principal,
+        field=body,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+async def _node_full(
+    request: Request,
+    entry,
+    principal: str,
+    field: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
+    settings: BaseSettings,
 ):
     """
     Fetch the data below the given node.

@@ -248,10 +248,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key, *tail = keys
             tail = tuple(tail)  # list -> tuple
             content = handle_error(
-                self.context.http_client.get(
+                self.context.http_client.post(
                     self.item["links"]["search"],
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
+                    json={
                         **_queries_to_params(KeyLookup(key)),
                         **self._queries_as_params,
                         **self._sorting_params,
