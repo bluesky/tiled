@@ -102,7 +102,7 @@ class DataSourceAssetAssociation(Base):
     """
     This describes which Assets are used by which DataSources, and how.
 
-    The 'parameter' describes which argument to pass the asset to in when
+    The 'parameter' describes which argument to pass the asset into when
     constructing the Adapter. If 'parameter' is NULL then the asset is an
     indirect dependency, such as a HDF5 data file backing an HDF5 'master'
     file.
