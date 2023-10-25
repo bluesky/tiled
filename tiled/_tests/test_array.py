@@ -108,10 +108,10 @@ def test_shape_with_zero(context):
 
 def test_nan_infinity_handler(tmpdir, context):
     client = from_context(context)["inf"]
-    data = client['example'].read()
+    data = client["example"].read()
     assert numpy.isnan(data).any()
     assert numpy.isinf(data).any()
-    metadata = tuple(client['example'].metadata.values())
+    metadata = tuple(client["example"].metadata.values())
     assert numpy.isnan(metadata).any()
     assert numpy.isinf(metadata).any()
     Path(tmpdir, "testjson").mkdir()
