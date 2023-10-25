@@ -78,7 +78,7 @@ def tmpdir_module(request, tmpdir_factory):
     return tmpdir_factory.mktemp(request.module.__name__)
 
 
-# Use this with pytest -s option.
+# Use this with pytest --log-cli-level=INFO option.
 if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
     import logging
     import threading
