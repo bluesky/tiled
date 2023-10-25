@@ -86,7 +86,7 @@ if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
 
     def poll_enumerate():
         logger = logging.getLogger(__name__)
-        msg_level = int(logging.INFO + logging.WARNING)//2
+        msg_level = int(logging.INFO + logging.WARNING) // 2
         while True:
             time.sleep(1)
             logger.log(msg_level, "THREAD COUNT = %d", len(threading.enumerate()))
