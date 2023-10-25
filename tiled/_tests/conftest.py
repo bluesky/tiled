@@ -80,13 +80,15 @@ def tmpdir_module(request, tmpdir_factory):
 
 # Use this with pytest -s option.
 if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
+    import logging
     import threading
     import time
 
     def poll_enumerate():
+        logger = logging.getLogger(__name__)
         while True:
             time.sleep(1)
-            print("THREAD COUNT", len(threading.enumerate()))
+            logger.info("THREAD COUNT = %d", len(threading.enumerate()))
 
     thread = threading.Thread(target=poll_enumerate, daemon=True)
     thread.start()
