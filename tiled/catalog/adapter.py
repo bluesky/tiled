@@ -943,7 +943,7 @@ def binary_op(query, tree, operation):
     if dialect_name == "sqlite":
         condition = operation(_get_value(attr, type(query.value)), query.value)
     # specific case where GIN optomized index can be used to speed up POSTGRES equals queries
-    elif dialect_name == "postgresql" and operation == operator.eq:
+    elif (dialect_name == "postgresql") and (operation == operator.eq):
         condition = orm.Node.metadata_.op("@>")(
             type_coerce(
                 {keys[0]: reduce(lambda x, y: {y: x}, keys[1:][::-1], query.value)},
