@@ -78,7 +78,7 @@ def tmpdir_module(request, tmpdir_factory):
     return tmpdir_factory.mktemp(request.module.__name__)
 
 
-# Use this with pytest --log-cli-level=INFO option.
+# Use this with pytest --log-cli-level=25 option.
 if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
     import logging
     import threading
@@ -86,9 +86,10 @@ if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
 
     def poll_enumerate():
         logger = logging.getLogger(__name__)
+        msg_level = int(logging.INFO + logging.WARNING)//2
         while True:
             time.sleep(1)
-            logger.info("THREAD COUNT = %d", len(threading.enumerate()))
+            logger.log(msg_level, "THREAD COUNT = %d", len(threading.enumerate()))
 
     thread = threading.Thread(target=poll_enumerate, daemon=True)
     thread.start()
