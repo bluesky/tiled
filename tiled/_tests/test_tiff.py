@@ -7,7 +7,7 @@ import tifffile as tf
 from ..adapters.mapping import MapAdapter
 from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
 from ..catalog import in_memory
-from ..catalog.register import register
+from ..catalog.register import register, TIFF_SEQUENCE_EMPTY_NAME_ROOT
 from ..client import Context, from_context
 from ..server.app import build_app
 
@@ -129,7 +129,7 @@ a,b,c
         # Single image is its own node.
         assert client["single_image"].shape == (3, 5)
         # Each sequence is grouped into a node.
-        assert client["_"].shape == (10, 3, 5)
+        assert client[TIFF_SEQUENCE_EMPTY_NAME_ROOT].shape == (10, 3, 5)
         assert client["image"].shape == (10, 3, 5)
         assert client["other_image"].shape == (10, 3, 5)
         assert client["other_image2_"].shape == (10, 3, 5)
