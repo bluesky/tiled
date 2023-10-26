@@ -144,7 +144,6 @@ class TiffSequenceAdapter:
         of a group of images
         """
 
-        # Print("Inside Adapter:", slice)
         if slice is None:
             return with_object_cache(self._cache_key, self._seq.asarray)
         if isinstance(slice, int):
