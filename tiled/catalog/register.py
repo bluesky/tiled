@@ -322,7 +322,7 @@ async def register_single_item(
 # Matches filename with (optional) prefix characters followed by digits \d
 # and then the file extension .tif or .tiff.
 TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(.*?)(\d+)\.(?:tif|tiff)$")
-TIFF_SEQUENCE_EMPTY_NAME_ROOT = "_"
+TIFF_SEQUENCE_EMPTY_NAME_ROOT = "_unnamed"
 
 
 async def tiff_sequence(
