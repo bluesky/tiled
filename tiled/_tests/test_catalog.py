@@ -158,7 +158,7 @@ async def test_search(a):
 
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(a):
-    for i in range(1500):
+    for i in range(2500):
         await a.create_node(
             metadata={
                 "number": i,
