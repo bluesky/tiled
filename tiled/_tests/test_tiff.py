@@ -7,7 +7,7 @@ import tifffile as tf
 from ..adapters.mapping import MapAdapter
 from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
 from ..catalog import in_memory
-from ..catalog.register import register, TIFF_SEQUENCE_EMPTY_NAME_ROOT
+from ..catalog.register import TIFF_SEQUENCE_EMPTY_NAME_ROOT, register
 from ..client import Context, from_context
 from ..server.app import build_app
 
