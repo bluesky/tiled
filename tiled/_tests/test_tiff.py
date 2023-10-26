@@ -129,6 +129,7 @@ a,b,c
         # Single image is its own node.
         assert client["single_image"].shape == (3, 5)
         # Each sequence is grouped into a node.
+        assert client["_"].shape == (10, 3, 5)
         assert client["image"].shape == (10, 3, 5)
         assert client["other_image"].shape == (10, 3, 5)
         assert client["other_image2_"].shape == (10, 3, 5)

@@ -349,6 +349,8 @@ async def tiff_sequence(
             match = TIFF_SEQUENCE_STEM_PATTERN.match(file.name)
             if match:
                 sequence_name, _sequence_number = match.groups()
+                if sequence_name == '':
+                    sequence_name = '_'
                 sequences[sequence_name].append(file)
                 continue
         unhandled_files.append(file)
