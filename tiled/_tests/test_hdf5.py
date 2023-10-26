@@ -32,7 +32,7 @@ def example_file_with_vlen_str_in_dataset():
     # Need to do this to make a vlen str dataset
     dt = h5py.string_dtype(encoding="utf-8")
     dset = c.create_dataset("d", (100,), dtype=dt)
-    # print(dset.dtype)
+    assert dset.dtype == "object"
     dset[0] = b"test"
     return file
 
