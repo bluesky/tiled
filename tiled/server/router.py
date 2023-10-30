@@ -214,7 +214,7 @@ async def distinct(
     **filters,
 ):
     if hasattr(entry, "get_distinct"):
-        filtered = apply_search(entry, filters, query_registry)
+        filtered = await apply_search(entry, filters, query_registry)
         distinct = await ensure_awaitable(
             filtered.get_distinct, metadata, structure_families, specs, counts
         )

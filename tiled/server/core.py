@@ -103,7 +103,7 @@ def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
     return links
 
 
-def apply_search(tree, filters, query_registry):
+async def apply_search(tree, filters, query_registry):
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
@@ -146,10 +146,19 @@ def apply_search(tree, filters, query_registry):
             # Two non-equal KeyLookup queries must return no results.
             tree = MapAdapter({})
         else:
-            try:
-                tree = MapAdapter({key_lookup: tree[key_lookup]}, must_revalidate=False)
-            except KeyError:
-                tree = MapAdapter({})
+            if hasattr(tree, "lookup_adapter"):
+                entry = await tree.lookup_adapter([key_lookup])
+                if entry is None:
+                    tree = MapAdapter({})
+                else:
+                    tree = MapAdapter({key_lookup: entry}, must_revalidate=False)
+            else:
+                try:
+                    tree = MapAdapter(
+                        {key_lookup: tree[key_lookup]}, must_revalidate=False
+                    )
+                except KeyError:
+                    tree = MapAdapter({})
 
     return tree
 
@@ -191,7 +200,7 @@ async def construct_entries_response(
     max_depth,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    tree = apply_search(tree, filters, query_registry)
+    tree = await apply_search(tree, filters, query_registry)
     tree = apply_sort(tree, sort)
 
     count = await len_or_approx(tree)
