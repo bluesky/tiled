@@ -35,8 +35,13 @@ client, a cookie will be set in your client and you won’t need to use the toke
 again. It is valid indefinitely.
 
 For horizontally-scaled deployments where you need multiple instances of the
-server to share the same secret, you can set it via an environment variable like
-so.
+server to share the same secret, you can set it with a CLI option
+
+```
+tiled serve ... --api-key=YOUR_SECRET
+```
+
+or via an environment variable
 
 ```
 TILED_SINGLE_USER_API_KEY=YOUR_SECRET tiled serve ...
