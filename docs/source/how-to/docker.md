@@ -64,7 +64,7 @@ quickly generate some with:
 
 ```
 # Optional: Generate sample files... TIFF, Excel, HDF5, etc.
-python -m tiled.examples.generate_files files/
+python -m tiled.examples.generate_files data/
 ```
 
 ### Quick Start (Not Scalable)
@@ -76,9 +76,9 @@ at server startup.
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./files:/files:ro \
+  -v ./data:/data:ro \
   ghcr.io/bluesky/tiled:latest \
-  tiled serve directory --host 0.0.0.0 /files
+  tiled serve directory --host 0.0.0.0 /data
 ```
 
 Two problems with this one-line approach:
@@ -104,20 +104,20 @@ Start the server, potentially multiple on different ports.
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./files:/files:ro \
+  -v ./data:/data:ro \
   -v ./storage:/storage \
   ghcr.io/bluesky/tiled:latest
 ```
 
-Register the files in the directory `files/` with the catalog.
+Register the files in the directory `data/` with the catalog.
 
 ```
 docker run \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./files:/files:ro \
+  -v ./data:/data:ro \
   -v ./storage:/storage \
   ghcr.io/bluesky/tiled:latest \
-  tiled catalog register /storage/catalog.db /files --verbose
+  tiled catalog register /storage/catalog.db /data --verbose
 ```
 
 ### Scalable to Multiple Hosts
@@ -126,13 +126,13 @@ Instead of the default SQLite database, we need to use a PostgreSQL database.
 One way to run a PostgresSQL database is:
 
 ```
-docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=secret -d docker.io/postgres
+export TILED_DATABASE_PASSWORD=db_secret
+docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=${TILED_DATABASE_PASSWORD} -d docker.io/postgres
 ```
 
 Initialize the database. (This creates the tables, indexes, and so on used by Tiled.)
 
 ```
-export TILED_DATABASE_PASSWORD=secret
 export TILED_DATABASE_URI=postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@localhost:5432
 
 docker run --net=host ghcr.io/bluesky/tiled:latest tiled catalog init $TILED_DATABASE_URI
@@ -167,23 +167,23 @@ docker run \
   --net=host \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -e TILED_DATABASE_PASSWORD=secret \
+  -e TILED_DATABASE_PASSWORD=${TILED_DATABASE_PASSWORD} \
   -v ./config:/deploy/config:ro \
-  -v ./files:/files:ro \
+  -v ./data:/data:ro \
   ghcr.io/bluesky/tiled:latest
 ```
 
-Register the files in the directory `files/` with this catalog.
+Register the files in the directory `data/` with this catalog.
 
 ```
 docker run \
   --net=host \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -e TILED_DATABASE_PASSWORD=secret \
+  -e TILED_DATABASE_PASSWORD=${TILED_DATABASE_PASSWORD} \
   -v ./config:/deploy/config:ro \
-  -v ./files:/files:ro \
+  -v ./data:/data:ro \
   ghcr.io/bluesky/tiled:latest \
-  tiled catalog register ${TILED_DATABASE_URI} /files --verbose
+  tiled catalog register ${TILED_DATABASE_URI} /data--verbose
 ```
 
 ## Example: Custom configuration
