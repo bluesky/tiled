@@ -64,20 +64,131 @@ quickly generate some with:
 
 ```
 # Optional: Generate sample files... TIFF, Excel, HDF5, etc.
-python -m tiled.examples.generate_files files/
+python -m tiled.examples.generate_files data/
 ```
+
+### Quick Start (Not Scalable)
+
+This approach is nice for development and rapid iteration. It indexes the files
+at server startup.
 
 ```
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./files:/files:ro ghcr.io/bluesky/tiled:latest \
-  tiled serve directory --host 0.0.0.0 /files
+  -v ./data:/data:ro \
+  ghcr.io/bluesky/tiled:latest \
+  tiled serve directory --host 0.0.0.0 /data
+```
+
+Two problems with this one-line approach:
+
+* If you restart the server, all the indexing work is re-done from scratch.
+* If you horizontally scale with multiple containers, each one will crawl the
+  filesystem individually, putting load on the filesystem and potentially getting
+  views of the filesystem that are out of sync.
+
+Read on for a scalable approach.
+
+### Scalable to Multiple Processes
+
+Create a place outside the container to store the "catalog", `catalog.db`.
+
+```
+mkdir storage/
+```
+
+Start the server, potentially multiple on different ports.
+
+```
+docker run \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./data:/data:ro \
+  -v ./storage:/storage \
+  ghcr.io/bluesky/tiled:latest
+```
+
+Register the files in the directory `data/` with the catalog.
+
+```
+docker run \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -v ./data:/data:ro \
+  -v ./storage:/storage \
+  ghcr.io/bluesky/tiled:latest \
+  tiled catalog register /storage/catalog.db /data --verbose
+```
+
+### Scalable to Multiple Hosts
+
+Instead of the default SQLite database, we need to use a PostgreSQL database.
+One way to run a PostgresSQL database is:
+
+```
+export TILED_DATABASE_PASSWORD=db_secret
+docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=${TILED_DATABASE_PASSWORD} -d docker.io/postgres
+```
+
+Initialize the database. (This creates the tables, indexes, and so on used by Tiled.)
+
+```
+export TILED_DATABASE_URI=postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@localhost:5432
+
+docker run --net=host ghcr.io/bluesky/tiled:latest tiled catalog init $TILED_DATABASE_URI
+```
+
+Create a directory for Tiled configuration, e.g. `config/`.
+
+```
+mkdir config/
+```
+
+Place a copy of `example_configs/single_catalog_single_user.yml`, from the Tiled
+repository root, in this `config/` directory.
+
+Replace the line:
+
+
+```yaml
+uri: "sqlite+aiosqlite:////storage/catalog.db"
+```
+
+with a PostgreSQL database URI, such as:
+
+```yaml
+uri: "postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@localhost:5432"
+```
+
+Start the server, potentially multiple servers across many hosts.
+
+```
+docker run \
+  --net=host \
+  -p 8000:8000 \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -e TILED_DATABASE_PASSWORD=${TILED_DATABASE_PASSWORD} \
+  -v ./config:/deploy/config:ro \
+  -v ./data:/data:ro \
+  ghcr.io/bluesky/tiled:latest
+```
+
+Register the files in the directory `data/` with this catalog.
+
+```
+docker run \
+  --net=host \
+  -e TILED_SINGLE_USER_API_KEY=secret \
+  -e TILED_DATABASE_PASSWORD=${TILED_DATABASE_PASSWORD} \
+  -v ./config:/deploy/config:ro \
+  -v ./data:/data:ro \
+  ghcr.io/bluesky/tiled:latest \
+  tiled catalog register ${TILED_DATABASE_URI} /data--verbose
 ```
 
 ## Example: Custom configuration
 
-There are configuration examples locate in the directory `example_configs`
+There are configuration examples located in the directory `example_configs`
 under the Tiled repository root. The container image has one in particular,
 `single_user_single_catalog.yml`, copied into the container under
 `/deploy/config/`. Override it by mounting a local directory an
