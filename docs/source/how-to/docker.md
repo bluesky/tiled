@@ -83,7 +83,7 @@ docker run \
 
 Two problems with this one-line approach:
 
-* If you restart the server, all the indexing work is done from scratch.
+* If you restart the server, all the indexing work is re-done from scratch.
 * If you horizontally scale with multiple containers, each one will crawl the
   filesystem individually, putting load on the filesystem and potentially getting
   views of the filesystem that are out of sync.
@@ -138,7 +138,7 @@ export TILED_DATABASE_URI=postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWOR
 docker run --net=host ghcr.io/bluesky/tiled:latest tiled catalog init $TILED_DATABASE_URI
 ```
 
-Create a directory for TIled configuration, e.g. `config/`.
+Create a directory for Tiled configuration, e.g. `config/`.
 
 ```
 mkdir config/
@@ -160,7 +160,7 @@ with a PostgreSQL database URI, such as:
 uri: "postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@localhost:5432"
 ```
 
-Start the server, potentially multiple across many hosts.
+Start the server, potentially multiple servers across many hosts.
 
 ```
 docker run \
