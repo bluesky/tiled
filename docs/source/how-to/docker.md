@@ -198,7 +198,8 @@ under the Tiled repository root. The container image has one in particular,
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./config:/deploy/config:ro
+  -v ./config:/deploy/config:ro \
+  ghcr.io/bluesky/tiled:latest
 ```
 
 You may need to mount additional volumes as well.
