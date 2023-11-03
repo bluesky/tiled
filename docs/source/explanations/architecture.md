@@ -38,7 +38,7 @@ validate API keys.
 
 ### Accessing Data and Metadata
 Endpoints that serve metadata or data resolve the URL path to identify the
-relevant [**Adapter**](#adapter), which returns the data
+relevant **Adapter** (about which, more below), which returns the data
 as a scientific data structure. It may be a "lazy" data structure,
 representing data that will be loaded later -- on demand and piecemeal.
 
