@@ -138,6 +138,11 @@ html_sidebars = {
 }
 
 
+# -- Options for MyST -----------------------------------------------------
+
+# myst_heading_anchors = 2
+
+
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
