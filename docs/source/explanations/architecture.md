@@ -1,5 +1,7 @@
 # Architecture
 
+This is an overview of the major components of Tiled.
+
 ## Client
 
 Tiled ships with a Python client. This is separable from the rest of the
