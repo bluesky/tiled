@@ -35,6 +35,7 @@ how-to/tiled-authn-database
 ```{toctree}
 :caption: Explanations
 
+explanations/architecture
 explanations/standards
 explanations/structures
 explanations/metadata
