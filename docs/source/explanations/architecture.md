@@ -2,7 +2,7 @@
 
 This is an overview of the major components of Tiled.
 
-(client)=
+(client-arch)=
 ## Client
 
 Tiled ships with a Python client. This is separable from the rest of the
@@ -11,7 +11,7 @@ client enables the user to navigate and access the data in a Tiled server using
 familiar Python item-lookup and slicing idioms, while it generates HTTP
 requests to transfer metadata and data.
 
-(connection-context)=
+(connection-context-arch)=
 ### Connection _Context_
 When the user connects, a **Context** object is created. The Context is
 shared by all client-side objects that use this connection. It wraps an
@@ -19,13 +19,13 @@ shared by all client-side objects that use this connection. It wraps an
 applicable) authentication-related state---either an API key or a pair of
 OAuth2 access and refresh tokens.
 
-(client-side-caching)=
+(client-side-caching-arch)=
 ### Client-side _Caching_
 The Context also may hold an HTTP response **Cache**, similar to a web
 browser's cache. This is currently not enabled by default because it is
 experimental.
 
-(server)=
+(server-arch)=
 ## Server
 
 The Tiled HTTP server is built using the framework [FastAPI][], which is built
@@ -33,7 +33,7 @@ on [Starlette][]. A key feature of FastAPI is auto-generated [OpenAPI][]
 documentation, which Tiled serves at the `GET /docs` endpoint. FastAPI
 works with [Pydantic][] to parse and validate requests.
 
-(authentication)=
+(authentication-arch)=
 ### Authentication
 Most endpoints require authentication, unless the server is configured to be
 public. For single-user deployments, a single API key is specified or randomly
@@ -41,14 +41,14 @@ generated at server startup. For multi-user deployments, an **Authentication
 Database** (PostgreSQL or SQLite) is used to store session information and to
 validate API keys.
 
-(accessing-data-and-metadata)=
+(accessing-data-and-metadata-arch)=
 ### Accessing Data and Metadata
 Endpoints that serve metadata or data resolve the URL path to identify the
-relevant [**Adapter**](#adapter), which returns the data
+relevant [**Adapter**](#adapter-arch), which returns the data
 as a scientific data structure. It may be a "lazy" data structure,
 representing data that will be loaded later -- on demand and piecemeal.
 
-(content-negotiation-and-serializers)=
+(content-negotiation-and-serializers-arch)=
 ### Content Negotiation and _Serializers_
 The endpoint implements [content negotiation][], comparing the list of requested formats
 that are accepted by the client to those supported by the server for this particular
@@ -56,13 +56,13 @@ dataset. It dispatches to a registry of **Serializers**, which convert the data
 structure into bytes which can be sent in a response by FastAPI. Custom
 serializers may be registered during server configuration.
 
-(compression)=
+(compression-arch)=
 ### Compression
 On its way, the response may be compressed, again using content negotiation
 to compare the list of compression schemes supported by the client (if any)
 to those the server deems appropriate to the dataset.
 
-(adapter)=
+(adapter-arch)=
 ## Adapter
 
 In Tiled, an **Adapter** provides a standard interface to data, regardless of
@@ -78,14 +78,14 @@ in-memory data, such as a numpy array. Several Adapters are included in the Tile
 codebase, in the spirit of "batteries included," but Adapters can be defined in
 external modules, too, and operate on the same footing as the built-in ones.
 
-(catalog)=
+(catalog-arch)=
 ## Catalog
 
 The Catalog is an Adapter that stores the metadata and structure for a
 potentially large number of datasets in a SQL database (PostgreSQL or SQLite).
 This enables it to efficiently respond to _metadata_ requests and _search_
 requests without opening any data files. Requests for _data_ are then
-dispatched down to the appropriate [Adapter](#adapter) which can load the data
+dispatched down to the appropriate [Adapter](#adapter-arch) which can load the data
 from the given storage medium and format.
 
 Not all Tiled servers are configured to use the Catalog:
