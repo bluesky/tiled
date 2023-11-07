@@ -1,3 +1,4 @@
+(custom-export-formats)=
 # Add Custom Export Formats
 
 The Tiled server can provide data---in whole or in part---in a variety of

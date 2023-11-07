@@ -1,3 +1,4 @@
+(tiled-authn-database)=
 # Set up a database for a scaled authenticated deloyment
 
 When Tiled is configured to use authentication provider(s), it employs a SQL

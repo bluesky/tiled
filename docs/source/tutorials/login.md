@@ -1,3 +1,4 @@
+(login-tutorial)=
 # Log into an Authenticated Tiled Server
 
 For this tutorial, we will log in to the demo Tiled server at

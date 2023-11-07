@@ -19,11 +19,18 @@ shared by all client-side objects that use this connection. It wraps an
 applicable) authentication-related state---either an API key or a pair of
 OAuth2 access and refresh tokens.
 
+Further Reading:
+* [`Context` reference](#context-ref)
+
 (client-side-caching-arch)=
 ### Client-side _Caching_
 The Context also may hold an HTTP response **Cache**, similar to a web
 browser's cache. This is currently not enabled by default because it is
 experimental.
+
+Further Reading:
+* [Client HTTP Response Cache overview](#client-http-response-cache)
+* [`Cache` reference](#client-http-response-cache-ref)
 
 (server-arch)=
 ## Server
@@ -41,6 +48,12 @@ generated at server startup. For multi-user deployments, an **Authentication
 Database** (PostgreSQL or SQLite) is used to store session information and to
 validate API keys.
 
+Further Reading:
+* [Security](#security)
+* [Login Tutorial](#login-tutorial)
+* [Authentication Details](#auth-details)
+* [Tiled Authentication Database](#tiled-authn-database)
+
 (accessing-data-and-metadata-arch)=
 ### Accessing Data and Metadata
 Endpoints that serve metadata or data resolve the URL path to identify the
@@ -55,6 +68,10 @@ that are accepted by the client to those supported by the server for this partic
 dataset. It dispatches to a registry of **Serializers**, which convert the data
 structure into bytes which can be sent in a response by FastAPI. Custom
 serializers may be registered during server configuration.
+
+Further Reading:
+* [Custom Export Formats](#custom-export-formats)
+* [Media Type Format Registry reference](#media-type-registry-ref)
 
 (compression-arch)=
 ### Compression
@@ -77,6 +94,9 @@ configuration. For development, test, or demonstration purposes, Adapters can wr
 in-memory data, such as a numpy array. Several Adapters are included in the Tiled
 codebase, in the spirit of "batteries included," but Adapters can be defined in
 external modules, too, and operate on the same footing as the built-in ones.
+
+Further Reading:
+* [Adapters](#adapters-ref)
 
 (catalog-arch)=
 ## Catalog

@@ -252,6 +252,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.xarray.DatasetClient.read
 ```
 
+(context-ref)=
 ## Context
 
 ```{eval-rst}
@@ -269,6 +270,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.context.Context.tokens
 ```
 
+(client-http-response-cache-ref)=
 ## Cache
 
 ```{eval-rst}
