@@ -1,3 +1,4 @@
+(auth-details)=
 # Authentication Details
 
 See {doc}`../explanations/security` for an overview.

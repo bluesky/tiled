@@ -1,5 +1,6 @@
 # Service-side Components
 
+(adapters-ref)=
 ## Adapters
 
 ### Python Object Adapters
@@ -66,6 +67,7 @@ assumption about your metadata / data and its meaning.
    tiled.query_registration.register
 ```
 
+(media-type-registry-ref)=
 ## Media Type (Format) Registry
 
 This is a registry of formats that the service can *write* upon a client's request.

@@ -23,6 +23,7 @@ Tiled has two kinds of caching:
    resources differently for different requests. The object cache will not provide
    quite the same speed boost as a response cache, but it has a broader impact.
 
+(client-http-response-cache)=
 ## Client-side HTTP Response Cache
 
 The client response cache is an LRU response cache backed by a SQLite file.
