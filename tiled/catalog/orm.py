@@ -10,6 +10,8 @@ from sqlalchemy import (
     Index,
     Integer,
     Unicode,
+    event,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -144,6 +146,31 @@ class DataSourceAssetAssociation(Base):
             name="parameter_num_unique_constraint",
         ),
     )
+
+
+@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+def create_trigger_unique_parameter_num_null_check(target, connection, **kw):
+    connection.execute(
+        text(
+            """
+CREATE TRIGGER unique_parameter_num_null_check
+BEFORE INSERT ON data_source_asset_association
+WHEN NEW.num IS NULL
+BEGIN
+    SELECT RAISE(ABORT, 'Can only insert num=NULL if no other row exists for the same parameter')
+    WHERE EXISTS
+    (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND data_source_id = NEW.data_source_id
+    );
+END"""
+        )
+    )
+    # Additionally ensure that we cannot mix NULL and INTEGER values of num for
+    # a given data_source_id and parameter, and that there cannot be multiple
+    # instances of NULL.
 
 
 class DataSource(Timestamped, Base):
