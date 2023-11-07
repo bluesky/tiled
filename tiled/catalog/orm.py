@@ -139,7 +139,6 @@ class DataSourceAssetAssociation(Base):
     __table_args__ = (
         UniqueConstraint(
             "data_source_id",
-            "asset_id",
             "parameter",
             "num",
             name="parameter_num_unique_constraint",

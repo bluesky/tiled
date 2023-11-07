@@ -8,6 +8,7 @@ import pandas
 import pandas.testing
 import pytest
 import pytest_asyncio
+import sqlalchemy.exc
 import tifffile
 import xarray
 
@@ -17,12 +18,13 @@ from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
 from ..catalog.adapter import WouldDeleteData
 from ..catalog.explain import record_explanations
+from ..catalog.register import create_node_safe
 from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
-from ..server.app import build_app
-from ..server.schemas import Asset, DataSource
+from ..server.app import build_app, build_app_from_config
+from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
 from .utils import enter_password
 
@@ -425,3 +427,77 @@ async def test_access_control(tmpdir):
         public_client["outer_z"]["inner"].read()
         with pytest.raises(KeyError):
             public_client["outer_x"]
+
+
+@pytest.mark.parametrize(
+    "assets",
+    [
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+        ],
+    ],
+    ids=[
+        "mix-null-and-int",
+        "duplicate-null",
+        "duplicate-int",
+    ],
+)
+async def test_constraints_on_parameter_and_num(a, assets):
+    "Test constraints enforced by database on 'parameter' and 'num'."
+    arr_adapter = ArrayAdapter.from_array([1, 2, 3])
+    with pytest.raises(sqlalchemy.exc.IntegrityError):
+        await create_node_safe(
+            a,
+            key="test",
+            structure_family=arr_adapter.structure_family,
+            metadata=dict(arr_adapter.metadata()),
+            specs=arr_adapter.specs,
+            data_sources=[
+                DataSource(
+                    mimetype="application/x-test",
+                    structure=asdict(arr_adapter.structure()),
+                    parameters={},
+                    management=Management.external,
+                    assets=assets,
+                )
+            ],
+        )
