@@ -149,11 +149,15 @@ class DataSourceAssetAssociation(Base):
 
 
 @event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
-def create_trigger_unique_parameter_num_null_check(target, connection, **kw):
-    connection.execute(
-        text(
-            """
-CREATE TRIGGER unique_parameter_num_null_check
+def unique_parameter_num_null_check(target, connection, **kw):
+    # Ensure that we cannot mix NULL and INTEGER values of num for
+    # a given data_source_id and parameter, and that there cannot be multiple
+    # instances of NULL.
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER cannot_insert_num_null_if_num_int_exists
 BEFORE INSERT ON data_source_asset_association
 WHEN NEW.num IS NULL
 BEGIN
@@ -166,11 +170,27 @@ BEGIN
         AND data_source_id = NEW.data_source_id
     );
 END"""
+            )
         )
-    )
-    # Additionally ensure that we cannot mix NULL and INTEGER values of num for
-    # a given data_source_id and parameter, and that there cannot be multiple
-    # instances of NULL.
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
+BEFORE INSERT ON data_source_asset_association
+WHEN NEW.num IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'Can only insert INTEGER num if no NULL row exists for the same parameter')
+    WHERE EXISTS
+    (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND num IS NULL
+        AND data_source_id = NEW.data_source_id
+    );
+END"""
+            )
+        )
 
 
 class DataSource(Timestamped, Base):
