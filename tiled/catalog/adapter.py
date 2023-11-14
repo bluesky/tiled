@@ -946,7 +946,7 @@ def binary_op(query, tree, operation):
     elif (dialect_name == "postgresql") and (operation == operator.eq):
         condition = orm.Node.metadata_.op("@>")(
             type_coerce(
-                {keys[0]: reduce(lambda x, y: {y: x}, keys[1:][::-1], query.value)},
+                key_array_to_json(keys, query.value),
                 orm.Node.metadata_.type,
             )
         )
@@ -1104,6 +1104,29 @@ class Collision(Conflicts):
 def json_serializer(obj):
     "The PostgreSQL JSON serializer requires str, not bytes."
     return safe_json_dump(obj).decode()
+
+
+def key_array_to_json(keys, value):
+    """Take JSON accessor information as an array of keys and value (['foo','bar'], 'baz') and convert to JSON object({'foo' : { 'bar' : 'baz'}}).
+
+    Parameters
+    ----------
+    keys : iterable
+        An array of keys to be created in the object.
+    value : string
+        Value assigned to the final key.
+
+    Returns
+    -------
+    json
+        JSON object for use in postgresql queries.
+
+    Examples
+    --------
+    >>> key_array_to_json(['x','y','z'], 1)
+    {'x': {'y': {'z': 1}}
+    """
+    return {keys[0]: reduce(lambda x, y: {y: x}, keys[1:][::-1], value)}
 
 
 STRUCTURES = {

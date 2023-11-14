@@ -67,7 +67,7 @@ jobs:
         export TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
         # Opt in to LDAPAuthenticator tests.
         export TILED_TEST_LDAP=1
-        coverage run -m pytest -v
+        coverage run -m pytest -v -m "not slow"
         coverage report
 
   windows_checks:

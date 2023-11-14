@@ -155,7 +155,11 @@ async def test_search(a):
     assert await d.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
     assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
 
+# @pytest_asyncio.fixture
+# @pytest.mark.asyncio
+# async def large_database():
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(a):
     for i in range(10000):
