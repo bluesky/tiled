@@ -1107,7 +1107,7 @@ def json_serializer(obj):
 
 
 def key_array_to_json(keys, value):
-    """Take JSON accessor information as an array of keys and value (['foo','bar'], 'baz') and convert to JSON object({'foo' : { 'bar' : 'baz'}}).
+    """Take JSON accessor information as an array of keys and value
 
     Parameters
     ----------
