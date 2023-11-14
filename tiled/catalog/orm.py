@@ -90,7 +90,7 @@ class Node(Timestamped, Base):
             "time_created",
             "id",
             "metadata",
-            postgresql_using="btree",
+            postgresql_using="gin",
         ),
         # This is used by ORDER BY with the default sorting.
         # Index("ancestors_time_created", "ancestors", "time_created"),

@@ -6,7 +6,7 @@ import re
 import shutil
 import sys
 import uuid
-from functools import partial
+from functools import partial, reduce
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
@@ -938,9 +938,18 @@ def _prepare_structure(structure_family, structure):
 
 def binary_op(query, tree, operation):
     dialect_name = tree.engine.url.get_dialect().name
-    attr = orm.Node.metadata_[query.key.split(".")]
+    keys = query.key.split(".")
+    attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
         condition = operation(_get_value(attr, type(query.value)), query.value)
+    # specific case where GIN optomized index can be used to speed up POSTGRES equals queries
+    elif (dialect_name == "postgresql") and (operation == operator.eq):
+        condition = orm.Node.metadata_.op("@>")(
+            type_coerce(
+                key_array_to_json(keys, query.value),
+                orm.Node.metadata_.type,
+            )
+        )
     else:
         condition = operation(attr, type_coerce(query.value, orm.Node.metadata_.type))
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -1095,6 +1104,29 @@ class Collision(Conflicts):
 def json_serializer(obj):
     "The PostgreSQL JSON serializer requires str, not bytes."
     return safe_json_dump(obj).decode()
+
+
+def key_array_to_json(keys, value):
+    """Take JSON accessor information as an array of keys and value
+
+    Parameters
+    ----------
+    keys : iterable
+        An array of keys to be created in the object.
+    value : string
+        Value assigned to the final key.
+
+    Returns
+    -------
+    json
+        JSON object for use in postgresql queries.
+
+    Examples
+    --------
+    >>> key_array_to_json(['x','y','z'], 1)
+    {'x': {'y': {'z': 1}}
+    """
+    return {keys[0]: reduce(lambda x, y: {y: x}, keys[1:][::-1], value)}
 
 
 STRUCTURES = {
