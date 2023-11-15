@@ -669,7 +669,13 @@ and enter the code:
             return
 
         # Revoke the current session.
-        handle_error(self.http_client.post(f"{self.api_uri}auth/logout"))
+        refresh_token = self.http_client.auth.sync_get_token("refresh_token")
+        handle_error(
+            self.http_client.post(
+                f"{self.api_uri}auth/session/revoke",
+                json={"refresh_token": refresh_token},
+            )
+        )
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")

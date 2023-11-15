@@ -1,4 +1,6 @@
 import io
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -86,6 +88,32 @@ def test_password_auth(enter_password, config):
         with fail_with_status_code(422):
             with enter_password(""):
                 from_context(context, username="alice")
+
+
+def test_logout(enter_password, config, tmpdir):
+    """
+    A password that is wrong, empty, or belonging to a different user fails.
+    """
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Log in as Alice.
+        with enter_password("secret1"):
+            from_context(context, username="alice")
+        # Reuse token from cache.
+        client = from_context(context, username="alice")
+        # This is set by an autouse fixture in conftest.py.
+        tiled_cache_dir = os.environ["TILED_CACHE_DIR"]
+        shutil.copytree(tiled_cache_dir, tmpdir / "backup")
+        # The removes the takes from the cache AND invalidates the session.
+        client.logout()
+        # Put the tokens back.
+        shutil.rmtree(tiled_cache_dir)
+        shutil.copytree(tmpdir / "backup", tiled_cache_dir)
+        # Implementation detail: The access token JWT is still valid, so this
+        # works, for a limited time.
+        client = from_context(context, username="alice")
+        # The refresh token refers to a revoked session, so this fails.
+        with pytest.raises(CannotRefreshAuthentication):
+            client.context.force_auth_refresh()
 
 
 def test_key_rotation(enter_password, config):
