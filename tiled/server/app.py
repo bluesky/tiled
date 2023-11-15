@@ -409,8 +409,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-            if authentication.get("single_user_api_key") is not None:
-                settings.single_user_api_key_generated = False
+        if authentication.get("single_user_api_key") is not None:
+            settings.single_user_api_key_generated = False
         for item in [
             "allow_origins",
             "response_bytesize_limit",
