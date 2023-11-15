@@ -127,7 +127,13 @@ One way to run a PostgresSQL database is:
 
 ```
 export TILED_DATABASE_PASSWORD=db_secret
-docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=${TILED_DATABASE_PASSWORD} -d docker.io/postgres
+mkdir postgres-data
+docker run -d \
+  --name tiled-test-postgres \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=${TILED_DATABASE_PASSWORD} \
+  -v ./postgres-data:/var/lib/postgresql/data \
+  docker.io/postgres:16
 ```
 
 Initialize the database. (This creates the tables, indexes, and so on used by Tiled.)
@@ -198,7 +204,8 @@ under the Tiled repository root. The container image has one in particular,
 docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -v ./config:/deploy/config:ro
+  -v ./config:/deploy/config:ro \
+  ghcr.io/bluesky/tiled:latest
 ```
 
 You may need to mount additional volumes as well.
