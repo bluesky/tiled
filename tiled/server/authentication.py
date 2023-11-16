@@ -908,7 +908,7 @@ async def revoke_session(
     # Find this session in the database.
     session = await lookup_valid_session(db, session_id)
     if session is None:
-        raise HTTPException(404, detail=f"No session {session_id}")
+        raise HTTPException(409, detail=f"No session {session_id}")
     session.revoked = True
     db.add(session)
     await db.commit()
