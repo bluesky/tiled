@@ -119,7 +119,7 @@ def test_logout(enter_password, config, tmpdir):
         # not been that long.
         client = from_context(context, username="alice")
         # The refresh token refers to a revoked session, so refreshing the
-        # session to new a *new* access and refresh token will fail.
+        # session to generate a *new* access and refresh token will fail.
         with pytest.raises(CannotRefreshAuthentication):
             client.context.force_auth_refresh()
 

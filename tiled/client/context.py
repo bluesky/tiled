@@ -672,7 +672,7 @@ and enter the code:
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
         csrf_token = self.http_client.cookies["tiled_csrf"]
         # Manually build a request, circumventing auth because this request is not authenticated.
-        # The refresh_token is the body is the relevant proof, not the Authentication header.
+        # The refresh_token in the body is the relevant proof, not the Authentication header.
         request = httpx.Request(
             "POST",
             f"{self.api_uri}auth/session/revoke",
