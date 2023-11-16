@@ -919,6 +919,7 @@ async def revoke_session(
 async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
+    principal=Security(get_current_principal, scopes=[]),
     db=Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
