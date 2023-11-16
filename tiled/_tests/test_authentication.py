@@ -100,18 +100,26 @@ def test_logout(enter_password, config, tmpdir):
             from_context(context, username="alice")
         # Reuse token from cache.
         client = from_context(context, username="alice")
-        # This is set by an autouse fixture in conftest.py.
+        # This was set to a unique (temporary) dir by an autouse fixture in conftest.py.
         tiled_cache_dir = os.environ["TILED_CACHE_DIR"]
+        # Make a backup copy of the cache directory, which contains the auth tokens.
         shutil.copytree(tiled_cache_dir, tmpdir / "backup")
-        # The removes the takes from the cache AND invalidates the session.
+        # Logout does two things:
+        # 1. Revoke the session, so that it cannot be refreshed.
+        # 2. Clear the tokens related to this session from in-memory state
+        #    and on-disk state.
         client.logout()
-        # Put the tokens back.
+        # Restore the tokens from backup.
+        # Our aim is to test, below, that even if you have the tokens they
+        # can't be used anymore.
         shutil.rmtree(tiled_cache_dir)
         shutil.copytree(tmpdir / "backup", tiled_cache_dir)
-        # Implementation detail: The access token JWT is still valid, so this
-        # works, for a limited time.
+        # There is no way to revoke a JWT access token. It expires after a
+        # short time window (minutes) but it will still work here, as it has
+        # not been that long.
         client = from_context(context, username="alice")
-        # The refresh token refers to a revoked session, so this fails.
+        # The refresh token refers to a revoked session, so refreshing the
+        # session to new a *new* access and refresh token will fail.
         with pytest.raises(CannotRefreshAuthentication):
             client.context.force_auth_refresh()
 
