@@ -92,7 +92,7 @@ def test_password_auth(enter_password, config):
 
 def test_logout(enter_password, config, tmpdir):
     """
-    A password that is wrong, empty, or belonging to a different user fails.
+    Logging out revokes the session, such that it cannot be refreshed.
     """
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as Alice.
