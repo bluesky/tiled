@@ -898,7 +898,6 @@ async def refresh_session(
 async def revoke_session(
     request: Request,
     refresh_token: schemas.RefreshToken,
-    principal: schemas.Principal = Security(get_current_principal, scopes=[]),
     settings: BaseSettings = Depends(get_settings),
     db=Depends(get_database_session),
 ):

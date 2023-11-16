@@ -670,12 +670,18 @@ and enter the code:
 
         # Revoke the current session.
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
-        handle_error(
-            self.http_client.post(
-                f"{self.api_uri}auth/session/revoke",
-                json={"refresh_token": refresh_token},
-            )
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+        # Manually build a request, circumventing auth because this request is not authenticated.
+        # The refresh_token is the body is the relevant proof, not the Authentication header.
+        request = httpx.Request(
+            "POST",
+            f"{self.api_uri}auth/session/revoke",
+            json={"refresh_token": refresh_token},
+            # Submit CSRF token in both header and cookie.
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+            headers={"x-csrf": csrf_token},
         )
+        handle_error(self.http_client.send(request, auth=None))
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
