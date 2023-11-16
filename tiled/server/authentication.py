@@ -915,7 +915,7 @@ async def revoke_session(
     return Response(status_code=204)
 
 
-@base_authentication_router.post("/session/revoke/{session_id}")
+@base_authentication_router.delete("/session/revoke/{session_id}")
 async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
