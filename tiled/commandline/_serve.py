@@ -34,6 +34,14 @@ def serve_directory(
             "this option selected."
         ),
     ),
+    api_key: str = typer.Option(
+        None,
+        "--api-key",
+        help=(
+            "Set the single-user API key. "
+            "By default, a random key is generated at startup and printed."
+        ),
+    ),
     keep_ext: bool = typer.Option(
         False,
         "--keep-ext",
@@ -182,7 +190,10 @@ def serve_directory(
         register_logger.setLevel("INFO")
     web_app = build_app(
         catalog_adapter,
-        {"allow_anonymous_access": public},
+        {
+            "allow_anonymous_access": public,
+            "single_user_api_key": api_key,
+        },
         server_settings,
     )
     if watch:
@@ -268,6 +279,14 @@ def serve_catalog(
             "Turns off requirement for API key authentication for reading. "
             "However, the API key is still required for writing, so data cannot be modified even with "
             "this option selected."
+        ),
+    ),
+    api_key: str = typer.Option(
+        None,
+        "--api-key",
+        help=(
+            "Set the single-user API key. "
+            "By default, a random key is generated at startup and printed."
         ),
     ),
     host: str = typer.Option(
@@ -388,7 +407,13 @@ or use an existing one:
         init_if_not_exists=init,
     )
     web_app = build_app(
-        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+        tree,
+        {
+            "allow_anonymous_access": public,
+            "single_user_api_key": api_key,
+        },
+        server_settings,
+        scalable=scalable,
     )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
@@ -412,6 +437,14 @@ def serve_pyobject(
             "Turns off requirement for API key authentication for reading. "
             "However, the API key is still required for writing, so data cannot be modified even with this "
             "option selected."
+        ),
+    ),
+    api_key: str = typer.Option(
+        None,
+        "--api-key",
+        help=(
+            "Set the single-user API key. "
+            "By default, a random key is generated at startup and printed."
         ),
     ),
     host: str = typer.Option(
@@ -453,7 +486,13 @@ def serve_pyobject(
             "available_bytes"
         ] = object_cache_available_bytes
     web_app = build_app(
-        tree, {"allow_anonymous_access": public}, server_settings, scalable=scalable
+        tree,
+        {
+            "allow_anonymous_access": public,
+            "single_user_api_key": api_key,
+        },
+        server_settings,
+        scalable=scalable,
     )
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
@@ -507,6 +546,14 @@ def serve_config(
             "option selected."
         ),
     ),
+    api_key: str = typer.Option(
+        None,
+        "--api-key",
+        help=(
+            "Set the single-user API key. "
+            "By default, a random key is generated at startup and printed."
+        ),
+    ),
     host: str = typer.Option(
         None,
         help=(
@@ -543,6 +590,11 @@ def serve_config(
         if "authentication" not in parsed_config:
             parsed_config["authentication"] = {}
         parsed_config["authentication"]["allow_anonymous_access"] = True
+    # Let --api-key flag override config.
+    if api_key:
+        if "authentication" not in parsed_config:
+            parsed_config["authentication"] = {}
+        parsed_config["authentication"]["single_user_api_key"] = api_key
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
