@@ -459,15 +459,17 @@ def test_api_key_other_principal(enter_password, config):
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
 
     with Context.from_app(build_app_from_config(config)) as context:
-        # Identity is not created for Bob until initial login
+        # Log in as Bob and retrieve Bob's UUID for later use
         with enter_password("secret2"):
             context.authenticate(username="bob")
+            principal = context.whoami()
+            assert "admin" not in (role["name"] for role in principal["roles"])
+            bob_uuid = principal["uuid"]
             context.logout()
 
-        # Log in as Alice.
+        # Log in as Alice
         with enter_password("secret1"):
             client = from_context(context, username="alice")
-
         # Retrieve admin UUID for later use
         principal = context.whoami()
         assert "admin" in (role["name"] for role in principal["roles"])
@@ -478,111 +480,64 @@ def test_api_key_other_principal(enter_password, config):
             context=context, uuid=principal["uuid"], scopes=["read:principals"]
         )
         assert admin_api_key
-
-        # Retrieve UUID for another principal
-        principals = context.admin.list_principals()
-        other_principal_uuid = tuple(
-            principal["uuid"]
-            for principal in principals
-            if principal["uuid"] != admin_uuid
-        )[0]
-
-        # Cannot create API key for another principal with elevated privileges
+        # Cannot create API key to elevate privileges for another principal
         with fail_with_status_code(400) as fail_info:
             _create_api_key_other_principal(
-                context=context,
-                uuid=other_principal_uuid,
-                scopes=["read:principals"],
+                context=context, uuid=bob_uuid, scopes=["read:principals"]
             )
             fail_message = " must be a subset of the principal's scopes "
             assert fail_message in fail_info.response.text
-
         # Create API key for another principal
         other_api_key = _create_api_key_other_principal(
-            context=context,
-            uuid=other_principal_uuid,
-            scopes=["read:data"],
+            context=context, uuid=bob_uuid, scopes=["read:data"]
         )
         assert other_api_key
 
         # Try the new API keys
         client.logout()
-        context.http_client.get(
-            f"/api/v1/auth/principal?api_key={admin_api_key}"
-        ).raise_for_status()
-        context.http_client.cookies = None
-        context.http_client.get(
-            f"/api/v1/array/full/A1?api_key={other_api_key}"
-        ).raise_for_status()
-        context.http_client.cookies = None
-        # The same endpoints fail without an API key
-        with fail_with_status_code(401):
-            context.http_client.get("/api/v1/auth/principal").raise_for_status()
-        with fail_with_status_code(401):
-            context.http_client.get("/api/v1/array/full/A1").raise_for_status()
+        for resource, api_key in (
+            ("/api/v1/auth/principal", admin_api_key),
+            ("/api/v1/array/full/A1", other_api_key),
+        ):
+            url_with_key = f"{resource}?api_key={api_key}"
+            context.http_client.get(url_with_key).raise_for_status()
+            context.http_client.cookies = None
+            # The same endpoint fails without an API key
+            with fail_with_status_code(401):
+                context.http_client.get(resource).raise_for_status()
 
         # Next, log in as Bob -- a standard user.
         with enter_password("secret2"):
             client = from_context(context, username="bob")
 
-        # Retrieve UUID for self
-        principal = context.whoami()
-        assert "admin" not in (role["name"] for role in principal["roles"])
-        self_uuid = principal["uuid"]
-
-        # Cannot create API key for self through this API endpoint
-        with fail_with_status_code(401):
-            self_api_key = _create_api_key_other_principal(
-                context=context, uuid=self_uuid, scopes=["read:metadata"]
-            )
-
-        # Cannot create API key for another principal either
-        with fail_with_status_code(401):
-            self_api_key = _create_api_key_other_principal(
-                context=context, uuid=admin_uuid, scopes=["read:metadata"]
-            )
-
+        # Bob cannot create API key through this API endpoint
+        for uuid in (bob_uuid, admin_uuid):
+            # Neither for self nor for another principal
+            with fail_with_status_code(401):
+                self_api_key = _create_api_key_other_principal(
+                    context=context, uuid=uuid, scopes=["read:metadata"]
+                )
         # Standard user cannot bypass a scopes check by using empty scopes
         response = context.http_client.post(
-            "/api/v1/auth/apikey",
-            json={"expires_in": None, "scopes": []},
+            "/api/v1/auth/apikey", json={"expires_in": None, "scopes": []}
         )
         response.raise_for_status()
         self_api_key = response.json()["secret"]
         assert self_api_key
-        # Try the new API key
+
+        # Try the new API key with admin and normal resources
         client.logout()
-        with fail_with_status_code(401):
-            context.http_client.get(
-                f"/api/v1/auth/principal?api_key={self_api_key}"
-            ).raise_for_status()
-        context.http_client.cookies = None
-        with fail_with_status_code(401):
-            context.http_client.get(
-                f"/api/v1/array/full/A1?api_key={self_api_key}"
-            ).raise_for_status()
-        context.http_client.cookies = None
-        # Try with no API key, with empty scopes
-        with fail_with_status_code(401):
-            context.http_client.get(
-                "/api/v1/auth/principal?scopes=[]"
-            ).raise_for_status()
-        with fail_with_status_code(401):
-            context.http_client.get(
-                "/api/v1/array/full/A1?scopes=[]"
-            ).raise_for_status()
-        # Try the new API key, plus empty scopes
-        client.logout()
-        with fail_with_status_code(401):
-            context.http_client.get(
-                f"/api/v1/auth/principal?api_key={self_api_key}&scopes=[]"
-            ).raise_for_status()
-        context.http_client.cookies = None
-        with fail_with_status_code(401):
-            context.http_client.get(
-                f"/api/v1/array/full/A1?api_key={self_api_key}&scopes=[]"
-            ).raise_for_status()
-        context.http_client.cookies = None
+        for resource in ("/api/v1/auth/principal", "/api/v1/array/full/A1"):
+            # Try with/without key, with/without empty scopes
+            for query_params in (
+                f"api_key={self_api_key}",
+                "scopes=[]",
+                f"api_key={self_api_key}&scopes=[]",
+            ):
+                url_query = f"{resource}?{query_params}"
+                with fail_with_status_code(401):
+                    context.http_client.get(url_query).raise_for_status()
+                context.http_client.cookies = None
 
 
 def _create_api_key_other_principal(context, uuid, scopes=None):
