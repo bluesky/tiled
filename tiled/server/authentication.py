@@ -894,8 +894,29 @@ async def refresh_session(
     return new_tokens
 
 
-@base_authentication_router.delete("/session/revoke/{session_id}")
+@base_authentication_router.post("/session/revoke")
 async def revoke_session(
+    request: Request,
+    refresh_token: schemas.RefreshToken,
+    settings: BaseSettings = Depends(get_settings),
+    db=Depends(get_database_session),
+):
+    "Mark a Session as revoked so it cannot be refreshed again."
+    request.state.endpoint = "auth"
+    payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
+    session_id = payload["sid"]
+    # Find this session in the database.
+    session = await lookup_valid_session(db, session_id)
+    if session is None:
+        raise HTTPException(409, detail=f"No session {session_id}")
+    session.revoked = True
+    db.add(session)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@base_authentication_router.delete("/session/revoke/{session_id}")
+async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
     principal: schemas.Principal = Security(get_current_principal, scopes=[]),
@@ -1095,12 +1116,13 @@ async def whoami(
     )
 
 
-@base_authentication_router.post("/logout")
+@base_authentication_router.post("/logout", include_in_schema=False)
 async def logout(
     request: Request,
     response: Response,
     principal=Security(get_current_principal, scopes=[]),
 ):
+    "Deprecated. See revoke_session: POST /session/revoke."
     request.state.endpoint = "auth"
     response.delete_cookie(API_KEY_COOKIE_NAME)
     return {}
