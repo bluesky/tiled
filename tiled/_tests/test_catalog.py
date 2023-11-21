@@ -8,6 +8,7 @@ import pandas
 import pandas.testing
 import pytest
 import pytest_asyncio
+import sqlalchemy.dialects.postgresql.asyncpg
 import sqlalchemy.exc
 import tifffile
 import xarray
@@ -451,6 +452,20 @@ async def test_access_control(tmpdir):
                 data_uri="file://localhost/test1",
                 is_directory=False,
                 parameter="filepath",
+                num=1,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
                 num=None,
             ),
             Asset(
@@ -476,7 +491,8 @@ async def test_access_control(tmpdir):
         ],
     ],
     ids=[
-        "mix-null-and-int",
+        "null-then-int",
+        "int-then-null",
         "duplicate-null",
         "duplicate-int",
     ],
@@ -484,7 +500,12 @@ async def test_access_control(tmpdir):
 async def test_constraints_on_parameter_and_num(a, assets):
     "Test constraints enforced by database on 'parameter' and 'num'."
     arr_adapter = ArrayAdapter.from_array([1, 2, 3])
-    with pytest.raises(sqlalchemy.exc.IntegrityError):
+    with pytest.raises(
+        (
+            sqlalchemy.exc.IntegrityError,  # SQLite
+            sqlalchemy.exc.DBAPIError,  # PostgreSQL
+        )
+    ):
         await create_node_safe(
             a,
             key="test",
