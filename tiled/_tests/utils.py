@@ -13,7 +13,7 @@ from ..client import context
 @contextlib.contextmanager
 def fail_with_status_code(status_code):
     with pytest.raises(httpx.HTTPStatusError) as info:
-        yield
+        yield info
     assert info.value.response.status_code == status_code
 
 
