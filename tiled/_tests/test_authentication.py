@@ -466,14 +466,14 @@ def test_sticky_identity(enter_password, config):
         with enter_password("secret1"):
             context.authenticate(username="alice")
         assert context.whoami()["identities"][0]["id"] == "alice"
-    # The default identity is now set. The log was "sticky".
+    # The default identity is now set. The login was "sticky".
     with Context.from_app(build_app_from_config(config)) as context:
         assert get_default_identity(context.api_uri) is not None
         context.authenticate()
         assert context.whoami()["identities"][0]["id"] == "alice"
     # Opt out of the stickiness (set_default=False).
     with Context.from_app(build_app_from_config(config)) as context:
-        assert get_default_identity(context.api_uri) is None
+        assert get_default_identity(context.api_uri) is not None
         with enter_password("secret2"):
             context.authenticate(username="bob", set_default=False)
         assert context.whoami()["identities"][0]["id"] == "bob"
