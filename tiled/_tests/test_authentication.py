@@ -509,9 +509,9 @@ def test_admin_api_key_any_principal(
         assert api_key
         context.logout()
 
-        url_with_key = f"{resource}?api_key={api_key}"
-        context.http_client.get(url_with_key).raise_for_status()
-        context.http_client.cookies = None
+        context.api_key = api_key
+        context.http_client.get(resource).raise_for_status()
+        context.api_key = None
         # The same endpoint fails without an API key
         with fail_with_status_code(401):
             context.http_client.get(resource).raise_for_status()
@@ -574,14 +574,16 @@ def test_api_key_bypass_scopes(enter_password, principals_context):
         for resource in ("/api/v1/auth/principal", "/api/v1/array/full/A1"):
             # Try with/without key, with/without empty scopes
             for query_params in (
-                f"api_key={api_key}",
-                "scopes=[]",
-                f"api_key={api_key}&scopes=[]",
+                {"api_key": api_key},
+                {"scopes": []},
+                {"api_key": api_key, "scopes": []},
             ):
-                url_query = f"{resource}?{query_params}"
+                context.api_key = query_params.pop("api_key", None)
                 with fail_with_status_code(401):
-                    context.http_client.get(url_query).raise_for_status()
-                context.http_client.cookies = None
+                    context.http_client.get(
+                        resource, params=query_params
+                    ).raise_for_status()
+                # context.api_key = None
 
 
 def _create_api_key_other_principal(context, uuid, scopes=None):
