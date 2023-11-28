@@ -583,7 +583,6 @@ def test_api_key_bypass_scopes(enter_password, principals_context):
                     context.http_client.get(
                         resource, params=query_params
                     ).raise_for_status()
-                # context.api_key = None
 
 
 def _create_api_key_other_principal(context, uuid, scopes=None):
