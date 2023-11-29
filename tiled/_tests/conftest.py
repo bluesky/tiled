@@ -105,29 +105,66 @@ if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
 
-@pytest_asyncio.fixture(params=["sqlite", "postgresql"])
-async def adapter(request, tmpdir):
+@pytest_asyncio.fixture
+async def postgresql_adapter(request, tmpdir):
     """
     Adapter instance
 
     Note that startup() and shutdown() are not called, and must be run
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
     """
-    if request.param == "sqlite":
-        adapter = in_memory(writable_storage=str(tmpdir))
+    if not TILED_TEST_POSTGRESQL_URI:
+        raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    # Create temporary database.
+    async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
+        # Build an adapter on it, and initialize the database.
+        adapter = from_uri(
+            uri_with_database_name,
+            writable_storage=str(tmpdir),
+            init_if_not_exists=True,
+        )
         yield adapter
-    elif request.param == "postgresql":
-        if not TILED_TEST_POSTGRESQL_URI:
-            raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
-        # Create temporary database.
-        async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-            # Build an adapter on it, and initialize the database.
-            adapter = from_uri(
-                uri_with_database_name,
-                writable_storage=str(tmpdir),
-                init_if_not_exists=True,
-            )
-            yield adapter
-            await adapter.shutdown()
-    else:
-        assert False
+
+
+@pytest_asyncio.fixture
+async def postgresql_with_example_data_adapter(request, tmpdir):
+    """
+    Adapter instance
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
+    """
+    if not TILED_TEST_POSTGRESQL_URI:
+        raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    DATABASE_NAME = "example_data"
+    uri = TILED_TEST_POSTGRESQL_URI
+    if uri.endswith("/"):
+        uri = uri[:-1]
+    uri_with_database_name = f"{uri}/{DATABASE_NAME}"
+    adapter = from_uri(
+        uri_with_database_name,
+        writable_storage=str(tmpdir),
+    )
+    yield adapter
+
+
+@pytest_asyncio.fixture
+async def sqlite_adapter(request, tmpdir):
+    """
+    Adapter instance
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
+    """
+    yield in_memory(writable_storage=str(tmpdir))
+
+
+@pytest.fixture(params=["sqlite_adapter", "postgresql_adapter"])
+def adapter(request):
+    """
+    Adapter instance
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
+    """
+    yield request.getfixturevalue(request.param)

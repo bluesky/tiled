@@ -156,24 +156,14 @@ async def test_search(a):
     assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
 
 
-@pytest.mark.slow
 @pytest.mark.asyncio
-async def test_metadata_index_is_used(a):
-    for i in range(10000):
-        await a.create_node(
-            metadata={
-                "number": i,
-                "number_as_string": str(i),
-                "nested": {"number": i, "number_as_string": str(i), "bool": bool(i)},
-                "bool": bool(i),
-            },
-            specs=[],
-            structure_family="array",
-        )
-    # Check that an index (specifically the 'top_level_metdata' index) is used
+async def test_metadata_index_is_used(postgresql_with_example_data_adapter):
+    a = postgresql_with_example_data_adapter  # for succinctness below
+    # Check that an index (specifically the 'top_level_metadata' index) is used
     # by inspecting the content of an 'EXPLAIN ...' query. The exact content
     # is intended for humans and is not an API, but we can coarsely check
     # that the index of interest is mentioned.
+    await a.startup()
     with record_explanations() as e:
         results = await a.search(Key("number_as_string") == "3").keys_range(0, 5)
         assert len(results) == 1
@@ -200,6 +190,7 @@ async def test_metadata_index_is_used(a):
         )
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
+    await a.shutdown()
 
 
 @pytest.mark.asyncio
