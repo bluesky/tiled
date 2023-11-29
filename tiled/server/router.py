@@ -548,7 +548,6 @@ async def table_partition(
 async def table_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
-    principal: str = Depends(get_current_principal),
     column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
