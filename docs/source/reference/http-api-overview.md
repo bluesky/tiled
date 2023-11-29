@@ -25,11 +25,14 @@ the data, in various forms.
 
 For example, data access routes ``GET /api/v1/array/block/{path}``,
 ``GET /api/v1/array/full/{path}``, and ``GET /api/v1/table/partition/{path}``
-provide options for slicing and sub-selection specific to arrays and table.
+provide options for slicing and sub-selection specific to arrays and tables.
 Generic clients, like a web browser, should use the "full" routes, which send
 the entire (sliced) result in one response. More sophisticated clients with
 some knowledge of Tiled may use the other routes, which enable parallel
 chunk-based access.
+
+The ``GET /api/v1/container/full/{path}`` route
+ provides all the metadata and data below a given directory. This route also works for other container-like data structures.
 
 The root route, `GET /api/v1/` provides general information about the server and the formats
 and authentication providers it supports.
