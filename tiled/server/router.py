@@ -604,7 +604,6 @@ async def container_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
 ):
     """
     Fetch the data below the given node.
