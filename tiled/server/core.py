@@ -495,7 +495,7 @@ async def construct_resource(
             d["links"] = {
                 "self": f"{base_url}/metadata/{path_str}",
                 "search": f"{base_url}/search/{path_str}",
-                "full": f"{base_url}/node/full/{path_str}",
+                "full": f"{base_url}/container/full/{path_str}",
             }
 
         resource = schemas.Resource[
@@ -722,8 +722,8 @@ class WrongTypeForRoute(Exception):
 FULL_LINKS = {
     StructureFamily.array: {"full": "{base_url}/array/full/{path}"},
     StructureFamily.awkward: {"full": "{base_url}/awkward/full/{path}"},
-    StructureFamily.container: {"full": "{base_url}/node/full/{path}"},
-    StructureFamily.table: {"full": "{base_url}/node/full/{path}"},
+    StructureFamily.container: {"full": "{base_url}/container/full/{path}"},
+    StructureFamily.table: {"full": "{base_url}/table/full/{path}"},
     StructureFamily.sparse: {"full": "{base_url}/array/full/{path}"},
 }
 

@@ -98,8 +98,8 @@ class _DaskDataFrameClient(BaseClient):
         params = {"partition": partition}
         if columns:
             # Note: The singular/plural inconsistency here is due to the fact that
-            # ["A", "B"] will be encoded in the URL as field=A&field=B
-            params["field"] = columns
+            # ["A", "B"] will be encoded in the URL as column=A&column=B
+            params["column"] = columns
         content = handle_error(
             self.context.http_client.get(
                 self.item["links"]["partition"],
@@ -222,7 +222,7 @@ class _DaskDataFrameClient(BaseClient):
         """
         params = {}
         if columns is not None:
-            params["field"] = columns
+            params["column"] = columns
         return export_util(
             filepath,
             format,
