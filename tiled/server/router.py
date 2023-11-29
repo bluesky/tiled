@@ -594,7 +594,7 @@ async def table_full(
 @router.get(
     "/container/full/{path:path}",
     response_model=schemas.Response,
-    name="full 'container' or 'table'",
+    name="full 'container' metadata and data",
 )
 async def container_full(
     request: Request,
@@ -606,8 +606,13 @@ async def container_full(
     serialization_registry=Depends(get_serialization_registry),
 ):
     """
-    Fetch the data below the given node.
+    Fetch the data for the given container.
     """
+    if entry.structure_family != StructureFamily.container:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /container/full route.",
+        )
     try:
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, field)
