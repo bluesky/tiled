@@ -1,4 +1,6 @@
 import io
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -86,6 +88,40 @@ def test_password_auth(enter_password, config):
         with fail_with_status_code(422):
             with enter_password(""):
                 from_context(context, username="alice")
+
+
+def test_logout(enter_password, config, tmpdir):
+    """
+    Logging out revokes the session, such that it cannot be refreshed.
+    """
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Log in as Alice.
+        with enter_password("secret1"):
+            from_context(context, username="alice")
+        # Reuse token from cache.
+        client = from_context(context, username="alice")
+        # This was set to a unique (temporary) dir by an autouse fixture in conftest.py.
+        tiled_cache_dir = os.environ["TILED_CACHE_DIR"]
+        # Make a backup copy of the cache directory, which contains the auth tokens.
+        shutil.copytree(tiled_cache_dir, tmpdir / "backup")
+        # Logout does two things:
+        # 1. Revoke the session, so that it cannot be refreshed.
+        # 2. Clear the tokens related to this session from in-memory state
+        #    and on-disk state.
+        client.logout()
+        # Restore the tokens from backup.
+        # Our aim is to test, below, that even if you have the tokens they
+        # can't be used anymore.
+        shutil.rmtree(tiled_cache_dir)
+        shutil.copytree(tmpdir / "backup", tiled_cache_dir)
+        # There is no way to revoke a JWT access token. It expires after a
+        # short time window (minutes) but it will still work here, as it has
+        # not been that long.
+        client = from_context(context, username="alice")
+        # The refresh token refers to a revoked session, so refreshing the
+        # session to generate a *new* access and refresh token will fail.
+        with pytest.raises(CannotRefreshAuthentication):
+            client.context.force_auth_refresh()
 
 
 def test_key_rotation(enter_password, config):
@@ -426,26 +462,175 @@ def test_session_limit(enter_password, config):
 def test_sticky_identity(enter_password, config):
     # Log in as Alice.
     with Context.from_app(build_app_from_config(config)) as context:
-        get_default_identity(context.api_uri) is None
+        assert get_default_identity(context.api_uri) is None
         with enter_password("secret1"):
             context.authenticate(username="alice")
         assert context.whoami()["identities"][0]["id"] == "alice"
-    # The default identity is now set. The log was "sticky".
+    # The default identity is now set. The login was "sticky".
     with Context.from_app(build_app_from_config(config)) as context:
-        get_default_identity(context.api_uri) is not None
+        assert get_default_identity(context.api_uri) is not None
         context.authenticate()
         assert context.whoami()["identities"][0]["id"] == "alice"
     # Opt out of the stickiness (set_default=False).
     with Context.from_app(build_app_from_config(config)) as context:
-        get_default_identity(context.api_uri) is None
+        assert get_default_identity(context.api_uri) is not None
         with enter_password("secret2"):
             context.authenticate(username="bob", set_default=False)
         assert context.whoami()["identities"][0]["id"] == "bob"
     # The default is still Alice.
     with Context.from_app(build_app_from_config(config)) as context:
-        get_default_identity(context.api_uri) is not None
+        assert get_default_identity(context.api_uri) is not None
         context.authenticate()
         assert context.whoami()["identities"][0]["id"] == "alice"
     # Clear the default.
     clear_default_identity(context.api_uri)
-    get_default_identity(context.api_uri) is None
+    assert get_default_identity(context.api_uri) is None
+
+
+@pytest.fixture
+def principals_context(enter_password, config):
+    """
+    Fetch UUID for an admin and an ordinary user; include the client context.
+    """
+    # Make alice an admin. Leave bob as a user.
+    config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
+
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Log in as Alice and retrieve admin UUID for later use
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+
+        principal = context.whoami()
+        assert "admin" in (role["name"] for role in principal["roles"])
+        admin_uuid = principal["uuid"]
+        context.logout()
+
+        # Log in as Bob and retrieve Bob's UUID for later use
+        with enter_password("secret2"):
+            context.authenticate(username="bob")
+
+        principal = context.whoami()
+        assert "admin" not in (role["name"] for role in principal["roles"])
+        bob_uuid = principal["uuid"]
+        context.logout()
+
+        yield {
+            "uuid": {"alice": admin_uuid, "bob": bob_uuid},
+            "context": context,
+        }
+
+
+@pytest.mark.parametrize(
+    "username, scopes, resource",
+    (
+        ("alice", ["read:principals"], "/api/v1/auth/principal"),
+        ("bob", ["read:data"], "/api/v1/array/full/A1"),
+    ),
+)
+def test_admin_api_key_any_principal(
+    enter_password, principals_context, username, scopes, resource
+):
+    """
+    Admin can create usable API keys for any prinicipal, within that principal's scopes.
+    """
+    with principals_context["context"] as context:
+        # Log in as Alice, create and use API key after logout
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+
+        principal_uuid = principals_context["uuid"][username]
+        api_key = _create_api_key_other_principal(
+            context=context, uuid=principal_uuid, scopes=scopes
+        )
+        assert api_key
+        context.logout()
+
+        context.api_key = api_key
+        context.http_client.get(resource).raise_for_status()
+        context.api_key = None
+        # The same endpoint fails without an API key
+        with fail_with_status_code(401):
+            context.http_client.get(resource).raise_for_status()
+
+
+def test_admin_api_key_any_principal_exceeds_scopes(enter_password, principals_context):
+    """
+    Admin cannot create API key that exceeds scopes for another principal.
+    """
+    with principals_context["context"] as context:
+        # Log in as Alice, create and use API key after logout
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+
+        principal_uuid = principals_context["uuid"]["bob"]
+        with fail_with_status_code(400) as fail_info:
+            _create_api_key_other_principal(
+                context=context, uuid=principal_uuid, scopes=["read:principals"]
+            )
+            fail_message = " must be a subset of the principal's scopes "
+            assert fail_message in fail_info.response.text
+        context.logout()
+
+
+@pytest.mark.parametrize("username", ("alice", "bob"))
+def test_api_key_any_principal(enter_password, principals_context, username):
+    """
+    Ordinary user cannot create API key for another principal.
+    """
+    with principals_context["context"] as context:
+        # Log in as Bob, this API endpoint is unauthorized
+        with enter_password("secret2"):
+            context.authenticate(username="bob")
+
+        principal_uuid = principals_context["uuid"][username]
+        with fail_with_status_code(401):
+            _create_api_key_other_principal(
+                context=context, uuid=principal_uuid, scopes=["read:metadata"]
+            )
+
+
+def test_api_key_bypass_scopes(enter_password, principals_context):
+    """
+    Ordinary user cannot create API key that bypasses a scopes restriction.
+    """
+    with principals_context["context"] as context:
+        # Log in as Bob, create API key with empty scopes
+        with enter_password("secret2"):
+            context.authenticate(username="bob")
+
+        response = context.http_client.post(
+            "/api/v1/auth/apikey", json={"expires_in": None, "scopes": []}
+        )
+        response.raise_for_status()
+        api_key = response.json()["secret"]
+        assert api_key
+        context.logout()
+
+        # Try the new API key with admin and normal resources
+        for resource in ("/api/v1/auth/principal", "/api/v1/array/full/A1"):
+            # Try with/without key, with/without empty scopes
+            for query_params in (
+                {"api_key": api_key},
+                {"scopes": []},
+                {"api_key": api_key, "scopes": []},
+            ):
+                context.api_key = query_params.pop("api_key", None)
+                with fail_with_status_code(401):
+                    context.http_client.get(
+                        resource, params=query_params
+                    ).raise_for_status()
+
+
+def _create_api_key_other_principal(context, uuid, scopes=None):
+    """
+    Return api_key or raise error.
+    """
+    response = context.http_client.post(
+        f"/api/v1/auth/principal/{uuid}/apikey",
+        json={"expires_in": None, "scopes": scopes or []},
+    )
+    response.raise_for_status()
+    api_key_info = response.json()
+    api_key = api_key_info["secret"]
+
+    return api_key
