@@ -543,7 +543,7 @@ async def table_partition(
 @router.get(
     "/table/full/{path:path}",
     response_model=schemas.Response,
-    name="full 'container' or 'table'",
+    name="full 'table' data",
 )
 async def table_full(
     request: Request,
@@ -556,8 +556,13 @@ async def table_full(
     settings: BaseSettings = Depends(get_settings),
 ):
     """
-    Fetch the data below the given node.
+    Fetch the data for the given table.
     """
+    if entry.structure_family != StructureFamily.table:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /table/full route.",
+        )
     try:
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, column)
