@@ -3,8 +3,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+import asyncpg
 import pytest
 import pytest_asyncio
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from .. import profiles
 from ..catalog import from_uri, in_memory
@@ -141,6 +143,14 @@ async def postgresql_with_example_data_adapter(request, tmpdir):
     if uri.endswith("/"):
         uri = uri[:-1]
     uri_with_database_name = f"{uri}/{DATABASE_NAME}"
+    engine = create_async_engine(uri_with_database_name)
+    try:
+        async with engine.connect():
+            pass
+    except asyncpg.exceptions.InvalidCatalogNameError:
+        raise pytest.skip(
+            f"PostgreSQL instance contains no database named {DATABASE_NAME!r}"
+        )
     adapter = from_uri(
         uri_with_database_name,
         writable_storage=str(tmpdir),
