@@ -49,7 +49,7 @@ all = [
     "anyio",
     "asyncpg",
     "appdirs",
-    "awkward >=2.4.3",
+    "awkward >=2.2.4",
     "blosc",
     "cachetools",
     "cachey",
