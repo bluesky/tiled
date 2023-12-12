@@ -113,6 +113,15 @@ async def create_user(db, identity_provider, id):
     return refreshed_principal
 
 
+async def create_service(db, role):
+    role_ = (await db.execute(select(Role).filter(Role.name == role))).scalar()
+    assert role_ is not None, "User role is missing from Roles table"
+    principal = Principal(type="service", roles=[role_])
+    db.add(principal)
+    await db.commit()
+    return principal
+
+
 async def lookup_valid_session(db, session_id):
     if isinstance(session_id, int):
         # Old versions of tiled used an integer sid.
