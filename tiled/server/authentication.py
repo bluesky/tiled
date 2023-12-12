@@ -44,6 +44,7 @@ from ..authn_database import orm
 from ..authn_database.connection_pool import get_database_session
 from ..authn_database.core import (
     create_user,
+    create_service,
     latest_principal_activity,
     lookup_valid_api_key,
     lookup_valid_pending_session_by_device_code,
@@ -821,6 +822,40 @@ async def principal_list(
         principal = schemas.Principal.from_orm(principal_orm, latest_activity).dict()
         principals.append(principal)
     return json_or_msgpack(request, principals)
+
+
+@base_authentication_router.post(
+    "/principal",
+    response_model=schemas.Principal,
+)
+async def create_service_principal(
+    request: Request,
+    principal=Security(get_current_principal, scopes=["read:principals"]),
+    db=Depends(get_database_session),
+    role: str=Query(...),
+):
+    "Create a principal for a service account."
+
+    principal_orm = await create_service(db, role)
+
+    # Relaod to select Principal and Identiies.
+    fully_loaded_principal_orm = (
+        await db.execute(
+            select(orm.Principal)
+            .options(
+                    selectinload(orm.Principal.identities),
+                    selectinload(orm.Principal.roles),
+                    selectinload(orm.Principal.api_keys),
+                    selectinload(orm.Principal.sessions),
+            )
+            .filter(orm.Principal.id == principal_orm.id)
+        )
+    ).scalar()
+
+    principal = schemas.Principal.from_orm(fully_loaded_principal_orm).dict()
+    request.state.endpoint = "auth"
+
+    return json_or_msgpack(request, principal)
 
 
 @base_authentication_router.get(

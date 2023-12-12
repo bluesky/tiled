@@ -14,4 +14,7 @@ SCOPES = {
     "read:principals": {
         "description": "Read list of all users and services and their attributes."
     },
+    "write:principals": {
+        "description": "Edit list of all users and services and their attributes."
+    },
 }
