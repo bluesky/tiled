@@ -12,9 +12,10 @@ from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
-REQUIRED_REVISION = "c7bd2573716d"
+REQUIRED_REVISION = "769180ce732e"
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "769180ce732e",
     "c7bd2573716d",
     "4a9dfaba4a98",
     "56809bcbfcb0",
