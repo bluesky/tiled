@@ -793,6 +793,26 @@ class Admin:
             )
         ).json()
 
+    def create_service_principal(
+        self,
+        role,
+    ):
+        """
+        Generate a new service principal.
+
+        Parameters
+        ----------
+        role : str
+            Specify the role (e.g. user or admin)
+        """
+        return handle_error(
+            self.context.http_client.post(
+                f"{self.base_url}/auth/principal",
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"role": role},
+            )
+        ).json()
+
 
 class CannotPrompt(Exception):
     pass

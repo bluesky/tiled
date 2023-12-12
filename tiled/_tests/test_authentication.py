@@ -554,6 +554,29 @@ def test_admin_api_key_any_principal(
             context.http_client.get(resource).raise_for_status()
 
 
+def test_admin_create_service_principal(enter_password, principals_context):
+    """
+    Admin can create service accounts with API keys.
+    """
+    with principals_context["context"] as context:
+        # Log in as Alice, create and use API key after logout
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+
+        assert context.whoami()["type"] == "user"
+
+        principal_info = context.admin.create_service_principal(role="user")
+        principal_uuid = principal_info["uuid"]
+
+        service_api_key_info = context.admin.create_api_key_other_principal(
+            principal_uuid
+        )
+        context.logout()
+
+        context.api_key = service_api_key_info["secret"]
+        assert context.whoami()["type"] == "service"
+
+
 def test_admin_api_key_any_principal_exceeds_scopes(enter_password, principals_context):
     """
     Admin cannot create API key that exceeds scopes for another principal.
