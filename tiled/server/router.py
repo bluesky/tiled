@@ -541,9 +541,118 @@ async def table_partition(
 
 
 @router.get(
+    "/table/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'table' data",
+)
+async def table_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    column: Optional[List[str]] = Query(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch the data for the given table.
+    """
+    if entry.structure_family != StructureFamily.table:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /table/full route.",
+        )
+    try:
+        with record_timing(request.state.metrics, "read"):
+            data = await ensure_awaitable(entry.read, column)
+    except KeyError as err:
+        (key,) = err.args
+        raise HTTPException(status_code=400, detail=f"No such field {key}.")
+    if data.memory_usage().sum() > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Response would exceed {settings.response_bytesize_limit}. "
+                "Select a subset of the columns to "
+                "request a smaller chunks."
+            ),
+        )
+    try:
+        with record_timing(request.state.metrics, "pack"):
+            return await construct_data_response(
+                entry.structure_family,
+                serialization_registry,
+                data,
+                entry.metadata(),
+                request,
+                format,
+                specs=getattr(entry, "specs", []),
+                expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
+                filter_for_access=None,
+            )
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=err.args[0])
+
+
+@router.get(
+    "/container/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'container' metadata and data",
+)
+async def container_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    principal: str = Depends(get_current_principal),
+    field: Optional[List[str]] = Query(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+):
+    """
+    Fetch the data for the given container.
+    """
+    if entry.structure_family != StructureFamily.container:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot read {entry.structure_family} structure with /container/full route.",
+        )
+    try:
+        with record_timing(request.state.metrics, "read"):
+            data = await ensure_awaitable(entry.read, field)
+    except KeyError as err:
+        (key,) = err.args
+        raise HTTPException(status_code=400, detail=f"No such field {key}.")
+    curried_filter = partial(
+        filter_for_access,
+        principal=principal,
+        scopes=["read:data"],
+        metrics=request.state.metrics,
+    )
+    # TODO Walk node to determine size before handing off to serializer.
+    try:
+        with record_timing(request.state.metrics, "pack"):
+            return await construct_data_response(
+                entry.structure_family,
+                serialization_registry,
+                data,
+                entry.metadata(),
+                request,
+                format,
+                specs=getattr(entry, "specs", []),
+                expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
+                filter_for_access=curried_filter,
+            )
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=406, detail=err.args[0])
+
+
+@router.get(
     "/node/full/{path:path}",
     response_model=schemas.Response,
     name="full 'container' or 'table'",
+    deprecated=True,
 )
 async def node_full(
     request: Request,
@@ -856,9 +965,9 @@ async def post_metadata(
         links[
             "partition"
         ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
-        links["full"] = f"{base_url}/node/full/{path_str}"
+        links["full"] = f"{base_url}/table/full/{path_str}"
     elif body.structure_family == StructureFamily.container:
-        links["full"] = f"{base_url}/node/full/{path_str}"
+        links["full"] = f"{base_url}/container/full/{path_str}"
         links["search"] = f"{base_url}/search/{path_str}"
     elif body.structure_family == StructureFamily.awkward:
         links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
@@ -946,7 +1055,8 @@ async def put_array_block(
     return json_or_msgpack(request, None)
 
 
-@router.put("/node/full/{path:path}")
+@router.put("/table/full/{path:path}")
+@router.put("/node/full/{path:path}", deprecated=True)
 async def put_node_full(
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),

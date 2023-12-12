@@ -122,6 +122,20 @@ docker run \
 
 ### Scalable to Multiple Hosts
 
+We will use one container to run a database server,
+and additional containers to run tiled services.
+To connect these services we create a bridge network.
+
+```
+docker network create -d bridge tilednet
+```
+
+```{note}
+We chose to use a custom bridge network here for two reasons:
+1. The host network is not supported for Docker Desktop for Mac/Windows
+2. The default bridge network does not resolve container DNS entries by hostname
+```
+
 Instead of the default SQLite database, we need to use a PostgreSQL database.
 One way to run a PostgresSQL database is:
 
@@ -130,6 +144,7 @@ export TILED_DATABASE_PASSWORD=db_secret
 mkdir postgres-data
 docker run -d \
   --name tiled-test-postgres \
+  --net=tilednet \
   -p 5432:5432 \
   -e POSTGRES_PASSWORD=${TILED_DATABASE_PASSWORD} \
   -v ./postgres-data:/var/lib/postgresql/data \
@@ -139,9 +154,9 @@ docker run -d \
 Initialize the database. (This creates the tables, indexes, and so on used by Tiled.)
 
 ```
-export TILED_DATABASE_URI=postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@localhost:5432
+export TILED_DATABASE_URI=postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@tiled-test-postgres:5432
 
-docker run --net=host ghcr.io/bluesky/tiled:latest tiled catalog init $TILED_DATABASE_URI
+docker run --net=tilednet ghcr.io/bluesky/tiled:latest tiled catalog init $TILED_DATABASE_URI
 ```
 
 Create a directory for Tiled configuration, e.g. `config/`.
@@ -163,14 +178,14 @@ uri: "sqlite+aiosqlite:////storage/catalog.db"
 with a PostgreSQL database URI, such as:
 
 ```yaml
-uri: "postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@localhost:5432"
+uri: "postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@tiled-test-postgres:5432"
 ```
 
 Start the server, potentially multiple servers across many hosts.
 
 ```
 docker run \
-  --net=host \
+  --net=tilednet \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=secret \
   -e TILED_DATABASE_PASSWORD=${TILED_DATABASE_PASSWORD} \
@@ -183,7 +198,7 @@ Register the files in the directory `data/` with this catalog.
 
 ```
 docker run \
-  --net=host \
+  --net=tilednet \
   -e TILED_SINGLE_USER_API_KEY=secret \
   -e TILED_DATABASE_PASSWORD=${TILED_DATABASE_PASSWORD} \
   -v ./config:/deploy/config:ro \
