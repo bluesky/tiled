@@ -539,9 +539,10 @@ def test_admin_api_key_any_principal(
             context.authenticate(username="alice")
 
         principal_uuid = principals_context["uuid"][username]
-        api_key = _create_api_key_other_principal(
-            context=context, uuid=principal_uuid, scopes=scopes
+        api_key_info = context.admin.create_api_key_other_principal(
+            principal_uuid, scopes=scopes
         )
+        api_key = api_key_info["secret"]
         assert api_key
         context.logout()
 
@@ -564,11 +565,11 @@ def test_admin_api_key_any_principal_exceeds_scopes(enter_password, principals_c
 
         principal_uuid = principals_context["uuid"]["bob"]
         with fail_with_status_code(400) as fail_info:
-            _create_api_key_other_principal(
-                context=context, uuid=principal_uuid, scopes=["read:principals"]
+            context.admin.create_api_key_other_principal(
+                principal_uuid, scopes=["read:principals"]
             )
-            fail_message = " must be a subset of the principal's scopes "
-            assert fail_message in fail_info.response.text
+        fail_message = " must be a subset of the principal's scopes "
+        assert fail_message in fail_info.value.response.text
         context.logout()
 
 
@@ -584,8 +585,8 @@ def test_api_key_any_principal(enter_password, principals_context, username):
 
         principal_uuid = principals_context["uuid"][username]
         with fail_with_status_code(401):
-            _create_api_key_other_principal(
-                context=context, uuid=principal_uuid, scopes=["read:metadata"]
+            context.admin.create_api_key_other_principal(
+                principal_uuid, scopes=["read:metadata"]
             )
 
 
@@ -619,18 +620,3 @@ def test_api_key_bypass_scopes(enter_password, principals_context):
                     context.http_client.get(
                         resource, params=query_params
                     ).raise_for_status()
-
-
-def _create_api_key_other_principal(context, uuid, scopes=None):
-    """
-    Return api_key or raise error.
-    """
-    response = context.http_client.post(
-        f"/api/v1/auth/principal/{uuid}/apikey",
-        json={"expires_in": None, "scopes": scopes or []},
-    )
-    response.raise_for_status()
-    api_key_info = response.json()
-    api_key = api_key_info["secret"]
-
-    return api_key

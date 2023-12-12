@@ -765,6 +765,34 @@ class Admin:
             self.context.http_client.get(f"{self.base_url}/auth/principal/{uuid}")
         ).json()
 
+    def create_api_key_other_principal(
+        self, uuid, scopes=None, expires_in=None, note=None
+    ):
+        """
+        Generate a new API for another user or service.
+
+        Parameters
+        ----------
+        uuid : str
+            Identify the user or service
+        scopes : Optional[List[str]]
+            Restrict the access available to the API key by listing specific scopes.
+            By default, this will have the same access as the user.
+        expires_in : Optional[int]
+            Number of seconds until API key expires. If None,
+            it will never expire or it will have the maximum lifetime
+            allowed by the server.
+        note : Optional[str]
+            Description (for humans).
+        """
+        return handle_error(
+            self.context.http_client.post(
+                f"{self.base_url}/auth/principal/{uuid}/apikey",
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                json={"scopes": scopes, "expires_in": expires_in, "note": note},
+            )
+        ).json()
+
 
 class CannotPrompt(Exception):
     pass
