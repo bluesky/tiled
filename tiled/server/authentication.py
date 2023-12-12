@@ -43,8 +43,8 @@ from pydantic import BaseModel, BaseSettings
 from ..authn_database import orm
 from ..authn_database.connection_pool import get_database_session
 from ..authn_database.core import (
-    create_user,
     create_service,
+    create_user,
     latest_principal_activity,
     lookup_valid_api_key,
     lookup_valid_pending_session_by_device_code,
@@ -832,7 +832,7 @@ async def create_service_principal(
     request: Request,
     principal=Security(get_current_principal, scopes=["read:principals"]),
     db=Depends(get_database_session),
-    role: str=Query(...),
+    role: str = Query(...),
 ):
     "Create a principal for a service account."
 
@@ -843,10 +843,10 @@ async def create_service_principal(
         await db.execute(
             select(orm.Principal)
             .options(
-                    selectinload(orm.Principal.identities),
-                    selectinload(orm.Principal.roles),
-                    selectinload(orm.Principal.api_keys),
-                    selectinload(orm.Principal.sessions),
+                selectinload(orm.Principal.identities),
+                selectinload(orm.Principal.roles),
+                selectinload(orm.Principal.api_keys),
+                selectinload(orm.Principal.sessions),
             )
             .filter(orm.Principal.id == principal_orm.id)
         )
