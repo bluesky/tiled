@@ -769,15 +769,15 @@ class Admin:
         self, uuid, scopes=None, expires_in=None, note=None
     ):
         """
-        Generate a new API for another user or service.
+        Generate a new API key for another user or service.
 
         Parameters
         ----------
         uuid : str
-            Identify the user or service
+            Identify the principal -- the user or service
         scopes : Optional[List[str]]
             Restrict the access available to the API key by listing specific scopes.
-            By default, this will have the same access as the user.
+            By default, this will have the same access as the principal.
         expires_in : Optional[int]
             Number of seconds until API key expires. If None,
             it will never expire or it will have the maximum lifetime
