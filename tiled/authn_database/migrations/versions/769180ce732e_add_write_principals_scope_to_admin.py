@@ -22,7 +22,7 @@ SCOPE = "write:principals"
 
 def upgrade():
     """
-    Add 'write:principal' scope to default 'admin' Role.
+    Add 'write:principals' scope to default 'admin' Role.
     """
     connection = op.get_bind()
     with Session(bind=connection) as db:

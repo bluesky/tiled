@@ -830,7 +830,7 @@ async def principal_list(
 )
 async def create_service_principal(
     request: Request,
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    principal=Security(get_current_principal, scopes=["write:principals"]),
     db=Depends(get_database_session),
     role: str = Query(...),
 ):
