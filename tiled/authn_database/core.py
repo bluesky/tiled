@@ -117,7 +117,8 @@ async def create_user(db, identity_provider, id):
 
 async def create_service(db, role):
     role_ = (await db.execute(select(Role).filter(Role.name == role))).scalar()
-    assert role_ is not None, "User role is missing from Roles table"
+    if role_ is not None:
+        raise ValueError(f"Role named {role!r} is not found")
     principal = Principal(type="service", roles=[role_])
     db.add(principal)
     await db.commit()
