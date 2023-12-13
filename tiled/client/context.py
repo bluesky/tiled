@@ -765,9 +765,7 @@ class Admin:
             self.context.http_client.get(f"{self.base_url}/auth/principal/{uuid}")
         ).json()
 
-    def create_api_key_other_principal(
-        self, uuid, scopes=None, expires_in=None, note=None
-    ):
+    def create_api_key(self, uuid, scopes=None, expires_in=None, note=None):
         """
         Generate a new API key for another user or service.
 

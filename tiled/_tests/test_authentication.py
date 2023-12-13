@@ -539,9 +539,7 @@ def test_admin_api_key_any_principal(
             context.authenticate(username="alice")
 
         principal_uuid = principals_context["uuid"][username]
-        api_key_info = context.admin.create_api_key_other_principal(
-            principal_uuid, scopes=scopes
-        )
+        api_key_info = context.admin.create_api_key(principal_uuid, scopes=scopes)
         api_key = api_key_info["secret"]
         assert api_key
         context.logout()
@@ -568,9 +566,7 @@ def test_admin_create_service_principal(enter_password, principals_context):
         principal_info = context.admin.create_service_principal(role="user")
         principal_uuid = principal_info["uuid"]
 
-        service_api_key_info = context.admin.create_api_key_other_principal(
-            principal_uuid
-        )
+        service_api_key_info = context.admin.create_api_key(principal_uuid)
         context.logout()
 
         context.api_key = service_api_key_info["secret"]
@@ -588,9 +584,7 @@ def test_admin_api_key_any_principal_exceeds_scopes(enter_password, principals_c
 
         principal_uuid = principals_context["uuid"]["bob"]
         with fail_with_status_code(400) as fail_info:
-            context.admin.create_api_key_other_principal(
-                principal_uuid, scopes=["read:principals"]
-            )
+            context.admin.create_api_key(principal_uuid, scopes=["read:principals"])
         fail_message = " must be a subset of the principal's scopes "
         assert fail_message in fail_info.value.response.text
         context.logout()
@@ -608,9 +602,7 @@ def test_api_key_any_principal(enter_password, principals_context, username):
 
         principal_uuid = principals_context["uuid"][username]
         with fail_with_status_code(401):
-            context.admin.create_api_key_other_principal(
-                principal_uuid, scopes=["read:metadata"]
-            )
+            context.admin.create_api_key(principal_uuid, scopes=["read:metadata"])
 
 
 def test_api_key_bypass_scopes(enter_password, principals_context):
