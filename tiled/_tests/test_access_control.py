@@ -127,7 +127,7 @@ def context(tmpdir_module):
                     },
                 },
             },
-            {"tree": ArrayAdapter.from_array([1, 2, 3]), "path": "/f"},
+            {"tree": ArrayAdapter.from_array(arr), "path": "/f"},
         ],
     }
     app = build_app_from_config(config)
@@ -227,8 +227,10 @@ def test_create_blocked_by_access_policy(enter_password, context):
     alice_client.logout()
 
 
-def test_public(context):
+def test_public_access(context):
     public_client = from_context(context)
     for key in ["a", "b", "c", "d", "e"]:
         assert key not in public_client
     public_client["f"].read()
+    with pytest.raises(KeyError):
+        public_client["a", "A1"]
