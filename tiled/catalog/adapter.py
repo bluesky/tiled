@@ -970,6 +970,8 @@ def contains(query, tree):
     attr = orm.Node.metadata_[query.key.split(".")]
     if dialect_name == "sqlite":
         condition = _get_value(attr, type(query.value)).contains(query.value)
+    elif dialect_name == "postgresql":
+        condition = _get_value(attr, type(query.value)).contains(query.value)
     else:
         raise UnsupportedQueryType("Contains")
     return tree.new_variation(conditions=tree.conditions + [condition])
