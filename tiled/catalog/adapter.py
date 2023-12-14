@@ -13,7 +13,7 @@ from urllib.parse import quote_plus, urlparse
 import anyio
 import httpx
 from fastapi import HTTPException
-from sqlalchemy import delete, event, func, select, text, type_coerce, update
+from sqlalchemy import delete, event, func, not_, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -988,10 +988,32 @@ def specs(query, tree):
 
 
 def in_or_not_in(query, tree, method):
+    print(method, "METHOD")
     dialect_name = tree.engine.url.get_dialect().name
-    attr = orm.Node.metadata_[query.key.split(".")]
+    keys = query.key.split(".")
+    attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
         condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+    elif dialect_name == "postgresql":
+        # Engage btree_gin index with @> operator
+        if method == "in_":
+            condition = orm.Node.metadata_.op("@>")(
+                type_coerce(
+                    key_array_to_json(keys, query.value),
+                    orm.Node.metadata_.type,
+                )
+            )
+        elif method == "not_in":
+            condition = not_(
+                orm.Node.metadata_.op("@>")(
+                    type_coerce(
+                        key_array_to_json(keys, query.value),
+                        orm.Node.metadata_.type,
+                    )
+                )
+            )
+        else:
+            raise UnsupportedQueryType("NotIn")
     else:
         raise UnsupportedQueryType("In/NotIn")
     return tree.new_variation(conditions=tree.conditions + [condition])
