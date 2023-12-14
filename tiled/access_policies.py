@@ -4,6 +4,7 @@ from .utils import Sentinel, SpecialUsers, import_object
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 ALL_SCOPES = set(SCOPES)
+PUBLIC_SCOPES = {"read:metadata", "read:data"}
 NO_ACCESS = Sentinel("NO_ACCESS")
 
 
@@ -61,6 +62,9 @@ class SimpleAccessPolicy:
         return id
 
     def allowed_scopes(self, node, principal):
+        # If this is being called, filter_access has let us get this far.
+        if principal is SpecialUsers.public:
+            return PUBLIC_SCOPES
         if self._get_id(principal) in self.admins:
             return ALL_SCOPES
         # The simple policy does not provide for different Principals to
@@ -69,22 +73,25 @@ class SimpleAccessPolicy:
         return self.scopes
 
     def filters(self, node, principal, scopes):
-        id = self._get_id(principal)
         queries = []
-        if id in self.admins:
-            return queries
-        if not scopes.issubset(self.scopes):
-            return NO_ACCESS
-        access_list = self.access_lists.get(id, [])
-        if not ((principal is SpecialUsers.admin) or (access_list == self.ALL)):
-            try:
-                allowed = set(access_list or [])
-            except TypeError:
-                # Provide rich debugging info because we have encountered a confusing
-                # bug here in a previous implementation.
-                raise TypeError(
-                    f"Unexpected access_list {access_list} of type {type(access_list)}. "
-                    f"Expected iterable or {self.ALL}, instance of {type(self.ALL)}."
-                )
-            queries.append(KeysFilter(allowed))
+        if principal is SpecialUsers.public:
+            queries.append(KeysFilter(self.public))
+        else:
+            id = self._get_id(principal)
+            if id in self.admins:
+                return queries
+            if not scopes.issubset(self.scopes):
+                return NO_ACCESS
+            access_list = self.access_lists.get(id, [])
+            if not ((principal is SpecialUsers.admin) or (access_list == self.ALL)):
+                try:
+                    allowed = set(access_list or [])
+                except TypeError:
+                    # Provide rich debugging info because we have encountered a confusing
+                    # bug here in a previous implementation.
+                    raise TypeError(
+                        f"Unexpected access_list {access_list} of type {type(access_list)}. "
+                        f"Expected iterable or {self.ALL}, instance of {type(self.ALL)}."
+                    )
+                queries.append(KeysFilter(allowed))
         return queries
