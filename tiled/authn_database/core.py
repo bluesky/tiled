@@ -12,9 +12,10 @@ from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
-REQUIRED_REVISION = "c7bd2573716d"
+REQUIRED_REVISION = "769180ce732e"
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "769180ce732e",
     "c7bd2573716d",
     "4a9dfaba4a98",
     "56809bcbfcb0",
@@ -49,6 +50,7 @@ async def create_default_roles(db):
                     "write:data",
                     "admin:apikeys",
                     "read:principals",
+                    "write:principals",
                     "metrics",
                 ],
             ),
@@ -111,6 +113,16 @@ async def create_user(db, identity_provider, id):
         )
     ).scalar()
     return refreshed_principal
+
+
+async def create_service(db, role):
+    role_ = (await db.execute(select(Role).filter(Role.name == role))).scalar()
+    if role_ is None:
+        raise ValueError(f"Role named {role!r} is not found")
+    principal = Principal(type="service", roles=[role_])
+    db.add(principal)
+    await db.commit()
+    return principal
 
 
 async def lookup_valid_session(db, session_id):

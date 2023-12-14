@@ -288,7 +288,7 @@ class About(pydantic.BaseModel):
 
 class PrincipalType(str, enum.Enum):
     user = "user"
-    service = "service"  # TODO Add support for services.
+    service = "service"
 
 
 class Identity(pydantic.BaseModel, orm_mode=True):

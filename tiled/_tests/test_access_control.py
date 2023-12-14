@@ -26,6 +26,7 @@ def tree_b(access_policy=None):
 def context(tmpdir_module):
     config = {
         "authentication": {
+            "allow_anonymous_access": True,
             "secret_keys": ["SECRET"],
             "providers": [
                 {
@@ -50,6 +51,7 @@ def context(tmpdir_module):
                 "access_lists": {"alice": ["a", "c", "d", "e"]},
                 "provider": "toy",
                 "admins": ["admin"],
+                "public": ["f"],
             },
         },
         "trees": [
@@ -125,6 +127,7 @@ def context(tmpdir_module):
                     },
                 },
             },
+            {"tree": ArrayAdapter.from_array(arr), "path": "/f"},
         ],
     }
     app = build_app_from_config(config)
@@ -156,6 +159,8 @@ def test_top_level_access_control(context, enter_password):
         bob_client["a"]
     with pytest.raises(KeyError):
         bob_client["b"]
+    alice_client.logout()
+    bob_client.logout()
 
 
 def test_access_control_with_api_key_auth(context, enter_password):
@@ -181,6 +186,7 @@ def test_node_export(enter_password, context):
         alice_client = from_context(context, username="alice")
     buffer = io.BytesIO()
     alice_client.export(buffer, format="application/json")
+    alice_client.logout()
     buffer.seek(0)
     exported_dict = json.loads(buffer.read())
     assert "a" in exported_dict["contents"]
@@ -201,6 +207,7 @@ def test_create_and_update_allowed(enter_password, context):
 
     # Create
     alice_client["c"].write_array([1, 2, 3])
+    alice_client.logout()
 
 
 def test_writing_blocked_by_access_policy(enter_password, context):
@@ -209,6 +216,7 @@ def test_writing_blocked_by_access_policy(enter_password, context):
     alice_client["d"]["x"].metadata
     with fail_with_status_code(403):
         alice_client["d"]["x"].update_metadata(metadata={"added_key": 3})
+    alice_client.logout()
 
 
 def test_create_blocked_by_access_policy(enter_password, context):
@@ -216,3 +224,13 @@ def test_create_blocked_by_access_policy(enter_password, context):
         alice_client = from_context(context, username="alice")
     with fail_with_status_code(403):
         alice_client["e"].write_array([1, 2, 3])
+    alice_client.logout()
+
+
+def test_public_access(context):
+    public_client = from_context(context)
+    for key in ["a", "b", "c", "d", "e"]:
+        assert key not in public_client
+    public_client["f"].read()
+    with pytest.raises(KeyError):
+        public_client["a", "A1"]
