@@ -13,7 +13,7 @@ from urllib.parse import quote_plus, urlparse
 import anyio
 import httpx
 from fastapi import HTTPException
-from sqlalchemy import delete, event, func, not_, select, text, type_coerce, update
+from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -997,18 +997,20 @@ def in_or_not_in(query, tree, method):
     elif dialect_name == "postgresql":
         # Engage btree_gin index with @> operator
         if method == "in_":
-            condition = orm.Node.metadata_.op("@>")(
-                type_coerce(
-                    key_array_to_json(keys, query.value),
-                    orm.Node.metadata_.type,
+            condition = or_(
+                *(
+                    orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
+                    for item in query.value
                 )
             )
         elif method == "not_in":
+            print("NOT IN")
+            print(keys, query.value)
             condition = not_(
-                orm.Node.metadata_.op("@>")(
-                    type_coerce(
-                        key_array_to_json(keys, query.value),
-                        orm.Node.metadata_.type,
+                or_(
+                    *(
+                        orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
+                        for item in query.value
                     )
                 )
             )
