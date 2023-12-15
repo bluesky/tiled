@@ -225,7 +225,7 @@ def test_in(client, query_values):
 )
 def test_notin(client, query_values):
     assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
-        list(set(keys) - set(["a", "k", "z"]))
+        list(set(list(mapping.keys())) - set(["a", "k", "z"]))
     )
 
 

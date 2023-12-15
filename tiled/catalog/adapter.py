@@ -1004,8 +1004,6 @@ def in_or_not_in(query, tree, method):
                 )
             )
         elif method == "not_in":
-            print("NOT IN")
-            print(keys, query.value)
             condition = not_(
                 or_(
                     *(
