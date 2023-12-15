@@ -224,8 +224,19 @@ def test_in(client, query_values):
     ],
 )
 def test_notin(client, query_values):
+    # TODO: Postgres and SQlite ACTUALLY treat this query differently in external testing.
+    # SQLite WILL NOT include fields that do not have the key, which is correct.
+    # Postgres WILL include fields that do not have the key,
+    # because by extension they do not have the value. Also correct. Why?
     assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
-        list(set(list(mapping.keys())) - set(["a", "k", "z"]))
+        list(
+            set(
+                list(mapping.keys())
+                if client.metadata["backend"] == "postgresql"
+                else keys
+            )
+            - set(["a", "k", "z"])
+        )
     )
 
 
