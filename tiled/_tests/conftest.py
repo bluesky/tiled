@@ -138,7 +138,7 @@ async def postgresql_with_example_data_adapter(request, tmpdir):
     """
     if not TILED_TEST_POSTGRESQL_URI:
         raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
-    DATABASE_NAME = "example_data"
+    DATABASE_NAME = "tiled-example-data"
     uri = TILED_TEST_POSTGRESQL_URI
     if uri.endswith("/"):
         uri = uri[:-1]
