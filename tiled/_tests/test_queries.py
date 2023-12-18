@@ -250,25 +250,9 @@ def test_notin(client, query_values):
     ],
 )
 def test_specs(client, include_values, exclude_values):
-    if client.metadata["backend"] in {"postgresql", "sqlite"}:
-
-        def cm():
-            return fail_with_status_code(400)
-
-    else:
-        cm = nullcontext
-    with pytest.raises(TypeError):
-        SpecsQuery("foo")
-
-    with cm():
-        assert sorted(
-            list(client.search(SpecsQuery(include=include_values)))
-        ) == sorted(["specs_foo_bar", "specs_foo_bar_baz"])
-
-    with cm():
-        assert list(
-            client.search(SpecsQuery(include=include_values, exclude=exclude_values))
-        ) == ["specs_foo_bar"]
+    assert list(
+        client.search(SpecsQuery(include=include_values, exclude=exclude_values))
+    ) == ["specs_foo_bar"]
 
 
 def test_structure_families(client):

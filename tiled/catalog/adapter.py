@@ -26,6 +26,7 @@ from tiled.queries import (
     NotEq,
     NotIn,
     Operator,
+    SpecsQuery,
     StructureFamilyQuery,
 )
 
@@ -978,13 +979,12 @@ def contains(query, tree):
 
 
 def specs(query, tree):
-    raise UnsupportedQueryType("Specs")
-    # conditions = []
-    # for spec in query.include:
-    #     conditions.append(func.json_contains(orm.Node.specs, spec))
-    # for spec in query.exclude:
-    #     conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
-    # return tree.new_variation(conditions=tree.conditions + conditions)
+    conditions = []
+    for spec in query.include:
+        conditions.append(func.json_contains(orm.Node.specs, spec))
+    for spec in query.exclude:
+        conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
+    return tree.new_variation(conditions=tree.conditions + conditions)
 
 
 def in_or_not_in(query, tree, method):
@@ -1037,8 +1037,8 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
-# CatalogNodeAdapter.register_query(Specs, specs)
-# TODO: FullText, Regex, Specs
+CatalogNodeAdapter.register_query(SpecsQuery, specs)
+# TODO: FullText, Regex
 
 
 def in_memory(
