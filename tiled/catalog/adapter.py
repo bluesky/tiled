@@ -967,23 +967,33 @@ def comparison(query, tree):
 
 
 def contains(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
     attr = orm.Node.metadata_[query.key.split(".")]
-    if dialect_name == "sqlite":
-        condition = _get_value(attr, type(query.value)).contains(query.value)
-    elif dialect_name == "postgresql":
-        condition = _get_value(attr, type(query.value)).contains(query.value)
-    else:
-        raise UnsupportedQueryType("Contains")
+    condition = _get_value(attr, type(query.value)).contains(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
 def specs(query, tree):
+    dialect_name = tree.engine.url.get_dialect().name
     conditions = []
-    for spec in query.include:
-        conditions.append(func.json_contains(orm.Node.specs, spec))
-    for spec in query.exclude:
-        conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
+    # attr = orm.Node.specs
+    # if dialect_name == "sqlite":
+    #     for spec in query.include:
+    #         conditions.append(_get_value(attr, type(query.value)).contains(query.value))
+    #     for spec in query.exclude:
+    #         conditions.append(
+    #             not_(_get_value(attr, type(query.value)).contains(query.value))
+    #         )
+    if dialect_name == "postgresql":
+        if query.include:
+            conditions.append(
+                orm.Node.specs.op("@>")(specs_array_to_json(query.include))
+            )
+        if query.exclude:
+            conditions.append(
+                not_(orm.Node.specs.op("@>")(specs_array_to_json(query.exclude)))
+            )
+    else:
+        raise UnsupportedQueryType("specs")
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
@@ -1151,6 +1161,28 @@ def key_array_to_json(keys, value):
     {'x': {'y': {'z': 1}}
     """
     return {keys[0]: reduce(lambda x, y: {y: x}, keys[1:][::-1], value)}
+
+
+def specs_array_to_json(specs):
+    """Take array of Specs strings and convert them to a `penguin` @> friendly array
+    Assume constructed array will feature keys called "name"
+
+    Parameters
+    ----------
+    specs : iterable
+        An array of specs strings to be searched for.
+
+    Returns
+    -------
+    json
+        JSON object for use in postgresql queries.
+
+    Examples
+    --------
+    >>> specs_array_to_json(['foo','bar'])
+    [{"name":"foo"},{"name":"bar"}]
+    """
+    return [{"name": spec} for spec in specs]
 
 
 STRUCTURES = {

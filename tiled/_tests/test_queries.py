@@ -33,7 +33,9 @@ from .utils import fail_with_status_code, temp_postgres
 keys = list(string.ascii_lowercase)
 mapping = {
     letter: ArrayAdapter.from_array(
-        number * numpy.ones(10), metadata={"letter": letter, "number": number}
+        number * numpy.ones(10),
+        metadata={"letter": letter, "number": number},
+        specs=[letter],
     )
     for letter, number in zip(keys, range(26))
 }
@@ -75,7 +77,9 @@ async def client(request, tmpdir_module):
         with Context.from_app(app) as context:
             client = from_context(context)
             for k, v in mapping.items():
-                client.write_array(v.read(), key=k, metadata=dict(v.metadata()))
+                client.write_array(
+                    v.read(), key=k, metadata=dict(v.metadata()), specs=v.specs
+                )
             yield client
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
@@ -104,7 +108,12 @@ async def client(request, tmpdir_module):
                 client = from_context(context)
                 # Write data into catalog.
                 for k, v in mapping.items():
-                    client.write_array(v.read(), key=k, metadata=dict(v.metadata()))
+                    client.write_array(
+                        v.read(),
+                        key=k,
+                        metadata=dict(v.metadata()),
+                        specs=v.specs,
+                    )
                 yield client
     else:
         assert False

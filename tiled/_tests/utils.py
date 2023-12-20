@@ -32,12 +32,12 @@ async def temp_postgres(uri):
         await connection.commit()
     yield f"{uri}/{database_name}"
     # Drop the database.
-    async with engine.connect() as connection:
-        await connection.execute(
-            text("COMMIT")
-        )  # close the automatically-started transaction
-        await connection.execute(text(f"DROP DATABASE {database_name};"))
-        await connection.commit()
+    # async with engine.connect() as connection:
+    #     await connection.execute(
+    #         text("COMMIT")
+    #     )  # close the automatically-started transaction
+    #     await connection.execute(text(f"DROP DATABASE {database_name};"))
+    #     await connection.commit()
 
 
 @contextlib.contextmanager
