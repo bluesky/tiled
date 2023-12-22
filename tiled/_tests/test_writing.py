@@ -8,6 +8,7 @@ from datetime import datetime
 
 import dask.dataframe
 import numpy
+import pandas
 import pandas.testing
 import pytest
 import sparse
@@ -377,6 +378,27 @@ async def test_delete_non_empty_node(tree):
         # Delete from the bottom up.
         c.delete("d")
         b.delete("c")
+        a.delete("b")
+        client.delete("a")
+
+
+@pytest.mark.asyncio
+async def test_write_in_container(tree):
+    "Create a container and write a structure into it."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        a = client.create_container("a")
+        df = pandas.DataFrame({"a": [1, 2, 3]})
+        b = a.write_dataframe(df, key="b")
+        b.read()
+        a.delete("b")
+        client.delete("a")
+
+        a = client.create_container("a")
+        arr = numpy.array([1, 2, 3])
+        b = a.write_array(arr, key="b")
+        b.read()
         a.delete("b")
         client.delete("a")
 
