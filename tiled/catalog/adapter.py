@@ -569,6 +569,11 @@ class CatalogNodeAdapter:
                         is_directory=asset.is_directory,
                     )
                     data_source_orm.assets.append(asset_orm)
+            if (structure_family == StructureFamily.container) and (not data_sources):
+                data_uri = str(self.context.writable_storage) + "".join(
+                    f"/{quote_plus(segment)}" for segment in (self.segments + [key])
+                )
+                create_directory(data_uri)
             db.add(node)
             await db.commit()
             await db.refresh(node)
@@ -615,6 +620,14 @@ class CatalogNodeAdapter:
                         await db.execute(
                             delete(orm.Asset).where(orm.Asset.id == asset.id)
                         )
+            if (self.structure_family == StructureFamily.container) and (
+                not self.data_sources
+            ):
+                data_uri = str(self.context.writable_storage) + "".join(
+                    f"/{quote_plus(segment)}"
+                    for segment in (self.ancestors + [self.key])
+                )
+                delete_asset(data_uri, is_directory=True)
             result = await db.execute(
                 delete(orm.Node).where(orm.Node.id == self.node.id)
             )
@@ -868,6 +881,15 @@ def delete_asset(data_uri, is_directory):
             shutil.rmtree(path)
         else:
             Path(path).unlink()
+    else:
+        raise NotImplementedError(url.scheme)
+
+
+def create_directory(data_uri):
+    url = urlparse(data_uri)
+    if url.scheme == "file":
+        path = safe_path(data_uri)
+        Path(path).mkdir()
     else:
         raise NotImplementedError(url.scheme)
 
