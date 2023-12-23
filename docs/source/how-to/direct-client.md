@@ -15,9 +15,9 @@ In these situations, you may run the service and the client in the same process.
 ## From a (service-side) Tree instance
 
 ```py
-from tiled.client import from_context
+from tiled.client import Context, from_context
 from tiled.examples.generated_minimal import tree
-from tiled.server import build_app
+from tiled.server.app import build_app
 
 app = build_app(tree)
 context = Context.from_app(app)
@@ -38,9 +38,8 @@ The configuration may be given as:
 From a dict of configuration:
 
 ```py
-from tiled.client import from_context
-from tiled.examples.generated_minimal import tree
-from tiled.server import build_app_from_config
+from tiled.client import Context, from_context
+from tiled.server.app import build_app_from_config
 
 config = {
     "trees": [
