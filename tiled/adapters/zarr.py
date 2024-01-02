@@ -35,6 +35,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in structure.chunks)
+        directory.mkdir(parents=True, exist_ok=True)
         storage = zarr.storage.DirectoryStore(str(directory))
         zarr.storage.init_array(
             storage,

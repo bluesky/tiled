@@ -42,7 +42,7 @@ class ParquetDatasetAdapter:
     def init_storage(cls, directory, structure):
         from ..server.schemas import Asset
 
-        directory.mkdir()
+        directory.mkdir(parents=True, exist_ok=True)
         data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         assets = [
             Asset(

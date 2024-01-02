@@ -40,7 +40,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
     def init_storage(cls, directory, structure):
         from ..server.schemas import Asset
 
-        directory.mkdir()
+        directory.mkdir(parents=True, exist_ok=True)
         data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         return [Asset(data_uri=data_uri, is_directory=True)]
 
