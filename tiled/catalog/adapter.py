@@ -13,7 +13,7 @@ from urllib.parse import quote_plus, urlparse
 import anyio
 import httpx
 from fastapi import HTTPException
-from sqlalchemy import delete, event, func, select, text, type_coerce, update
+from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -26,6 +26,7 @@ from tiled.queries import (
     NotEq,
     NotIn,
     Operator,
+    SpecsQuery,
     StructureFamilyQuery,
 )
 
@@ -966,30 +967,58 @@ def comparison(query, tree):
 
 
 def contains(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
     attr = orm.Node.metadata_[query.key.split(".")]
-    if dialect_name == "sqlite":
-        condition = _get_value(attr, type(query.value)).contains(query.value)
-    else:
-        raise UnsupportedQueryType("Contains")
+    condition = _get_value(attr, type(query.value)).contains(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
 def specs(query, tree):
-    raise UnsupportedQueryType("Specs")
-    # conditions = []
-    # for spec in query.include:
-    #     conditions.append(func.json_contains(orm.Node.specs, spec))
-    # for spec in query.exclude:
-    #     conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
-    # return tree.new_variation(conditions=tree.conditions + conditions)
+    dialect_name = tree.engine.url.get_dialect().name
+    conditions = []
+    attr = orm.Node.specs
+    if dialect_name == "sqlite":
+        # Construct the conditions for includes
+        for i, name in enumerate(query.include):
+            conditions.append(attr.like(f'%{{"name":"{name}",%'))
+        # Construct the conditions for excludes
+        for i, name in enumerate(query.exclude):
+            conditions.append(not_(attr.like(f'%{{"name":"{name}",%')))
+    elif dialect_name == "postgresql":
+        if query.include:
+            conditions.append(attr.op("@>")(specs_array_to_json(query.include)))
+        if query.exclude:
+            conditions.append(not_(attr.op("@>")(specs_array_to_json(query.exclude))))
+    else:
+        raise UnsupportedQueryType("specs")
+    return tree.new_variation(conditions=tree.conditions + conditions)
 
 
 def in_or_not_in(query, tree, method):
     dialect_name = tree.engine.url.get_dialect().name
-    attr = orm.Node.metadata_[query.key.split(".")]
+    keys = query.key.split(".")
+    attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
         condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+    elif dialect_name == "postgresql":
+        # Engage btree_gin index with @> operator
+        if method == "in_":
+            condition = or_(
+                *(
+                    orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
+                    for item in query.value
+                )
+            )
+        elif method == "not_in":
+            condition = not_(
+                or_(
+                    *(
+                        orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
+                        for item in query.value
+                    )
+                )
+            )
+        else:
+            raise UnsupportedQueryType("NotIn")
     else:
         raise UnsupportedQueryType("In/NotIn")
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -1013,8 +1042,8 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
-# CatalogNodeAdapter.register_query(Specs, specs)
-# TODO: FullText, Regex, Specs
+CatalogNodeAdapter.register_query(SpecsQuery, specs)
+# TODO: FullText, Regex
 
 
 def in_memory(
@@ -1127,6 +1156,28 @@ def key_array_to_json(keys, value):
     {'x': {'y': {'z': 1}}
     """
     return {keys[0]: reduce(lambda x, y: {y: x}, keys[1:][::-1], value)}
+
+
+def specs_array_to_json(specs):
+    """Take array of Specs strings and convert them to a `penguin` @> friendly array
+    Assume constructed array will feature keys called "name"
+
+    Parameters
+    ----------
+    specs : iterable
+        An array of specs strings to be searched for.
+
+    Returns
+    -------
+    json
+        JSON object for use in postgresql queries.
+
+    Examples
+    --------
+    >>> specs_array_to_json(['foo','bar'])
+    [{"name":"foo"},{"name":"bar"}]
+    """
+    return [{"name": spec} for spec in specs]
 
 
 STRUCTURES = {

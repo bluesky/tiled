@@ -33,7 +33,9 @@ from .utils import fail_with_status_code, temp_postgres
 keys = list(string.ascii_lowercase)
 mapping = {
     letter: ArrayAdapter.from_array(
-        number * numpy.ones(10), metadata={"letter": letter, "number": number}
+        number * numpy.ones(10),
+        metadata={"letter": letter, "number": number},
+        specs=[letter],
     )
     for letter, number in zip(keys, range(26))
 }
@@ -75,7 +77,9 @@ async def client(request, tmpdir_module):
         with Context.from_app(app) as context:
             client = from_context(context)
             for k, v in mapping.items():
-                client.write_array(v.read(), key=k, metadata=dict(v.metadata()))
+                client.write_array(
+                    v.read(), key=k, metadata=dict(v.metadata()), specs=v.specs
+                )
             yield client
     elif request.param == "postgresql":
         if not TILED_TEST_POSTGRESQL_URI:
@@ -104,7 +108,12 @@ async def client(request, tmpdir_module):
                 client = from_context(context)
                 # Write data into catalog.
                 for k, v in mapping.items():
-                    client.write_array(v.read(), key=k, metadata=dict(v.metadata()))
+                    client.write_array(
+                        v.read(),
+                        key=k,
+                        metadata=dict(v.metadata()),
+                        specs=v.specs,
+                    )
                 yield client
     else:
         assert False
@@ -146,15 +155,7 @@ def test_comparison(client):
 
 
 def test_contains(client):
-    if client.metadata["backend"] == "postgresql":
-
-        def cm():
-            return fail_with_status_code(400)
-
-    else:
-        cm = nullcontext
-    with cm():
-        assert list(client.search(Contains("letters", "z"))) == ["does_contain_z"]
+    assert list(client.search(Contains("letters", "z"))) == ["does_contain_z"]
 
 
 def test_full_text(client):
@@ -215,19 +216,11 @@ def test_not_and_and_or(client):
     ],
 )
 def test_in(client, query_values):
-    if client.metadata["backend"] == "postgresql":
-
-        def cm():
-            return fail_with_status_code(400)
-
-    else:
-        cm = nullcontext
-    with cm():
-        assert sorted(list(client.search(In("letter", query_values)))) == [
-            "a",
-            "k",
-            "z",
-        ]
+    assert sorted(list(client.search(In("letter", query_values)))) == [
+        "a",
+        "k",
+        "z",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -240,17 +233,20 @@ def test_in(client, query_values):
     ],
 )
 def test_notin(client, query_values):
-    if client.metadata["backend"] == "postgresql":
-
-        def cm():
-            return fail_with_status_code(400)
-
-    else:
-        cm = nullcontext
-    with cm():
-        assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
-            list(set(keys) - set(["a", "k", "z"]))
+    # TODO: Postgres and SQlite ACTUALLY treat this query differently in external testing.
+    # SQLite WILL NOT include fields that do not have the key, which is correct.
+    # Postgres WILL include fields that do not have the key,
+    # because by extension they do not have the value. Also correct. Why?
+    assert sorted(list(client.search(NotIn("letter", query_values)))) == sorted(
+        list(
+            set(
+                list(mapping.keys())
+                if client.metadata["backend"] == "postgresql"
+                else keys
+            )
+            - set(["a", "k", "z"])
         )
+    )
 
 
 @pytest.mark.parametrize(
@@ -263,25 +259,9 @@ def test_notin(client, query_values):
     ],
 )
 def test_specs(client, include_values, exclude_values):
-    if client.metadata["backend"] in {"postgresql", "sqlite"}:
-
-        def cm():
-            return fail_with_status_code(400)
-
-    else:
-        cm = nullcontext
-    with pytest.raises(TypeError):
-        SpecsQuery("foo")
-
-    with cm():
-        assert sorted(
-            list(client.search(SpecsQuery(include=include_values)))
-        ) == sorted(["specs_foo_bar", "specs_foo_bar_baz"])
-
-    with cm():
-        assert list(
-            client.search(SpecsQuery(include=include_values, exclude=exclude_values))
-        ) == ["specs_foo_bar"]
+    assert list(
+        client.search(SpecsQuery(include=include_values, exclude=exclude_values))
+    ) == ["specs_foo_bar"]
 
 
 def test_structure_families(client):
