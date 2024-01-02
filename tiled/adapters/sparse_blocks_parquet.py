@@ -46,7 +46,7 @@ class SparseBlocksParquetAdapter:
     ):
         from ..server.schemas import Asset
 
-        directory.mkdir()
+        directory.mkdir(parents=True, exist_ok=True)
 
         num_blocks = (range(len(n)) for n in structure.chunks)
         block_uris = []
