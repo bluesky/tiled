@@ -979,10 +979,10 @@ def specs(query, tree):
     if dialect_name == "sqlite":
         # Construct the conditions for includes
         for i, name in enumerate(query.include):
-            conditions.append(attr.like('%{"name": "' + name + '", %'))
+            conditions.append(attr.like(f'%{{"name":"{name}",%'))
         # Construct the conditions for excludes
         for i, name in enumerate(query.exclude):
-            conditions.append(not_(attr.like('%{"name": "' + name + '", %')))
+            conditions.append(not_(attr.like(f'%{{"name":"{name}",%')))
     elif dialect_name == "postgresql":
         if query.include:
             conditions.append(attr.op("@>")(specs_array_to_json(query.include)))
