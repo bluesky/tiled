@@ -169,8 +169,39 @@ async def sqlite_adapter(request, tmpdir):
     yield in_memory(writable_storage=str(tmpdir))
 
 
+@pytest_asyncio.fixture
+async def sqlite_with_example_data_adapter(request, tmpdir):
+    """
+    Adapter instance
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
+    """
+    SQLITE_DATABASE_PATH = Path("./tiled_test_db_sqlite.db")
+    if not SQLITE_DATABASE_PATH.is_file():
+        raise pytest.skip(f"Could not find {SQLITE_DATABASE_PATH}")
+    adapter = from_uri(
+        f"sqlite+aiosqlite:///{SQLITE_DATABASE_PATH}",
+        writable_storage=str(tmpdir),
+    )
+    yield adapter
+
+
 @pytest.fixture(params=["sqlite_adapter", "postgresql_adapter"])
 def adapter(request):
+    """
+    Adapter instance
+
+    Note that startup() and shutdown() are not called, and must be run
+    either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
+    """
+    yield request.getfixturevalue(request.param)
+
+
+@pytest.fixture(
+    params=["sqlite_with_example_data_adapter", "postgresql_with_example_data_adapter"]
+)
+def example_data_adapter(request):
     """
     Adapter instance
 

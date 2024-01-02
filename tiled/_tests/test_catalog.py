@@ -157,8 +157,8 @@ async def test_search(a):
 
 
 @pytest.mark.asyncio
-async def test_metadata_index_is_used(postgresql_with_example_data_adapter):
-    a = postgresql_with_example_data_adapter  # for succinctness below
+async def test_metadata_index_is_used(example_data_adapter):
+    a = example_data_adapter  # for succinctness below
     # Check that an index (specifically the 'top_level_metadata' index) is used
     # by inspecting the content of an 'EXPLAIN ...' query. The exact content
     # is intended for humans and is not an API, but we can coarsely check
