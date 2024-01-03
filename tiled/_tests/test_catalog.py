@@ -383,8 +383,6 @@ async def test_access_control(tmpdir):
                         "provider": "toy",
                         "access_lists": {
                             "alice": ["x"],
-                            # This should have no effect because bob
-                            # cannot access the parent node.
                             "bob": ["y"],
                         },
                         "admins": ["admin"],
@@ -403,6 +401,12 @@ async def test_access_control(tmpdir):
                 container = admin_client.create_container(key)
                 container.write_array([1, 2, 3], key="inner")
             admin_client.logout()
+        with enter_password("secret1"):
+            alice_client = from_context(context, username="alice")
+            alice_client["x"]["inner"].read()
+            with pytest.raises(KeyError):
+                alice_client["y"]
+            alice_client.logout()
         public_client = from_context(context)
         public_client["z"]["inner"].read()
         with pytest.raises(KeyError):
