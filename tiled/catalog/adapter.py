@@ -294,7 +294,7 @@ class CatalogNodeAdapter:
         return bool(self.context.writable_storage)
 
     def __repr__(self):
-        return f"<{type(self).__name__} {self.segments}>"
+        return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
 
     async def __aiter__(self):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
