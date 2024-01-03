@@ -335,6 +335,10 @@ class CatalogNodeAdapter:
         if not segments:
             return self
         *ancestors, key = segments
+        if self.conditions and len(segments) > 1:
+            first_level = await self.lookup_adapter(segments[0])
+            assert not first_level.conditions
+            return await first_level.lookup_adapter(segments[1:])
         statement = select(orm.Node).filter(
             orm.Node.ancestors == self.segments + ancestors
         )
