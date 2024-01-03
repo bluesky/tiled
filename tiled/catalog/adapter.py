@@ -336,7 +336,15 @@ class CatalogNodeAdapter:
             return self
         *ancestors, key = segments
         if self.conditions and len(segments) > 1:
-            first_level = await self.lookup_adapter(segments[0])
+            # There are some conditions (i.e. WHERE clauses) applied to
+            # this node, either via user search queries or via access
+            # control policy queries. Look up first the _direct_ child of this
+            # node, if it exists within the filtered results.
+            first_level = await self.lookup_adapter(segments[:1])
+            if first_level is None:
+                return None
+            # Now proceed to traverse further down the tree, if needed.
+            # Search queries and access controls apply only at the top level.
             assert not first_level.conditions
             return await first_level.lookup_adapter(segments[1:])
         statement = select(orm.Node).filter(
