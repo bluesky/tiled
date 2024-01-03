@@ -382,11 +382,11 @@ async def test_access_control(tmpdir):
                     "args": {
                         "provider": "toy",
                         "access_lists": {
-                            "alice": ["x"],
-                            "bob": ["y"],
+                            "alice": ["outer_x"],
+                            "bob": ["outer_y"],
                         },
                         "admins": ["admin"],
-                        "public": ["z"],
+                        "public": ["outer_z"],
                     },
                 },
             },
@@ -397,17 +397,17 @@ async def test_access_control(tmpdir):
     with Context.from_app(app) as context:
         with enter_password("admin"):
             admin_client = from_context(context, username="admin")
-            for key in ["x", "y", "z"]:
+            for key in ["outer_x", "outer_y", "outer_z"]:
                 container = admin_client.create_container(key)
                 container.write_array([1, 2, 3], key="inner")
             admin_client.logout()
         with enter_password("secret1"):
             alice_client = from_context(context, username="alice")
-            alice_client["x"]["inner"].read()
+            alice_client["outer_x"]["inner"].read()
             with pytest.raises(KeyError):
-                alice_client["y"]
+                alice_client["outer_y"]
             alice_client.logout()
         public_client = from_context(context)
-        public_client["z"]["inner"].read()
+        public_client["outer_z"]["inner"].read()
         with pytest.raises(KeyError):
-            public_client["x"]
+            public_client["outer_x"]
