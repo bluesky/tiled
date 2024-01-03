@@ -21,9 +21,10 @@ from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
-from ..server.app import build_app
+from ..server.app import build_app, build_app_from_config
 from ..server.schemas import Asset, DataSource
 from ..structures.core import StructureFamily
+from .utils import enter_password
 
 
 @pytest_asyncio.fixture
@@ -342,3 +343,71 @@ async def test_delete_tree(tmpdir):
         assert len(data_sources_after_delete) == 0
         assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
         assert len(assets_after_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_access_control(tmpdir):
+    config = {
+        "authentication": {
+            "allow_anonymous_access": True,
+            "secret_keys": ["SECRET"],
+            "providers": [
+                {
+                    "provider": "toy",
+                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                    "args": {
+                        "users_to_passwords": {
+                            "alice": "secret1",
+                            "bob": "secret2",
+                            "admin": "admin",
+                        }
+                    },
+                }
+            ],
+        },
+        "database": {
+            "uri": "sqlite+aiosqlite://",  # in-memory
+        },
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "writable_storage": str(tmpdir / "data"),
+                    "init_if_not_exists": True,
+                },
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "provider": "toy",
+                        "access_lists": {
+                            "alice": ["outer_x"],
+                            "bob": ["outer_y"],
+                        },
+                        "admins": ["admin"],
+                        "public": ["outer_z"],
+                    },
+                },
+            },
+        ],
+    }
+
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        with enter_password("admin"):
+            admin_client = from_context(context, username="admin")
+            for key in ["outer_x", "outer_y", "outer_z"]:
+                container = admin_client.create_container(key)
+                container.write_array([1, 2, 3], key="inner")
+            admin_client.logout()
+        with enter_password("secret1"):
+            alice_client = from_context(context, username="alice")
+            alice_client["outer_x"]["inner"].read()
+            with pytest.raises(KeyError):
+                alice_client["outer_y"]
+            alice_client.logout()
+        public_client = from_context(context)
+        public_client["outer_z"]["inner"].read()
+        with pytest.raises(KeyError):
+            public_client["outer_x"]

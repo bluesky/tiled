@@ -64,13 +64,15 @@ class SimpleAccessPolicy:
     def allowed_scopes(self, node, principal):
         # If this is being called, filter_access has let us get this far.
         if principal is SpecialUsers.public:
-            return PUBLIC_SCOPES
-        if self._get_id(principal) in self.admins:
-            return ALL_SCOPES
+            allowed = PUBLIC_SCOPES
+        elif self._get_id(principal) in self.admins:
+            allowed = ALL_SCOPES
         # The simple policy does not provide for different Principals to
         # have different scopes on different Nodes. If the Principal has access,
         # they have the same hard-coded access everywhere.
-        return self.scopes
+        else:
+            allowed = self.scopes
+        return allowed
 
     def filters(self, node, principal, scopes):
         queries = []
