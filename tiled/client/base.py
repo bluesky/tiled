@@ -172,6 +172,11 @@ class BaseClient:
         "Direct link to this entry"
         return self.item["links"]["self"]
 
+    @property
+    def structure_family(self):
+        "Quick access to this entry"
+        return StructureFamily[self.item["attributes"]["structure_family"]]
+
     def new_variation(self, structure_clients=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.
