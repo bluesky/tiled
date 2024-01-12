@@ -175,7 +175,7 @@ class BaseClient:
     @property
     def structure_family(self):
         "Quick access to this entry"
-        return self.item["attributes"]["structure_family"]
+        return StructureFamily[self.item["attributes"]["structure_family"]]
 
     def new_variation(self, structure_clients=UNCHANGED, **kwargs):
         """
