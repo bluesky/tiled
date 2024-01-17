@@ -9,8 +9,10 @@ from sqlalchemy import (
     Integer,
     Table,
     Unicode,
+    text,
+    types,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
@@ -21,6 +23,11 @@ from .base import Base
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
+
+
+# Use TSVECTOR with PostgreSQL via SQLAlchemy for fullText indexing.
+class TSVector(types.TypeDecorator):
+    impl = TSVECTOR
 
 
 class Timestamped:
@@ -92,6 +99,12 @@ class Node(Timestamped, Base):
             "metadata",
             postgresql_using="gin",
         ),
+        # This index supports full-text search.
+        Index(
+            "metadata_search",
+            func.to_tsvector(text("'simple'"), func.lower("metadata")),
+            postgresql_using="gin",
+        )
         # This is used by ORDER BY with the default sorting.
         # Index("ancestors_time_created", "ancestors", "time_created"),
     )
