@@ -9,7 +9,6 @@ from sqlalchemy import (
     Integer,
     Table,
     Unicode,
-    text,
     types,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
@@ -102,7 +101,7 @@ class Node(Timestamped, Base):
         # This index supports full-text search.
         Index(
             "metadata_search",
-            func.to_tsvector(text("'simple'"), func.lower("metadata")),
+            func.jsonb_to_tsvector("simple", metadata_, '["string"]'),
             postgresql_using="gin",
         )
         # This is used by ORDER BY with the default sorting.
