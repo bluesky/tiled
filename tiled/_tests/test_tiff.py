@@ -8,6 +8,7 @@ from ..adapters.mapping import MapAdapter
 from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
 from ..catalog import in_memory
 from ..catalog.register import TIFF_SEQUENCE_EMPTY_NAME_ROOT, register
+from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..server.app import build_app
 
@@ -18,18 +19,21 @@ COLOR_SHAPE = (11, 17, 3)
 def client(tmpdir_module):
     sequence_directory = Path(tmpdir_module, "sequence")
     sequence_directory.mkdir()
+    filepaths = []
     for i in range(3):
         data = numpy.random.random((5, 7))
-        tf.imwrite(sequence_directory / f"temp{i:05}.tif", data)
+        filepath = sequence_directory / f"temp{i:05}.tif"
+        tf.imwrite(filepath, data)
+        filepaths.append(filepath)
     color_data = numpy.random.randint(0, 255, COLOR_SHAPE, dtype="uint8")
     path = Path(tmpdir_module, "color.tif")
     tf.imwrite(path, color_data)
 
     tree = MapAdapter(
         {
-            "color": TiffAdapter(str(path)),
-            "sequence": TiffSequenceAdapter(
-                tf.TiffSequence(str(sequence_directory / "*.tif"))
+            "color": TiffAdapter(ensure_uri(path)),
+            "sequence": TiffSequenceAdapter.from_uris(
+                [ensure_uri(filepath) for filepath in filepaths]
             ),
         }
     )
