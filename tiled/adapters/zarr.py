@@ -1,7 +1,6 @@
 import builtins
 import collections.abc
 import os
-from urllib import parse
 
 import zarr.core
 import zarr.hierarchy
@@ -16,7 +15,8 @@ from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
-def read_zarr(filepath, **kwargs):
+def read_zarr(data_uri, **kwargs):
+    filepath = path_from_uri(data_uri)
     zarr_obj = zarr.open(filepath)  # Group or Array
     if isinstance(zarr_obj, zarr.hierarchy.Group):
         adapter = ZarrGroupAdapter(zarr_obj, **kwargs)
@@ -43,12 +43,11 @@ class ZarrArrayAdapter(ArrayAdapter):
             chunks=zarr_chunks,
             dtype=structure.data_type.to_numpy_dtype(),
         )
-        data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         return [
             Asset(
                 data_uri=data_uri,
                 is_directory=True,
-                parameter="filepath",
+                parameter="data_uri",
             )
         ]
 

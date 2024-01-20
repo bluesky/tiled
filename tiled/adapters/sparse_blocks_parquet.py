@@ -12,7 +12,7 @@ from ..utils import path_from_uri
 def load_block(uri):
     # TODO This can be done without pandas.
     # Better to use a plain I/O library.
-    df = pandas.read_parquet(uri)
+    df = pandas.read_parquet(path_from_uri(uri))
     coords = df[df.columns[:-1]].values.T
     data = df["data"].values
     return coords, data
@@ -66,13 +66,13 @@ class SparseBlocksParquetAdapter:
 
     def write_block(self, data, block):
         uri = self.blocks[block]
-        data.to_parquet(uri)
+        data.to_parquet(path_from_uri(uri))
 
     def write(self, data):
         if len(self.blocks) > 1:
             raise NotImplementedError
         uri = self.blocks[(0,) * len(self._structure.shape)]
-        data.to_parquet(uri)
+        data.to_parquet(path_from_uri(uri))
 
     def read(self, slice=...):
         all_coords = []

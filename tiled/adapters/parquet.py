@@ -49,7 +49,7 @@ class ParquetDatasetAdapter:
             Asset(
                 data_uri=f"{data_uri}/partition-{i}.parquet",
                 is_directory=False,
-                parameter="uris",
+                parameter="data_uris",
                 num=i,
             )
             for i in range(structure.npartitions)

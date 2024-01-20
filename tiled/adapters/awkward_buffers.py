@@ -42,7 +42,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
 
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        return [Asset(data_uri=data_uri, is_directory=True, parameter="directory")]
+        return [Asset(data_uri=data_uri, is_directory=True, parameter="data_uri")]
 
     @classmethod
     def from_directory(

@@ -499,6 +499,7 @@ async def test_access_control(tmpdir):
         "duplicate-int",
     ],
 )
+@pytest.mark.asyncio
 async def test_constraints_on_parameter_and_num(a, assets):
     "Test constraints enforced by database on 'parameter' and 'num'."
     arr_adapter = ArrayAdapter.from_array([1, 2, 3])

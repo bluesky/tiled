@@ -5,6 +5,7 @@ import pandas
 from ..server.object_cache import get_object_cache
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
+from ..utils import path_from_uri
 from .array import ArrayAdapter
 
 
@@ -32,7 +33,8 @@ class TableAdapter:
         npartitions=1,
         **kwargs,
     ):
-        ddf = dask.dataframe.from_pandas(data_uri, npartitions=npartitions, **kwargs)
+        filepath = path_from_uri(data_uri)
+        ddf = dask.dataframe.from_pandas(filepath, npartitions=npartitions, **kwargs)
         if specs is None:
             specs = [Spec("dataframe")]
         return cls.from_dask_dataframe(

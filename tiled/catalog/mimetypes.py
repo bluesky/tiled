@@ -23,7 +23,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).read_csv,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.excel", __name__
-        ).ExcelAdapter.from_filepath,
+        ).ExcelAdapter.from_uri,
         "application/x-hdf5": lambda: importlib.import_module(
             "...adapters.hdf5", __name__
         ).HDF5Adapter.from_filepath,
