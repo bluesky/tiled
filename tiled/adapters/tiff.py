@@ -30,6 +30,8 @@ class TiffAdapter:
         specs=None,
         access_policy=None,
     ):
+        if not isinstance(data_uri, str):
+            raise Exception
         filepath = path_from_uri(data_uri)
         self._file = tifffile.TiffFile(filepath)
         self._cache_key = (type(self).__module__, type(self).__qualname__, filepath)
@@ -85,7 +87,7 @@ class TiffSequenceAdapter:
     structure_family = "array"
 
     @classmethod
-    def from_filepaths(
+    def from_uris(
         cls,
         data_uris,
         structure=None,

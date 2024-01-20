@@ -27,6 +27,7 @@ from ..client import Context, from_context
 from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
 from ..server.schemas import Asset, DataSource, Management
+from ..utils import path_from_uri
 
 
 @pytest.fixture
@@ -196,19 +197,19 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
     with open(metadata_filepath, "w") as file:
         yaml.dump(metadata, file)
 
-    def read_tiff_with_yaml_metadata(
-        image_filepath, metadata_filepath, metadata=None, **kwargs
-    ):
-        with open(metadata_filepath) as file:
+    def read_tiff_with_yaml_metadata(image_uri, metadata_uri, metadata=None, **kwargs):
+        with open(path_from_uri(metadata_uri)) as file:
             metadata = yaml.safe_load(file)
-        return TiffAdapter(image_filepath, metadata=metadata, **kwargs)
+        return TiffAdapter(image_uri, metadata=metadata, **kwargs)
 
     catalog = in_memory(
         writable_storage=tmpdir,
         adapters_by_mimetype={MIMETYPE: read_tiff_with_yaml_metadata},
     )
     with Context.from_app(build_app(catalog)) as context:
-        adapter = read_tiff_with_yaml_metadata(image_filepath, metadata_filepath)
+        adapter = read_tiff_with_yaml_metadata(
+            ensure_uri(image_filepath), ensure_uri(metadata_filepath)
+        )
         await create_node_safe(
             catalog,
             key="image",
@@ -223,14 +224,14 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
                     management=Management.external,
                     assets=[
                         Asset(
-                            data_uri=str(ensure_uri(str(metadata_filepath))),
+                            data_uri=ensure_uri(metadata_filepath),
                             is_directory=False,
-                            parameter="metadata_filepath",
+                            parameter="metadata_uri",
                         ),
                         Asset(
-                            data_uri=str(ensure_uri(str(image_filepath))),
+                            data_uri=ensure_uri(image_filepath),
                             is_directory=False,
-                            parameter="image_filepath",
+                            parameter="image_uri",
                         ),
                     ],
                 )
@@ -267,14 +268,14 @@ async def test_hdf5_virtual_datasets(tmpdir):
     ]
     assets.append(
         Asset(
-            data_uri=str(ensure_uri(str(filepath))),
+            data_uri=ensure_uri(filepath),
             is_directory=False,
-            parameter="filepath",
+            parameter="data_uri",
         )
     )
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
-        adapter = HDF5Adapter.from_filepath(filepath)
+        adapter = HDF5Adapter.from_uri(ensure_uri(filepath))
         await create_node_safe(
             catalog,
             key="VDS",

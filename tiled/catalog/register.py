@@ -291,7 +291,7 @@ async def register_single_item(
     adapter_factory = settings.adapters_by_mimetype[mimetype]
     logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, item)
     try:
-        adapter = await anyio.to_thread.run_sync(adapter_factory, item)
+        adapter = await anyio.to_thread.run_sync(adapter_factory, ensure_uri(item))
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s':", item)
         return
@@ -310,9 +310,9 @@ async def register_single_item(
                 management=Management.external,
                 assets=[
                     Asset(
-                        data_uri=str(ensure_uri(str(item.absolute()))),
+                        data_uri=ensure_uri(item),
                         is_directory=is_directory,
-                        parameter="filepath",
+                        parameter="data_uri",
                     )
                 ],
             )
@@ -369,7 +369,7 @@ async def register_tiff_sequence(catalog, name, sequence, settings):
     adapter_class = settings.adapters_by_mimetype[TIFF_SEQ_MIMETYPE]
     key = settings.key_from_filename(name)
     try:
-        adapter = adapter_class(sequence)
+        adapter = adapter_class([ensure_uri(filepath) for filepath in sequence])
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
         return
@@ -387,9 +387,9 @@ async def register_tiff_sequence(catalog, name, sequence, settings):
                 management=Management.external,
                 assets=[
                     Asset(
-                        data_uri=str(ensure_uri(str(item.absolute()))),
+                        data_uri=ensure_uri(item),
                         is_directory=False,
-                        parameter="filepaths",
+                        parameter="data_uris",
                         num=i,
                     )
                     for i, item in enumerate(sequence)

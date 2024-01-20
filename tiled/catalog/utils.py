@@ -21,4 +21,4 @@ def ensure_uri(uri_or_path):
             mutable = list(parsed)
             mutable[1] = "localhost"
             uri_str = urlunparse(mutable)
-    return uri_str
+    return str(uri_str)

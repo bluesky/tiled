@@ -17,7 +17,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).TiffAdapter,
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
             "...adapters.tiff", __name__
-        ).TiffSequenceAdapter.from_filepaths,
+        ).TiffSequenceAdapter.from_uris,
         "text/csv": lambda: importlib.import_module(
             "...adapters.csv", __name__
         ).read_csv,
@@ -26,7 +26,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).ExcelAdapter.from_uri,
         "application/x-hdf5": lambda: importlib.import_module(
             "...adapters.hdf5", __name__
-        ).HDF5Adapter.from_filepath,
+        ).HDF5Adapter.from_uri,
         "application/x-netcdf": lambda: importlib.import_module(
             "...adapters.netcdf", __name__
         ).read_netcdf,
