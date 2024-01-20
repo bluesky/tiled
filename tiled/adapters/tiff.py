@@ -6,6 +6,7 @@ import tifffile
 from ..server.object_cache import with_object_cache
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
+from ..utils import path_from_uri
 
 
 class TiffAdapter:
@@ -22,13 +23,14 @@ class TiffAdapter:
 
     def __init__(
         self,
-        filepath,
+        data_uri,
         *,
         structure=None,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
+        filepath = path_from_uri(data_uri)
         self._file = tifffile.TiffFile(filepath)
         self._cache_key = (type(self).__module__, type(self).__qualname__, filepath)
         self.specs = specs or []
@@ -85,12 +87,13 @@ class TiffSequenceAdapter:
     @classmethod
     def from_filepaths(
         cls,
-        filepaths,
+        data_uris,
         structure=None,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
+        filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         seq = tifffile.TiffSequence(filepaths)
         return cls(
             seq,

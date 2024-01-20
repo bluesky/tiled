@@ -1,5 +1,4 @@
 import itertools
-from urllib import parse
 
 import numpy
 import pandas
@@ -7,6 +6,7 @@ import sparse
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..structures.core import StructureFamily
+from ..utils import path_from_uri
 
 
 def load_block(uri):
@@ -23,7 +23,7 @@ class SparseBlocksParquetAdapter:
 
     def __init__(
         self,
-        block_uris,
+        data_uris,
         structure,
         metadata=None,
         specs=None,
@@ -31,7 +31,7 @@ class SparseBlocksParquetAdapter:
     ):
         num_blocks = (range(len(n)) for n in structure.chunks)
         self.blocks = {}
-        for block, uri in zip(itertools.product(*num_blocks), sorted(block_uris)):
+        for block, uri in zip(itertools.product(*num_blocks), data_uris):
             self.blocks[block] = uri
         self._structure = structure
         self._metadata = metadata or {}
@@ -41,27 +41,23 @@ class SparseBlocksParquetAdapter:
     @classmethod
     def init_storage(
         cls,
-        directory,
+        data_uri,
         structure,
     ):
         from ..server.schemas import Asset
 
+        directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
 
         num_blocks = (range(len(n)) for n in structure.chunks)
-        block_uris = []
-        for block in itertools.product(*num_blocks):
-            filepath = directory / f"block-{'.'.join(map(str, block))}.parquet"
-            uri = parse.urlunparse(("file", "localhost", str(filepath), "", "", None))
-            block_uris.append(uri)
         assets = [
             Asset(
-                data_uri=uri,
+                data_uri=f"{data_uri}/block-{'.'.join(map(str, block))}.parquet",
                 is_directory=False,
-                parameter="block_uris",
+                parameter="data_uris",
                 num=i,
             )
-            for i, uri in enumerate(block_uris)
+            for i, block in enumerate(itertools.product(*num_blocks))
         ]
         return assets
 

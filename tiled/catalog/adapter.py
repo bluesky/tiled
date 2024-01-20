@@ -11,7 +11,6 @@ from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 import anyio
-import httpx
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
@@ -40,6 +39,7 @@ from ..utils import (
     UnsupportedQueryType,
     ensure_awaitable,
     import_object,
+    path_from_uri,
     safe_json_dump,
 )
 from . import orm
@@ -52,7 +52,7 @@ from .mimetypes import (
     ZARR_MIMETYPE,
     ZIP_MIMETYPE,
 )
-from .utils import SCHEME_PATTERN, ensure_uri, safe_path
+from .utils import SCHEME_PATTERN, ensure_uri
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -117,7 +117,7 @@ class Context:
             raise ValueError("readable_storage should be a list of URIs or paths")
         if writable_storage:
             writable_storage = ensure_uri(str(writable_storage))
-            if not writable_storage.scheme == "file":
+            if not urlparse(writable_storage).scheme == "file":
                 raise NotImplementedError(
                     "Only file://... writable storage is currently supported."
                 )
@@ -394,32 +394,31 @@ class CatalogNodeAdapter:
             for asset in data_source.assets:
                 if asset.parameter is None:
                     continue
-                data_uri = httpx.URL(asset.data_uri)
-                if data_uri.scheme != "file":
+                scheme = urlparse(asset.data_uri).scheme
+                if scheme != "file":
                     raise NotImplementedError(
-                        f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
+                        f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
                     )
-                if data_uri.scheme == "file":
+                if scheme == "file":
                     # Protect against misbehaving clients reading from unintended
                     # parts of the filesystem.
+                    asset_path = path_from_uri(asset.data_uri)
                     for readable_storage in self.context.readable_storage:
                         if Path(
                             os.path.commonpath(
-                                [safe_path(readable_storage), safe_path(data_uri)]
+                                [path_from_uri(readable_storage), asset_path]
                             )
-                        ) == safe_path(readable_storage):
+                        ) == path_from_uri(readable_storage):
                             break
                     else:
                         raise RuntimeError(
-                            f"Refusing to serve {data_uri} because it is outside "
+                            f"Refusing to serve {asset.data_uri} because it is outside "
                             "the readable storage area for this server."
                         )
-                path = safe_path(data_uri)
                 if asset.num is None:
-                    parameters[asset.parameter] = path
+                    parameters[asset.parameter] = asset.data_uri
                 else:
-                    # TODO Order these in SQL.
-                    parameters[asset.parameter].append(path)
+                    parameters[asset.parameter].append(asset.data_uri)
             adapter_kwargs = dict(parameters)
             adapter_kwargs.update(data_source.parameters)
             adapter_kwargs["specs"] = self.node.specs
@@ -570,7 +569,7 @@ class CatalogNodeAdapter:
                     )
                     init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
                     assets = await ensure_awaitable(
-                        init_storage, safe_path(data_uri), data_source.structure
+                        init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(
@@ -888,7 +887,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
 def delete_asset(data_uri, is_directory):
     url = urlparse(data_uri)
     if url.scheme == "file":
-        path = safe_path(data_uri)
+        path = path_from_uri(data_uri)
         if is_directory:
             shutil.rmtree(path)
         else:

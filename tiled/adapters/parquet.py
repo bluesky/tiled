@@ -1,9 +1,9 @@
 from pathlib import Path
-from urllib import parse
 
 import dask.dataframe
 
 from ..structures.core import StructureFamily
+from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
 
 
@@ -12,13 +12,14 @@ class ParquetDatasetAdapter:
 
     def __init__(
         self,
-        uris,
+        data_uris,
         structure,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
-        self.partition_paths = uris
+        # TODO Store data_uris instead and generalize to non-file schemes.
+        self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
@@ -30,7 +31,7 @@ class ParquetDatasetAdapter:
     @property
     def dataframe_adapter(self):
         partitions = []
-        for path in self.partition_paths:
+        for path in self._partition_paths:
             if not Path(path).exists():
                 partition = None
             else:
@@ -39,11 +40,11 @@ class ParquetDatasetAdapter:
         return DataFrameAdapter(partitions, self._structure)
 
     @classmethod
-    def init_storage(cls, directory, structure):
+    def init_storage(cls, data_uri, structure):
         from ..server.schemas import Asset
 
+        directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         assets = [
             Asset(
                 data_uri=f"{data_uri}/partition-{i}.parquet",
@@ -56,13 +57,13 @@ class ParquetDatasetAdapter:
         return assets
 
     def write_partition(self, data, partition):
-        uri = self.partition_paths[partition]
+        uri = self._partition_paths[partition]
         data.to_parquet(uri)
 
     def write(self, data):
         if self.structure().npartitions != 1:
             raise NotImplementedError
-        uri = self.partition_paths[0]
+        uri = self._partition_paths[0]
         data.to_parquet(uri)
 
     def read(self, *args, **kwargs):

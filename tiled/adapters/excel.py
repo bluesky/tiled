@@ -52,7 +52,7 @@ class ExcelAdapter(MapAdapter):
         return cls(mapping, **kwargs)
 
     @classmethod
-    def from_filepath(cls, filepath, **kwargs):
+    def from_uri(cls, data_uri, **kwargs):
         """
         Read the sheets in an Excel file.
 
@@ -66,5 +66,5 @@ class ExcelAdapter(MapAdapter):
 
         >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
         """
-        file = pandas.ExcelFile(filepath)
+        file = pandas.ExcelFile(data_uri)
         return cls.from_file(file)

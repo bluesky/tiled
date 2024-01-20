@@ -1,11 +1,12 @@
 import dask.dataframe
 
 from ..server.object_cache import NO_CACHE, get_object_cache
+from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
 
 
 def read_csv(
-    filepath,
+    data_uri,
     structure=None,
     metadata=None,
     specs=None,
@@ -25,6 +26,7 @@ def read_csv(
     >>> read_csv("myfiles.*.csv")
     >>> read_csv("s3://bucket/myfiles.*.csv")
     """
+    filepath = path_from_uri(data_uri)
     ddf = dask.dataframe.read_csv(filepath, **kwargs)
     # If an instance has previously been created using the same parameters,
     # then we are here because the caller wants a *fresh* view on this data.

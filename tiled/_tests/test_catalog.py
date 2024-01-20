@@ -200,9 +200,10 @@ async def test_metadata_index_is_used(example_data_adapter):
 @pytest.mark.asyncio
 async def test_write_array_external(a, tmpdir):
     arr = numpy.ones((5, 3))
-    filepath = tmpdir / "file.tiff"
-    tifffile.imwrite(str(filepath), arr)
-    ad = TiffAdapter(str(filepath))
+    filepath = str(tmpdir / "file.tiff")
+    data_uri = ensure_uri(filepath)
+    tifffile.imwrite(filepath, arr)
+    ad = TiffAdapter(data_uri)
     structure = asdict(ad.structure())
     await a.create_node(
         key="x",
@@ -216,9 +217,9 @@ async def test_write_array_external(a, tmpdir):
                 management="external",
                 assets=[
                     Asset(
-                        parameter="filepath",
+                        parameter="data_uri",
                         num=None,
-                        data_uri=str(ensure_uri(filepath)),
+                        data_uri=str(data_uri),
                         is_directory=False,
                     )
                 ],
@@ -232,9 +233,10 @@ async def test_write_array_external(a, tmpdir):
 @pytest.mark.asyncio
 async def test_write_dataframe_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
-    filepath = tmpdir / "file.csv"
+    filepath = str(tmpdir / "file.csv")
+    data_uri = ensure_uri(filepath)
     df.to_csv(filepath, index=False)
-    dfa = read_csv(filepath)
+    dfa = read_csv(data_uri)
     structure = asdict(dfa.structure())
     await a.create_node(
         key="x",
@@ -248,9 +250,9 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 management="external",
                 assets=[
                     Asset(
-                        parameter="filepath",
+                        parameter="data_uri",
                         num=None,
-                        data_uri=str(ensure_uri(filepath)),
+                        data_uri=data_uri,
                         is_directory=False,
                     )
                 ],

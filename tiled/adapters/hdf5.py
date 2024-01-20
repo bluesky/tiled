@@ -8,7 +8,7 @@ import numpy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import StructureFamily
-from ..utils import node_repr
+from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -73,9 +73,9 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         return cls(file, metadata=metadata, specs=specs, access_policy=access_policy)
 
     @classmethod
-    def from_filepath(
+    def from_uri(
         cls,
-        filepath,
+        data_uri,
         *,
         structure=None,
         metadata=None,
@@ -84,6 +84,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         specs=None,
         access_policy=None,
     ):
+        filepath = path_from_uri(data_uri)
         file = h5py.File(filepath, "r", swmr=swmr, libver=libver)
         return cls.from_file(file)
 
