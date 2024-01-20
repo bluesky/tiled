@@ -660,6 +660,16 @@ async def ensure_awaitable(func, *args, **kwargs):
 
 
 def path_from_uri(uri):
+    """
+    Give a URI, return a Path.
+
+    If the URI has a scheme other than 'file', raise ValueError.
+
+    >>> path_from_uri('file://localhost/a/b/c')  # POSIX-style
+    '/a/b/c'
+    >>> path_from_uri('file://localhost/C:/a/b/c')  # Windows-style
+    'C:/a/b/c'
+    """
     parsed = urlparse(uri)
     if parsed.scheme != "file":
         raise ValueError(f"Only 'file' URIs are supported. URI: {uri}")
