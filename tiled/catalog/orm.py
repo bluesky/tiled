@@ -135,9 +135,6 @@ class DataSourceAssetAssociation(Base):
         back_populates="data_source_associations", lazy="selectin"
     )
 
-    # TODO We should additionally ensure that, if there is a row with some
-    # parameter P and num NULL, that there can be no rows with parameter P and
-    # num <INT>. This may be possible with a trigger.
     __table_args__ = (
         UniqueConstraint(
             "data_source_id",
@@ -145,6 +142,8 @@ class DataSourceAssetAssociation(Base):
             "num",
             name="parameter_num_unique_constraint",
         ),
+        # Below, in unique_parameter_num_null_check, additional constraints
+        # are applied, via triggers.
     )
 
 
