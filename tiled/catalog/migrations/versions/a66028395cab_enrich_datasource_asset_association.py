@@ -8,7 +8,7 @@ Create Date: 2024-01-21 15:17:20.571763
 import sqlalchemy as sa
 from alembic import op
 
-from tiled.authn_database.orm import (  # unique_parameter_num_null_check,
+from tiled.catalog.orm import (  # unique_parameter_num_null_check,
     DataSourceAssetAssociation,
     JSONVariant,
 )
@@ -46,16 +46,16 @@ def upgrade():
     # Thus using 'application/zip' in the database was a mistake.
     connection.execute(
         data_sources.update()
-        .where(mimetype="application/zip")
-        .values(mimtype="application/x-awkward-buffers")
+        .where(data_sources.c.mimetype == "application/zip")
+        .values(mimetype="application/x-awkward-buffers")
     )
     # The format is standard parquet. We will use a MIME type
     # parameter to let Tiled know to use the Adapter for sparse
     # data, as opposed to the Adapter for tabular data.
     connection.execute(
         data_sources.update()
-        .where(mimetype="application/x-parquet-sparse")
-        .values(mimtype="application/x-parquet;structure=sparse")
+        .where(data_sources.c.mimetype == "application/x-parquet-sparse")
+        .values(mimetype="application/x-parquet;structure=sparse")
     )
 
     # Add columns 'parameter' and 'num' to association table.
@@ -74,24 +74,35 @@ def upgrade():
     connection.execute(
         data_source_asset_association.update()
         .where(
-            sa.not_(
-                sa._or(
-                    data_sources.mimetype == "multipart/related;type=image/tiff",
-                    data_sources.mimetype == "application/x-parquet",
-                    data_sources.mimetype == "application/x-parquet;structure=sparse",
+            data_source_asset_association.c.data_source_id
+            == sa.select(data_sources.c.id)
+            .where(
+                sa.not_(
+                    sa.or_(
+                        data_sources.c.mimetype == "multipart/related;type=image/tiff",
+                        data_sources.c.mimetype == "application/x-parquet",
+                        data_sources.c.mimetype
+                        == "application/x-parquet;structure=sparse",
+                    )
                 )
             )
+            .as_scalar()
         )
         .values(parameter="data_uri")
     )
     connection.execute(
         data_source_asset_association.update()
         .where(
-            sa._or(
-                data_sources.mimetype == "multipart/related;type=image/tiff",
-                data_sources.mimetype == "application/x-parquet",
-                data_sources.mimetype == "application/x-parquet;structure=sparse",
+            data_source_asset_association.c.data_source_id
+            == sa.select(data_sources.c.id)
+            .where(
+                sa.or_(
+                    data_sources.c.mimetype == "multipart/related;type=image/tiff",
+                    data_sources.c.mimetype == "application/x-parquet",
+                    data_sources.c.mimetype == "application/x-parquet;structure=sparse",
+                )
             )
+            .as_scalar()
         )
         .values(parameter="data_uris")  # plural
     )
