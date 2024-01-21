@@ -8,9 +8,10 @@ Create Date: 2024-01-21 15:17:20.571763
 import sqlalchemy as sa
 from alembic import op
 
-from tiled.catalog.orm import (  # unique_parameter_num_null_check,
+from tiled.catalog.orm import (
     DataSourceAssetAssociation,
     JSONVariant,
+    unique_parameter_num_null_check,
 )
 
 # revision identifiers, used by Alembic.
@@ -37,6 +38,12 @@ def upgrade():
         sa.Column("data_source_id", sa.Integer),
         sa.Column("parameter", sa.Unicode(255)),
         sa.Column("num", sa.Integer),
+    )
+    assets = sa.Table(
+        "assets",
+        sa.MetaData(),
+        sa.Column("id", sa.Integer),
+        sa.Column("data_uri", sa.Unicode),
     )
 
     # Rename some MIME types.
@@ -71,60 +78,148 @@ def upgrade():
     # First populate the columns to bring them into compliance with
     # constraints. Then, apply constraints.
 
-    connection.execute(
-        data_source_asset_association.update()
+    results = connection.execute(
+        sa.select(data_sources.c.id)
         .where(
-            data_source_asset_association.c.data_source_id
-            == sa.select(data_sources.c.id)
-            .where(
-                sa.not_(
-                    sa.or_(
-                        data_sources.c.mimetype == "multipart/related;type=image/tiff",
-                        data_sources.c.mimetype == "application/x-parquet",
-                        data_sources.c.mimetype
-                        == "application/x-parquet;structure=sparse",
-                    )
+            sa.not_(
+                data_sources.c.mimetype.in_(
+                    [
+                        "multipart/related;type=image/tiff",
+                        "application/x-parquet",
+                        "application/x-parquet;structure=sparse",
+                    ]
                 )
             )
-            .as_scalar()
         )
-        .values(parameter="data_uri")
-    )
-    connection.execute(
-        data_source_asset_association.update()
+        .select_from(data_sources)
+        .join(
+            data_source_asset_association,
+            data_sources.c.id == data_source_asset_association.c.data_source_id,
+        )
+        .join(
+            assets,
+            data_source_asset_association.c.asset_id == assets.c.id,
+        )
+        .distinct()
+    ).fetchall()
+    for (data_source_id,) in results:
+        connection.execute(
+            data_source_asset_association.update()
+            .where(data_source_asset_association.c.data_source_id == data_source_id)
+            .values(parameter="data_uri")
+        )
+    results = connection.execute(
+        sa.select(data_sources.c.id)
         .where(
-            data_source_asset_association.c.data_source_id
-            == sa.select(data_sources.c.id)
-            .where(
-                sa.or_(
-                    data_sources.c.mimetype == "multipart/related;type=image/tiff",
-                    data_sources.c.mimetype == "application/x-parquet",
-                    data_sources.c.mimetype == "application/x-parquet;structure=sparse",
-                )
+            data_sources.c.mimetype.in_(
+                [
+                    "multipart/related;type=image/tiff",
+                    "application/x-parquet",
+                    "application/x-parquet;structure=sparse",
+                ]
             )
-            .as_scalar()
         )
-        .values(parameter="data_uris")  # plural
-    )
-    # results = connection.execute(
-    #     sa.select(
-    #         data_sources.c.id,
-    #         data_sources.c.structure,
-    #         nodes.c.structure_family,
-    #     ).select_from(joined)
-    # ).fetchall()
+        .select_from(data_sources)
+        .join(
+            data_source_asset_association,
+            data_sources.c.id == data_source_asset_association.c.data_source_id,
+        )
+        .join(
+            assets,
+            data_source_asset_association.c.asset_id == assets.c.id,
+        )
+        .distinct()
+    ).fetchall()
+    for (data_source_id,) in results:
+        connection.execute(
+            data_source_asset_association.update()
+            .where(data_source_asset_association.c.data_source_id == data_source_id)
+            .values(parameter="data_uris")  # plural
+        )
+        sorted_assoc = connection.execute(
+            sa.select(data_source_asset_association.c.data_source_id, assets.c.id)
+            .where(data_source_asset_association.c.data_source_id == data_source_id)
+            .order_by(assets.c.data_uri)
+            .select_from(data_sources)
+            .join(
+                data_source_asset_association,
+                data_sources.c.id == data_source_asset_association.c.data_source_id,
+            )
+            .join(
+                assets,
+                data_source_asset_association.c.asset_id == assets.c.id,
+            )
+        ).fetchall()
+        for num, (data_source_id, asset_id) in enumerate(sorted_assoc, start=1):
+            connection.execute(
+                data_source_asset_association.update()
+                .where(data_source_asset_association.c.data_source_id == data_source_id)
+                .where(data_source_asset_association.c.asset_id == asset_id)
+                .values(num=num)
+            )
 
     # Create unique constraint and triggers.
-    # op.create_unique_constraint(
-    #     constraint_name="parameter_num_unique_constraint",
-    #     table_name=DataSourceAssetAssociation.__tablename__,
-    #     columns=[
-    #         "data_source_id",
-    #         "parameter",
-    #         "num",
-    #     ],
-    # )
-    # unique_parameter_num_null_check(data_source_asset_association, connection)
+    if connection.engine.dialect.name == "sqlite":
+        # SQLite does not supported adding constraints to an existing table.
+        # We invoke its 'copy and move' functionality.
+        with op.batch_alter_table(DataSourceAssetAssociation.__tablename__) as batch_op:
+            batch_op.create_unique_constraint(
+                "parameter_num_unique_constraint",
+                [
+                    "data_source_id",
+                    "parameter",
+                    "num",
+                ],
+            )
+        with op.get_context().autocommit_block():
+            connection.execute(
+                sa.text(
+                    """
+    CREATE TRIGGER cannot_insert_num_null_if_num_int_exists
+    BEFORE INSERT ON data_source_asset_association
+    WHEN NEW.num IS NULL
+    BEGIN
+        SELECT RAISE(ABORT, 'Can only insert num=NULL if no other row exists for the same parameter')
+        WHERE EXISTS
+        (
+            SELECT 1
+            FROM data_source_asset_association
+            WHERE parameter = NEW.parameter
+            AND data_source_id = NEW.data_source_id
+        );
+    END"""
+                )
+            )
+            connection.execute(
+                sa.text(
+                    """
+    CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
+    BEFORE INSERT ON data_source_asset_association
+    WHEN NEW.num IS NOT NULL
+    BEGIN
+        SELECT RAISE(ABORT, 'Can only insert INTEGER num if no NULL row exists for the same parameter')
+        WHERE EXISTS
+        (
+            SELECT 1
+            FROM data_source_asset_association
+            WHERE parameter = NEW.parameter
+            AND num IS NULL
+            AND data_source_id = NEW.data_source_id
+        );
+    END"""
+                )
+            )
+    else:
+        # PostgreSQL
+        op.create_unique_constraint(
+            "parameter_num_unique_constraint",
+            [
+                "data_source_id",
+                "parameter",
+                "num",
+            ],
+        )
+        unique_parameter_num_null_check(data_source_asset_association, connection)
 
 
 def downgrade():
