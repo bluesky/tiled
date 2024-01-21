@@ -46,35 +46,37 @@ from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .mimetypes import (
+    AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     ZARR_MIMETYPE,
-    ZIP_MIMETYPE,
 )
 from .utils import SCHEME_PATTERN, ensure_uri
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
+# When data is uploaded, how is it saved?
+# TODO: Make this configurable at Catalog construction time.
 DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
-    StructureFamily.awkward: ZIP_MIMETYPE,
+    StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
+DEFAULT_INIT_STORAGE = OneShotCachedMap(
     {
-        ZARR_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.array: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrArrayAdapter.init_storage,
-        ZIP_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.awkward: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.init_storage,
-        PARQUET_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.table: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,
-        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.sparse: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
         ).SparseBlocksParquetAdapter.init_storage,
     }
@@ -567,7 +569,7 @@ class CatalogNodeAdapter:
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
+                    init_storage = DEFAULT_INIT_STORAGE[structure_family]
                     assets = await ensure_awaitable(
                         init_storage, data_uri, data_source.structure
                     )

@@ -7,9 +7,9 @@ from ..utils import OneShotCachedMap
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
 # for importing Readers that we will not actually use.
 PARQUET_MIMETYPE = "application/x-parquet"
-SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet-sparse"  # HACK!
-ZIP_MIMETYPE = "application/zip"
+SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"
 ZARR_MIMETYPE = "application/x-zarr"
+AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
         "image/tiff": lambda: importlib.import_module(
@@ -39,7 +39,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).read_zarr,
-        ZIP_MIMETYPE: lambda: importlib.import_module(
+        AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.from_directory,
     }
