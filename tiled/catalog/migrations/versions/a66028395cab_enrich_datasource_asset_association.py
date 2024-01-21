@@ -163,6 +163,7 @@ def upgrade():
         # SQLite does not supported adding constraints to an existing table.
         # We invoke its 'copy and move' functionality.
         with op.batch_alter_table(DataSourceAssetAssociation.__tablename__) as batch_op:
+            # Gotcha: This does not take table_name because it is bound into batch_op.
             batch_op.create_unique_constraint(
                 "parameter_num_unique_constraint",
                 [
@@ -213,6 +214,7 @@ def upgrade():
         # PostgreSQL
         op.create_unique_constraint(
             "parameter_num_unique_constraint",
+            DataSourceAssetAssociation.__tablename__,
             [
                 "data_source_id",
                 "parameter",
