@@ -216,6 +216,7 @@ $$ LANGUAGE plpgsql;"""
 CREATE TRIGGER cannot_insert_num_null_if_num_int_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
+WHEN (NEW.num IS NULL)
 EXECUTE FUNCTION test_parameter_exists();"""
             )
         )
