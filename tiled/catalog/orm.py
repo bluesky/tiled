@@ -291,8 +291,9 @@ class DataSource(Timestamped, Base):
     node_id = Column(
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
     )
-
-    structure = Column(JSONVariant, nullable=True)
+    structure_id = Column(
+        Integer, ForeignKey("structures.id", ondelete="CASCADE"), nullable=True
+    )
     mimetype = Column(Unicode(255), nullable=False)  # max length given by RFC 4288
     # These are additional parameters passed to the Adapter to guide
     # it to access and arrange the data in the file correctly.
@@ -300,7 +301,14 @@ class DataSource(Timestamped, Base):
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
 
-    # many-to-many relationship to DataSource, bypassing the `Association` class
+    # many-to-one relationship to Structure
+    structure: Mapped["Structure"] = relationship(
+        "Structure",
+        lazy="selectin",
+        passive_deletes=True,
+    )
+
+    # many-to-many relationship to Asset, bypassing the `Association` class
     assets: Mapped[List["Asset"]] = relationship(
         secondary="data_source_asset_association",
         back_populates="data_sources",
@@ -314,6 +322,23 @@ class DataSource(Timestamped, Base):
         lazy="selectin",
         order_by=[DataSourceAssetAssociation.parameter, DataSourceAssetAssociation.num],
     )
+
+
+class Structure(Base):
+    """
+    The describes the structure of a DataSource.
+
+    The id is the HEX digest of the MD5 hash of the canonical representation
+    of the JSON structure, as specified by RFC 8785.
+
+    https://datatracker.ietf.org/doc/html/rfc8785
+
+    """
+
+    __tablename__ = "structures"
+
+    id: int = Column(Unicode(32), primary_key=True, unique=True)
+    structure = Column(JSONVariant, nullable=False)
 
 
 class Asset(Timestamped, Base):

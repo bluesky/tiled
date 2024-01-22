@@ -1,6 +1,9 @@
+import hashlib
 import re
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+
+import jcs
 
 SCHEME_PATTERN = re.compile(r"^[a-z0-9+]+:\/\/.*$")
 
@@ -22,3 +25,9 @@ def ensure_uri(uri_or_path):
             mutable[1] = "localhost"
             uri_str = urlunparse(mutable)
     return str(uri_str)
+
+
+def compute_structure_id(structure):
+    "Compute HEX digest of MD5 hash of RFC 8785 canonical form of JSON."
+    canonical_structure = jcs.canonicalize(structure)
+    return hashlib.md5(canonical_structure).hexdigest()
