@@ -220,6 +220,36 @@ WHEN (NEW.num IS NULL)
 EXECUTE FUNCTION test_parameter_exists();"""
             )
         )
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION test_not_null_parameter_exists()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND data_source_id = NEW.data_source_id
+        AND num IS NULL
+    ) THEN
+        RAISE EXCEPTION 'Can only insert INTEGER num if no NULL row exists for the same parameter';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW
+WHEN (NEW.num IS NOT NULL)
+EXECUTE FUNCTION test_not_null_parameter_exists();"""
+            )
+        )
 
 
 class DataSource(Timestamped, Base):
