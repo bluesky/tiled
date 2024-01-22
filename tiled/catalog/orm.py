@@ -194,7 +194,7 @@ END"""
         connection.execute(
             text(
                 """
-CREATE OR REPLACE FUNCTION test_parameter_exists()
+CREATE OR REPLACE FUNCTION raise_if_parameter_exists()
 RETURNS TRIGGER AS $$
 BEGIN
     IF EXISTS (
@@ -217,13 +217,13 @@ CREATE TRIGGER cannot_insert_num_null_if_num_int_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NULL)
-EXECUTE FUNCTION test_parameter_exists();"""
+EXECUTE FUNCTION raise_if_parameter_exists();"""
             )
         )
         connection.execute(
             text(
                 """
-CREATE OR REPLACE FUNCTION test_not_null_parameter_exists()
+CREATE OR REPLACE FUNCTION raise_if_null_parameter_exists()
 RETURNS TRIGGER AS $$
 BEGIN
     IF EXISTS (
@@ -247,7 +247,7 @@ CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NOT NULL)
-EXECUTE FUNCTION test_not_null_parameter_exists();"""
+EXECUTE FUNCTION raise_if_null_parameter_exists();"""
             )
         )
 
