@@ -72,7 +72,7 @@ jobs:
       run: |
         set -vxeuo pipefail
         tiled catalog upgrade-database sqlite+aiosqlite:///tiled_test_db_sqlite.db
-        tiled catalog upgrade-database postgresql+asyncpg://postgres:secret@localhost:5432
+        tiled catalog upgrade-database postgresql+asyncpg://postgres:secret@localhost:5432/tiled-example-data
 
     - name: Test with pytest
       shell: bash -l {0}
