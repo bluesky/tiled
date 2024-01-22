@@ -55,6 +55,10 @@ jobs:
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_LDAP.sh
 
+    - name: Download SQLite example data.
+      shell: bash -l {0}
+      run: source continuous_integration/scripts/download_sqlite_data.sh
+
     - name: Start PostgreSQL service in container.
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_postgres.sh
