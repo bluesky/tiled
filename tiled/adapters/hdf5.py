@@ -31,7 +31,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     From the root node of a file given a filepath
 
     >>> import h5py
-    >>> HDF5Adapter.from_filepath("path/to/file.h5")
+    >>> HDF5Adapter.from_uri("file://localhost/path/to/file.h5")
 
     From the root node of a file given an h5py.File object
 
