@@ -62,6 +62,7 @@ all = [
     "h5netcdf",
     "h5py",
     "httpx >=0.20.0,!=0.23.1",
+    "jcs",
     "jinja2",
     "jmespath",
     "jsonschema",
