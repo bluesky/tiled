@@ -115,14 +115,14 @@ client = [
     "msgpack >=1.0.0",
     "ndindex",
     "numpy",
+    "orjson",
     "pandas",
     "pyarrow",
     "pyyaml",
     "sparse",
     "typer",
     "xarray",
-    "zstandard",
-    "orjson"
+    "zstandard"
 ]
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
@@ -174,9 +174,9 @@ minimal-client = [
     "httpx >=0.20.0,!=0.23.1",
     "jsonschema",
     "msgpack >=1.0.0",
+    "orjson",
     "pyyaml",
-    "typer",
-    "orjson"
+    "typer"
 ]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
