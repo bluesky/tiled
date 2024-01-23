@@ -11,7 +11,6 @@ from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 import anyio
-import httpx
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
@@ -40,41 +39,44 @@ from ..utils import (
     UnsupportedQueryType,
     ensure_awaitable,
     import_object,
+    path_from_uri,
     safe_json_dump,
 )
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .mimetypes import (
+    AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     ZARR_MIMETYPE,
-    ZIP_MIMETYPE,
 )
-from .utils import SCHEME_PATTERN, ensure_uri, safe_path
+from .utils import SCHEME_PATTERN, ensure_uri
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
+# When data is uploaded, how is it saved?
+# TODO: Make this configurable at Catalog construction time.
 DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
-    StructureFamily.awkward: ZIP_MIMETYPE,
+    StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
+DEFAULT_INIT_STORAGE = OneShotCachedMap(
     {
-        ZARR_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.array: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrArrayAdapter.init_storage,
-        ZIP_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.awkward: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.init_storage,
-        PARQUET_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.table: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,
-        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.sparse: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
         ).SparseBlocksParquetAdapter.init_storage,
     }
@@ -117,7 +119,7 @@ class Context:
             raise ValueError("readable_storage should be a list of URIs or paths")
         if writable_storage:
             writable_storage = ensure_uri(str(writable_storage))
-            if not writable_storage.scheme == "file":
+            if not urlparse(writable_storage).scheme == "file":
                 raise NotImplementedError(
                     "Only file://... writable storage is currently supported."
                 )
@@ -390,37 +392,43 @@ class CatalogNodeAdapter:
                 raise RuntimeError(
                     f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
                 )
-            data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
-            for data_uri in data_uris:
-                if data_uri.scheme == "file":
+            parameters = collections.defaultdict(list)
+            for asset in data_source.assets:
+                if asset.parameter is None:
+                    continue
+                scheme = urlparse(asset.data_uri).scheme
+                if scheme != "file":
+                    raise NotImplementedError(
+                        f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
+                    )
+                if scheme == "file":
                     # Protect against misbehaving clients reading from unintended
                     # parts of the filesystem.
+                    asset_path = path_from_uri(asset.data_uri)
                     for readable_storage in self.context.readable_storage:
                         if Path(
                             os.path.commonpath(
-                                [safe_path(readable_storage), safe_path(data_uri)]
+                                [path_from_uri(readable_storage), asset_path]
                             )
-                        ) == safe_path(readable_storage):
+                        ) == path_from_uri(readable_storage):
                             break
                     else:
                         raise RuntimeError(
-                            f"Refusing to serve {data_uri} because it is outside "
+                            f"Refusing to serve {asset.data_uri} because it is outside "
                             "the readable storage area for this server."
                         )
-            paths = []
-            for data_uri in data_uris:
-                if data_uri.scheme != "file":
-                    raise NotImplementedError(
-                        f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
-                    )
-                paths.append(safe_path(data_uri))
-            adapter_kwargs = dict(data_source.parameters)
+                if asset.num is None:
+                    parameters[asset.parameter] = asset.data_uri
+                else:
+                    parameters[asset.parameter].append(asset.data_uri)
+            adapter_kwargs = dict(parameters)
+            adapter_kwargs.update(data_source.parameters)
             adapter_kwargs["specs"] = self.node.specs
             adapter_kwargs["metadata"] = self.node.metadata_
             adapter_kwargs["structure"] = data_source.structure
             adapter_kwargs["access_policy"] = self.access_policy
             adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, *paths, **adapter_kwargs)
+                partial(adapter_factory, **adapter_kwargs)
             )
             for query in self.queries:
                 adapter = adapter.search(query)
@@ -561,9 +569,9 @@ class CatalogNodeAdapter:
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
+                    init_storage = DEFAULT_INIT_STORAGE[structure_family]
                     assets = await ensure_awaitable(
-                        init_storage, safe_path(data_uri), data_source.structure
+                        init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(
@@ -581,7 +589,12 @@ class CatalogNodeAdapter:
                         data_uri=asset.data_uri,
                         is_directory=asset.is_directory,
                     )
-                    data_source_orm.assets.append(asset_orm)
+                    assoc_orm = orm.DataSourceAssetAssociation(
+                        asset=asset_orm,
+                        parameter=asset.parameter,
+                        num=asset.num,
+                    )
+                    data_source_orm.asset_associations.append(assoc_orm)
             db.add(node)
             await db.commit()
             await db.refresh(node)
@@ -876,7 +889,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
 def delete_asset(data_uri, is_directory):
     url = urlparse(data_uri)
     if url.scheme == "file":
-        path = safe_path(data_uri)
+        path = path_from_uri(data_uri)
         if is_directory:
             shutil.rmtree(path)
         else:
@@ -1059,12 +1072,14 @@ CatalogNodeAdapter.register_query(SpecsQuery, specs)
 
 
 def in_memory(
+    *,
     metadata=None,
     specs=None,
     access_policy=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
+    adapters_by_mimetype=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1075,6 +1090,7 @@ def in_memory(
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         echo=echo,
+        adapters_by_mimetype=adapters_by_mimetype,
     )
 
 

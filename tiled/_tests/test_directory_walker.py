@@ -1,20 +1,33 @@
+import dataclasses
 import platform
+import random
 from pathlib import Path
 
+import h5py
+import numpy
 import pytest
 import tifffile
+import yaml
 
+from ..adapters.hdf5 import HDF5Adapter
+from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
 from ..catalog.register import (
+    Settings,
+    create_node_safe,
+    group_tiff_sequences,
     identity,
     register,
+    register_tiff_sequence,
     skip_all,
     strip_suffixes,
-    tiff_sequence,
 )
+from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
+from ..server.schemas import Asset, DataSource, Management
+from ..utils import path_from_uri
 
 
 @pytest.fixture
@@ -41,9 +54,9 @@ async def test_collision(example_data_dir, tmpdir):
     p = Path(example_data_dir, "a.tiff")
     tifffile.imwrite(str(p), data)
 
-    tree = in_memory()
-    with Context.from_app(build_app(tree)) as context:
-        await register(tree, example_data_dir)
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        await register(catalog, example_data_dir)
 
         client = from_context(context)
 
@@ -54,7 +67,7 @@ async def test_collision(example_data_dir, tmpdir):
         p.unlink()
 
         # Re-run registration; entry should be there now.
-        await register(tree, example_data_dir)
+        await register(catalog, example_data_dir)
         assert "a" in client
 
 
@@ -73,9 +86,9 @@ async def test_same_filename_separate_directory(tmpdir):
     Path(tmpdir, "two").mkdir()
     df1.to_csv(Path(tmpdir, "one", "a.csv"))
     df1.to_csv(Path(tmpdir, "two", "a.csv"))
-    tree = in_memory()
-    with Context.from_app(build_app(tree)) as context:
-        await register(tree, tmpdir)
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        await register(catalog, tmpdir)
         client = from_context(context)
         assert "a" in client["one"]
         assert "a" in client["two"]
@@ -108,10 +121,10 @@ async def test_mimetype_detection_hook(tmpdir):
             return "text/csv"
         return mimetype
 
-    tree = in_memory()
-    with Context.from_app(build_app(tree)) as context:
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
         await register(
-            tree,
+            catalog,
             tmpdir,
             mimetype_detection_hook=detect_mimetype,
             key_from_filename=identity,
@@ -130,18 +143,174 @@ async def test_skip_all_in_combination(tmpdir):
     for i in range(2):
         tifffile.imwrite(Path(tmpdir, "one", f"image{i:05}.tif"), data)
 
-    tree = in_memory()
+    catalog = in_memory(writable_storage=tmpdir)
     # By default, both file and tiff sequence are registered.
-    with Context.from_app(build_app(tree)) as context:
-        await register(tree, tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        await register(catalog, tmpdir)
         client = from_context(context)
         assert "a" in client
         assert "a" in client["one"]
         assert "image" in client["one"]
 
     # With skip_all, directories and tiff sequence are registered, but individual files are not
-    with Context.from_app(build_app(tree)) as context:
-        await register(tree, tmpdir, walkers=[tiff_sequence, skip_all])
+    with Context.from_app(build_app(catalog)) as context:
+        await register(catalog, tmpdir, walkers=[group_tiff_sequences, skip_all])
         client = from_context(context)
         assert list(client) == ["one"]
         assert "image" in client["one"]
+
+
+@pytest.mark.asyncio
+async def test_tiff_seq_custom_sorting(tmpdir):
+    "Register TIFFs that are not in alphanumeric order."
+    N = 10
+    ordering = list(range(N))
+    random.Random(0).shuffle(ordering)
+    files = []
+    for i in ordering:
+        file = Path(tmpdir, f"image{i:05}.tif")
+        files.append(file)
+        # data is a block of ones
+        tifffile.imwrite(file, i * data)
+
+    settings = Settings.init()
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        await register_tiff_sequence(
+            catalog,
+            "image",
+            files,
+            settings,
+        )
+        client = from_context(context)
+        # We are being a bit clever here.
+        # Each image in this image series has pixels with a constant value, and
+        # that value matches the image's position in the sequence enumerated by
+        # `ordering`. We pick out one pixel and check that its value matches
+        # the corresponding value in `ordering`.
+        actual = list(client["image"][:, 0, 0])
+        assert actual == ordering
+
+
+@pytest.mark.asyncio
+async def test_image_file_with_sidecar_metadata_file(tmpdir):
+    "Create one Node from two different types of files."
+    MIMETYPE = "multipart/related;type=application/x-tiff-with-yaml"
+    image_filepath = Path(tmpdir, "image.tif")
+    tifffile.imwrite(image_filepath, data)
+    metadata_filepath = Path(tmpdir, "metadata.yml")
+    metadata = {"test_key": 3.0}
+    with open(metadata_filepath, "w") as file:
+        yaml.dump(metadata, file)
+
+    def read_tiff_with_yaml_metadata(image_uri, metadata_uri, metadata=None, **kwargs):
+        with open(path_from_uri(metadata_uri)) as file:
+            metadata = yaml.safe_load(file)
+        return TiffAdapter(image_uri, metadata=metadata, **kwargs)
+
+    catalog = in_memory(
+        writable_storage=tmpdir,
+        adapters_by_mimetype={MIMETYPE: read_tiff_with_yaml_metadata},
+    )
+    with Context.from_app(build_app(catalog)) as context:
+        adapter = read_tiff_with_yaml_metadata(
+            ensure_uri(image_filepath), ensure_uri(metadata_filepath)
+        )
+        await create_node_safe(
+            catalog,
+            key="image",
+            structure_family=adapter.structure_family,
+            metadata=dict(adapter.metadata()),
+            specs=adapter.specs,
+            data_sources=[
+                DataSource(
+                    mimetype=MIMETYPE,
+                    structure=dataclasses.asdict(adapter.structure()),
+                    parameters={},
+                    management=Management.external,
+                    assets=[
+                        Asset(
+                            data_uri=ensure_uri(metadata_filepath),
+                            is_directory=False,
+                            parameter="metadata_uri",
+                        ),
+                        Asset(
+                            data_uri=ensure_uri(image_filepath),
+                            is_directory=False,
+                            parameter="image_uri",
+                        ),
+                    ],
+                )
+            ],
+        )
+        client = from_context(context)
+        assert numpy.array_equal(data, client["image"][:])
+        assert client["image"].metadata["test_key"] == 3.0
+
+
+@pytest.mark.asyncio
+async def test_hdf5_virtual_datasets(tmpdir):
+    # A virtual database comprises one master file and N data files. The master
+    # file must be handed to the Adapter for opening. The data files are not
+    # handled directly by the Adapter but they still ought to be tracked as
+    # Assets for purposes of data movement, accounting for data size, etc.
+    # This is why they are Assets with parameter=NULL/None, Assets not used
+    # directly by the Adapter.
+
+    # One could do one-dataset-per-directory. But like TIFF series in practice
+    # they are often mixed, so we address that general case and track them at
+    # the per-file level.
+
+    # Contrast this to Zarr, where the files involves are always bundled by
+    # directory. We track Zarr at the directory level.
+
+    layout = h5py.VirtualLayout(shape=(4, 100), dtype="i4")
+
+    data_filepaths = []
+    for n in range(1, 5):
+        filepath = Path(tmpdir, f"{n}.h5")
+        data_filepaths.append(filepath)
+        vsource = h5py.VirtualSource(filepath, "data", shape=(100,))
+        layout[n - 1] = vsource
+
+    # Add virtual dataset to output file
+    filepath = Path(tmpdir, "VDS.h5")
+    with h5py.File(filepath, "w", libver="latest") as file:
+        file.create_virtual_dataset("data", layout, fillvalue=-5)
+
+    assets = [
+        Asset(
+            data_uri=str(ensure_uri(str(fp))),
+            is_directory=False,
+            parameter=None,  # an indirect dependency
+        )
+        for fp in data_filepaths
+    ]
+    assets.append(
+        Asset(
+            data_uri=ensure_uri(filepath),
+            is_directory=False,
+            parameter="data_uri",
+        )
+    )
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        adapter = HDF5Adapter.from_uri(ensure_uri(filepath))
+        await create_node_safe(
+            catalog,
+            key="VDS",
+            structure_family=adapter.structure_family,
+            metadata=dict(adapter.metadata()),
+            specs=adapter.specs,
+            data_sources=[
+                DataSource(
+                    mimetype="application/x-hdf5",
+                    structure=None,
+                    parameters={},
+                    management=Management.external,
+                    assets=assets,
+                )
+            ],
+        )
+        client = from_context(context)
+        client["VDS"]["data"][:]
