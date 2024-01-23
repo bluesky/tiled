@@ -122,6 +122,7 @@ client = [
     "typer",
     "xarray",
     "zstandard",
+    "orjson"
 ]
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
@@ -175,6 +176,7 @@ minimal-client = [
     "msgpack >=1.0.0",
     "pyyaml",
     "typer",
+    "orjson"
 ]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
