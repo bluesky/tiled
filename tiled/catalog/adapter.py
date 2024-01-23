@@ -11,9 +11,8 @@ from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 import anyio
-import httpx
 from fastapi import HTTPException
-from sqlalchemy import delete, event, func, select, text, type_coerce, update
+from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -26,6 +25,7 @@ from tiled.queries import (
     NotEq,
     NotIn,
     Operator,
+    SpecsQuery,
     StructureFamilyQuery,
 )
 
@@ -39,41 +39,44 @@ from ..utils import (
     UnsupportedQueryType,
     ensure_awaitable,
     import_object,
+    path_from_uri,
     safe_json_dump,
 )
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .mimetypes import (
+    AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     ZARR_MIMETYPE,
-    ZIP_MIMETYPE,
 )
-from .utils import SCHEME_PATTERN, ensure_uri, safe_path
+from .utils import SCHEME_PATTERN, ensure_uri
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
+# When data is uploaded, how is it saved?
+# TODO: Make this configurable at Catalog construction time.
 DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
-    StructureFamily.awkward: ZIP_MIMETYPE,
+    StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-CREATE_ADAPTER_BY_MIMETYPE = OneShotCachedMap(
+DEFAULT_INIT_STORAGE = OneShotCachedMap(
     {
-        ZARR_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.array: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrArrayAdapter.init_storage,
-        ZIP_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.awkward: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.init_storage,
-        PARQUET_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.table: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,
-        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
+        StructureFamily.sparse: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
         ).SparseBlocksParquetAdapter.init_storage,
     }
@@ -116,7 +119,7 @@ class Context:
             raise ValueError("readable_storage should be a list of URIs or paths")
         if writable_storage:
             writable_storage = ensure_uri(str(writable_storage))
-            if not writable_storage.scheme == "file":
+            if not urlparse(writable_storage).scheme == "file":
                 raise NotImplementedError(
                     "Only file://... writable storage is currently supported."
                 )
@@ -293,7 +296,7 @@ class CatalogNodeAdapter:
         return bool(self.context.writable_storage)
 
     def __repr__(self):
-        return f"<{type(self).__name__} {self.segments}>"
+        return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
 
     async def __aiter__(self):
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
@@ -334,6 +337,18 @@ class CatalogNodeAdapter:
         if not segments:
             return self
         *ancestors, key = segments
+        if self.conditions and len(segments) > 1:
+            # There are some conditions (i.e. WHERE clauses) applied to
+            # this node, either via user search queries or via access
+            # control policy queries. Look up first the _direct_ child of this
+            # node, if it exists within the filtered results.
+            first_level = await self.lookup_adapter(segments[:1])
+            if first_level is None:
+                return None
+            # Now proceed to traverse further down the tree, if needed.
+            # Search queries and access controls apply only at the top level.
+            assert not first_level.conditions
+            return await first_level.lookup_adapter(segments[1:])
         statement = select(orm.Node).filter(
             orm.Node.ancestors == self.segments + ancestors
         )
@@ -377,37 +392,43 @@ class CatalogNodeAdapter:
                 raise RuntimeError(
                     f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
                 )
-            data_uris = [httpx.URL(asset.data_uri) for asset in data_source.assets]
-            for data_uri in data_uris:
-                if data_uri.scheme == "file":
+            parameters = collections.defaultdict(list)
+            for asset in data_source.assets:
+                if asset.parameter is None:
+                    continue
+                scheme = urlparse(asset.data_uri).scheme
+                if scheme != "file":
+                    raise NotImplementedError(
+                        f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
+                    )
+                if scheme == "file":
                     # Protect against misbehaving clients reading from unintended
                     # parts of the filesystem.
+                    asset_path = path_from_uri(asset.data_uri)
                     for readable_storage in self.context.readable_storage:
                         if Path(
                             os.path.commonpath(
-                                [safe_path(readable_storage), safe_path(data_uri)]
+                                [path_from_uri(readable_storage), asset_path]
                             )
-                        ) == safe_path(readable_storage):
+                        ) == path_from_uri(readable_storage):
                             break
                     else:
                         raise RuntimeError(
-                            f"Refusing to serve {data_uri} because it is outside "
+                            f"Refusing to serve {asset.data_uri} because it is outside "
                             "the readable storage area for this server."
                         )
-            paths = []
-            for data_uri in data_uris:
-                if data_uri.scheme != "file":
-                    raise NotImplementedError(
-                        f"Only 'file://...' scheme URLs are currently supported, not {data_uri!r}"
-                    )
-                paths.append(safe_path(data_uri))
-            adapter_kwargs = dict(data_source.parameters)
+                if asset.num is None:
+                    parameters[asset.parameter] = asset.data_uri
+                else:
+                    parameters[asset.parameter].append(asset.data_uri)
+            adapter_kwargs = dict(parameters)
+            adapter_kwargs.update(data_source.parameters)
             adapter_kwargs["specs"] = self.node.specs
             adapter_kwargs["metadata"] = self.node.metadata_
             adapter_kwargs["structure"] = data_source.structure
             adapter_kwargs["access_policy"] = self.access_policy
             adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, *paths, **adapter_kwargs)
+                partial(adapter_factory, **adapter_kwargs)
             )
             for query in self.queries:
                 adapter = adapter.search(query)
@@ -548,9 +569,9 @@ class CatalogNodeAdapter:
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    init_storage = CREATE_ADAPTER_BY_MIMETYPE[data_source.mimetype]
+                    init_storage = DEFAULT_INIT_STORAGE[structure_family]
                     assets = await ensure_awaitable(
-                        init_storage, safe_path(data_uri), data_source.structure
+                        init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
                 data_source_orm = orm.DataSource(
@@ -568,7 +589,12 @@ class CatalogNodeAdapter:
                         data_uri=asset.data_uri,
                         is_directory=asset.is_directory,
                     )
-                    data_source_orm.assets.append(asset_orm)
+                    assoc_orm = orm.DataSourceAssetAssociation(
+                        asset=asset_orm,
+                        parameter=asset.parameter,
+                        num=asset.num,
+                    )
+                    data_source_orm.asset_associations.append(assoc_orm)
             db.add(node)
             await db.commit()
             await db.refresh(node)
@@ -863,7 +889,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
 def delete_asset(data_uri, is_directory):
     url = urlparse(data_uri)
     if url.scheme == "file":
-        path = safe_path(data_uri)
+        path = path_from_uri(data_uri)
         if is_directory:
             shutil.rmtree(path)
         else:
@@ -966,30 +992,58 @@ def comparison(query, tree):
 
 
 def contains(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
     attr = orm.Node.metadata_[query.key.split(".")]
-    if dialect_name == "sqlite":
-        condition = _get_value(attr, type(query.value)).contains(query.value)
-    else:
-        raise UnsupportedQueryType("Contains")
+    condition = _get_value(attr, type(query.value)).contains(query.value)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
 def specs(query, tree):
-    raise UnsupportedQueryType("Specs")
-    # conditions = []
-    # for spec in query.include:
-    #     conditions.append(func.json_contains(orm.Node.specs, spec))
-    # for spec in query.exclude:
-    #     conditions.append(not_(func.json_contains(orm.Node.specs.contains, spec)))
-    # return tree.new_variation(conditions=tree.conditions + conditions)
+    dialect_name = tree.engine.url.get_dialect().name
+    conditions = []
+    attr = orm.Node.specs
+    if dialect_name == "sqlite":
+        # Construct the conditions for includes
+        for i, name in enumerate(query.include):
+            conditions.append(attr.like(f'%{{"name":"{name}",%'))
+        # Construct the conditions for excludes
+        for i, name in enumerate(query.exclude):
+            conditions.append(not_(attr.like(f'%{{"name":"{name}",%')))
+    elif dialect_name == "postgresql":
+        if query.include:
+            conditions.append(attr.op("@>")(specs_array_to_json(query.include)))
+        if query.exclude:
+            conditions.append(not_(attr.op("@>")(specs_array_to_json(query.exclude))))
+    else:
+        raise UnsupportedQueryType("specs")
+    return tree.new_variation(conditions=tree.conditions + conditions)
 
 
 def in_or_not_in(query, tree, method):
     dialect_name = tree.engine.url.get_dialect().name
-    attr = orm.Node.metadata_[query.key.split(".")]
+    keys = query.key.split(".")
+    attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
         condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+    elif dialect_name == "postgresql":
+        # Engage btree_gin index with @> operator
+        if method == "in_":
+            condition = or_(
+                *(
+                    orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
+                    for item in query.value
+                )
+            )
+        elif method == "not_in":
+            condition = not_(
+                or_(
+                    *(
+                        orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
+                        for item in query.value
+                    )
+                )
+            )
+        else:
+            raise UnsupportedQueryType("NotIn")
     else:
         raise UnsupportedQueryType("In/NotIn")
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -1013,17 +1067,19 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
-# CatalogNodeAdapter.register_query(Specs, specs)
-# TODO: FullText, Regex, Specs
+CatalogNodeAdapter.register_query(SpecsQuery, specs)
+# TODO: FullText, Regex
 
 
 def in_memory(
+    *,
     metadata=None,
     specs=None,
     access_policy=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
+    adapters_by_mimetype=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1034,6 +1090,7 @@ def in_memory(
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         echo=echo,
+        adapters_by_mimetype=adapters_by_mimetype,
     )
 
 
@@ -1127,6 +1184,28 @@ def key_array_to_json(keys, value):
     {'x': {'y': {'z': 1}}
     """
     return {keys[0]: reduce(lambda x, y: {y: x}, keys[1:][::-1], value)}
+
+
+def specs_array_to_json(specs):
+    """Take array of Specs strings and convert them to a `penguin` @> friendly array
+    Assume constructed array will feature keys called "name"
+
+    Parameters
+    ----------
+    specs : iterable
+        An array of specs strings to be searched for.
+
+    Returns
+    -------
+    json
+        JSON object for use in postgresql queries.
+
+    Examples
+    --------
+    >>> specs_array_to_json(['foo','bar'])
+    [{"name":"foo"},{"name":"bar"}]
+    """
+    return [{"name": spec} for spec in specs]
 
 
 STRUCTURES = {

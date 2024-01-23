@@ -2,11 +2,11 @@
 A directory containing awkward buffers, one file per form key.
 """
 import collections.abc
-from urllib import parse
 
 import awkward.forms
 
 from ..structures.core import StructureFamily
+from ..utils import path_from_uri
 from .awkward import AwkwardAdapter
 
 
@@ -37,23 +37,26 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
     structure_family = StructureFamily.awkward
 
     @classmethod
-    def init_storage(cls, directory, structure):
+    def init_storage(cls, data_uri, structure):
         from ..server.schemas import Asset
 
-        directory.mkdir()
-        data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
-        return [Asset(data_uri=data_uri, is_directory=True)]
+        directory = path_from_uri(data_uri)
+        directory.mkdir(parents=True, exist_ok=True)
+        return [Asset(data_uri=data_uri, is_directory=True, parameter="data_uri")]
 
     @classmethod
     def from_directory(
         cls,
-        directory,
+        data_uri,
         structure,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
         form = awkward.forms.from_dict(structure.form)
+        directory = path_from_uri(data_uri)
+        if not directory.is_dir():
+            raise ValueError(f"Not a directory: {directory}")
         container = DirectoryContainer(directory, form)
         return cls(
             container,

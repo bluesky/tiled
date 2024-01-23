@@ -6,8 +6,10 @@ Persistent stores are being developed externally to the tiled package.
 import base64
 from datetime import datetime
 
+import awkward
 import dask.dataframe
 import numpy
+import pandas
 import pandas.testing
 import pytest
 import sparse
@@ -377,6 +379,47 @@ async def test_delete_non_empty_node(tree):
         # Delete from the bottom up.
         c.delete("d")
         b.delete("c")
+        a.delete("b")
+        client.delete("a")
+
+
+@pytest.mark.asyncio
+async def test_write_in_container(tree):
+    "Create a container and write a structure into it."
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        a = client.create_container("a")
+        df = pandas.DataFrame({"a": [1, 2, 3]})
+        b = a.write_dataframe(df, key="b")
+        b.read()
+        a.delete("b")
+        client.delete("a")
+
+        a = client.create_container("a")
+        arr = numpy.array([1, 2, 3])
+        b = a.write_array(arr, key="b")
+        b.read()
+        a.delete("b")
+        client.delete("a")
+
+        a = client.create_container("a")
+        coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+        b = a.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape, key="b")
+        b.read()
+        a.delete("b")
+        client.delete("a")
+
+        a = client.create_container("a")
+        array = awkward.Array(
+            [
+                [{"x": 1.1, "y": [1]}, {"x": 2.2, "y": [1, 2]}],
+                [],
+                [{"x": 3.3, "y": [1, 2, 3]}],
+            ]
+        )
+        b = a.write_awkward(array, key="b")
+        b.read()
         a.delete("b")
         client.delete("a")
 

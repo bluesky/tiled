@@ -1,7 +1,6 @@
 import builtins
 import collections.abc
 import os
-from urllib import parse
 
 import zarr.core
 import zarr.hierarchy
@@ -9,32 +8,37 @@ import zarr.storage
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
-from ..utils import node_repr
+from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
-def read_zarr(filepath, **kwargs):
-    file = zarr.open(filepath)
-    if isinstance(file, zarr.hierarchy.Group):
-        adapter = ZarrGroupAdapter.from_directory(file, **kwargs)
+def read_zarr(data_uri, structure=None, **kwargs):
+    filepath = path_from_uri(data_uri)
+    zarr_obj = zarr.open(filepath)  # Group or Array
+    if isinstance(zarr_obj, zarr.hierarchy.Group):
+        adapter = ZarrGroupAdapter(zarr_obj, **kwargs)
     else:
-        adapter = ZarrArrayAdapter.from_directory(file, **kwargs)
+        if structure is None:
+            adapter = ZarrArrayAdapter.from_array(zarr_obj, **kwargs)
+        else:
+            adapter = ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
     return adapter
 
 
 class ZarrArrayAdapter(ArrayAdapter):
     @classmethod
-    def init_storage(cls, directory, structure):
+    def init_storage(cls, data_uri, structure):
         from ..server.schemas import Asset
 
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in structure.chunks)
+        directory = path_from_uri(data_uri)
+        directory.mkdir(parents=True, exist_ok=True)
         storage = zarr.storage.DirectoryStore(str(directory))
         zarr.storage.init_array(
             storage,
@@ -42,28 +46,13 @@ class ZarrArrayAdapter(ArrayAdapter):
             chunks=zarr_chunks,
             dtype=structure.data_type.to_numpy_dtype(),
         )
-        data_uri = parse.urlunparse(("file", "localhost", str(directory), "", "", None))
         return [
             Asset(
                 data_uri=data_uri,
                 is_directory=True,
+                parameter="data_uri",
             )
         ]
-
-    @classmethod
-    def from_directory(
-        cls,
-        directory,
-        structure=None,
-        **kwargs,
-    ):
-        if not isinstance(directory, zarr.core.Array):
-            array = zarr.open_array(str(directory), "r+")
-        else:
-            array = directory
-        if structure is None:
-            structure = ArrayStructure.from_array(array)
-        return cls(array, structure, **kwargs)
 
     def _stencil(self):
         "Trims overflow because Zarr always has equal-sized chunks."
@@ -109,12 +98,6 @@ class ZarrGroupAdapter(collections.abc.Mapping, IndexersMixin):
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         super().__init__()
-
-    @classmethod
-    def from_directory(cls, directory, **kwargs):
-        if not isinstance(directory, zarr.hierarchy.Group):
-            directory = zarr.open_group(directory, "r")
-        return cls(directory, **kwargs)
 
     def __repr__(self):
         return node_repr(self, list(self))

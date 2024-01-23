@@ -88,11 +88,19 @@ Specs = pydantic.conlist(Spec, max_items=20)
 class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
+    parameter: Optional[str]
+    num: Optional[int] = None
     id: Optional[int] = None
 
     @classmethod
     def from_orm(cls, orm):
-        return cls(id=orm.id, data_uri=orm.data_uri, is_directory=orm.is_directory)
+        return cls(
+            data_uri=orm.asset.data_uri,
+            is_directory=orm.asset.is_directory,
+            parameter=orm.parameter,
+            num=orm.num,
+            id=orm.asset.id,
+        )
 
 
 class Management(str, enum.Enum):
@@ -143,7 +151,7 @@ class DataSource(pydantic.BaseModel):
             structure=orm.structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
-            assets=[Asset.from_orm(asset) for asset in orm.assets],
+            assets=[Asset.from_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
         )
 

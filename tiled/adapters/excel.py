@@ -18,10 +18,6 @@ class ExcelAdapter(MapAdapter):
         Examples
         --------
 
-        Given a file path
-
-        >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
-
         Given a file object
 
         >>> file = open("path/to/excel_file.xlsx")
@@ -30,7 +26,8 @@ class ExcelAdapter(MapAdapter):
         Given a pandas.ExcelFile object
 
         >>> import pandas
-        >>> ef = pandas.ExcelFile(file)
+        >>> filepath = "path/to/excel_file.xlsx"
+        >>> ef = pandas.ExcelFile(filepath)
         >>> ExcelAdapter.from_file(ef)
         """
         if isinstance(file, pandas.ExcelFile):
@@ -53,3 +50,21 @@ class ExcelAdapter(MapAdapter):
                 cache.discard_dask(ddf.__dask_keys__())  # dask tasks
             mapping[sheet_name] = DataFrameAdapter.from_dask_dataframe(ddf)
         return cls(mapping, **kwargs)
+
+    @classmethod
+    def from_uri(cls, data_uri, **kwargs):
+        """
+        Read the sheets in an Excel file.
+
+        This maps the Excel file, which may contain one of more spreadsheets,
+        onto a tree of tabular structures.
+
+        Examples
+        --------
+
+        Given a file path
+
+        >>> ExcelAdapter.from_file("path/to/excel_file.xlsx")
+        """
+        file = pandas.ExcelFile(data_uri)
+        return cls.from_file(file)

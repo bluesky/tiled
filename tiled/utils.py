@@ -8,9 +8,12 @@ import importlib.util
 import inspect
 import operator
 import os
+import platform
 import sys
 import threading
+from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 import anyio
 
@@ -654,3 +657,25 @@ async def ensure_awaitable(func, *args, **kwargs):
         return await func(*args, **kwargs)
     else:
         return await anyio.to_thread.run_sync(func, *args, **kwargs)
+
+
+def path_from_uri(uri):
+    """
+    Give a URI, return a Path.
+
+    If the URI has a scheme other than 'file', raise ValueError.
+
+    >>> path_from_uri('file://localhost/a/b/c')  # POSIX-style
+    '/a/b/c'
+    >>> path_from_uri('file://localhost/C:/a/b/c')  # Windows-style
+    'C:/a/b/c'
+    """
+    parsed = urlparse(uri)
+    if parsed.scheme != "file":
+        raise ValueError(f"Only 'file' URIs are supported. URI: {uri}")
+    if platform.system() == "Windows":
+        # We slice because we need "C:/..." not "/C:/...".
+        path = Path(parsed.path[1:])
+    else:
+        path = Path(parsed.path)
+    return path

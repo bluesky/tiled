@@ -8,7 +8,7 @@ import numpy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import StructureFamily
-from ..utils import node_repr
+from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -31,7 +31,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     From the root node of a file given a filepath
 
     >>> import h5py
-    >>> HDF5Adapter.from_file("path/to/file.h5")
+    >>> HDF5Adapter.from_uri("file://localhost/path/to/file.h5")
 
     From the root node of a file given an h5py.File object
 
@@ -70,9 +70,23 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         specs=None,
         access_policy=None,
     ):
-        if not isinstance(file, h5py.File):
-            file = h5py.File(file, "r", swmr=swmr, libver=libver)
         return cls(file, metadata=metadata, specs=specs, access_policy=access_policy)
+
+    @classmethod
+    def from_uri(
+        cls,
+        data_uri,
+        *,
+        structure=None,
+        metadata=None,
+        swmr=SWMR_DEFAULT,
+        libver="latest",
+        specs=None,
+        access_policy=None,
+    ):
+        filepath = path_from_uri(data_uri)
+        file = h5py.File(filepath, "r", swmr=swmr, libver=libver)
+        return cls.from_file(file)
 
     def __repr__(self):
         return node_repr(self, list(self))

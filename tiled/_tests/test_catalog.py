@@ -8,6 +8,8 @@ import pandas
 import pandas.testing
 import pytest
 import pytest_asyncio
+import sqlalchemy.dialects.postgresql.asyncpg
+import sqlalchemy.exc
 import tifffile
 import xarray
 
@@ -17,13 +19,15 @@ from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
 from ..catalog.adapter import WouldDeleteData
 from ..catalog.explain import record_explanations
+from ..catalog.register import create_node_safe
 from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
-from ..server.app import build_app
-from ..server.schemas import Asset, DataSource
+from ..server.app import build_app, build_app_from_config
+from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
+from .utils import enter_password
 
 
 @pytest_asyncio.fixture
@@ -156,24 +160,14 @@ async def test_search(a):
     assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
 
 
-@pytest.mark.slow
 @pytest.mark.asyncio
-async def test_metadata_index_is_used(a):
-    for i in range(10000):
-        await a.create_node(
-            metadata={
-                "number": i,
-                "number_as_string": str(i),
-                "nested": {"number": i, "number_as_string": str(i), "bool": bool(i)},
-                "bool": bool(i),
-            },
-            specs=[],
-            structure_family="array",
-        )
-    # Check that an index (specifically the 'top_level_metdata' index) is used
+async def test_metadata_index_is_used(example_data_adapter):
+    a = example_data_adapter  # for succinctness below
+    # Check that an index (specifically the 'top_level_metadata' index) is used
     # by inspecting the content of an 'EXPLAIN ...' query. The exact content
     # is intended for humans and is not an API, but we can coarsely check
     # that the index of interest is mentioned.
+    await a.startup()
     with record_explanations() as e:
         results = await a.search(Key("number_as_string") == "3").keys_range(0, 5)
         assert len(results) == 1
@@ -200,14 +194,16 @@ async def test_metadata_index_is_used(a):
         )
         assert len(results) == 1
         assert "top_level_metadata" in str(e)
+    await a.shutdown()
 
 
 @pytest.mark.asyncio
 async def test_write_array_external(a, tmpdir):
     arr = numpy.ones((5, 3))
-    filepath = tmpdir / "file.tiff"
-    tifffile.imwrite(str(filepath), arr)
-    ad = TiffAdapter(str(filepath))
+    filepath = str(tmpdir / "file.tiff")
+    data_uri = ensure_uri(filepath)
+    tifffile.imwrite(filepath, arr)
+    ad = TiffAdapter(data_uri)
     structure = asdict(ad.structure())
     await a.create_node(
         key="x",
@@ -219,7 +215,14 @@ async def test_write_array_external(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
+                assets=[
+                    Asset(
+                        parameter="data_uri",
+                        num=None,
+                        data_uri=str(data_uri),
+                        is_directory=False,
+                    )
+                ],
             )
         ],
     )
@@ -230,9 +233,10 @@ async def test_write_array_external(a, tmpdir):
 @pytest.mark.asyncio
 async def test_write_dataframe_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
-    filepath = tmpdir / "file.csv"
+    filepath = str(tmpdir / "file.csv")
+    data_uri = ensure_uri(filepath)
     df.to_csv(filepath, index=False)
-    dfa = read_csv(filepath)
+    dfa = read_csv(data_uri)
     structure = asdict(dfa.structure())
     await a.create_node(
         key="x",
@@ -244,7 +248,14 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
+                assets=[
+                    Asset(
+                        parameter="data_uri",
+                        num=None,
+                        data_uri=data_uri,
+                        is_directory=False,
+                    )
+                ],
             )
         ],
     )
@@ -351,3 +362,166 @@ async def test_delete_tree(tmpdir):
         assert len(data_sources_after_delete) == 0
         assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
         assert len(assets_after_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_access_control(tmpdir):
+    config = {
+        "authentication": {
+            "allow_anonymous_access": True,
+            "secret_keys": ["SECRET"],
+            "providers": [
+                {
+                    "provider": "toy",
+                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                    "args": {
+                        "users_to_passwords": {
+                            "alice": "secret1",
+                            "bob": "secret2",
+                            "admin": "admin",
+                        }
+                    },
+                }
+            ],
+        },
+        "database": {
+            "uri": "sqlite+aiosqlite://",  # in-memory
+        },
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "writable_storage": str(tmpdir / "data"),
+                    "init_if_not_exists": True,
+                },
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "provider": "toy",
+                        "access_lists": {
+                            "alice": ["outer_x"],
+                            "bob": ["outer_y"],
+                        },
+                        "admins": ["admin"],
+                        "public": ["outer_z"],
+                    },
+                },
+            },
+        ],
+    }
+
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        with enter_password("admin"):
+            admin_client = from_context(context, username="admin")
+            for key in ["outer_x", "outer_y", "outer_z"]:
+                container = admin_client.create_container(key)
+                container.write_array([1, 2, 3], key="inner")
+            admin_client.logout()
+        with enter_password("secret1"):
+            alice_client = from_context(context, username="alice")
+            alice_client["outer_x"]["inner"].read()
+            with pytest.raises(KeyError):
+                alice_client["outer_y"]
+            alice_client.logout()
+        public_client = from_context(context)
+        public_client["outer_z"]["inner"].read()
+        with pytest.raises(KeyError):
+            public_client["outer_x"]
+
+
+@pytest.mark.parametrize(
+    "assets",
+    [
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+        ],
+    ],
+    ids=[
+        "null-then-int",
+        "int-then-null",
+        "duplicate-null",
+        "duplicate-int",
+    ],
+)
+@pytest.mark.asyncio
+async def test_constraints_on_parameter_and_num(a, assets):
+    "Test constraints enforced by database on 'parameter' and 'num'."
+    arr_adapter = ArrayAdapter.from_array([1, 2, 3])
+    with pytest.raises(
+        (
+            sqlalchemy.exc.IntegrityError,  # SQLite
+            sqlalchemy.exc.DBAPIError,  # PostgreSQL
+        )
+    ):
+        await create_node_safe(
+            a,
+            key="test",
+            structure_family=arr_adapter.structure_family,
+            metadata=dict(arr_adapter.metadata()),
+            specs=arr_adapter.specs,
+            data_sources=[
+                DataSource(
+                    mimetype="application/x-test",
+                    structure=asdict(arr_adapter.structure()),
+                    parameters={},
+                    management=Management.external,
+                    assets=assets,
+                )
+            ],
+        )
