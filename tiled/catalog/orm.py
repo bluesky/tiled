@@ -292,7 +292,7 @@ class DataSource(Timestamped, Base):
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
     )
     structure_id = Column(
-        Integer, ForeignKey("structures.id", ondelete="CASCADE"), nullable=True
+        Unicode(32), ForeignKey("structures.id", ondelete="CASCADE"), nullable=True
     )
     mimetype = Column(Unicode(255), nullable=False)  # max length given by RFC 4288
     # These are additional parameters passed to the Adapter to guide
@@ -337,7 +337,7 @@ class Structure(Base):
 
     __tablename__ = "structures"
 
-    id: int = Column(Unicode(32), primary_key=True, unique=True)
+    id: str = Column(Unicode(32), primary_key=True, unique=True)
     structure = Column(JSONVariant, nullable=False)
 
 

@@ -20,9 +20,7 @@ depends_on = None
 
 
 def upgrade():
-    # We use a copy-and-move strategy here because we cannot get
-    # exactly the result we want by adding a FOREIGN KEY to SQLite
-    # on an existing table.
+    connection = op.get_bind()
 
     # Create new 'structures' table.
     op.create_table(
@@ -30,85 +28,136 @@ def upgrade():
         sa.Column("id", sa.Unicode(32), primary_key=True, unique=True),
         sa.Column("structure", JSONVariant, nullable=False),
     )
-    # Create 'new_data_sources' table, which will be renamed to (and replace)
-    # 'data_sources' at the end of this migration.
-    op.create_table(
-        "new_data_sources",
-        sa.Column("id", sa.Integer, primary_key=True, index=True, autoincrement=True),
-        sa.Column(
-            "node_id",
-            sa.Integer,
-            sa.ForeignKey("nodes.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column(
-            "structure_id",
-            sa.Integer,
-            sa.ForeignKey("structures.id", ondelete="CASCADE"),
-            nullable=True,
-        ),
-        sa.Column("mimetype", sa.Unicode(255), nullable=False),
-        sa.Column("parameters", JSONVariant, nullable=True),
-        sa.Column("management", sa.Enum(Management), nullable=False),
-    )
-
-    # Get references to these tables, to be used for copying data.
+    # Get reference, to be used for copying data.
     structures = sa.Table(
         "structures",
         sa.MetaData(),
-        sa.Column("id", sa.Integer),
+        sa.Column("id", sa.Unicode(32)),
         sa.Column("structure", JSONVariant),
     )
-    new_data_sources = sa.Table(
-        "new_data_sources",
-        sa.MetaData(),
-        sa.Column("id", sa.Integer),
-        sa.Column(
-            "node_id",
-            sa.Integer,
-            sa.ForeignKey("nodes.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("structure_id", sa.Integer),
-        sa.Column("mimetype", sa.Unicode(255), nullable=False),
-        sa.Column("parameters", JSONVariant, nullable=True),
-        sa.Column("management", sa.Enum(Management), nullable=False),
-    )
-
-    # Extract rows from data_sources and compute structure_id.
-    connection = op.get_bind()
-    results = connection.execute(
-        sa.text(
-            "SELECT id, node_id, structure, mimetype, parameters, management FROM data_sources"
+    if connection.engine.dialect.name == "sqlite":
+        # We use a copy-and-move strategy here because we cannot get exactly
+        # the result we want by adding a FOREIGN KEY to SQLite on an existing
+        # table.
+        op.create_table(
+            "new_data_sources",
+            sa.Column(
+                "id", sa.Integer, primary_key=True, index=True, autoincrement=True
+            ),
+            sa.Column(
+                "node_id",
+                sa.Integer,
+                sa.ForeignKey("nodes.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column(
+                "structure_id",
+                sa.Unicode(32),
+                sa.ForeignKey("structures.id", ondelete="CASCADE"),
+                nullable=True,
+            ),
+            sa.Column("mimetype", sa.Unicode(255), nullable=False),
+            sa.Column("parameters", JSONVariant, nullable=True),
+            sa.Column("management", sa.Enum(Management), nullable=False),
         )
-    ).fetchall()
+        new_data_sources = sa.Table(
+            "new_data_sources",
+            sa.MetaData(),
+            sa.Column("id", sa.Integer),
+            sa.Column(
+                "node_id",
+                sa.Integer,
+                sa.ForeignKey("nodes.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("structure_id", sa.Unicode(32)),
+            sa.Column("mimetype", sa.Unicode(255), nullable=False),
+            sa.Column("parameters", JSONVariant, nullable=True),
+            sa.Column("management", sa.Enum(Management), nullable=False),
+        )
 
-    new_data_sources_rows = []
-    unique_structures = {}  # map unique structure_id -> structure
-    for row in results:
-        structure_id = compute_structure_id(row[2])
-        new_row = {
-            "id": row[0],
-            "node_id": row[1],
-            "structure_id": structure_id,
-            "mimetype": row[3],
-            "parameters": row[4],
-            "management": row[5],
-        }
-        new_data_sources_rows.append(new_row)
-        unique_structures[structure_id] = row[2]
-    structures_rows = [
-        {"id": structure_id, "structure": structure}
-        for structure_id, structure in unique_structures.items()
-    ]
+        # Extract rows from data_sources and compute structure_id.
+        results = connection.execute(
+            sa.text(
+                "SELECT id, node_id, structure, mimetype, parameters, management FROM data_sources"
+            )
+        ).fetchall()
 
-    # Copy data into new tables.
-    op.bulk_insert(new_data_sources, new_data_sources_rows)
-    op.bulk_insert(structures, structures_rows)
+        new_data_sources_rows = []
+        unique_structures = {}  # map unique structure_id -> structure
+        for row in results:
+            structure_id = compute_structure_id(row[2])
+            new_row = {
+                "id": row[0],
+                "node_id": row[1],
+                "structure_id": structure_id,
+                "mimetype": row[3],
+                "parameters": row[4],
+                "management": row[5],
+            }
+            new_data_sources_rows.append(new_row)
+            unique_structures[structure_id] = row[2]
+        structures_rows = [
+            {"id": structure_id, "structure": structure}
+            for structure_id, structure in unique_structures.items()
+        ]
 
-    # Drop old 'data_structures' and move 'new_data_structures' into its place.
-    op.drop_table("data_sources")
-    op.rename_table("new_data_sources", "data_sources")
+        # Copy data into new tables.
+        op.bulk_insert(structures, structures_rows)
+        op.bulk_insert(new_data_sources, new_data_sources_rows)
+
+        # Drop old 'data_structures' and move 'new_data_structures' into its place.
+        op.drop_table("data_sources")
+        op.rename_table("new_data_sources", "data_sources")
+    else:
+        # PostgreSQL
+        # Extract rows from data_sources and compute structure_id.
+        results = connection.execute(
+            sa.text("SELECT id, structure FROM data_sources")
+        ).fetchall()
+        unique_structures = {}  # map unique structure_id -> structure
+        data_source_id_to_structure_id = {}
+        for data_source_id, structure in results:
+            structure_id = compute_structure_id(structure)
+            unique_structures[structure_id] = structure
+            data_source_id_to_structure_id[data_source_id] = structure_id
+        structures_rows = [
+            {"id": structure_id, "structure": structure}
+            for structure_id, structure in unique_structures.items()
+        ]
+        # Copy data into 'structures' table.
+        op.bulk_insert(structures, structures_rows)
+        op.add_column(
+            "data_sources",
+            sa.Column(
+                "structure_id",
+                sa.Unicode(32),
+                sa.ForeignKey("structures.id", ondelete="CASCADE"),
+            ),
+        )
+        data_sources = sa.Table(
+            "data_sources",
+            sa.MetaData(),
+            sa.Column("id", sa.Integer),
+            sa.Column(
+                "node_id",
+                sa.Integer,
+                sa.ForeignKey("nodes.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("structure_id", sa.Unicode(32)),
+            sa.Column("structure", sa.Unicode(32)),
+            sa.Column("mimetype", sa.Unicode(255), nullable=False),
+            sa.Column("parameters", JSONVariant, nullable=True),
+            sa.Column("management", sa.Enum(Management), nullable=False),
+        )
+        for data_source_id, structure_id in data_source_id_to_structure_id.items():
+            connection.execute(
+                data_sources.update()
+                .values(structure_id=structure_id)
+                .where(data_sources.c.id == data_source_id)
+            )
+        op.drop_column("data_sources", "structure")
 
 
 def downgrade():
