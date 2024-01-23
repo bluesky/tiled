@@ -250,6 +250,20 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
 
 @pytest.mark.asyncio
 async def test_hdf5_virtual_datasets(tmpdir):
+    # A virtual database comprises one master file and N data files. The master
+    # file must be handed to the Adapter for opening. The data files are not
+    # handled directly by the Adapter but they still ought to be tracked as
+    # Assets for purposes of data movement, accounting for data size, etc.
+    # This is why they are Assets with parameter=NULL/None, Assets not used
+    # directly by the Adapter.
+
+    # One could do one-dataset-per-directory. But like TIFF series in practice
+    # they are often mixed, so we address that general case and track them at
+    # the per-file level.
+
+    # Contrast this to Zarr, where the files involves are always bundled by
+    # directory. We track Zarr at the directory level.
+
     layout = h5py.VirtualLayout(shape=(4, 100), dtype="i4")
 
     data_filepaths = []
