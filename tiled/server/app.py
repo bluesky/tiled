@@ -12,7 +12,9 @@ from typing import List
 import anyio
 import packaging.version
 import yaml
+from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -298,7 +300,28 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # allow_headers=["X-Requested-With", "X-Request-ID"],
+        expose_headers=["X-Tiled-Request-ID"],
     )
+    app.add_middleware(
+        CorrelationIdMiddleware,
+        header_name="X-Tiled-Request-ID",
+        update_request_header=True,
+        # generator=lambda: uuid4().hex,
+    )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        return await http_exception_handler(
+            request,
+            HTTPException(
+                500,
+                "Internal server error",
+                headers={"X-Request-ID": correlation_id.get() or ""},
+            ),
+        )
 
     app.include_router(router, prefix="/api/v1")
 
