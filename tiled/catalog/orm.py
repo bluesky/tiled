@@ -156,7 +156,7 @@ def unique_parameter_num_null_check(target, connection, **kw):
         connection.execute(
             text(
                 """
-CREATE TRIGGER cannot_insert_num_null_if_num_int_exists
+CREATE TRIGGER cannot_insert_num_null_if_num_exists
 BEFORE INSERT ON data_source_asset_association
 WHEN NEW.num IS NULL
 BEGIN
@@ -213,7 +213,7 @@ $$ LANGUAGE plpgsql;"""
         connection.execute(
             text(
                 """
-CREATE TRIGGER cannot_insert_num_null_if_num_int_exists
+CREATE TRIGGER cannot_insert_num_null_if_num_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NULL)
