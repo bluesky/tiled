@@ -16,6 +16,9 @@ from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
+from sqlalchemy.sql.expression import cast
+
 
 from tiled.queries import (
     Comparison,
@@ -986,8 +989,16 @@ def contains(query, tree):
 
 
 def full_text(query, tree):
-    raise UnsupportedQueryType("full_text")
-    # return tree.new_variation(conditions=tree.conditions)
+    dialect_name = tree.engine.url.get_dialect().name
+    conditions = []
+    if dialect_name == "sqlite":
+        raise UnsupportedQueryType("full_text")
+    elif dialect_name == "postgresql":
+        tsvector = func.jsonb_to_tsvector(cast('simple',REGCONFIG), orm.Node.metadata_, cast(["string"],JSONB))
+        conditions.append(tsvector.match(query.text))
+    else:
+        raise UnsupportedQueryType("full_text")
+    return tree.new_variation(conditions=tree.conditions + conditions)
 
 
 def specs(query, tree):
