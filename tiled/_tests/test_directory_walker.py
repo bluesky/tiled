@@ -170,6 +170,7 @@ async def test_tiff_seq_custom_sorting(tmpdir):
     for i in ordering:
         file = Path(tmpdir, f"image{i:05}.tif")
         files.append(file)
+        # data is a block of ones
         tifffile.imwrite(file, i * data)
 
     settings = Settings.init()
@@ -182,6 +183,11 @@ async def test_tiff_seq_custom_sorting(tmpdir):
             settings,
         )
         client = from_context(context)
+        # We are being a bit clever here.
+        # Each image in this image series has pixels with a constant value, and
+        # that value matches the image's position in the sequence enumerated by
+        # `ordering`. We pick out one pixel and check that its value matches
+        # the corresponding value in `ordering`.
         actual = list(client["image"][:, 0, 0])
         assert actual == ordering
 
