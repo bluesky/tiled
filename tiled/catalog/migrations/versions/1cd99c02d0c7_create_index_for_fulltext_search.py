@@ -1,7 +1,7 @@
 """Create index for fulltext search
 
 Revision ID: 1cd99c02d0c7
-Revises: 3db11ff95b6c
+Revises: a66028395cab
 Create Date: 2024-01-24 15:53:12.348880
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy import func
 
 # revision identifiers, used by Alembic.
 revision = '1cd99c02d0c7'
-down_revision = '3db11ff95b6c'
+down_revision = 'a66028395cab'
 branch_labels = None
 depends_on = None
 

@@ -10,8 +10,10 @@ from sqlalchemy import (
     Index,
     Integer,
     Unicode,
+    event,
+    text,
+    types,
 )
-
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import UniqueConstraint
@@ -23,11 +25,6 @@ from .base import Base
 
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
-
-
-# Use TSVECTOR with PostgreSQL via SQLAlchemy for fullText indexing.
-class TSVector(types.TypeDecorator):
-    impl = TSVECTOR
 
 
 class Timestamped:
