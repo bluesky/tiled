@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Unicode,
+)
 
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
