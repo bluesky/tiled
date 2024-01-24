@@ -597,27 +597,17 @@ class CatalogNodeAdapter:
                     # is to invoke dialect-specific insert.
                     if self.context.engine.dialect.name == "sqlite":
                         from sqlalchemy.dialects.sqlite import insert
-
-                        statement = (
-                            insert(orm.Structure).values(
-                                id=structure_id,
-                                structure=structure,
-                            )
-                        ).on_conflict_do_nothing(index_elements=["id"])
-                        await db.execute(statement)
                     elif self.context.engine.dialect.name == "postgresql":
                         from sqlalchemy.dialects.postgresql import insert
-
-                        statement = (
-                            insert(orm.Structure).values(
-                                id=structure_id,
-                                structure=structure,
-                            )
-                        ).on_conflict_do_nothing(index_elements=["id"])
-                        await db.execute(statement)
                     else:
                         assert False  # future-proofing
-
+                    statement = (
+                        insert(orm.Structure).values(
+                            id=structure_id,
+                            structure=structure,
+                        )
+                    ).on_conflict_do_nothing(index_elements=["id"])
+                    await db.execute(statement)
                 data_source_orm = orm.DataSource(
                     mimetype=data_source.mimetype,
                     management=data_source.management,
