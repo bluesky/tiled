@@ -5,8 +5,11 @@ Revises: 1cd99c02d0c7
 Create Date: 2024-01-22 20:44:23.132801
 
 """
+from datetime import datetime
+
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.sql import func
 
 from tiled.catalog.orm import JSONVariant
 from tiled.catalog.utils import compute_structure_id
@@ -59,6 +62,17 @@ def upgrade():
             sa.Column("mimetype", sa.Unicode(255), nullable=False),
             sa.Column("parameters", JSONVariant, nullable=True),
             sa.Column("management", sa.Enum(Management), nullable=False),
+            sa.Column(
+                "time_created",
+                sa.DateTime(timezone=False),
+                server_default=func.now(),
+            ),
+            sa.Column(
+                "time_updated",
+                sa.DateTime(timezone=False),
+                onupdate=func.now(),
+                server_default=func.now(),
+            ),
         )
         new_data_sources = sa.Table(
             "new_data_sources",
@@ -74,12 +88,23 @@ def upgrade():
             sa.Column("mimetype", sa.Unicode(255), nullable=False),
             sa.Column("parameters", JSONVariant, nullable=True),
             sa.Column("management", sa.Enum(Management), nullable=False),
+            sa.Column(
+                "time_created",
+                sa.DateTime(timezone=False),
+                server_default=func.now(),
+            ),
+            sa.Column(
+                "time_updated",
+                sa.DateTime(timezone=False),
+                onupdate=func.now(),
+                server_default=func.now(),
+            ),
         )
-
         # Extract rows from data_sources and compute structure_id.
         results = connection.execute(
             sa.text(
-                "SELECT id, node_id, structure, mimetype, parameters, management FROM data_sources"
+                "SELECT id, node_id, structure, mimetype, parameters, management, "
+                "time_created, time_updated FROM data_sources"
             )
         ).fetchall()
 
@@ -94,6 +119,8 @@ def upgrade():
                 "mimetype": row[3],
                 "parameters": row[4],
                 "management": row[5],
+                "time_created": datetime.fromisoformat(row[6]),
+                "time_udpated": datetime.fromisoformat(row[7]),
             }
             new_data_sources_rows.append(new_row)
             unique_structures[structure_id] = row[2]
