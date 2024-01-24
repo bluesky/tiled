@@ -1073,7 +1073,7 @@ CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(FullText, full_text)
-# TODO: FullText [in progress], Regex
+# TODO: Regex
 
 
 def in_memory(
