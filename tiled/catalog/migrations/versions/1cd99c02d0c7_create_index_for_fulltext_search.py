@@ -11,24 +11,27 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import func
 
 # revision identifiers, used by Alembic.
-revision = '1cd99c02d0c7'
-down_revision = 'a66028395cab'
+revision = "1cd99c02d0c7"
+down_revision = "a66028395cab"
 branch_labels = None
 depends_on = None
 
 # Make JSONB available in column
 JSONVariant = sa.JSON().with_variant(JSONB(), "postgresql")
 
+
 def upgrade():
     connection = op.get_bind()
     if connection.engine.dialect.name == "postgresql":
         with op.get_context().autocommit_block():
             # There is no sane way to perform this using op.create_index()
-            op.execute("""
+            op.execute(
+                """
                 CREATE INDEX metadata_search
                 ON nodes
                 USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
-                """)
+                """
+            )
 
 
 def downgrade():

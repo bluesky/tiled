@@ -1007,7 +1007,9 @@ def full_text(query, tree):
     if dialect_name == "sqlite":
         raise UnsupportedQueryType("full_text")
     elif dialect_name == "postgresql":
-        tsvector = func.jsonb_to_tsvector(cast('simple',REGCONFIG), orm.Node.metadata_, cast(["string"],JSONB))
+        tsvector = func.jsonb_to_tsvector(
+            cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
+        )
         conditions.append(tsvector.match(query.text))
     else:
         raise UnsupportedQueryType("full_text")
