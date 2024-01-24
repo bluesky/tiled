@@ -8,6 +8,8 @@ import pandas
 import pandas.testing
 import pytest
 import pytest_asyncio
+import sqlalchemy.dialects.postgresql.asyncpg
+import sqlalchemy.exc
 import tifffile
 import xarray
 
@@ -17,12 +19,13 @@ from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
 from ..catalog.adapter import WouldDeleteData
 from ..catalog.explain import record_explanations
+from ..catalog.register import create_node_safe
 from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
-from ..server.schemas import Asset, DataSource
+from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
 from .utils import enter_password
 
@@ -197,9 +200,10 @@ async def test_metadata_index_is_used(example_data_adapter):
 @pytest.mark.asyncio
 async def test_write_array_external(a, tmpdir):
     arr = numpy.ones((5, 3))
-    filepath = tmpdir / "file.tiff"
-    tifffile.imwrite(str(filepath), arr)
-    ad = TiffAdapter(str(filepath))
+    filepath = str(tmpdir / "file.tiff")
+    data_uri = ensure_uri(filepath)
+    tifffile.imwrite(filepath, arr)
+    ad = TiffAdapter(data_uri)
     structure = asdict(ad.structure())
     await a.create_node(
         key="x",
@@ -211,7 +215,14 @@ async def test_write_array_external(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
+                assets=[
+                    Asset(
+                        parameter="data_uri",
+                        num=None,
+                        data_uri=str(data_uri),
+                        is_directory=False,
+                    )
+                ],
             )
         ],
     )
@@ -222,9 +233,10 @@ async def test_write_array_external(a, tmpdir):
 @pytest.mark.asyncio
 async def test_write_dataframe_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
-    filepath = tmpdir / "file.csv"
+    filepath = str(tmpdir / "file.csv")
+    data_uri = ensure_uri(filepath)
     df.to_csv(filepath, index=False)
-    dfa = read_csv(filepath)
+    dfa = read_csv(data_uri)
     structure = asdict(dfa.structure())
     await a.create_node(
         key="x",
@@ -236,7 +248,14 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 structure=structure,
                 parameters={},
                 management="external",
-                assets=[Asset(data_uri=str(ensure_uri(filepath)), is_directory=False)],
+                assets=[
+                    Asset(
+                        parameter="data_uri",
+                        num=None,
+                        data_uri=data_uri,
+                        is_directory=False,
+                    )
+                ],
             )
         ],
     )
@@ -411,3 +430,98 @@ async def test_access_control(tmpdir):
         public_client["outer_z"]["inner"].read()
         with pytest.raises(KeyError):
             public_client["outer_x"]
+
+
+@pytest.mark.parametrize(
+    "assets",
+    [
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=None,
+            ),
+        ],
+        [
+            Asset(
+                data_uri="file://localhost/test1",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+            Asset(
+                data_uri="file://localhost/test2",
+                is_directory=False,
+                parameter="filepath",
+                num=1,
+            ),
+        ],
+    ],
+    ids=[
+        "null-then-int",
+        "int-then-null",
+        "duplicate-null",
+        "duplicate-int",
+    ],
+)
+@pytest.mark.asyncio
+async def test_constraints_on_parameter_and_num(a, assets):
+    "Test constraints enforced by database on 'parameter' and 'num'."
+    arr_adapter = ArrayAdapter.from_array([1, 2, 3])
+    with pytest.raises(
+        (
+            sqlalchemy.exc.IntegrityError,  # SQLite
+            sqlalchemy.exc.DBAPIError,  # PostgreSQL
+        )
+    ):
+        await create_node_safe(
+            a,
+            key="test",
+            structure_family=arr_adapter.structure_family,
+            metadata=dict(arr_adapter.metadata()),
+            specs=arr_adapter.specs,
+            data_sources=[
+                DataSource(
+                    mimetype="application/x-test",
+                    structure=asdict(arr_adapter.structure()),
+                    parameters={},
+                    management=Management.external,
+                    assets=assets,
+                )
+            ],
+        )

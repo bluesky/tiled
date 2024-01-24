@@ -10,7 +10,11 @@ TIFF_PATHS = [
     ("a.tif",),
     ("b.tif",),
     ("c.tif",),
-    ("more", "d.tif"),
+    ("more", "A0001.tif"),
+    ("more", "A0002.tif"),
+    ("more", "A0003.tif"),
+    ("more", "B0001.tif"),
+    ("more", "B0002.tif"),
     ("more", "even_more", "e.tif"),
     ("more", "even_more", "f.tif"),
 ]

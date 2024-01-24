@@ -55,9 +55,24 @@ jobs:
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_LDAP.sh
 
+    - name: Download SQLite example data.
+      shell: bash -l {0}
+      run: source continuous_integration/scripts/download_sqlite_data.sh
+
     - name: Start PostgreSQL service in container.
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_postgres.sh
+
+
+    - name: Ensure example data is migrated to current catalog database schema.
+      # The example data is expected to be kept up to date to the latest Tiled
+      # release, but this CI run may include some unreleased schema changes,
+      # so we run a migration here.
+      shell: bash -l {0}
+      run: |
+        set -vxeuo pipefail
+        tiled catalog upgrade-database sqlite+aiosqlite:///tiled_test_db_sqlite.db
+        tiled catalog upgrade-database postgresql+asyncpg://postgres:secret@localhost:5432/tiled-example-data
 
     - name: Test with pytest
       shell: bash -l {0}

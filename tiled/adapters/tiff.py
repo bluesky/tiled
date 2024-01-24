@@ -6,6 +6,7 @@ import tifffile
 from ..server.object_cache import with_object_cache
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
+from ..utils import path_from_uri
 
 
 class TiffAdapter:
@@ -22,15 +23,18 @@ class TiffAdapter:
 
     def __init__(
         self,
-        path,
+        data_uri,
         *,
         structure=None,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
-        self._file = tifffile.TiffFile(path)
-        self._cache_key = (type(self).__module__, type(self).__qualname__, path)
+        if not isinstance(data_uri, str):
+            raise Exception
+        filepath = path_from_uri(data_uri)
+        self._file = tifffile.TiffFile(filepath)
+        self._cache_key = (type(self).__module__, type(self).__qualname__, filepath)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
@@ -83,15 +87,16 @@ class TiffSequenceAdapter:
     structure_family = "array"
 
     @classmethod
-    def from_files(
+    def from_uris(
         cls,
-        *files,
+        data_uris,
         structure=None,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
-        seq = tifffile.TiffSequence(sorted(files))
+        filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
+        seq = tifffile.TiffSequence(filepaths)
         return cls(
             seq,
             structure=structure,

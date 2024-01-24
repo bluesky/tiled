@@ -1,3 +1,5 @@
+from typing import List
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -7,12 +9,10 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    Table,
     Unicode,
-    types,
-)
+
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
 
@@ -109,20 +109,156 @@ class Node(Timestamped, Base):
     )
 
 
-data_source_asset_association_table = Table(
-    "data_source_asset_association",
-    Base.metadata,
-    Column(
-        "data_source_id",
-        Integer,
+class DataSourceAssetAssociation(Base):
+    """
+    This describes which Assets are used by which DataSources, and how.
+
+    The 'parameter' describes which argument to pass the asset into when
+    constructing the Adapter. If 'parameter' is NULL then the asset is an
+    indirect dependency, such as a HDF5 data file backing an HDF5 'master'
+    file.
+
+    If 'num' is NULL, the asset is passed as a scalar value, and there must be
+    only one for the given 'parameter'. If 'num' is not NULL, all the assets
+    sharing the same 'parameter' (there may be one or more) will be passed in
+    as a list, ordered in ascending order of 'num'.
+    """
+
+    __tablename__ = "data_source_asset_association"
+
+    data_source_id: Mapped[int] = mapped_column(
         ForeignKey("data_sources.id", ondelete="CASCADE"),
-    ),
-    Column(
-        "asset_id",
-        Integer,
+        primary_key=True,
+    )
+    asset_id: Mapped[int] = mapped_column(
         ForeignKey("assets.id", ondelete="CASCADE"),
-    ),
-)
+        primary_key=True,
+    )
+    parameter = Column(Unicode(255), nullable=True)
+    num = Column(Integer, nullable=True)
+
+    data_source: Mapped["DataSource"] = relationship(
+        back_populates="asset_associations"
+    )
+    asset: Mapped["Asset"] = relationship(
+        back_populates="data_source_associations", lazy="selectin"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "data_source_id",
+            "parameter",
+            "num",
+            name="parameter_num_unique_constraint",
+        ),
+        # Below, in unique_parameter_num_null_check, additional constraints
+        # are applied, via triggers.
+    )
+
+
+@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+def unique_parameter_num_null_check(target, connection, **kw):
+    # Ensure that we cannot mix NULL and INTEGER values of num for
+    # a given data_source_id and parameter, and that there cannot be multiple
+    # instances of NULL.
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER cannot_insert_num_null_if_num_exists
+BEFORE INSERT ON data_source_asset_association
+WHEN NEW.num IS NULL
+BEGIN
+    SELECT RAISE(ABORT, 'Can only insert num=NULL if no other row exists for the same parameter')
+    WHERE EXISTS
+    (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND data_source_id = NEW.data_source_id
+    );
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
+BEFORE INSERT ON data_source_asset_association
+WHEN NEW.num IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'Can only insert INTEGER num if no NULL row exists for the same parameter')
+    WHERE EXISTS
+    (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND num IS NULL
+        AND data_source_id = NEW.data_source_id
+    );
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION raise_if_parameter_exists()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND data_source_id = NEW.data_source_id
+    ) THEN
+        RAISE EXCEPTION 'Can only insert num=NULL if no other row exists for the same parameter';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER cannot_insert_num_null_if_num_exists
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW
+WHEN (NEW.num IS NULL)
+EXECUTE FUNCTION raise_if_parameter_exists();"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION raise_if_null_parameter_exists()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND data_source_id = NEW.data_source_id
+        AND num IS NULL
+    ) THEN
+        RAISE EXCEPTION 'Can only insert INTEGER num if no NULL row exists for the same parameter';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW
+WHEN (NEW.num IS NOT NULL)
+EXECUTE FUNCTION raise_if_null_parameter_exists();"""
+            )
+        )
 
 
 class DataSource(Timestamped, Base):
@@ -141,7 +277,7 @@ class DataSource(Timestamped, Base):
     __tablename__ = "data_sources"
     __mapper_args__ = {"eager_defaults": True}
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
     node_id = Column(
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
     )
@@ -154,12 +290,19 @@ class DataSource(Timestamped, Base):
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
 
-    assets = relationship(
-        "Asset",
-        secondary=data_source_asset_association_table,
+    # many-to-many relationship to DataSource, bypassing the `Association` class
+    assets: Mapped[List["Asset"]] = relationship(
+        secondary="data_source_asset_association",
         back_populates="data_sources",
         cascade="all, delete",
         lazy="selectin",
+        viewonly=True,
+    )
+    # association between Asset -> Association -> DataSource
+    asset_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
+        back_populates="data_source",
+        lazy="selectin",
+        order_by=[DataSourceAssetAssociation.parameter, DataSourceAssetAssociation.num],
     )
 
 
@@ -171,7 +314,7 @@ class Asset(Timestamped, Base):
     __tablename__ = "assets"
     __mapper_args__ = {"eager_defaults": True}
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
 
     data_uri = Column(Unicode(1023), index=True, unique=True)
     is_directory = Column(Boolean, nullable=False)
@@ -179,11 +322,15 @@ class Asset(Timestamped, Base):
     hash_content = Column(Unicode(1023), nullable=True)
     size = Column(Integer, nullable=True)
 
-    data_sources = relationship(
-        "DataSource",
-        secondary=data_source_asset_association_table,
+    # # many-to-many relationship to Asset, bypassing the `Association` class
+    data_sources: Mapped[List["DataSource"]] = relationship(
+        secondary="data_source_asset_association",
         back_populates="assets",
-        passive_deletes=True,
+        viewonly=True,
+    )
+    # association between DataSource -> Association -> Asset
+    data_source_associations: Mapped[List["DataSourceAssetAssociation"]] = relationship(
+        back_populates="asset",
     )
 
 

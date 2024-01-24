@@ -13,10 +13,12 @@ import pandas as pd
 
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.structures.core import Spec
+from tiled.utils import path_from_uri
 
 
-def read_xdi(filepath, structure=None, metadata=None, specs=None, access_policy=None):
+def read_xdi(data_uri, structure=None, metadata=None, specs=None, access_policy=None):
     "Read XDI-formatted file."
+    filepath = path_from_uri(data_uri)
     with open(filepath, "r") as file:
         metadata = {}
         fields = collections.defaultdict(dict)
