@@ -109,6 +109,10 @@ def upgrade():
         # Drop old 'data_structures' and move 'new_data_structures' into its place.
         op.drop_table("data_sources")
         op.rename_table("new_data_sources", "data_sources")
+        # The above leaves many partially filled pages and, run on example
+        # datasets, left the database slightly _larger_. Clean up.
+        with op.get_context().autocommit_block():
+            connection.execute(sa.text("VACUUM"))
     else:
         # PostgreSQL
         # Extract rows from data_sources and compute structure_id.
