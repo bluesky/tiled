@@ -13,11 +13,10 @@ from urllib.parse import quote_plus, urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
+from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
 from sqlalchemy.sql.expression import cast
-
 
 from tiled.queries import (
     Comparison,

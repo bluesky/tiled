@@ -159,7 +159,7 @@ def test_contains(client):
 
 
 def test_full_text(client):
-    if client.metadata["backend"] in {"postgresql", "sqlite"}:
+    if client.metadata["backend"] in {"sqlite"}:
 
         def cm():
             return fail_with_status_code(400)

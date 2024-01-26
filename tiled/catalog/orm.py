@@ -12,9 +12,8 @@ from sqlalchemy import (
     Unicode,
     event,
     text,
-    types,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
@@ -254,11 +253,14 @@ EXECUTE FUNCTION raise_if_null_parameter_exists();"""
         # This creates a ts_vector based metadata search index for fulltext.
         # Postgres only feature
         connection.execute(
-            text( """
+            text(
+                """
                 CREATE INDEX metadata_tsvector_search
                 ON nodes
                 USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
-                """))
+                """
+            )
+        )
 
 
 class DataSource(Timestamped, Base):
