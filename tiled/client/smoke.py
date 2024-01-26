@@ -1,20 +1,20 @@
+import sys
+
 from ..structures.core import StructureFamily
 
 
-def read(node, faulty_docs=[], verbose=False):
+def read(node, verbose=False, strict=False):
     """
-
 
     Parameters
     ----------
     node : tiled node
         A Client node with access to the tiled server.
         It can take form of anything compatible with the values in StructureFamily.
-    faulty_docs : List, optional
-        A list that keeps track of the URI of the faulty nodes
-        while the method traverses through the tree recursively. The default is [].
     verbose : bool, optional
         Enables status messages while process runs. The default is False.
+    strict : bool, optional
+        Enables debugging mode if a faulty node is found.
 
     Returns
     -------
@@ -22,21 +22,23 @@ def read(node, faulty_docs=[], verbose=False):
         A list with URIs of all the faulty nodes that were found.
 
     """
+
+    faulty_entries = []
     if node.structure_family == StructureFamily.container:
         for key, child_node in node.items():
             fault_result = read(child_node, verbose=verbose)
-            if len(fault_result) > 0:
-                faulty_docs.append(fault_result)
+            faulty_entries.extend(fault_result)
     else:
         try:
-            if verbose:
-                print(f"reading node with data: {node.item['id']}")
             tmp = node.read()  # noqa: F841
-        except Exception:
+        except Exception as err:
+            if strict:
+                raise
             if verbose:
-                print(
-                    f"Node {node.item['id']} does not have a read method or data is fault"
-                )
-            faulty_docs.append(node.uri)
+                print(f"ERROR: {node.item['id']} - {err!r}", file=sys.stderr)
+            faulty_entries.append(node.uri)
+        else:
+            if verbose:
+                print(f"SUCCESS: {node.item['id']} ", file=sys.stderr)
 
-    return faulty_docs
+    return faulty_entries
