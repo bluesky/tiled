@@ -45,6 +45,9 @@ mapping["does_contain_z"] = ArrayAdapter.from_array(
 mapping["does_not_contain_z"] = ArrayAdapter.from_array(
     numpy.ones(10), metadata={"letters": list(string.ascii_lowercase[:-1])}
 )
+mapping["full_text_test_case"] = ArrayAdapter.from_array(
+    numpy.ones(10), metadata={"color": "purple"}
+)
 
 mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo", "bar"])
 mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
@@ -168,6 +171,9 @@ def test_full_text(client):
         cm = nullcontext
     with cm():
         assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
+        # plainto_tsquery fails to find certain words, weirdly, so it is a useful
+        # test that we are using tsquery
+        assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
 
 
 def test_regex(client):
