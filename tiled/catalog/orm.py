@@ -95,12 +95,6 @@ class Node(Timestamped, Base):
             "id",
             "metadata",
             postgresql_using="gin",
-        ),
-        # This index supports ts_vector based full-text search.
-        Index(
-            "metadata_tsvector_search",
-            func.jsonb_to_tsvector("simple", metadata_, '["string"]'),
-            postgresql_using="gin",
         )
         # This is used by ORDER BY with the default sorting.
         # Index("ancestors_time_created", "ancestors", "time_created"),
@@ -257,6 +251,14 @@ WHEN (NEW.num IS NOT NULL)
 EXECUTE FUNCTION raise_if_null_parameter_exists();"""
             )
         )
+        # This creates a ts_vector based metadata search index for fulltext.
+        # Postgres only feature
+        connection.execute(
+            text( """
+                CREATE INDEX metadata_tsvector_search
+                ON nodes
+                USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
+                """))
 
 
 class DataSource(Timestamped, Base):
