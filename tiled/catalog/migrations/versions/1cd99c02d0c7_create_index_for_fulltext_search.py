@@ -27,7 +27,7 @@ def upgrade():
             # There is no sane way to perform this using op.create_index()
             op.execute(
                 """
-                CREATE INDEX metadata_search
+                CREATE INDEX metadata_tsvector_search
                 ON nodes
                 USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
                 """

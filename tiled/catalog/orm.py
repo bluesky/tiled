@@ -96,9 +96,9 @@ class Node(Timestamped, Base):
             "metadata",
             postgresql_using="gin",
         ),
-        # This index supports full-text search.
+        # This index supports ts_vector based full-text search.
         Index(
-            "metadata_search",
+            "metadata_tsvector_search",
             func.jsonb_to_tsvector("simple", metadata_, '["string"]'),
             postgresql_using="gin",
         )
