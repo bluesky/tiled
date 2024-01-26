@@ -1003,17 +1003,16 @@ def contains(query, tree):
 
 def full_text(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
-    conditions = []
     if dialect_name == "sqlite":
         raise UnsupportedQueryType("full_text")
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
             cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
         )
-        conditions.append(tsvector.match(query.text))
+        condition = tsvector.match(query.text)
     else:
         raise UnsupportedQueryType("full_text")
-    return tree.new_variation(conditions=tree.conditions + conditions)
+    return tree.new_variation(conditions=tree.conditions + [condition])
 
 
 def specs(query, tree):
