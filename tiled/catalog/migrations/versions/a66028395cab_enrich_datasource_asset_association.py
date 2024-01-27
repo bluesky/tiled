@@ -8,11 +8,7 @@ Create Date: 2024-01-21 15:17:20.571763
 import sqlalchemy as sa
 from alembic import op
 
-from tiled.catalog.orm import (
-    DataSourceAssetAssociation,
-    JSONVariant,
-    unique_parameter_num_null_check,
-)
+from tiled.catalog.orm import JSONVariant
 
 # revision identifiers, used by Alembic.
 revision = "a66028395cab"
@@ -32,7 +28,7 @@ def upgrade():
         sa.Column("structure", JSONVariant),
     )
     data_source_asset_association = sa.Table(
-        DataSourceAssetAssociation.__tablename__,
+        "data_source_asset_association",
         sa.MetaData(),
         sa.Column("asset_id", sa.Integer),
         sa.Column("data_source_id", sa.Integer),
@@ -67,11 +63,11 @@ def upgrade():
 
     # Add columns 'parameter' and 'num' to association table.
     op.add_column(
-        DataSourceAssetAssociation.__tablename__,
+        "data_source_asset_association",
         sa.Column("parameter", sa.Unicode(255), nullable=True),
     )
     op.add_column(
-        DataSourceAssetAssociation.__tablename__,
+        "data_source_asset_association",
         sa.Column("num", sa.Integer, nullable=True),
     )
 
@@ -162,7 +158,7 @@ def upgrade():
     if connection.engine.dialect.name == "sqlite":
         # SQLite does not supported adding constraints to an existing table.
         # We invoke its 'copy and move' functionality.
-        with op.batch_alter_table(DataSourceAssetAssociation.__tablename__) as batch_op:
+        with op.batch_alter_table("data_source_asset_association") as batch_op:
             # Gotcha: This does not take table_name because it is bound into batch_op.
             batch_op.create_unique_constraint(
                 "parameter_num_unique_constraint",
@@ -172,11 +168,15 @@ def upgrade():
                     "num",
                 ],
             )
+        # This creates a pair of triggers on the data_source_asset_association
+        # table. Each pair include one trigger that runs when NEW.num IS NULL and
+        # one trigger than runs when NEW.num IS NOT NULL. Thus, for a given insert,
+        # only one of these triggers is run.
         with op.get_context().autocommit_block():
             connection.execute(
                 sa.text(
                     """
-    CREATE TRIGGER cannot_insert_num_null_if_num_int_exists
+    CREATE TRIGGER cannot_insert_num_null_if_num_exists
     BEFORE INSERT ON data_source_asset_association
     WHEN NEW.num IS NULL
     BEGIN
@@ -214,14 +214,72 @@ def upgrade():
         # PostgreSQL
         op.create_unique_constraint(
             "parameter_num_unique_constraint",
-            DataSourceAssetAssociation.__tablename__,
+            "data_source_asset_association",
             [
                 "data_source_id",
                 "parameter",
                 "num",
             ],
         )
-        unique_parameter_num_null_check(data_source_asset_association, connection)
+        connection.execute(
+            sa.text(
+                """
+CREATE OR REPLACE FUNCTION raise_if_parameter_exists()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND data_source_id = NEW.data_source_id
+    ) THEN
+        RAISE EXCEPTION 'Can only insert num=NULL if no other row exists for the same parameter';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+CREATE TRIGGER cannot_insert_num_null_if_num_exists
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW
+WHEN (NEW.num IS NULL)
+EXECUTE FUNCTION raise_if_parameter_exists();"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+CREATE OR REPLACE FUNCTION raise_if_null_parameter_exists()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM data_source_asset_association
+        WHERE parameter = NEW.parameter
+        AND data_source_id = NEW.data_source_id
+        AND num IS NULL
+    ) THEN
+        RAISE EXCEPTION 'Can only insert INTEGER num if no NULL row exists for the same parameter';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW
+WHEN (NEW.num IS NOT NULL)
+EXECUTE FUNCTION raise_if_null_parameter_exists();"""
+            )
+        )
 
 
 def downgrade():
