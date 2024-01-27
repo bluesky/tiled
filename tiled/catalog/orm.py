@@ -253,8 +253,13 @@ WHEN (NEW.num IS NOT NULL)
 EXECUTE FUNCTION raise_if_null_parameter_exists();"""
             )
         )
-        # This creates a ts_vector based metadata search index for fulltext.
-        # Postgres only feature
+
+
+@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+def create_index_metadata_tsvector_search(target, connection, **kw):
+    # This creates a ts_vector based metadata search index for fulltext.
+    # Postgres only feature
+    if connection.engine.dialect.name == "postgresql":
         connection.execute(
             text(
                 """
