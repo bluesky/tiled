@@ -7,6 +7,7 @@ Create Date: 2024-01-22 20:44:23.132801
 """
 from datetime import datetime
 
+import orjson
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.sql import func
@@ -117,13 +118,14 @@ def upgrade():
                 "node_id": row[1],
                 "structure_id": structure_id,
                 "mimetype": row[3],
-                "parameters": row[4],
+                "parameters": orjson.loads(row[4]),
                 "management": row[5],
                 "time_created": datetime.fromisoformat(row[6]),
                 "time_udpated": datetime.fromisoformat(row[7]),
             }
             new_data_sources_rows.append(new_row)
-            unique_structures[structure_id] = row[2]
+            if structure_id not in unique_structures:
+                unique_structures[structure_id] = orjson.loads(row[2])
         structures_rows = [
             {"id": structure_id, "structure": structure}
             for structure_id, structure in unique_structures.items()
