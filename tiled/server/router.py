@@ -1,16 +1,20 @@
 import dataclasses
 import inspect
+import os
 from datetime import datetime, timedelta
 from functools import partial
+from pathlib import Path
 from typing import Any, List, Optional
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
+from starlette.responses import FileResponse
 
 from .. import __version__
 from ..structures.core import StructureFamily
-from ..utils import ensure_awaitable
+from ..utils import ensure_awaitable, path_from_uri
 from ..validation_registration import ValidationError
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
@@ -1215,3 +1219,102 @@ async def delete_revision(
 
     await entry.delete_revision(number)
     return json_or_msgpack(request, None)
+
+
+@router.get("/asset/bytes/{path:path}")
+async def get_asset(
+    request: Request,
+    id: int,
+    relative_path: Optional[Path] = None,
+    entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
+):
+    if not hasattr(entry, "asset_by_id"):
+        raise HTTPException(
+            status_code=405,
+            detail="This node does not support downloading assets.",
+        )
+
+    asset = await entry.asset_by_id(id)
+    if asset is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"This node exists but it does not have an Asset with id {id}",
+        )
+    if asset.is_directory:
+        if relative_path is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This asset is a directory. Must specify relative path, "
+                    f"from manifest provided by /asset/manifest/...?id={id}"
+                ),
+            )
+        if relative_path.is_absolute():
+            raise HTTPException(
+                status_code=400,
+                detail="relative_path query parameter must be a *relative* path",
+            )
+    else:
+        if relative_path is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="This asset is not a directory. The relative_path query parameter must not be set.",
+            )
+    if not asset.data_uri.startswith("file:"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only download assets stored as file:// is currently supported.",
+        )
+    path = path_from_uri(asset.data_uri)
+    if relative_path is not None:
+        # Be doubly sure that this is under the Asset's data_uri directory
+        # and not sneakily escaping it.
+        if not os.path.commonpath([path, path / relative_path]) != path:
+            # This should not be possible.
+            raise RuntimeError(
+                f"Refusing to serve {path / relative_path} because it is outside "
+                "of the Asset's directory"
+            )
+        full_path = path / relative_path
+    else:
+        full_path = path
+    stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+    return FileResponse(
+        full_path,
+        stat_result=stat_result,
+        method="GET",
+        status_code=200,
+    )
+
+
+@router.get("/asset/manifest/{path:path}")
+async def get_asset_manifest(
+    request: Request,
+    id: int,
+    entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
+):
+    if not hasattr(entry, "asset_by_id"):
+        raise HTTPException(
+            status_code=405,
+            detail="This node does not support downloading assets.",
+        )
+
+    asset = await entry.asset_by_id(id)
+    if asset is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"This node exists but it does not have an Asset with id {id}",
+        )
+    if not asset.is_directory:
+        raise HTTPException(
+            status_code=400,
+            detail="This asset is not a directory. There is no manifest.",
+        )
+    if not asset.data_uri.startswith("file:"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only download assets stored as file:// is currently supported.",
+        )
+    path = path_from_uri(asset.data_uri)
+    manifest = [str(p.relative_to(path)) for p in path.iterdir()]
+    return json_or_msgpack(request, {"manifest": manifest})

@@ -95,6 +95,14 @@ class Asset(pydantic.BaseModel):
     @classmethod
     def from_orm(cls, orm):
         return cls(
+            data_uri=orm.data_uri,
+            is_directory=orm.is_directory,
+            id=orm.id,
+        )
+
+    @classmethod
+    def from_assoc_orm(cls, orm):
+        return cls(
             data_uri=orm.asset.data_uri,
             is_directory=orm.asset.is_directory,
             parameter=orm.parameter,
@@ -151,7 +159,7 @@ class DataSource(pydantic.BaseModel):
             structure=getattr(orm.structure, "structure", None),
             mimetype=orm.mimetype,
             parameters=orm.parameters,
-            assets=[Asset.from_orm(assoc) for assoc in orm.asset_associations],
+            assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
         )
 
