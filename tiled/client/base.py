@@ -177,6 +177,10 @@ class BaseClient:
         "Quick access to this entry"
         return StructureFamily[self.item["attributes"]["structure_family"]]
 
+    @property
+    def data_sources(self):
+        return self.item["attributes"].get("data_sources")
+
     def new_variation(self, structure_clients=UNCHANGED, **kwargs):
         """
         This is intended primarily for internal use and use by subclasses.

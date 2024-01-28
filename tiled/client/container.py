@@ -24,6 +24,38 @@ from .utils import (
 )
 
 
+class _ParamsMixin:
+    def _with_params(self, params):
+        # Mutate and return self.
+        self._kwargs.setdefault("params", [])
+        if isinstance(params, dict):
+            params = params.items()
+        elif not isinstance(params, tuple):
+            raise TypeError(
+                f"Expected dict or tuple, got {params} of type {type(params).__name__}"
+            )
+        self._kwargs["params"].extend(params)
+        return self
+
+    def with_data_sources(self):
+        return self._with_params({"show_sources": "true"})
+
+
+class ClientItemsView(ItemsView, _ParamsMixin):
+    pass
+
+
+class ClientValuesView(ValuesView, _ParamsMixin):
+    pass
+
+
+class ClientKeysView(KeysView):
+    # This just fetches string names, so there is nothing to parameterize,
+    # but we make the class so that the names are consistent among
+    # keys, values, items.
+    pass
+
+
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # This maps the structure_family sent by the server to a client-side object that
     # can interpret the structure_family's structure and content. OneShotCachedMap is used to
@@ -94,16 +126,22 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 for s in (item["attributes"].get("sorting") or [])
             ]
         sorting = sorting or item["attributes"].get("sorting")
-        self._sorting_params = {
-            "sort": ",".join(
-                f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
+        self._sorting_params = [
+            (
+                "sort",
+                ",".join(
+                    f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
+                ),
             )
-        }
-        self._reversed_sorting_params = {
-            "sort": ",".join(
-                f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
+        ]
+        self._reversed_sorting_params = [
+            (
+                "sort",
+                ",".join(
+                    f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
+                ),
             )
-        }
+        ]
         super().__init__(
             context=context,
             item=item,
@@ -172,11 +210,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.context.http_client.get(
                 self.item["links"]["search"],
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    "fields": "",
-                    **self._queries_as_params,
-                    **self._sorting_params,
-                },
+                params=(
+                    [("fields", "")] + self._queries_as_params + self._sorting_params
+                ),
             )
         ).json()
         length = content["meta"]["count"]
@@ -206,11 +242,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 self.context.http_client.get(
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "fields": "",
-                        **self._queries_as_params,
-                        **self._sorting_params,
-                    },
+                    params=(
+                        [("fields", "")]
+                        + self._queries_as_params
+                        + self._sorting_params
+                    ),
                 )
             ).json()
             self._cached_len = (
@@ -251,11 +287,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 self.context.http_client.get(
                     self.item["links"]["search"],
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        **_queries_to_params(KeyLookup(key)),
-                        **self._queries_as_params,
-                        **self._sorting_params,
-                    },
+                    params=(
+                        _queries_to_params(KeyLookup(key))
+                        + self._queries_as_params
+                        + self._sorting_params
+                    ),
                 )
             ).json()
             self._cached_len = (
@@ -350,11 +386,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 self.context.http_client.get(
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "fields": "",
-                        **self._queries_as_params,
-                        **sorting_params,
-                    },
+                    params=(
+                        [("fields", "")] + self._queries_as_params + sorting_params
+                    ),
                 )
             ).json()
             self._cached_len = (
@@ -367,7 +401,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _items_slice(
+        self, start, stop, direction, _ignore_inlined_contents=False, params=None
+    ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
@@ -401,7 +437,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 self.context.http_client.get(
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={**self._queries_as_params, **sorting_params},
+                    params=self._queries_as_params + sorting_params + (params or []),
                 )
             ).json()
             self._cached_len = (
@@ -421,13 +457,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def keys(self):
-        return KeysView(lambda: len(self), self._keys_slice)
+        return ClientKeysView(lambda: len(self), self._keys_slice)
 
     def values(self):
-        return ValuesView(lambda: len(self), self._items_slice)
+        return ClientValuesView(lambda: len(self), self._items_slice)
 
     def items(self):
-        return ItemsView(lambda: len(self), self._items_slice)
+        return ClientItemsView(lambda: len(self), self._items_slice)
 
     def search(self, query):
         """
@@ -465,13 +501,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.context.http_client.get(
                 link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    "metadata": metadata_keys,
-                    "structure_families": structure_families,
-                    "specs": specs,
-                    "counts": counts,
-                    **self._queries_as_params,
-                },
+                params=(
+                    [
+                        ("metadata", metadata_keys),
+                        ("structure_families", structure_families),
+                        ("specs", specs),
+                        ("counts", counts),
+                    ]
+                    + self._queries_as_params,
+                ),
             )
         ).json()
         return distinct
@@ -915,7 +953,7 @@ def _queries_to_params(*queries):
         for field, value in query.encode().items():
             if value is not None:
                 params[f"filter[{name}][condition][{field}]"].append(value)
-    return dict(params)
+    return list(dict(params).items())
 
 
 LENGTH_CACHE_TTL = 1  # second
