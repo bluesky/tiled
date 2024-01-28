@@ -99,7 +99,7 @@ class ItemsView(IterViewBase):
                 direction = 1
             items = list(
                 self._items_slice(
-                    index_or_slice, 1 + index_or_slice, direction, params=self._params
+                    index_or_slice, 1 + index_or_slice, direction, **self._kwargs
                 )
             )
             try:
@@ -109,7 +109,7 @@ class ItemsView(IterViewBase):
             return item
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return list(self._items_slice(start, stop, direction, params=self._params))
+            return list(self._items_slice(start, stop, direction, **self._kwargs))
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
