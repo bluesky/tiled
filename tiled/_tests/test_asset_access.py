@@ -14,7 +14,7 @@ def client(tmpdir):
         yield client
 
 
-def test_with_sources(client):
+def test_with_data_sources(client):
     x = client.write_array([1, 2, 3], key="x")
     x.data_sources is not None
     client.values().with_data_sources()[0].data_sources is not None
