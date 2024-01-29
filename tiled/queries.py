@@ -42,23 +42,16 @@ class FullText(NoBool):
     Parameters
     ----------
     text : str
-    case_sensitive : bool, optional
-        Default False (case-insensitive).
     """
 
     text: str
-    case_sensitive: bool = False
 
     def encode(self):
-        return {"text": self.text, "case_sensitive": json.dumps(self.case_sensitive)}
+        return {"text": self.text}
 
     @classmethod
-    def decode(cls, *, text, case_sensitive=False):
-        # Note: FastAPI decodes case_sensitive into a boolean for us.
-        return cls(
-            text=text,
-            case_sensitive=case_sensitive,
-        )
+    def decode(cls, *, text):
+        return cls(text=text)
 
 
 @register(name="lookup")

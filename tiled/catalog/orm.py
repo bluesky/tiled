@@ -94,7 +94,7 @@ class Node(Timestamped, Base):
             "id",
             "metadata",
             postgresql_using="gin",
-        ),
+        )
         # This is used by ORDER BY with the default sorting.
         # Index("ancestors_time_created", "ancestors", "time_created"),
     )
@@ -149,9 +149,12 @@ class DataSourceAssetAssociation(Base):
 
 @event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
 def unique_parameter_num_null_check(target, connection, **kw):
-    # Ensure that we cannot mix NULL and INTEGER values of num for
-    # a given data_source_id and parameter, and that there cannot be multiple
-    # instances of NULL.
+    # This creates a pair of triggers on the data_source_asset_association
+    # table. (There are a total of four defined below, two for the SQLite
+    # branch and two for the PostgreSQL branch.) Each pair include one trigger
+    # that runs when NEW.num IS NULL and one trigger than runs when
+    # NEW.num IS NOT NULL. Thus, for a given insert, only one of these
+    # triggers is run.
     if connection.engine.dialect.name == "sqlite":
         connection.execute(
             text(
@@ -248,6 +251,22 @@ BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NOT NULL)
 EXECUTE FUNCTION raise_if_null_parameter_exists();"""
+            )
+        )
+
+
+@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+def create_index_metadata_tsvector_search(target, connection, **kw):
+    # This creates a ts_vector based metadata search index for fulltext.
+    # Postgres only feature
+    if connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+                CREATE INDEX metadata_tsvector_search
+                ON nodes
+                USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
+                """
             )
         )
 

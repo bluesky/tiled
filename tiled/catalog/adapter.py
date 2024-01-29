@@ -13,13 +13,16 @@ from urllib.parse import quote_plus, urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
+from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.sql.expression import cast
 
 from tiled.queries import (
     Comparison,
     Contains,
     Eq,
+    FullText,
     In,
     KeysFilter,
     NotEq,
@@ -997,6 +1000,20 @@ def contains(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def full_text(query, tree):
+    dialect_name = tree.engine.url.get_dialect().name
+    if dialect_name == "sqlite":
+        raise UnsupportedQueryType("full_text")
+    elif dialect_name == "postgresql":
+        tsvector = func.jsonb_to_tsvector(
+            cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
+        )
+        condition = tsvector.op("@@")(func.to_tsquery("simple", query.text))
+    else:
+        raise UnsupportedQueryType("full_text")
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def specs(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
     conditions = []
@@ -1068,7 +1085,8 @@ CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
-# TODO: FullText, Regex
+CatalogNodeAdapter.register_query(FullText, full_text)
+# TODO: Regex
 
 
 def in_memory(
