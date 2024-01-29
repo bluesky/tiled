@@ -51,8 +51,6 @@ class FullText(NoBool):
 
     @classmethod
     def decode(cls, *, text):
-        # Note: If there were an argument called case_sensitive
-        # FastAPI would decode it into a boolean for us.
         return cls(text=text)
 
 

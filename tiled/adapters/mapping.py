@@ -336,13 +336,12 @@ def iter_child_metadata(query_key, tree):
 def full_text_search(query, tree):
     matches = {}
     text = query.text
-    maybe_lower = str.lower
     query_words = set(text.split())
     for key, value in tree.items():
         words = set(
             word
             for s in walk_string_values(value.metadata())
-            for word in maybe_lower(s).split()
+            for word in s.lower().split()
         )
         # Note that `not set.isdisjoint` is faster than `set.intersection`. At
         # the C level, `isdisjoint` loops over the set until it finds one match,
