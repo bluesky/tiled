@@ -75,10 +75,10 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
         specs : List[str], optional
         access_policy : AccessPolicy, optional
         entries_stale_after: timedelta
-            This server uses this to communite to the client how long
+            This server uses this to communicate to the client how long
             it should rely on a local cache before checking back for changes.
         metadata_stale_after: timedelta
-            This server uses this to communite to the client how long
+            This server uses this to communicate to the client how long
             it should rely on a local cache before checking back for changes.
         must_revalidate : bool
             Whether the client should strictly refresh stale cache items.
@@ -336,14 +336,7 @@ def iter_child_metadata(query_key, tree):
 def full_text_search(query, tree):
     matches = {}
     text = query.text
-    if query.case_sensitive:
-
-        def maybe_lower(s):
-            # no-op
-            return s
-
-    else:
-        maybe_lower = str.lower
+    maybe_lower = str.lower
     query_words = set(text.split())
     for key, value in tree.items():
         words = set(

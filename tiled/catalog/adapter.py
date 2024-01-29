@@ -1009,7 +1009,6 @@ def full_text(query, tree):
             cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
         )
         condition = tsvector.op("@@")(func.to_tsquery("simple", query.text))
-        # condition = tsvector.match(query.text)
     else:
         raise UnsupportedQueryType("full_text")
     return tree.new_variation(conditions=tree.conditions + [condition])

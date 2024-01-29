@@ -409,7 +409,6 @@ export interface operations {
         sort?: string;
         omit_links?: boolean;
         "filter[fulltext][condition][text]"?: string[];
-        "filter[fulltext][condition][case_sensitive]"?: boolean[];
         "filter[lookup][condition][key]"?: string[];
       };
     };
