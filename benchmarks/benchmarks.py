@@ -1,42 +1,29 @@
 # Write the benchmarking functions here.
 # See "Writing benchmarks" in the asv docs for more information.
-import subprocess
-import time
 
-from tiled.client import from_uri
+import numpy
 
-HOST = "0.0.0.0"
-PORT = 9040
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.mapping import MapAdapter
+from tiled.client import Context, from_context
+from tiled.server.app import build_app
 
 
 class TimeSuite:
-    """
-    An example benchmark that times the performance of various kinds
-    of iterating over dictionaries in Python.
-    """
-
     def setup(self):
-        self.server_process = subprocess.Popen(
-            (f"uvicorn tiled.server.app:app --host {HOST} --port {PORT}").split()
-        )
-        time.sleep(5)
-        self.tree = from_uri(f"http://{HOST}:{PORT}", token="secret")
+        tree = MapAdapter({"x": ArrayAdapter.from_array(numpy.ones((100, 100)))})
+        app = build_app(tree)
+        self.context = Context.from_app(app)
+        self.client = from_context(self.context)
 
     def teardown(self):
-        self.server_process.terminate()
-        self.server_process.wait()
+        self.context.close()
 
     def time_list_tree(self):
-        list(self.tree)
+        list(self.client)
 
-    def time_metadata(self):
-        self.tree["medium"]["ones"].metadata
+    def time_lookup(self):
+        self.client["x"]
 
-    def time_structure(self):
-        self.tree["medium"]["ones"].structure()
-
-    def time_read(self):
-        self.tree["medium"]["ones"].read()
-
-    def time_compute(self):
-        self.tree["medium"]["ones"].read().compute()
+    def time_lookup_and_read(self):
+        self.client["x"].read()
