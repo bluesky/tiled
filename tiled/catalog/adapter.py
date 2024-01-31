@@ -16,6 +16,7 @@ from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce
 from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import cast
 
 from tiled.queries import (
@@ -55,7 +56,7 @@ from .mimetypes import (
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     ZARR_MIMETYPE,
 )
-from .utils import SCHEME_PATTERN, ensure_uri
+from .utils import SCHEME_PATTERN, compute_structure_id, ensure_uri
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -352,8 +353,14 @@ class CatalogNodeAdapter:
             # Search queries and access controls apply only at the top level.
             assert not first_level.conditions
             return await first_level.lookup_adapter(segments[1:])
-        statement = select(orm.Node).filter(
-            orm.Node.ancestors == self.segments + ancestors
+        statement = (
+            select(orm.Node)
+            .filter(orm.Node.ancestors == self.segments + ancestors)
+            .options(
+                selectinload(orm.Node.data_sources).selectinload(
+                    orm.DataSource.structure
+                )
+            )
         )
         for condition in self.conditions:
             statement = statement.filter(condition)
@@ -577,13 +584,35 @@ class CatalogNodeAdapter:
                         init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
-                data_source_orm = orm.DataSource(
-                    structure=_prepare_structure(
+                if data_source.structure is None:
+                    structure_id = None
+                else:
+                    # Obtain and hash the canonical (RFC 8785) representation of
+                    # the JSON structure.
+                    structure = _prepare_structure(
                         structure_family, data_source.structure
-                    ),
+                    )
+                    structure_id = compute_structure_id(structure)
+                    # The only way to do "insert if does not exist" i.e. ON CONFLICT
+                    # is to invoke dialect-specific insert.
+                    if self.context.engine.dialect.name == "sqlite":
+                        from sqlalchemy.dialects.sqlite import insert
+                    elif self.context.engine.dialect.name == "postgresql":
+                        from sqlalchemy.dialects.postgresql import insert
+                    else:
+                        assert False  # future-proofing
+                    statement = (
+                        insert(orm.Structure).values(
+                            id=structure_id,
+                            structure=structure,
+                        )
+                    ).on_conflict_do_nothing(index_elements=["id"])
+                    await db.execute(statement)
+                data_source_orm = orm.DataSource(
                     mimetype=data_source.mimetype,
                     management=data_source.management,
                     parameters=data_source.parameters,
+                    structure_id=structure_id,
                 )
                 node.data_sources.append(data_source_orm)
                 # await db.flush(data_source_orm)
@@ -601,7 +630,21 @@ class CatalogNodeAdapter:
             db.add(node)
             await db.commit()
             await db.refresh(node)
-            return key, type(self)(self.context, node, access_policy=self.access_policy)
+            # Load with DataSources each DataSource's Structure.
+            refreshed_node = (
+                await db.execute(
+                    select(orm.Node)
+                    .filter(orm.Node.id == node.id)
+                    .options(
+                        selectinload(orm.Node.data_sources).selectinload(
+                            orm.DataSource.structure
+                        )
+                    )
+                )
+            ).scalar()
+            return key, type(self)(
+                self.context, refreshed_node, access_policy=self.access_policy
+            )
 
     # async def patch_node(datasources=None):
     #     ...

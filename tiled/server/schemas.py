@@ -148,7 +148,7 @@ class DataSource(pydantic.BaseModel):
     def from_orm(cls, orm):
         return cls(
             id=orm.id,
-            structure=orm.structure,
+            structure=getattr(orm.structure, "structure", None),
             mimetype=orm.mimetype,
             parameters=orm.parameters,
             assets=[Asset.from_orm(assoc) for assoc in orm.asset_associations],
