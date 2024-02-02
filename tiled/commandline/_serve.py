@@ -612,6 +612,10 @@ def serve_config(
 
     # This config was already validated when it was parsed. Do not re-validate.
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
+
+    if root_path := uvicorn_kwargs.get("root_path", ""):
+        parsed_config["root_path"] = root_path
+
     web_app = build_app_from_config(
         parsed_config, source_filepath=config_path, scalable=scalable
     )

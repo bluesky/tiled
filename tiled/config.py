@@ -183,6 +183,8 @@ See documentation section "Serve a Directory of Files"."""
             root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
+        if root_path := config.get("root_path", ""):
+            server_settings["root_path"] = root_path
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["object_cache"] = config.get("object_cache", {})
         server_settings["response_bytesize_limit"] = config.get(

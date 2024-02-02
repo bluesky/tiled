@@ -266,6 +266,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             # comments. But they are served as JSON because that is easy to deal with
             # on the client side.
             ui_settings = yaml.safe_load(Path(TILED_UI_SETTINGS).read_text())
+            if root_path := server_settings.get("root_path", ""):
+                ui_settings["api_url"] = f"{root_path}{ui_settings['api_url']}"
 
             @app.get("/tiled-ui-settings")
             async def tiled_ui_settings():

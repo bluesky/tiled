@@ -44,7 +44,16 @@ class CustomHook(BuildHookInterface):
         )
         try:
             subprocess.check_call([npm_path, "install"], cwd="web-frontend")
-            subprocess.check_call([npm_path, "run", "build"], cwd="web-frontend")
+            subprocess.check_call(
+                [
+                    npm_path,
+                    "run",
+                    "build",
+                    "--",
+                    f"--base={os.environ.get('TILED_BUILD_PUBLIC_PATH', '/ui/')}",
+                ],
+                cwd="web-frontend",
+            )
             if Path(artifact_path).exists():
                 shutil.rmtree(artifact_path)
             shutil.copytree("web-frontend/dist", artifact_path)
