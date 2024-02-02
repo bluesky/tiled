@@ -1,6 +1,7 @@
 const basename = import.meta.env.BASE_URL;
-const tiledUISettingsURL = `/tiled/tiled-ui-settings`;
-// TODO Enable a different URL to be chosen at build time?
+
+const tiledUISettingsURL = basename.split('/').slice(0, -2).join('/') + '/tiled-ui-settings';
+// Alternate idea
 // const tiledUISettingsURL = import.meta.env.TILED_UI_SETTINGS || "/tiled-ui-settings";
 
 interface Column {
