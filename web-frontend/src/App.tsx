@@ -39,7 +39,7 @@ function App() {
   } , []);
   return (
     <SettingsContext.Provider value={settings}>
-          <BrowserRouter basename={basename}>
+      <BrowserRouter basename={basename}>
         <ErrorBoundary>
           <Suspense fallback={<Skeleton variant="rectangular" />}>
             <Routes>

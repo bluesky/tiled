@@ -50,7 +50,7 @@ class CustomHook(BuildHookInterface):
                     "run",
                     "build",
                     "--",
-                    f"--base={os.environ.get('PUBLIC_PATH', '/ui/')}",
+                    f"--base={os.environ.get('TILED_BUILD_PUBLIC_PATH', '/ui/')}",
                 ],
                 cwd="web-frontend",
             )
