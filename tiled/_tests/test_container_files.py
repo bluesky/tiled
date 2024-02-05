@@ -1,3 +1,5 @@
+import io
+
 import h5py
 import pandas
 import pytest
@@ -61,3 +63,6 @@ async def test_hdf5(tmpdir):
         tree(client)
         client["h"]["x"].read()
         client["h"]["g"]["y"].read()
+
+        buffer = io.BytesIO()
+        client.export(buffer, format="application/json")

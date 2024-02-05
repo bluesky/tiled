@@ -819,7 +819,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
     async def keys_range(self, offset, limit):
         if self.data_sources:
             return (await self.get_adapter()).keys()[
-                offset : offset + limit  # noqa: E203
+                offset : (offset + limit) if limit is not None else None  # noqa: E203
             ]
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
@@ -840,7 +840,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
     async def items_range(self, offset, limit):
         if self.data_sources:
             return (await self.get_adapter()).items()[
-                offset : offset + limit  # noqa: E203
+                offset : (offset + limit) if limit is not None else None  # noqa: E203
             ]
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
