@@ -101,7 +101,9 @@ def export_util(file, format, get, link, params):
         file.write(content)
 
 
-def client_for_item(context, structure_clients, item, structure=None):
+def client_for_item(
+    context, structure_clients, item, structure=None, include_data_sources=False
+):
     """
     Create an instance of the appropriate client class for an item.
 
@@ -129,6 +131,7 @@ def client_for_item(context, structure_clients, item, structure=None):
         item=item,
         structure_clients=structure_clients,
         structure=structure,
+        include_data_sources=include_data_sources,
     )
 
 

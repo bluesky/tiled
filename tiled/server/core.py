@@ -192,7 +192,7 @@ async def construct_entries_response(
     fields,
     select_metadata,
     omit_links,
-    show_sources,
+    include_data_sources,
     filters,
     sort,
     base_url,
@@ -230,7 +230,7 @@ async def construct_entries_response(
             fields,
             select_metadata,
             omit_links,
-            show_sources,
+            include_data_sources,
             media_type,
             max_depth=max_depth,
         )
@@ -398,14 +398,14 @@ async def construct_resource(
     fields,
     select_metadata,
     omit_links,
-    show_sources,
+    include_data_sources,
     media_type,
     max_depth,
     depth=0,
 ):
     path_str = "/".join(path_parts)
     attributes = {"ancestors": path_parts[:-1]}
-    if show_sources and hasattr(entry, "data_sources"):
+    if include_data_sources and hasattr(entry, "data_sources"):
         attributes["data_sources"] = entry.data_sources
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
@@ -461,7 +461,7 @@ async def construct_resource(
                             fields,
                             select_metadata,
                             omit_links,
-                            show_sources,
+                            include_data_sources,
                             media_type,
                             max_depth,
                             depth=1 + depth,

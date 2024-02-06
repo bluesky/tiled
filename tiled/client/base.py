@@ -83,12 +83,21 @@ class MetadataRevisions:
 
 
 class BaseClient:
-    def __init__(self, context, *, item, structure_clients, structure=None):
+    def __init__(
+        self,
+        context,
+        *,
+        item,
+        structure_clients,
+        structure=None,
+        include_data_sources=False,
+    ):
         self._context = context
         self._item = item
         self._cached_len = None  # a cache just for __len__
         self.structure_clients = structure_clients
         self._metadata_revisions = None
+        self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
         structure_family = attributes["structure_family"]
         if structure is not None:
@@ -190,17 +199,34 @@ class BaseClient:
 
     @property
     def data_sources(self):
+        if not self._include_data_sources:
+            raise RuntimeError(
+                "Data Sources were not fetched. Use include_data_sources()"
+            )
         return self.item["attributes"].get("data_sources")
 
-    def new_variation(self, structure_clients=UNCHANGED, **kwargs):
+    def include_data_sources(self):
+        return self.new_variation(self.context, include_data_sources=True).refresh()
+
+    def new_variation(
+        self,
+        context,
+        structure_clients=UNCHANGED,
+        include_data_sources=UNCHANGED,
+        **kwargs,
+    ):
         """
         This is intended primarily for internal use and use by subclasses.
         """
         if structure_clients is UNCHANGED:
             structure_clients = self.structure_clients
+        if include_data_sources is UNCHANGED:
+            include_data_sources = self._include_data_sources
         return type(self)(
+            context,
             item=self._item,
             structure_clients=structure_clients,
+            include_data_sources=include_data_sources,
             **kwargs,
         )
 
