@@ -26,17 +26,17 @@ def read(node, verbose=False, strict=False):
     faulty_entries = []
     if node.structure_family == StructureFamily.container:
         for key, child_node in node.items():
-            fault_result = read(child_node, verbose=verbose)
+            fault_result = read(child_node, verbose=verbose, strict=strict)
             faulty_entries.extend(fault_result)
     else:
         try:
             tmp = node.read()  # noqa: F841
         except Exception as err:
-            if strict:
-                raise
+            faulty_entries.append(node.uri)
             if verbose:
                 print(f"ERROR: {node.item['id']} - {err!r}", file=sys.stderr)
-            faulty_entries.append(node.uri)
+            if strict:
+                raise
         else:
             if verbose:
                 print(f"SUCCESS: {node.item['id']} ", file=sys.stderr)
