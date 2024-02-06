@@ -6,9 +6,8 @@ Iterables for KeysView, ValuesView, ItemsView that are sliceable.
 class IterViewBase:
     __slots__ = ("_get_length",)
 
-    def __init__(self, get_length, **kwargs):
+    def __init__(self, get_length):
         self._get_length = get_length
-        self._kwargs = kwargs
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -56,11 +55,7 @@ class KeysView(IterViewBase):
                 direction = -1
             else:
                 direction = 1
-            keys = list(
-                self._keys_slice(
-                    index_or_slice, 1 + index_or_slice, direction, **self._kwargs
-                )
-            )
+            keys = list(self._keys_slice(index_or_slice, 1 + index_or_slice, direction))
             try:
                 (key,) = keys
             except ValueError:
@@ -68,14 +63,14 @@ class KeysView(IterViewBase):
             return key
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return list(self._keys_slice(start, stop, direction, **self._kwargs))
+            return list(self._keys_slice(start, stop, direction))
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
     def __iter__(self):
-        yield from self._keys_slice(0, None, 1, **self._kwargs)
+        yield from self._keys_slice(0, None, 1)
 
 
 class ItemsView(IterViewBase):
@@ -98,9 +93,7 @@ class ItemsView(IterViewBase):
             else:
                 direction = 1
             items = list(
-                self._items_slice(
-                    index_or_slice, 1 + index_or_slice, direction, **self._kwargs
-                )
+                self._items_slice(index_or_slice, 1 + index_or_slice, direction)
             )
             try:
                 (item,) = items
@@ -109,7 +102,7 @@ class ItemsView(IterViewBase):
             return item
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return list(self._items_slice(start, stop, direction, **self._kwargs))
+            return list(self._items_slice(start, stop, direction))
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
@@ -127,10 +120,9 @@ class ValuesView(IterViewBase):
     __slots__ = ("_items_slice",)
     _name = "value"
 
-    def __init__(self, get_length, items_slice, **kwargs):
+    def __init__(self, get_length, items_slice):
         self._items_slice = items_slice
         super().__init__(get_length)
-        self._kwargs = kwargs
 
     def __getitem__(self, index_or_slice):
         if isinstance(index_or_slice, int):
@@ -140,9 +132,7 @@ class ValuesView(IterViewBase):
             else:
                 direction = 1
             items = list(
-                self._items_slice(
-                    index_or_slice, 1 + index_or_slice, direction, **self._kwargs
-                )
+                self._items_slice(index_or_slice, 1 + index_or_slice, direction)
             )
             try:
                 (item,) = items
@@ -152,19 +142,14 @@ class ValuesView(IterViewBase):
             return value
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return [
-                value
-                for _key, value in self._items_slice(
-                    start, stop, direction, **self._kwargs
-                )
-            ]
+            return [value for _key, value in self._items_slice(start, stop, direction)]
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
     def __iter__(self):
-        for key, value in self._items_slice(0, None, 1, **self._kwargs):
+        for key, value in self._items_slice(0, None, 1):
             yield value
 
 
