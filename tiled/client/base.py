@@ -149,6 +149,17 @@ class BaseClient:
     def context(self):
         return self._context
 
+    def refresh(self):
+        content = handle_error(
+            self.context.http_client.get(
+                self.uri,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"include_data_sources": self._include_data_sources},
+            )
+        ).json()
+        self._item = content["data"]
+        return self
+
     @property
     def item(self):
         "JSON payload describing this item. Mostly for internal use."
