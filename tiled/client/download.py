@@ -16,7 +16,12 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
+# This extracts the filename to the Content-Disposition header.
 CONTENT_DISPOSITION_PATTERN = re.compile(r"^attachment; ?filename=\"(.*)\"$")
+
+# This is used by the caller of download(...) to as placeholder
+# that should be substituted wit the filename provided by the
+# server in the Content-Disposition header.
 ATTACHMENT_FILENAME_PLACEHOLDER = "CONTENT_DISPOSITION_HEADER_ATTACHMENT_FILENAME"
 
 
@@ -57,7 +62,9 @@ def _download_url(
 def download(
     client, urls: Iterable[str], paths: Iterable[Path], *, max_workers: int = 4
 ):
-    """Download multiple URLs to the given directory."""
+    """
+    Download multiple URLs to given paths, in parallel.
+    """
     progress = Progress(
         # TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
         BarColumn(bar_width=None),
@@ -72,19 +79,25 @@ def download(
 
     if len(urls) != len(paths):
         raise ValueError(
-            "Must provide a list of URLs and a list of paths with equal length"
+            "Must provide a list of URLs and a list of paths with equal length. "
+            f"Received {len(urls) = } and {len(paths) = }."
         )
 
-    def handle_sigint(signum, frame):
+    def sigint_handler(signum, frame):
         done_event.set()
+        original_sigint_handler(signal.SIGINT, frame)
 
     done_event = Event()
-    signal.signal(signal.SIGINT, handle_sigint)
-
-    with progress:
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            for url, path in zip(urls, paths):
-                task_id = progress.add_task("download", start=False)
-                pool.submit(
-                    _download_url, progress, task_id, done_event, client, url, path
-                )
+    original_sigint_handler = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, sigint_handler)
+    try:
+        with progress:
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                for url, path in zip(urls, paths):
+                    task_id = progress.add_task("download", start=False)
+                    pool.submit(
+                        _download_url, progress, task_id, done_event, client, url, path
+                    )
+    finally:
+        # Restore SIGINT handler.
+        signal.signal(signal.SIGINT, original_sigint_handler)
