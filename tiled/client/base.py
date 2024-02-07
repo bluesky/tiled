@@ -1,6 +1,9 @@
 import importlib
 import time
 from dataclasses import asdict
+from pathlib import Path
+
+from httpx import URL
 
 from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
@@ -206,6 +209,8 @@ class BaseClient:
         return self.item["attributes"].get("data_sources")
 
     def include_data_sources(self):
+        if self._include_data_sources:
+            return self
         return self.new_variation(include_data_sources=True).refresh()
 
     def new_variation(
@@ -228,6 +233,78 @@ class BaseClient:
             include_data_sources=include_data_sources,
             **kwargs,
         )
+
+    def raw_export(self, directory=None, max_workers=4):
+        """
+        Download the raw assets backing this node.
+
+        This may produce a single file or a directory.
+
+        Parameters
+        ----------
+        directory : Path
+            Default is current working directory
+        max_workers : int
+            Number of parallel workers downloading data
+        """
+        if directory is None:
+            directory = Path.cwd()
+        else:
+            directory = Path(directory)
+
+        # Import here to defer the import of rich (for progress bar).
+        from .download import ATTACHMENT_FILENAME_PLACEHOLDER, download
+
+        urls = []
+        paths = []
+        data_sources = self.include_data_sources().data_sources
+        if len(data_sources) != 1:
+            raise NotImplementedError(
+                "Export of multiple data sources not yet supported"
+            )
+        for data_source in data_sources:
+            bytes_link = self.item["links"]["self"].replace(
+                "/metadata", "/asset/bytes", 1
+            )
+            manifest_link = self.item["links"]["self"].replace(
+                "/metadata", "/asset/manifest", 1
+            )
+            for asset in data_source["assets"]:
+                if len(data_source["assets"]) == 1:
+                    # Only one asset: keep the name simple.
+                    base_path = directory
+                else:
+                    # Multiple assets: Add a subdirectory named for the asset
+                    # id to namespace each asset.
+                    base_path = Path(directory, str(asset["id"]))
+                if asset["is_directory"]:
+                    relative_paths = handle_error(
+                        self.context.http_client.get(
+                            manifest_link, params={"id": asset["id"]}
+                        )
+                    ).json()["manifest"]
+                    urls.extend(
+                        [
+                            URL(
+                                bytes_link,
+                                params={
+                                    "id": asset["id"],
+                                    "relative_path": relative_path,
+                                },
+                            )
+                            for relative_path in relative_paths
+                        ]
+                    )
+                    paths.extend(
+                        [
+                            Path(base_path, relative_path)
+                            for relative_path in relative_paths
+                        ]
+                    )
+                else:
+                    urls.append(URL(bytes_link, params={"id": asset["id"]}))
+                    paths.append(Path(base_path, ATTACHMENT_FILENAME_PLACEHOLDER))
+        download(self.context.http_client, urls, paths, max_workers=max_workers)
 
     @property
     def formats(self):

@@ -1279,11 +1279,13 @@ async def get_asset(
     else:
         full_path = path
     stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+    filename = full_path.name
     return FileResponse(
         full_path,
         stat_result=stat_result,
         method="GET",
         status_code=200,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

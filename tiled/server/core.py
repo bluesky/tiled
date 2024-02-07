@@ -361,7 +361,7 @@ async def construct_data_response(
         # If the client already has this content, confirm that.
         return Response(status_code=304, headers=headers)
     if filename:
-        headers["Content-Disposition"] = f"attachment;filename={filename}"
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     serializer = serialization_registry.dispatch(spec, media_type)
     # This is the expensive step: actually serialize.
     try:
