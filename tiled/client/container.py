@@ -150,7 +150,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if sorting is UNCHANGED:
             sorting = self._sorting
         return super().new_variation(
-            context=self.context,
             structure_clients=structure_clients,
             queries=queries,
             sorting=sorting,
@@ -422,7 +421,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         **self._queries_as_params,
                         **sorting_params,
                     },
-                    include_data_sources=self._include_data_sources,
                 )
             ).json()
             self._cached_len = (
@@ -636,6 +634,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.structure_clients,
             item,
             structure=structure,
+            include_data_sources=self._include_data_sources,
         )
 
     # When (re)chunking arrays for upload, we use this limit

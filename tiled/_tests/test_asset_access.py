@@ -6,15 +6,38 @@ from ..server.app import build_app
 
 
 @pytest.fixture
-def client(tmpdir):
+def context(tmpdir):
     catalog = in_memory(writable_storage=str(tmpdir))
     app = build_app(catalog)
     with Context.from_app(app) as context:
-        client = from_context(context)
-        yield client
+        yield context
 
 
-def test_with_data_sources(client):
-    x = client.write_array([1, 2, 3], key="x")
-    x.data_sources is not None
-    client.values().with_data_sources()[0].data_sources is not None
+@pytest.fixture
+def client(context):
+    client = from_context(context)
+    yield client
+
+
+def test_include_data_sources_method_on_self(client):
+    "Calling include_data_sources() fetches data sources on self."
+    client.write_array([1, 2, 3], key="x")
+    with pytest.raises(RuntimeError):
+        client["x"].data_sources
+    client["x"].include_data_sources().data_sources is not None
+
+
+def test_include_data_sources_method_affects_children(client):
+    "Calling include_data_sources() fetches data sources on children."
+    client.create_container("c")
+    client["c"].write_array([1, 2, 3], key="x")
+    c = client["c"].include_data_sources()
+    c["x"].data_sources is not None
+
+
+def test_include_data_sources_kwarg(context):
+    "Passing include_data_sources to constructor includes them by default."
+    client = from_context(context, include_data_sources=True)
+    client.write_array([1, 2, 3], key="x")
+    client["x"].data_sources is not None
+    client["x"].include_data_sources() is not None

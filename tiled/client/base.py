@@ -206,11 +206,10 @@ class BaseClient:
         return self.item["attributes"].get("data_sources")
 
     def include_data_sources(self):
-        return self.new_variation(self.context, include_data_sources=True).refresh()
+        return self.new_variation(include_data_sources=True).refresh()
 
     def new_variation(
         self,
-        context,
         structure_clients=UNCHANGED,
         include_data_sources=UNCHANGED,
         **kwargs,
@@ -223,7 +222,7 @@ class BaseClient:
         if include_data_sources is UNCHANGED:
             include_data_sources = self._include_data_sources
         return type(self)(
-            context,
+            self.context,
             item=self._item,
             structure_clients=structure_clients,
             include_data_sources=include_data_sources,
