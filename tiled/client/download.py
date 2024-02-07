@@ -2,7 +2,7 @@
 import re
 import signal
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Event
 
@@ -57,6 +57,7 @@ def _download_url(
         progress.console.log(f"ERROR {err!r}")
     else:
         progress.console.log(f"Downloaded {path}")
+    return path
 
 
 def download(
@@ -90,14 +91,18 @@ def download(
     done_event = Event()
     original_sigint_handler = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, sigint_handler)
+    futures = []
     try:
         with progress:
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 for url, path in zip(urls, paths):
                     task_id = progress.add_task("download", start=False)
-                    pool.submit(
+                    future = pool.submit(
                         _download_url, progress, task_id, done_event, client, url, path
                     )
+                    futures.append(future)
+                wait(futures)
     finally:
         # Restore SIGINT handler.
         signal.signal(signal.SIGINT, original_sigint_handler)
+    return [future.result() for future in futures]

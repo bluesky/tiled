@@ -1,5 +1,6 @@
 import importlib
 import time
+import warnings
 from dataclasses import asdict
 from pathlib import Path
 
@@ -203,14 +204,22 @@ class BaseClient:
     @property
     def data_sources(self):
         if not self._include_data_sources:
-            raise RuntimeError(
-                "Data Sources were not fetched. Use include_data_sources()"
+            warnings.warn(
+                """Calling include_data_sources().refresh().
+To fetch the data sources up front, call include_data_sources() on the
+client or pass the optional parameter `include_data_sources=True` to
+`from_uri(...)` or similar."""
             )
-        return self.item["attributes"].get("data_sources")
+        return self.include_data_sources().item["attributes"].get("data_sources")
 
     def include_data_sources(self):
+        """
+        Ensure that data source and asset information is fetch.
+
+        If it has already been fetched, this is a no-op.
+        """
         if self._include_data_sources:
-            return self
+            return self  # no op
         return self.new_variation(include_data_sources=True).refresh()
 
     def new_variation(
@@ -234,6 +243,31 @@ class BaseClient:
             **kwargs,
         )
 
+    def asset_manifests(self, data_sources):
+        """
+        Return a manifest of the relative paths of the contents in each asset.
+
+        This return a dictionary keyed on asset ID.
+        Assets backed by a single file are mapped to None (no manifest).
+        Asset backed by a directory of files are mapped to a list of relative paths.
+        """
+        manifests = {}
+        for data_source in data_sources:
+            manifest_link = self.item["links"]["self"].replace(
+                "/metadata", "/asset/manifest", 1
+            )
+            for asset in data_source["assets"]:
+                if asset["is_directory"]:
+                    manifest = handle_error(
+                        self.context.http_client.get(
+                            manifest_link, params={"id": asset["id"]}
+                        )
+                    ).json()["manifest"]
+                else:
+                    manifest = None
+                manifests[asset["id"]] = manifest
+        return manifests
+
     def raw_export(self, directory=None, max_workers=4):
         """
         Download the raw assets backing this node.
@@ -242,10 +276,15 @@ class BaseClient:
 
         Parameters
         ----------
-        directory : Path
+        directory : Path, optional
             Default is current working directory
-        max_workers : int
-            Number of parallel workers downloading data
+        max_workers : int, optional
+            Number of parallel workers downloading data. Default is 4.
+
+        Returns
+        -------
+        paths : List[Path]
+            Filepaths of exported files
         """
         if directory is None:
             directory = Path.cwd()
@@ -258,6 +297,7 @@ class BaseClient:
         urls = []
         paths = []
         data_sources = self.include_data_sources().data_sources
+        asset_manifests = self.asset_manifests(data_sources)
         if len(data_sources) != 1:
             raise NotImplementedError(
                 "Export of multiple data sources not yet supported"
@@ -265,9 +305,6 @@ class BaseClient:
         for data_source in data_sources:
             bytes_link = self.item["links"]["self"].replace(
                 "/metadata", "/asset/bytes", 1
-            )
-            manifest_link = self.item["links"]["self"].replace(
-                "/metadata", "/asset/manifest", 1
             )
             for asset in data_source["assets"]:
                 if len(data_source["assets"]) == 1:
@@ -278,11 +315,7 @@ class BaseClient:
                     # id to namespace each asset.
                     base_path = Path(directory, str(asset["id"]))
                 if asset["is_directory"]:
-                    relative_paths = handle_error(
-                        self.context.http_client.get(
-                            manifest_link, params={"id": asset["id"]}
-                        )
-                    ).json()["manifest"]
+                    relative_paths = asset_manifests[asset["id"]]
                     urls.extend(
                         [
                             URL(
@@ -304,7 +337,7 @@ class BaseClient:
                 else:
                     urls.append(URL(bytes_link, params={"id": asset["id"]}))
                     paths.append(Path(base_path, ATTACHMENT_FILENAME_PLACEHOLDER))
-        download(self.context.http_client, urls, paths, max_workers=max_workers)
+        return download(self.context.http_client, urls, paths, max_workers=max_workers)
 
     @property
     def formats(self):
