@@ -28,8 +28,8 @@ def test_include_data_sources_method_on_self(client):
     client.write_array([1, 2, 3], key="x")
     with pytest.warns(UserWarning):
         # This fetches the sources with a second request.
-        client["x"].data_sources
-    client["x"].include_data_sources().data_sources is not None
+        client["x"].data_sources()
+    client["x"].include_data_sources().data_sources() is not None
 
 
 def test_include_data_sources_method_affects_children(client):
@@ -37,14 +37,14 @@ def test_include_data_sources_method_affects_children(client):
     client.create_container("c")
     client["c"].write_array([1, 2, 3], key="x")
     c = client["c"].include_data_sources()
-    c["x"].data_sources is not None
+    c["x"].data_sources() is not None
 
 
 def test_include_data_sources_kwarg(context):
     "Passing include_data_sources to constructor includes them by default."
     client = from_context(context, include_data_sources=True)
     client.write_array([1, 2, 3], key="x")
-    client["x"].data_sources is not None
+    client["x"].data_sources() is not None
     client["x"].include_data_sources() is not None
 
 
@@ -52,7 +52,7 @@ def test_raw_export(client, tmpdir):
     "Use raw_export() and compare hashes or original and exported files."
     client.write_array([1, 2, 3], key="x")
     exported_paths = client["x"].raw_export(tmpdir)
-    data_sources = client["x"].include_data_sources().data_sources
+    data_sources = client["x"].include_data_sources().data_sources()
     orig_dir = path_from_uri(data_sources[0]["assets"][0]["data_uri"])
     _asset_id, relative_paths = client["x"].asset_manifests(data_sources).popitem()
     orig_paths = [Path(orig_dir, relative_path) for relative_path in relative_paths]

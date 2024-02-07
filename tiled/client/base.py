@@ -201,7 +201,6 @@ class BaseClient:
         "Quick access to this entry"
         return StructureFamily[self.item["attributes"]["structure_family"]]
 
-    @property
     def data_sources(self):
         if not self._include_data_sources:
             warnings.warn(
@@ -250,6 +249,13 @@ client or pass the optional parameter `include_data_sources=True` to
         This return a dictionary keyed on asset ID.
         Assets backed by a single file are mapped to None (no manifest).
         Asset backed by a directory of files are mapped to a list of relative paths.
+
+        Parameters
+        ----------
+        data_sources : dict
+            The value returned by ``.data_sources()``. This is passed in explicitly
+            to avoid fetching it twice in common usages. It also enables passing in
+            a subset of the data_sources of interest.
         """
         manifests = {}
         for data_source in data_sources:
@@ -296,7 +302,7 @@ client or pass the optional parameter `include_data_sources=True` to
 
         urls = []
         paths = []
-        data_sources = self.include_data_sources().data_sources
+        data_sources = self.include_data_sources().data_sources()
         asset_manifests = self.asset_manifests(data_sources)
         if len(data_sources) != 1:
             raise NotImplementedError(
