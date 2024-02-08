@@ -30,7 +30,7 @@ def test_include_data_sources_method_on_self(client):
     with pytest.warns(UserWarning):
         # This fetches the sources with an additional implicit request.
         client["x"].data_sources()
-    client["x"].include_data_sources().data_sources() is not None
+    assert client["x"].include_data_sources().data_sources() is not None
 
 
 def test_include_data_sources_method_affects_children(client):
@@ -38,15 +38,15 @@ def test_include_data_sources_method_affects_children(client):
     client.create_container("c")
     client["c"].write_array([1, 2, 3], key="x")
     c = client["c"].include_data_sources()
-    c["x"].data_sources() is not None
+    assert c["x"].data_sources() is not None
 
 
 def test_include_data_sources_kwarg(context):
     "Passing include_data_sources to constructor includes them by default."
     client = from_context(context, include_data_sources=True)
     client.write_array([1, 2, 3], key="x")
-    client["x"].data_sources() is not None
-    client["x"].include_data_sources() is not None
+    assert client["x"].data_sources() is not None
+    assert client["x"].include_data_sources() is not None
 
 
 def test_raw_export(client, tmpdir):
@@ -65,5 +65,6 @@ def test_raw_export(client, tmpdir):
 
 
 def test_get_asset_filepaths(client):
+    "Smoke test get_asset_filepaths."
     client.write_array([1, 2, 3], key="x")
     get_asset_filepaths(client.include_data_sources()["x"])
