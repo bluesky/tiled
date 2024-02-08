@@ -5,7 +5,7 @@ import pytest
 
 from ..catalog import in_memory
 from ..client import Context, from_context
-from ..client.utils import get_filepaths
+from ..client.utils import get_asset_filepaths
 from ..server.app import build_app
 from ..utils import path_from_uri
 
@@ -64,6 +64,6 @@ def test_raw_export(client, tmpdir):
     assert orig_hashes == exported_hashes
 
 
-def test_get_filepaths(client):
+def test_get_asset_filepaths(client):
     client.write_array([1, 2, 3], key="x")
-    get_filepaths(client["x"])
+    get_asset_filepaths(client.include_data_sources()["x"])
