@@ -84,6 +84,7 @@ all = [
     "python-jose[cryptography]",
     "python-multipart",
     "pyyaml",
+    "rich",
     "sparse",
     "sqlalchemy[asyncio] >=2",
     "starlette",
@@ -120,6 +121,7 @@ client = [
     "pandas",
     "pyarrow",
     "pyyaml",
+    "rich",
     "sparse",
     "typer",
     "xarray",
@@ -177,6 +179,7 @@ minimal-client = [
     "msgpack >=1.0.0",
     "orjson",
     "pyyaml",
+    "rich",
     "typer"
 ]
 # These are the requirements needed for basic server functionality.
