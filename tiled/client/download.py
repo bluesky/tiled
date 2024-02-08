@@ -19,8 +19,8 @@ from rich.progress import (
 # This extracts the filename to the Content-Disposition header.
 CONTENT_DISPOSITION_PATTERN = re.compile(r"^attachment; ?filename=\"(.*)\"$")
 
-# This is used by the caller of download(...) to as placeholder
-# that should be substituted wit the filename provided by the
+# This is used by the caller of download(...) as a placeholder
+# that should be substituted with the filename provided by the
 # server in the Content-Disposition header.
 ATTACHMENT_FILENAME_PLACEHOLDER = "CONTENT_DISPOSITION_HEADER_ATTACHMENT_FILENAME"
 

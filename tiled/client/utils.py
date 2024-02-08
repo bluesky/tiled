@@ -241,7 +241,7 @@ class SerializableLock:
     __repr__ = __str__
 
 
-def get_filepaths(node):
+def get_asset_filepaths(node):
     """
     Given a node, return a list of filepaths of the data backing it.
     """

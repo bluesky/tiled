@@ -213,7 +213,7 @@ client or pass the optional parameter `include_data_sources=True` to
 
     def include_data_sources(self):
         """
-        Ensure that data source and asset information is fetch.
+        Ensure that data source and asset information is fetched.
 
         If it has already been fetched, this is a no-op.
         """
@@ -283,7 +283,7 @@ client or pass the optional parameter `include_data_sources=True` to
         Parameters
         ----------
         directory : Path, optional
-            Default is current working directory
+            Destination for downloaded assets. Default is current working directory
         max_workers : int, optional
             Number of parallel workers downloading data. Default is 4.
 
