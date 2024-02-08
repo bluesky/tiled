@@ -274,7 +274,7 @@ client or pass the optional parameter `include_data_sources=True` to
                 manifests[asset["id"]] = manifest
         return manifests
 
-    def raw_export(self, directory=None, max_workers=4):
+    def raw_export(self, destination_directory=None, max_workers=4):
         """
         Download the raw assets backing this node.
 
@@ -282,7 +282,7 @@ client or pass the optional parameter `include_data_sources=True` to
 
         Parameters
         ----------
-        directory : Path, optional
+        destination_directory : Path, optional
             Destination for downloaded assets. Default is current working directory
         max_workers : int, optional
             Number of parallel workers downloading data. Default is 4.
@@ -292,10 +292,10 @@ client or pass the optional parameter `include_data_sources=True` to
         paths : List[Path]
             Filepaths of exported files
         """
-        if directory is None:
-            directory = Path.cwd()
+        if destination_directory is None:
+            destination_directory = Path.cwd()
         else:
-            directory = Path(directory)
+            destination_directory = Path(destination_directory)
 
         # Import here to defer the import of rich (for progress bar).
         from .download import ATTACHMENT_FILENAME_PLACEHOLDER, download
@@ -315,11 +315,11 @@ client or pass the optional parameter `include_data_sources=True` to
             for asset in data_source["assets"]:
                 if len(data_source["assets"]) == 1:
                     # Only one asset: keep the name simple.
-                    base_path = directory
+                    base_path = destination_directory
                 else:
                     # Multiple assets: Add a subdirectory named for the asset
                     # id to namespace each asset.
-                    base_path = Path(directory, str(asset["id"]))
+                    base_path = Path(destination_directory, str(asset["id"]))
                 if asset["is_directory"]:
                     relative_paths = asset_manifest[asset["id"]]
                     urls.extend(
