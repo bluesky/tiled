@@ -1,10 +1,10 @@
 "Download utilities implemented using httpx and rich progress bars, with parallelism."
 import re
 import signal
-from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Event
+from typing import Iterable
 
 import httpx
 from rich.progress import (
