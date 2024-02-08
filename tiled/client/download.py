@@ -81,7 +81,7 @@ def download(
     if len(urls) != len(paths):
         raise ValueError(
             "Must provide a list of URLs and a list of paths with equal length. "
-            f"Received {len(urls) = } and {len(paths) = }."
+            f"Received {len(urls)=} and {len(paths)=}."
         )
 
     def sigint_handler(signum, frame):
