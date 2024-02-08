@@ -242,7 +242,7 @@ client or pass the optional parameter `include_data_sources=True` to
             **kwargs,
         )
 
-    def asset_manifests(self, data_sources):
+    def asset_manifest(self, data_sources):
         """
         Return a manifest of the relative paths of the contents in each asset.
 
@@ -303,7 +303,7 @@ client or pass the optional parameter `include_data_sources=True` to
         urls = []
         paths = []
         data_sources = self.include_data_sources().data_sources()
-        asset_manifests = self.asset_manifests(data_sources)
+        asset_manifest = self.asset_manifest(data_sources)
         if len(data_sources) != 1:
             raise NotImplementedError(
                 "Export of multiple data sources not yet supported"
@@ -321,7 +321,7 @@ client or pass the optional parameter `include_data_sources=True` to
                     # id to namespace each asset.
                     base_path = Path(directory, str(asset["id"]))
                 if asset["is_directory"]:
-                    relative_paths = asset_manifests[asset["id"]]
+                    relative_paths = asset_manifest[asset["id"]]
                     urls.extend(
                         [
                             URL(

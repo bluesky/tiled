@@ -55,7 +55,7 @@ def test_raw_export(client, tmpdir):
     exported_paths = client["x"].raw_export(tmpdir)
     data_sources = client["x"].include_data_sources().data_sources()
     orig_dir = path_from_uri(data_sources[0]["assets"][0]["data_uri"])
-    _asset_id, relative_paths = client["x"].asset_manifests(data_sources).popitem()
+    _asset_id, relative_paths = client["x"].asset_manifest(data_sources).popitem()
     orig_paths = [Path(orig_dir, relative_path) for relative_path in relative_paths]
     orig_hashes = [hashlib.md5(path.read_bytes()).digest() for path in orig_paths]
     exported_hashes = [
