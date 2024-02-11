@@ -60,3 +60,5 @@ grafana_data
 data
 
 tiled/_version.py
+
+.env
