@@ -28,8 +28,8 @@ class DatasetAdapter(MapAdapter):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
             )
-        specs = specs or []
-        specs.append(Spec("xarray_dataset"))
+        if specs is None:
+            specs = [Spec("xarray_dataset")]
         super().__init__(
             mapping, *args, specs=specs, access_policy=access_policy, **kwargs
         )
