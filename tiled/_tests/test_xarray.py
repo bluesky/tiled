@@ -103,16 +103,25 @@ def test_specs_mutation_bug(client):
 
 
 def test_specs_override(client):
+    "The 'xarray_dataset' is appended to the end if not present."
+    ds = pandas.DataFrame({"x": numpy.array([1, 2, 3])}).to_xarray()
     tree = MapAdapter(
         {
-            key: DatasetAdapter.from_dataset(ds, specs=[Spec("test")])
-            for key, ds in EXPECTED.items()
+            "a": DatasetAdapter.from_dataset(ds, specs=[Spec("test")]),
+            "b": DatasetAdapter.from_dataset(
+                ds, specs=[Spec("xarray_dataset"), Spec("test")]
+            ),
+            "c": DatasetAdapter.from_dataset(
+                ds, specs=[Spec("test"), Spec("xarray_dataset")]
+            ),
         }
     )
     app = build_app(tree)
     with Context.from_app(app) as context:
         client = from_context(context)
-    assert client["image"].specs == [Spec("test")]
+    assert client["a"].specs == [Spec("test"), Spec("xarray_dataset")]
+    assert client["b"].specs == [Spec("xarray_dataset"), Spec("test")]
+    assert client["c"].specs == [Spec("test"), Spec("xarray_dataset")]
 
 
 @pytest.mark.parametrize("key", ["image", "weather"])

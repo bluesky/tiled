@@ -16,6 +16,9 @@ class DatasetAdapter(MapAdapter):
     @classmethod
     def from_dataset(cls, dataset, *, specs=None, access_policy=None):
         mapping = _DatasetMap(dataset)
+        specs = specs or []
+        if "xarray_dataset" not in [spec.name for spec in specs]:
+            specs.append(Spec("xarray_dataset"))
         return cls(
             mapping,
             metadata={"attrs": dataset.attrs},
@@ -28,8 +31,6 @@ class DatasetAdapter(MapAdapter):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
             )
-        if specs is None:
-            specs = [Spec("xarray_dataset")]
         super().__init__(
             mapping, *args, specs=specs, access_policy=access_policy, **kwargs
         )
