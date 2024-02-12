@@ -1,6 +1,7 @@
 import dask.array
 import numpy
 import orjson
+import pandas
 import pytest
 import xarray
 import xarray.testing
@@ -11,6 +12,7 @@ from ..client import Context, from_context, record_history
 from ..client import xarray as xarray_client
 from ..serialization.xarray import serialize_json
 from ..server.app import build_app
+from ..structures.core import Spec
 
 image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -77,6 +79,49 @@ def test_xarray_dataset(client, key):
     expected = EXPECTED[key]
     actual = client[key].read().load()
     xarray.testing.assert_equal(actual, expected)
+
+
+def test_specs(client):
+    assert client["image"].specs == [Spec("xarray_dataset")]
+    assert client["image"]["image"].specs == [Spec("xarray_data_var")]
+    assert client["image"]["x"].specs == [Spec("xarray_coord")]
+
+
+def test_specs_mutation_bug(client):
+    # https://github.com/bluesky/tiled/issues/651
+    ds = pandas.DataFrame({"x": numpy.array([1, 2, 3])}).to_xarray()
+    tree = MapAdapter({"data": DatasetAdapter.from_dataset(ds)})
+    for _ in range(2):
+        # This bug caused additional, redundant specs to be appended on each
+        # iteration.
+        app = build_app(tree)
+        with Context.from_app(app) as context:
+            client = from_context(context)
+            data = client["data"]
+            data.read()
+            assert data.specs == [Spec("xarray_dataset")]
+
+
+def test_specs_override(client):
+    "The 'xarray_dataset' is appended to the end if not present."
+    ds = pandas.DataFrame({"x": numpy.array([1, 2, 3])}).to_xarray()
+    tree = MapAdapter(
+        {
+            "a": DatasetAdapter.from_dataset(ds, specs=[Spec("test")]),
+            "b": DatasetAdapter.from_dataset(
+                ds, specs=[Spec("xarray_dataset"), Spec("test")]
+            ),
+            "c": DatasetAdapter.from_dataset(
+                ds, specs=[Spec("test"), Spec("xarray_dataset")]
+            ),
+        }
+    )
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+    assert client["a"].specs == [Spec("test"), Spec("xarray_dataset")]
+    assert client["b"].specs == [Spec("xarray_dataset"), Spec("test")]
+    assert client["c"].specs == [Spec("test"), Spec("xarray_dataset")]
 
 
 @pytest.mark.parametrize("key", ["image", "weather"])
