@@ -75,6 +75,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         queries=None,
         sorting=None,
         structure=None,
+        include_data_sources=False,
     ):
         "This is not user-facing. Use Node.from_uri."
 
@@ -108,6 +109,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             context=context,
             item=item,
             structure_clients=structure_clients,
+            include_data_sources=include_data_sources,
         )
 
     def __repr__(self):
@@ -148,7 +150,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if sorting is UNCHANGED:
             sorting = self._sorting
         return super().new_variation(
-            context=self.context,
             structure_clients=structure_clients,
             queries=queries,
             sorting=sorting,
@@ -252,6 +253,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     self.item["links"]["search"],
                     headers={"Accept": MSGPACK_MIME_TYPE},
                     params={
+                        "include_data_sources": self._include_data_sources,
                         **_queries_to_params(KeyLookup(key)),
                         **self._queries_as_params,
                         **self._sorting_params,
@@ -269,7 +271,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 len(data) == 1
             ), "The key lookup query must never result more than one result."
             (item,) = data
-            result = client_for_item(self.context, self.structure_clients, item)
+            result = client_for_item(
+                self.context,
+                self.structure_clients,
+                item,
+                include_data_sources=self._include_data_sources,
+            )
             if tail:
                 result = result[tail]
         else:
@@ -301,6 +308,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             self.context.http_client.get(
                                 self_link + "".join(f"/{key}" for key in keys[i:]),
                                 headers={"Accept": MSGPACK_MIME_TYPE},
+                                params={
+                                    "include_data_sources": self._include_data_sources
+                                },
                             )
                         ).json()
                     except ClientError as err:
@@ -313,7 +323,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         raise
                     item = content["data"]
                     break
-            result = client_for_item(self.context, self.structure_clients, item)
+            result = client_for_item(
+                self.context,
+                self.structure_clients,
+                item,
+                include_data_sources=self._include_data_sources,
+            )
         return result
 
     def delete(self, key):
@@ -401,7 +416,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 self.context.http_client.get(
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={**self._queries_as_params, **sorting_params},
+                    params={
+                        "include_data_sources": self._include_data_sources,
+                        **self._queries_as_params,
+                        **sorting_params,
+                    },
                 )
             ).json()
             self._cached_len = (
@@ -615,6 +634,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.structure_clients,
             item,
             structure=structure,
+            include_data_sources=self._include_data_sources,
         )
 
     # When (re)chunking arrays for upload, we use this limit

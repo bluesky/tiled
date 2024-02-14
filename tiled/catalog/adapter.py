@@ -34,7 +34,7 @@ from tiled.queries import (
 )
 
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import DataSource, Management, Revision, Spec
+from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
     UNCHANGED,
@@ -319,6 +319,26 @@ class CatalogNodeAdapter:
     @property
     def data_sources(self):
         return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
+
+    async def asset_by_id(self, asset_id):
+        statement = (
+            select(orm.Asset)
+            .join(
+                orm.DataSourceAssetAssociation,
+                orm.DataSourceAssetAssociation.asset_id == orm.Asset.id,
+            )
+            .join(
+                orm.DataSource,
+                orm.DataSource.id == orm.DataSourceAssetAssociation.data_source_id,
+            )
+            .join(orm.Node, orm.Node.id == orm.DataSource.node_id)
+            .where((orm.Node.id == self.node.id) & (orm.Asset.id == asset_id))
+        )
+        async with self.context.session() as db:
+            asset = (await db.execute(statement)).scalar()
+        if asset is None:
+            return None  # no match
+        return Asset.from_orm(asset)
 
     def structure(self):
         if self.data_sources:

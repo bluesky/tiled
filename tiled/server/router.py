@@ -1,16 +1,20 @@
 import dataclasses
 import inspect
+import os
 from datetime import datetime, timedelta
 from functools import partial
+from pathlib import Path
 from typing import Any, List, Optional
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
+from starlette.responses import FileResponse
 
 from .. import __version__
 from ..structures.core import StructureFamily
-from ..utils import ensure_awaitable
+from ..utils import ensure_awaitable, path_from_uri
 from ..validation_registration import ValidationError
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
@@ -145,7 +149,7 @@ async def search(
     sort: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    show_sources: bool = Query(False),
+    include_data_sources: bool = Query(False),
     entry: Any = SecureEntry(scopes=["read:metadata"]),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
@@ -168,7 +172,7 @@ async def search(
             fields,
             select_metadata,
             omit_links,
-            show_sources,
+            include_data_sources,
             filters,
             sort,
             get_base_url(request),
@@ -302,7 +306,7 @@ async def metadata(
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
-    show_sources: bool = Query(False),
+    include_data_sources: bool = Query(False),
     entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
 ):
@@ -319,7 +323,7 @@ async def metadata(
             fields,
             select_metadata,
             omit_links,
-            show_sources,
+            include_data_sources,
             resolve_media_type(request),
             max_depth=max_depth,
         )
@@ -1215,3 +1219,126 @@ async def delete_revision(
 
     await entry.delete_revision(number)
     return json_or_msgpack(request, None)
+
+
+@router.get("/asset/bytes/{path:path}")
+async def get_asset(
+    request: Request,
+    id: int,
+    relative_path: Optional[Path] = None,
+    entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
+    settings: BaseSettings = Depends(get_settings),
+):
+    if not settings.expose_raw_assets:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This Tiled server is configured not to allow "
+                "downloading raw assets."
+            ),
+        )
+    if not hasattr(entry, "asset_by_id"):
+        raise HTTPException(
+            status_code=405,
+            detail="This node does not support downloading assets.",
+        )
+
+    asset = await entry.asset_by_id(id)
+    if asset is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"This node exists but it does not have an Asset with id {id}",
+        )
+    if asset.is_directory:
+        if relative_path is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This asset is a directory. Must specify relative path, "
+                    f"from manifest provided by /asset/manifest/...?id={id}"
+                ),
+            )
+        if relative_path.is_absolute():
+            raise HTTPException(
+                status_code=400,
+                detail="relative_path query parameter must be a *relative* path",
+            )
+    else:
+        if relative_path is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="This asset is not a directory. The relative_path query parameter must not be set.",
+            )
+    if not asset.data_uri.startswith("file:"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only download assets stored as file:// is currently supported.",
+        )
+    path = path_from_uri(asset.data_uri)
+    if relative_path is not None:
+        # Be doubly sure that this is under the Asset's data_uri directory
+        # and not sneakily escaping it.
+        if not os.path.commonpath([path, path / relative_path]) != path:
+            # This should not be possible.
+            raise RuntimeError(
+                f"Refusing to serve {path / relative_path} because it is outside "
+                "of the Asset's directory"
+            )
+        full_path = path / relative_path
+    else:
+        full_path = path
+    stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
+    filename = full_path.name
+    return FileResponse(
+        full_path,
+        stat_result=stat_result,
+        method="GET",
+        status_code=200,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/asset/manifest/{path:path}")
+async def get_asset_manifest(
+    request: Request,
+    id: int,
+    entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
+    settings: BaseSettings = Depends(get_settings),
+):
+    if not settings.expose_raw_assets:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This Tiled server is configured not to allow "
+                "downloading raw assets."
+            ),
+        )
+    if not hasattr(entry, "asset_by_id"):
+        raise HTTPException(
+            status_code=405,
+            detail="This node does not support downloading assets.",
+        )
+
+    asset = await entry.asset_by_id(id)
+    if asset is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"This node exists but it does not have an Asset with id {id}",
+        )
+    if not asset.is_directory:
+        raise HTTPException(
+            status_code=400,
+            detail="This asset is not a directory. There is no manifest.",
+        )
+    if not asset.data_uri.startswith("file:"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only download assets stored as file:// is currently supported.",
+        )
+    path = path_from_uri(asset.data_uri)
+    manifest = []
+    # Walk the directory and any subdirectories. Aggregate a list of all the
+    # files, given as paths relative to the directory root.
+    for root, _directories, files in os.walk(path):
+        manifest.extend(Path(root, file) for file in files)
+    return json_or_msgpack(request, {"manifest": manifest})

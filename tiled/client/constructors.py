@@ -21,6 +21,7 @@ def from_uri(
     prompt_for_reauthentication=UNSET,
     headers=None,
     timeout=None,
+    include_data_sources=False,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -57,6 +58,8 @@ def from_uri(
     timeout : httpx.Timeout, optional
         If None, use Tiled default settings.
         (To disable timeouts, use httpx.Timeout(None)).
+    include_data_sources : bool, optional
+        Default False. If True, fetch information about underlying data sources.
     """
     context, node_path_parts = Context.from_any_uri(
         uri,
@@ -73,6 +76,7 @@ def from_uri(
         username=username,
         auth_provider=auth_provider,
         node_path_parts=node_path_parts,
+        include_data_sources=include_data_sources,
     )
 
 
@@ -83,6 +87,7 @@ def from_context(
     username=UNSET,
     auth_provider=UNSET,
     node_path_parts=None,
+    include_data_sources=False,
 ):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -132,7 +137,11 @@ Set an api_key as in:
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
     try:
         content = handle_error(
-            context.http_client.get(item_uri, headers={"Accept": MSGPACK_MIME_TYPE})
+            context.http_client.get(
+                item_uri,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"include_data_sources": include_data_sources},
+            )
         ).json()
     except ClientError as err:
         if (
@@ -142,12 +151,18 @@ Set an api_key as in:
         ):
             context.authenticate()
             content = handle_error(
-                context.http_client.get(item_uri, headers={"Accept": MSGPACK_MIME_TYPE})
+                context.http_client.get(
+                    item_uri,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={"include_data_sources": include_data_sources},
+                )
             ).json()
         else:
             raise
     item = content["data"]
-    return client_for_item(context, structure_clients, item)
+    return client_for_item(
+        context, structure_clients, item, include_data_sources=include_data_sources
+    )
 
 
 def from_profile(name, structure_clients=None, **kwargs):

@@ -8,6 +8,8 @@ from weakref import WeakValueDictionary
 import httpx
 import msgpack
 
+from ..utils import path_from_uri
+
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
 
@@ -101,7 +103,9 @@ def export_util(file, format, get, link, params):
         file.write(content)
 
 
-def client_for_item(context, structure_clients, item, structure=None):
+def client_for_item(
+    context, structure_clients, item, structure=None, include_data_sources=False
+):
     """
     Create an instance of the appropriate client class for an item.
 
@@ -129,6 +133,7 @@ def client_for_item(context, structure_clients, item, structure=None):
         item=item,
         structure_clients=structure_clients,
         structure=structure,
+        include_data_sources=include_data_sources,
     )
 
 
@@ -234,3 +239,17 @@ class SerializableLock:
         return f"<{self.__class__.__name__}: {self.token}>"
 
     __repr__ = __str__
+
+
+def get_asset_filepaths(node):
+    """
+    Given a node, return a list of filepaths of the data backing it.
+    """
+    filepaths = []
+    for data_source in node.data_sources() or []:
+        for asset in data_source["assets"]:
+            # If, in the future, there are nodes with s3:// or other
+            # schemes, path_from_uri will raise an exception here
+            # because it cannot provide a filepath.
+            filepaths.append(path_from_uri(asset["data_uri"]))
+    return filepaths

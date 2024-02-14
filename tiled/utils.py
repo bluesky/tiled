@@ -519,6 +519,8 @@ def safe_json_dump(content):
         if isinstance(content, bytes):
             content = f"data:application/octet-stream;base64,{base64.b64encode(content).decode('utf-8')}"
             return content
+        if isinstance(content, Path):
+            return str(content)
         # No need to import numpy if it hasn't been used already.
         numpy = sys.modules.get("numpy", None)
         if numpy is not None:
