@@ -2,16 +2,16 @@
 This page details a process for registering files with Tiled. Consider this when starting up with `tiled serve catalog`.
 
 ## Background
-While Tiled reads files from a file system, it also uses a database to efficiently serve information about the nodes in the tree that it serves. Without a database, tiled must walk the file tree every time it starts up to know about the files that it is serving. 
+While Tiled reads files from a file system, it also uses a database to efficiently serve information about the nodes in the tree that it serves. Without a database, tiled must walk the file tree every time it starts up to know about the files that it is serving.
 
 Tiled has several startup modes, described in [configuration](./configuration) documentation.
 
 ### Startup mode: tiled serve directory
- When Tiled is started up with `tiled serve directory <directory name>`, it takes some time at startup to read the filesystem and store information in its database. For smaller implementations of Tiled, this is very convenient. However, if the file system is large, this process can take too long every time Tiled starts up. 
+ When Tiled is started up with `tiled serve directory <directory name>`, it takes some time at startup to read the filesystem and store information in its database. For smaller implementations of Tiled, this is very convenient. However, if the file system is large, this process can take too long every time Tiled starts up.
 
 In this mode, tiled also watches the folder for changes, and reindexes the entire tree when it encounters them. Again, this is fine for smaller instances, but can be too slow if the tree is large. Additionally, watching directories for changes can be inconsistent in cases where the directories are network mounted, as with `NFS` mounted file systems.
 
-### Startup mode: tiled serve catalog 
+### Startup mode: tiled serve catalog
 `tiled serve catalog` is the preferred startup mode for larger deployments of Tiled. It is also recommended when the underlying files are being served in network-mounted filesystems. However, in this mode, Tiled does not have any automatic way to know about new data introduced to the file system. Some coding must be done.
 
 ## Example
@@ -88,10 +88,9 @@ async def process_file(
     path_prefix: str = "/"
 ):
     """
-    Process a file that already exists and register it with tiled as a catalog. 
+    Process a file that already exists and register it with tiled as a catalog.
     We looks for a match in the tiled config file based on tiled_config_tree_path. This will be
-    the tree that we import to. Should work with folders of TIFF sequence as well as single filed like 
-    hdf5 or datasets like zarr. But honestly, on tiff sequence is tested.
+    the tree that we import to. Should work with folders of TIFF sequence as well as single filed like hdf5 or datasets like zarr. But honestly, on tiff sequence is tested.
 
     Args:
         file_path (str): The path of the file to be processed.
@@ -139,6 +138,4 @@ if __name__ == "__main__":
             path_prefix="/a"
         )
     )
-
-
 ```
