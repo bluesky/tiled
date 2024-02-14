@@ -8,11 +8,12 @@ from ..client import Context, from_context
 from ..client.utils import get_asset_filepaths
 from ..server.app import build_app
 from ..utils import path_from_uri
+from .utils import fail_with_status_code
 
 
 @pytest.fixture
 def context(tmpdir):
-    catalog = in_memory(writable_storage=str(tmpdir))
+    catalog = in_memory(writable_storage=str(tmpdir / "data"))
     app = build_app(catalog)
     with Context.from_app(app) as context:
         yield context
@@ -52,7 +53,7 @@ def test_include_data_sources_kwarg(context):
 def test_raw_export(client, tmpdir):
     "Use raw_export() and compare hashes or original and exported files."
     client.write_array([1, 2, 3], key="x")
-    exported_paths = client["x"].raw_export(tmpdir)
+    exported_paths = client["x"].raw_export(tmpdir / "exported")
     data_sources = client["x"].include_data_sources().data_sources()
     orig_dir = path_from_uri(data_sources[0]["assets"][0]["data_uri"])
     _asset_id, relative_paths = client["x"].asset_manifest(data_sources).popitem()
@@ -68,3 +69,13 @@ def test_get_asset_filepaths(client):
     "Smoke test get_asset_filepaths."
     client.write_array([1, 2, 3], key="x")
     get_asset_filepaths(client.include_data_sources()["x"])
+
+
+def test_do_not_expose_raw_assets(tmpdir):
+    catalog = in_memory(writable_storage=str(tmpdir / "data"))
+    app = build_app(catalog, server_settings={"expose_raw_assets": False})
+    with Context.from_app(app) as context:
+        client = from_context(context, include_data_sources=True)
+        client.write_array([1, 2, 3], key="x")
+        with fail_with_status_code(403):
+            client["x"].raw_export(tmpdir / "exported")

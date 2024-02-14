@@ -487,3 +487,8 @@ properties:
       If true, any data uploaded with a "spec" that is not declared in this
       configuration file will be rejected. By default, this is set to false
       ---i.e., permissive.
+  expose_raw_assets:
+    type: boolean
+    description: |
+      If true (default), enable clients to download the raw asset data that
+      backs nodes that they are authorized to read.

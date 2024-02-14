@@ -417,6 +417,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             "allow_origins",
             "response_bytesize_limit",
             "reject_undeclared_specs",
+            "expose_raw_assets",
         ]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])

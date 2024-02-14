@@ -194,6 +194,7 @@ See documentation section "Serve a Directory of Files"."""
         server_settings["reject_undeclared_specs"] = config.get(
             "reject_undeclared_specs"
         )
+        server_settings["expose_raw_assets"] = config.get("expose_raw_assets")
         server_settings["metrics"] = config.get("metrics", {})
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():

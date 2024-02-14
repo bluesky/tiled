@@ -1227,7 +1227,16 @@ async def get_asset(
     id: int,
     relative_path: Optional[Path] = None,
     entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
+    settings: BaseSettings = Depends(get_settings),
 ):
+    if not settings.expose_raw_assets:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This Tiled server is configured not to allow "
+                "downloading raw assets."
+            ),
+        )
     if not hasattr(entry, "asset_by_id"):
         raise HTTPException(
             status_code=405,
@@ -1294,7 +1303,16 @@ async def get_asset_manifest(
     request: Request,
     id: int,
     entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
+    settings: BaseSettings = Depends(get_settings),
 ):
+    if not settings.expose_raw_assets:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This Tiled server is configured not to allow "
+                "downloading raw assets."
+            ),
+        )
     if not hasattr(entry, "asset_by_id"):
         raise HTTPException(
             status_code=405,
