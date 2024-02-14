@@ -135,7 +135,6 @@ async def process_file(
 if __name__ == "__main__":
     asyncio.run(
         process_file(
-            # "/tiled_storage/beamlines/8.3.2/recons/rec20240207_120550_test_no_xrays_n257",
             "/tiled_storage/a/b/c",
             path_prefix="/a"
         )
