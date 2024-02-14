@@ -1336,5 +1336,9 @@ async def get_asset_manifest(
             detail="Only download assets stored as file:// is currently supported.",
         )
     path = path_from_uri(asset.data_uri)
-    manifest = [str(p.relative_to(path)) for p in path.iterdir()]
+    manifest = []
+    # Walk the directory and any subdirectories. Aggregate a list of all the
+    # files, given as paths relative to the directory root.
+    for root, _directories, files in os.walk(path):
+        manifest.extend(Path(root, file) for file in files)
     return json_or_msgpack(request, {"manifest": manifest})
