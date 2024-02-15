@@ -175,24 +175,21 @@ def test_url_limit_bypass(client, xarray_client):
     expected_requests = 2  # Once for data_vars + once for coords
     dsc = client["wide"]
     dsc.read()  # Dry run to run any one-off state-initializing requests.
-    # Accumulate Requests here for later inspection.
-    requests = []
 
-    def accumulate(request):
-        requests.append(request)
+    with record_history() as history:
+        actual = dsc.read()
+        xarray.testing.assert_equal(actual, expected)
 
-    client.context.http_client.event_hooks["request"].append(accumulate)
-    actual = dsc.read()
-    xarray.testing.assert_equal(actual, expected)
-    assert len(requests) == expected_requests
+        requests = list(request for request in history.requests)
+        assert len(requests) == expected_requests
 
-    request_methods = list(request.method for request in requests)
-    if xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.TINY:
-        # URL query is too long for a GET request
-        assert "POST" in request_methods
-    elif xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.HUGE:
-        # URL query should fit in a GET request
-        assert "POST" not in request_methods
+        request_methods = list(request.method for request in requests)
+        if xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.TINY:
+            # URL query is too long for a GET request
+            assert "POST" in request_methods
+        elif xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.HUGE:
+            # URL query should fit in a GET request
+            assert "POST" not in request_methods
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
