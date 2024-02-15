@@ -207,13 +207,16 @@ def test_url_limit_bypass(client):
 
     client.context.http_client.event_hooks["request"].append(accumulate)
     original = xarray_client.URL_CHARACTER_LIMIT
-    ORIGINAL_LIMIT = numpy.log10(original)
-    TINY_LIMIT = numpy.log10(10)
-    for URL_MAX_LENGTH in numpy.logspace(ORIGINAL_LIMIT, TINY_LIMIT, num=3):
+    URL_LIMITS = {
+        "HUGE": 80_000,
+        "ORIGINAL": original,
+        "TINY": 10,
+    }
+    for URL_MAX_LENGTH in URL_LIMITS.values():
         try:
             # It should never be necessary to tune this for real-world use,
             # but we use this knob as a way to test its operation.
-            xarray_client.URL_CHARACTER_LIMIT = int(URL_MAX_LENGTH)
+            xarray_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
             requests.clear()  # Empty the Request cache.
             actual = dsc.read()
             xarray.testing.assert_equal(actual, expected)
