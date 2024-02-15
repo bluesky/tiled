@@ -212,18 +212,23 @@ def test_url_limit_bypass(client):
         "ORIGINAL": original,
         "TINY": 10,
     }
-    for URL_MAX_LENGTH in URL_LIMITS.values():
-        try:
-            # It should never be necessary to tune this for real-world use,
-            # but we use this knob as a way to test its operation.
-            xarray_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
-            requests.clear()  # Empty the Request cache.
-            actual = dsc.read()
-            xarray.testing.assert_equal(actual, expected)
-            assert len(requests) == expected_requests
-        finally:
-            # Restore default.
-            xarray_client.URL_CHARACTER_LIMIT = original
+    with record_history() as history:
+        for URL_MAX_LENGTH in URL_LIMITS.values():
+            try:
+                # It should never be necessary to tune this for real-world use,
+                # but we use this knob as a way to test its operation.
+                xarray_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
+                requests.clear()  # Empty the Request cache.
+                actual = dsc.read()
+                xarray.testing.assert_equal(actual, expected)
+                assert len(requests) == expected_requests
+            finally:
+                # Restore default.
+                xarray_client.URL_CHARACTER_LIMIT = original
+
+    request_methods = list(request.method for request in history.requests)
+    assert "GET" in request_methods   # URL_LIMITS.HUGE
+    assert "POST" in request_methods  # URL_LIMITS.TINY
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
