@@ -227,7 +227,7 @@ def test_url_limit_bypass(client):
                 xarray_client.URL_CHARACTER_LIMIT = original
 
     request_methods = list(request.method for request in history.requests)
-    assert "GET" in request_methods   # URL_LIMITS.HUGE
+    assert "GET" in request_methods  # URL_LIMITS.HUGE
     assert "POST" in request_methods  # URL_LIMITS.TINY
 
 

@@ -2,7 +2,6 @@ import threading
 
 import dask
 import dask.array
-import pandas
 import xarray
 
 from ..serialization.table import deserialize_arrow
@@ -37,10 +36,14 @@ class DaskDatasetClient(Container):
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
         coords_fetcher = _WideTableFetcher(
-            self.context.http_client.get, self.item["links"]["full"]
+            self.context.http_client.get,
+            self.context.http_client.post,
+            self.item["links"]["full"],
         )
         data_vars_fetcher = _WideTableFetcher(
-            self.context.http_client.get, self.item["links"]["full"]
+            self.context.http_client.get,
+            self.context.http_client.post,
+            self.item["links"]["full"],
         )
         array_clients = {}
         array_structures = {}
@@ -112,13 +115,18 @@ class DatasetClient(DaskDatasetClient):
         )
 
 
+# The HTTP spec does not define a size limit for URIs,
+# but a common setting is 4K or 8K (for all the headers together).
+# As another reference point, Internet Explorer imposes a
+# 2048-character limit on URLs.
 URL_CHARACTER_LIMIT = 2000  # number of characters
 _EXTRA_CHARS_PER_ITEM = len("&field=")
 
 
 class _WideTableFetcher:
-    def __init__(self, get, link):
+    def __init__(self, get, post, link):
         self.get = get
+        self.post = post
         self.link = link
         self.variables = []
         self._dataframe = None
@@ -143,36 +151,32 @@ class _WideTableFetcher:
             if self._dataframe is None:
                 # If self.variables contains many and/or lengthy names,
                 # we can bump into the URI size limit commonly imposed by
-                # HTTP stacks (e.g. nginx). The HTTP spec does not define a limit,
-                # but a common setting is 4K or 8K (for all the headers together).
-                # As another reference point, Internet Explorer imposes a
-                # 2048-character limit on URLs.
-                variables = []
-                dataframes = []
-                budget = URL_CHARACTER_LIMIT
-                budget -= len(self.link)
-                # Fetch the variables in batches.
-                for variable in self.variables:
-                    budget -= _EXTRA_CHARS_PER_ITEM + len(variable)
-                    if budget < 0:
-                        # Fetch a batch and then add `variable` to the next batch.
-                        dataframes.append(self._fetch_variables(variables))
-                        variables.clear()
-                        budget = URL_CHARACTER_LIMIT - (
-                            _EXTRA_CHARS_PER_ITEM + len(variable)
-                        )
-                    variables.append(variable)
-                if variables:
-                    # Fetch the final batch.
-                    dataframes.append(self._fetch_variables(variables))
-                self._dataframe = pandas.concat(dataframes, axis=1).reset_index()
+                # HTTP stacks (e.g. nginx).
+                url_length_for_get_request = len(self.link) + sum(
+                    _EXTRA_CHARS_PER_ITEM + len(variable) for variable in self.variables
+                )
+                if url_length_for_get_request > URL_CHARACTER_LIMIT:
+                    dataframe = self._post_variables(self.variables)
+                else:
+                    dataframe = self._get_variables(self.variables)
+                self._dataframe = dataframe.reset_index()
         return self._dataframe
 
-    def _fetch_variables(self, variables):
+    def _get_variables(self, variables):
         content = handle_error(
             self.get(
                 self.link,
                 params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
+            )
+        ).read()
+        return deserialize_arrow(content)
+
+    def _post_variables(self, variables):
+        content = handle_error(
+            self.post(
+                self.link,
+                json=variables,
+                params={"format": APACHE_ARROW_FILE_MIME_TYPE},
             )
         ).read()
         return deserialize_arrow(content)

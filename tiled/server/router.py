@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 import anyio
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 from starlette.responses import FileResponse
@@ -604,7 +604,7 @@ async def table_full(
     response_model=schemas.Response,
     name="full 'container' metadata and data",
 )
-async def container_full(
+async def get_container_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     principal: str = Depends(get_current_principal),
@@ -612,6 +612,57 @@ async def container_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+):
+    """
+    Fetch the data for the given container via a GET request.
+    """
+    return await container_full(
+        request=request,
+        entry=entry,
+        principal=principal,
+        field=field,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+    )
+
+
+@router.post(
+    "/container/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'container' metadata and data",
+)
+async def post_container_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    principal: str = Depends(get_current_principal),
+    field: Optional[List[str]] = Body(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+):
+    """
+    Fetch the data for the given container via a POST request.
+    """
+    return await container_full(
+        request=request,
+        entry=entry,
+        principal=principal,
+        field=field,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+    )
+
+
+async def container_full(
+    request: Request,
+    entry,
+    principal: str,
+    field: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
 ):
     """
     Fetch the data for the given container.
