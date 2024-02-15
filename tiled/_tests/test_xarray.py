@@ -1,3 +1,5 @@
+from enum import IntEnum
+
 import dask.array
 import numpy
 import orjson
@@ -5,12 +7,11 @@ import pandas
 import pytest
 import xarray
 import xarray.testing
-from enum import IntEnum
 
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
-from ..client import xarray as xarray_client
+from ..client import xarray as _xarray_client
 from ..serialization.xarray import serialize_json
 from ..server.app import build_app
 from ..structures.core import Spec
@@ -154,12 +155,21 @@ def test_wide_table_optimization_off(client):
 
 class URL_LIMITS(IntEnum):
     HUGE = 80_000
-    ORIGINAL = xarray_client.URL_CHARACTER_LIMIT
+    ORIGINAL = _xarray_client.URL_CHARACTER_LIMIT
     TINY = 10
 
 
-@pytest.mark.parametrize("URL_MAX_LENGTH", tuple(URL_LIMITS))
-def test_url_limit_bypass(client, URL_MAX_LENGTH):
+@pytest.fixture(params=tuple(URL_LIMITS))
+def xarray_client(request: pytest.FixtureRequest):
+    URL_MAX_LENGTH = int(request.param)
+    # Temporarily adjust the URL length limit to change client behavior
+    _xarray_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
+    yield _xarray_client
+    # Then restore the original value
+    _xarray_client.URL_CHARACTER_LIMIT = URL_LIMITS.ORIGINAL
+
+
+def test_url_limit_bypass(client, xarray_client):
     "GET requests beyond the URL length limit should become POST requests."
     expected = EXPECTED["wide"]
     expected_requests = 2  # Once for data_vars + once for coords
@@ -172,26 +182,17 @@ def test_url_limit_bypass(client, URL_MAX_LENGTH):
         requests.append(request)
 
     client.context.http_client.event_hooks["request"].append(accumulate)
-    original = xarray_client.URL_CHARACTER_LIMIT
-    try:
-        # It should never be necessary to tune this for real-world use,
-        # but we use this knob as a way to test its operation.
-        xarray_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
-        requests.clear()  # Empty the Request cache.
-        actual = dsc.read()
-        xarray.testing.assert_equal(actual, expected)
-        assert len(requests) == expected_requests
+    actual = dsc.read()
+    xarray.testing.assert_equal(actual, expected)
+    assert len(requests) == expected_requests
 
-        request_methods = list(request.method for request in requests)
-        if URL_MAX_LENGTH == URL_LIMITS.TINY:
-            # URL query is too long for a GET request
-            assert "POST" in request_methods
-        elif URL_MAX_LENGTH == URL_LIMITS.HUGE:
-            # URL query should fit in a GET request
-            assert "POST" not in request_methods
-    finally:
-        # Restore default.
-        xarray_client.URL_CHARACTER_LIMIT = original
+    request_methods = list(request.method for request in requests)
+    if xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.TINY:
+        # URL query is too long for a GET request
+        assert "POST" in request_methods
+    elif xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.HUGE:
+        # URL query should fit in a GET request
+        assert "POST" not in request_methods
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
