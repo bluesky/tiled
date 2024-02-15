@@ -151,8 +151,8 @@ def test_wide_table_optimization_off(client):
     assert len(history.requests) >= 10
 
 
-def test_url_limit_handling(client):
-    "Check that requests and split up to stay below the URL length limit."
+def test_url_limit_batching(client):
+    "Check that requests are split up to stay below the URL length limit."
     expected = EXPECTED["wide"]
     dsc = client["wide"]
     dsc.read()  # Dry run to run any one-off state-initializing requests.
@@ -191,6 +191,33 @@ def test_url_limit_handling(client):
     # number of requests may evolve as the library changes, but the trend should
     # hold.
     assert highest_request_count > higher_request_count > normal_request_count
+
+
+def test_url_limit_bypass(client):
+    "GET requests beyond the URL length limit should become POST requests."
+    expected = EXPECTED["wide"]
+    dsc = client["wide"]
+    dsc.read()  # Dry run to run any one-off state-initializing requests.
+    # Accumulate Requests here for later inspection.
+    requests = []
+
+    def accumulate(request):
+        requests.append(request)
+
+    client.context.http_client.event_hooks["request"].append(accumulate)
+    original = xarray_client.URL_CHARACTER_LIMIT
+    for URL_MAX_LENGTH in numpy.logspace(numpy.log10(original), 2., num=3):
+        try:
+            # It should never be necessary to tune this for real-world use,
+            # but we use this knob as a way to test its operation.
+            xarray_client.URL_CHARACTER_LIMIT = int(URL_MAX_LENGTH)
+            requests.clear()  # Empty the Request cache.
+            actual = dsc.read()
+            xarray.testing.assert_equal(actual, expected)
+            assert len(requests) == 1
+        finally:
+            # Restore default.
+            xarray_client.URL_CHARACTER_LIMIT = original
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
