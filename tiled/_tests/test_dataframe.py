@@ -109,19 +109,30 @@ def test_dask(context):
 
 class URL_LIMITS(IntEnum):
     HUGE = 80_000
-    ORIGINAL = 2_000
+    ORIGINAL = _dataframe_client.URL_CHARACTER_LIMIT
     TINY = 10
 
 
+@pytest.fixture
+def dataframe_client(request: pytest.FixtureRequest):
+    URL_MAX_LENGTH = int(request.param)
+    # Temporarily adjust the URL length limit to change client behavior
+    _dataframe_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
+    yield _dataframe_client
+    # Then restore the original value
+    _dataframe_client.URL_CHARACTER_LIMIT = URL_LIMITS.ORIGINAL
+
+
 @pytest.mark.parametrize(
-    "URL_MAX_LENGTH, expected_method",
+    "dataframe_client, expected_method",
     (
         (URL_LIMITS.HUGE, "GET"),  # URL query should fit in a GET request
         (URL_LIMITS.ORIGINAL, None),  # Expected method not specified
         (URL_LIMITS.TINY, "POST"),  # URL query is too long for a GET request
-    )
+    ),
+    indirect=["dataframe_client"],
 )
-def test_url_limit_bypass(context, URL_MAX_LENGTH, expected_method):
+def test_url_limit_bypass(context, dataframe_client, expected_method):
     "GET requests beyond the URL length limit should become POST requests."
     client = from_context(context)
     df_client = client["wide"]

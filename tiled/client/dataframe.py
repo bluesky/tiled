@@ -13,6 +13,14 @@ from .utils import (
 )
 
 
+# The HTTP spec does not define a size limit for URIs,
+# but a common setting is 4K or 8K (for all the headers together).
+# As another reference point, Internet Explorer imposes a
+# 2048-character limit on URLs.
+URL_CHARACTER_LIMIT = 2000  # number of characters
+_EXTRA_CHARS_PER_ITEM = len("&column=")
+
+
 class _DaskDataFrameClient(BaseClient):
     "Client-side wrapper around an dataframe-like that returns dask dataframes"
 
