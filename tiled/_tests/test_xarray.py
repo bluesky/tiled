@@ -159,7 +159,7 @@ class URL_LIMITS(IntEnum):
     TINY = 10
 
 
-@pytest.fixture(params=tuple(URL_LIMITS))
+@pytest.fixture
 def xarray_client(request: pytest.FixtureRequest):
     URL_MAX_LENGTH = int(request.param)
     # Temporarily adjust the URL length limit to change client behavior
@@ -169,14 +169,16 @@ def xarray_client(request: pytest.FixtureRequest):
     _xarray_client.URL_CHARACTER_LIMIT = URL_LIMITS.ORIGINAL
 
 
-@pytest.fixture(scope="function")
-def remaining_methods(set_and_deplete):
-    "Methods must be removed by calling test when corresponding request is made"
-    yield set_and_deplete
-
-
-@pytest.mark.parametrize("set_and_deplete", (("GET", "POST"),), indirect=True)
-def test_url_limit_bypass(client, xarray_client, remaining_methods: set):
+@pytest.mark.parametrize(
+    "xarray_client, expected_method",
+    (
+        (URL_LIMITS.HUGE, "GET"),  # URL query should fit in a GET request
+        (URL_LIMITS.ORIGINAL, None),  # Expected method not specified
+        (URL_LIMITS.TINY, "POST"),  # URL query is too long for a GET request
+    ),
+    indirect=["xarray_client"],
+)
+def test_url_limit_bypass(client, xarray_client, expected_method):
     "GET requests beyond the URL length limit should become POST requests."
     expected = EXPECTED["wide"]
     expected_requests = 2  # Once for data_vars + once for coords
@@ -191,14 +193,10 @@ def test_url_limit_bypass(client, xarray_client, remaining_methods: set):
         assert len(requests) == expected_requests
 
         request_methods = list(request.method for request in requests)
-        if xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.TINY:
-            # URL query is too long for a GET request
-            assert "POST" in request_methods
-            remaining_methods.remove("POST")
-        elif xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.HUGE:
-            # URL query should fit in a GET request
-            assert "POST" not in request_methods
-            remaining_methods.remove("GET")
+        if expected_method == "POST":
+            assert "POST" in request_methods  # At least one POST request
+        elif expected_method == "GET":
+            assert "POST" not in request_methods  # No POST request
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
