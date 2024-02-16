@@ -209,3 +209,11 @@ def example_data_adapter(request):
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
     """
     yield request.getfixturevalue(request.param)
+
+
+@pytest.fixture(scope="module")
+def set_and_deplete(request: pytest.FixtureRequest):
+    "Initial values must all be removed or else calling tests fail"
+    values = set(request.param)
+    yield values
+    assert not values
