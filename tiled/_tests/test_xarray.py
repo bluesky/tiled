@@ -169,7 +169,17 @@ def xarray_client(request: pytest.FixtureRequest):
     _xarray_client.URL_CHARACTER_LIMIT = URL_LIMITS.ORIGINAL
 
 
-def test_url_limit_bypass(client, xarray_client):
+@pytest.fixture(scope="module")
+def set_and_deplete(request: pytest.FixtureRequest):
+    "Initial values must be removed or else calling tests fail"
+    print(f'{request.param = }')
+    values = set(request.param)
+    yield values
+    assert not values
+
+
+@pytest.mark.parametrize("set_and_deplete", (("GET", "POST"), ), indirect=True)
+def test_url_limit_bypass(client, xarray_client, set_and_deplete: set):
     "GET requests beyond the URL length limit should become POST requests."
     expected = EXPECTED["wide"]
     expected_requests = 2  # Once for data_vars + once for coords
@@ -187,9 +197,11 @@ def test_url_limit_bypass(client, xarray_client):
         if xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.TINY:
             # URL query is too long for a GET request
             assert "POST" in request_methods
+            set_and_deplete.remove("POST")
         elif xarray_client.URL_CHARACTER_LIMIT == URL_LIMITS.HUGE:
             # URL query should fit in a GET request
             assert "POST" not in request_methods
+            set_and_deplete.remove("GET")
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
