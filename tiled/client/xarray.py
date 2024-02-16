@@ -156,13 +156,20 @@ class _WideTableFetcher:
                     _EXTRA_CHARS_PER_ITEM + len(variable) for variable in self.variables
                 )
                 if url_length_for_get_request > URL_CHARACTER_LIMIT:
-                    dataframe = self._post_variables(self.variables)
+                    dataframe = self._fetch_variables(self.variables, "POST")
                 else:
-                    dataframe = self._get_variables(self.variables)
+                    dataframe = self._fetch_variables(self.variables, "GET")
                 self._dataframe = dataframe.reset_index()
         return self._dataframe
 
-    def _get_variables(self, variables):
+    def _fetch_variables(self, variables, method="GET"):
+        if method == "GET":
+            return self._fetch_variables__get(variables)
+        if method == "POST":
+            return self._fetch_variables__post(variables)
+        raise NotImplementedError(f"Method {method} is not supported")
+
+    def _fetch_variables__get(self, variables):
         content = handle_error(
             self.get(
                 self.link,
@@ -171,7 +178,7 @@ class _WideTableFetcher:
         ).read()
         return deserialize_arrow(content)
 
-    def _post_variables(self, variables):
+    def _fetch_variables__post(self, variables):
         content = handle_error(
             self.post(
                 self.link,
