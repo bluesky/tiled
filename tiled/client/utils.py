@@ -11,6 +11,11 @@ import msgpack
 from ..utils import path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
+# The HTTP spec does not define a size limit for URIs,
+# but a common setting is 4K or 8K (for all the headers together).
+# As another reference point, Internet Explorer imposes a
+# 2048-character limit on URLs.
+URL_CHARACTER_LIMIT = 2000  # number of characters
 
 
 def handle_error(response):

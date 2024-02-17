@@ -8,7 +8,7 @@ from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .container import Container
-from .utils import handle_error
+from .utils import URL_CHARACTER_LIMIT, handle_error
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -115,11 +115,6 @@ class DatasetClient(DaskDatasetClient):
         )
 
 
-# The HTTP spec does not define a size limit for URIs,
-# but a common setting is 4K or 8K (for all the headers together).
-# As another reference point, Internet Explorer imposes a
-# 2048-character limit on URLs.
-URL_CHARACTER_LIMIT = 2000  # number of characters
 _EXTRA_CHARS_PER_ITEM = len("&field=")
 
 
