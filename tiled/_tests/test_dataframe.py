@@ -6,8 +6,9 @@ import pytest
 
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import Context, from_context, record_history
+from ..client import Context
 from ..client import dataframe as _dataframe_client
+from ..client import from_context, record_history
 from ..server.app import build_app
 
 tree = MapAdapter(
@@ -36,9 +37,7 @@ tree = MapAdapter(
         ),
         # a dataframe with many columns
         "wide": DataFrameAdapter.from_pandas(
-            pandas.DataFrame(
-                {f"column_{i:03d}": i * numpy.ones(5) for i in range(10)}
-            ),
+            pandas.DataFrame({f"column_{i:03d}": i * numpy.ones(5) for i in range(10)}),
             npartitions=1,
         ),
     }
@@ -147,7 +146,6 @@ def test_url_limit_bypass(context, dataframe_client, expected_method):
         assert list(actual.columns) == columns
 
         requests = list(request for request in history.requests)
-        print(f'{requests = }')
         assert len(requests) == df_client.structure().npartitions
 
         request_methods = list(request.method for request in requests)

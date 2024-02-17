@@ -490,15 +490,71 @@ async def array_full(
     response_model=schemas.Response,
     name="table partition",
 )
-async def table_partition(
+async def get_table_partition(
     request: Request,
     partition: int,
     entry=SecureEntry(scopes=["read:data"]),
-    field: Optional[List[str]] = Query(None, min_length=1),
+    column: Optional[List[str]] = Query(None, min_length=1),
+    field: Optional[List[str]] = Query(None, min_length=1, deprecated=True),
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
     settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a partition (continuous block of rows) from a DataFrame [GET route].
+    """
+    return await table_partition(
+        request=request,
+        partition=partition,
+        entry=entry,
+        column=(column or field),
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+@router.post(
+    "/table/partition/{path:path}",
+    response_model=schemas.Response,
+    name="table partition",
+)
+async def post_table_partition(
+    request: Request,
+    partition: int,
+    entry=SecureEntry(scopes=["read:data"]),
+    column: Optional[List[str]] = Body(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a partition (continuous block of rows) from a DataFrame [POST route].
+    """
+    return await table_partition(
+        request=request,
+        partition=partition,
+        entry=entry,
+        column=column,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+async def table_partition(
+    request: Request,
+    partition: int,
+    entry,
+    column: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
+    settings: BaseSettings,
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
@@ -512,7 +568,7 @@ async def table_partition(
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = await ensure_awaitable(entry.read_partition, partition, field)
+            df = await ensure_awaitable(entry.read_partition, partition, column)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:

@@ -12,7 +12,6 @@ from .utils import (
     handle_error,
 )
 
-
 # The HTTP spec does not define a size limit for URIs,
 # but a common setting is 4K or 8K (for all the headers together).
 # As another reference point, Internet Explorer imposes a
@@ -104,17 +103,31 @@ class _DaskDataFrameClient(BaseClient):
         See read_partition for a public version of this.
         """
         params = {"partition": partition}
-        if columns:
-            # Note: The singular/plural inconsistency here is due to the fact that
-            # ["A", "B"] will be encoded in the URL as column=A&column=B
-            params["column"] = columns
-        content = handle_error(
-            self.context.http_client.get(
-                self.item["links"]["partition"],
-                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                params=params,
-            )
-        ).read()
+        URL_PATH = self.item["links"]["partition"]
+        url_length_for_get_request = len(URL_PATH) + sum(
+            _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
+        )
+        if url_length_for_get_request > URL_CHARACTER_LIMIT:
+            content = handle_error(
+                self.context.http_client.post(
+                    URL_PATH,
+                    headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                    json=columns,
+                    params=params,
+                )
+            ).read()
+        else:
+            if columns:
+                # Note: The singular/plural inconsistency here is because
+                # ["A", "B"] will be encoded in the URL as column=A&column=B
+                params["column"] = columns
+            content = handle_error(
+                self.context.http_client.get(
+                    URL_PATH,
+                    headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                    params=params,
+                )
+            ).read()
         return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):
