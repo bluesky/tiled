@@ -623,7 +623,7 @@ async def table_partition(
     response_model=schemas.Response,
     name="full 'table' data",
 )
-async def table_full(
+async def get_table_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     column: Optional[List[str]] = Query(None, min_length=1),
@@ -631,6 +631,57 @@ async def table_full(
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
     settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch the data for the given table [GET route].
+    """
+    return await table_full(
+        request=request,
+        entry=entry,
+        column=column,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+@router.post(
+    "/table/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'table' data",
+)
+async def post_table_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    column: Optional[List[str]] = Body(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch the data for the given table [POST route].
+    """
+    return await table_full(
+        request=request,
+        entry=entry,
+        column=column,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+async def table_full(
+    request: Request,
+    entry,
+    column: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
+    settings: BaseSettings,
 ):
     """
     Fetch the data for the given table.
