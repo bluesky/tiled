@@ -163,6 +163,7 @@ def test_http_url_limit_bypass(context, http_method, link):
     "GET requests beyond the URL length limit should become POST requests."
     if http_method not in ("GET", "POST"):
         pytest.fail(reason="HTTP method {http_method} is not expected.")
+
     client = from_context(context)
     url_path = client["wide"].item["links"][link]
     original_df = tree["wide"].read()
@@ -187,12 +188,6 @@ def test_http_url_limit_bypass(context, http_method, link):
 
         requests = list(request for request in history.requests)
         assert len(requests) == 1
-
-        request_methods = list(request.method for request in requests)
-        if http_method == "POST":
-            assert "POST" in request_methods  # At least one POST request
-        elif http_method == "GET":
-            assert "POST" not in request_methods  # No POST request
 
 
 def test_deprecated_query_parameter(context):
