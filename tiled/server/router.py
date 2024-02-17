@@ -1,6 +1,7 @@
 import dataclasses
 import inspect
 import os
+import warnings
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -504,6 +505,23 @@ async def get_table_partition(
     """
     Fetch a partition (continuous block of rows) from a DataFrame [GET route].
     """
+    if (field is not None) and (column is not None):
+        redundant_field_and_column = " ".join(
+            (
+                "Cannot accept both 'column' and 'field' query parameters",
+                "in the same /table/partition request.",
+                "Include these query values using only the 'column' parameter.",
+            )
+        )
+        raise HTTPException(status_code=400, detail=redundant_field_and_column)
+    elif field is not None:
+        field_is_deprecated = " ".join(
+            (
+                "Query parameter 'field' is deprecated for the /table/partition route.",
+                "Instead use the query parameter 'column'.",
+            )
+        )
+        warnings.warn(field_is_deprecated, DeprecationWarning)
     return await table_partition(
         request=request,
         partition=partition,

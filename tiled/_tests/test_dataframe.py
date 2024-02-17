@@ -10,6 +10,7 @@ from ..client import Context
 from ..client import dataframe as _dataframe_client
 from ..client import from_context, record_history
 from ..server.app import build_app
+from .utils import fail_with_status_code
 
 tree = MapAdapter(
     {
@@ -153,3 +154,39 @@ def test_url_limit_bypass(context, dataframe_client, expected_method):
             assert "POST" in request_methods  # At least one POST request
         elif expected_method == "GET":
             assert "POST" not in request_methods  # No POST request
+
+
+def test_deprecated_query_parameter(context):
+    "HTTP route /table/partition: 'field' is a deprecated query parameter"
+    client = from_context(context)
+    url_path = client["basic"].item["links"]["partition"]
+    params = {
+        "partition": 0,
+        "field": "x",
+    }
+    with pytest.warns(DeprecationWarning, match=r"'field'"):
+        context.http_client.get(url_path, params=params)
+
+
+def test_redundant_query_parameters(context):
+    "HTTP route /table/partition accepts 'column' or 'field', but not both"
+    client = from_context(context)
+    url_path = client["basic"].item["links"]["partition"]
+    original_params = {
+        "partition": 0,
+        "field": "x",
+        "column": "y",
+    }
+
+    # It is OK to include query parameter 'column' OR 'field'
+    for param in ("field", "column"):
+        params = original_params.copy()
+        params.pop(param)
+        context.http_client.get(url_path, params=params).raise_for_status()
+
+    # It is an error to include query parameter 'column' AND 'field'
+    with fail_with_status_code(400) as response:
+        params = original_params
+        context.http_client.get(url_path, params=params).raise_for_status()
+        assert "'field'" in response.text
+        assert "'column'" in response.text
