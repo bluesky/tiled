@@ -9,6 +9,7 @@ from ..adapters.mapping import MapAdapter
 from ..client import Context
 from ..client import dataframe as _dataframe_client
 from ..client import from_context, record_history
+from ..serialization.table import deserialize_arrow
 from ..server.app import build_app
 from .utils import fail_with_status_code
 
@@ -153,6 +154,44 @@ def test_url_limit_bypass(context, dataframe_client, expected_method):
         if expected_method == "POST":
             assert "POST" in request_methods  # At least one POST request
         elif expected_method == "GET":
+            assert "POST" not in request_methods  # No POST request
+
+
+@pytest.mark.parametrize("http_method", ("GET", "POST"))
+@pytest.mark.parametrize("link", ("full", "partition"))
+def test_http_url_limit_bypass(context, http_method, link):
+    "GET requests beyond the URL length limit should become POST requests."
+    if http_method not in ("GET", "POST"):
+        pytest.fail(reason="HTTP method {http_method} is not expected.")
+    client = from_context(context)
+    url_path = client["wide"].item["links"][link]
+    original_df = tree["wide"].read()
+    columns = list(original_df.columns)[::2]  # Pick a subset of columns
+    params = {
+        "partition": 0,  # Used by /table/partition; ignored by /table/full
+        "column": columns,
+    }
+    expected = tree["wide"].read(columns)
+    assert list(expected.columns) == columns
+
+    with record_history() as history:
+        if http_method == "POST":
+            body = params.pop("column")
+            response = context.http_client.post(url_path, json=body, params=params)
+        elif http_method == "GET":
+            response = context.http_client.get(url_path, params=params)
+        response.raise_for_status()
+        actual = deserialize_arrow(response.read())
+        pandas.testing.assert_frame_equal(actual, expected)
+        assert list(actual.columns) == columns
+
+        requests = list(request for request in history.requests)
+        assert len(requests) == 1
+
+        request_methods = list(request.method for request in requests)
+        if http_method == "POST":
+            assert "POST" in request_methods  # At least one POST request
+        elif http_method == "GET":
             assert "POST" not in request_methods  # No POST request
 
 
