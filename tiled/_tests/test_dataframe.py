@@ -159,7 +159,7 @@ def test_url_limit_bypass(context, dataframe_client, expected_method):
 
 @pytest.mark.parametrize("http_method", ("GET", "POST"))
 @pytest.mark.parametrize("link", ("full", "partition"))
-def test_http_url_limit_bypass(context, http_method, link):
+def test_http_fetch_columns(context, http_method, link):
     "GET requests beyond the URL length limit should become POST requests."
     if http_method not in ("GET", "POST"):
         pytest.fail(reason="HTTP method {http_method} is not expected.")
