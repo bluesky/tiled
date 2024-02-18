@@ -11,6 +11,7 @@ from ..catalog import in_memory
 from ..client import Context, from_context, record_history
 from ..server.app import build_app
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
+from .utils import URL_LIMITS
 
 
 @pytest.fixture
@@ -130,10 +131,9 @@ def test_large_number_of_form_keys(client):
     # https://github.com/bluesky/tiled/pull/577
 
     # The HTTP spec itself has no limit, but tools impose a pragmatic one.
-    # Nginx defaults to 8k bytes. Chrome is around 2000.
     # This is a representative value.
-    URL_LENGTH_LIMIT = 2000
-    NUM_KEYS = 7000  # meant to achieve a large body of form_keys
+    URL_LENGTH_LIMIT = URL_LIMITS.DEFAULT
+    NUM_KEYS = 7_000  # meant to achieve a large body of form_keys
     array = awkward.Array([{f"key{i:05}": i for i in range(NUM_KEYS)}])
     aac = client.write_awkward(array, key="test")
     with record_history() as h:

@@ -91,7 +91,7 @@ class BaseClient:
     # but a common setting is 4K or 8K (for all the headers together).
     # As another reference point, Internet Explorer imposes a
     # 2048-character limit on URLs.
-    URL_CHARACTER_LIMIT = 2000  # number of characters
+    URL_CHARACTER_LIMIT = 2_000  # number of characters
 
     def __init__(
         self,
