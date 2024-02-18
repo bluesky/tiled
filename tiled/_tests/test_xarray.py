@@ -11,7 +11,7 @@ import xarray.testing
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
-from ..client import xarray as _xarray_client
+from ..client.base import BaseClient
 from ..serialization.xarray import serialize_json
 from ..server.app import build_app
 from ..structures.core import Spec
@@ -155,30 +155,35 @@ def test_wide_table_optimization_off(client):
 
 class URL_LIMITS(IntEnum):
     HUGE = 80_000
-    ORIGINAL = _xarray_client.URL_CHARACTER_LIMIT
+    ORIGINAL = BaseClient.URL_CHARACTER_LIMIT
     TINY = 10
 
 
 @pytest.fixture
-def xarray_client(request: pytest.FixtureRequest):
-    URL_MAX_LENGTH = int(request.param)
-    # Temporarily adjust the URL length limit to change client behavior
-    _xarray_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
-    yield _xarray_client
-    # Then restore the original value
-    _xarray_client.URL_CHARACTER_LIMIT = URL_LIMITS.ORIGINAL
+def url_limit(request: pytest.FixtureRequest):
+    """Adjust the URL length limit for the client's GET requests.
+
+    Data will be fetched by GET requests when the URL_CHARACTER_LIMIT is long,
+    and by equivalent POST requests when the URL_CHARACTER_LIMIT is short.
+    """
+    URL_CHARACTER_LIMIT = int(request.param)
+    # Temporarily adjust the URL length limit to change client behavior.
+    BaseClient.URL_CHARACTER_LIMIT = URL_CHARACTER_LIMIT
+    yield
+    # Then restore the original value.
+    BaseClient.URL_CHARACTER_LIMIT = int(URL_LIMITS.ORIGINAL)
 
 
 @pytest.mark.parametrize(
-    "xarray_client, expected_method",
+    "url_limit, expected_method",
     (
         (URL_LIMITS.HUGE, "GET"),  # URL query should fit in a GET request
         (URL_LIMITS.ORIGINAL, None),  # Expected method not specified
         (URL_LIMITS.TINY, "POST"),  # URL query is too long for a GET request
     ),
-    indirect=["xarray_client"],
+    indirect=["url_limit"],
 )
-def test_url_limit_bypass(client, xarray_client, expected_method):
+def test_url_limit_bypass(client, url_limit, expected_method):
     "GET requests beyond the URL length limit should become POST requests."
     expected = EXPECTED["wide"]
     expected_requests = 2  # Once for data_vars + once for coords

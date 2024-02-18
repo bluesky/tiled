@@ -6,9 +6,8 @@ import pytest
 
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
-from ..client import Context
-from ..client import dataframe as _dataframe_client
-from ..client import from_context, record_history
+from ..client import Context, from_context, record_history
+from ..client.base import BaseClient
 from ..serialization.table import deserialize_arrow
 from ..server.app import build_app
 from .utils import fail_with_status_code
@@ -110,30 +109,35 @@ def test_dask(context):
 
 class URL_LIMITS(IntEnum):
     HUGE = 80_000
-    ORIGINAL = _dataframe_client.URL_CHARACTER_LIMIT
+    ORIGINAL = BaseClient.URL_CHARACTER_LIMIT
     TINY = 10
 
 
 @pytest.fixture
-def dataframe_client(request: pytest.FixtureRequest):
-    URL_MAX_LENGTH = int(request.param)
-    # Temporarily adjust the URL length limit to change client behavior
-    _dataframe_client.URL_CHARACTER_LIMIT = URL_MAX_LENGTH
-    yield _dataframe_client
-    # Then restore the original value
-    _dataframe_client.URL_CHARACTER_LIMIT = URL_LIMITS.ORIGINAL
+def url_limit(request: pytest.FixtureRequest):
+    """Adjust the URL length limit for the client's GET requests.
+
+    Data will be fetched by GET requests when the URL_CHARACTER_LIMIT is long,
+    and by equivalent POST requests when the URL_CHARACTER_LIMIT is short.
+    """
+    URL_CHARACTER_LIMIT = int(request.param)
+    # Temporarily adjust the URL length limit to change client behavior.
+    BaseClient.URL_CHARACTER_LIMIT = URL_CHARACTER_LIMIT
+    yield
+    # Then restore the original value.
+    BaseClient.URL_CHARACTER_LIMIT = int(URL_LIMITS.ORIGINAL)
 
 
 @pytest.mark.parametrize(
-    "dataframe_client, expected_method",
+    "url_limit, expected_method",
     (
         (URL_LIMITS.HUGE, "GET"),  # URL query should fit in a GET request
         (URL_LIMITS.ORIGINAL, None),  # Expected method not specified
         (URL_LIMITS.TINY, "POST"),  # URL query is too long for a GET request
     ),
-    indirect=["dataframe_client"],
+    indirect=["url_limit"],
 )
-def test_url_limit_bypass(context, dataframe_client, expected_method):
+def test_url_limit_bypass(context, url_limit, expected_method):
     "GET requests beyond the URL length limit should become POST requests."
     client = from_context(context)
     df_client = client["wide"]

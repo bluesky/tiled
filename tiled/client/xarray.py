@@ -7,8 +7,9 @@ import xarray
 from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
+from .base import BaseClient
 from .container import Container
-from .utils import URL_CHARACTER_LIMIT, handle_error
+from .utils import handle_error
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -150,7 +151,7 @@ class _WideTableFetcher:
                 url_length_for_get_request = len(self.link) + sum(
                     _EXTRA_CHARS_PER_ITEM + len(variable) for variable in self.variables
                 )
-                if url_length_for_get_request > URL_CHARACTER_LIMIT:
+                if url_length_for_get_request > BaseClient.URL_CHARACTER_LIMIT:
                     dataframe = self._fetch_variables(self.variables, "POST")
                 else:
                     dataframe = self._fetch_variables(self.variables, "GET")

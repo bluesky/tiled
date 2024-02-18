@@ -6,7 +6,6 @@ from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
 from .base import BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
-    URL_CHARACTER_LIMIT,
     ClientError,
     client_for_item,
     export_util,
@@ -103,7 +102,7 @@ class _DaskDataFrameClient(BaseClient):
         url_length_for_get_request = len(URL_PATH) + sum(
             _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
         )
-        if url_length_for_get_request > URL_CHARACTER_LIMIT:
+        if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
             content = handle_error(
                 self.context.http_client.post(
                     URL_PATH,
