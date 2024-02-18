@@ -37,13 +37,11 @@ class DaskDatasetClient(Container):
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
         coords_fetcher = _WideTableFetcher(
-            self.context.http_client.get,
-            self.context.http_client.post,
+            self.context.http_client,
             self.item["links"]["full"],
         )
         data_vars_fetcher = _WideTableFetcher(
-            self.context.http_client.get,
-            self.context.http_client.post,
+            self.context.http_client,
             self.item["links"]["full"],
         )
         array_clients = {}
@@ -120,9 +118,8 @@ _EXTRA_CHARS_PER_ITEM = len("&field=")
 
 
 class _WideTableFetcher:
-    def __init__(self, get, post, link):
-        self.get = get
-        self.post = post
+    def __init__(self, http_client, link):
+        self.http_client = http_client
         self.link = link
         self.variables = []
         self._dataframe = None
@@ -167,7 +164,7 @@ class _WideTableFetcher:
 
     def _fetch_variables__get(self, variables):
         content = handle_error(
-            self.get(
+            self.http_client.get(
                 self.link,
                 params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
             )
@@ -176,7 +173,7 @@ class _WideTableFetcher:
 
     def _fetch_variables__post(self, variables):
         content = handle_error(
-            self.post(
+            self.http_client.post(
                 self.link,
                 json=variables,
                 params={"format": APACHE_ARROW_FILE_MIME_TYPE},
