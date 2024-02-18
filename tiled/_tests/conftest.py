@@ -12,7 +12,6 @@ from .. import profiles
 from ..catalog import from_uri, in_memory
 from ..client.base import BaseClient
 from ..server.settings import get_settings
-from .utils import URL_LIMITS
 from .utils import enter_password as utils_enter_password
 from .utils import temp_postgres
 
@@ -229,8 +228,9 @@ def url_limit(request: pytest.FixtureRequest):
     and by equivalent POST requests when the URL_CHARACTER_LIMIT is short.
     """
     URL_CHARACTER_LIMIT = int(request.param)
+    PREVIOUS_LIMIT = BaseClient.URL_CHARACTER_LIMIT
     # Temporarily adjust the URL length limit to change client behavior.
     BaseClient.URL_CHARACTER_LIMIT = URL_CHARACTER_LIMIT
     yield
     # Then restore the original value.
-    BaseClient.URL_CHARACTER_LIMIT = int(URL_LIMITS.ORIGINAL)
+    BaseClient.URL_CHARACTER_LIMIT = PREVIOUS_LIMIT

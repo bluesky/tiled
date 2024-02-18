@@ -155,7 +155,7 @@ def test_wide_table_optimization_off(client):
     "url_limit, expected_method",
     (
         (URL_LIMITS.HUGE, "GET"),  # URL query should fit in a GET request
-        (URL_LIMITS.ORIGINAL, None),  # Expected method not specified
+        (URL_LIMITS.DEFAULT, None),  # Expected method is not specified
         (URL_LIMITS.TINY, "POST"),  # URL query is too long for a GET request
     ),
     indirect=["url_limit"],

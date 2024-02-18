@@ -62,5 +62,5 @@ def enter_password(password):
 
 class URL_LIMITS(IntEnum):
     HUGE = 80_000
-    ORIGINAL = BaseClient.URL_CHARACTER_LIMIT
+    DEFAULT = BaseClient.URL_CHARACTER_LIMIT
     TINY = 10
