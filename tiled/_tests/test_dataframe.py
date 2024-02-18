@@ -1,5 +1,3 @@
-from enum import IntEnum
-
 import numpy
 import pandas.testing
 import pytest
@@ -7,10 +5,9 @@ import pytest
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, record_history
-from ..client.base import BaseClient
 from ..serialization.table import deserialize_arrow
 from ..server.app import build_app
-from .utils import fail_with_status_code
+from .utils import URL_LIMITS, fail_with_status_code
 
 tree = MapAdapter(
     {
@@ -105,27 +102,6 @@ def test_dask(context):
     expected = tree["basic"].read()
     pandas.testing.assert_frame_equal(client.read().compute(), expected)
     pandas.testing.assert_frame_equal(client.compute(), expected)
-
-
-class URL_LIMITS(IntEnum):
-    HUGE = 80_000
-    ORIGINAL = BaseClient.URL_CHARACTER_LIMIT
-    TINY = 10
-
-
-@pytest.fixture
-def url_limit(request: pytest.FixtureRequest):
-    """Adjust the URL length limit for the client's GET requests.
-
-    Data will be fetched by GET requests when the URL_CHARACTER_LIMIT is long,
-    and by equivalent POST requests when the URL_CHARACTER_LIMIT is short.
-    """
-    URL_CHARACTER_LIMIT = int(request.param)
-    # Temporarily adjust the URL length limit to change client behavior.
-    BaseClient.URL_CHARACTER_LIMIT = URL_CHARACTER_LIMIT
-    yield
-    # Then restore the original value.
-    BaseClient.URL_CHARACTER_LIMIT = int(URL_LIMITS.ORIGINAL)
 
 
 @pytest.mark.parametrize(

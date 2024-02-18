@@ -1,5 +1,3 @@
-from enum import IntEnum
-
 import dask.array
 import numpy
 import orjson
@@ -11,10 +9,10 @@ import xarray.testing
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
-from ..client.base import BaseClient
 from ..serialization.xarray import serialize_json
 from ..server.app import build_app
 from ..structures.core import Spec
+from .utils import URL_LIMITS
 
 image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -151,27 +149,6 @@ def test_wide_table_optimization_off(client):
     with record_history() as history:
         wide.read(optimize_wide_table=False)
     assert len(history.requests) >= 10
-
-
-class URL_LIMITS(IntEnum):
-    HUGE = 80_000
-    ORIGINAL = BaseClient.URL_CHARACTER_LIMIT
-    TINY = 10
-
-
-@pytest.fixture
-def url_limit(request: pytest.FixtureRequest):
-    """Adjust the URL length limit for the client's GET requests.
-
-    Data will be fetched by GET requests when the URL_CHARACTER_LIMIT is long,
-    and by equivalent POST requests when the URL_CHARACTER_LIMIT is short.
-    """
-    URL_CHARACTER_LIMIT = int(request.param)
-    # Temporarily adjust the URL length limit to change client behavior.
-    BaseClient.URL_CHARACTER_LIMIT = URL_CHARACTER_LIMIT
-    yield
-    # Then restore the original value.
-    BaseClient.URL_CHARACTER_LIMIT = int(URL_LIMITS.ORIGINAL)
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,7 @@
 import contextlib
 import getpass
 import uuid
+from enum import IntEnum
 
 import httpx
 import pytest
@@ -8,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..client import context
+from ..client.base import BaseClient
 
 
 @contextlib.contextmanager
@@ -56,3 +58,9 @@ def enter_password(password):
     yield
     setattr(getpass, "getpass", original_getpass)
     context.PROMPT_FOR_REAUTHENTICATION = original_prompt
+
+
+class URL_LIMITS(IntEnum):
+    HUGE = 80_000
+    ORIGINAL = BaseClient.URL_CHARACTER_LIMIT
+    TINY = 10
