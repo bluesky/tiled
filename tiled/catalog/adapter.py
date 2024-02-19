@@ -1,5 +1,6 @@
 import collections
 import importlib
+import itertools as it
 import operator
 import os
 import re
@@ -859,9 +860,11 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
     async def items_range(self, offset, limit):
         if self.data_sources:
-            return (await self.get_adapter()).items()[
-                offset : (offset + limit) if limit is not None else None  # noqa: E203
-            ]
+            return it.islice(
+                (await self.get_adapter()).items(),
+                offset,
+                (offset + limit) if limit is not None else None  # noqa: E203
+            )
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:
             statement = statement.filter(condition)

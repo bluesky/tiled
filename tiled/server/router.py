@@ -799,7 +799,7 @@ async def container_full(
         )
     try:
         with record_timing(request.state.metrics, "read"):
-            data = await ensure_awaitable(entry.read, field)
+            data = await ensure_awaitable(entry.read, fields=field)
     except KeyError as err:
         (key,) = err.args
         raise HTTPException(status_code=400, detail=f"No such field {key}.")

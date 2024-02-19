@@ -2,7 +2,7 @@ import io
 
 from ..media_type_registration import serialization_registry
 from ..structures.core import StructureFamily
-from ..utils import SerializationError, modules_available, safe_json_dump
+from ..utils import SerializationError, ensure_awaitable, modules_available, safe_json_dump
 
 
 async def walk(node, filter_for_access, pre=None):
@@ -65,7 +65,7 @@ if modules_available("h5py"):
                             group.attrs.update(node.metadata())
                         except TypeError:
                             raise SerializationError(MSG)
-                data = array_adapter.read()
+                data = await ensure_awaitable(array_adapter.read)
                 dataset = group.create_dataset(key_path[-1], data=data)
                 for k, v in array_adapter.metadata().items():
                     dataset.attrs.create(k, v)
