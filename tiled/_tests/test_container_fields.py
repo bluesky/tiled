@@ -11,16 +11,15 @@ from ..examples.generate_files import generate_files
 from ..server.app import build_app
 
 
-@pytest.fixture
-def example_data_dir(tmpdir_factory):
-    """
-    Generate a temporary directory with example files.
+def awaitable_client_from_data_dir(data_dir):
+    "Parametrize a test to use a tiled client that serves from data_dir (Path or str)"
 
-    The tmpdir_factory fixture ensures that this directory is cleaned up at test exit.
-    """
-    tmpdir = tmpdir_factory.mktemp("example_files")
-    generate_files(tmpdir)
-    return tmpdir
+    def decorator(test_func):
+        return pytest.mark.parametrize(
+            "awaitable_client_generator", (data_dir,), indirect=True
+        )(test_func)
+
+    return decorator
 
 
 @pytest.fixture
@@ -38,11 +37,21 @@ async def awaitable_client(awaitable_client_generator):
     return await awaitable_client_generator.__anext__()
 
 
+@pytest.fixture
+def example_data_dir(tmpdir_factory):
+    """
+    Generate a temporary directory with example files.
+
+    The tmpdir_factory fixture ensures that this directory is cleaned up at test exit.
+    """
+    tmpdir = tmpdir_factory.mktemp("example_files")
+    generate_files(tmpdir)
+    return tmpdir
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), ("a", "b")))
-@pytest.mark.parametrize(
-    "awaitable_client_generator", ["example_data_dir"], indirect=True
-)
+@awaitable_client_from_data_dir("example_data_dir")
 async def test_directory_fields(awaitable_client, fields):
     client = await awaitable_client
     url_path = client.item["links"]["full"]
@@ -73,9 +82,7 @@ def excel_data_dir(tmpdir):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), ("Sheet 1", "Sheet 10")))
-@pytest.mark.parametrize(
-    "awaitable_client_generator", ["excel_data_dir"], indirect=True
-)
+@awaitable_client_from_data_dir("excel_data_dir")
 async def test_excel_fields(awaitable_client, fields):
     client = await awaitable_client
     client = client["spreadsheet"]
