@@ -38,13 +38,9 @@ async def awaitable_client(awaitable_client_generator):
     return await awaitable_client_generator.__anext__()
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def example_data_dir(tmpdir_factory):
-    """
-    Generate a temporary directory with example files.
-
-    The tmpdir_factory fixture ensures that this directory is cleaned up at test exit.
-    """
+    "Generate a temporary directory with example files."
     tmpdir = tmpdir_factory.mktemp("example_files")
     generate_files(tmpdir)
     return tmpdir
@@ -72,8 +68,9 @@ async def test_directory_fields(awaitable_client, fields):
     assert actual_fields == expected
 
 
-@pytest.fixture
-def excel_data_dir(tmpdir):
+@pytest.fixture(scope="module")
+def excel_data_dir(tmpdir_factory):
+    tmpdir = tmpdir_factory.mktemp("excel_files")
     df = pandas.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
     with pandas.ExcelWriter(tmpdir / "spreadsheet.xlsx") as writer:
         for i in range(10):
@@ -95,8 +92,6 @@ async def test_excel_fields(awaitable_client, fields):
         # client.export(buffer, fields=fields, format=XLSX_MIME_TYPE)
 
     # Spreadsheet contents were fetched as a single request using "full" route
-    for request in history.requests:
-        print(request)
     (request,) = history.requests
     request_url_path = request.url.copy_with(query=None)
     assert request_url_path == url_path
@@ -110,12 +105,13 @@ async def test_excel_fields(awaitable_client, fields):
 
 def mark_xfail(value, unsupported="UNSPECIFIED ADAPTER"):
     "Indicate that this parameterized value is expected to fail"
-    reason = "Tiled does not currently support selecting 'fields' for {unsupported}"
+    reason = f"Tiled does not currently support selecting 'fields' for {unsupported}"
     return pytest.param(value, marks=pytest.mark.xfail(reason=reason))
 
 
-@pytest.fixture
-def zarr_data_dir(tmpdir):
+@pytest.fixture(scope="module")
+def zarr_data_dir(tmpdir_factory):
+    tmpdir = tmpdir_factory.mktemp("zarr_files")
     root = zarr.open(str(tmpdir / "zarr_group.zarr"), "w")
     for i, group in enumerate("abcde"):
         root.create_dataset(group, data=range(i, i + 3))
@@ -134,8 +130,6 @@ async def test_zarr_group_fields(awaitable_client, fields):
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
     # Spreadsheet contents were fetched as a single request using "full" route
-    for request in history.requests:
-        print(request)
     (request,) = history.requests
     request_url_path = request.url.copy_with(query=None)
     assert request_url_path == url_path
@@ -147,8 +141,9 @@ async def test_zarr_group_fields(awaitable_client, fields):
     assert actual_fields == expected
 
 
-@pytest.fixture
-def hdf5_data_dir(tmpdir):
+@pytest.fixture(scope="module")
+def hdf5_data_dir(tmpdir_factory):
+    tmpdir = tmpdir_factory.mktemp("hdf5_files")
     with h5py.File(str(tmpdir / "hdf5_example.h5"), "w") as file:
         file["x"] = [1, 2, 3]
         group = file.create_group("g")
@@ -170,8 +165,6 @@ async def test_hdf5_fields(awaitable_client, fields):
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
     # Spreadsheet contents were fetched as a single request using "full" route
-    for request in history.requests:
-        print(request)
     (request,) = history.requests
     request_url_path = request.url.copy_with(query=None)
     assert request_url_path == url_path
