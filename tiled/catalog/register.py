@@ -304,6 +304,7 @@ async def register_single_item(
         specs=adapter.specs,
         data_sources=[
             DataSource(
+                structure_family=adapter.structure_family,
                 mimetype=mimetype,
                 structure=dict_or_none(adapter.structure()),
                 parameters={},
@@ -381,6 +382,7 @@ async def register_tiff_sequence(catalog, name, sequence, settings):
         specs=adapter.specs,
         data_sources=[
             DataSource(
+                structure_family=adapter.structure_family,
                 mimetype=TIFF_SEQ_MIMETYPE,
                 structure=dict_or_none(adapter.structure()),
                 parameters={},

@@ -598,7 +598,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         data_sources = []
         if structure_family != StructureFamily.container:
             # TODO Handle multiple data sources.
-            data_sources.append({"structure": asdict(structure)})
+            data_sources.append(
+                {"structure": asdict(structure), "structure_family": structure_family}
+            )
         item = {
             "attributes": {
                 "metadata": metadata,

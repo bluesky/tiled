@@ -138,6 +138,7 @@ class Revision(pydantic.BaseModel):
 
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
+    structure_family: StructureFamily
     structure: Optional[
         Union[
             ArrayStructure,
@@ -156,6 +157,7 @@ class DataSource(pydantic.BaseModel):
     def from_orm(cls, orm):
         return cls(
             id=orm.id,
+            structure_family=orm.structure_family,
             structure=getattr(orm.structure, "structure", None),
             mimetype=orm.mimetype,
             parameters=orm.parameters,

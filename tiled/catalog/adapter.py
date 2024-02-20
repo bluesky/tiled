@@ -629,6 +629,7 @@ class CatalogNodeAdapter:
                     ).on_conflict_do_nothing(index_elements=["id"])
                     await db.execute(statement)
                 data_source_orm = orm.DataSource(
+                    structure_family=data_source.structure_family,
                     mimetype=data_source.mimetype,
                     management=data_source.management,
                     parameters=data_source.parameters,
