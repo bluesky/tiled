@@ -14,7 +14,7 @@ from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
-from .base import BaseClient
+from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
     ClientError,
@@ -570,7 +570,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def new(
         self,
         structure_family,
-        structure,
+        data_sources,
         *,
         key=None,
         metadata=None,
@@ -591,16 +591,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata = metadata or {}
         specs = specs or []
         normalized_specs = []
+        # Normalize specs and data_sources to dicts we can JSON-ify.
         for spec in specs:
             if isinstance(spec, str):
                 spec = Spec(spec)
             normalized_specs.append(asdict(spec))
-        data_sources = []
-        if structure_family != StructureFamily.container:
-            # TODO Handle multiple data sources.
-            data_sources.append(
-                {"structure": asdict(structure), "structure_family": structure_family}
-            )
+        data_sources = [data_source.copy() for data_source in data_sources]
+        for data_source in data_sources:
+            data_source["structure"] = asdict(data_source["structure"])
         item = {
             "attributes": {
                 "metadata": metadata,
@@ -619,6 +617,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 content=safe_json_dump(body),
             )
         ).json()
+        if structure_family == StructureFamily.container:
+            structure = {"contents": None, "count": None}
+        else:
+            # Only containers can have multiple data_sources right now.
+            (data_source,) = data_sources
+            structure = STRUCTURE_TYPES[structure_family].from_json(
+                data_source["structure"]
+            )
         item["attributes"]["structure"] = structure
 
         # if server returned modified metadata update the local copy
@@ -663,7 +669,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new(
             StructureFamily.container,
-            {"contents": None, "count": None},
+            [],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -725,7 +731,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         client = self.new(
             StructureFamily.array,
-            structure,
+            [{"structure": structure, "structure_family": StructureFamily.array}],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -791,7 +797,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         client = self.new(
             StructureFamily.awkward,
-            structure,
+            [{"structure": structure, "structure_family": StructureFamily.awkward}],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -842,7 +848,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         # Define the overall shape and the dimensions of each chunk.
         >>> from tiled.structures.sparse import COOStructure
-        >>> x = c.new("sparse", COOStructure(shape=(10,), chunks=((5, 5),)))
+        >>> structure = COOStructure(shape=(10,), chunks=((5, 5),))
+        >>> data_sources = [{"structure": structure, "structure_family": structure_family}],
+        >>> x = c.new("sparse", data_sources)
         # Upload the data in each chunk.
         # Coords are given with in the reference frame of each chunk.
         >>> x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
@@ -858,7 +866,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         client = self.new(
             StructureFamily.sparse,
-            structure,
+            [{"structure": structure, "structure_family": StructureFamily.sparse}],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -904,7 +912,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure = TableStructure.from_pandas(dataframe)
         client = self.new(
             StructureFamily.table,
-            structure,
+            [{"structure": structure, "structure_family": StructureFamily.table}],
             key=key,
             metadata=metadata,
             specs=specs,

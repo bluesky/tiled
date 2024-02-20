@@ -208,7 +208,12 @@ def test_write_sparse_chunked(tree):
         with record_history() as history:
             x = client.new(
                 "sparse",
-                COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                [
+                    {
+                        "structure": COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                        "structure_family": "sparse",
+                    }
+                ],
                 metadata=metadata,
                 specs=specs,
             )
