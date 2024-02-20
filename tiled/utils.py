@@ -660,7 +660,9 @@ async def ensure_awaitable(func, *args, **kwargs):
     else:
         # run_sync() does not apply **kwargs to func
         # https://github.com/agronholm/anyio/issues/414
-        func_with_kwargs = lambda *args: func(*args, **kwargs)
+        def func_with_kwargs(*args):
+            return func(*args, **kwargs)
+
         return await anyio.to_thread.run_sync(func_with_kwargs, *args)
 
 

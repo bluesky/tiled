@@ -2,7 +2,12 @@ import io
 
 from ..media_type_registration import serialization_registry
 from ..structures.core import StructureFamily
-from ..utils import SerializationError, ensure_awaitable, modules_available, safe_json_dump
+from ..utils import (
+    SerializationError,
+    ensure_awaitable,
+    modules_available,
+    safe_json_dump,
+)
 
 
 async def walk(node, filter_for_access, pre=None):

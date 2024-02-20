@@ -863,7 +863,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return it.islice(
                 (await self.get_adapter()).items(),
                 offset,
-                (offset + limit) if limit is not None else None  # noqa: E203
+                (offset + limit) if limit is not None else None,  # noqa: E203
             )
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
         for condition in self.conditions:

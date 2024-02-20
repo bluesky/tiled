@@ -32,7 +32,6 @@ def example_data_dir(tmpdir_factory):
     return tmpdir
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), ("a", "b")))
 @pytest.mark.parametrize("client", ("example_data_dir",), indirect=True)
 def test_directory_fields(client, fields):
@@ -57,7 +56,6 @@ def excel_data_dir(tmpdir_factory):
     return tmpdir
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), ("Sheet 1", "Sheet 10")))
 @pytest.mark.parametrize("client", ("excel_data_dir",), indirect=True)
 def test_excel_fields(client, fields):
@@ -90,7 +88,6 @@ def zarr_data_dir(tmpdir_factory):
     return tmpdir
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), mark_xfail(("b", "d"), "Zarr")))
 @pytest.mark.parametrize("client", ("zarr_data_dir",), indirect=True)
 def test_zarr_group_fields(client, fields):
@@ -116,7 +113,6 @@ def hdf5_data_dir(tmpdir_factory):
     return tmpdir
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "fields", (None, (), mark_xfail(("x",), "HDF5"), mark_xfail(("g",), "HDF5"))
 )
