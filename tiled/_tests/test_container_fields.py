@@ -56,16 +56,8 @@ async def test_directory_fields(awaitable_client, fields):
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
-    # Directory contents were fetched as a single request using "full" route
-    (request,) = history.requests
-    request_url_path = request.url.copy_with(query=None)
-    assert request_url_path == url_path
-
-    # Only the requested fields were fetched
-    file = h5py.File(buffer, "r")
-    actual_fields = set(file.keys())
-    expected = set(fields or client.keys())  # By default all fields were fetched
-    assert actual_fields == expected
+    assert_single_request_to_url(history, url_path)
+    assert_requested_fields_fetched(buffer, fields, client)
 
 
 @pytest.fixture(scope="module")
@@ -91,16 +83,8 @@ async def test_excel_fields(awaitable_client, fields):
         # TODO: Enable container to export XLSX if all nodes are tables?
         # client.export(buffer, fields=fields, format=XLSX_MIME_TYPE)
 
-    # Spreadsheet contents were fetched as a single request using "full" route
-    (request,) = history.requests
-    request_url_path = request.url.copy_with(query=None)
-    assert request_url_path == url_path
-
-    # Only the requested fields were fetched
-    file = h5py.File(buffer)
-    actual_fields = set(file.keys())
-    expected = set(fields or client.keys())  # By default all fields were fetched
-    assert actual_fields == expected
+    assert_single_request_to_url(history, url_path)
+    assert_requested_fields_fetched(buffer, fields, client)
 
 
 def mark_xfail(value, unsupported="UNSPECIFIED ADAPTER"):
@@ -129,16 +113,8 @@ async def test_zarr_group_fields(awaitable_client, fields):
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
-    # Spreadsheet contents were fetched as a single request using "full" route
-    (request,) = history.requests
-    request_url_path = request.url.copy_with(query=None)
-    assert request_url_path == url_path
-
-    # Only the requested fields were fetched
-    file = h5py.File(buffer)
-    actual_fields = set(file.keys())
-    expected = set(fields or client.keys())  # By default all fields were fetched
-    assert actual_fields == expected
+    assert_single_request_to_url(history, url_path)
+    assert_requested_fields_fetched(buffer, fields, client)
 
 
 @pytest.fixture(scope="module")
@@ -164,12 +140,19 @@ async def test_hdf5_fields(awaitable_client, fields):
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
-    # Spreadsheet contents were fetched as a single request using "full" route
+    assert_single_request_to_url(history, url_path)
+    assert_requested_fields_fetched(buffer, fields, client)
+
+
+def assert_single_request_to_url(history, url_path):
+    "Container contents were fetched as a single request using 'full' route"
     (request,) = history.requests
     request_url_path = request.url.copy_with(query=None)
     assert request_url_path == url_path
 
-    # Only the requested fields were fetched
+
+def assert_requested_fields_fetched(buffer, fields, client):
+    "Only the requested fields were fetched"
     file = h5py.File(buffer)
     actual_fields = set(file.keys())
     expected = set(fields or client.keys())  # By default all fields were fetched
