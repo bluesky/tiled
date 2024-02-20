@@ -9,10 +9,10 @@ import xarray.testing
 from ..adapters.mapping import MapAdapter
 from ..adapters.xarray import DatasetAdapter
 from ..client import Context, from_context, record_history
-from ..client import xarray as xarray_client
 from ..serialization.xarray import serialize_json
 from ..server.app import build_app
 from ..structures.core import Spec
+from .utils import URL_LIMITS
 
 image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -151,46 +151,34 @@ def test_wide_table_optimization_off(client):
     assert len(history.requests) >= 10
 
 
-def test_url_limit_handling(client):
-    "Check that requests and split up to stay below the URL length limit."
+@pytest.mark.parametrize(
+    "url_limit, expected_method",
+    (
+        (URL_LIMITS.HUGE, "GET"),  # URL query should fit in a GET request
+        (URL_LIMITS.DEFAULT, None),  # Expected method is not specified
+        (URL_LIMITS.TINY, "POST"),  # URL query is too long for a GET request
+    ),
+    indirect=["url_limit"],
+)
+def test_url_limit_bypass(client, url_limit, expected_method):
+    "GET requests beyond the URL length limit should become POST requests."
     expected = EXPECTED["wide"]
+    expected_requests = 2  # Once for data_vars + once for coords
     dsc = client["wide"]
     dsc.read()  # Dry run to run any one-off state-initializing requests.
-    # Accumulate Requests here for later inspection.
-    requests = []
 
-    def accumulate(request):
-        # httpx.AsyncClient requires event hooks to be async functions.
-        requests.append(request)
-
-    client.context.http_client.event_hooks["request"].append(accumulate)
-    actual = dsc.read()
-    xarray.testing.assert_equal(actual, expected)
-    normal_request_count = len(requests)
-    original = xarray_client.URL_CHARACTER_LIMIT
-    try:
-        # It should never be necessary to tune this for real-world use, but we
-        # use this knob as a way to test its operation.
-        xarray_client.URL_CHARACTER_LIMIT = 200
-        # The client will need to split this across more requests in order to
-        # stay within the tighter limit.
-        requests.clear()  # Empty the Request cache before the next batch of requests.
+    with record_history() as history:
         actual = dsc.read()
         xarray.testing.assert_equal(actual, expected)
-        higher_request_count = len(requests)
-        # Tighten even more.
-        xarray_client.URL_CHARACTER_LIMIT = 100
-        requests.clear()  # Empty the Request cache before the next batch of requests.
-        actual = dsc.read()
-        xarray.testing.assert_equal(actual, expected)
-        highest_request_count = len(requests)
-    finally:
-        # Restore default.
-        xarray_client.URL_CHARACTER_LIMIT = original
-    # The goal here is to test the *trend* not the specific values because the
-    # number of requests may evolve as the library changes, but the trend should
-    # hold.
-    assert highest_request_count > higher_request_count > normal_request_count
+
+        requests = list(request for request in history.requests)
+        assert len(requests) == expected_requests
+
+        request_methods = list(request.method for request in requests)
+        if expected_method == "POST":
+            assert "POST" in request_methods  # At least one POST request
+        elif expected_method == "GET":
+            assert "POST" not in request_methods  # No POST request
 
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())

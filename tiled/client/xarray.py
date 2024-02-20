@@ -2,12 +2,12 @@ import threading
 
 import dask
 import dask.array
-import pandas
 import xarray
 
 from ..serialization.table import deserialize_arrow
 from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
+from .base import BaseClient
 from .container import Container
 from .utils import handle_error
 
@@ -37,10 +37,12 @@ class DaskDatasetClient(Container):
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
         coords_fetcher = _WideTableFetcher(
-            self.context.http_client.get, self.item["links"]["full"]
+            self.context.http_client,
+            self.item["links"]["full"],
         )
         data_vars_fetcher = _WideTableFetcher(
-            self.context.http_client.get, self.item["links"]["full"]
+            self.context.http_client,
+            self.item["links"]["full"],
         )
         array_clients = {}
         array_structures = {}
@@ -112,13 +114,12 @@ class DatasetClient(DaskDatasetClient):
         )
 
 
-URL_CHARACTER_LIMIT = 2000  # number of characters
 _EXTRA_CHARS_PER_ITEM = len("&field=")
 
 
 class _WideTableFetcher:
-    def __init__(self, get, link):
-        self.get = get
+    def __init__(self, http_client, link):
+        self.http_client = http_client
         self.link = link
         self.variables = []
         self._dataframe = None
@@ -143,36 +144,39 @@ class _WideTableFetcher:
             if self._dataframe is None:
                 # If self.variables contains many and/or lengthy names,
                 # we can bump into the URI size limit commonly imposed by
-                # HTTP stacks (e.g. nginx). The HTTP spec does not define a limit,
-                # but a common setting is 4K or 8K (for all the headers together).
-                # As another reference point, Internet Explorer imposes a
-                # 2048-character limit on URLs.
-                variables = []
-                dataframes = []
-                budget = URL_CHARACTER_LIMIT
-                budget -= len(self.link)
-                # Fetch the variables in batches.
-                for variable in self.variables:
-                    budget -= _EXTRA_CHARS_PER_ITEM + len(variable)
-                    if budget < 0:
-                        # Fetch a batch and then add `variable` to the next batch.
-                        dataframes.append(self._fetch_variables(variables))
-                        variables.clear()
-                        budget = URL_CHARACTER_LIMIT - (
-                            _EXTRA_CHARS_PER_ITEM + len(variable)
-                        )
-                    variables.append(variable)
-                if variables:
-                    # Fetch the final batch.
-                    dataframes.append(self._fetch_variables(variables))
-                self._dataframe = pandas.concat(dataframes, axis=1).reset_index()
+                # HTTP stacks (e.g. nginx).
+                url_length_for_get_request = len(self.link) + sum(
+                    _EXTRA_CHARS_PER_ITEM + len(variable) for variable in self.variables
+                )
+                if url_length_for_get_request > BaseClient.URL_CHARACTER_LIMIT:
+                    dataframe = self._fetch_variables(self.variables, "POST")
+                else:
+                    dataframe = self._fetch_variables(self.variables, "GET")
+                self._dataframe = dataframe.reset_index()
         return self._dataframe
 
-    def _fetch_variables(self, variables):
+    def _fetch_variables(self, variables, method="GET"):
+        if method == "GET":
+            return self._fetch_variables__get(variables)
+        if method == "POST":
+            return self._fetch_variables__post(variables)
+        raise NotImplementedError(f"Method {method} is not supported")
+
+    def _fetch_variables__get(self, variables):
         content = handle_error(
-            self.get(
+            self.http_client.get(
                 self.link,
                 params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
+            )
+        ).read()
+        return deserialize_arrow(content)
+
+    def _fetch_variables__post(self, variables):
+        content = handle_error(
+            self.http_client.post(
+                self.link,
+                json=variables,
+                params={"format": APACHE_ARROW_FILE_MIME_TYPE},
             )
         ).read()
         return deserialize_arrow(content)

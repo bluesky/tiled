@@ -1,13 +1,14 @@
 import dataclasses
 import inspect
 import os
+import warnings
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, List, Optional
 
 import anyio
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 from starlette.responses import FileResponse
@@ -490,15 +491,88 @@ async def array_full(
     response_model=schemas.Response,
     name="table partition",
 )
-async def table_partition(
+async def get_table_partition(
     request: Request,
     partition: int,
     entry=SecureEntry(scopes=["read:data"]),
-    field: Optional[List[str]] = Query(None, min_length=1),
+    column: Optional[List[str]] = Query(None, min_length=1),
+    field: Optional[List[str]] = Query(None, min_length=1, deprecated=True),
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
     settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a partition (continuous block of rows) from a DataFrame [GET route].
+    """
+    if (field is not None) and (column is not None):
+        redundant_field_and_column = " ".join(
+            (
+                "Cannot accept both 'column' and 'field' query parameters",
+                "in the same /table/partition request.",
+                "Include these query values using only the 'column' parameter.",
+            )
+        )
+        raise HTTPException(status_code=400, detail=redundant_field_and_column)
+    elif field is not None:
+        field_is_deprecated = " ".join(
+            (
+                "Query parameter 'field' is deprecated for the /table/partition route.",
+                "Instead use the query parameter 'column'.",
+            )
+        )
+        warnings.warn(field_is_deprecated, DeprecationWarning)
+    return await table_partition(
+        request=request,
+        partition=partition,
+        entry=entry,
+        column=(column or field),
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+@router.post(
+    "/table/partition/{path:path}",
+    response_model=schemas.Response,
+    name="table partition",
+)
+async def post_table_partition(
+    request: Request,
+    partition: int,
+    entry=SecureEntry(scopes=["read:data"]),
+    column: Optional[List[str]] = Body(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a partition (continuous block of rows) from a DataFrame [POST route].
+    """
+    return await table_partition(
+        request=request,
+        partition=partition,
+        entry=entry,
+        column=column,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+async def table_partition(
+    request: Request,
+    partition: int,
+    entry,
+    column: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
+    settings: BaseSettings,
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
@@ -512,7 +586,7 @@ async def table_partition(
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
-            df = await ensure_awaitable(entry.read_partition, partition, field)
+            df = await ensure_awaitable(entry.read_partition, partition, column)
     except IndexError:
         raise HTTPException(status_code=400, detail="Partition out of range")
     except KeyError as err:
@@ -549,7 +623,7 @@ async def table_partition(
     response_model=schemas.Response,
     name="full 'table' data",
 )
-async def table_full(
+async def get_table_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     column: Optional[List[str]] = Query(None, min_length=1),
@@ -557,6 +631,57 @@ async def table_full(
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
     settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch the data for the given table [GET route].
+    """
+    return await table_full(
+        request=request,
+        entry=entry,
+        column=column,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+@router.post(
+    "/table/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'table' data",
+)
+async def post_table_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    column: Optional[List[str]] = Body(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch the data for the given table [POST route].
+    """
+    return await table_full(
+        request=request,
+        entry=entry,
+        column=column,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+        settings=settings,
+    )
+
+
+async def table_full(
+    request: Request,
+    entry,
+    column: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
+    settings: BaseSettings,
 ):
     """
     Fetch the data for the given table.
@@ -604,7 +729,7 @@ async def table_full(
     response_model=schemas.Response,
     name="full 'container' metadata and data",
 )
-async def container_full(
+async def get_container_full(
     request: Request,
     entry=SecureEntry(scopes=["read:data"]),
     principal: str = Depends(get_current_principal),
@@ -612,6 +737,57 @@ async def container_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
+):
+    """
+    Fetch the data for the given container via a GET request.
+    """
+    return await container_full(
+        request=request,
+        entry=entry,
+        principal=principal,
+        field=field,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+    )
+
+
+@router.post(
+    "/container/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'container' metadata and data",
+)
+async def post_container_full(
+    request: Request,
+    entry=SecureEntry(scopes=["read:data"]),
+    principal: str = Depends(get_current_principal),
+    field: Optional[List[str]] = Body(None, min_length=1),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+):
+    """
+    Fetch the data for the given container via a POST request.
+    """
+    return await container_full(
+        request=request,
+        entry=entry,
+        principal=principal,
+        field=field,
+        format=format,
+        filename=filename,
+        serialization_registry=serialization_registry,
+    )
+
+
+async def container_full(
+    request: Request,
+    entry,
+    principal: str,
+    field: Optional[List[str]],
+    format: Optional[str],
+    filename: Optional[str],
+    serialization_registry,
 ):
     """
     Fetch the data for the given container.
