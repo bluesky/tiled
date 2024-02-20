@@ -211,6 +211,7 @@ async def test_write_array_external(a, tmpdir):
         metadata={},
         data_sources=[
             DataSource(
+                structure_family="array",
                 mimetype="image/tiff",
                 structure=structure,
                 parameters={},
@@ -244,6 +245,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
         metadata={},
         data_sources=[
             DataSource(
+                structure_family="table",
                 mimetype="text/csv",
                 structure=structure,
                 parameters={},
@@ -274,6 +276,7 @@ async def test_write_array_internal_direct(a, tmpdir):
         metadata={},
         data_sources=[
             DataSource(
+                structure_family="array",
                 structure=structure,
                 management="writable",
             )
@@ -517,6 +520,7 @@ async def test_constraints_on_parameter_and_num(a, assets):
             specs=arr_adapter.specs,
             data_sources=[
                 DataSource(
+                    structure_family=arr_adapter.structure_family,
                     mimetype="application/x-test",
                     structure=asdict(arr_adapter.structure()),
                     parameters={},

@@ -224,6 +224,7 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
             specs=adapter.specs,
             data_sources=[
                 DataSource(
+                    structure_family=adapter.structure_family,
                     mimetype=MIMETYPE,
                     structure=dataclasses.asdict(adapter.structure()),
                     parameters={},
@@ -304,6 +305,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
             specs=adapter.specs,
             data_sources=[
                 DataSource(
+                    structure_family=adapter.structure_family,
                     mimetype="application/x-hdf5",
                     structure=None,
                     parameters={},
