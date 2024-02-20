@@ -1,5 +1,6 @@
 import io
 
+import anyio
 import h5py
 import pandas
 import pytest
@@ -12,30 +13,14 @@ from ..examples.generate_files import generate_files
 from ..server.app import build_app
 
 
-def awaitable_client_from_data_dir(data_dir):
-    "Parametrize a test to use a tiled client that serves from data_dir (Path or str)"
-
-    def decorator(test_func):
-        return pytest.mark.parametrize(
-            "awaitable_client_generator", (data_dir,), indirect=True
-        )(test_func)
-
-    return decorator
-
-
-@pytest.fixture
-async def awaitable_client_generator(request: pytest.FixtureRequest):
+@pytest.fixture(scope="module")
+def client(request: pytest.FixtureRequest):
     data_dir = request.getfixturevalue(request.param)
     catalog = in_memory(readable_storage=[data_dir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register(catalog, data_dir)
+        anyio.run(register, catalog, data_dir)
         yield client
-
-
-@pytest.fixture
-async def awaitable_client(awaitable_client_generator):
-    return await awaitable_client_generator.__anext__()
 
 
 @pytest.fixture(scope="module")
@@ -48,9 +33,8 @@ def example_data_dir(tmpdir_factory):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), ("a", "b")))
-@awaitable_client_from_data_dir("example_data_dir")
-async def test_directory_fields(awaitable_client, fields):
-    client = await awaitable_client
+@pytest.mark.parametrize("client", ("example_data_dir",), indirect=True)
+def test_directory_fields(client, fields):
     url_path = client.item["links"]["full"]
     buffer = io.BytesIO()
     with record_history() as history:
@@ -72,9 +56,8 @@ def excel_data_dir(tmpdir_factory):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), ("Sheet 1", "Sheet 10")))
-@awaitable_client_from_data_dir("excel_data_dir")
-async def test_excel_fields(awaitable_client, fields):
-    client = await awaitable_client
+@pytest.mark.parametrize("client", ("excel_data_dir",), indirect=True)
+def test_excel_fields(client, fields):
     client = client["spreadsheet"]
     url_path = client.item["links"]["full"]
     buffer = io.BytesIO()
@@ -104,9 +87,8 @@ def zarr_data_dir(tmpdir_factory):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fields", (None, (), mark_xfail(("b", "d"), "Zarr")))
-@awaitable_client_from_data_dir("zarr_data_dir")
-async def test_zarr_group_fields(awaitable_client, fields):
-    client = await awaitable_client
+@pytest.mark.parametrize("client", ("zarr_data_dir",), indirect=True)
+def test_zarr_group_fields(client, fields):
     client = client["zarr_group"]
     url_path = client.item["links"]["full"]
     buffer = io.BytesIO()
@@ -131,9 +113,8 @@ def hdf5_data_dir(tmpdir_factory):
 @pytest.mark.parametrize(
     "fields", (None, (), mark_xfail(("x",), "HDF5"), mark_xfail(("g",), "HDF5"))
 )
-@awaitable_client_from_data_dir("hdf5_data_dir")
-async def test_hdf5_fields(awaitable_client, fields):
-    client = await awaitable_client
+@pytest.mark.parametrize("client", ("hdf5_data_dir",), indirect=True)
+def test_hdf5_fields(client, fields):
     client = client["hdf5_example"]
     url_path = client.item["links"]["full"]
     buffer = io.BytesIO()
