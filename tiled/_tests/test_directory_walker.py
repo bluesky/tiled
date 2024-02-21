@@ -22,12 +22,11 @@ from ..catalog.register import (
     skip_all,
     strip_suffixes,
 )
-from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
 from ..server.schemas import Asset, DataSource, Management
-from ..utils import path_from_uri
+from ..utils import ensure_uri, path_from_uri
 
 
 @pytest.fixture

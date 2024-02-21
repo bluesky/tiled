@@ -1221,6 +1221,20 @@ async def delete(
     return json_or_msgpack(request, None)
 
 
+@router.delete("/nodes/{path:path}")
+async def bulk_delete(
+    request: Request,
+    entry=SecureEntry(scopes=["write:data", "write:metadata"]),
+):
+    if hasattr(entry, "delete_tree"):
+        await entry.delete_tree()
+    else:
+        raise HTTPException(
+            status_code=405, detail="This node does not support bulk deletion."
+        )
+    return json_or_msgpack(request, None)
+
+
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,

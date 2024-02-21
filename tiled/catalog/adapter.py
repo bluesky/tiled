@@ -34,15 +34,24 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..mimetypes import (
+    AWKWARD_BUFFERS_MIMETYPE,
+    DEFAULT_ADAPTERS_BY_MIMETYPE,
+    PARQUET_MIMETYPE,
+    SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    ZARR_MIMETYPE,
+)
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
+    SCHEME_PATTERN,
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
     UnsupportedQueryType,
     ensure_awaitable,
+    ensure_uri,
     import_object,
     path_from_uri,
     safe_json_dump,
@@ -50,14 +59,7 @@ from ..utils import (
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
-from .mimetypes import (
-    AWKWARD_BUFFERS_MIMETYPE,
-    DEFAULT_ADAPTERS_BY_MIMETYPE,
-    PARQUET_MIMETYPE,
-    SPARSE_BLOCKS_PARQUET_MIMETYPE,
-    ZARR_MIMETYPE,
-)
-from .utils import SCHEME_PATTERN, compute_structure_id, ensure_uri
+from .utils import compute_structure_id
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")

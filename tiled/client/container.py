@@ -337,8 +337,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
 
     def delete_tree(self):
-        # TODO
-        pass
+        endpoint = self.uri.replace("/metadata/", "/nodes", 1)
+        handle_error(self.context.http_client.delete(endpoint))
 
     # The following two methods are used by keys(), values(), items().
 

@@ -6,17 +6,14 @@ import re
 from pathlib import Path
 
 import anyio
+import httpx
 import watchfiles
 
-from ..catalog.adapter import Collision
-from ..catalog.mimetypes import (
-    DEFAULT_ADAPTERS_BY_MIMETYPE,
-    DEFAULT_MIMETYPES_BY_FILE_EXT,
-)
-from ..catalog.utils import ensure_uri
+from ..mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
-from ..utils import import_object
+from ..utils import ensure_uri, import_object
+from .utils import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -582,14 +579,17 @@ async def create_node_safe(
 
     try:
         return await anyio.to_thread.run_sync(new, *args)
-    except Collision as err:
-        # To avoid ambiguity include _neither_ the original nor the new one.
-        offender = await anyio.to_thread.run_sync(node.get, key)
-        await offender.delete_tree()
-        logger.warning(
-            "   COLLISION: Multiple files would result in node at '%s'. Skipping all.",
-            err.args[0],
-        )
+    except ClientError as err:
+        if err.response.status_code == httpx.codes.CONFLICT:
+            # To avoid ambiguity include _neither_ the original nor the new one.
+            offender = await anyio.to_thread.run_sync(node.get, key)
+            await offender.delete_tree()
+            logger.warning(
+                "   COLLISION: Multiple files would result in node at '%s'. Skipping all.",
+                err.args[0],
+            )
+        else:
+            raise
 
 
 def dict_or_none(structure):

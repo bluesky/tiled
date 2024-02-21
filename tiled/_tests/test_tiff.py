@@ -8,9 +8,9 @@ from ..adapters.mapping import MapAdapter
 from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
 from ..catalog import in_memory
 from ..catalog.register import TIFF_SEQUENCE_EMPTY_NAME_ROOT, register
-from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
 from ..server.app import build_app
+from ..utils import ensure_uri
 
 COLOR_SHAPE = (11, 17, 3)
 

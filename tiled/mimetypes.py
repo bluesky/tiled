@@ -1,7 +1,7 @@
 import importlib
 
-from ..serialization.table import XLSX_MIME_TYPE
-from ..utils import OneShotCachedMap
+from .serialization.table import XLSX_MIME_TYPE
+from .utils import OneShotCachedMap
 
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
@@ -13,34 +13,34 @@ AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
         "image/tiff": lambda: importlib.import_module(
-            "...adapters.tiff", __name__
+            "..adapters.tiff", __name__
         ).TiffAdapter,
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
-            "...adapters.tiff", __name__
+            "..adapters.tiff", __name__
         ).TiffSequenceAdapter.from_uris,
         "text/csv": lambda: importlib.import_module(
-            "...adapters.csv", __name__
+            "..adapters.csv", __name__
         ).read_csv,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
-            "...adapters.excel", __name__
+            "..adapters.excel", __name__
         ).ExcelAdapter.from_uri,
         "application/x-hdf5": lambda: importlib.import_module(
-            "...adapters.hdf5", __name__
+            "..adapters.hdf5", __name__
         ).HDF5Adapter.from_uri,
         "application/x-netcdf": lambda: importlib.import_module(
-            "...adapters.netcdf", __name__
+            "..adapters.netcdf", __name__
         ).read_netcdf,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.parquet", __name__
+            "..adapters.parquet", __name__
         ).ParquetDatasetAdapter,
         SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.sparse_blocks_parquet", __name__
+            "..adapters.sparse_blocks_parquet", __name__
         ).SparseBlocksParquetAdapter,
         ZARR_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.zarr", __name__
+            "..adapters.zarr", __name__
         ).read_zarr,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.awkward_buffers", __name__
+            "..adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.from_directory,
     }
 )
