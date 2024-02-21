@@ -256,7 +256,7 @@ trees:
 We then use the configuration file like this:
 
 ```
-tiled serve config config.yml
+tiled serve config config.yml --api-key secret
 ```
 
 and register the files in a separate step. Use `--ext` and/or `--mimetype-hook`
@@ -265,7 +265,8 @@ described above to register files as your custom MIME type (e.g.
 
 
 ```
-tiled catalog register catalog.db \
+tiled register http://localhost:8000 \
+  --api-key secret \
   --verbose \
   --ext '.stuff=application/x-stuff' \
   --adapter 'application/x-stuff=custom:read_custom_format' \

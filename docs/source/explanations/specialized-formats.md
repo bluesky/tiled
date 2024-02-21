@@ -97,13 +97,14 @@ trees:
 and serve it:
 
 ```
-tiled serve config --public config.yml
+tiled serve config --public config.yml --api-key secret
 ```
 
 Register the files:
 
 ```
-tiled catalog register catalog.db \
+tiled catalog register http://localhost:8000/ \
+  --api-key secret \
   --verbose \
   --ext '.xdi=application/x-xdi' \
   --adapter 'application/x-xdi=tiled.examples.xdi:read_xdi' \
