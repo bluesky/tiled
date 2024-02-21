@@ -1,3 +1,4 @@
+import enum
 import json
 import os
 import sqlite3
@@ -162,6 +163,18 @@ def with_thread_lock(fn):
     return wrapper
 
 
+class ThreadingMode(enum.IntEnum):
+    """Threading mode used in the sqlite3 package.
+
+    https://docs.python.org/3/library/sqlite3.html#sqlite3.threadsafety
+
+    """
+
+    SINGLE_THREAD = 0
+    MULTI_THREAD = 1
+    SERIALIZED = 3
+
+
 class Cache:
     def __init__(
         self,
@@ -201,9 +214,8 @@ class Cache:
         lock (``@with_thread_lock``) to prevent parallel writes.
 
         """
-        SERIALIZED = 3  # Could be defined in an enum elsewhere
         is_main_thread = threading.current_thread().ident == self._owner_thread
-        sqlite_is_safe = sqlite3.threadsafety == SERIALIZED
+        sqlite_is_safe = sqlite3.threadsafety == ThreadingMode.SERIALIZED
         return is_main_thread or sqlite_is_safe
 
     def __getstate__(self):

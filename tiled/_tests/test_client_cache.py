@@ -11,7 +11,7 @@ import pytest
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, record_history
-from ..client.cache import Cache, CachedResponse, with_thread_lock
+from ..client.cache import Cache, CachedResponse, ThreadingMode, with_thread_lock
 from ..server.app import build_app
 
 tree = MapAdapter(
@@ -177,7 +177,7 @@ def test_clear_cache(client):
 
 def test_not_thread_safe(client, monkeypatch):
     # Check that writes fail if thread safety is disabled
-    monkeypatch.setattr(sqlite3, "threadsafety", 0)
+    monkeypatch.setattr(sqlite3, "threadsafety", ThreadingMode.SINGLE_THREAD)
     cache = client.context.cache
     # Clear the cache in another thread
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -187,7 +187,8 @@ def test_not_thread_safe(client, monkeypatch):
 
 
 @pytest.mark.skipif(
-    sqlite3.threadsafety < 2, reason="sqlite not built with thread safe support"
+    sqlite3.threadsafety != ThreadingMode.SERIALIZED,
+    reason="sqlite not built with thread safe support",
 )
 def test_thread_safety(client):
     cache = client.context.cache
