@@ -1077,6 +1077,49 @@ async def post_metadata(
     settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
+    for data_source in body.data_sources:
+        if data_source.assets:
+            raise HTTPException(
+                "Externally-managed assets cannot be registered "
+                "using POST /metadata/{path} Use POST /register/{path} instead."
+            )
+    return await _create_node(
+        request=request,
+        path=path,
+        body=body,
+        validation_registry=validation_registry,
+        settings=settings,
+        entry=entry,
+    )
+
+
+@router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse)
+async def post_register(
+    request: Request,
+    path: str,
+    body: schemas.PostMetadataRequest,
+    validation_registry=Depends(get_validation_registry),
+    settings: BaseSettings = Depends(get_settings),
+    entry=SecureEntry(scopes=["write:metadata", "create", "register"]),
+):
+    return await _create_node(
+        request=request,
+        path=path,
+        body=body,
+        validation_registry=validation_registry,
+        settings=settings,
+        entry=entry,
+    )
+
+
+async def _create_node(
+    request: Request,
+    path: str,
+    body: schemas.PostMetadataRequest,
+    validation_registry,
+    settings: BaseSettings,
+    entry,
+):
     if not getattr(entry, "writable", False):
         raise HTTPException(
             status_code=405, detail=f"Data cannot be written at the path {path}"
