@@ -201,8 +201,9 @@ class Cache:
         lock (``@with_thread_lock``) to prevent parallel writes.
 
         """
+        SERIALIZED = 3  # Could be defined in an enum elsewhere
         is_main_thread = threading.current_thread().ident == self._owner_thread
-        sqlite_is_safe = sqlite3.threadsafety > 2
+        sqlite_is_safe = sqlite3.threadsafety == SERIALIZED
         return is_main_thread or sqlite_is_safe
 
     def __getstate__(self):
