@@ -5,8 +5,8 @@ import psutil
 import pytest
 
 from ..catalog import in_memory
-from ..catalog.register import register
 from ..client import Context, from_context
+from ..client.register import register
 from ..server.app import build_app, build_app_from_config
 from ..server.object_cache import NO_CACHE, ObjectCache, get_object_cache
 
@@ -73,8 +73,8 @@ a,b,c
         )
     adapter = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(adapter)) as context:
-        await register(adapter, tmpdir)
         client = from_context(context)
+        await register(client, tmpdir)
         cache = get_object_cache()
         assert cache.hits == cache.misses == 0
         client["data"].read()
@@ -107,8 +107,8 @@ a,b,c
     with Context.from_app(
         build_app(adapter, server_settings=server_settings)
     ) as context:
-        await register(adapter, tmpdir)
         client = from_context(context)
+        await register(client, tmpdir)
         cache = get_object_cache()
         assert cache is NO_CACHE
         client["data"]
@@ -126,8 +126,8 @@ a,b,c
         )
     adapter = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(adapter)) as context:
-        await register(adapter, tmpdir)
         client = from_context(context)
+        await register(client, tmpdir)
         cache = get_object_cache()
         assert cache.hits == cache.misses == 0
         assert len(client["data"].read()) == 1
@@ -139,7 +139,7 @@ a,b,c
     4,5,6
     """
             )
-        await register(adapter, tmpdir)
+        await register(client, tmpdir)
         assert len(client["data"].read()) == 2
         with open(path, "w") as file:
             file.write(
@@ -150,11 +150,11 @@ a,b,c
     7,8,9
     """
             )
-        await register(adapter, tmpdir)
+        await register(client, tmpdir)
         assert len(client["data"].read()) == 3
         # Remove file.
         path.unlink()
-        await register(adapter, tmpdir)
+        await register(client, tmpdir)
         assert "data" not in client
         with pytest.raises(KeyError):
             client["data"]

@@ -19,7 +19,6 @@ from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
 from ..catalog.adapter import WouldDeleteData
 from ..catalog.explain import record_explanations
-from ..catalog.register import create_node_safe
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
@@ -512,8 +511,7 @@ async def test_constraints_on_parameter_and_num(a, assets):
             sqlalchemy.exc.DBAPIError,  # PostgreSQL
         )
     ):
-        await create_node_safe(
-            a,
+        await a.create_node(
             key="test",
             structure_family=arr_adapter.structure_family,
             metadata=dict(arr_adapter.metadata()),

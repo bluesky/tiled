@@ -44,7 +44,7 @@ def init(
     from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
-    from ..catalog.utils import SCHEME_PATTERN
+    from ..utils import SCHEME_PATTERN
 
     if not SCHEME_PATTERN.match(database):
         # Interpret URI as filepath.

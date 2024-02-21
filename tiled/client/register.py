@@ -161,7 +161,7 @@ async def register(
         child_node = await anyio.to_thread.run_sync(node.get, segment)
         if child_node is None:
             key = key_from_filename(segment)
-            await create_node_safe(
+            await create_node_or_drop_collision(
                 node,
                 structure_family=StructureFamily.container,
                 data_sources=[],
@@ -220,7 +220,7 @@ async def _walk(
         )
     for directory in directories:
         key = settings.key_from_filename(directory.name)
-        await create_node_safe(
+        await create_node_or_drop_collision(
             node,
             key=key,
             structure_family=StructureFamily.container,
@@ -301,7 +301,7 @@ async def register_single_item(
         logger.exception("    SKIPPED: Error constructing adapter for '%s':", item)
         return
     key = settings.key_from_filename(item.name)
-    return await create_node_safe(
+    return await create_node_or_drop_collision(
         node,
         key=key,
         structure_family=adapter.structure_family,
@@ -379,7 +379,7 @@ async def register_tiff_sequence(node, name, sequence, settings):
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
         return
-    await create_node_safe(
+    await create_node_or_drop_collision(
         node,
         key=key,
         structure_family=adapter.structure_family,
@@ -564,7 +564,7 @@ async def process_changes(
         )
 
 
-async def create_node_safe(
+async def create_node_or_drop_collision(
     node,
     *args,
     key,
@@ -583,7 +583,7 @@ async def create_node_safe(
         if err.response.status_code == httpx.codes.CONFLICT:
             # To avoid ambiguity include _neither_ the original nor the new one.
             offender = await anyio.to_thread.run_sync(node.get, key)
-            await offender.delete_tree()
+            await anyio.to_thread.run_sync(offender.delete_tree)
             logger.warning(
                 "   COLLISION: Multiple files would result in node at '%s'. Skipping all.",
                 err.args[0],

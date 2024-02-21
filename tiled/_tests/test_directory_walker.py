@@ -12,9 +12,9 @@ import yaml
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
-from ..catalog.register import (
+from ..client import Context, from_context
+from ..client.register import (
     Settings,
-    create_node_safe,
     group_tiff_sequences,
     identity,
     register,
@@ -22,10 +22,9 @@ from ..catalog.register import (
     skip_all,
     strip_suffixes,
 )
-from ..client import Context, from_context
 from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
-from ..server.schemas import Asset, DataSource, Management
+from ..structures.data_source import Asset, DataSource, Management
 from ..utils import ensure_uri, path_from_uri
 
 
@@ -55,9 +54,8 @@ async def test_collision(example_data_dir, tmpdir):
 
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
-        await register(catalog, example_data_dir)
-
         client = from_context(context)
+        await register(client, example_data_dir)
 
         # And omits the colliding entries.
         assert "a" not in client
@@ -66,7 +64,7 @@ async def test_collision(example_data_dir, tmpdir):
         p.unlink()
 
         # Re-run registration; entry should be there now.
-        await register(catalog, example_data_dir)
+        await register(client, example_data_dir)
         assert "a" in client
 
 
@@ -87,8 +85,8 @@ async def test_same_filename_separate_directory(tmpdir):
     df1.to_csv(Path(tmpdir, "two", "a.csv"))
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
-        await register(catalog, tmpdir)
         client = from_context(context)
+        await register(client, tmpdir)
         assert "a" in client["one"]
         assert "a" in client["two"]
 
@@ -122,13 +120,13 @@ async def test_mimetype_detection_hook(tmpdir):
 
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
         await register(
-            catalog,
+            client,
             tmpdir,
             mimetype_detection_hook=detect_mimetype,
             key_from_filename=identity,
         )
-        client = from_context(context)
         assert set(client) == {"a0", "a.0.asfwoeijviojefeiofw", "c.csv"}
 
 
@@ -145,16 +143,16 @@ async def test_skip_all_in_combination(tmpdir):
     catalog = in_memory(writable_storage=tmpdir)
     # By default, both file and tiff sequence are registered.
     with Context.from_app(build_app(catalog)) as context:
-        await register(catalog, tmpdir)
         client = from_context(context)
+        await register(client, tmpdir)
         assert "a" in client
         assert "a" in client["one"]
         assert "image" in client["one"]
 
     # With skip_all, directories and tiff sequence are registered, but individual files are not
     with Context.from_app(build_app(catalog)) as context:
-        await register(catalog, tmpdir, walkers=[group_tiff_sequences, skip_all])
         client = from_context(context)
+        await register(client, tmpdir, walkers=[group_tiff_sequences, skip_all])
         assert list(client) == ["one"]
         assert "image" in client["one"]
 
@@ -175,13 +173,13 @@ async def test_tiff_seq_custom_sorting(tmpdir):
     settings = Settings.init()
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
         await register_tiff_sequence(
-            catalog,
+            client,
             "image",
             files,
             settings,
         )
-        client = from_context(context)
         # We are being a bit clever here.
         # Each image in this image series has pixels with a constant value, and
         # that value matches the image's position in the sequence enumerated by
@@ -215,8 +213,8 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
         adapter = read_tiff_with_yaml_metadata(
             ensure_uri(image_filepath), ensure_uri(metadata_filepath)
         )
-        await create_node_safe(
-            catalog,
+        client = from_context(context)
+        client.new(
             key="image",
             structure_family=adapter.structure_family,
             metadata=dict(adapter.metadata()),
@@ -243,7 +241,6 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
                 )
             ],
         )
-        client = from_context(context)
         assert numpy.array_equal(data, client["image"][:])
         assert client["image"].metadata["test_key"] == 3.0
 
@@ -296,8 +293,8 @@ async def test_hdf5_virtual_datasets(tmpdir):
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
         adapter = HDF5Adapter.from_uri(ensure_uri(filepath))
-        await create_node_safe(
-            catalog,
+        client = from_context(context)
+        client.new(
             key="VDS",
             structure_family=adapter.structure_family,
             metadata=dict(adapter.metadata()),
@@ -313,5 +310,4 @@ async def test_hdf5_virtual_datasets(tmpdir):
                 )
             ],
         )
-        client = from_context(context)
         client["VDS"]["data"][:]

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from ..catalog.register import register
 from ..client import Context, from_context
+from ..client.register import register
 from ..examples.xdi import data
 from ..server.app import build_app_from_config
 
@@ -43,9 +43,8 @@ async def test_xdi_round_trip(tmpdir):
     }
     with Context.from_app(build_app_from_config(config)) as context:
         client = from_context(context)
-        tree = context.http_client.app.state.root_tree
         await register(
-            tree,
+            client,
             tmpdir / "files",
             adapters_by_mimetype={"application/x-xdi": "tiled.examples.xdi:read_xdi"},
             mimetypes_by_file_ext={".xdi": "application/x-xdi"},

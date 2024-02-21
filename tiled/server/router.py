@@ -1083,6 +1083,10 @@ async def post_metadata(
                 "Externally-managed assets cannot be registered "
                 "using POST /metadata/{path} Use POST /register/{path} instead."
             )
+    if not getattr(entry, "writable", False):
+        raise HTTPException(
+            status_code=405, detail=f"Data cannot be written at the path {path}"
+        )
     return await _create_node(
         request=request,
         path=path,
@@ -1120,11 +1124,6 @@ async def _create_node(
     settings: BaseSettings,
     entry,
 ):
-    if not getattr(entry, "writable", False):
-        raise HTTPException(
-            status_code=405, detail=f"Data cannot be written at the path {path}"
-        )
-
     metadata, structure_family, specs = (
         body.metadata,
         body.structure_family,
