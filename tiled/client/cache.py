@@ -6,6 +6,7 @@ import typing as tp
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
+from functools import wraps
 
 import appdirs
 import httpx
@@ -146,6 +147,21 @@ def _prepare_database(filepath, readonly):
     return conn
 
 
+def with_thread_lock(fn):
+    """Makes sure the wrapper isn't accessed concurrently."""
+
+    @wraps(fn)
+    def wrapper(obj, *args, **kwargs):
+        obj._lock.acquire()
+        try:
+            result = fn(obj, *args, **kwargs)
+        finally:
+            obj._lock.release()
+        return result
+
+    return wrapper
+
+
 class Cache:
     def __init__(
         self,
@@ -171,17 +187,23 @@ class Cache:
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
         self._conn = _prepare_database(filepath, readonly)
+        self._lock = threading.Lock()
 
     def __repr__(self):
         return f"<{type(self).__name__} {str(self._filepath)!r}>"
 
     def write_safe(self):
-        """
-        Check that it is safe to write.
+        """Check that it is safe to write.
 
-        SQLite is not threadsafe for concurrent _writes_.
+        SQLite is not threadsafe for concurrent _writes_ unless the
+        underlying sqlite library was built with thread safety
+        enabled. Even still, it may be a good idea to use a thread
+        lock (``@with_thread_lock``) to prevent parallel writes.
+
         """
-        return threading.current_thread().ident == self._owner_thread
+        is_main_thread = threading.current_thread().ident == self._owner_thread
+        sqlite_is_safe = sqlite3.threadsafety > 2
+        return is_main_thread or sqlite_is_safe
 
     def __getstate__(self):
         return (self.filepath, self.capacity, self.max_item_size, self._readonly)
@@ -223,6 +245,7 @@ class Cache:
     def max_item_size(self, max_item_size):
         self._max_item_size = max_item_size
 
+    @with_thread_lock
     def clear(self):
         """
         Drop all entries from HTTP response cache.
@@ -237,6 +260,7 @@ class Cache:
             cur.execute("DELETE FROM responses")
             self._conn.commit()
 
+    @with_thread_lock
     def get(self, request: httpx.Request) -> tp.Optional[httpx.Response]:
         """Get cached response from Cache.
 
@@ -271,6 +295,7 @@ WHERE cache_key = ?""",
 
         return load(row, request)
 
+    @with_thread_lock
     def set(
         self,
         *,
@@ -321,6 +346,7 @@ VALUES
             self._conn.commit()
         return True
 
+    @with_thread_lock
     def delete(self, request: httpx.Request) -> None:
         """Delete an entry from cache.
 
