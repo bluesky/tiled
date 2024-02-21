@@ -1,9 +1,9 @@
-import time
-import sqlite3
-from contextlib import closing
-import concurrent.futures
 import asyncio
+import concurrent.futures
+import sqlite3
 import threading
+import time
+from contextlib import closing
 
 import numpy
 import pytest

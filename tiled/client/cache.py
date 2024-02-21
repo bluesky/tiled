@@ -5,8 +5,8 @@ import threading
 import typing as tp
 from contextlib import closing
 from datetime import datetime
-from pathlib import Path
 from functools import wraps
+from pathlib import Path
 
 import appdirs
 import httpx
