@@ -8,12 +8,15 @@ from pathlib import Path
 import anyio
 import watchfiles
 
-from ..server.schemas import Asset, DataSource, Management
+from ..catalog.adapter import Collision
+from ..catalog.mimetypes import (
+    DEFAULT_ADAPTERS_BY_MIMETYPE,
+    DEFAULT_MIMETYPES_BY_FILE_EXT,
+)
+from ..catalog.utils import ensure_uri
 from ..structures.core import StructureFamily
+from ..structures.data_source import Asset, DataSource, Management
 from ..utils import import_object
-from .adapter import Collision
-from .mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
-from .utils import ensure_uri
 
 logger = logging.getLogger(__name__)
 
