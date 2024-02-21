@@ -167,6 +167,7 @@ async def register(
             await create_node_safe(
                 node,
                 structure_family=StructureFamily.container,
+                data_sources=[],
                 metadata={},
                 specs=[],
                 key=key,
@@ -226,6 +227,7 @@ async def _walk(
             node,
             key=key,
             structure_family=StructureFamily.container,
+            data_sources=[],
             metadata={},
             specs=[],
         )
@@ -256,7 +258,7 @@ async def one_node_per_item(
             is_directory=False,
             settings=settings,
         )
-        if not result:
+        if result is None:
             unhandled_files.append(file)
     for directory in directories:
         result = await register_single_item(
@@ -265,7 +267,7 @@ async def one_node_per_item(
             is_directory=True,
             settings=settings,
         )
-        if not result:
+        if result is None:
             unhandled_directories.append(directory)
     return unhandled_files, unhandled_directories
 

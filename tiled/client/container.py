@@ -15,7 +15,7 @@ from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
-from .base import BaseClient
+from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
     ClientError,
@@ -631,7 +631,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             item["attributes"]["metadata"] = document.pop("metadata")
         # Ditto for structure
         if "structure" in document:
-            item["attributes"]["structure"] = document.pop("structure")
+            item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
+                document.pop("structure")
+            )
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)
