@@ -135,7 +135,7 @@ class Settings:
 
 
 async def register(
-    catalog,
+    node,
     path,
     prefix="/",
     walkers=None,
@@ -161,32 +161,34 @@ async def register(
     parsed_walkers.extend(DEFAULT_WALKERS)
     prefix_parts = [segment for segment in prefix.split("/") if segment]
     for segment in prefix_parts:
-        child_catalog = await catalog.lookup_adapter([segment])
-        if child_catalog is None:
+        child_node = await anyio.to_thread.run_sync(node.get, segment)
+        if child_node is None:
             key = key_from_filename(segment)
             await create_node_safe(
-                catalog,
+                node,
                 structure_family=StructureFamily.container,
                 metadata={},
                 specs=[],
                 key=key,
             )
-            child_catalog = await catalog.lookup_adapter([segment])
-        catalog = child_catalog
+            # TODO When we have a tiled AsyncClient, use that.
+            child_node = await anyio.to_thread.run_sync(node.get, segment)
+        node = child_node
     if path.is_dir():
         # Recursively enter the directory and any subdirectories.
         if overwrite:
             logger.info(f"  Overwriting '/{'/'.join(prefix_parts)}'")
-            await catalog.delete_tree()
+            # TODO When we have a tiled AsyncClient, use that.
+            await anyio.run_aysnc(node.delete_tree)
         await _walk(
-            catalog,
+            node,
             Path(path),
             parsed_walkers,
             settings=settings,
         )
     else:
         await register_single_item(
-            catalog,
+            node,
             path,
             is_directory=False,
             settings=settings,
@@ -194,7 +196,7 @@ async def register(
 
 
 async def _walk(
-    catalog,
+    node,
     path,
     walkers,
     settings,
@@ -212,7 +214,7 @@ async def _walk(
             files.append(item)
     for walker in walkers:
         files, directories = await walker(
-            catalog,
+            node,
             path,
             files,
             directories,
@@ -221,15 +223,16 @@ async def _walk(
     for directory in directories:
         key = settings.key_from_filename(directory.name)
         await create_node_safe(
-            catalog,
+            node,
             key=key,
             structure_family=StructureFamily.container,
             metadata={},
             specs=[],
         )
-        child_catalog = await catalog.lookup_adapter([key])
+        # TODO When we have a tiled AsyncClient, use that.
+        child_node = await anyio.to_thread.run_sync(node.get, key)
         await _walk(
-            child_catalog,
+            child_node,
             directory,
             walkers,
             settings,
@@ -237,7 +240,7 @@ async def _walk(
 
 
 async def one_node_per_item(
-    catalog,
+    node,
     path,
     files,
     directories,
@@ -248,7 +251,7 @@ async def one_node_per_item(
     unhandled_directories = []
     for file in files:
         result = await register_single_item(
-            catalog,
+            node,
             file,
             is_directory=False,
             settings=settings,
@@ -257,7 +260,7 @@ async def one_node_per_item(
             unhandled_files.append(file)
     for directory in directories:
         result = await register_single_item(
-            catalog,
+            node,
             directory,
             is_directory=True,
             settings=settings,
@@ -268,7 +271,7 @@ async def one_node_per_item(
 
 
 async def register_single_item(
-    catalog,
+    node,
     item,
     is_directory,
     settings,
@@ -300,7 +303,7 @@ async def register_single_item(
         return
     key = settings.key_from_filename(item.name)
     return await create_node_safe(
-        catalog,
+        node,
         key=key,
         structure_family=adapter.structure_family,
         metadata=dict(adapter.metadata()),
@@ -331,7 +334,7 @@ TIFF_SEQUENCE_EMPTY_NAME_ROOT = "_unnamed"
 
 
 async def group_tiff_sequences(
-    catalog,
+    node,
     path,
     files,
     directories,
@@ -361,14 +364,14 @@ async def group_tiff_sequences(
                 continue
         unhandled_files.append(file)
     for name, sequence in sequences.items():
-        await register_tiff_sequence(catalog, name, sorted(sequence), settings)
+        await register_tiff_sequence(node, name, sorted(sequence), settings)
     return unhandled_files, unhandled_directories
 
 
 TIFF_SEQ_MIMETYPE = "multipart/related;type=image/tiff"
 
 
-async def register_tiff_sequence(catalog, name, sequence, settings):
+async def register_tiff_sequence(node, name, sequence, settings):
     logger.info("    Grouped %d TIFFs into a sequence '%s'", len(sequence), name)
     adapter_class = settings.adapters_by_mimetype[TIFF_SEQ_MIMETYPE]
     key = settings.key_from_filename(name)
@@ -378,7 +381,7 @@ async def register_tiff_sequence(catalog, name, sequence, settings):
         logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
         return
     await create_node_safe(
-        catalog,
+        node,
         key=key,
         structure_family=adapter.structure_family,
         metadata=dict(adapter.metadata()),
@@ -405,7 +408,7 @@ async def register_tiff_sequence(catalog, name, sequence, settings):
 
 
 async def skip_all(
-    catalog,
+    node,
     path,
     files,
     directories,
@@ -425,7 +428,7 @@ DEFAULT_WALKERS = [group_tiff_sequences, one_node_per_item]
 
 
 async def watch(
-    catalog,
+    node,
     path,
     prefix="/",
     walkers=None,
@@ -454,7 +457,7 @@ async def watch(
             ready_event,
             initial_walk_complete_event,
             stop_event,
-            catalog,
+            node,
             path,
             prefix,
             walkers,
@@ -464,7 +467,7 @@ async def watch(
         # We have begun listening for changes.
         # Now do the initial walk.
         await register(
-            catalog,
+            node,
             path,
             prefix,
             walkers,
@@ -483,7 +486,7 @@ async def _watch(
     ready_event,
     initial_walk_complete_event,
     stop_event,
-    catalog,
+    node,
     path,
     prefix,
     walkers,
@@ -514,7 +517,7 @@ async def _watch(
                 )
                 await process_changes(
                     batch,
-                    catalog,
+                    node,
                     path,
                     prefix,
                     walkers,
@@ -526,7 +529,7 @@ async def _watch(
             logger.info("Detected changes")
             await process_changes(
                 batch,
-                catalog,
+                node,
                 path,
                 prefix,
                 walkers,
@@ -536,7 +539,7 @@ async def _watch(
 
 async def process_changes(
     batch,
-    catalog,
+    node,
     path,
     prefix,
     walkers,
@@ -550,7 +553,7 @@ async def process_changes(
         # full tree. For now, we ignore the change batch content and just
         # use the change as a timing signal to re-register the whole tree.
         await register(
-            catalog,
+            node,
             path,
             prefix,
             walkers,
@@ -563,17 +566,23 @@ async def process_changes(
 
 
 async def create_node_safe(
-    catalog,
+    node,
     *args,
     key,
     **kwargs,
 ):
-    "Call catalog.create_node(...) and if there is a collision remove the original."
+    "Call node.new(...) and if there is a collision remove the original."
+
+    # TODO When we have a tiled AsyncClient, use that.
+    # run_sync does not accept kwargs, so we make a closure here.
+    def new(*args):
+        return node.new(*args, key=key, **kwargs)
+
     try:
-        return await catalog.create_node(*args, key=key, **kwargs)
+        return await anyio.to_thread.run_sync(new, *args)
     except Collision as err:
         # To avoid ambiguity include _neither_ the original nor the new one.
-        offender = await catalog.lookup_adapter([key])
+        offender = await anyio.to_thread.run_sync(node.get, key)
         await offender.delete_tree()
         logger.warning(
             "   COLLISION: Multiple files would result in node at '%s'. Skipping all.",
