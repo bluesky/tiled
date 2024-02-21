@@ -179,7 +179,7 @@ async def register(
         if overwrite:
             logger.info(f"  Overwriting '/{'/'.join(prefix_parts)}'")
             # TODO When we have a tiled AsyncClient, use that.
-            await anyio.run_aysnc(node.delete_tree)
+            await anyio.to_thread.run_sync(node.delete_tree)
         await _walk(
             node,
             Path(path),

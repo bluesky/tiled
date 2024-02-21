@@ -4,6 +4,7 @@ SCOPES = {
     "write:metadata": {"description": "Write metadata."},
     "write:data": {"description": "Write data."},
     "create": {"description": "Add a node."},
+    "register": {"description": "Register externally-managed assets."},
     "metrics": {"description": "Access (Prometheus) metrics."},
     "apikeys": {
         "description": "Create and revoke API keys as the currently-authenticated user or service."

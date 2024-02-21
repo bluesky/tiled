@@ -336,6 +336,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         self._cached_len = None
         handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
 
+    def delete_tree(self):
+        # TODO
+        pass
+
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):

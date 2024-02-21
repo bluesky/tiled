@@ -46,6 +46,7 @@ async def create_default_roles(db):
                     "read:metadata",
                     "read:data",
                     "create",
+                    "register",
                     "write:metadata",
                     "write:data",
                     "admin:apikeys",
