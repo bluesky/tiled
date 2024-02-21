@@ -35,13 +35,16 @@ def test_error_code():
     app.include_router(router)
     with Context.from_app(app, raise_server_exceptions=False) as context:
         client = from_context(context)
+        baseline_time = {
+            code: total_request_time(client, code) for code in (200, 404, 500)
+        }
         list(client)
-        assert total_request_time(client, 200) > 0
-        assert total_request_time(client, 500) == 0
+        assert total_request_time(client, 200) - baseline_time[200] > 0
+        assert total_request_time(client, 500) - baseline_time[500] == 0
         client.context.http_client.raise_server_exceptions = False
         response_500 = client.context.http_client.get("/error")
         assert response_500.status_code == 500
-        assert total_request_time(client, 500) > 0
+        assert total_request_time(client, 500) - baseline_time[500] > 0
         response_404 = client.context.http_client.get("/does_not_exist")
         assert response_404.status_code == 404
-        assert total_request_time(client, 404) > 0
+        assert total_request_time(client, 404) - baseline_time[404] > 0
