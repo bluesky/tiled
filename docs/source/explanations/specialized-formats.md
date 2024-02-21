@@ -103,7 +103,7 @@ tiled serve config --public config.yml --api-key secret
 Register the files:
 
 ```
-tiled catalog register http://localhost:8000/ \
+tiled register http://localhost:8000/ \
   --api-key secret \
   --verbose \
   --ext '.xdi=application/x-xdi' \
