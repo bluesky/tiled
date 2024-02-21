@@ -658,7 +658,12 @@ async def ensure_awaitable(func, *args, **kwargs):
     if is_coroutine_callable(func):
         return await func(*args, **kwargs)
     else:
-        return await anyio.to_thread.run_sync(func, *args, **kwargs)
+        # run_sync() does not apply **kwargs to func
+        # https://github.com/agronholm/anyio/issues/414
+        def func_with_kwargs(*args):
+            return func(*args, **kwargs)
+
+        return await anyio.to_thread.run_sync(func_with_kwargs, *args)
 
 
 def path_from_uri(uri):
