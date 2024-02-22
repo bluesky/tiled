@@ -7,8 +7,8 @@ import pytest
 import zarr
 
 from ..catalog import in_memory
-from ..catalog.register import register
 from ..client import Context, from_context, record_history
+from ..client.register import register
 from ..examples.generate_files import generate_files
 from ..server.app import build_app
 
@@ -20,7 +20,7 @@ def client(request: pytest.FixtureRequest):
     catalog = in_memory(readable_storage=[data_dir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        anyio.run(register, catalog, data_dir)
+        anyio.run(register, client, data_dir)
         yield client
 
 

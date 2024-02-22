@@ -1083,7 +1083,7 @@ async def post_metadata(
                 "Externally-managed assets cannot be registered "
                 "using POST /metadata/{path} Use POST /register/{path} instead."
             )
-    if not getattr(entry, "writable", False):
+    if body.data_sources and not getattr(entry, "writable", False):
         raise HTTPException(
             status_code=405, detail=f"Data cannot be written at the path {path}"
         )
