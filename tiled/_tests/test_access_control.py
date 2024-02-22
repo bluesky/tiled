@@ -234,3 +234,65 @@ def test_public_access(context):
     public_client["f"].read()
     with pytest.raises(KeyError):
         public_client["a", "A1"]
+
+
+def test_service_principal_access(tmpdir):
+    "Test that a service principal can work with SimpleAccessPolicy."
+    config = {
+        "authentication": {
+            "secret_keys": ["SECRET"],
+            "providers": [
+                {
+                    "provider": "toy",
+                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                    "args": {
+                        "users_to_passwords": {
+                            "admin": "admin",
+                        }
+                    },
+                }
+            ],
+            "tiled_admins": [{"id": "admin", "provider": "toy"}],
+        },
+        "database": {
+            "uri": f"sqlite+aiosqlite:///{tmpdir}/auth.db",
+            "init_if_not_exists": True,
+        },
+        "trees": [
+            {
+                "tree": "catalog",
+                "args": {
+                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "writable_storage": f"file://localhost{tmpdir}/data",
+                    "init_if_not_exists": True,
+                },
+                "path": "/",
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "access_lists": {},
+                        "provider": "toy",
+                        "admins": ["admin"],
+                    },
+                },
+            }
+        ],
+    }
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_password("admin"):
+            admin_client = from_context(context, username="admin")
+        sp = admin_client.context.admin.create_service_principal("user")
+        key_info = admin_client.context.admin.create_api_key(sp["uuid"])
+        admin_client.write_array([1, 2, 3], key="x")
+        admin_client.write_array([4, 5, 6], key="y")
+        admin_client.logout()
+
+    # Drop the admin, no longer needed.
+    config["authentication"].pop("tiled_admins")
+    # Add the service principal to the access_lists.
+    config["trees"][0]["access_control"]["args"]["access_lists"][sp["uuid"]] = ["x"]
+    with Context.from_app(
+        build_app_from_config(config), api_key=key_info["secret"]
+    ) as context:
+        sp_client = from_context(context)
+        list(sp_client) == ["x"]
