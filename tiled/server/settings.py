@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     )  # 300 MB
     reject_undeclared_specs = bool(int(os.getenv("TILED_REJECT_UNDECLARED_SPECS", 0)))
     database_uri: Optional[str] = os.getenv("TILED_DATABASE_URI")
+    database_init_if_not_exists: bool = int(
+        os.getenv("TILED_DATABASE_INIT_IF_NOT_EXISTS", False)
+    )
     database_pool_size: Optional[int] = int(os.getenv("TILED_DATABASE_POOL_SIZE", 5))
     database_pool_pre_ping: Optional[bool] = bool(
         int(os.getenv("TILED_DATABASE_POOL_PRE_PING", 1))
