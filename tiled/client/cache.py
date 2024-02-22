@@ -12,7 +12,7 @@ from pathlib import Path
 import appdirs
 import httpx
 
-from .utils import TiledResponse
+from .utils import SerializableLock, TiledResponse
 
 CACHE_DATABASE_SCHEMA_VERSION = 1
 
@@ -200,7 +200,7 @@ class Cache:
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
         self._conn = _prepare_database(filepath, readonly)
-        self._lock = threading.Lock()
+        self._lock = SerializableLock()
 
     def __repr__(self):
         return f"<{type(self).__name__} {str(self._filepath)!r}>"
@@ -219,16 +219,23 @@ class Cache:
         return is_main_thread or sqlite_is_safe
 
     def __getstate__(self):
-        return (self.filepath, self.capacity, self.max_item_size, self._readonly)
+        return (
+            self.filepath,
+            self.capacity,
+            self.max_item_size,
+            self._readonly,
+            self._lock,
+        )
 
     def __setstate__(self, state):
-        (filepath, capacity, max_item_size, readonly) = state
+        (filepath, capacity, max_item_size, readonly, lock) = state
         self._capacity = capacity
         self._max_item_size = max_item_size
         self._readonly = readonly
         self._filepath = filepath
         self._owner_thread = threading.current_thread().ident
         self._conn = _prepare_database(filepath, readonly)
+        self._lock = lock
 
     @property
     def readonly(self):

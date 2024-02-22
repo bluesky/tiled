@@ -8,6 +8,7 @@ import pytest
 from packaging.version import parse
 
 from ..client import from_context
+from ..client.cache import Cache
 from ..client.context import Context
 
 MIN_VERSION = "0.1.0a104"
@@ -24,7 +25,7 @@ def test_pickle_context():
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_pickle_clients(structure_clients):
+def test_pickle_clients(structure_clients, tmpdir):
     try:
         httpx.get(API_URL).raise_for_status()
     except Exception:
@@ -34,7 +35,8 @@ def test_pickle_clients(structure_clients):
             raise pytest.skip(
                 f"Server at {API_URL} is running too old a version to test against."
             )
-        client = from_context(context, structure_clients)
+        cache = Cache(tmpdir / "http_response_cache.db")
+        client = from_context(context, structure_clients, cache)
         pickle.loads(pickle.dumps(client))
         for segements in [
             ["generated"],
