@@ -1307,9 +1307,9 @@ def specs_array_to_json(specs):
 
 
 STRUCTURES = {
-    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
-    StructureFamily.table: CatalogTableAdapter,
+    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
+    StructureFamily.table: CatalogTableAdapter,
 }
