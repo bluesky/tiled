@@ -11,11 +11,12 @@ from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
 from ..structures.core import StructureFamily
-from ..structures.data_source import Management
+from ..structures.data_source import Management, validate_data_sources
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
+from .pydantic_union import UnionStructure
 
 if TYPE_CHECKING:
     import tiled.authn_database.orm
@@ -145,15 +146,17 @@ class DataSource(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            SparseStructure,
             NodeStructure,
+            SparseStructure,
             TableStructure,
+            UnionStructure,
         ]
     ] = None
     mimetype: Optional[str] = None
     parameters: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable
+    name: Optional[str] = None
 
     model_config = pydantic.ConfigDict(extra="forbid")
 
@@ -167,6 +170,7 @@ class DataSource(pydantic.BaseModel):
             parameters=orm.parameters,
             assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
+            name=orm.name,
         )
 
 
@@ -179,9 +183,10 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            SparseStructure,
             NodeStructure,
+            SparseStructure,
             TableStructure,
+            UnionStructure,
         ]
     ] = None
 
@@ -230,12 +235,20 @@ class SparseLinks(pydantic.BaseModel):
     block: str
 
 
+class UnionLinks(pydantic.BaseModel):
+    self: str
+    contents: List[
+        Union[ArrayLinks, AwkwardLinks, ContainerLinks, DataFrameLinks, SparseLinks]
+    ]
+
+
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
+    StructureFamily.union: UnionLinks,
 }
 
 
@@ -456,6 +469,10 @@ class PostMetadataRequest(pydantic.BaseModel):
                 raise ValueError
         return v
 
+    @pydantic.validator("data_sources", always=True)
+    def check_consistency(cls, v, values):
+        return validate_data_sources(values["structure_family"], v)
+
 
 class PutDataSourceRequest(pydantic.BaseModel):
     data_source: DataSource
@@ -463,7 +480,15 @@ class PutDataSourceRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, UnionLinks]
+    structure: Union[
+        ArrayStructure,
+        AwkwardStructure,
+        NodeStructure,
+        SparseStructure,
+        TableStructure,
+        UnionStructure,
+    ]
     metadata: Dict
     data_sources: List[DataSource]
 

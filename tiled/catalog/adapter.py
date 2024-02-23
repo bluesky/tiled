@@ -62,6 +62,8 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..server.pydantic_container import ContainerStructure
+from ..server.pydantic_union import UnionStructure, UnionStructurePart
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
@@ -285,6 +287,8 @@ class CatalogNodeAdapter:
         context,
         node,
         *,
+        structure_family=None,
+        data_sources=None,
         conditions=None,
         queries=None,
         sorting=None,
@@ -303,12 +307,18 @@ class CatalogNodeAdapter:
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
-        self.specs = [Spec.model_validate(spec) for spec in node.specs]
+        self.specs = [Spec.model_validate(spec) for spec in node.specs]  # parse_obj???
         self.ancestors = node.ancestors
         self.key = node.key
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
+        self.structure_family = structure_family or node.structure_family
+        if data_sources is None:
+            data_sources = [
+                DataSource.from_orm(ds) for ds in (self.node.data_sources or [])
+            ]
+        self.data_sources = data_sources
 
     def metadata(self):
         return self.node.metadata_
@@ -347,10 +357,6 @@ class CatalogNodeAdapter:
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar().all()
 
-    @property
-    def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in (self.node.data_sources or [])]
-
     async def asset_by_id(self, asset_id):
         statement = (
             select(orm.Asset)
@@ -372,6 +378,25 @@ class CatalogNodeAdapter:
         return Asset.from_orm(asset)
 
     def structure(self):
+        if self.structure_family == StructureFamily.container:
+            # Give no inlined contents.
+            return ContainerStructure(contents=None, count=None)
+        if self.structure_family == StructureFamily.union:
+            parts = []
+            all_keys = []
+            for data_source in self.data_sources:
+                parts.append(
+                    UnionStructurePart(
+                        structure=data_source.structure,
+                        structure_family=data_source.structure_family,
+                        name=data_source.name,
+                    )
+                )
+                if data_source.structure_family == StructureFamily.table:
+                    all_keys.extend(data_source.structure.columns)
+                else:
+                    all_keys.append(data_source.name)
+            return UnionStructure(parts=parts, all_keys=all_keys)
         if self.data_sources:
             assert len(self.data_sources) == 1  # more not yet implemented
             return self.data_sources[0].structure
@@ -399,7 +424,8 @@ class CatalogNodeAdapter:
             return (await db.execute(statement)).scalar_one()
 
     async def lookup_adapter(
-        self, segments
+        self,
+        segments,
     ):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
@@ -435,6 +461,13 @@ class CatalogNodeAdapter:
 
             for i in range(len(segments)):
                 catalog_adapter = await self.lookup_adapter(segments[:i])
+                if (catalog_adapter.structure_family == StructureFamily.union) and len(
+                    segments[i:]
+                ) == 1:
+                    # All the segments but the final segment, segments[-1], resolves
+                    # resolve to a union structure. Dispatch to the union Adapter
+                    # to get the inner Adapter for whatever type of structure it is.
+                    return await ensure_awaitable(catalog_adapter.get, segments[-1])
                 if catalog_adapter.data_sources:
                     adapter = await catalog_adapter.get_adapter()
                     for segment in segments[i:]:
@@ -444,7 +477,9 @@ class CatalogNodeAdapter:
                     return adapter
             return None
         return STRUCTURES[node.structure_family](
-            self.context, node, access_policy=self.access_policy
+            self.context,
+            node,
+            access_policy=self.access_policy,
         )
 
     async def get_adapter(self):
@@ -644,8 +679,11 @@ class CatalogNodeAdapter:
                             data_source.structure_family
                         ]
                     data_source.parameters = {}
+                    data_uri_path_parts = self.segments + [key]
+                    if structure_family == StructureFamily.union:
+                        data_uri_path_parts.append(data_source.name)
                     data_uri = str(self.context.writable_storage) + "".join(
-                        f"/{quote_plus(segment)}" for segment in (self.segments + [key])
+                        f"/{quote_plus(segment)}" for segment in data_uri_path_parts
                     )
                     if data_source.mimetype not in INIT_STORAGE:
                         raise HTTPException(
@@ -676,7 +714,7 @@ class CatalogNodeAdapter:
                     # Obtain and hash the canonical (RFC 8785) representation of
                     # the JSON structure.
                     structure = _prepare_structure(
-                        structure_family, data_source.structure
+                        data_source.structure_family, data_source.structure
                     )
                     structure_id = compute_structure_id(structure)
                     statement = (
@@ -688,6 +726,7 @@ class CatalogNodeAdapter:
                     await db.execute(statement)
                 data_source_orm = orm.DataSource(
                     structure_family=data_source.structure_family,
+                    name=data_source.name,
                     mimetype=data_source.mimetype,
                     management=data_source.management,
                     parameters=data_source.parameters,
@@ -1116,6 +1155,34 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
+class CatalogUnionAdapter(CatalogNodeAdapter):
+    async def get(self, key):
+        if key not in self.structure().all_keys:
+            return None
+        for data_source in self.data_sources:
+            if data_source.structure_family == StructureFamily.table:
+                if key in data_source.structure.columns:
+                    return await ensure_awaitable(
+                        self.for_part(data_source.name).get, key
+                    )
+            if key == data_source.name:
+                return self.for_part(data_source.name)
+
+    def for_part(self, name):
+        for data_source in self.data_sources:
+            if name == data_source.name:
+                break
+        else:
+            raise ValueError(f"No DataSource named {name} on this node")
+        return STRUCTURES[data_source.structure_family](
+            self.context,
+            self.node,
+            access_policy=self.access_policy,
+            structure_family=data_source.structure_family,
+            data_sources=[data_source],
+        )
+
+
 def delete_asset(data_uri, is_directory):
     url = urlparse(data_uri)
     if url.scheme == "file":
@@ -1506,4 +1573,5 @@ STRUCTURES = {
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
+    StructureFamily.union: CatalogUnionAdapter,
 }

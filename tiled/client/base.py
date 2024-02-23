@@ -135,7 +135,7 @@ class BaseClient:
         elif structure_family == StructureFamily.container:
             self._structure = None
         else:
-            structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
+            structure_type = STRUCTURE_TYPES[structure_family]
             self._structure = structure_type.from_json(attributes["structure"])
 
         super().__init__()

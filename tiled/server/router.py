@@ -27,6 +27,7 @@ from starlette.status import (
 )
 
 from .. import __version__
+from ..server.pydantic_union import UnionStructure, UnionStructurePart
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
@@ -371,6 +372,7 @@ async def array_block(
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
     filename: Optional[str] = None,
+    data_source: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
     settings: BaseSettings = Depends(get_settings),
 ):
@@ -418,10 +420,14 @@ async def array_block(
                 "Use slicing ('?slice=...') to request smaller chunks."
             ),
         )
+    if entry.structure_family == StructureFamily.union:
+        structure_family = entry.data_source.structure_family
+    else:
+        structure_family = entry.structure_family
     try:
         with record_timing(request.state.metrics, "pack"):
             return await construct_data_response(
-                entry.structure_family,
+                structure_family,
                 serialization_registry,
                 array,
                 entry.metadata(),
@@ -455,7 +461,10 @@ async def array_full(
     """
     Fetch a slice of array-like data.
     """
-    structure_family = entry.structure_family
+    if entry.structure_family == StructureFamily.union:
+        structure_family = entry.data_source.structure_family
+    else:
+        structure_family = entry.structure_family
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -717,10 +726,14 @@ async def table_full(
                 "request a smaller chunks."
             ),
         )
+    if entry.structure_family == StructureFamily.union:
+        structure_family = entry.data_source.structure_family
+    else:
+        structure_family = entry.structure_family
     try:
         with record_timing(request.state.metrics, "pack"):
             return await construct_data_response(
-                entry.structure_family,
+                structure_family,
                 serialization_registry,
                 data,
                 entry.metadata(),
@@ -1143,21 +1156,51 @@ async def _create_node(
         body.structure_family,
         body.specs,
     )
-    if structure_family == StructureFamily.container:
-        structure = None
-    else:
-        if len(body.data_sources) != 1:
-            raise NotImplementedError
+    metadata_modified = False
+    if structure_family == StructureFamily.union:
+        structure = UnionStructure(
+            parts=[
+                UnionStructurePart(
+                    data_source_id=data_source.id,
+                    structure=data_source.structure,
+                    structure_family=data_source.structure_family,
+                    name=data_source.name,
+                )
+                for data_source in body.data_sources
+            ]
+        )
+    elif body.data_sources:
+        assert len(body.data_sources) == 1  # more not yet implemented
         structure = body.data_sources[0].structure
+    else:
+        structure = None
 
-    metadata_modified, metadata = await validate_metadata(
-        metadata=metadata,
-        structure_family=structure_family,
-        structure=structure,
-        specs=specs,
-        validation_registry=validation_registry,
-        settings=settings,
-    )
+    # Specs should be ordered from most specific/constrained to least.
+    # Validate them in reverse order, with the least constrained spec first,
+    # because it may do normalization that helps pass the more constrained one.
+    # Known Issue:
+    # When there is more than one spec, it's possible for the validator for
+    # Spec 2 to make a modification that breaks the validation for Spec 1.
+    # For now we leave it to the server maintainer to ensure that validators
+    # won't step on each other in this way, but this may need revisiting.
+    for spec in reversed(specs):
+        if spec.name not in validation_registry:
+            if settings.reject_undeclared_specs:
+                raise HTTPException(
+                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
+                )
+        else:
+            validator = validation_registry(spec.name)
+            try:
+                result = validator(metadata, structure_family, structure, spec)
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"failed validation for spec {spec.name}:\n{e}",
+                )
+            if result is not None:
+                metadata_modified = True
+                metadata = result
 
     key, node = await entry.create_node(
         metadata=body.metadata,
@@ -1169,10 +1212,14 @@ async def _create_node(
     links = links_for_node(
         structure_family, structure, get_base_url(request), path + f"/{key}"
     )
+    structure = node.structure()
+    if structure is not None:
+        structure = structure.dict()
     response_data = {
         "id": key,
         "links": links,
-        "data_sources": [ds.model_dump() for ds in node.data_sources],
+        "data_sources": [ds.dict() for ds in node.data_sources],
+        "structure": structure,
     }
     if metadata_modified:
         response_data["metadata"] = metadata
@@ -1362,7 +1409,9 @@ async def put_table_partition(
 async def patch_table_partition(
     partition: int,
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"], structure_families={StructureFamily.awkward}
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     if not hasattr(entry, "write_partition"):

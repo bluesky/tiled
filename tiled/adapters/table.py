@@ -169,13 +169,12 @@ class TableAdapter:
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
-        """
+    def get(self, key):
+        if key not in self.structure().columns:
+            return None
+        return ArrayAdapter.from_array(self.read([key])[key].values)
 
-        Returns
-        -------
-
-        """
+    def items(self):
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns

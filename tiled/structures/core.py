@@ -12,12 +12,22 @@ from typing import Dict, Optional
 from ..utils import OneShotCachedMap
 
 
+class BaseStructureFamily(str, enum.Enum):
+    array = "array"
+    awkward = "awkward"
+    container = "container"
+    sparse = "sparse"
+    table = "table"
+    # excludes union, which DataSources cannot have
+
+
 class StructureFamily(str, enum.Enum):
     array = "array"
     awkward = "awkward"
     container = "container"
     sparse = "sparse"
     table = "table"
+    union = "union"
 
 
 @dataclass(frozen=True)
@@ -54,11 +64,17 @@ STRUCTURE_TYPES = OneShotCachedMap(
         StructureFamily.awkward: lambda: importlib.import_module(
             "...structures.awkward", StructureFamily.__module__
         ).AwkwardStructure,
+        StructureFamily.container: lambda: importlib.import_module(
+            "...structures.container", StructureFamily.__module__
+        ).ContainerStructure,
         StructureFamily.table: lambda: importlib.import_module(
             "...structures.table", StructureFamily.__module__
         ).TableStructure,
         StructureFamily.sparse: lambda: importlib.import_module(
             "...structures.sparse", StructureFamily.__module__
         ).SparseStructure,
+        StructureFamily.union: lambda: importlib.import_module(
+            "...structures.union", StructureFamily.__module__
+        ).UnionStructure,
     }
 )
