@@ -306,7 +306,7 @@ properties:
           Tiled officially supports PostgreSQL and SQLite, but any database engine
           supported by SQLAlchemy *may* work.
       init_if_not_exists:
-        type: bool
+        type: boolean
         description: |
           Initialize authentication database tables if database is empty.
       pool_pre_ping:
