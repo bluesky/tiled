@@ -430,6 +430,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             settings.database_pool_pre_ping = database["pool_pre_ping"]
         if database.get("max_overflow"):
             settings.database_max_overflow = database["max_overflow"]
+        if database.get("init_if_not_exists"):
+            settings.database_init_if_not_exists = database["init_if_not_exists"]
         object_cache_available_bytes = server_settings.get("object_cache", {}).get(
             "available_bytes"
         )
@@ -559,8 +561,28 @@ confusing behavior due to ambiguous encodings.
                 try:
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
-                    print(
-                        f"""
+                    if settings.database_init_if_not_exists:
+                        # The alembic stamping can only be does synchronously.
+                        # The cleanest option available is to start a subprocess
+                        # because SQLite is allergic to threads.
+                        import subprocess
+
+                        # TODO Check if catalog exists.
+                        subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "tiled",
+                                "admin",
+                                "initialize-database",
+                                str(engine.url),
+                            ],
+                            capture_output=True,
+                            check=True,
+                        )
+                    else:
+                        print(
+                            f"""
 
 No database found at {redacted_url}
 
@@ -568,9 +590,9 @@ To create one, run:
 
     tiled admin init-database {redacted_url}
 """,
-                        file=sys.stderr,
-                    )
-                    raise
+                            file=sys.stderr,
+                        )
+                        raise
                 except DatabaseUpgradeNeeded as err:
                     print(
                         f"""
