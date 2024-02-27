@@ -519,7 +519,7 @@ async def test_constraints_on_parameter_and_num(a, assets):
             data_sources=[
                 DataSource(
                     structure_family=arr_adapter.structure_family,
-                    mimetype="application/x-test",
+                    mimetype="text/csv",
                     structure=asdict(arr_adapter.structure()),
                     parameters={},
                     management=Management.external,
