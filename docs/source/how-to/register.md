@@ -1,11 +1,10 @@
 # Register Content in Tiled
 
 The usage `tiled serve directory ...` is mostly for demos and small-scale use.
-For more sophisticated control over this process, see
+The following guide demonstrate more sophisticated control over this process.
 
 ## Quickstart
 
-The tutorial {doc}`../how-to/register` demonstrates the usage:
 
 ```
 tiled serve directory [--watch] [--public] [--api-key <SECRET>] <DIRECTORY>
