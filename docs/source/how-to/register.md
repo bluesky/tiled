@@ -1,7 +1,7 @@
 # Register Content in Tiled
 
 The usage `tiled serve directory ...` is mostly for demos and small-scale use.
-The following guide demonstrate more sophisticated control over this process.
+The following guide demonstrates more sophisticated control over this process.
 
 ## Quickstart
 
