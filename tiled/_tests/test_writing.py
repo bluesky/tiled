@@ -20,6 +20,7 @@ from ..client import Context, from_context, record_history
 from ..queries import Key
 from ..server.app import build_app
 from ..structures.core import Spec
+from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
@@ -208,7 +209,12 @@ def test_write_sparse_chunked(tree):
         with record_history() as history:
             x = client.new(
                 "sparse",
-                COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                [
+                    DataSource(
+                        structure=COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                        structure_family="sparse",
+                    )
+                ],
                 metadata=metadata,
                 specs=specs,
             )

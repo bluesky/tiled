@@ -34,6 +34,7 @@ from ._admin import admin_app  # noqa: E402
 from ._api_key import api_key_app  # noqa: E402
 from ._catalog import catalog_app  # noqa: E402
 from ._profile import profile_app  # noqa: E402
+from ._register import register  # noqa: E402
 from ._serve import serve_app  # noqa: E402
 from ._utils import get_context, get_profile  # noqa E402
 
@@ -133,6 +134,9 @@ def tree(
             )
             break
         print(line)
+
+
+cli_app.command("register")(register)
 
 
 main = cli_app

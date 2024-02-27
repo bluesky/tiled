@@ -155,9 +155,9 @@ def serve_directory(
 
     from logging import StreamHandler
 
-    from ..catalog.register import logger as register_logger
-    from ..catalog.register import register
-    from ..catalog.register import watch as watch_
+    from ..client.register import logger as register_logger
+    from ..client.register import register
+    from ..client.register import watch as watch_
 
     mimetypes_by_file_ext = {}
     EXT_PATTERN = re.compile(r"(.*) *= *(.*)")

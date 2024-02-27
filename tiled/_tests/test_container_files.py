@@ -6,8 +6,8 @@ import pytest
 import zarr
 
 from ..catalog import in_memory
-from ..catalog.register import register
 from ..client import Context, from_context, tree
+from ..client.register import register
 from ..server.app import build_app
 
 
@@ -18,7 +18,7 @@ async def test_excel(tmpdir):
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register(catalog, tmpdir)
+        await register(client, tmpdir)
         tree(client)
         client["spreadsheet"]["Sheet1"].read()
 
@@ -30,7 +30,7 @@ async def test_zarr_array(tmpdir):
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register(catalog, tmpdir)
+        await register(client, tmpdir)
         tree(client)
         client["za"].read()
 
@@ -43,7 +43,7 @@ async def test_zarr_group(tmpdir):
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register(catalog, tmpdir)
+        await register(client, tmpdir)
         tree(client)
         client["zg"].export(str(tmpdir / "stuff.h5"))
         client["zg"]["x"].read()
@@ -59,7 +59,7 @@ async def test_hdf5(tmpdir):
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register(catalog, tmpdir)
+        await register(client, tmpdir)
         tree(client)
         client["h"]["x"].read()
         client["h"]["g"]["y"].read()

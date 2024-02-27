@@ -304,6 +304,7 @@ async def get_current_principal(
                     "write:metadata",
                     "write:data",
                     "create",
+                    "register",
                     "metrics",
                 }
             else:

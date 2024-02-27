@@ -115,9 +115,8 @@ Register the files in the directory `data/` with the catalog.
 docker run \
   -e TILED_SINGLE_USER_API_KEY=secret \
   -v ./data:/data:ro \
-  -v ./storage:/storage \
   ghcr.io/bluesky/tiled:latest \
-  tiled catalog register /storage/catalog.db /data --verbose
+  tiled register http://localhost:8000/ /data --verbose
 ```
 
 ### Scalable to Multiple Hosts
@@ -200,11 +199,9 @@ Register the files in the directory `data/` with this catalog.
 docker run \
   --net=tilednet \
   -e TILED_SINGLE_USER_API_KEY=secret \
-  -e TILED_DATABASE_PASSWORD=${TILED_DATABASE_PASSWORD} \
-  -v ./config:/deploy/config:ro \
   -v ./data:/data:ro \
   ghcr.io/bluesky/tiled:latest \
-  tiled catalog register ${TILED_DATABASE_URI} /data--verbose
+  tiled register http://localhost:8000/ /data --verbose
 ```
 
 ## Example: Custom configuration

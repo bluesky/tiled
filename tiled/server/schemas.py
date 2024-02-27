@@ -11,6 +11,7 @@ import pydantic.errors
 import pydantic.generics
 
 from ..structures.core import StructureFamily
+from ..structures.data_source import Management
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
@@ -109,13 +110,6 @@ class Asset(pydantic.BaseModel):
             num=orm.num,
             id=orm.asset.id,
         )
-
-
-class Management(str, enum.Enum):
-    external = "external"
-    immutable = "immutable"
-    locked = "locked"
-    writable = "writable"
 
 
 class Revision(pydantic.BaseModel):
