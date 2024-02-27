@@ -48,10 +48,10 @@ In a Python interpreter, connect with the Python client.
 ```python
 from tiled.client import from_uri
 
-tree = from_uri("http://localhost:8000")
+client = from_uri("http://localhost:8000")
 ```
 
-The ``tree`` has the same tree structure as the directory on
+The ``client`` has the same tree structure as the directory on
 disk, and we can slice and access the data.
 
 ```python
@@ -85,3 +85,6 @@ array([[1., 1., 1., ..., 1., 1., 1.],
 1  2  5
 2  3  6
 ```
+
+The usage `tiled serve directory ...` is mostly for demos and small-scale use.
+For more sophisticated control over this process, see {doc}`../how-to/register`.
