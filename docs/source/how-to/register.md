@@ -13,7 +13,7 @@ tiled serve directory [--watch] [--public] [--api-key <SECRET>] <DIRECTORY>
 
 which is a shorthand for:
 
-1. Walk a directory tree, identifying formats it recognizes, ingesting their
+1. Walk a directory tree to identify formats it recognizes and then ingest their
    metadata, structure, and filepaths into a database for efficient search and
    random access.
 2. Start a server that uses that data.
@@ -28,7 +28,7 @@ limitations.
 - Tiled walks the entire directory at server startup. This can be slow.
 - Tiled creates an ephemeral database (SQLite in a temporary directory)
   just for this process. That work is discarded when the server shuts down.
-- One database per server not horizontally scalable.
+- One database per server is not horizontally scalable.
 - With `--watch`, Tiled picks up files as soon as they are created, and
   they may not be ready to be read yet. (Example: a partially-written HDF5
   file.)
