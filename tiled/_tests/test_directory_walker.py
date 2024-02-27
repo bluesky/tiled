@@ -26,6 +26,7 @@ from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
 from ..structures.data_source import Asset, DataSource, Management
 from ..utils import ensure_uri, path_from_uri
+from .utils import fail_with_status_code
 
 
 @pytest.fixture
@@ -311,3 +312,31 @@ async def test_hdf5_virtual_datasets(tmpdir):
             ],
         )
         client["VDS"]["data"][:]
+
+
+def test_unknown_mimetype(tmpdir):
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        asset = Asset(
+            data_uri=ensure_uri(tmpdir / "test.does_not_exist"),
+            is_directory=False,
+            parameter="test",
+        )
+        with fail_with_status_code(415):
+            client.new(
+                key="x",
+                structure_family="array",
+                metadata={},
+                specs=[],
+                data_sources=[
+                    DataSource(
+                        structure_family="array",
+                        mimetype="application/x-does-not-exist",
+                        structure=None,
+                        parameters={},
+                        management=Management.external,
+                        assets=[asset],
+                    )
+                ],
+            )

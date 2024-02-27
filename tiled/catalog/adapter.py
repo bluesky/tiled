@@ -607,6 +607,15 @@ class CatalogNodeAdapter:
                         init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
+                else:
+                    if data_source.mimetype not in self.context.adapters_by_mimetype:
+                        raise HTTPException(
+                            status_code=415,
+                            detail=(
+                                f"The given data source mimetype, {data_source.mimetype}, "
+                                "is not one that the Tiled server knows how to read."
+                            ),
+                        )
                 if data_source.structure is None:
                     structure_id = None
                 else:
