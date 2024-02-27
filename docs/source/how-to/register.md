@@ -77,8 +77,8 @@ from tiled.client.data_source import Asset, DataSource
 from tiled.structures.core import StructureFamily
 
 # You can pass the api_key in explicitly as shown here, but for security, it
-# is best to set the API key as TILED_API_KEY, which from_uri(...) will
-# automatically detect and use.
+# is best to set the API key in the environment variable TILED_API_KEY, which
+# from_uri(...) will automatically detect and use.
 client = from_uri("http://localhost:8000", api_key="...")
 
 # POST /api/v1/register/{path}
