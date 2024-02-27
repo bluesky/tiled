@@ -182,6 +182,7 @@ def test_deprecated_query_parameter(context):
         context.http_client.get(url_path, params=params)
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_redundant_query_parameters(context):
     "HTTP route /table/partition accepts 'column' or 'field', but not both"
     client = from_context(context)
