@@ -69,7 +69,10 @@ tiled register http://localhost:8000 [--api-key <SECRET>] <DIRECTORY>
 ### Complex cases
 
 Sometimes it is necessary to take more manual control of this registration
-process. Using the Python client,
+process, such as if you want to take advantage of particular knowledge
+about the files to specify particular `metadata` or `specs`.
+
+Use the Python client, as in this example.
 
 ```py
 from tiled.client import from_uri
@@ -88,7 +91,7 @@ client.new(
     	assets=[Asset(data_uri="file:///...", num=1), Asset(data_uri="file:///...", num=2)],
 	mimetype="multipart/related;type=image/tiff",
 	structure_family=StructureFamily.array,
-),
+    ),
     metadata={},
     specs=[],
 )
