@@ -303,12 +303,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # allow_headers=["X-Requested-With", "X-Request-ID"],
         expose_headers=["X-Tiled-Request-ID"],
     )
-    app.add_middleware(
-        CorrelationIdMiddleware,
-        header_name="X-Tiled-Request-ID",
-        update_request_header=True,
-        # generator=lambda: uuid4().hex,
-    )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
@@ -880,6 +874,13 @@ Back up the database, and then run:
                 response.__class__ = PatchedStreamingResponse  # tolerate memoryview
                 metrics.capture_request_metrics(request, response)
             return response
+
+    app.add_middleware(
+        CorrelationIdMiddleware,
+        # header_name="X-Tiled-Request-ID",
+        # update_request_header=True,
+        # generator=lambda: uuid4().hex,
+    )
 
     return app
 
