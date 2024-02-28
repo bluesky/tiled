@@ -877,9 +877,8 @@ Back up the database, and then run:
 
     app.add_middleware(
         CorrelationIdMiddleware,
-        # header_name="X-Tiled-Request-ID",
-        # update_request_header=True,
-        # generator=lambda: uuid4().hex,
+        header_name="X-Tiled-Request-ID",
+        generator=lambda: secrets.token_hex(8),
     )
 
     return app
