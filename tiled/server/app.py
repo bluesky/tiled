@@ -313,7 +313,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             HTTPException(
                 500,
                 "Internal server error",
-                headers={"X-Request-ID": correlation_id.get() or ""},
+                headers={"X-Tiled-Request-ID": correlation_id.get() or ""},
             ),
         )
 
