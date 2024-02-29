@@ -300,7 +300,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        # allow_headers=["X-Requested-With", "X-Request-ID"],
+        # If we restrict the allowed_headers in future, remember to include
+        # exemptions for these, related to asgi_correlation_id.
+        # allow_headers=["X-Requested-With", "X-Tiled-Request-ID"],
         expose_headers=["X-Tiled-Request-ID"],
     )
 
