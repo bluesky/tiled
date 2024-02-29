@@ -98,6 +98,9 @@ def serve_directory(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    log_config: Optional[str] = typer.Option(
+        None, help="Custom uvicorn logging configuration file"
+    ),
     object_cache_available_bytes: Optional[float] = typer.Option(
         None,
         "--data-cache",
@@ -243,7 +246,7 @@ def serve_directory(
 
         import uvicorn
 
-        uvicorn.run(web_app, host=host, port=port)
+        uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
 def serve_catalog(

@@ -12,7 +12,9 @@ from typing import List
 import anyio
 import packaging.version
 import yaml
+from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -298,7 +300,24 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # If we restrict the allowed_headers in future, remember to include
+        # exemptions for these, related to asgi_correlation_id.
+        # allow_headers=["X-Requested-With", "X-Tiled-Request-ID"],
+        expose_headers=["X-Tiled-Request-ID"],
     )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        return await http_exception_handler(
+            request,
+            HTTPException(
+                500,
+                "Internal server error",
+                headers={"X-Tiled-Request-ID": correlation_id.get() or ""},
+            ),
+        )
 
     app.include_router(router, prefix="/api/v1")
 
@@ -848,15 +867,26 @@ Back up the database, and then run:
             try:
                 response = await call_next(request)
             except Exception:
-                # Make a placeholder to feed to capture_request_metrics.
-                # The actual error response will be created by FastAPI/Starlette
-                # further up the call stack, where this exception will propagate.
-                response = Response(status_code=500)
+                # Make an ephemeral response solely for 'capture_request_metrics'.
+                # It will only be used in the 'finally' clean-up block.
+                only_for_metrics = Response(status_code=500)
+                response = only_for_metrics
+                # Now re-raise the exception so that the server can generate and
+                # send an appropriate response to the client.
                 raise
             finally:
                 response.__class__ = PatchedStreamingResponse  # tolerate memoryview
                 metrics.capture_request_metrics(request, response)
+
+            # This is a *real* response (i.e., not the 'only_for_metrics' response).
+            # An exception above would have triggered an early exit.
             return response
+
+    app.add_middleware(
+        CorrelationIdMiddleware,
+        header_name="X-Tiled-Request-ID",
+        generator=lambda: secrets.token_hex(8),
+    )
 
     return app
 
