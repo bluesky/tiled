@@ -867,19 +867,19 @@ Back up the database, and then run:
             try:
                 response = await call_next(request)
             except Exception:
-                # Make a placeholder response to feed to capture_request_metrics.
-                # Notice that this placeholder response will under no circumstances
-                # be returned below. It is fed to capture_request_metrics,
-                # and then the caught exception is re-raised.
-                #
-                # The re-raised exception propagates to http_exception_handler,
-                # which creates the Response that will actually be sent to the
-                # client, complete with some useful headers.
-                response = Response(status_code=500)
+                # Make an ephemeral response solely for 'capture_request_metrics'.
+                # It will only be used in the 'finally' clean-up block.
+                only_for_metrics = Response(status_code=500)
+                response = only_for_metrics
+                # Now re-raise the exception so that the server can generate and
+                # send an appropriate response to the client.
                 raise
             finally:
                 response.__class__ = PatchedStreamingResponse  # tolerate memoryview
                 metrics.capture_request_metrics(request, response)
+
+            # This is a *real* response (i.e., not the 'only_for_metrics' response).
+            # An exception above would have triggered an early exit.
             return response
 
     app.add_middleware(
