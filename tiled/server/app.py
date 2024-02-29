@@ -865,9 +865,14 @@ Back up the database, and then run:
             try:
                 response = await call_next(request)
             except Exception:
-                # Make a placeholder to feed to capture_request_metrics.
-                # The actual error response will be created by FastAPI/Starlette
-                # further up the call stack, where this exception will propagate.
+                # Make a placeholder response to feed to capture_request_metrics.
+                # Notice that this placeholder response will under no circumstances
+                # be returned below. It is fed to capture_request_metrics,
+                # and then the caught exception is re-raised.
+                #
+                # The re-raised exception propagates to http_exception_handler,
+                # which creates the Response that will actually be sent to the
+                # client, complete with some useful headers.
                 response = Response(status_code=500)
                 raise
             finally:
