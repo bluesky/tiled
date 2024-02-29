@@ -59,7 +59,6 @@ class TiffAdapter:
         return d
 
     def read(self, slice=None):
-        raise Exception("BOOM!")
         # TODO Is there support for reading less than the whole array
         # if we only want a slice? I do not think that is possible with a
         # single-page TIFF but I'm not sure. Certainly it *is* possible for
