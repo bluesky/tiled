@@ -72,18 +72,21 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-DEFAULT_INIT_STORAGE = OneShotCachedMap(
+INIT_STORAGE = OneShotCachedMap(
     {
-        StructureFamily.array: lambda: importlib.import_module(
+        ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrArrayAdapter.init_storage,
-        StructureFamily.awkward: lambda: importlib.import_module(
+        AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.init_storage,
-        StructureFamily.table: lambda: importlib.import_module(
+        PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,
-        StructureFamily.sparse: lambda: importlib.import_module(
+        "text/csv": lambda: importlib.import_module(
+            "...adapters.csv", __name__
+        ).CSVAdapter.init_storage,
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
         ).SparseBlocksParquetAdapter.init_storage,
     }
@@ -412,62 +415,54 @@ class CatalogNodeAdapter:
         )
 
     async def get_adapter(self):
-        num_data_sources = len(self.data_sources)
-        if num_data_sources > 1:
-            raise NotImplementedError
-        if num_data_sources == 1:
-            (data_source,) = self.data_sources
-            try:
-                adapter_factory = self.context.adapters_by_mimetype[
-                    data_source.mimetype
-                ]
-            except KeyError:
-                raise RuntimeError(
-                    f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
-                )
-            parameters = collections.defaultdict(list)
-            for asset in data_source.assets:
-                if asset.parameter is None:
-                    continue
-                scheme = urlparse(asset.data_uri).scheme
-                if scheme != "file":
-                    raise NotImplementedError(
-                        f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
-                    )
-                if scheme == "file":
-                    # Protect against misbehaving clients reading from unintended
-                    # parts of the filesystem.
-                    asset_path = path_from_uri(asset.data_uri)
-                    for readable_storage in self.context.readable_storage:
-                        if Path(
-                            os.path.commonpath(
-                                [path_from_uri(readable_storage), asset_path]
-                            )
-                        ) == path_from_uri(readable_storage):
-                            break
-                    else:
-                        raise RuntimeError(
-                            f"Refusing to serve {asset.data_uri} because it is outside "
-                            "the readable storage area for this server."
-                        )
-                if asset.num is None:
-                    parameters[asset.parameter] = asset.data_uri
-                else:
-                    parameters[asset.parameter].append(asset.data_uri)
-            adapter_kwargs = dict(parameters)
-            adapter_kwargs.update(data_source.parameters)
-            adapter_kwargs["specs"] = self.node.specs
-            adapter_kwargs["metadata"] = self.node.metadata_
-            adapter_kwargs["structure"] = data_source.structure
-            adapter_kwargs["access_policy"] = self.access_policy
-            adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, **adapter_kwargs)
+        (data_source,) = self.data_sources
+        try:
+            adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
+        except KeyError:
+            raise RuntimeError(
+                f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
-            for query in self.queries:
-                adapter = adapter.search(query)
-            return adapter
-        else:  # num_data_sources == 0
-            assert False
+        parameters = collections.defaultdict(list)
+        for asset in data_source.assets:
+            if asset.parameter is None:
+                continue
+            scheme = urlparse(asset.data_uri).scheme
+            if scheme != "file":
+                raise NotImplementedError(
+                    f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
+                )
+            if scheme == "file":
+                # Protect against misbehaving clients reading from unintended
+                # parts of the filesystem.
+                asset_path = path_from_uri(asset.data_uri)
+                for readable_storage in self.context.readable_storage:
+                    if Path(
+                        os.path.commonpath(
+                            [path_from_uri(readable_storage), asset_path]
+                        )
+                    ) == path_from_uri(readable_storage):
+                        break
+                else:
+                    raise RuntimeError(
+                        f"Refusing to serve {asset.data_uri} because it is outside "
+                        "the readable storage area for this server."
+                    )
+            if asset.num is None:
+                parameters[asset.parameter] = asset.data_uri
+            else:
+                parameters[asset.parameter].append(asset.data_uri)
+        adapter_kwargs = dict(parameters)
+        adapter_kwargs.update(data_source.parameters)
+        adapter_kwargs["specs"] = self.node.specs
+        adapter_kwargs["metadata"] = self.node.metadata_
+        adapter_kwargs["structure"] = data_source.structure
+        adapter_kwargs["access_policy"] = self.access_policy
+        adapter = await anyio.to_thread.run_sync(
+            partial(adapter_factory, **adapter_kwargs)
+        )
+        for query in self.queries:
+            adapter = adapter.search(query)
+        return adapter
 
     def new_variation(
         self,
@@ -597,14 +592,23 @@ class CatalogNodeAdapter:
                 if data_source.management != Management.external:
                     if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
-                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
-                        data_source.structure_family
-                    ]
+                    if data_source.mimetype is None:
+                        data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
+                            data_source.structure_family
+                        ]
                     data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    init_storage = DEFAULT_INIT_STORAGE[data_source.structure_family]
+                    if data_source.mimetype not in INIT_STORAGE:
+                        raise HTTPException(
+                            status_code=415,
+                            detail=(
+                                f"The given data source mimetype, {data_source.mimetype}, "
+                                "is not one that the Tiled server knows how to write."
+                            ),
+                        )
+                    init_storage = INIT_STORAGE[data_source.mimetype]
                     assets = await ensure_awaitable(
                         init_storage, data_uri, data_source.structure
                     )
@@ -954,6 +958,9 @@ class CatalogSparseAdapter(CatalogArrayAdapter):
 
 
 class CatalogTableAdapter(CatalogNodeAdapter):
+    async def get(self, *args, **kwargs):
+        return (await self.get_adapter()).get(*args, **kwargs)
+
     async def read(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
