@@ -101,6 +101,10 @@ class CSVAdapter:
         ]
         return assets
 
+    def append_partition(self, data, partition):
+        uri = self._partition_paths[partition]
+        data.to_csv(uri, index=False, mode="a", header=False)
+
     def write_partition(self, data, partition):
         uri = self._partition_paths[partition]
         data.to_csv(uri, index=False)

@@ -977,6 +977,11 @@ class CatalogTableAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_partition, *args, **kwargs
         )
 
+    async def append_partition(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).append_partition, *args, **kwargs
+        )
+
 
 def delete_asset(data_uri, is_directory):
     url = urlparse(data_uri)
