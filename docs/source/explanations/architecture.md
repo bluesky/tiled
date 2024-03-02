@@ -125,10 +125,10 @@ providing a writable data store, the Catalog is used.
 [Pydantic]: https://docs.pydantic.dev/
 [content negotiation]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation
 
-
+(catalog-database)=
 ### Catalog Database
 
-``` mermaid
+```{mermaid}
 erDiagram
     nodes ||--o{  data_sources : has
     data_sources ||--o{  data_source_asset_association : has
