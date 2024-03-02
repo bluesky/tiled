@@ -158,6 +158,7 @@ dev = [
     "myst-parser",
     "numpydoc",
     "sphinx-click",
+    "sphinxcontrib-mermaid",
     "sphinx-copybutton",
     "sphinx_rtd_theme",
 ]
