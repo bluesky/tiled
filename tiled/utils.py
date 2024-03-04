@@ -3,6 +3,7 @@ import builtins
 import collections.abc
 import contextlib
 import enum
+import functools
 import importlib
 import importlib.util
 import inspect
@@ -661,10 +662,7 @@ async def ensure_awaitable(func, *args, **kwargs):
     else:
         # run_sync() does not apply **kwargs to func
         # https://github.com/agronholm/anyio/issues/414
-        def func_with_kwargs(*args):
-            return func(*args, **kwargs)
-
-        return await anyio.to_thread.run_sync(func_with_kwargs, *args)
+        return await anyio.to_thread.run_sync(functools.partial(func, **kwargs), *args)
 
 
 def path_from_uri(uri):
