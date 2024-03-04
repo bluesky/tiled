@@ -32,18 +32,23 @@ def example_data_dir(tmpdir_factory):
     return tmpdir
 
 
+@pytest.fixture(scope="function")
+def buffer():
+    "Generate a temporary buffer for testing file export + re-import."
+    with io.BytesIO() as buffer:
+        yield buffer
+
+
 @pytest.mark.parametrize("fields", (None, (), ("a", "b")))
 @pytest.mark.parametrize("client", ("example_data_dir",), indirect=True)
-def test_directory_fields(client, fields):
+def test_directory_fields(client, fields, buffer):
     "Export selected fields (files) from a directory via /container/full."
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
     assert_single_request_to_url(history, url_path)
     assert_requested_fields_fetched(buffer, fields, client)
-    buffer.close()
 
 
 @pytest.fixture(scope="module")
@@ -59,11 +64,10 @@ def excel_data_dir(tmpdir_factory):
 
 @pytest.mark.parametrize("fields", (None, (), ("Sheet 1", "Sheet 10")))
 @pytest.mark.parametrize("client", ("excel_data_dir",), indirect=True)
-def test_excel_fields(client, fields):
+def test_excel_fields(client, fields, buffer):
     "Export selected fields (sheets) from an Excel file via /container/full."
     client = client["spreadsheet"]
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
         # TODO: Enable container to export XLSX if all nodes are tables?
@@ -71,7 +75,6 @@ def test_excel_fields(client, fields):
 
     assert_single_request_to_url(history, url_path)
     assert_requested_fields_fetched(buffer, fields, client)
-    buffer.close()
 
 
 def mark_xfail(value, unsupported="UNSPECIFIED ADAPTER"):
@@ -92,17 +95,15 @@ def zarr_data_dir(tmpdir_factory):
 
 @pytest.mark.parametrize("fields", (None, (), mark_xfail(("b", "d"), "Zarr")))
 @pytest.mark.parametrize("client", ("zarr_data_dir",), indirect=True)
-def test_zarr_group_fields(client, fields):
+def test_zarr_group_fields(client, fields, buffer):
     "Export selected fields (Datasets) from a Zarr group via /container/full."
     client = client["zarr_group"]
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
     assert_single_request_to_url(history, url_path)
     assert_requested_fields_fetched(buffer, fields, client)
-    buffer.close()
 
 
 @pytest.fixture(scope="module")
@@ -120,17 +121,15 @@ def hdf5_data_dir(tmpdir_factory):
     "fields", (None, (), mark_xfail(("x",), "HDF5"), mark_xfail(("g",), "HDF5"))
 )
 @pytest.mark.parametrize("client", ("hdf5_data_dir",), indirect=True)
-def test_hdf5_fields(client, fields):
+def test_hdf5_fields(client, fields, buffer):
     "Export selected fields (array/group) from a HDF5 file via /container/full."
     client = client["hdf5_example"]
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
     assert_single_request_to_url(history, url_path)
     assert_requested_fields_fetched(buffer, fields, client)
-    buffer.close()
 
 
 def assert_single_request_to_url(history, url_path):
