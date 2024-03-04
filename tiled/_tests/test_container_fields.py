@@ -1,5 +1,3 @@
-import io
-
 import anyio
 import h5py
 import pandas
@@ -30,13 +28,6 @@ def example_data_dir(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("example_files")
     generate_files(tmpdir)
     return tmpdir
-
-
-@pytest.fixture(scope="function")
-def buffer():
-    "Generate a temporary buffer for testing file export + re-import."
-    with io.BytesIO() as buffer:
-        yield buffer
 
 
 @pytest.mark.parametrize("fields", (None, (), ("a", "b")))

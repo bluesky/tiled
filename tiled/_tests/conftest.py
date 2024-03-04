@@ -1,3 +1,4 @@
+import io
 import os
 import sys
 import tempfile
@@ -47,6 +48,13 @@ def set_tiled_cache_dir():
         os.environ["TILED_CACHE_DIR"] = str(tmpdir)
         yield
         del os.environ["TILED_CACHE_DIR"]
+
+
+@pytest.fixture(scope="function")
+def buffer():
+    "Generate a temporary buffer for testing file export + re-import."
+    with io.BytesIO() as buffer:
+        yield buffer
 
 
 @pytest.fixture

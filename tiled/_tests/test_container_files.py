@@ -1,5 +1,3 @@
-import io
-
 import h5py
 import pandas
 import pytest
@@ -53,7 +51,7 @@ async def test_zarr_group(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_hdf5(tmpdir):
+async def test_hdf5(tmpdir, buffer):
     with h5py.File(str(tmpdir / "h.h5"), "w") as file:
         file["x"] = [1, 2, 3]
         group = file.create_group("g")
@@ -66,5 +64,4 @@ async def test_hdf5(tmpdir):
         client["h"]["x"].read()
         client["h"]["g"]["y"].read()
 
-        buffer = io.BytesIO()
         client.export(buffer, format="application/json")

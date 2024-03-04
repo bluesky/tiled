@@ -19,7 +19,9 @@ def example_file():
     b = a.create_group("b")
     c = b.create_group("c")
     c.create_dataset("d", data=numpy.ones((3, 3)))
-    return file
+    yield file
+
+    file.close()
 
 
 @pytest.fixture
@@ -34,10 +36,12 @@ def example_file_with_vlen_str_in_dataset():
     dset = c.create_dataset("d", (100,), dtype=dt)
     assert dset.dtype == "object"
     dset[0] = b"test"
-    return file
+    yield file
+
+    file.close()
 
 
-def test_from_file(example_file):
+def test_from_file(example_file, buffer):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file)
@@ -45,13 +49,12 @@ def test_from_file(example_file):
         client = from_context(context)
         arr = client["a"]["b"]["c"]["d"].read()
         assert isinstance(arr, numpy.ndarray)
-        buffer = io.BytesIO()
         client.export(buffer, format="application/x-hdf5")
         file = h5py.File(buffer, "r")
         file["a"]["b"]["c"]["d"]
 
 
-def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
+def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
@@ -60,14 +63,13 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset):
             client = from_context(context)
     arr = client["a"]["b"]["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
-    buffer = io.BytesIO()
     with pytest.warns(UserWarning):
         client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
     file["a"]["b"]["c"]["d"]
 
 
-def test_from_group(example_file):
+def test_from_group(example_file, buffer):
     """Serve a Group within an HDF5 file."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter(example_file["a"]["b"])
@@ -75,13 +77,12 @@ def test_from_group(example_file):
         client = from_context(context)
     arr = client["c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
-    buffer = io.BytesIO()
     client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
     file["c"]["d"]
 
 
-def test_from_multiple(example_file):
+def test_from_multiple(example_file, buffer):
     """Serve two files within a mapping."""
     h5py = pytest.importorskip("h5py")
     tree = MapAdapter(
@@ -96,7 +97,6 @@ def test_from_multiple(example_file):
     assert isinstance(arr_A, numpy.ndarray)
     arr_B = client["B"]["a"]["b"]["c"]["d"].read()
     assert isinstance(arr_B, numpy.ndarray)
-    buffer = io.BytesIO()
     client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
     file["A"]["a"]["b"]["c"]["d"]
