@@ -122,10 +122,8 @@ def test_nan_infinity_handler(tmpdir, context):
     def strict_parse_constant(c):
         raise ValueError(f"{c} is not valid JSON")
 
-    open_json = json.load(
-        open(Path(tmpdir, "testjson", "test.json"), "r"),
-        parse_constant=strict_parse_constant,
-    )
+    with open(Path(tmpdir, "testjson", "test.json"), "r") as json_file:
+        open_json = json.load(json_file, parse_constant=strict_parse_constant)
 
     expected_list = [0.0, 1.0, None, None, None]
     assert open_json == expected_list
