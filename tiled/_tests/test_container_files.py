@@ -23,16 +23,15 @@ async def test_excel(tmpdir):
 
 @pytest.mark.asyncio
 async def test_zarr_array(tmpdir):
-    with zarr.open(
-        str(tmpdir / "za.zarr"), "w", shape=(3,), chunks=(3,), dtype="i4"
-    ) as z:
-        z[:] = [1, 2, 3]
+    z = zarr.open(str(tmpdir / "za.zarr"), "w", shape=(3,), chunks=(3,), dtype="i4")
+    z[:] = [1, 2, 3]
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(client, tmpdir)
         tree(client)
         client["za"].read()
+    z.store.close()
 
 
 @pytest.mark.asyncio
