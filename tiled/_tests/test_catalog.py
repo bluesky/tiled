@@ -251,8 +251,8 @@ async def test_write_dataframe_external_direct(a, tmpdir):
                 management="external",
                 assets=[
                     Asset(
-                        parameter="data_uri",
-                        num=None,
+                        parameter="data_uris",
+                        num=0,
                         data_uri=data_uri,
                         is_directory=False,
                     )
