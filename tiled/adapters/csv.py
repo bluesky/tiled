@@ -4,6 +4,7 @@ import dask.dataframe
 
 from ..server.object_cache import NO_CACHE, get_object_cache
 from ..structures.core import StructureFamily
+from ..structures.table import TableStructure
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
 
@@ -66,6 +67,9 @@ class CSVAdapter:
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
+        if structure is None:
+            table = dask.dataframe.read_csv(self._partition_paths)
+            structure = TableStructure.from_dask_dataframe(table)
         self._structure = structure
         self.specs = list(specs or [])
         self.access_policy = access_policy
