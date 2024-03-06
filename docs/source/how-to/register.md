@@ -76,8 +76,8 @@ Use the Python client, as in this example.
 
 ```py
 from tiled.client import from_uri
-from tiled.client.data_source import Asset, DataSource
 from tiled.structures.core import StructureFamily
+from tiled.structures.data_source import Asset, DataSource
 
 # You can pass the api_key in explicitly as shown here, but for security, it
 # is best to set the API key in the environment variable TILED_API_KEY, which
@@ -87,11 +87,17 @@ client = from_uri("http://localhost:8000", api_key="...")
 # POST /api/v1/register/{path}
 client.new(
     structure_family=StructureFamily.array,
-    data_sources=DataSource(
-    	assets=[Asset(data_uri="file:///...", num=1), Asset(data_uri="file:///...", num=2)],
-	mimetype="multipart/related;type=image/tiff",
-	structure_family=StructureFamily.array,
-    ),
+    data_sources=[
+        DataSource(
+        assets=[
+            Asset(data_uri="file:///...", num=1),
+            Asset(data_uri="file:///...", num=2)
+        ],
+        mimetype="multipart/related;type=image/tiff",
+        structure_family=StructureFamily.array,
+        management="external",
+        ),
+    ],
     metadata={},
     specs=[],
 )
