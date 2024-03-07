@@ -21,6 +21,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
+        #"text/csv": lambda: importlib.import_module(
+        #    "..adapters.csv", __name__
+        #).CSVAdapter.from_single_file,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.excel", __name__
         ).ExcelAdapter.from_uri,

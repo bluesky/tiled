@@ -5,7 +5,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-
+from itertools import chain
 import entrypoints
 
 from ..adapters.utils import IndexersMixin
@@ -593,6 +593,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         write_dataframe
         write_coo_array
         """
+        print("WHAT THE DATASOURCE", type(data_sources), data_sources)
+
+
+        # There is some issue about type of data_sources. In the test it came out as tuple of lists 
+        if isinstance(data_sources, tuple):
+            print("TYPE OF DATASOURCES", type(data_sources))
+            data_sources = data_sources[0]
+        
+        for data_source in data_sources:
+            print("WHAT THE DATASOURCE", type(data_source), data_source.assets)
+        
         self._cached_len = None
         metadata = metadata or {}
         specs = specs or []
@@ -612,10 +623,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         body = dict(item["attributes"])
         if key is not None:
             body["id"] = key
+
+        
+        #if check:
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
             endpoint = self.uri
+
         document = handle_error(
             self.context.http_client.post(
                 endpoint,

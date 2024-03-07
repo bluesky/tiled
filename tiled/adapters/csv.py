@@ -7,6 +7,8 @@ from ..structures.core import StructureFamily
 from ..structures.table import TableStructure
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
+from ..structures.data_source import Asset, DataSource, Management
+from ..utils import ensure_uri
 
 
 def read_csv(
@@ -59,11 +61,14 @@ class CSVAdapter:
     def __init__(
         self,
         data_uris,
-        structure,
+        structure=None,
         metadata=None,
         specs=None,
         access_policy=None,
     ):
+        if not isinstance(data_uris, list):
+            data_uris = [data_uris]
+
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
@@ -130,3 +135,22 @@ class CSVAdapter:
 
     def get(self, key):
         return self.dataframe_adapter.get(key)
+
+    def generate_data_sources(self, mimetype, dict_or_none, item, is_directory):
+        return [DataSource(
+            structure_family=self.dataframe_adapter.structure_family,
+            mimetype=mimetype,
+            structure=dict_or_none(self.dataframe_adapter.structure()),
+            parameters={},
+            management=Management.external,
+            assets=[
+                Asset(
+                    data_uri=ensure_uri(item),
+                    is_directory=is_directory,
+                    parameter="data_uris",  # <-- PLURAL!
+                    num=0  # <-- denoting that the Adapter expects a list, and this is the first element
+                )
+            ],
+        )
+        ]
+
