@@ -25,6 +25,10 @@ from ..structures.sparse import COOStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
+WARNING_PANDAS_BLOCKS = (
+    "DataFrame._data is deprecated and will be removed in a future version. "
+    "Use public APIs instead."
+)
 validation_registry = ValidationRegistry()
 validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
@@ -112,6 +116,7 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
+# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 def test_write_dataframe_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -137,6 +142,7 @@ def test_write_dataframe_full(tree):
         assert result.specs == specs
 
 
+# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 def test_write_dataframe_partitioned(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -390,6 +396,7 @@ async def test_delete_non_empty_node(tree):
         client.delete("a")
 
 
+# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 @pytest.mark.asyncio
 async def test_write_in_container(tree):
     "Create a container and write a structure into it."
