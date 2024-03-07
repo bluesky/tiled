@@ -8,8 +8,9 @@ The cache is a process-global singleton.
 """
 import contextlib
 import time
+import warnings
+from functools import partial
 from timeit import default_timer
-from warnings import catch_warnings
 
 import cachey
 from dask.callbacks import Callback
@@ -22,6 +23,42 @@ if __debug__:
     handler.setLevel("DEBUG")
     handler.setFormatter(logging.Formatter("OBJECT CACHE: %(message)s"))
     logger.addHandler(handler)
+
+
+class catch_warning_msg(warnings.catch_warnings):
+    """Backward compatible version of catch_warnings for python <3.11.
+    
+    Allows regex matching of warning message, as in filterwarnings().
+    Note that this context manager is not thread-safe.
+    https://docs.python.org/3.12/library/warnings.html#warnings.catch_warnings
+    """
+
+    def __init__(
+        self,
+        *,
+        action="",
+        message="",
+        category=Warning,
+        module="",
+        lineno=0,
+        append=False,
+        record=False,
+    ):
+        super().__init__(record=record)
+        self.apply_filter = partial(
+            warnings.filterwarnings,
+            action,
+            message=message,
+            category=category,
+            module=module,
+            lineno=lineno,
+            append=append,
+        )
+
+    def __enter__(self):
+        super().__enter__()
+        self.apply_filter()
+        return self
 
 
 class _NO_CACHE_SENTINEL:
@@ -131,8 +168,7 @@ class ObjectCache:
         """
         if nbytes is None:
             # See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
-            # Note that catch_warnings() is not thread-safe
-            with catch_warnings(action="ignore", category=DeprecationWarning):
+            with catch_warning_msg(action="ignore", category=DeprecationWarning):
                 nbytes = self._cache.get_nbytes(value)
         logger.debug("Store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
@@ -201,8 +237,7 @@ class DaskCache(Callback):
             duration += max(self.durations.get(k, 0) for k in deps)
         self.durations[key] = duration
         # See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
-        # Note that catch_warnings() is not thread-safe
-        with catch_warnings(action="ignore", category=DeprecationWarning):
+        with catch_warning_msg(action="ignore", category=DeprecationWarning):
             nb = self._nbytes(value)
         self.cache.put(("dask", *key), value, cost=duration, nbytes=nb)
 
