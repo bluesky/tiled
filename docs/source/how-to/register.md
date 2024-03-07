@@ -77,7 +77,7 @@ Use the Python client, as in this example.
 ```py
 from tiled.client import from_uri
 from tiled.structures.core import StructureFamily
-from tiled.structures.data_source import Asset, DataSource
+from tiled.structures.data_source import Asset, DataSource, Management
 
 # You can pass the api_key in explicitly as shown here, but for security, it
 # is best to set the API key in the environment variable TILED_API_KEY, which
