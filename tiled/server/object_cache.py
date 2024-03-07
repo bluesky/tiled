@@ -8,12 +8,12 @@ The cache is a process-global singleton.
 """
 import contextlib
 import time
-import warnings
-from functools import partial
 from timeit import default_timer
 
 import cachey
 from dask.callbacks import Callback
+
+from ..utils import catch_warning_msg
 
 if __debug__:
     import logging
@@ -25,40 +25,17 @@ if __debug__:
     logger.addHandler(handler)
 
 
-class catch_warning_msg(warnings.catch_warnings):
-    """Backward compatible version of catch_warnings for python <3.11.
-    
-    Allows regex matching of warning message, as in filterwarnings().
-    Note that this context manager is not thread-safe.
-    https://docs.python.org/3.12/library/warnings.html#warnings.catch_warnings
-    """
+# See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
+WARNING_PANDAS_BLOCKS = (
+    "DataFrame._data is deprecated and will be removed in a future version. "
+    "Use public APIs instead."
+)
 
-    def __init__(
-        self,
-        *,
-        action="",
-        message="",
-        category=Warning,
-        module="",
-        lineno=0,
-        append=False,
-        record=False,
-    ):
-        super().__init__(record=record)
-        self.apply_filter = partial(
-            warnings.filterwarnings,
-            action,
-            message=message,
-            category=category,
-            module=module,
-            lineno=lineno,
-            append=append,
-        )
 
-    def __enter__(self):
-        super().__enter__()
-        self.apply_filter()
-        return self
+def catch_pandas_blocks_warning():
+    return catch_warning_msg(
+        action="ignore", message=WARNING_PANDAS_BLOCKS, category=DeprecationWarning
+    )
 
 
 class _NO_CACHE_SENTINEL:
@@ -167,8 +144,7 @@ class ObjectCache:
             Computed (with best effort) if not provided.
         """
         if nbytes is None:
-            # See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
-            with catch_warning_msg(action="ignore", category=DeprecationWarning):
+            with catch_pandas_blocks_warning():
                 nbytes = self._cache.get_nbytes(value)
         logger.debug("Store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
@@ -236,8 +212,7 @@ class DaskCache(Callback):
         if deps:
             duration += max(self.durations.get(k, 0) for k in deps)
         self.durations[key] = duration
-        # See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
-        with catch_warning_msg(action="ignore", category=DeprecationWarning):
+        with catch_pandas_blocks_warning():
             nb = self._nbytes(value)
         self.cache.put(("dask", *key), value, cost=duration, nbytes=nb)
 

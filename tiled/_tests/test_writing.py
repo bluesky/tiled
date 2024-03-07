@@ -19,16 +19,14 @@ from ..catalog import in_memory
 from ..client import Context, from_context, record_history
 from ..queries import Key
 from ..server.app import build_app
+
+# from ..server.object_cache import WARNING_PANDAS_BLOCKS
 from ..structures.core import Spec
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
-WARNING_PANDAS_BLOCKS = (
-    "DataFrame._data is deprecated and will be removed in a future version. "
-    "Use public APIs instead."
-)
 validation_registry = ValidationRegistry()
 validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
