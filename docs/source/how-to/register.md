@@ -78,24 +78,33 @@ Use the Python client, as in this example.
 from tiled.client import from_uri
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
+from tiled.structures.array import ArrayStructure, BuiltinDtype
 
 # You can pass the api_key in explicitly as shown here, but for security, it
 # is best to set the API key in the environment variable TILED_API_KEY, which
 # from_uri(...) will automatically detect and use.
 client = from_uri("http://localhost:8000", api_key="...")
 
+structure = ArrayStructure(
+    dtype=BuiltinDtype.from_numpy_dtype(numpy.int32),
+    shape=(2, 512, 512),
+    chunks=((1, 1), (512,), (512,)),
+    dims=("time", "x", "y"),  # optional
+)
+
 # POST /api/v1/register/{path}
 client.new(
     structure_family=StructureFamily.array,
     data_sources=[
         DataSource(
-            assets=[
-                Asset(data_uri="file:///...", num=1),
-                Asset(data_uri="file:///...", num=2)
-            ],
+            management=Management.external,
             mimetype="multipart/related;type=image/tiff",
             structure_family=StructureFamily.array,
-            management=Management.external,
+	    structure=structure,
+            assets=[
+                Asset(data_uri="file:///...", num=1),
+                Asset(data_uri="file:///...", num=2),
+            ],
         ),
     ],
     metadata={},
