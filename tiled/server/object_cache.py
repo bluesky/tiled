@@ -9,6 +9,7 @@ The cache is a process-global singleton.
 import contextlib
 import time
 from timeit import default_timer
+from warnings import catch_warnings
 
 import cachey
 from dask.callbacks import Callback
@@ -129,7 +130,10 @@ class ObjectCache:
             Computed (with best effort) if not provided.
         """
         if nbytes is None:
-            nbytes = self._cache.get_nbytes(value)
+            # See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
+            # Note that catch_warnings() is not thread-safe
+            with catch_warnings(action="ignore", category=DeprecationWarning):
+                nbytes = self._cache.get_nbytes(value)
         logger.debug("Store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
 
@@ -196,7 +200,10 @@ class DaskCache(Callback):
         if deps:
             duration += max(self.durations.get(k, 0) for k in deps)
         self.durations[key] = duration
-        nb = self._nbytes(value)
+        # See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
+        # Note that catch_warnings() is not thread-safe
+        with catch_warnings(action="ignore", category=DeprecationWarning):
+            nb = self._nbytes(value)
         self.cache.put(("dask", *key), value, cost=duration, nbytes=nb)
 
     def _finish(self, dsk, state, errored):
