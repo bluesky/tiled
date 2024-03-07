@@ -89,13 +89,13 @@ client.new(
     structure_family=StructureFamily.array,
     data_sources=[
         DataSource(
-        assets=[
-            Asset(data_uri="file:///...", num=1),
-            Asset(data_uri="file:///...", num=2)
-        ],
-        mimetype="multipart/related;type=image/tiff",
-        structure_family=StructureFamily.array,
-        management="external",
+            assets=[
+                Asset(data_uri="file:///...", num=1),
+                Asset(data_uri="file:///...", num=2)
+            ],
+            mimetype="multipart/related;type=image/tiff",
+            structure_family=StructureFamily.array,
+            management=Management.external,
         ),
     ],
     metadata={},
