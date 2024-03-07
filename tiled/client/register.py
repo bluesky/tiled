@@ -9,7 +9,7 @@ import anyio
 import httpx
 import watchfiles
 
-from ..mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
+from ..mimetypes import DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..utils import ensure_uri, import_object
@@ -107,7 +107,7 @@ class Settings:
             if isinstance(value, str):
                 adapters_by_mimetype[key] = import_object(value)
         merged_adapters_by_mimetype = collections.ChainMap(
-            adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
+            adapters_by_mimetype, DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE
         )
         if isinstance(key_from_filename, str):
             key_from_filename = import_object(key_from_filename)
@@ -326,7 +326,7 @@ async def register_single_item(
                     )
                 ],
             )
-        ],
+        ]
     return await create_node_or_drop_collision(
         node,
         key=key,

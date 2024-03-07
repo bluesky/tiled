@@ -9,6 +9,7 @@ from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
 from ..structures.data_source import Asset, DataSource, Management
 from ..utils import ensure_uri
+from .array import ArrayAdapter
 
 
 def read_csv(
@@ -66,8 +67,8 @@ class CSVAdapter:
         specs=None,
         access_policy=None,
     ):
-        if not isinstance(data_uris, list):
-            data_uris = [data_uris]
+        #if not isinstance(data_uris, list):
+        #    data_uris = [data_uris]
 
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
@@ -134,7 +135,9 @@ class CSVAdapter:
         return self._structure
 
     def get(self, key):
-        return self.dataframe_adapter.get(key)
+        if key not in self.structure().columns:
+            return None
+        return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def generate_data_sources(self, mimetype, dict_or_none, item, is_directory):
         return [DataSource(
@@ -153,4 +156,24 @@ class CSVAdapter:
             ],
         )
         ]
+    
+    @classmethod
+    def from_single_file(cls,
+        data_uri,
+        structure=None,
+        metadata=None,
+        specs=None,
+        access_policy=None):
+    
+        return cls([data_uri], structure=structure, metadata=metadata, specs=specs, access_policy=access_policy)
 
+    def __getitem__(self, key):
+        # Must compute to determine shape.
+        return ArrayAdapter.from_array(self.read([key])[key].values)
+
+
+    def items(self):
+        yield from (
+            (key, ArrayAdapter.from_array(self.read([key])[key].values))
+            for key in self._structure.columns
+        )
