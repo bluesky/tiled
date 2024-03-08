@@ -880,7 +880,6 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
     async def items_range(self, offset, limit):
         if self.data_sources:
-            print("HEREEEE TYPE OF GET ADAPTOR", self.get_adapter(), type(self.get_adapter()))
             return it.islice(
                 (await self.get_adapter()).items(),
                 offset,

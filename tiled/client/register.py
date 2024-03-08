@@ -280,7 +280,6 @@ async def register_single_item(
     mimetype = resolve_mimetype(
         item, settings.mimetypes_by_file_ext, settings.mimetype_detection_hook
     )
-    print("EVER HEREEEEEEEEEEEEEE", f"{mimetype=}")
     if mimetype is None:
         unhandled_items.append(item)
         if not is_directory:
@@ -304,11 +303,8 @@ async def register_single_item(
     key = settings.key_from_filename(item.name)
     if hasattr(adapter, "generate_data_sources"):
         # Let the Adapter describe the DataSouce(s).
-        print("XXXXXXXXXXXXXXXbefore ")
         data_sources = adapter.generate_data_sources(mimetype, dict_or_none, item, is_directory)
-        print("XXXXXXXXXXXXXXXXXafter ")
     else:
-        print(" XXXXXXXXXXXXXXXxin the else")
         # Back-compat: Assume one Asset passed as a
         # parameter named 'data_uri'.
         data_sources = [
