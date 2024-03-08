@@ -137,9 +137,9 @@ class DataSource(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            TableStructure,
             NodeStructure,
             SparseStructure,
+            TableStructure,
         ]
     ] = None
     mimetype: Optional[str] = None
@@ -169,9 +169,9 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            TableStructure,
             NodeStructure,
             SparseStructure,
+            TableStructure,
         ]
     ]
     sorting: Optional[List[SortingItem]]
@@ -218,11 +218,11 @@ class SparseLinks(pydantic.BaseModel):
 
 
 resource_links_type_by_structure_family = {
-    StructureFamily.container: ContainerLinks,
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
-    StructureFamily.table: DataFrameLinks,
+    StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
+    StructureFamily.table: DataFrameLinks,
 }
 
 

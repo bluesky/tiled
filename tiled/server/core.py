@@ -34,6 +34,7 @@ from ..utils import (
 )
 from . import schemas
 from .etag import tokenize
+from .links import links_for_node
 from .utils import record_timing
 
 del queries
@@ -404,6 +405,7 @@ async def construct_resource(
     depth=0,
 ):
     path_str = "/".join(path_parts)
+    id_ = path_parts[-1] if path_parts else ""
     attributes = {"ancestors": path_parts[:-1]}
     if include_data_sources and hasattr(entry, "data_sources"):
         attributes["data_sources"] = entry.data_sources
@@ -488,15 +490,16 @@ async def construct_resource(
                         for key, direction in entry.sorting
                     ]
         d = {
-            "id": path_parts[-1] if path_parts else "",
+            "id": id_,
             "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
-            d["links"] = {
-                "self": f"{base_url}/metadata/{path_str}",
-                "search": f"{base_url}/search/{path_str}",
-                "full": f"{base_url}/container/full/{path_str}",
-            }
+            d["links"] = links_for_node(
+                entry.structure_family,
+                entry.structure(),
+                base_url,
+                path_str,
+            )
 
         resource = schemas.Resource[
             schemas.NodeAttributes, schemas.ContainerLinks, schemas.ContainerMeta
@@ -510,34 +513,16 @@ async def construct_resource(
                 entry.structure_family
             ]
             links.update(
-                {
-                    link: template.format(base_url=base_url, path=path_str)
-                    for link, template in FULL_LINKS[entry.structure_family].items()
-                }
+                links_for_node(
+                    entry.structure_family,
+                    entry.structure(),
+                    base_url,
+                    path_str,
+                )
             )
             structure = asdict(entry.structure())
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if entry.structure_family == StructureFamily.sparse:
-                shape = structure.get("shape")
-                block_template = ",".join(f"{{{index}}}" for index in range(len(shape)))
-                links[
-                    "block"
-                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            elif entry.structure_family == StructureFamily.array:
-                shape = structure.get("shape")
-                block_template = ",".join(
-                    f"{{index_{index}}}" for index in range(len(shape))
-                )
-                links[
-                    "block"
-                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            elif entry.structure_family == StructureFamily.table:
-                links[
-                    "partition"
-                ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
-            elif entry.structure_family == StructureFamily.awkward:
-                links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
             if schemas.EntryFields.structure in fields:
                 attributes["structure"] = structure
         else:

@@ -44,6 +44,7 @@ from .dependencies import (
     get_validation_registry,
     slice_,
 )
+from .links import links_for_node
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
@@ -1172,30 +1173,9 @@ async def _create_node(
         specs=body.specs,
         data_sources=body.data_sources,
     )
-    links = {}
-    base_url = get_base_url(request)
-    path_parts = [segment for segment in path.split("/") if segment] + [key]
-    path_str = "/".join(path_parts)
-    links["self"] = f"{base_url}/metadata/{path_str}"
-    if body.structure_family in {StructureFamily.array, StructureFamily.sparse}:
-        block_template = ",".join(
-            f"{{{index}}}" for index in range(len(node.structure().shape))
-        )
-        links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
-        links["full"] = f"{base_url}/array/full/{path_str}"
-    elif body.structure_family == StructureFamily.table:
-        links[
-            "partition"
-        ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
-        links["full"] = f"{base_url}/table/full/{path_str}"
-    elif body.structure_family == StructureFamily.container:
-        links["full"] = f"{base_url}/container/full/{path_str}"
-        links["search"] = f"{base_url}/search/{path_str}"
-    elif body.structure_family == StructureFamily.awkward:
-        links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
-        links["full"] = f"{base_url}/awkward/full/{path_str}"
-    else:
-        raise NotImplementedError(body.structure_family)
+    links = links_for_node(
+        structure_family, structure, get_base_url(request), path + f"/{key}"
+    )
     response_data = {
         "id": key,
         "links": links,
