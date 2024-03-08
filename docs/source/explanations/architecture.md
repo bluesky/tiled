@@ -124,3 +124,17 @@ providing a writable data store, the Catalog is used.
 [OpenAPI]: https://www.openapis.org/
 [Pydantic]: https://docs.pydantic.dev/
 [content negotiation]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation
+
+(catalog-database)=
+### Catalog Database
+
+```{mermaid}
+erDiagram
+    nodes ||--o{  data_sources : has
+    data_sources ||--o{  data_source_asset_association : has
+    data_source_asset_association }|--|{  assets : has
+    data_sources }|--||   structure : has
+    nodes ||--o{  revisions : has
+    alembic_version
+
+```

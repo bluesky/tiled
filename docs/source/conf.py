@@ -46,6 +46,7 @@ extensions = [
     "sphinx_copybutton",
     "myst_parser",
     "sphinxcontrib.jquery",
+    "sphinxcontrib.mermaid",
 ]
 
 # Configuration options for plot_directive. See:
