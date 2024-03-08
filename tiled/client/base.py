@@ -109,13 +109,10 @@ class BaseClient:
         self._metadata_revisions = None
         self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
-        structure_family = attributes["structure_family"]
         if structure is not None:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family == StructureFamily.container:
-            self._structure = None
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
             self._structure = structure_type.from_json(attributes["structure"])
@@ -435,11 +432,17 @@ STRUCTURE_TYPES = OneShotCachedMap(
         StructureFamily.awkward: lambda: importlib.import_module(
             "...structures.awkward", BaseClient.__module__
         ).AwkwardStructure,
-        StructureFamily.table: lambda: importlib.import_module(
-            "...structures.table", BaseClient.__module__
-        ).TableStructure,
+        StructureFamily.container: lambda: importlib.import_module(
+            "...structures.container", BaseClient.__module__
+        ).ContainerStructure,
         StructureFamily.sparse: lambda: importlib.import_module(
             "...structures.sparse", BaseClient.__module__
         ).SparseStructure,
+        StructureFamily.table: lambda: importlib.import_module(
+            "...structures.table", BaseClient.__module__
+        ).TableStructure,
+        StructureFamily.union: lambda: importlib.import_module(
+            "...structures.union", BaseClient.__module__
+        ).UnionStructure,
     }
 )

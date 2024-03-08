@@ -42,6 +42,8 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..server.pydantic_container import ContainerStructure
+from ..server.pydantic_union import UnionStructure, UnionStructurePart
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
@@ -257,6 +259,8 @@ class CatalogNodeAdapter:
         context,
         node,
         *,
+        structure_family=None,
+        data_sources=None,
         conditions=None,
         queries=None,
         sorting=None,
@@ -274,13 +278,18 @@ class CatalogNodeAdapter:
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.queries = queries or []
-        self.structure_family = node.structure_family
         self.specs = [Spec.parse_obj(spec) for spec in node.specs]
         self.ancestors = node.ancestors
         self.key = node.key
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
+        self.structure_family = structure_family or node.structure_family
+        if data_sources is None:
+            data_sources = [
+                DataSource.from_orm(ds) for ds in (self.node.data_sources or [])
+            ]
+        self.data_sources = data_sources
 
     def metadata(self):
         return self.node.metadata_
@@ -319,10 +328,6 @@ class CatalogNodeAdapter:
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar().all()
 
-    @property
-    def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
-
     async def asset_by_id(self, asset_id):
         statement = (
             select(orm.Asset)
@@ -344,6 +349,25 @@ class CatalogNodeAdapter:
         return Asset.from_orm(asset)
 
     def structure(self):
+        if self.structure_family == StructureFamily.container:
+            # Give no inlined contents.
+            return ContainerStructure(contents=None, count=None)
+        if self.structure_family == StructureFamily.union:
+            parts = []
+            all_keys = []
+            for data_source in self.data_sources:
+                parts.append(
+                    UnionStructurePart(
+                        structure=data_source.structure,
+                        structure_family=data_source.structure_family,
+                        name=data_source.name,
+                    )
+                )
+                if data_source.structure_family == StructureFamily.table:
+                    all_keys.extend(data_source.structure.columns)
+                else:
+                    all_keys.append(data_source.name)
+            return UnionStructure(parts=parts, all_keys=all_keys)
         if self.data_sources:
             assert len(self.data_sources) == 1  # more not yet implemented
             return self.data_sources[0].structure
@@ -359,7 +383,8 @@ class CatalogNodeAdapter:
             return (await db.execute(statement)).scalar_one()
 
     async def lookup_adapter(
-        self, segments
+        self,
+        segments,
     ):  # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
@@ -399,6 +424,13 @@ class CatalogNodeAdapter:
 
             for i in range(len(segments)):
                 catalog_adapter = await self.lookup_adapter(segments[:i])
+                if (catalog_adapter.structure_family == StructureFamily.union) and len(
+                    segments[i:]
+                ) == 1:
+                    # All the segments but the final segment, segments[-1], resolves
+                    # resolve to a union structure. Dispatch to the union Adapter
+                    # to get the inner Adapter for whatever type of structure it is.
+                    return await ensure_awaitable(catalog_adapter.get, segments[-1])
                 if catalog_adapter.data_sources:
                     adapter = await catalog_adapter.get_adapter()
                     for segment in segments[i:]:
@@ -408,66 +440,60 @@ class CatalogNodeAdapter:
                     return adapter
             return None
         return STRUCTURES[node.structure_family](
-            self.context, node, access_policy=self.access_policy
+            self.context,
+            node,
+            access_policy=self.access_policy,
         )
 
     async def get_adapter(self):
-        num_data_sources = len(self.data_sources)
-        if num_data_sources > 1:
-            raise NotImplementedError
-        if num_data_sources == 1:
-            (data_source,) = self.data_sources
-            try:
-                adapter_factory = self.context.adapters_by_mimetype[
-                    data_source.mimetype
-                ]
-            except KeyError:
-                raise RuntimeError(
-                    f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
-                )
-            parameters = collections.defaultdict(list)
-            for asset in data_source.assets:
-                if asset.parameter is None:
-                    continue
-                scheme = urlparse(asset.data_uri).scheme
-                if scheme != "file":
-                    raise NotImplementedError(
-                        f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
-                    )
-                if scheme == "file":
-                    # Protect against misbehaving clients reading from unintended
-                    # parts of the filesystem.
-                    asset_path = path_from_uri(asset.data_uri)
-                    for readable_storage in self.context.readable_storage:
-                        if Path(
-                            os.path.commonpath(
-                                [path_from_uri(readable_storage), asset_path]
-                            )
-                        ) == path_from_uri(readable_storage):
-                            break
-                    else:
-                        raise RuntimeError(
-                            f"Refusing to serve {asset.data_uri} because it is outside "
-                            "the readable storage area for this server."
-                        )
-                if asset.num is None:
-                    parameters[asset.parameter] = asset.data_uri
-                else:
-                    parameters[asset.parameter].append(asset.data_uri)
-            adapter_kwargs = dict(parameters)
-            adapter_kwargs.update(data_source.parameters)
-            adapter_kwargs["specs"] = self.node.specs
-            adapter_kwargs["metadata"] = self.node.metadata_
-            adapter_kwargs["structure"] = data_source.structure
-            adapter_kwargs["access_policy"] = self.access_policy
-            adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, **adapter_kwargs)
+        (data_source,) = self.data_sources
+        try:
+            adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
+        except KeyError:
+            raise RuntimeError(
+                f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
-            for query in self.queries:
-                adapter = adapter.search(query)
-            return adapter
-        else:  # num_data_sources == 0
-            assert False
+        parameters = collections.defaultdict(list)
+        for asset in data_source.assets:
+            if asset.parameter is None:
+                continue
+            scheme = urlparse(asset.data_uri).scheme
+            if scheme != "file":
+                raise NotImplementedError(
+                    f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
+                )
+            if scheme == "file":
+                # Protect against misbehaving clients reading from unintended
+                # parts of the filesystem.
+                asset_path = path_from_uri(asset.data_uri)
+                for readable_storage in self.context.readable_storage:
+                    if Path(
+                        os.path.commonpath(
+                            [path_from_uri(readable_storage), asset_path]
+                        )
+                    ) == path_from_uri(readable_storage):
+                        break
+                else:
+                    raise RuntimeError(
+                        f"Refusing to serve {asset.data_uri} because it is outside "
+                        "the readable storage area for this server."
+                    )
+            if asset.num is None:
+                parameters[asset.parameter] = asset.data_uri
+            else:
+                parameters[asset.parameter].append(asset.data_uri)
+        adapter_kwargs = dict(parameters)
+        adapter_kwargs.update(data_source.parameters)
+        adapter_kwargs["specs"] = self.node.specs
+        adapter_kwargs["metadata"] = self.node.metadata_
+        adapter_kwargs["structure"] = data_source.structure
+        adapter_kwargs["access_policy"] = self.access_policy
+        adapter = await anyio.to_thread.run_sync(
+            partial(adapter_factory, **adapter_kwargs)
+        )
+        for query in self.queries:
+            adapter = adapter.search(query)
+        return adapter
 
     def new_variation(
         self,
@@ -597,12 +623,17 @@ class CatalogNodeAdapter:
                 if data_source.management != Management.external:
                     if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
-                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[structure_family]
+                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
+                        data_source.structure_family
+                    ]
                     data_source.parameters = {}
+                    data_uri_path_parts = self.segments + [key]
+                    if structure_family == StructureFamily.union:
+                        data_uri_path_parts.append(data_source.name)
                     data_uri = str(self.context.writable_storage) + "".join(
-                        f"/{quote_plus(segment)}" for segment in (self.segments + [key])
+                        f"/{quote_plus(segment)}" for segment in data_uri_path_parts
                     )
-                    init_storage = DEFAULT_INIT_STORAGE[structure_family]
+                    init_storage = DEFAULT_INIT_STORAGE[data_source.structure_family]
                     assets = await ensure_awaitable(
                         init_storage, data_uri, data_source.structure
                     )
@@ -622,7 +653,7 @@ class CatalogNodeAdapter:
                     # Obtain and hash the canonical (RFC 8785) representation of
                     # the JSON structure.
                     structure = _prepare_structure(
-                        structure_family, data_source.structure
+                        data_source.structure_family, data_source.structure
                     )
                     structure_id = compute_structure_id(structure)
                     # The only way to do "insert if does not exist" i.e. ON CONFLICT
@@ -642,6 +673,7 @@ class CatalogNodeAdapter:
                     await db.execute(statement)
                 data_source_orm = orm.DataSource(
                     structure_family=data_source.structure_family,
+                    name=data_source.name,
                     mimetype=data_source.mimetype,
                     management=data_source.management,
                     parameters=data_source.parameters,
@@ -952,6 +984,9 @@ class CatalogSparseAdapter(CatalogArrayAdapter):
 
 
 class CatalogTableAdapter(CatalogNodeAdapter):
+    async def get(self, *args, **kwargs):
+        return (await self.get_adapter()).get(*args, **kwargs)
+
     async def read(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
@@ -966,6 +1001,34 @@ class CatalogTableAdapter(CatalogNodeAdapter):
     async def write_partition(self, *args, **kwargs):
         return await ensure_awaitable(
             (await self.get_adapter()).write_partition, *args, **kwargs
+        )
+
+
+class CatalogUnionAdapter(CatalogNodeAdapter):
+    async def get(self, key):
+        if key not in self.structure().all_keys:
+            return None
+        for data_source in self.data_sources:
+            if data_source.structure_family == StructureFamily.table:
+                if key in data_source.structure.columns:
+                    return await ensure_awaitable(
+                        self.for_part(data_source.name).get, key
+                    )
+            if key == data_source.name:
+                return self.for_part(data_source.name)
+
+    def for_part(self, name):
+        for data_source in self.data_sources:
+            if name == data_source.name:
+                break
+        else:
+            raise ValueError(f"No DataSource named {name} on this node")
+        return STRUCTURES[data_source.structure_family](
+            self.context,
+            self.node,
+            access_policy=self.access_policy,
+            structure_family=data_source.structure_family,
+            data_sources=[data_source],
         )
 
 
@@ -1307,9 +1370,10 @@ def specs_array_to_json(specs):
 
 
 STRUCTURES = {
-    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
-    StructureFamily.table: CatalogTableAdapter,
+    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
+    StructureFamily.table: CatalogTableAdapter,
+    StructureFamily.union: CatalogUnionAdapter,
 }

@@ -74,3 +74,6 @@ class ParquetDatasetAdapter:
 
     def structure(self):
         return self._structure
+
+    def get(self, key):
+        return self.dataframe_adapter.get(key)

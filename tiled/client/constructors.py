@@ -150,11 +150,14 @@ Set an api_key as in:
             and (context.http_client.auth is None)
         ):
             context.authenticate()
+            params = {}
+            if include_data_sources:
+                params["include_data_sources"] = True
             content = handle_error(
                 context.http_client.get(
                     item_uri,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={"include_data_sources": include_data_sources},
+                    params=params,
                 )
             ).json()
         else:

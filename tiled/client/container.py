@@ -161,9 +161,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, there is an
         # implication that the contents are not expected to be dynamic. Used the
         # count provided in the structure.
-        structure = self.item["attributes"]["structure"]
-        if structure["contents"]:
-            return structure["count"]
+        if self.structure().count is not None:
+            return self.structure().count
         now = time.monotonic()
         if self._cached_len is not None:
             length, deadline = self._cached_len
@@ -194,14 +193,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
-        contents = self.item["attributes"]["structure"]["contents"]
+        structure = self.structure()
         if (
-            (contents is not None)
+            structure
+            and structure.contents
             and (not self._queries)
             and ((not self.sorting) or (self.sorting == [("_", 1)]))
             and (not _ignore_inlined_contents)
         ):
-            return (yield from contents)
+            return (yield from structure.contents)
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
             content = handle_error(
@@ -249,16 +249,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
             tail = tuple(tail)  # list -> tuple
+            params = {
+                **_queries_to_params(KeyLookup(key)),
+                **self._queries_as_params,
+                **self._sorting_params,
+            }
+            if self._include_data_sources:
+                params["include_data_sources"] = True
             content = handle_error(
                 self.context.http_client.get(
                     self.item["links"]["search"],
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "include_data_sources": self._include_data_sources,
-                        **_queries_to_params(KeyLookup(key)),
-                        **self._queries_as_params,
-                        **self._sorting_params,
-                    },
+                    params=params,
                 )
             ).json()
             self._cached_len = (
@@ -296,7 +298,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # to the node of interest without downloading information about
             # intermediate parents.
             for i, key in enumerate(keys):
-                item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
+                structure = self.structure()
+                item = (structure.contents or {}).get(key)
                 if (item is None) or _ignore_inlined_contents:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
@@ -305,13 +308,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         self_link = self.item["links"]["self"]
                         if self_link.endswith("/"):
                             self_link = self_link[:-1]
+                        params = {}
+                        if self._include_data_sources:
+                            params["include_data_sources"] = True
                         content = handle_error(
                             self.context.http_client.get(
                                 self_link + "".join(f"/{key}" for key in keys[i:]),
                                 headers={"Accept": MSGPACK_MIME_TYPE},
-                                params={
-                                    "include_data_sources": self._include_data_sources
-                                },
+                                params=params,
                             )
                         ).json()
                     except ClientError as err:
@@ -413,15 +417,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
+            params = {
+                **self._queries_as_params,
+                **sorting_params,
+            }
+            if self._include_data_sources:
+                params["include_data_sources"] = True
             content = handle_error(
                 self.context.http_client.get(
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "include_data_sources": self._include_data_sources,
-                        **self._queries_as_params,
-                        **sorting_params,
-                    },
+                    params=params,
                 )
             ).json()
             self._cached_len = (
@@ -620,8 +626,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         ).json()
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
+        elif structure_family == StructureFamily.union:
+            structure = None
+            # To be filled in below, by server response.
+            # We need the server to tell us data_source_ids.
         else:
-            # Only containers can have multiple data_sources right now.
             (data_source,) = data_sources
             structure = data_source.structure
         item["attributes"]["structure"] = structure
@@ -631,7 +640,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             item["attributes"]["metadata"] = document.pop("metadata")
         # Ditto for structure
         if "structure" in document:
-            item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
+            structure = STRUCTURE_TYPES[structure_family].from_json(
                 document.pop("structure")
             )
 
@@ -671,6 +680,31 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return self.new(
             StructureFamily.container,
             [],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+
+    def create_union(self, data_sources, key=None, *, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: Create a new union backed by data sources.
+
+        Parameters
+        ----------
+        data_sources : List[DataSources]
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        dims : List[str], optional
+            A label for each dimension of the array.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+        return self.new(
+            StructureFamily.union,
+            data_sources,
             key=key,
             metadata=metadata,
             specs=specs,
@@ -1018,6 +1052,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
+            "union": _LazyLoad(("..union", Container.__module__), "UnionClient"),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DatasetClient"
             ),
@@ -1036,6 +1071,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
             ),
+            "union": _LazyLoad(("..union", Container.__module__), "UnionClient"),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DaskDatasetClient"
             ),
