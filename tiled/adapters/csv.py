@@ -4,12 +4,11 @@ import dask.dataframe
 
 from ..server.object_cache import NO_CACHE, get_object_cache
 from ..structures.core import StructureFamily
-from ..structures.table import TableStructure
-from ..utils import path_from_uri
-from .dataframe import DataFrameAdapter
 from ..structures.data_source import Asset, DataSource, Management
-from ..utils import ensure_uri
+from ..structures.table import TableStructure
+from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
+from .dataframe import DataFrameAdapter
 
 
 def read_csv(
@@ -137,37 +136,39 @@ class CSVAdapter:
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def generate_data_sources(self, mimetype, dict_or_none, item, is_directory):
-        return [DataSource(
-            structure_family=self.dataframe_adapter.structure_family,
-            mimetype=mimetype,
-            structure=dict_or_none(self.dataframe_adapter.structure()),
-            parameters={},
-            management=Management.external,
-            assets=[
-                Asset(
-                    data_uri=ensure_uri(item),
-                    is_directory=is_directory,
-                    parameter="data_uris",  # <-- PLURAL!
-                    num=0  # <-- denoting that the Adapter expects a list, and this is the first element
-                )
-            ],
-        )
+        return [
+            DataSource(
+                structure_family=self.dataframe_adapter.structure_family,
+                mimetype=mimetype,
+                structure=dict_or_none(self.dataframe_adapter.structure()),
+                parameters={},
+                management=Management.external,
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(item),
+                        is_directory=is_directory,
+                        parameter="data_uris",  # <-- PLURAL!
+                        num=0,  # <-- denoting that the Adapter expects a list, and this is the first element
+                    )
+                ],
+            )
         ]
-    
+
     @classmethod
-    def from_single_file(cls,
-        data_uri,
-        structure=None,
-        metadata=None,
-        specs=None,
-        access_policy=None):
-    
-        return cls([data_uri], structure=structure, metadata=metadata, specs=specs, access_policy=access_policy)
+    def from_single_file(
+        cls, data_uri, structure=None, metadata=None, specs=None, access_policy=None
+    ):
+        return cls(
+            [data_uri],
+            structure=structure,
+            metadata=metadata,
+            specs=specs,
+            access_policy=access_policy,
+        )
 
     def __getitem__(self, key):
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
-
 
     def items(self):
         yield from (

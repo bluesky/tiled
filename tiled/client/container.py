@@ -5,7 +5,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from itertools import chain
+
 import entrypoints
 
 from ..adapters.utils import IndexersMixin
@@ -613,8 +613,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if key is not None:
             body["id"] = key
 
-        
-        #if check:
+        # if check:
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:

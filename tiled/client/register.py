@@ -9,7 +9,10 @@ import anyio
 import httpx
 import watchfiles
 
-from ..mimetypes import DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
+from ..mimetypes import (
+    DEFAULT_MIMETYPES_BY_FILE_EXT,
+    DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE,
+)
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..utils import ensure_uri, import_object
@@ -303,7 +306,9 @@ async def register_single_item(
     key = settings.key_from_filename(item.name)
     if hasattr(adapter, "generate_data_sources"):
         # Let the Adapter describe the DataSouce(s).
-        data_sources = adapter.generate_data_sources(mimetype, dict_or_none, item, is_directory)
+        data_sources = adapter.generate_data_sources(
+            mimetype, dict_or_none, item, is_directory
+        )
     else:
         # Back-compat: Assume one Asset passed as a
         # parameter named 'data_uri'.
@@ -329,9 +334,10 @@ async def register_single_item(
         structure_family=adapter.structure_family,
         metadata=dict(adapter.metadata()),
         specs=adapter.specs,
-        data_sources = data_sources,
+        data_sources=data_sources,
     )
-    
+
+
 # Matches filename with (optional) prefix characters followed by digits \d
 # and then the file extension .tif or .tiff.
 TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(.*?)(\d+)\.(?:tif|tiff)$")
