@@ -467,6 +467,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
     @app.on_event("startup")
     async def startup_event():
+        from .. import __version__
+
+        logger.info(f"Tiled version {__version__}")
         # Validate the single-user API key.
         settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
