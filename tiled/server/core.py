@@ -704,15 +704,6 @@ class WrongTypeForRoute(Exception):
     pass
 
 
-FULL_LINKS = {
-    StructureFamily.array: {"full": "{base_url}/array/full/{path}"},
-    StructureFamily.awkward: {"full": "{base_url}/awkward/full/{path}"},
-    StructureFamily.container: {"full": "{base_url}/container/full/{path}"},
-    StructureFamily.table: {"full": "{base_url}/table/full/{path}"},
-    StructureFamily.sparse: {"full": "{base_url}/array/full/{path}"},
-}
-
-
 def asdict(dc):
     "Compat for converting dataclass or pydantic.BaseModel to dict."
     if dc is None:
