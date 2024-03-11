@@ -10,7 +10,8 @@ from httpx import URL
 
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..utils import UNCHANGED, DictView, ListView, safe_json_dump
+from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
+from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
 
@@ -392,8 +393,16 @@ client or pass the optional parameter `include_data_sources=True` to
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-            Hint: You can use metadata_copy() to retrieve a mutable copy of
-            the current metadata that can be passed here with modifications.
+            Hint:
+                You can use `metadata_copy()` to retrieve a mutable copy of
+                the current metadata that can be passed here with modifications.
+            Note:
+                You only need to specify the relative paths in the nested
+                structure. `metadata_copy()` is only meant as an assistance.
+                `update_metadata()` implements a similar approach to json merge
+                patch (RFC 7386 https://datatracker.ietf.org/doc/html/rfc7386).
+                However, None (or null) does not take a special meaning,
+                although `tiled.client.metadata_update.DELETE_KEY` does!
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
@@ -401,10 +410,12 @@ client or pass the optional parameter `include_data_sources=True` to
         """
 
         if metadata is None:
-            metadata = self.metadata_copy()
+            metadata = {}
 
         patch = jsonpatch.JsonPatch.from_diff(
-            dict(self.metadata), metadata, dumps=orjson.dumps
+            dict(self.metadata),
+            apply_update_patch(self.metadata_copy(), metadata),
+            dumps=orjson.dumps,
         ).patch
 
         self.patch_metadata(patch=patch, specs=specs)
