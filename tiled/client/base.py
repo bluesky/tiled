@@ -1,5 +1,11 @@
 import time
 import warnings
+
+from copy import deepcopy
+
+import jsonpatch
+import orjson
+
 from dataclasses import asdict
 from pathlib import Path
 
@@ -194,6 +200,12 @@ class BaseClient:
         # persistent.
         return DictView(self._item["attributes"]["metadata"])
 
+    def metadata_copy(self):
+        """
+        Generate a mutable copy of metadata (useful with update_metadata())
+        """
+        return deepcopy(self._item["attributes"]["metadata"])
+
     @property
     def specs(self):
         "List of specifications describing the structure of the metadata and/or data."
@@ -375,6 +387,89 @@ client or pass the optional parameter `include_data_sources=True` to
     def update_metadata(self, metadata=None, specs=None):
         """
         EXPERIMENTAL: Update metadata.
+
+        This is subject to change or removal without notice
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+            Hint: You can use metadata_copy() to retrieve a mutable copy of
+            the current metadata that can be passed here with modifications.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+
+        if metadata is None:
+            metadata = self.metadata_copy()
+
+        patch = jsonpatch.JsonPatch.from_diff(
+            dict(self.metadata), metadata,
+            dumps=orjson.dumps
+        ).patch
+
+        self.patch_metadata(patch=patch, specs=specs)
+
+    def patch_metadata(self, patch=None, specs=None):
+        """
+        EXPERIMENTAL: Patch metadata.
+
+        This is subject to change or removal without notice
+
+        Parameters
+        ----------
+        patch : List[dict], optional
+            JSON-serializable RFC 6902 patch to be applied to metadata
+            (See https://datatracker.ietf.org/doc/html/rfc6902)
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+
+        self._cached_len = None
+
+        if specs is None:
+            normalized_specs = None
+        else:
+            normalized_specs = []
+            for spec in specs:
+                if isinstance(spec, str):
+                    spec = Spec(spec)
+                normalized_specs.append(asdict(spec))
+
+        data = {
+            "patch": patch,
+            "specs": normalized_specs,
+        }
+
+        content = handle_error(
+            self.context.http_client.patch(
+                self.item["links"]["self"], content=safe_json_dump(data),
+                headers={"Content-Type": "application/json-patch+json"},
+            )
+        ).json()
+
+        if patch is not None:
+            if "metadata" in content:
+                # Metadata was accepted and modified by the specs validator on the server side.
+                # It is updated locally using the new version.
+                self._item["attributes"]["metadata"] = content["metadata"]
+            else:
+                # Metadata was accepted as it is by the server.
+                # It is updated locally with the version submitted buy the client.
+                self._item["attributes"]["metadata"] = jsonpatch.apply_patch(
+                    dict(self.metadata), patch
+                )
+
+        if specs is not None:
+            self._item["attributes"]["specs"] = normalized_specs
+
+    def replace_metadata(self, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: Replace metadata.
 
         This is subject to change or removal without notice
 

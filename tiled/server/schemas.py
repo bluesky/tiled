@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import Any, Dict, Generic, List, Optional, TypeVar, Union, TypedDict, Required, NotRequired
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
@@ -499,3 +499,38 @@ class PutMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise ValueError
         return v
+
+
+# we use functional syntax to define JSONPatchSpec since "from" is a keyword
+JSONPatchSpec = TypedDict("JSONPatchSpec", {
+    "op": Required[str],
+    "path": Required[str],
+    "from": NotRequired[str],
+    "value": NotRequired[Any]
+})
+
+
+class PatchMetadataRequest(pydantic.BaseModel):
+    # These fields are optional because None means "no changes; do not update".
+    patch: Optional[List[JSONPatchSpec] | Dict] # Dict for merge-patch
+    specs: Optional[Specs]
+
+    # Wait for fix https://github.com/pydantic/pydantic/issues/3957
+    # to do this with `unique_items` parameters to `pydantic.constr`.
+    @pydantic.validator("specs", always=True)
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        for i, value in enumerate(v, start=1):
+            if value in v[i:]:
+                raise pydantic.errors.ListUniqueItemsError()
+        return v
+
+class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
+    id: str
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    # May be None if not altered
+    metadata: Optional[Dict]
+    data_sources: Optional[List[DataSource]]
+
+NodeStructure.update_forward_refs()

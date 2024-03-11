@@ -10,6 +10,8 @@ from typing import Any, List, Optional
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
+from jsonpatch import apply_patch as apply_json_patch
+from json_merge_patch import merge as apply_merge_patch
 from pydantic_settings import BaseSettings
 from starlette.responses import FileResponse
 from starlette.status import (
@@ -1389,23 +1391,37 @@ async def put_awkward_full(
     await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
-
-@router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
-async def put_metadata(
+@router.patch("/metadata/{path:path}", response_model=schemas.PatchMetadataResponse)
+async def patch_metadata(
     request: Request,
-    body: schemas.PutMetadataRequest,
+    body: schemas.PatchMetadataRequest,
     validation_registry=Depends(get_validation_registry),
     settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata"]),
 ):
-    if not hasattr(entry, "update_metadata"):
+    if not hasattr(entry, "patch_metadata"):
         raise HTTPException(
             status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node does not support update of metadata.",
         )
 
-    metadata, structure_family, structure, specs = (
-        body.metadata if body.metadata is not None else entry.metadata(),
+    if request.headers["content-type"] == "application/json-patch+json":
+        metadata = apply_json_patch(
+            entry.metadata(),
+            body.patch if body.patch is not None else []
+        )
+    elif request.headers["content-type"] == "application/merge-patch+json":
+        metadata = apply_merge_patch(
+            entry.metadata(),
+            body.patch if body.patch is not None else {}
+        )
+    else:
+        raise HTTPException(
+            status_code=406,
+            detail="application/json-patch+json or application/merge-patch+json expected."
+        )
+
+    structure_family, structure, specs = (
         entry.structure_family,
         entry.structure(),
         body.specs if body.specs is not None else entry.specs,
@@ -1441,7 +1457,63 @@ async def put_metadata(
                 metadata_modified = True
                 metadata = result
 
-    await entry.update_metadata(metadata=metadata, specs=specs)
+    await entry.replace_metadata(metadata=metadata, specs=specs)
+
+    response_data = {"id": entry.key}
+    if metadata_modified:
+        response_data["metadata"] = metadata
+    return json_or_msgpack(request, response_data)
+
+@router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
+async def put_metadata(
+    request: Request,
+    body: schemas.PutMetadataRequest,
+    validation_registry=Depends(get_validation_registry),
+    settings: BaseSettings = Depends(get_settings),
+    entry=SecureEntry(scopes=["write:metadata"]),
+):
+    if not hasattr(entry, "replace_metadata"):
+        raise HTTPException(
+            status_code=405, detail="This node does not support update of metadata."
+        )
+
+    metadata, structure_family, structure, specs = (
+        body.metadata if body.metadata is not None else entry.metadata(),
+        entry.structure_family,
+        entry.structure(),
+        body.specs if body.specs is not None else entry.specs,
+    )
+
+    metadata_modified = False
+
+    # Specs should be ordered from most specific/constrained to least.
+    # Validate them in reverse order, with the least constrained spec first,
+    # because it may do normalization that helps pass the more constrained one.
+    # Known Issue:
+    # When there is more than one spec, it's possible for the validator for
+    # Spec 2 to make a modification that breaks the validation for Spec 1.
+    # For now we leave it to the server maintainer to ensure that validators
+    # won't step on each other in this way, but this may need revisiting.
+
+    for spec in reversed(specs):
+        if spec.name not in validation_registry:
+            if settings.reject_undeclared_specs:
+                raise HTTPException(
+                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
+                )
+        else:
+            validator = validation_registry(spec.name)
+            try:
+                result = validator(metadata, structure_family, structure, spec)
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"failed validation for spec {spec.name}:\n{e}",
+                )
+            if result is not None:
+                metadata_modified = True
+                metadata = result
+    await entry.replace_metadata(metadata=metadata, specs=specs)
 
     response_data = {"id": entry.key}
     if metadata_modified:
