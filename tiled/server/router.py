@@ -10,8 +10,8 @@ from typing import Any, List, Optional
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
-from jsonpatch import apply_patch as apply_json_patch
 from json_merge_patch import merge as apply_merge_patch
+from jsonpatch import apply_patch as apply_json_patch
 from pydantic_settings import BaseSettings
 from starlette.responses import FileResponse
 from starlette.status import (
@@ -1391,6 +1391,7 @@ async def put_awkward_full(
     await ensure_awaitable(entry.write, data)
     return json_or_msgpack(request, None)
 
+
 @router.patch("/metadata/{path:path}", response_model=schemas.PatchMetadataResponse)
 async def patch_metadata(
     request: Request,
@@ -1407,18 +1408,16 @@ async def patch_metadata(
 
     if request.headers["content-type"] == "application/json-patch+json":
         metadata = apply_json_patch(
-            entry.metadata(),
-            body.patch if body.patch is not None else []
+            entry.metadata(), body.patch if body.patch is not None else []
         )
     elif request.headers["content-type"] == "application/merge-patch+json":
         metadata = apply_merge_patch(
-            entry.metadata(),
-            body.patch if body.patch is not None else {}
+            entry.metadata(), body.patch if body.patch is not None else {}
         )
     else:
         raise HTTPException(
             status_code=406,
-            detail="application/json-patch+json or application/merge-patch+json expected."
+            detail="application/json-patch+json or application/merge-patch+json expected.",
         )
 
     structure_family, structure, specs = (
@@ -1463,6 +1462,7 @@ async def patch_metadata(
     if metadata_modified:
         response_data["metadata"] = metadata
     return json_or_msgpack(request, response_data)
+
 
 @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
 async def put_metadata(
