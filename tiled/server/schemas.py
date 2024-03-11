@@ -3,17 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import (
-    Any,
-    Dict,
-    Generic,
-    List,
-    Optional,
-    Required,
-    TypedDict,
-    TypeVar,
-    Union,
-)
+from typing import Any, Dict, Generic, List, Optional, TypedDict, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
@@ -515,8 +505,8 @@ class PutMetadataRequest(pydantic.BaseModel):
 JSONPatchSpec = TypedDict(
     "JSONPatchSpec",
     {
-        "op": Required[str],
-        "path": Required[str],
+        "op": str,
+        "path": str,
         "from": str,
         "value": Any,
     },
