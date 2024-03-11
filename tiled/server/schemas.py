@@ -8,7 +8,6 @@ from typing import (
     Dict,
     Generic,
     List,
-    NotRequired,
     Optional,
     Required,
     TypedDict,
@@ -518,9 +517,10 @@ JSONPatchSpec = TypedDict(
     {
         "op": Required[str],
         "path": Required[str],
-        "from": NotRequired[str],
-        "value": NotRequired[Any],
+        "from": str,
+        "value": Any,
     },
+    total=False
 )
 
 
