@@ -321,7 +321,7 @@ class CatalogNodeAdapter:
 
     @property
     def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
+        return [DataSource.from_orm(ds) for ds in (self.node.data_sources or [])]
 
     async def asset_by_id(self, asset_id):
         statement = (
