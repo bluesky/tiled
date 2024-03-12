@@ -685,6 +685,21 @@ class CatalogNodeAdapter:
                 self.context, refreshed_node, access_policy=self.access_policy
             )
 
+    async def patch_data_source(self, data_source):
+        values = dict(
+            structure_family=data_source.structure_family,
+            mimetype=data_source.mimetype,
+            management=data_source.management,
+            parameters=data_source.parameters,
+            structure_id=structure_id,
+        )
+        async with self.context.session() as db:
+            await db.execute(
+                update(orm.DataSource)
+                .where(orm.DataSource.id == data_source.id)
+                .values(**values)
+            )
+
     # async def patch_node(datasources=None):
     #     ...
 
@@ -848,9 +863,14 @@ class CatalogNodeAdapter:
                 revision_number=next_revision_number,
             )
             db.add(revision)
-            await db.execute(
+            result = await db.execute(
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No data_source {data_source.id} on this node.",
+                )
             await db.commit()
 
 
