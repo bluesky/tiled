@@ -103,8 +103,8 @@ client.new(
             structure_family=StructureFamily.array,
 	    structure=structure,
             assets=[
-                Asset(data_uri="file:///...", num=1),
-                Asset(data_uri="file:///...", num=2),
+                Asset(data_uri="file:///...", is_directory=False, parameter="data_uri", num=1),
+                Asset(data_uri="file:///...", is_directory=False, parameter="data_uri", num=2),
             ],
         ),
     ],
