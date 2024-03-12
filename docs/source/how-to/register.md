@@ -87,7 +87,7 @@ from tiled.structures.array import ArrayStructure, BuiltinDtype
 client = from_uri("http://localhost:8000", api_key="...")
 
 structure = ArrayStructure(
-    dtype=BuiltinDtype.from_numpy_dtype(numpy.int32),
+    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype('int32')),
     shape=(2, 512, 512),
     chunks=((1, 1), (512,), (512,)),
     dims=("time", "x", "y"),  # optional
