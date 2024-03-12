@@ -221,6 +221,15 @@ class _DaskDataFrameClient(BaseClient):
             )
         )
 
+    def append_partition(self, dataframe, partition):
+        handle_error(
+            self.context.http_client.patch(
+                self.item["links"]["partition"].format(index=partition),
+                content=bytes(serialize_arrow(dataframe, {})),
+                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+            )
+        )
+    
     def export(self, filepath, columns=None, *, format=None):
         """
         Download data in some format and write to a file.
