@@ -41,10 +41,9 @@ def read_csv(
     )
 
 
-read_csv.__doc__ = (
-    """
+read_csv.__doc__ = """
 This wraps dask.dataframe.read_csv. Original docstring:
 
-"""
-    + dask.dataframe.read_csv.__doc__
+""" + (
+    dask.dataframe.read_csv.__doc__ or ""
 )

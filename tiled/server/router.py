@@ -44,6 +44,7 @@ from .dependencies import (
     get_validation_registry,
     slice_,
 )
+from .links import links_for_node
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
@@ -346,7 +347,10 @@ async def metadata(
 )
 async def array_block(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -358,15 +362,7 @@ async def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family == "array":
-        shape = entry.structure().shape
-    elif entry.structure_family == "sparse":
-        shape = entry.structure().shape
-    else:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
-        )
+    shape = entry.structure().shape
     # Check that block dimensionality matches array dimensionality.
     ndim = len(shape)
     if len(block) != ndim:
@@ -428,7 +424,10 @@ async def array_block(
 )
 async def array_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -440,11 +439,6 @@ async def array_full(
     Fetch a slice of array-like data.
     """
     structure_family = entry.structure_family
-    if structure_family not in {"array", "sparse"}:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
-        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -452,7 +446,7 @@ async def array_full(
     try:
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read, slice)
-        if structure_family == "array":
+        if structure_family == StructureFamily.array:
             array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(status_code=400, detail="Block index out of range")
@@ -494,7 +488,7 @@ async def array_full(
 async def get_table_partition(
     request: Request,
     partition: int,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Query(None, min_length=1),
     field: Optional[List[str]] = Query(None, min_length=1, deprecated=True),
     format: Optional[str] = None,
@@ -542,7 +536,7 @@ async def get_table_partition(
 async def post_table_partition(
     request: Request,
     partition: int,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Body(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -577,11 +571,6 @@ async def table_partition(
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
     """
-    if entry.structure_family != StructureFamily.table:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /table/partition route.",
-        )
     try:
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
@@ -625,7 +614,7 @@ async def table_partition(
 )
 async def get_table_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -653,7 +642,7 @@ async def get_table_full(
 )
 async def post_table_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Body(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -686,11 +675,6 @@ async def table_full(
     """
     Fetch the data for the given table.
     """
-    if entry.structure_family != StructureFamily.table:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /table/full route.",
-        )
     try:
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, column)
@@ -731,7 +715,9 @@ async def table_full(
 )
 async def get_container_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.container}
+    ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
@@ -759,7 +745,9 @@ async def get_container_full(
 )
 async def post_container_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.container}
+    ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Body(None, min_length=1),
     format: Optional[str] = None,
@@ -792,11 +780,6 @@ async def container_full(
     """
     Fetch the data for the given container.
     """
-    if entry.structure_family != StructureFamily.container:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /container/full route.",
-        )
     try:
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, fields=field)
@@ -836,7 +819,10 @@ async def container_full(
 )
 async def node_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={StructureFamily.table, StructureFamily.container},
+    ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
@@ -899,7 +885,9 @@ async def node_full(
 )
 async def get_awkward_buffers(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.awkward}
+    ),
     form_key: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -935,7 +923,9 @@ async def get_awkward_buffers(
 async def post_awkward_buffers(
     request: Request,
     body: List[str],
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.awkward}
+    ),
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -973,11 +963,6 @@ async def _awkward_buffers(
 ):
     structure_family = entry.structure_family
     structure = entry.structure()
-    if structure_family != StructureFamily.awkward:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /awkward/buffers route.",
-        )
     with record_timing(request.state.metrics, "read"):
         # The plural vs. singular mismatch is due to the way query parameters
         # are given as ?form_key=A&form_key=B&form_key=C.
@@ -1018,7 +1003,9 @@ async def _awkward_buffers(
 )
 async def awkward_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.awkward}
+    ),
     # slice=Depends(slice_),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -1029,11 +1016,6 @@ async def awkward_full(
     Fetch a slice of AwkwardArray data.
     """
     structure_family = entry.structure_family
-    if structure_family != StructureFamily.awkward:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /awkward/full route.",
-        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import awkward
@@ -1172,30 +1154,9 @@ async def _create_node(
         specs=body.specs,
         data_sources=body.data_sources,
     )
-    links = {}
-    base_url = get_base_url(request)
-    path_parts = [segment for segment in path.split("/") if segment] + [key]
-    path_str = "/".join(path_parts)
-    links["self"] = f"{base_url}/metadata/{path_str}"
-    if body.structure_family in {StructureFamily.array, StructureFamily.sparse}:
-        block_template = ",".join(
-            f"{{{index}}}" for index in range(len(node.structure().shape))
-        )
-        links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
-        links["full"] = f"{base_url}/array/full/{path_str}"
-    elif body.structure_family == StructureFamily.table:
-        links[
-            "partition"
-        ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
-        links["full"] = f"{base_url}/table/full/{path_str}"
-    elif body.structure_family == StructureFamily.container:
-        links["full"] = f"{base_url}/container/full/{path_str}"
-        links["search"] = f"{base_url}/search/{path_str}"
-    elif body.structure_family == StructureFamily.awkward:
-        links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
-        links["full"] = f"{base_url}/awkward/full/{path_str}"
-    else:
-        raise NotImplementedError(body.structure_family)
+    links = links_for_node(
+        structure_family, structure, get_base_url(request), path + f"/{key}"
+    )
     response_data = {
         "id": key,
         "links": links,
@@ -1237,7 +1198,10 @@ async def bulk_delete(
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     body = await request.body()
@@ -1263,7 +1227,10 @@ async def put_array_full(
 @router.put("/array/block/{path:path}")
 async def put_array_block(
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
     block=Depends(block),
 ):
@@ -1295,7 +1262,9 @@ async def put_array_block(
 @router.put("/node/full/{path:path}", deprecated=True)
 async def put_node_full(
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"], structure_families={StructureFamily.table}
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     if not hasattr(entry, "write"):
@@ -1332,14 +1301,12 @@ async def put_table_partition(
 @router.put("/awkward/full/{path:path}")
 async def put_awkward_full(
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"], structure_families={StructureFamily.awkward}
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     body = await request.body()
-    if entry.structure_family != StructureFamily.awkward:
-        raise HTTPException(
-            status_code=404, detail="This route is not applicable to this node."
-        )
     if not hasattr(entry, "write"):
         raise HTTPException(status_code=405, detail="This node cannot be written to.")
     media_type = request.headers["content-type"]

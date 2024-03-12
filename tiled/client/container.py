@@ -249,16 +249,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
             tail = tuple(tail)  # list -> tuple
+            params = {
+                **_queries_to_params(KeyLookup(key)),
+                **self._queries_as_params,
+                **self._sorting_params,
+            }
+            if self._include_data_sources:
+                params["include_data_sources"] = True
             content = handle_error(
                 self.context.http_client.get(
                     self.item["links"]["search"],
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "include_data_sources": self._include_data_sources,
-                        **_queries_to_params(KeyLookup(key)),
-                        **self._queries_as_params,
-                        **self._sorting_params,
-                    },
+                    params=params,
                 )
             ).json()
             self._cached_len = (
@@ -305,13 +307,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         self_link = self.item["links"]["self"]
                         if self_link.endswith("/"):
                             self_link = self_link[:-1]
+                        params = {}
+                        if self._include_data_sources:
+                            params["include_data_sources"] = True
                         content = handle_error(
                             self.context.http_client.get(
                                 self_link + "".join(f"/{key}" for key in keys[i:]),
                                 headers={"Accept": MSGPACK_MIME_TYPE},
-                                params={
-                                    "include_data_sources": self._include_data_sources
-                                },
+                                params=params,
                             )
                         ).json()
                     except ClientError as err:
@@ -413,15 +416,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
+            params = {
+                **self._queries_as_params,
+                **sorting_params,
+            }
+            if self._include_data_sources:
+                params["include_data_sources"] = True
             content = handle_error(
                 self.context.http_client.get(
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "include_data_sources": self._include_data_sources,
-                        **self._queries_as_params,
-                        **sorting_params,
-                    },
+                    params=params,
                 )
             ).json()
             self._cached_len = (

@@ -321,7 +321,7 @@ class CatalogNodeAdapter:
 
     @property
     def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
+        return [DataSource.from_orm(ds) for ds in (self.node.data_sources or [])]
 
     async def asset_by_id(self, asset_id):
         statement = (
@@ -597,12 +597,14 @@ class CatalogNodeAdapter:
                 if data_source.management != Management.external:
                     if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
-                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[structure_family]
+                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
+                        data_source.structure_family
+                    ]
                     data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    init_storage = DEFAULT_INIT_STORAGE[structure_family]
+                    init_storage = DEFAULT_INIT_STORAGE[data_source.structure_family]
                     assets = await ensure_awaitable(
                         init_storage, data_uri, data_source.structure
                     )
@@ -1307,9 +1309,9 @@ def specs_array_to_json(specs):
 
 
 STRUCTURES = {
-    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
-    StructureFamily.table: CatalogTableAdapter,
+    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
+    StructureFamily.table: CatalogTableAdapter,
 }

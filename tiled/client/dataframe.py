@@ -1,5 +1,5 @@
 import dask
-import dask.dataframe
+import dask.dataframe.core
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
@@ -162,7 +162,7 @@ class _DaskDataFrameClient(BaseClient):
 
         if columns is not None:
             meta = meta[columns]
-        ddf = dask.dataframe.DataFrame(
+        ddf = dask.dataframe.core.DataFrame(
             dask_tasks,
             name=name,
             meta=meta,
