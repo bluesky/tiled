@@ -685,20 +685,47 @@ class CatalogNodeAdapter:
                 self.context, refreshed_node, access_policy=self.access_policy
             )
 
-    async def patch_data_source(self, data_source):
-        values = dict(
-            structure_family=data_source.structure_family,
-            mimetype=data_source.mimetype,
-            management=data_source.management,
-            parameters=data_source.parameters,
-            structure_id=structure_id,
+    async def put_data_source(self, data_source):
+        # Obtain and hash the canonical (RFC 8785) representation of
+        # the JSON structure.
+        structure = _prepare_structure(
+            data_source.structure_family, data_source.structure
         )
+        structure_id = compute_structure_id(structure)
+        # The only way to do "insert if does not exist" i.e. ON CONFLICT
+        # is to invoke dialect-specific insert.
+        if self.context.engine.dialect.name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert
+        elif self.context.engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
+        else:
+            assert False  # future-proofing
+        statement = (
+            insert(orm.Structure).values(
+                id=structure_id,
+                structure=structure,
+            )
+        ).on_conflict_do_nothing(index_elements=["id"])
         async with self.context.session() as db:
-            await db.execute(
+            await db.execute(statement)
+            values = dict(
+                structure_family=data_source.structure_family,
+                mimetype=data_source.mimetype,
+                management=data_source.management,
+                parameters=data_source.parameters,
+                structure_id=structure_id,
+            )
+            result = await db.execute(
                 update(orm.DataSource)
                 .where(orm.DataSource.id == data_source.id)
                 .values(**values)
             )
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No data_source {data_source.id} on this node.",
+                )
+            await db.commit()
 
     # async def patch_node(datasources=None):
     #     ...
@@ -863,14 +890,9 @@ class CatalogNodeAdapter:
                 revision_number=next_revision_number,
             )
             db.add(revision)
-            result = await db.execute(
+            await db.execute(
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
-            if result.rowcount == 0:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No data_source {data_source.id} on this node.",
-                )
             await db.commit()
 
 
