@@ -75,6 +75,7 @@ about the files to specify particular `metadata` or `specs`.
 Use the Python client, as in this example.
 
 ```py
+import numpy
 from tiled.client import from_uri
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
