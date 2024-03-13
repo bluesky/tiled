@@ -490,3 +490,32 @@ def test_write_with_specified_mimetype(tree):
                     ),
                 ],
             )
+
+
+def test_append_partition(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        structure = TableStructure.from_pandas(df)
+
+        x = client.new(
+            "table",
+            [
+                DataSource(
+                    structure_family="table",
+                    structure=structure,
+                    mimetype="text/csv",
+                ),
+            ],
+            key="x",
+        )
+        x.write(df)
+
+        df2 = pandas.DataFrame({"A": [11, 12, 13], "B": [14, 15, 16]})
+
+        x.append_partition(df2, 0)
+        df3 = pandas.DataFrame({"A": [1, 2, 3, 11, 12, 13], "B": [4, 5, 6, 14, 15, 16]})
+
+        assert [row for col in x.columns for row in x[col]] == [
+            row for col in df3.columns for row in df3[col]
+        ]

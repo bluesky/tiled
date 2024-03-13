@@ -229,7 +229,7 @@ class _DaskDataFrameClient(BaseClient):
                 headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
             )
         )
-    
+
     def export(self, filepath, columns=None, *, format=None):
         """
         Download data in some format and write to a file.
