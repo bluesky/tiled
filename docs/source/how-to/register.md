@@ -75,6 +75,7 @@ about the files to specify particular `metadata` or `specs`.
 Use the Python client, as in this example.
 
 ```py
+import numpy
 from tiled.client import from_uri
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
@@ -86,7 +87,7 @@ from tiled.structures.array import ArrayStructure, BuiltinDtype
 client = from_uri("http://localhost:8000", api_key="...")
 
 structure = ArrayStructure(
-    dtype=BuiltinDtype.from_numpy_dtype(numpy.int32),
+    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype('int32')),
     shape=(2, 512, 512),
     chunks=((1, 1), (512,), (512,)),
     dims=("time", "x", "y"),  # optional
@@ -102,8 +103,8 @@ client.new(
             structure_family=StructureFamily.array,
 	    structure=structure,
             assets=[
-                Asset(data_uri="file:///...", num=1),
-                Asset(data_uri="file:///...", num=2),
+                Asset(data_uri="file:///path/to/image1.tiff", is_directory=False, parameter="data_uri", num=1),
+                Asset(data_uri="file:///path/to/image2.tiff", is_directory=False, parameter="data_uri", num=2),
             ],
         ),
     ],
