@@ -511,9 +511,22 @@ def test_write_with_specified_mimetype(tree):
             },
         ),
         (
-            {"C": ["x", "y"], "D": ["a", "b"]},
-            {"C": ["xx", "yy", "zz"], "D": ["aa", "bb", "cc"]},
-            {"C": ["x", "y", "xx", "yy", "zz"], "D": ["a", "b", "aa", "bb", "cc"]},
+            {
+                "C": pandas.array(["x", "y"], dtype="string[pyarrow]"),
+                "D": pandas.array(["a", "b"], dtype="string[pyarrow]"),
+            },
+            {
+                "C": pandas.array(["xx", "yy", "zz"], dtype="string[pyarrow]"),
+                "D": pandas.array(["aa", "bb", "cc"], dtype="string[pyarrow]"),
+            },
+            {
+                "C": pandas.array(
+                    ["x", "y", "xx", "yy", "zz"], dtype="string[pyarrow]"
+                ),
+                "D": pandas.array(
+                    ["a", "b", "aa", "bb", "cc"], dtype="string[pyarrow]"
+                ),
+            },
         ),
     ],
 )
@@ -547,4 +560,4 @@ def test_append_partition(
 
         df3 = pandas.DataFrame(expected_file)
 
-        assert_frame_equal(x.read(), df3, check_dtype=False)
+        assert_frame_equal(x.read(), df3, check_dtype=True)
