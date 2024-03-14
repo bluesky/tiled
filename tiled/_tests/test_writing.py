@@ -13,11 +13,11 @@ import pandas
 import pandas.testing
 import pytest
 import sparse
+from pandas.testing import assert_frame_equal
 
 from ..catalog import in_memory
 from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
-from ..client.dataframe import DataFrameClient
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
@@ -521,7 +521,7 @@ def test_append_partition(
     tree: CatalogContainerAdapter,
     orig_file: dict,
     file_toappend: dict,
-    expected_file: DataFrameClient,
+    expected_file: dict,
 ):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
@@ -547,6 +547,4 @@ def test_append_partition(
 
         df3 = pandas.DataFrame(expected_file)
 
-        assert [row for col in x.columns for row in x[col]] == [
-            row for col in df3.columns for row in df3[col]
-        ]
+        assert_frame_equal(x.read(), df3, check_dtype=False)
