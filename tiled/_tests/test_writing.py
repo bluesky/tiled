@@ -25,6 +25,7 @@ from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
+from pandas.testing import assert_frame_equal
 
 validation_registry = ValidationRegistry()
 validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
@@ -519,3 +520,4 @@ def test_append_partition(tree):
         assert [row for col in x.columns for row in x[col]] == [
             row for col in df3.columns for row in df3[col]
         ]
+
