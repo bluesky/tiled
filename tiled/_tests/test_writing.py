@@ -15,7 +15,9 @@ import pytest
 import sparse
 
 from ..catalog import in_memory
+from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
+from ..client.dataframe import DataFrameClient
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
@@ -25,7 +27,6 @@ from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
-from pandas.testing import assert_frame_equal
 
 validation_registry = ValidationRegistry()
 validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
@@ -493,10 +494,38 @@ def test_write_with_specified_mimetype(tree):
             )
 
 
-def test_append_partition(tree):
+@pytest.mark.parametrize(
+    "orig_file, file_toappend, expected_file",
+    [
+        (
+            {"A": [1, 2, 3], "B": [4, 5, 6]},
+            {"A": [11, 12, 13], "B": [14, 15, 16]},
+            {"A": [1, 2, 3, 11, 12, 13], "B": [4, 5, 6, 14, 15, 16]},
+        ),
+        (
+            {"A": [1.2, 2.5, 3.7], "B": [4.6, 5.8, 6.9]},
+            {"A": [11.2, 12.5, 13.7], "B": [14.6, 15.8, 16.9]},
+            {
+                "A": [1.2, 2.5, 3.7, 11.2, 12.5, 13.7],
+                "B": [4.6, 5.8, 6.9, 14.6, 15.8, 16.9],
+            },
+        ),
+        (
+            {"C": ["x", "y"], "D": ["a", "b"]},
+            {"C": ["xx", "yy", "zz"], "D": ["aa", "bb", "cc"]},
+            {"C": ["x", "y", "xx", "yy", "zz"], "D": ["a", "b", "aa", "bb", "cc"]},
+        ),
+    ],
+)
+def test_append_partition(
+    tree: CatalogContainerAdapter,
+    orig_file: dict,
+    file_toappend: dict,
+    expected_file: DataFrameClient,
+):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
-        df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        df = pandas.DataFrame(orig_file)
         structure = TableStructure.from_pandas(df)
 
         x = client.new(
@@ -512,12 +541,12 @@ def test_append_partition(tree):
         )
         x.write(df)
 
-        df2 = pandas.DataFrame({"A": [11, 12, 13], "B": [14, 15, 16]})
+        df2 = pandas.DataFrame(file_toappend)
 
         x.append_partition(df2, 0)
-        df3 = pandas.DataFrame({"A": [1, 2, 3, 11, 12, 13], "B": [4, 5, 6, 14, 15, 16]})
+
+        df3 = pandas.DataFrame(expected_file)
 
         assert [row for col in x.columns for row in x[col]] == [
             row for col in df3.columns for row in df3[col]
         ]
-

@@ -10,4 +10,3 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Removed
 ### Changed
 ### Fixed
-
