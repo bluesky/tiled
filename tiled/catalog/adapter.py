@@ -565,6 +565,15 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
     ):
+        # The only way to do "insert if does not exist" i.e. ON CONFLICT
+        # is to invoke dialect-specific insert.
+        if self.context.engine.dialect.name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert
+        elif self.context.engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
+        else:
+            assert False  # future-proofing
+
         key = key or self.context.key_maker()
         data_sources = data_sources or []
         node = orm.Node(
@@ -631,14 +640,6 @@ class CatalogNodeAdapter:
                         structure_family, data_source.structure
                     )
                     structure_id = compute_structure_id(structure)
-                    # The only way to do "insert if does not exist" i.e. ON CONFLICT
-                    # is to invoke dialect-specific insert.
-                    if self.context.engine.dialect.name == "sqlite":
-                        from sqlalchemy.dialects.sqlite import insert
-                    elif self.context.engine.dialect.name == "postgresql":
-                        from sqlalchemy.dialects.postgresql import insert
-                    else:
-                        assert False  # future-proofing
                     statement = (
                         insert(orm.Structure).values(
                             id=structure_id,
@@ -653,22 +654,26 @@ class CatalogNodeAdapter:
                     parameters=data_source.parameters,
                     structure_id=structure_id,
                 )
+                db.add(data_source_orm)
                 node.data_sources.append(data_source_orm)
-                # await db.flush(data_source_orm)
+                await db.flush()  # Get data_source_orm.id.
                 for asset in data_source.assets:
-                    asset_orm = orm.Asset(
-                        data_uri=asset.data_uri,
-                        is_directory=asset.is_directory,
-                    )
+                    statement = (
+                        insert(orm.Asset).values(
+                            data_uri=asset.data_uri,
+                            is_directory=asset.is_directory,
+                        )
+                    ).on_conflict_do_nothing(index_elements=["data_uri"])
+                    result = await db.execute(statement)
+                    (asset_id,) = result.inserted_primary_key
                     assoc_orm = orm.DataSourceAssetAssociation(
-                        asset=asset_orm,
+                        asset_id=asset_id,
+                        data_source_id=data_source_orm.id,
                         parameter=asset.parameter,
                         num=asset.num,
                     )
-                    data_source_orm.asset_associations.append(assoc_orm)
-            db.add(node)
+                    db.add(assoc_orm)
             await db.commit()
-            await db.refresh(node)
             # Load with DataSources each DataSource's Structure.
             refreshed_node = (
                 await db.execute(
@@ -677,7 +682,7 @@ class CatalogNodeAdapter:
                     .options(
                         selectinload(orm.Node.data_sources).selectinload(
                             orm.DataSource.structure
-                        )
+                        ),
                     )
                 )
             ).scalar()

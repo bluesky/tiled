@@ -340,3 +340,33 @@ def test_unknown_mimetype(tmpdir):
                     )
                 ],
             )
+
+
+def test_one_asset_two_data_sources(tmpdir):
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        asset = Asset(
+            data_uri=ensure_uri(tmpdir / "test.csv"),
+            is_directory=False,
+            parameter="data_uris",
+            num=0,
+        )
+        with fail_with_status_code(415):
+            for key in ["x", "y"]:
+                client.new(
+                    key=key,
+                    structure_family="array",
+                    metadata={},
+                    specs=[],
+                    data_sources=[
+                        DataSource(
+                            structure_family="array",
+                            mimetype="text/csv",
+                            structure=None,
+                            parameters={},
+                            management=Management.external,
+                            assets=[asset],
+                        )
+                    ],
+                )
