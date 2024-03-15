@@ -5,6 +5,7 @@ import os
 import secrets
 import sys
 import urllib.parse
+from contextlib import asynccontextmanager
 from functools import lru_cache, partial
 from pathlib import Path
 from typing import List
@@ -195,7 +196,14 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # If we reach here, the no configuration problems were found.
 
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        "Manage lifespan events for each event loop that the app runs in"
+        await startup_event()
+        yield
+        await shutdown_event()
+
+    app = FastAPI(lifespan=lifespan)
 
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
@@ -465,7 +473,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             settings.database_uri = settings.database_uri or "sqlite+aiosqlite://"
         return settings
 
-    @app.on_event("startup")
     async def startup_event():
         from .. import __version__
 
@@ -671,7 +678,6 @@ Back up the database, and then run:
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
             )
 
-    @app.on_event("shutdown")
     async def shutdown_event():
         # Run shutdown tasks collected from trees (adapters).
         for task in tasks.get("shutdown", []):
