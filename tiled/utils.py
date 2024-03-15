@@ -3,6 +3,7 @@ import builtins
 import collections.abc
 import contextlib
 import enum
+import functools
 import importlib
 import importlib.util
 import inspect
@@ -12,6 +13,7 @@ import platform
 import re
 import sys
 import threading
+import warnings
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse, urlunparse
@@ -709,3 +711,39 @@ def ensure_uri(uri_or_path):
             mutable[1] = "localhost"
             uri_str = urlunparse(mutable)
     return str(uri_str)
+
+
+class catch_warning_msg(warnings.catch_warnings):
+    """Backward compatible version of catch_warnings for python <3.11.
+
+    Allows regex matching of warning message, as in filterwarnings().
+    Note that this context manager is not thread-safe.
+    https://docs.python.org/3.12/library/warnings.html#warnings.catch_warnings
+    """
+
+    def __init__(
+        self,
+        *,
+        action="",
+        message="",
+        category=Warning,
+        module="",
+        lineno=0,
+        append=False,
+        record=False,
+    ):
+        super().__init__(record=record)
+        self.apply_filter = functools.partial(
+            warnings.filterwarnings,
+            action,
+            message=message,
+            category=category,
+            module=module,
+            lineno=lineno,
+            append=append,
+        )
+
+    def __enter__(self):
+        super().__enter__()
+        self.apply_filter()
+        return self
