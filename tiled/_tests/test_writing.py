@@ -4,7 +4,6 @@ This tests tiled's writing routes with an in-memory store.
 Persistent stores are being developed externally to the tiled package.
 """
 import base64
-import io
 from datetime import datetime
 
 import awkward
@@ -443,11 +442,10 @@ async def test_bytes_in_metadata(tree):
 
 
 @pytest.mark.asyncio
-async def test_container_export(tree):
+async def test_container_export(tree, buffer):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
 
         a = client.create_container("a")
         a.write_array([1, 2, 3], key="b")
-        buffer = io.BytesIO()
         client.export(buffer, format="application/json")

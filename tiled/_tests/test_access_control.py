@@ -1,4 +1,3 @@
-import io
 import json
 
 import numpy
@@ -180,11 +179,10 @@ def test_access_control_with_api_key_auth(context, enter_password):
         context.api_key = None
 
 
-def test_node_export(enter_password, context):
+def test_node_export(enter_password, context, buffer):
     "Exporting a node should include only the children we can see."
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
-    buffer = io.BytesIO()
     alice_client.export(buffer, format="application/json")
     alice_client.logout()
     buffer.seek(0)

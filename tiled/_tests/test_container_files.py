@@ -1,5 +1,3 @@
-import io
-
 import h5py
 import pandas
 import pytest
@@ -33,13 +31,14 @@ async def test_zarr_array(tmpdir):
         await register(client, tmpdir)
         tree(client)
         client["za"].read()
+    z.store.close()
 
 
 @pytest.mark.asyncio
 async def test_zarr_group(tmpdir):
-    root = zarr.open(str(tmpdir / "zg.zarr"), "w")
-    root.create_dataset("x", data=[1, 2, 3])
-    root.create_dataset("y", data=[4, 5, 6])
+    with zarr.open(str(tmpdir / "zg.zarr"), "w") as root:
+        root.create_dataset("x", data=[1, 2, 3])
+        root.create_dataset("y", data=[4, 5, 6])
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
@@ -51,7 +50,7 @@ async def test_zarr_group(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_hdf5(tmpdir):
+async def test_hdf5(tmpdir, buffer):
     with h5py.File(str(tmpdir / "h.h5"), "w") as file:
         file["x"] = [1, 2, 3]
         group = file.create_group("g")
@@ -64,5 +63,4 @@ async def test_hdf5(tmpdir):
         client["h"]["x"].read()
         client["h"]["g"]["y"].read()
 
-        buffer = io.BytesIO()
         client.export(buffer, format="application/json")

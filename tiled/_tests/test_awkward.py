@@ -1,4 +1,3 @@
-import io
 import json
 
 import awkward
@@ -70,7 +69,7 @@ def test_slicing(client):
         assert sliced_response_size < full_response_size
 
 
-def test_export_json(client):
+def test_export_json(client, buffer):
     # Write data into catalog. It will be stored as directory of buffers
     # named like 'node0-offsets' and 'node2-data'.
     array = awkward.Array(
@@ -82,7 +81,7 @@ def test_export_json(client):
     )
     aac = client.write_awkward(array, key="test")
 
-    file = io.BytesIO()
+    file = buffer
     aac.export(file, format="application/json")
     actual = bytes(file.getbuffer()).decode()
     assert actual == awkward.to_json(array)
