@@ -63,6 +63,7 @@ def test_eviction():
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(reason="Object Cache pending removal")
 async def test_object_cache_hit_and_miss(tmpdir):
     with open(Path(tmpdir, "data.csv"), "w") as file:
         file.write(

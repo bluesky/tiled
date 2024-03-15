@@ -1,3 +1,4 @@
+import copy
 import importlib
 
 from .serialization.table import XLSX_MIME_TYPE
@@ -20,7 +21,10 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).TiffSequenceAdapter.from_uris,
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
-        ).read_csv,
+        ).CSVAdapter,
+        # "text/csv": lambda: importlib.import_module(
+        #    "..adapters.csv", __name__
+        # ).CSVAdapter.from_single_file,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.excel", __name__
         ).ExcelAdapter.from_uri,
@@ -44,6 +48,16 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).AwkwardBuffersAdapter.from_directory,
     }
 )
+
+DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE = copy.deepcopy(DEFAULT_ADAPTERS_BY_MIMETYPE)
+
+DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE.set(
+    "text/csv",
+    lambda: importlib.import_module(
+        "..adapters.csv", __name__
+    ).CSVAdapter.from_single_file,
+)
+
 
 # We can mostly rely on mimetypes.types_map for the common ones
 # ('.csv' -> 'text/csv', etc.) but we supplement here for some

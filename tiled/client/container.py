@@ -612,10 +612,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         body = dict(item["attributes"])
         if key is not None:
             body["id"] = key
+
+        # if check:
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
             endpoint = self.uri
+
         document = handle_error(
             self.context.http_client.post(
                 endpoint,

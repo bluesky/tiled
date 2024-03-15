@@ -9,7 +9,10 @@ import anyio
 import httpx
 import watchfiles
 
-from ..mimetypes import DEFAULT_ADAPTERS_BY_MIMETYPE, DEFAULT_MIMETYPES_BY_FILE_EXT
+from ..mimetypes import (
+    DEFAULT_MIMETYPES_BY_FILE_EXT,
+    DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE,
+)
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..utils import ensure_uri, import_object
@@ -107,7 +110,7 @@ class Settings:
             if isinstance(value, str):
                 adapters_by_mimetype[key] = import_object(value)
         merged_adapters_by_mimetype = collections.ChainMap(
-            adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
+            adapters_by_mimetype, DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE
         )
         if isinstance(key_from_filename, str):
             key_from_filename = import_object(key_from_filename)
@@ -301,13 +304,15 @@ async def register_single_item(
         logger.exception("    SKIPPED: Error constructing adapter for '%s':", item)
         return
     key = settings.key_from_filename(item.name)
-    return await create_node_or_drop_collision(
-        node,
-        key=key,
-        structure_family=adapter.structure_family,
-        metadata=dict(adapter.metadata()),
-        specs=adapter.specs,
-        data_sources=[
+    if hasattr(adapter, "generate_data_sources"):
+        # Let the Adapter describe the DataSouce(s).
+        data_sources = adapter.generate_data_sources(
+            mimetype, dict_or_none, item, is_directory
+        )
+    else:
+        # Back-compat: Assume one Asset passed as a
+        # parameter named 'data_uri'.
+        data_sources = [
             DataSource(
                 structure_family=adapter.structure_family,
                 mimetype=mimetype,
@@ -322,7 +327,14 @@ async def register_single_item(
                     )
                 ],
             )
-        ],
+        ]
+    return await create_node_or_drop_collision(
+        node,
+        key=key,
+        structure_family=adapter.structure_family,
+        metadata=dict(adapter.metadata()),
+        specs=adapter.specs,
+        data_sources=data_sources,
     )
 
 

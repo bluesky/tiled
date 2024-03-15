@@ -1298,6 +1298,25 @@ async def put_table_partition(
     return json_or_msgpack(request, None)
 
 
+@router.patch("/table/partition/{path:path}")
+async def patch_table_partition(
+    partition: int,
+    request: Request,
+    entry=SecureEntry(scopes=["write:data"]),
+    deserialization_registry=Depends(get_deserialization_registry),
+):
+    if not hasattr(entry, "write_partition"):
+        raise HTTPException(
+            status_code=405, detail="This node does not supporting writing a partition."
+        )
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    deserializer = deserialization_registry.dispatch(StructureFamily.table, media_type)
+    data = await ensure_awaitable(deserializer, body)
+    await ensure_awaitable(entry.append_partition, data, partition)
+    return json_or_msgpack(request, None)
+
+
 @router.put("/awkward/full/{path:path}")
 async def put_awkward_full(
     request: Request,

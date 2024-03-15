@@ -13,16 +13,18 @@ import pandas
 import pandas.testing
 import pytest
 import sparse
+from pandas.testing import assert_frame_equal
 
 from ..catalog import in_memory
+from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
+from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
-
-# from ..server.object_cache import WARNING_PANDAS_BLOCKS
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
+from ..structures.table import TableStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
@@ -454,3 +456,95 @@ async def test_container_export(tree, buffer):
         a = client.create_container("a")
         a.write_array([1, 2, 3], key="b")
         client.export(buffer, format="application/json")
+
+
+def test_write_with_specified_mimetype(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        structure = TableStructure.from_pandas(df)
+
+        for mimetype in [PARQUET_MIMETYPE, "text/csv"]:
+            x = client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=structure,
+                        mimetype=mimetype,
+                    ),
+                ],
+            )
+            x.write_partition(df, 0)
+            x.read()
+            x.refresh()
+            x.data_sources()[0]["mimetype"] == mimetype
+
+        # Specifying unsupported mimetype raises expected error.
+        with fail_with_status_code(415):
+            client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=structure,
+                        mimetype="application/x-does-not-exist",
+                    ),
+                ],
+            )
+
+
+@pytest.mark.parametrize(
+    "orig_file, file_toappend, expected_file",
+    [
+        (
+            {"A": [1, 2, 3], "B": [4, 5, 6]},
+            {"A": [11, 12, 13], "B": [14, 15, 16]},
+            {"A": [1, 2, 3, 11, 12, 13], "B": [4, 5, 6, 14, 15, 16]},
+        ),
+        (
+            {"A": [1.2, 2.5, 3.7], "B": [4.6, 5.8, 6.9]},
+            {"A": [11.2, 12.5, 13.7], "B": [14.6, 15.8, 16.9]},
+            {
+                "A": [1.2, 2.5, 3.7, 11.2, 12.5, 13.7],
+                "B": [4.6, 5.8, 6.9, 14.6, 15.8, 16.9],
+            },
+        ),
+        (
+            {"C": ["x", "y"], "D": ["a", "b"]},
+            {"C": ["xx", "yy", "zz"], "D": ["aa", "bb", "cc"]},
+            {"C": ["x", "y", "xx", "yy", "zz"], "D": ["a", "b", "aa", "bb", "cc"]},
+        ),
+    ],
+)
+def test_append_partition(
+    tree: CatalogContainerAdapter,
+    orig_file: dict,
+    file_toappend: dict,
+    expected_file: dict,
+):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        df = pandas.DataFrame(orig_file)
+        structure = TableStructure.from_pandas(df)
+
+        x = client.new(
+            "table",
+            [
+                DataSource(
+                    structure_family="table",
+                    structure=structure,
+                    mimetype="text/csv",
+                ),
+            ],
+            key="x",
+        )
+        x.write(df)
+
+        df2 = pandas.DataFrame(file_toappend)
+
+        x.append_partition(df2, 0)
+
+        df3 = pandas.DataFrame(expected_file)
+
+        assert_frame_equal(x.read(), df3, check_dtype=False)
