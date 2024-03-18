@@ -658,14 +658,23 @@ class CatalogNodeAdapter:
                 node.data_sources.append(data_source_orm)
                 await db.flush()  # Get data_source_orm.id.
                 for asset in data_source.assets:
-                    statement = (
-                        insert(orm.Asset).values(
-                            data_uri=asset.data_uri,
-                            is_directory=asset.is_directory,
+                    try:
+                        # Find an asset if it exists
+                        statement = select(orm.Asset.id).where(
+                            orm.Asset.data_uri == asset.data_uri
                         )
-                    ).on_conflict_do_nothing(index_elements=["data_uri"])
-                    result = await db.execute(statement)
-                    (asset_id,) = result.inserted_primary_key
+                        result = await db.execute(statement)
+                        (asset_id,) = result.fetchone()
+                    except TypeError:
+                        # Insert a new asset
+                        statement = (
+                            insert(orm.Asset).values(
+                                data_uri=asset.data_uri,
+                                is_directory=asset.is_directory,
+                            )
+                        ).on_conflict_do_nothing(index_elements=["data_uri"])
+                        result = await db.execute(statement)
+                        (asset_id,) = result.inserted_primary_key
                     assoc_orm = orm.DataSourceAssetAssociation(
                         asset_id=asset_id,
                         data_source_id=data_source_orm.id,
