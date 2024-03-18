@@ -354,19 +354,17 @@ properties:
       available_bytes:
         type: number
         description: |
-          Maximum size for the object cache, given as a number of bytes as in
-          1_000_000 or as a fraction of system RAM (total physical memory) as in
-          0.3. Set to 0 to disable this cache. By default, it will use up to
-          0.15 (15%) of RAM.
+          DEPRECATED. The object cache has been removed. This configuration no longer has
+          any effect.
       log_level:
         type: "string"
         enum: ["critical", "error", "warning", "info", "debug"]
         description: |
-          Set to "debug" level to log cache hits, misses, and stores.
-          Default is "info" level, which logs cache configuration at application startup.
+          DEPRECATED. The object cache has been removed. This configuration no longer has
+          any effect.
     description: |
-      The 'object' cache is available to all Adapters to cache arbitrary objects, including
-      file handles or chunks of data, in process memory.
+      DEPRECATED. The object cache has been removed. This configuration no longer has
+      any effect.
   response_bytesize_limit:
     type: integer
     description: |

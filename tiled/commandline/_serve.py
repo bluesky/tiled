@@ -102,16 +102,6 @@ def serve_directory(
     log_config: Optional[str] = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
-    object_cache_available_bytes: Optional[float] = typer.Option(
-        None,
-        "--data-cache",
-        help=(
-            "Maximum size for the object cache, given as a number of bytes as in "
-            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
-            "0.3. Set to 0 to disable this cache. By default, it will use up to "
-            "0.15 (15%) of RAM."
-        ),
-    ),
 ):
     "Serve a Tree instance from a directory of files."
     import tempfile
@@ -151,11 +141,6 @@ def serve_directory(
         key_from_filename = identity
     else:
         key_from_filename = None
-    if object_cache_available_bytes is not None:
-        server_settings["object_cache"] = {}
-        server_settings["object_cache"][
-            "available_bytes"
-        ] = object_cache_available_bytes
 
     from logging import StreamHandler
 
@@ -342,16 +327,6 @@ def serve_catalog(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    object_cache_available_bytes: Optional[float] = typer.Option(
-        None,
-        "--data-cache",
-        help=(
-            "Maximum size for the object cache, given as a number of bytes as in "
-            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
-            "0.3. Set to 0 to disable this cache. By default, it will use up to "
-            "0.15 (15%) of RAM."
-        ),
-    ),
     scalable: bool = typer.Option(
         False,
         "--scalable",
@@ -439,11 +414,6 @@ or use an existing one:
             err=True,
         )
     server_settings = {}
-    if object_cache_available_bytes is not None:
-        server_settings["object_cache"] = {}
-        server_settings["object_cache"][
-            "available_bytes"
-        ] = object_cache_available_bytes
     tree = from_uri(
         database,
         writable_storage=write,
@@ -500,16 +470,6 @@ def serve_pyobject(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    object_cache_available_bytes: Optional[float] = typer.Option(
-        None,
-        "--data-cache",
-        help=(
-            "Maximum size for the object cache, given as a number of bytes as in "
-            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
-            "0.3. Set to 0 to disable this cache. By default, it will use up to "
-            "0.15 (15%) of RAM."
-        ),
-    ),
     scalable: bool = typer.Option(
         False,
         "--scalable",
@@ -524,11 +484,6 @@ def serve_pyobject(
 
     tree = import_object(object_path)
     server_settings = {}
-    if object_cache_available_bytes is not None:
-        server_settings["object_cache"] = {}
-        server_settings["object_cache"][
-            "available_bytes"
-        ] = object_cache_available_bytes
     web_app = build_app(
         tree,
         {

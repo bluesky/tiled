@@ -5,6 +5,7 @@ See profiles.py for client configuration.
 """
 import copy
 import os
+import warnings
 from collections import defaultdict
 from datetime import timedelta
 from functools import lru_cache
@@ -186,7 +187,6 @@ See documentation section "Serve a Directory of Files"."""
         if root_path := config.get("root_path", ""):
             server_settings["root_path"] = root_path
         server_settings["allow_origins"] = config.get("allow_origins")
-        server_settings["object_cache"] = config.get("object_cache", {})
         server_settings["response_bytesize_limit"] = config.get(
             "response_bytesize_limit"
         )
@@ -238,7 +238,6 @@ def merge(configs):
     authentication_config_source = None
     access_control_config_source = None
     uvicorn_config_source = None
-    object_cache_config_source = None
     metrics_config_source = None
     database_config_source = None
     response_bytesize_limit_config_source = None
@@ -283,14 +282,10 @@ def merge(configs):
             uvicorn_config_source = filepath
             merged["uvicorn"] = config["uvicorn"]
         if "object_cache" in config:
-            if "object_cache" in merged:
-                raise ConfigError(
-                    "object_cache can only be specified in one file. "
-                    f"It was found in both {object_cache_config_source} and "
-                    f"{filepath}"
-                )
-            object_cache_config_source = filepath
-            merged["object_cache"] = config["object_cache"]
+            warnings.warn(
+                "The object cache has been removed. "
+                "The config of the object cache no longer has any effect."
+            )
         if "response_bytesize_limit" in config:
             if "response_bytesize_limit" in merged:
                 raise ConfigError(

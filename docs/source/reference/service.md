@@ -128,33 +128,3 @@ See {doc}`../explanations/structures` for more context.
    tiled.server.app.build_app
    tiled.server.app.build_app_from_config
 ```
-
-## Object Cache
-
-The "object" cache is available to all Adapters to cache any objects, including
-serializable objects like array chunks and unserializable objects like file
-handles. It is a process-global singleton.
-
-Implementation detail: It is backed by [Cachey](https://github.com/dask/cachey).
-
-Adapters that use the cache _must_ use a tuple of strings and/or numbers as a
-cache key and _should_ use a cache key of the form `(class.__module__,
-class.__qualname__, ...)` to avoid collisions with other Adapters. See
-`tiled.adapters.tiff` for a generic example and see `tiled.adapters.table` for
-an example that uses integration with dask.
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-
-   tiled.server.object_cache.get_object_cache
-   tiled.server.object_cache.set_object_cache
-   tiled.server.object_cache.ObjectCache
-   tiled.server.object_cache.ObjectCache.available_bytes
-   tiled.server.object_cache.ObjectCache.get
-   tiled.server.object_cache.ObjectCache.put
-   tiled.server.object_cache.ObjectCache.discard
-   tiled.server.object_cache.ObjectCache.clear
-   tiled.server.object_cache.ObjectCache.dask_context
-   tiled.server.object_cache.ObjectCache.discard_dask
-```
