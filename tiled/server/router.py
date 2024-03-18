@@ -24,7 +24,7 @@ from starlette.status import (
 )
 
 from .. import __version__
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, path_from_uri
 from ..validation_registration import ValidationError
 from . import schemas
@@ -1127,26 +1127,14 @@ async def post_register(
     )
 
 
-async def _create_node(
-    request: Request,
-    path: str,
-    body: schemas.PostMetadataRequest,
-    validation_registry,
-    settings: BaseSettings,
-    entry,
+async def validate_metadata(
+    metadata: dict,
+    structure_family: StructureFamily,
+    structure,
+    specs: List[Spec],
+    validation_registry=Depends(get_validation_registry),
+    settings: BaseSettings = Depends(get_settings),
 ):
-    metadata, structure_family, specs = (
-        body.metadata,
-        body.structure_family,
-        body.specs,
-    )
-    if structure_family == StructureFamily.container:
-        structure = None
-    else:
-        if len(body.data_sources) != 1:
-            raise NotImplementedError
-        structure = body.data_sources[0].structure
-
     metadata_modified = False
 
     # Specs should be ordered from most specific/constrained to least.
@@ -1176,6 +1164,38 @@ async def _create_node(
             if result is not None:
                 metadata_modified = True
                 metadata = result
+
+    return metadata_modified, metadata
+
+
+async def _create_node(
+    request: Request,
+    path: str,
+    body: schemas.PostMetadataRequest,
+    validation_registry,
+    settings: BaseSettings,
+    entry,
+):
+    metadata, structure_family, specs = (
+        body.metadata,
+        body.structure_family,
+        body.specs,
+    )
+    if structure_family == StructureFamily.container:
+        structure = None
+    else:
+        if len(body.data_sources) != 1:
+            raise NotImplementedError
+        structure = body.data_sources[0].structure
+
+    metadata_modified, metadata = await validate_metadata(
+        metadata=metadata,
+        structure_family=structure_family,
+        structure=structure,
+        specs=specs,
+        validation_registry=validation_registry,
+        settings=settings,
+    )
 
     key, node = await entry.create_node(
         metadata=body.metadata,
@@ -1426,35 +1446,14 @@ async def patch_metadata(
         body.specs if body.specs is not None else entry.specs,
     )
 
-    metadata_modified = False
-
-    # Specs should be ordered from most specific/constrained to least.
-    # Validate them in reverse order, with the least constrained spec first,
-    # because it may do normalization that helps pass the more constrained one.
-    # Known Issue:
-    # When there is more than one spec, it's possible for the validator for
-    # Spec 2 to make a modification that breaks the validation for Spec 1.
-    # For now we leave it to the server maintainer to ensure that validators
-    # won't step on each other in this way, but this may need revisiting.
-    for spec in reversed(specs):
-        if spec.name not in validation_registry:
-            if settings.reject_undeclared_specs:
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"Unrecognized spec: {spec.name}",
-                )
-        else:
-            validator = validation_registry(spec.name)
-            try:
-                result = validator(metadata, structure_family, structure, spec)
-            except ValidationError as e:
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"failed validation for spec {spec.name}:\n{e}",
-                )
-            if result is not None:
-                metadata_modified = True
-                metadata = result
+    metadata_modified, metadata = await validate_metadata(
+        metadata=metadata,
+        structure_family=structure_family,
+        structure=structure,
+        specs=specs,
+        validation_registry=validation_registry,
+        settings=settings,
+    )
 
     await entry.replace_metadata(metadata=metadata, specs=specs)
 
@@ -1484,35 +1483,15 @@ async def put_metadata(
         body.specs if body.specs is not None else entry.specs,
     )
 
-    metadata_modified = False
+    metadata_modified, metadata = await validate_metadata(
+        metadata=metadata,
+        structure_family=structure_family,
+        structure=structure,
+        specs=specs,
+        validation_registry=validation_registry,
+        settings=settings,
+    )
 
-    # Specs should be ordered from most specific/constrained to least.
-    # Validate them in reverse order, with the least constrained spec first,
-    # because it may do normalization that helps pass the more constrained one.
-    # Known Issue:
-    # When there is more than one spec, it's possible for the validator for
-    # Spec 2 to make a modification that breaks the validation for Spec 1.
-    # For now we leave it to the server maintainer to ensure that validators
-    # won't step on each other in this way, but this may need revisiting.
-
-    for spec in reversed(specs):
-        if spec.name not in validation_registry:
-            if settings.reject_undeclared_specs:
-                raise HTTPException(
-                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
-                )
-        else:
-            validator = validation_registry(spec.name)
-            try:
-                result = validator(metadata, structure_family, structure, spec)
-            except ValidationError as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"failed validation for spec {spec.name}:\n{e}",
-                )
-            if result is not None:
-                metadata_modified = True
-                metadata = result
     await entry.replace_metadata(metadata=metadata, specs=specs)
 
     response_data = {"id": entry.key}

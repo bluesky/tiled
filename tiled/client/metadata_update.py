@@ -1,23 +1,12 @@
 from collections import OrderedDict
 
-# adapted from https://github.com/OpenDataServices/json-merge-patch
+from ..utils import Sentinel
 
-
-class DELETE_KEY:
-    """
-    Dummy 'static' class for marking keys for deletion when using
-    BaseClient.update_metadata().
-    Example:
-        src = {"apples": 5, "oranges": 3}
-        patch = {"grapes": 10, "apples": DELETE_KEY, "oranges": None}
-        apply_update_patch(src, patch)  # {'oranges': None, 'grapes': 10}
-    """
-
-    def __init__(self) -> None:
-        raise NotImplementedError("Static class cannot be initialized.")
+DELETE_KEY = Sentinel("DELETE_KEY")
 
 
 def apply_update_patch(*objs, **kw):
+    # adapted from https://github.com/OpenDataServices/json-merge-patch
     result = objs[0]
     for obj in objs[1:]:
         result = _update_obj(result, obj, kw.get("position"))
@@ -25,6 +14,7 @@ def apply_update_patch(*objs, **kw):
 
 
 def _update_obj(result, obj, position=None):
+    # adapted from https://github.com/OpenDataServices/json-merge-patch
     if not isinstance(result, dict):
         result = OrderedDict() if position else {}
 
