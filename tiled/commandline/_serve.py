@@ -223,7 +223,9 @@ def serve_directory(
 
             import uvicorn
 
-            config = uvicorn.Config(web_app, host=host, port=port)
+            config = uvicorn.Config(
+                web_app, host=host, port=port, log_config=log_config
+            )
             server = uvicorn.Server(config)
             await server.serve()
 
