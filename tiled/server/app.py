@@ -22,6 +22,15 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+)
 
 from ..authenticators import Mode
 from ..config import construct_build_app_kwargs
@@ -220,7 +229,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             try:
                 stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
             except PermissionError:
-                raise HTTPException(status_code=401)
+                raise HTTPException(status_code=HTTP_401_UNAUTHORIZED)
             except FileNotFoundError:
                 # This may be a URL that has meaning to the client-side application,
                 # such as /ui//metadata/a/b/c.
@@ -228,14 +237,14 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 if try_app:
                     response = await lookup_file("index.html", try_app=False)
                     return response
-                raise HTTPException(status_code=404)
+                raise HTTPException(status_code=HTTP_404_NOT_FOUND)
             except OSError:
                 raise
             return FileResponse(
                 full_path,
                 stat_result=stat_result,
                 method="GET",
-                status_code=200,
+                status_code=HTTP_200_OK,
             )
 
         app.mount(
@@ -286,7 +295,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     @app.exception_handler(Conflicts)
     async def conflicts_exception_handler(request: Request, exc: Conflicts):
         message = exc.args[0]
-        return JSONResponse(status_code=409, content={"detail": message})
+        return JSONResponse(status_code=HTTP_409_CONFLICT, content={"detail": message})
 
     @app.exception_handler(UnsupportedQueryType)
     async def unsupported_query_type_exception_handler(
@@ -294,7 +303,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     ):
         query_type = exc.args[0]
         return JSONResponse(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             content={
                 "detail": f"The query type {query_type!r} is not supported on this node."
             },
@@ -321,7 +330,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         return await http_exception_handler(
             request,
             HTTPException(
-                500,
+                HTTP_500_INTERNAL_SERVER_ERROR,
                 "Internal server error",
                 headers={"X-Tiled-Request-ID": correlation_id.get() or ""},
             ),
@@ -706,7 +715,8 @@ Back up the database, and then run:
         ):
             if not csrf_cookie:
                 return Response(
-                    status_code=403, content="Expected tiled_csrf_token cookie"
+                    status_code=HTTP_403_FORBIDDEN,
+                    content="Expected tiled_csrf_token cookie",
                 )
             # Get the token from the Header or (if not there) the query parameter.
             csrf_token = request.headers.get(CSRF_HEADER_NAME)
@@ -715,13 +725,14 @@ Back up the database, and then run:
                 csrf_token = parsed_query.get(CSRF_QUERY_PARAMETER)
             if not csrf_token:
                 return Response(
-                    status_code=403,
+                    status_code=HTTP_403_FORBIDDEN,
                     content=f"Expected {CSRF_QUERY_PARAMETER} query parameter or {CSRF_HEADER_NAME} header",
                 )
             # Securely compare the token with the cookie.
             if not secrets.compare_digest(csrf_token, csrf_cookie):
                 return Response(
-                    status_code=403, content="Double-submit CSRF tokens do not match"
+                    status_code=HTTP_403_FORBIDDEN,
+                    content="Double-submit CSRF tokens do not match",
                 )
 
         response = await call_next(request)
@@ -744,7 +755,7 @@ Back up the database, and then run:
                 parsed_version = packaging.version.parse(raw_version)
             except Exception:
                 return JSONResponse(
-                    status_code=400,
+                    status_code=HTTP_400_BAD_REQUEST,
                     content={
                         "detail": (
                             f"Python Tiled client is version is reported as {raw_version}. "
@@ -755,7 +766,7 @@ Back up the database, and then run:
             else:
                 if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
                     return JSONResponse(
-                        status_code=400,
+                        status_code=HTTP_400_BAD_REQUEST,
                         content={
                             "detail": (
                                 f"Python Tiled client reports version {parsed_version}. "
@@ -878,7 +889,7 @@ Back up the database, and then run:
             except Exception:
                 # Make an ephemeral response solely for 'capture_request_metrics'.
                 # It will only be used in the 'finally' clean-up block.
-                only_for_metrics = Response(status_code=500)
+                only_for_metrics = Response(status_code=HTTP_500_INTERNAL_SERVER_ERROR)
                 response = only_for_metrics
                 # Now re-raise the exception so that the server can generate and
                 # send an appropriate response to the client.

@@ -1,6 +1,7 @@
 import numpy
 import pandas.testing
 import pytest
+from starlette.status import HTTP_400_BAD_REQUEST
 
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
@@ -200,7 +201,7 @@ def test_redundant_query_parameters(context):
         context.http_client.get(url_path, params=params).raise_for_status()
 
     # It is an error to include query parameter 'column' AND 'field'
-    with fail_with_status_code(400) as response:
+    with fail_with_status_code(HTTP_400_BAD_REQUEST) as response:
         params = original_params
         context.http_client.get(url_path, params=params).raise_for_status()
         assert "'field'" in response.text

@@ -2,6 +2,7 @@ import collections
 import collections.abc
 
 import httpx
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
@@ -145,7 +146,7 @@ Set an api_key as in:
         ).json()
     except ClientError as err:
         if (
-            (err.response.status_code == 401)
+            (err.response.status_code == HTTP_401_UNAUTHORIZED)
             and (context.api_key is None)
             and (context.http_client.auth is None)
         ):

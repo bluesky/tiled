@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import httpx
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 from .utils import SerializableLock, handle_error
 
@@ -91,7 +92,7 @@ class TiledAuth(httpx.Auth):
         if access_token is not None:
             request.headers["Authorization"] = f"Bearer {access_token}"
             response = yield request
-        if (access_token is None) or (response.status_code == 401):
+        if (access_token is None) or (response.status_code == HTTP_401_UNAUTHORIZED):
             # Maybe the token cached in memory is stale.
             maybe_new_access_token = self.sync_get_token(
                 "access_token", reload_from_disk=True
@@ -113,7 +114,7 @@ class TiledAuth(httpx.Auth):
                 self.refresh_url, refresh_token, self.csrf_token
             )
             token_response = yield token_request
-            if token_response.status_code == 401:
+            if token_response.status_code == HTTP_401_UNAUTHORIZED:
                 # Refreshing the token failed.
                 # Discard the expired (or otherwise invalid) refresh_token.
                 self.sync_clear_token("refresh_token")

@@ -14,6 +14,11 @@ import pandas.testing
 import pytest
 import sparse
 from pandas.testing import assert_frame_equal
+from starlette.status import (
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_422_UNPROCESSABLE_ENTITY,
+)
 
 from ..catalog import in_memory
 from ..catalog.adapter import CatalogContainerAdapter
@@ -268,25 +273,25 @@ def test_limits(tree):
         x = client.write_array([1, 2, 3], specs=max_allowed_specs)
         x.update_metadata(specs=max_allowed_specs)  # no-op
         too_many_specs = max_allowed_specs + ["one_too_many"]
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             client.write_array([1, 2, 3], specs=too_many_specs)
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             x.update_metadata(specs=too_many_specs)
 
         # Specs cannot repeat.
         has_repeated_spec = ["spec0", "spec1", "spec0"]
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             client.write_array([1, 2, 3], specs=has_repeated_spec)
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             x.update_metadata(specs=has_repeated_spec)
 
         # A given spec cannot be too long.
         max_allowed_chars = ["a" * MAX_SPEC_CHARS]
         client.write_array([1, 2, 3], specs=max_allowed_chars)
         too_many_chars = ["a" * (1 + MAX_SPEC_CHARS)]
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             client.write_array([1, 2, 3], specs=too_many_chars)
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             x.update_metadata(specs=too_many_chars)
 
 
@@ -305,7 +310,7 @@ def test_metadata_revisions(tree):
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
-        with fail_with_status_code(404):
+        with fail_with_status_code(HTTP_404_NOT_FOUND):
             ac.metadata_revisions.delete_revision(1)
 
 
@@ -341,7 +346,7 @@ async def test_delete(tree):
         assert len(assets_before_delete) == 1
 
         # Writing again with the same name fails.
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             client.write_array(
                 [1, 2, 3],
                 metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
@@ -378,13 +383,13 @@ async def test_delete_non_empty_node(tree):
 
         # Cannot delete non-empty nodes
         assert "a" in client
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             client.delete("a")
         assert "b" in a
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             a.delete("b")
         assert "c" in b
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             b.delete("c")
         assert "d" in c
         assert not list(d)  # leaf is empty

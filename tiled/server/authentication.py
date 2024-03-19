@@ -30,6 +30,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
+from starlette.status import (
+    HTTP_204_NO_CONTENT,
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+)
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -120,7 +127,7 @@ class APIKeyAuthorizationHeader(APIKeyBase):
             return None
         if scheme.lower() != "apikey":
             raise HTTPException(
-                status_code=400,
+                status_code=HTTP_400_BAD_REQUEST,
                 detail=(
                     "Authorization header must include the authorization type "
                     "followed by a space and then the secret, as in "
@@ -161,7 +168,7 @@ def create_refresh_token(session_id, secret_key, expires_delta):
 
 def decode_token(token, secret_keys):
     credentials_exception = HTTPException(
-        status_code=401,
+        status_code=HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
@@ -220,7 +227,7 @@ async def get_decoded_access_token(
         payload = decode_token(access_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
-            status_code=401,
+            status_code=HTTP_401_UNAUTHORIZED,
             detail="Access token has expired. Refresh token.",
             headers=headers_for_401(request, security_scopes),
         )
@@ -266,7 +273,7 @@ async def get_current_principal(
             except Exception:
                 # Not valid hex, therefore not a valid API key
                 raise HTTPException(
-                    status_code=401,
+                    status_code=HTTP_401_UNAUTHORIZED,
                     detail="Invalid API key",
                     headers=headers_for_401(request, security_scopes),
                 )
@@ -290,7 +297,7 @@ async def get_current_principal(
                 await db.commit()
             else:
                 raise HTTPException(
-                    status_code=401,
+                    status_code=HTTP_401_UNAUTHORIZED,
                     detail="Invalid API key",
                     headers=headers_for_401(request, security_scopes),
                 )
@@ -309,7 +316,7 @@ async def get_current_principal(
                 }
             else:
                 raise HTTPException(
-                    status_code=401,
+                    status_code=HTTP_401_UNAUTHORIZED,
                     detail="Invalid API key",
                     headers=headers_for_401(request, security_scopes),
                 )
@@ -357,7 +364,7 @@ async def get_current_principal(
         #    https://examples.com/subpath/ and obtain a list of
         #    authentication providers and endpoints.
         raise HTTPException(
-            status_code=401,
+            status_code=HTTP_401_UNAUTHORIZED,
             detail=(
                 "Not enough permissions. "
                 f"Requires scopes {security_scopes.scopes}. "
@@ -511,7 +518,9 @@ def build_auth_code_route(authenticator, provider):
         request.state.endpoint = "auth"
         user_session_state = await authenticator.authenticate(request)
         if not user_session_state:
-            raise HTTPException(status_code=401, detail="Authentication failure")
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
+            )
         session = await create_session(
             settings,
             db,
@@ -622,7 +631,7 @@ def build_device_code_user_code_submit_route(authenticator, provider):
                     "action": action,
                     "message": message,
                 },
-                status_code=401,
+                status_code=HTTP_401_UNAUTHORIZED,
             )
         user_session_state = await authenticator.authenticate(request)
         if not user_session_state:
@@ -635,7 +644,7 @@ def build_device_code_user_code_submit_route(authenticator, provider):
                         "Ask administrator to see logs for details."
                     ),
                 },
-                status_code=401,
+                status_code=HTTP_401_UNAUTHORIZED,
             )
         session = await create_session(
             settings,
@@ -673,7 +682,9 @@ def build_device_code_token_route(authenticator, provider):
             device_code = bytes.fromhex(device_code_hex)
         except Exception:
             # Not valid hex, therefore not a valid device_code
-            raise HTTPException(status_code=401, detail="Invalid device code")
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid device code"
+            )
         pending_session = await lookup_valid_pending_session_by_device_code(
             db, device_code
         )
@@ -683,7 +694,9 @@ def build_device_code_token_route(authenticator, provider):
                 detail="No such device_code. The pending request may have expired.",
             )
         if pending_session.session_id is None:
-            raise HTTPException(400, {"error": "authorization_pending"})
+            raise HTTPException(
+                HTTP_400_BAD_REQUEST, {"error": "authorization_pending"}
+            )
         session = pending_session.session
         # The pending session can only be used once.
         await db.delete(pending_session)
@@ -711,7 +724,7 @@ def build_handle_credentials_route(
         )
         if not user_session_state or not user_session_state.user_name:
             raise HTTPException(
-                status_code=401,
+                status_code=HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
@@ -884,7 +897,9 @@ async def principal(
         )
     ).scalar()
     if principal_orm is None:
-        raise HTTPException(status_code=404, detail=f"No such Principal {uuid}")
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"No such Principal {uuid}"
+        )
     latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
@@ -944,11 +959,11 @@ async def revoke_session(
     # Find this session in the database.
     session = await lookup_valid_session(db, session_id)
     if session is None:
-        raise HTTPException(409, detail=f"No session {session_id}")
+        raise HTTPException(HTTP_409_CONFLICT, detail=f"No session {session_id}")
     session.revoked = True
     db.add(session)
     await db.commit()
-    return Response(status_code=204)
+    return Response(status_code=HTTP_204_NO_CONTENT)
 
 
 @base_authentication_router.delete("/session/revoke/{session_id}")
@@ -967,13 +982,13 @@ async def revoke_session_by_id(
     if principal.uuid != session.principal.uuid:
         # TODO Add a scope for doing this for other users.
         raise HTTPException(
-            404,
+            HTTP_404_NOT_FOUND,
             detail="Sessions does not exist or requester has insufficient permissions",
         )
     session.revoked = True
     db.add(session)
     await db.commit()
-    return Response(status_code=204)
+    return Response(status_code=HTTP_204_NO_CONTENT)
 
 
 async def slide_session(refresh_token, settings, db):
@@ -981,7 +996,8 @@ async def slide_session(refresh_token, settings, db):
         payload = decode_token(refresh_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
-            status_code=401, detail="Session has expired. Please re-authenticate."
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Session has expired. Please re-authenticate.",
         )
     # Find this session in the database.
     session = await lookup_valid_session(db, payload["sid"])
@@ -992,7 +1008,8 @@ async def slide_session(refresh_token, settings, db):
         # Do not leak (to a potential attacker) whether this has been *revoked*
         # specifically. Give the same error as if it had expired.
         raise HTTPException(
-            status_code=401, detail="Session has expired. Please re-authenticate."
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Session has expired. Please re-authenticate.",
         )
     # Update Session info.
     session.time_last_refreshed = now
@@ -1075,16 +1092,17 @@ async def current_apikey_info(
     request.state.endpoint = "auth"
     if api_key is None:
         raise HTTPException(
-            status_code=401, detail="No API key was provided with this request."
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="No API key was provided with this request.",
         )
     try:
         secret = bytes.fromhex(api_key)
     except Exception:
         # Not valid hex, therefore not a valid API key
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     api_key_orm = await lookup_valid_api_key(db, secret)
     if api_key_orm is None:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm).dict())
 
 
@@ -1113,7 +1131,7 @@ async def revoke_apikey(
         )
     await db.delete(api_key_orm)
     await db.commit()
-    return Response(status_code=204)
+    return Response(status_code=HTTP_204_NO_CONTENT)
 
 
 @base_authentication_router.get(
@@ -1144,7 +1162,9 @@ async def whoami(
         )
     ).scalar()
     if principal_orm is None:
-        raise HTTPException(status_code=401, detail="Principal no longer exists.")
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED, detail="Principal no longer exists."
+        )
     latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,

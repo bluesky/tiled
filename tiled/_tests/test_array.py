@@ -7,6 +7,7 @@ import dask.array
 import httpx
 import numpy
 import pytest
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_406_NOT_ACCEPTABLE
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -135,7 +136,7 @@ def test_block_validation(context):
     block_url = httpx.URL(client.item["links"]["block"])
     # Malformed because it has only 2 dimensions, not 3.
     malformed_block_url = block_url.copy_with(params={"block": "0,0"})
-    with fail_with_status_code(400):
+    with fail_with_status_code(HTTP_400_BAD_REQUEST):
         client.context.http_client.get(malformed_block_url).raise_for_status()
 
 
@@ -149,7 +150,7 @@ def test_dask(context):
 
 def test_array_format_shape_from_cube(context):
     client = from_context(context)["cube"]
-    with fail_with_status_code(406):
+    with fail_with_status_code(HTTP_406_NOT_ACCEPTABLE):
         hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
 
 

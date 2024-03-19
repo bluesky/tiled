@@ -4,6 +4,7 @@ import os
 import numpy
 import pandas
 import pytest
+from starlette.status import HTTP_400_BAD_REQUEST
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
@@ -63,9 +64,9 @@ def test_array(client, tmpdir):
         path = str(tmpdir / "test.csv")
         client["tiny_array"].read()  # This is fine.
         client["tiny_array"].export(path)  # This is fine.
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             client["small_array"].read()  # too big
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             client["small_array"].export(path)  # too big
 
 
@@ -78,7 +79,7 @@ def test_dataframe(client, tmpdir):
         path = str(tmpdir / "test.csv")
         client["tiny_df"].read()  # This is fine.
         client["tiny_df"].export(path)
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             client["small_df"].read()  # too big
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             client["small_df"].export(path)  # too big

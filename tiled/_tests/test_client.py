@@ -3,6 +3,7 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
+from starlette.status import HTTP_400_BAD_REQUEST
 
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, from_profile, record_history
@@ -27,12 +28,12 @@ def test_client_version_check():
 
         # Too-old user agent should generate a 400.
         context.http_client.headers["user-agent"] = "python-tiled/0.1.0a77"
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             list(client)
 
         # Gibberish user agent should generate a 400.
         context.http_client.headers["user-agent"] = "python-tiled/gibberish"
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             list(client)
 
 
