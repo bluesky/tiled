@@ -1,4 +1,5 @@
 import pytest
+from starlette.status import HTTP_200_OK
 
 from ..adapters.mapping import MapAdapter
 from ..client import Context
@@ -41,7 +42,7 @@ def test_openapi_username_password_login(context):
     invalid path, because that has happened before.
     """
     response = context.http_client.get("/openapi.json")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     openapi = response.json()
     token_url = openapi["components"]["securitySchemes"]["OAuth2PasswordBearer"][
         "flows"

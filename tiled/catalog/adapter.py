@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import cast
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
     Comparison,
@@ -616,7 +617,7 @@ class CatalogNodeAdapter:
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
                         raise HTTPException(
-                            status_code=415,
+                            status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                             detail=(
                                 f"The given data source mimetype, {data_source.mimetype}, "
                                 "is not one that the Tiled server knows how to read."
@@ -732,7 +733,7 @@ class CatalogNodeAdapter:
             if result.rowcount == 0:
                 # TODO Abstract this from FastAPI?
                 raise HTTPException(
-                    status_code=404,
+                    status_code=HTTP_404_NOT_FOUND,
                     detail=f"No node {self.node.id}",
                 )
             assert (
@@ -809,7 +810,7 @@ class CatalogNodeAdapter:
             if result.rowcount == 0:
                 # TODO Abstract this from FastAPI?
                 raise HTTPException(
-                    status_code=404,
+                    status_code=HTTP_404_NOT_FOUND,
                     detail=f"No revision {number} for node {self.node.id}",
                 )
             assert (

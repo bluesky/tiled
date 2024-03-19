@@ -5,6 +5,7 @@ This tests tiled's validation registry
 import numpy as np
 import pandas as pd
 import pytest
+from starlette.status import HTTP_400_BAD_REQUEST
 
 from ..client import Context, from_context
 from ..config import merge
@@ -71,17 +72,17 @@ def test_validators(client):
     df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
     client.write_dataframe(df, metadata={"foo": 1}, specs=["foo"])
 
-    with fail_with_status_code(400):
+    with fail_with_status_code(HTTP_400_BAD_REQUEST):
         # not expected structure family
         a = np.ones((5, 7))
         client.write_array(a, metadata={}, specs=["foo"])
 
-    with fail_with_status_code(400):
+    with fail_with_status_code(HTTP_400_BAD_REQUEST):
         # column names are not expected
         df = pd.DataFrame({"x": np.zeros(10), "y": np.zeros(10)})
         client.write_dataframe(df, metadata={}, specs=["foo"])
 
-    with fail_with_status_code(400):
+    with fail_with_status_code(HTTP_400_BAD_REQUEST):
         # missing expected metadata
         df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
         client.write_dataframe(df, metadata={}, specs=["foo"])
@@ -121,7 +122,7 @@ def test_unknown_spec_strict(tmpdir):
         client = from_context(context)
         a = np.ones((5, 7))
         client.write_array(a, metadata={}, specs=["a"])
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             # unknown spec 'b' should be rejected
             client.write_array(a, metadata={}, specs=["b"])
 

@@ -18,6 +18,7 @@ import jmespath
 import msgpack
 from fastapi import HTTPException, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
+from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
 # Some are not directly used, but they register things on import.
 from .. import queries
@@ -137,7 +138,9 @@ async def apply_search(tree, filters, query_registry):
                     continue
                 tree = tree.search(query)
             except QueryValueError as err:
-                raise HTTPException(status_code=400, detail=err.args[0])
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST, detail=err.args[0]
+                )
     if key_lookups:
         # Duplicates are technically legal because *any* query can be given
         # with multiple parameters.
@@ -176,7 +179,8 @@ def apply_sort(tree, sort):
     if sorting:
         if not hasattr(tree, "sort"):
             raise HTTPException(
-                status_code=400, detail="This Tree does not support sorting."
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="This Tree does not support sorting.",
             )
         tree = tree.sort(sorting)
 
@@ -360,7 +364,7 @@ async def construct_data_response(
         headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304, headers=headers)
+        return Response(status_code=HTTP_304_NOT_MODIFIED, headers=headers)
     if filename:
         headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     serializer = serialization_registry.dispatch(spec, media_type)
@@ -669,7 +673,9 @@ def resolve_media_type(request):
     return media_type
 
 
-def json_or_msgpack(request, content, expires=None, headers=None, status_code=200):
+def json_or_msgpack(
+    request, content, expires=None, headers=None, status_code=HTTP_200_OK
+):
     media_type = resolve_media_type(request)
     with record_timing(request.state.metrics, "tok"):
         etag = md5(str(content).encode()).hexdigest()
@@ -679,7 +685,7 @@ def json_or_msgpack(request, content, expires=None, headers=None, status_code=20
         headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304, headers=headers)
+        return Response(status_code=HTTP_304_NOT_MODIFIED, headers=headers)
     if media_type == "application/x-msgpack":
         return MsgpackResponse(
             content,

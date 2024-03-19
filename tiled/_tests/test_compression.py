@@ -1,5 +1,6 @@
 import numpy
 import pytest
+from starlette.status import HTTP_200_OK
 from starlette.testclient import TestClient
 
 from ..adapters.array import ArrayAdapter
@@ -30,8 +31,8 @@ def test_gzip_supported(app):
         data_response = client.get(
             "/api/v1/array/full/compresses_well", headers={"Accept": "text/csv"}
         )
-    assert metadata_response.status_code == 200
-    assert data_response.status_code == 200
+    assert metadata_response.status_code == HTTP_200_OK
+    assert data_response.status_code == HTTP_200_OK
     assert "gzip" in metadata_response.headers["Content-Encoding"]
     assert "gzip" in data_response.headers["Content-Encoding"]
 
@@ -44,7 +45,7 @@ def test_zstd_preferred(app):
         data_response = client.get(
             "/api/v1/array/full/compresses_well", headers={"Accept": "text/csv"}
         )
-    assert metadata_response.status_code == 200
-    assert data_response.status_code == 200
+    assert metadata_response.status_code == HTTP_200_OK
+    assert data_response.status_code == HTTP_200_OK
     assert "zstd" in metadata_response.headers["Content-Encoding"]
     assert "zstd" in data_response.headers["Content-Encoding"]

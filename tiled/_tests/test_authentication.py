@@ -7,6 +7,11 @@ import time
 
 import numpy
 import pytest
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_422_UNPROCESSABLE_ENTITY,
+)
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -80,12 +85,12 @@ def test_password_auth(enter_password, config):
         client.logout()
 
         # Bob's password should not work for Alice.
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             with enter_password("secret2"):
                 from_context(context, username="alice")
 
         # Empty password should not work.
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             with enter_password(""):
                 from_context(context, username="alice")
 
@@ -302,9 +307,9 @@ def test_admin(enter_password, config):
         assert [role["name"] for role in user_roles] == ["user"]
 
         # As bob, admin functions should be disallowed.
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.admin.list_principals()
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.admin.show_principal(some_principal_uuid)
 
 
@@ -358,7 +363,7 @@ def test_api_key_scopes(enter_password, config):
         metrics_key_info = context.create_api_key(scopes=["metrics"])
         context.logout()
         context.api_key = metrics_key_info["secret"]
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             from_context(context)
         context.api_key = None
 
@@ -366,7 +371,7 @@ def test_api_key_scopes(enter_password, config):
         with enter_password("secret2"):
             context.authenticate(username="bob")
         # Try to request a key with more scopes that the user has.
-        with fail_with_status_code(400):
+        with fail_with_status_code(HTTP_400_BAD_REQUEST):
             context.create_api_key(scopes=["admin:apikeys"])
         # Request a key with reduced scope that can *only* read metadata.
         metadata_key_info = context.create_api_key(scopes=["read:metadata"])
@@ -374,7 +379,7 @@ def test_api_key_scopes(enter_password, config):
         context.api_key = metadata_key_info["secret"]
         restricted_client = from_context(context)
         restricted_client["A1"]
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             restricted_client["A1"].read()  # no 'read:data' scope
         context.api_key = None
 
@@ -405,7 +410,7 @@ def test_api_key_revoked(enter_password, config):
         assert len(context.whoami()["api_keys"]) == 0
         context.logout()
         context.api_key = key_info["secret"]
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             from_context(context)
 
 
@@ -420,7 +425,7 @@ def test_api_key_expiration(enter_password, config):
         context.logout()
         context.api_key = key_info["secret"]
         time.sleep(2)
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             from_context(context)
 
 
@@ -435,7 +440,7 @@ def test_api_key_limit(enter_password, config):
             for i in range(authentication.API_KEY_LIMIT):
                 context.create_api_key(note=f"key {i}")
             # Hit API key limit.
-            with fail_with_status_code(400):
+            with fail_with_status_code(HTTP_400_BAD_REQUEST):
                 context.create_api_key(note="one key too many")
     finally:
         authentication.API_KEY_LIMIT = original_limit
@@ -453,7 +458,7 @@ def test_session_limit(enter_password, config):
                     context.authenticate(username="alice")
                     context.logout()
                 # Hit Session limit.
-                with fail_with_status_code(400):
+                with fail_with_status_code(HTTP_400_BAD_REQUEST):
                     context.authenticate(username="alice")
     finally:
         authentication.SESSION_LIMIT = original_limit
@@ -548,7 +553,7 @@ def test_admin_api_key_any_principal(
         context.http_client.get(resource).raise_for_status()
         context.api_key = None
         # The same endpoint fails without an API key
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.http_client.get(resource).raise_for_status()
 
 
@@ -583,7 +588,7 @@ def test_admin_api_key_any_principal_exceeds_scopes(enter_password, principals_c
             context.authenticate(username="alice")
 
         principal_uuid = principals_context["uuid"]["bob"]
-        with fail_with_status_code(400) as fail_info:
+        with fail_with_status_code(HTTP_400_BAD_REQUEST) as fail_info:
             context.admin.create_api_key(principal_uuid, scopes=["read:principals"])
         fail_message = " must be a subset of the principal's scopes "
         assert fail_message in fail_info.value.response.text
@@ -601,7 +606,7 @@ def test_api_key_any_principal(enter_password, principals_context, username):
             context.authenticate(username="bob")
 
         principal_uuid = principals_context["uuid"][username]
-        with fail_with_status_code(401):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.admin.create_api_key(principal_uuid, scopes=["read:metadata"])
 
 
@@ -631,7 +636,7 @@ def test_api_key_bypass_scopes(enter_password, principals_context):
                 {"api_key": api_key, "scopes": []},
             ):
                 context.api_key = query_params.pop("api_key", None)
-                with fail_with_status_code(401):
+                with fail_with_status_code(HTTP_401_UNAUTHORIZED):
                     context.http_client.get(
                         resource, params=query_params
                     ).raise_for_status()

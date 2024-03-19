@@ -1,5 +1,6 @@
 import dask
 import dask.dataframe.core
+from starlette.status import HTTP_404_NOT_FOUND
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
@@ -191,7 +192,7 @@ class _DaskDataFrameClient(BaseClient):
                 )
             ).json()
         except ClientError as err:
-            if err.response.status_code == 404:
+            if err.response.status_code == HTTP_404_NOT_FOUND:
                 raise KeyError(column)
             raise
         item = content["data"]

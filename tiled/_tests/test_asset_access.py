@@ -2,6 +2,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from starlette.status import HTTP_403_FORBIDDEN
 
 from ..catalog import in_memory
 from ..client import Context, from_context
@@ -77,5 +78,5 @@ def test_do_not_expose_raw_assets(tmpdir):
     with Context.from_app(app) as context:
         client = from_context(context, include_data_sources=True)
         client.write_array([1, 2, 3], key="x")
-        with fail_with_status_code(403):
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
             client["x"].raw_export(tmpdir / "exported")

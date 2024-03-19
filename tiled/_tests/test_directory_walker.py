@@ -8,6 +8,7 @@ import numpy
 import pytest
 import tifffile
 import yaml
+from starlette.status import HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.tiff import TiffAdapter
@@ -323,7 +324,7 @@ def test_unknown_mimetype(tmpdir):
             is_directory=False,
             parameter="test",
         )
-        with fail_with_status_code(415):
+        with fail_with_status_code(HTTP_415_UNSUPPORTED_MEDIA_TYPE):
             client.new(
                 key="x",
                 structure_family="array",

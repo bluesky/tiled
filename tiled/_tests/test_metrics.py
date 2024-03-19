@@ -1,6 +1,7 @@
 import re
 
 from fastapi import APIRouter
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
 from ..client import Context, from_context
 from ..server.app import build_app_from_config
@@ -43,8 +44,8 @@ def test_error_code():
         assert total_request_time(client, 500) - baseline_time[500] == 0
         client.context.http_client.raise_server_exceptions = False
         response_500 = client.context.http_client.get("/error")
-        assert response_500.status_code == 500
+        assert response_500.status_code == HTTP_500_INTERNAL_SERVER_ERROR
         assert total_request_time(client, 500) - baseline_time[500] > 0
         response_404 = client.context.http_client.get("/does_not_exist")
-        assert response_404.status_code == 404
+        assert response_404.status_code == HTTP_404_NOT_FOUND
         assert total_request_time(client, 404) - baseline_time[404] > 0

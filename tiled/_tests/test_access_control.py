@@ -2,6 +2,7 @@ import json
 
 import numpy
 import pytest
+from starlette.status import HTTP_403_FORBIDDEN
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -212,7 +213,7 @@ def test_writing_blocked_by_access_policy(enter_password, context):
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
     alice_client["d"]["x"].metadata
-    with fail_with_status_code(403):
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
         alice_client["d"]["x"].update_metadata(metadata={"added_key": 3})
     alice_client.logout()
 
@@ -220,7 +221,7 @@ def test_writing_blocked_by_access_policy(enter_password, context):
 def test_create_blocked_by_access_policy(enter_password, context):
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
-    with fail_with_status_code(403):
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
         alice_client["e"].write_array([1, 2, 3])
     alice_client.logout()
 
