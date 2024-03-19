@@ -1127,47 +1127,6 @@ async def post_register(
     )
 
 
-async def validate_metadata(
-    metadata: dict,
-    structure_family: StructureFamily,
-    structure,
-    specs: List[Spec],
-    validation_registry=Depends(get_validation_registry),
-    settings: BaseSettings = Depends(get_settings),
-):
-    metadata_modified = False
-
-    # Specs should be ordered from most specific/constrained to least.
-    # Validate them in reverse order, with the least constrained spec first,
-    # because it may do normalization that helps pass the more constrained one.
-    # Known Issue:
-    # When there is more than one spec, it's possible for the validator for
-    # Spec 2 to make a modification that breaks the validation for Spec 1.
-    # For now we leave it to the server maintainer to ensure that validators
-    # won't step on each other in this way, but this may need revisiting.
-    for spec in reversed(specs):
-        if spec.name not in validation_registry:
-            if settings.reject_undeclared_specs:
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"Unrecognized spec: {spec.name}",
-                )
-        else:
-            validator = validation_registry(spec.name)
-            try:
-                result = validator(metadata, structure_family, structure, spec)
-            except ValidationError as e:
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"failed validation for spec {spec.name}:\n{e}",
-                )
-            if result is not None:
-                metadata_modified = True
-                metadata = result
-
-    return metadata_modified, metadata
-
-
 async def _create_node(
     request: Request,
     path: str,
@@ -1378,7 +1337,7 @@ async def patch_table_partition(
 ):
     if not hasattr(entry, "write_partition"):
         raise HTTPException(
-            status_code=405, detail="This node does not supporting writing a partition."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED, detail="This node does not supporting writing a partition."
         )
     body = await request.body()
     media_type = request.headers["content-type"]
@@ -1436,7 +1395,7 @@ async def patch_metadata(
         )
     else:
         raise HTTPException(
-            status_code=406,
+            status_code=HTTP_406_NOT_ACCEPTABLE,
             detail="application/json-patch+json or application/merge-patch+json expected.",
         )
 
@@ -1473,7 +1432,7 @@ async def put_metadata(
 ):
     if not hasattr(entry, "replace_metadata"):
         raise HTTPException(
-            status_code=405, detail="This node does not support update of metadata."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED, detail="This node does not support update of metadata."
         )
 
     metadata, structure_family, structure, specs = (
@@ -1666,3 +1625,43 @@ async def get_asset_manifest(
     for root, _directories, files in os.walk(path):
         manifest.extend(Path(root, file) for file in files)
     return json_or_msgpack(request, {"manifest": manifest})
+
+
+async def validate_metadata(
+    metadata: dict,
+    structure_family: StructureFamily,
+    structure,
+    specs: List[Spec],
+    validation_registry=Depends(get_validation_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    metadata_modified = False
+
+    # Specs should be ordered from most specific/constrained to least.
+    # Validate them in reverse order, with the least constrained spec first,
+    # because it may do normalization that helps pass the more constrained one.
+    # Known Issue:
+    # When there is more than one spec, it's possible for the validator for
+    # Spec 2 to make a modification that breaks the validation for Spec 1.
+    # For now we leave it to the server maintainer to ensure that validators
+    # won't step on each other in this way, but this may need revisiting.
+    for spec in reversed(specs):
+        if spec.name not in validation_registry:
+            if settings.reject_undeclared_specs:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST, detail=f"Unrecognized spec: {spec.name}"
+                )
+        else:
+            validator = validation_registry(spec.name)
+            try:
+                result = validator(metadata, structure_family, structure, spec)
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"failed validation for spec {spec.name}:\n{e}",
+                )
+            if result is not None:
+                metadata_modified = True
+                metadata = result
+
+    return metadata_modified, metadata
