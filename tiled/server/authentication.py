@@ -37,6 +37,7 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
 )
+from pydantic_settings import BaseSettings
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -45,7 +46,7 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from jose import ExpiredSignatureError, JWTError, jwt
 
-from pydantic import BaseModel, BaseSettings
+from pydantic import BaseModel
 
 from ..authn_database import orm
 from ..authn_database.connection_pool import get_database_session

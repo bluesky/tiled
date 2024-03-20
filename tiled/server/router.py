@@ -10,7 +10,6 @@ from typing import Any, List, Optional
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
-from pydantic import BaseSettings
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -55,6 +54,7 @@ from .dependencies import (
 from .links import links_for_node
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
+from pydantic_settings import BaseSettings
 
 router = APIRouter()
 

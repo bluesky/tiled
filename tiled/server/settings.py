@@ -4,8 +4,7 @@ import secrets
 from datetime import timedelta
 from functools import lru_cache
 from typing import Any, List, Optional
-
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 DatabaseSettings = collections.namedtuple(
     "DatabaseSettings", "uri pool_size pool_pre_ping max_overflow"

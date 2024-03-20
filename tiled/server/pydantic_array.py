@@ -74,7 +74,7 @@ class BuiltinDtype(BaseModel):
 class Field(BaseModel):
     name: str
     dtype: Union[BuiltinDtype, "StructDtype"]
-    shape: Optional[Tuple[int, ...]]
+    shape: Optional[Tuple[int, ...]] = None
 
     @classmethod
     def from_numpy_descr(cls, field):
