@@ -956,7 +956,10 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
-def print_admin_api_key_if_generated(web_app, host, port):
+def print_admin_api_key_if_generated(
+    web_app: FastAPI, host: str, port: int, force: bool = False
+):
+    "Print message to stderr with API key if server-generated (or force=True)."
     host = host or "127.0.0.1"
     port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
@@ -972,7 +975,7 @@ def print_admin_api_key_if_generated(web_app, host, port):
 """,
             file=sys.stderr,
         )
-    if (not authenticators) and settings.single_user_api_key_generated:
+    if (not authenticators) and (force or settings.single_user_api_key_generated):
         print(
             f"""
     Navigate a web browser or connect a Tiled client to:
