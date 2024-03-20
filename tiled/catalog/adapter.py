@@ -663,8 +663,8 @@ class CatalogNodeAdapter:
                         orm.Asset.data_uri == asset.data_uri
                     )
                     result = await db.execute(statement)
-                    if result := result.fetchone():
-                        (asset_id,) = result
+                    if row := result.fetchone():
+                        (asset_id,) = row
                     else:
                         statement = insert(orm.Asset).values(
                             data_uri=asset.data_uri,
