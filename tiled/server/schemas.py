@@ -516,7 +516,7 @@ JSONPatchSpec = TypedDict(
 
 class PatchMetadataRequest(pydantic.BaseModel):
     # These fields are optional because None means "no changes; do not update".
-    patch: Optional[List[JSONPatchSpec] | Dict]  # Dict for merge-patch
+    patch: Optional[Union[List[JSONPatchSpec], Dict]]  # Dict for merge-patch
     specs: Optional[Specs]
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
