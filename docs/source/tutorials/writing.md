@@ -66,6 +66,49 @@ Write array and tabular data.
 <DataFrameClient ['x', 'y']>
 ```
 
+In some scenarios, you may want to save individual arrays in a stacked manner, i.e. as a single higher dimensional array. This can be achieved in two ways: 
+
+The first one is to stack them before saving back to client using the above mentioned `write_array` method. This works when the size of data is small.
+
+When the size of merged data becomes an issue for memory, or in cases when you want to save the result on-the-fly as each individual array is generated, this could be achieved by using the `write_block` method with a pre-allocated space in client.
+
+```python
+# This approach will require you to know the final array dimension beforehand.
+
+# Assuming you have five 2d arrays (eg. images), each in shape of 32 by 32.
+>>> stacked_array_shape = (5, 32, 32)
+
+# Define a tiled ArrayStructure based on shape
+>>> import numpy
+>>> from tiled.structures.array import ArrayStructure
+
+>>> structure = ArrayStructure.from_array(numpy.zeros(stacked_array_shape, dtype = numpy.int8)) # A good practice to keep the dtype the same as your final results to avoid mismatch.
+>>> structure
+ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.integer: 'i'>, itemsize=1), chunks=((5,), (32,), (32,)), shape=(5, 32, 32), dims=None, resizable=False)
+
+# Re-define the chunk size to allow single array to be saved.
+>>> structure.chunks = ((1,) * stacked_array_shape[0], (stacked_array_shape[1],), (stacked_array_shape[2],))
+
+# Now to see that the chunk for the first axis has been divided.
+>>> structure
+ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.integer: 'i'>, itemsize=1), chunks=((1, 1, 1, 1, 1), (32,), (32,)), shape=(5, 32, 32), dims=None, resizable=False)
+
+# Allocate a new array client in tiled
+>>> array_client = client.new(structure_family="array", structure=structure, key ="stacked_result", metadata={"color": "yellow", "barcode": 13})
+
+>>> array_client
+<ArrayClient shape=(5, 32, 32) chunks=((1, 1, 1, 1, 1), (32,), (32,)) dtype=int8>
+
+# Save a single slice with specific index
+# Save to the first array (first block index 0)
+>>> first_array = numpy.random.rand(32, 32).astype(numpy.int8)
+>>> array_client.write_block(first_array, block=(0, 0, 0))
+
+# Save to the 3rd array (first block index 2)
+>>> third_array = numpy.random.rand(32, 32).astype(numpy.int8)
+>>> array_client.write_block(third_array, block=(2, 0, 0))
+```
+
 Search to find the data again.
 
 ```py
@@ -105,3 +148,4 @@ restarts and can be used by multiple servers running in parallel, in a scaled
 deployment.
 
 [SQLite]: https://www.sqlite.org/index.html
+
