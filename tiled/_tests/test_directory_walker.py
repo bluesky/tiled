@@ -25,6 +25,7 @@ from ..client.register import (
 )
 from ..examples.generate_files import data, df1, generate_files
 from ..server.app import build_app
+from ..structures.array import ArrayStructure
 from ..structures.data_source import Asset, DataSource, Management
 from ..utils import ensure_uri, path_from_uri
 from .utils import fail_with_status_code
@@ -335,6 +336,35 @@ def test_unknown_mimetype(tmpdir):
                         structure_family="array",
                         mimetype="application/x-does-not-exist",
                         structure=None,
+                        parameters={},
+                        management=Management.external,
+                        assets=[asset],
+                    )
+                ],
+            )
+
+
+def test_one_asset_two_data_sources(tmpdir):
+    catalog = in_memory(writable_storage=tmpdir)
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        asset = Asset(
+            data_uri=ensure_uri(tmpdir / "test.tiff"),
+            is_directory=False,
+            parameter="data_uri",
+            num=None,
+        )
+        for key in ["x", "y"]:
+            client.new(
+                key=key,
+                structure_family="array",
+                metadata={},
+                specs=[],
+                data_sources=[
+                    DataSource(
+                        structure_family="array",
+                        mimetype="image/tiff",
+                        structure=ArrayStructure.from_array(numpy.empty((5, 7))),
                         parameters={},
                         management=Management.external,
                         assets=[asset],

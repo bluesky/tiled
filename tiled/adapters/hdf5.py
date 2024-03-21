@@ -15,6 +15,35 @@ SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
+def hdf5_lookup(
+    data_uri,
+    *,
+    structure=None,
+    metadata=None,
+    swmr=SWMR_DEFAULT,
+    libver="latest",
+    specs=None,
+    access_policy=None,
+    path=None,
+):
+    path = path or []
+    adapter = HDF5Adapter.from_uri(
+        data_uri,
+        structure=structure,
+        metadata=metadata,
+        swmr=swmr,
+        libver=libver,
+        specs=specs,
+        access_policy=access_policy,
+    )
+    for segment in path:
+        adapter = adapter.get(segment)
+        if adapter is None:
+            raise KeyError(segment)
+    # TODO What to do with metadata, specs?
+    return adapter
+
+
 def from_dataset(dataset):
     return ArrayAdapter.from_array(dataset, metadata=getattr(dataset, "attrs", {}))
 

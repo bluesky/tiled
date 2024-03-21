@@ -401,6 +401,10 @@ class PostMetadataRequest(pydantic.BaseModel):
         return v
 
 
+class PutDataSourceRequest(pydantic.BaseModel):
+    data_source: DataSource
+
+
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]

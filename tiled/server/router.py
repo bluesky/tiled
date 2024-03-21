@@ -1194,6 +1194,20 @@ async def _create_node(
     return json_or_msgpack(request, response_data)
 
 
+@router.put("/data_source/{path:path}")
+async def put_data_source(
+    request: Request,
+    path: str,
+    data_source: int,
+    body: schemas.PutDataSourceRequest,
+    settings: BaseSettings = Depends(get_settings),
+    entry=SecureEntry(scopes=["write:metadata", "register"]),
+):
+    await entry.put_data_source(
+        data_source=body.data_source,
+    )
+
+
 @router.delete("/metadata/{path:path}")
 async def delete(
     request: Request,
