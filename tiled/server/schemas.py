@@ -3,11 +3,11 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, TypedDict, TypeVar, Union
+from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
-from typing_extensions import Annotated
+from typing_extensions import Annotated, TypedDict
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
