@@ -31,9 +31,9 @@ class Error(pydantic.BaseModel):
 
 class Response(pydantic.generics.GenericModel, Generic[DataT, LinksT, MetaT]):
     data: Optional[DataT]
-    error: Optional[Error]
-    links: Optional[LinksT]
-    meta: Optional[MetaT]
+    error: Optional[Error] = None
+    links: Optional[LinksT] = None
+    meta: Optional[MetaT] = None
 
     @pydantic.validator("error", always=True)
     def check_consistency(cls, v, values):
@@ -242,8 +242,8 @@ class Resource(
     "A JSON API Resource"
     id: Union[str, uuid.UUID]
     attributes: AttributesT
-    links: Optional[ResourceLinksT]
-    meta: Optional[ResourceMetaT]
+    links: Optional[ResourceLinksT] = None
+    meta: Optional[ResourceMetaT] = None
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):
@@ -305,19 +305,22 @@ class PrincipalType(str, enum.Enum):
     service = "service"
 
 
-class Identity(pydantic.BaseModel, orm_mode=True):
+class Identity(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
     id: Annotated[str, StringConstraints(max_length=255)]
     provider: Annotated[str, StringConstraints(max_length=255)]
     latest_login: Optional[datetime] = None
 
 
-class Role(pydantic.BaseModel, orm_mode=True):
+class Role(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
     name: str
     scopes: List[str]
     # principals
 
 
-class APIKey(pydantic.BaseModel, orm_mode=True):
+class APIKey(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
     first_eight: Annotated[str, StringConstraints(min_length=8, max_length=8)]
     expiration_time: Optional[datetime] = None
     note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
@@ -340,7 +343,7 @@ class APIKeyWithSecret(APIKey):
         )
 
 
-class Session(pydantic.BaseModel, orm_mode=True):
+class Session(pydantic.BaseModel):
     """
     This related to refresh tokens, which have a session uuid ("sid") claim.
 
@@ -351,15 +354,17 @@ class Session(pydantic.BaseModel, orm_mode=True):
 
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
+    model_config = pydantic.ConfigDict(from_attributes=True)
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
 
 
-class Principal(pydantic.BaseModel, orm_mode=True):
+class Principal(pydantic.BaseModel):
     "Represents a User or Service"
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
+    model_config = pydantic.ConfigDict(from_attributes=True)
     uuid: uuid.UUID
     type: PrincipalType
     identities: List[Identity] = []

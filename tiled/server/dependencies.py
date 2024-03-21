@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Optional
 
-import pydantic
+import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
@@ -54,7 +54,7 @@ def SecureEntry(scopes, structure_families=None):
         path: str,
         request: Request,
         principal: str = Depends(get_current_principal),
-        root_tree: pydantic.BaseSettings = Depends(get_root_tree),
+        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
     ):
         """
