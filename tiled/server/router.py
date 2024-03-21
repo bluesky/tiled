@@ -1337,7 +1337,8 @@ async def patch_table_partition(
 ):
     if not hasattr(entry, "write_partition"):
         raise HTTPException(
-            status_code=HTTP_405_METHOD_NOT_ALLOWED, detail="This node does not supporting writing a partition."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not supporting writing a partition.",
         )
     body = await request.body()
     media_type = request.headers["content-type"]
@@ -1432,7 +1433,8 @@ async def put_metadata(
 ):
     if not hasattr(entry, "replace_metadata"):
         raise HTTPException(
-            status_code=HTTP_405_METHOD_NOT_ALLOWED, detail="This node does not support update of metadata."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not support update of metadata.",
         )
 
     metadata, structure_family, structure, specs = (
@@ -1649,7 +1651,8 @@ async def validate_metadata(
         if spec.name not in validation_registry:
             if settings.reject_undeclared_specs:
                 raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST, detail=f"Unrecognized spec: {spec.name}"
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Unrecognized spec: {spec.name}",
                 )
         else:
             validator = validation_registry(spec.name)
