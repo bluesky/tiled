@@ -467,7 +467,7 @@ client or pass the optional parameter `include_data_sources=True` to
                 self._item["attributes"]["metadata"] = content["metadata"]
             else:
                 # Metadata was accepted as it is by the server.
-                # It is updated locally with the version submitted buy the client.
+                # It is updated locally with the version submitted by the client.
                 self._item["attributes"]["metadata"] = jsonpatch.apply_patch(
                     dict(self.metadata), patch
                 )

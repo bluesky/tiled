@@ -1388,11 +1388,11 @@ async def patch_metadata(
 
     if request.headers["content-type"] == "application/json-patch+json":
         metadata = apply_json_patch(
-            entry.metadata(), body.patch if body.patch is not None else []
+            entry.metadata(), (body.patch or [])
         )
     elif request.headers["content-type"] == "application/merge-patch+json":
         metadata = apply_merge_patch(
-            entry.metadata(), body.patch if body.patch is not None else {}
+            entry.metadata(), (body.patch or {})
         )
     else:
         raise HTTPException(
