@@ -1379,7 +1379,7 @@ async def patch_metadata(
     settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata"]),
 ):
-    if not hasattr(entry, "patch_metadata"):
+    if not hasattr(entry, "replace_metadata"):
         raise HTTPException(
             status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node does not support update of metadata.",
