@@ -1387,13 +1387,9 @@ async def patch_metadata(
         )
 
     if request.headers["content-type"] == "application/json-patch+json":
-        metadata = apply_json_patch(
-            entry.metadata(), (body.patch or [])
-        )
+        metadata = apply_json_patch(entry.metadata(), (body.patch or []))
     elif request.headers["content-type"] == "application/merge-patch+json":
-        metadata = apply_merge_patch(
-            entry.metadata(), (body.patch or {})
-        )
+        metadata = apply_merge_patch(entry.metadata(), (body.patch or {}))
     else:
         raise HTTPException(
             status_code=HTTP_406_NOT_ACCEPTABLE,

@@ -384,29 +384,53 @@ client or pass the optional parameter `include_data_sources=True` to
 
     def update_metadata(self, metadata=None, specs=None):
         """
-        EXPERIMENTAL: Update metadata.
+        EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
-        This is subject to change or removal without notice
+        `update_metadata` is a user-friendly wrapper for `patch_metadata`.
+        This is subject to change or removal without notice.
 
         Parameters
         ----------
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-            Hint:
-                You can use `metadata_copy()` to retrieve a mutable copy of
-                the current metadata that can be passed here with modifications.
-            Note:
-                You only need to specify the relative paths in the nested
-                structure. `metadata_copy()` is only meant as an assistance.
-                `update_metadata()` implements a similar approach to json merge
-                patch (RFC 7386 https://datatracker.ietf.org/doc/html/rfc7386).
-                However, None (or null) does not take a special meaning,
-                although `tiled.client.metadata_update.DELETE_KEY` does!
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
 
+        See Also
+        --------
+        patch_metadata
+        replace_metadata
+
+        Notes
+        -----
+        `update_metadata` constructs a JSON Patch (RFC6902) by comparing user updates
+        to existing metadata. It uses a slight variation of JSON Merge Patch (RFC7386)
+        as an intermediary to implement a python `dict.update`-like user-friendly
+        interface, but with additional features like key deletion (see examples) and
+        support for `None (null)` values.
+
+        Examples
+        --------
+
+        Add a new key-value pair at the top or a nested level
+
+        >>> node.update_metadata({'new_key': new_value})
+        >>> node.update_metadata({'existing_top_key': {'new_key': new_value}})
+
+        Remove an existing key
+
+        >>> from tiled.client.metadata_update import DELETE_KEY
+        >>> node.update_metadata({'key_to_be_deleted': DELETE_KEY})
+
+        Interactively update complex metadata using a copy of original structure
+        (e.g., in iPython you may use tab completion to navigate nested metadata)
+
+        >>> md = node.metadata_copy()
+        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
+        >>> md['unwanted_key'] = DELETE_KEY
+        >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
 
         if metadata is None:
@@ -422,9 +446,9 @@ client or pass the optional parameter `include_data_sources=True` to
 
     def patch_metadata(self, patch=None, specs=None):
         """
-        EXPERIMENTAL: Patch metadata.
+        EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
 
-        This is subject to change or removal without notice
+        This is subject to change or removal without notice.
 
         Parameters
         ----------
@@ -434,6 +458,11 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+
+        See Also
+        --------
+        update_metadata
+        replace_metadata
         """
 
         self._cached_len = None
@@ -477,9 +506,9 @@ client or pass the optional parameter `include_data_sources=True` to
 
     def replace_metadata(self, metadata=None, specs=None):
         """
-        EXPERIMENTAL: Replace metadata.
+        EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
-        This is subject to change or removal without notice
+        This is subject to change or removal without notice.
 
         Parameters
         ----------
@@ -489,6 +518,11 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+
+        See Also
+        --------
+        update_metadata
+        patch_metadata
         """
 
         self._cached_len = None
