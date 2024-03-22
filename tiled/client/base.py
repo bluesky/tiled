@@ -417,10 +417,10 @@ client or pass the optional parameter `include_data_sources=True` to
         Examples
         --------
 
-        Add a new key-value pair at the top or a nested level
+        Add or update a key-value pair at the top or a nested level
 
-        >>> node.update_metadata({'new_key': new_value})
-        >>> node.update_metadata({'existing_top_key': {'new_key': new_value}})
+        >>> node.update_metadata({'key': new_value})
+        >>> node.update_metadata({'top_key': {'nested_key': new_value}})
 
         Remove an existing key
 
