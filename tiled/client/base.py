@@ -397,7 +397,7 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        exec: boolean
+        exec : boolean
             Defaulots to True. If set to False, ignores specs and returns
             a JSON patch for metadata without applying it.
 
