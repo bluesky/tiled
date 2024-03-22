@@ -382,7 +382,7 @@ client or pass the optional parameter `include_data_sources=True` to
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None, exec=True):
+    def update_metadata(self, metadata=None, specs=None):
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -397,9 +397,6 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        exec : boolean
-            Defaulots to True. If set to False, ignores specs and returns
-            a JSON patch for metadata without applying it.
 
         See Also
         --------
@@ -436,6 +433,55 @@ client or pass the optional parameter `include_data_sources=True` to
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
 
+        patch = self.build_metadata_patch(metadata=metadata)
+
+        self.patch_metadata(patch=patch, specs=specs)
+
+    def build_metadata_patch(self, metadata=None):
+        """
+        Build a valid JSON Patch (RFC6902) accepted by `patch_metadata`.
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+
+        See Also
+        --------
+        patch_metadata
+        update_metadata
+
+        Notes
+        -----
+        `build_metadata_patch` constructs a JSON Patch (RFC6902) by comparing user updates
+        to existing metadata. It uses a slight variation of JSON Merge Patch (RFC7386)
+        as an intermediary to implement a python `dict.update`-like user-friendly
+        interface, but with additional features like key deletion (see examples) and
+        support for `None (null)` values.
+
+        Examples
+        --------
+
+        Build a patch for adding/updating a key-value pair at the top or a nested level
+
+        >>> node.build_metadata_patch({'key': new_value})
+        >>> node.build_metadata_patch({'top_key': {'nested_key': new_value}})
+
+        Build a patch for removing an existing key
+
+        >>> from tiled.client.metadata_update import DELETE_KEY
+        >>> node.build_metadata_patch({'key_to_be_deleted': DELETE_KEY})
+
+        Interactively build a patch for complex metadata (e.g., in iPython you may use
+        tab completion to navigate nested metadata)
+
+        >>> md = node.metadata_copy()
+        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
+        >>> md['unwanted_key'] = DELETE_KEY
+        >>> node.build_metadata_patch(metadata=md)  # Generate the patch
+        """
+
         if metadata is None:
             metadata = {}
 
@@ -445,10 +491,7 @@ client or pass the optional parameter `include_data_sources=True` to
             dumps=orjson.dumps,
         ).patch
 
-        if not exec:
-            return patch
-
-        self.patch_metadata(patch=patch, specs=specs)
+        return patch
 
     def patch_metadata(self, patch=None, specs=None):
         """
