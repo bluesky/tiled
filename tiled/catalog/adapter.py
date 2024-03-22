@@ -1247,7 +1247,7 @@ def in_memory(
     readable_storage=None,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
-    typesenseClient=None,
+    typesense_client=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1259,7 +1259,7 @@ def in_memory(
         readable_storage=readable_storage,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
-        typesenseClient=typesenseClient,
+        typesense_client=typesense_client,
     )
 
 
@@ -1274,7 +1274,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
-    typesenseClient=None,
+    typesense_client=None,
 ):
     uri = str(uri)
     if init_if_not_exists:
@@ -1296,12 +1296,12 @@ def from_uri(
     engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    if typesenseClient:
-        typesenseClient = typesense.client(
-            typesenseClient["host"],
-            typesenseClient["port"],
-            typesenseClient["protocol"],
-            typesenseClient["api_key"],
+    if typesense_client:
+        typesense_client = typesense.Client(
+            {
+                "api_key": typesense_client["api_key"],
+                "nodes": typesense_client["nodes"],
+            }
         )
     return CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
