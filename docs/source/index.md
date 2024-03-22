@@ -30,6 +30,7 @@ how-to/metrics
 how-to/direct-client
 how-to/tune-caches
 how-to/tiled-authn-database
+how-to/register
 ```
 
 ```{toctree}

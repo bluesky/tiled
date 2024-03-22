@@ -13,6 +13,8 @@ from timeit import default_timer
 import cachey
 from dask.callbacks import Callback
 
+from ..utils import catch_warning_msg
+
 if __debug__:
     import logging
 
@@ -21,6 +23,19 @@ if __debug__:
     handler.setLevel("DEBUG")
     handler.setFormatter(logging.Formatter("OBJECT CACHE: %(message)s"))
     logger.addHandler(handler)
+
+
+# See https://github.com/bluesky/tiled/issues/675#issuecomment-1983581882
+WARNING_PANDAS_BLOCKS = (
+    "DataFrame._data is deprecated and will be removed in a future version. "
+    "Use public APIs instead."
+)
+
+
+def catch_pandas_blocks_warning():
+    return catch_warning_msg(
+        action="ignore", message=WARNING_PANDAS_BLOCKS, category=DeprecationWarning
+    )
 
 
 class _NO_CACHE_SENTINEL:
@@ -129,7 +144,8 @@ class ObjectCache:
             Computed (with best effort) if not provided.
         """
         if nbytes is None:
-            nbytes = self._cache.get_nbytes(value)
+            with catch_pandas_blocks_warning():
+                nbytes = self._cache.get_nbytes(value)
         logger.debug("Store %r (cost=%.3f, nbytes=%d)", key, cost, nbytes)
         self._cache.put(key, value, cost, nbytes=nbytes)
 
@@ -196,7 +212,8 @@ class DaskCache(Callback):
         if deps:
             duration += max(self.durations.get(k, 0) for k in deps)
         self.durations[key] = duration
-        nb = self._nbytes(value)
+        with catch_pandas_blocks_warning():
+            nb = self._nbytes(value)
         self.cache.put(("dask", *key), value, cost=duration, nbytes=nb)
 
     def _finish(self, dsk, state, errored):

@@ -7,6 +7,7 @@ from contextlib import nullcontext
 import numpy
 import pytest
 import pytest_asyncio
+from starlette.status import HTTP_400_BAD_REQUEST
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -165,7 +166,7 @@ def test_full_text(client):
     if client.metadata["backend"] in {"sqlite"}:
 
         def cm():
-            return fail_with_status_code(400)
+            return fail_with_status_code(HTTP_400_BAD_REQUEST)
 
     else:
         cm = nullcontext
@@ -180,7 +181,7 @@ def test_regex(client):
     if client.metadata["backend"] in {"postgresql", "sqlite"}:
 
         def cm():
-            return fail_with_status_code(400)
+            return fail_with_status_code(HTTP_400_BAD_REQUEST)
 
     else:
         cm = nullcontext

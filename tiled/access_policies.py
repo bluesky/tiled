@@ -65,6 +65,8 @@ class SimpleAccessPolicy:
         # If this is being called, filter_access has let us get this far.
         if principal is SpecialUsers.public:
             allowed = PUBLIC_SCOPES
+        elif principal.type == "service":
+            allowed = self.scopes
         elif self._get_id(principal) in self.admins:
             allowed = ALL_SCOPES
         # The simple policy does not provide for different Principals to
@@ -79,7 +81,11 @@ class SimpleAccessPolicy:
         if principal is SpecialUsers.public:
             queries.append(KeysFilter(self.public))
         else:
-            id = self._get_id(principal)
+            # Services have no identities; just use the uuid.
+            if principal.type == "service":
+                id = str(principal.uuid)
+            else:
+                id = self._get_id(principal)
             if id in self.admins:
                 return queries
             if not scopes.issubset(self.scopes):

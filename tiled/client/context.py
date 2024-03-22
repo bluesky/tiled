@@ -10,6 +10,7 @@ from pathlib import Path
 
 import appdirs
 import httpx
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
@@ -553,7 +554,7 @@ and enter the code:
                     },
                     auth=None,
                 )
-                if (access_response.status_code == 400) and (
+                if (access_response.status_code == HTTP_400_BAD_REQUEST) and (
                     access_response.json()["detail"]["error"] == "authorization_pending"
                 ):
                     print(".", end="", flush=True)
@@ -640,7 +641,7 @@ and enter the code:
             csrf_token,
         )
         token_response = self.http_client.send(refresh_request, auth=None)
-        if token_response.status_code == 401:
+        if token_response.status_code == HTTP_401_UNAUTHORIZED:
             raise CannotRefreshAuthentication(
                 "Session cannot be refreshed. Log in again."
             )

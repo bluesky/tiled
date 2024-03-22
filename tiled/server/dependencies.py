@@ -3,6 +3,7 @@ from typing import Optional
 
 import pydantic
 from fastapi import Depends, HTTPException, Query, Request, Security
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from ..media_type_registration import (
     deserialization_registry as default_deserialization_registry,
@@ -48,7 +49,7 @@ def get_root_tree():
     )
 
 
-def SecureEntry(scopes):
+def SecureEntry(scopes, structure_families=None):
     async def inner(
         path: str,
         request: Request,
@@ -107,7 +108,7 @@ def SecureEntry(scopes):
                             # You can see this, but you cannot perform the requested
                             # operation on it.
                             raise HTTPException(
-                                status_code=403,
+                                status_code=HTTP_403_FORBIDDEN,
                                 detail=(
                                     "Not enough permissions to perform this action on this node. "
                                     f"Requires scopes {scopes}. "
@@ -115,8 +116,22 @@ def SecureEntry(scopes):
                                 ),
                             )
         except NoEntry:
-            raise HTTPException(status_code=404, detail=f"No such entry: {path_parts}")
-        return entry
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND, detail=f"No such entry: {path_parts}"
+            )
+        # Fast path for the common successful case
+        if (structure_families is None) or (
+            entry.structure_family in structure_families
+        ):
+            return entry
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail=(
+                f"The node at {path} has structure family {entry.structure_family} "
+                "and this endpoint is compatible with structure families "
+                f"{structure_families}"
+            ),
+        )
 
     return Security(inner, scopes=scopes)
 

@@ -18,6 +18,7 @@ import jmespath
 import msgpack
 from fastapi import HTTPException, Response
 from starlette.responses import JSONResponse, Send, StreamingResponse
+from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
 # Some are not directly used, but they register things on import.
 from .. import queries
@@ -34,6 +35,7 @@ from ..utils import (
 )
 from . import schemas
 from .etag import tokenize
+from .links import links_for_node
 from .utils import record_timing
 
 del queries
@@ -136,7 +138,9 @@ async def apply_search(tree, filters, query_registry):
                     continue
                 tree = tree.search(query)
             except QueryValueError as err:
-                raise HTTPException(status_code=400, detail=err.args[0])
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST, detail=err.args[0]
+                )
     if key_lookups:
         # Duplicates are technically legal because *any* query can be given
         # with multiple parameters.
@@ -175,7 +179,8 @@ def apply_sort(tree, sort):
     if sorting:
         if not hasattr(tree, "sort"):
             raise HTTPException(
-                status_code=400, detail="This Tree does not support sorting."
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="This Tree does not support sorting.",
             )
         tree = tree.sort(sorting)
 
@@ -359,7 +364,7 @@ async def construct_data_response(
         headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304, headers=headers)
+        return Response(status_code=HTTP_304_NOT_MODIFIED, headers=headers)
     if filename:
         headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     serializer = serialization_registry.dispatch(spec, media_type)
@@ -404,6 +409,7 @@ async def construct_resource(
     depth=0,
 ):
     path_str = "/".join(path_parts)
+    id_ = path_parts[-1] if path_parts else ""
     attributes = {"ancestors": path_parts[:-1]}
     if include_data_sources and hasattr(entry, "data_sources"):
         attributes["data_sources"] = entry.data_sources
@@ -488,15 +494,16 @@ async def construct_resource(
                         for key, direction in entry.sorting
                     ]
         d = {
-            "id": path_parts[-1] if path_parts else "",
+            "id": id_,
             "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
-            d["links"] = {
-                "self": f"{base_url}/metadata/{path_str}",
-                "search": f"{base_url}/search/{path_str}",
-                "full": f"{base_url}/container/full/{path_str}",
-            }
+            d["links"] = links_for_node(
+                entry.structure_family,
+                entry.structure(),
+                base_url,
+                path_str,
+            )
 
         resource = schemas.Resource[
             schemas.NodeAttributes, schemas.ContainerLinks, schemas.ContainerMeta
@@ -510,34 +517,16 @@ async def construct_resource(
                 entry.structure_family
             ]
             links.update(
-                {
-                    link: template.format(base_url=base_url, path=path_str)
-                    for link, template in FULL_LINKS[entry.structure_family].items()
-                }
+                links_for_node(
+                    entry.structure_family,
+                    entry.structure(),
+                    base_url,
+                    path_str,
+                )
             )
             structure = asdict(entry.structure())
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
-            if entry.structure_family == StructureFamily.sparse:
-                shape = structure.get("shape")
-                block_template = ",".join(f"{{{index}}}" for index in range(len(shape)))
-                links[
-                    "block"
-                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            elif entry.structure_family == StructureFamily.array:
-                shape = structure.get("shape")
-                block_template = ",".join(
-                    f"{{index_{index}}}" for index in range(len(shape))
-                )
-                links[
-                    "block"
-                ] = f"{base_url}/array/block/{path_str}?block={block_template}"
-            elif entry.structure_family == StructureFamily.table:
-                links[
-                    "partition"
-                ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
-            elif entry.structure_family == StructureFamily.awkward:
-                links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
             if schemas.EntryFields.structure in fields:
                 attributes["structure"] = structure
         else:
@@ -684,7 +673,9 @@ def resolve_media_type(request):
     return media_type
 
 
-def json_or_msgpack(request, content, expires=None, headers=None, status_code=200):
+def json_or_msgpack(
+    request, content, expires=None, headers=None, status_code=HTTP_200_OK
+):
     media_type = resolve_media_type(request)
     with record_timing(request.state.metrics, "tok"):
         etag = md5(str(content).encode()).hexdigest()
@@ -694,7 +685,7 @@ def json_or_msgpack(request, content, expires=None, headers=None, status_code=20
         headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
     if request.headers.get("If-None-Match", "") == etag:
         # If the client already has this content, confirm that.
-        return Response(status_code=304, headers=headers)
+        return Response(status_code=HTTP_304_NOT_MODIFIED, headers=headers)
     if media_type == "application/x-msgpack":
         return MsgpackResponse(
             content,
@@ -717,15 +708,6 @@ class NoEntry(KeyError):
 
 class WrongTypeForRoute(Exception):
     pass
-
-
-FULL_LINKS = {
-    StructureFamily.array: {"full": "{base_url}/array/full/{path}"},
-    StructureFamily.awkward: {"full": "{base_url}/awkward/full/{path}"},
-    StructureFamily.container: {"full": "{base_url}/container/full/{path}"},
-    StructureFamily.table: {"full": "{base_url}/table/full/{path}"},
-    StructureFamily.sparse: {"full": "{base_url}/array/full/{path}"},
-}
 
 
 def asdict(dc):

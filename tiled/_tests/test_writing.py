@@ -4,7 +4,6 @@ This tests tiled's writing routes with an in-memory store.
 Persistent stores are being developed externally to the tiled package.
 """
 import base64
-import io
 from datetime import datetime
 
 import awkward
@@ -14,13 +13,23 @@ import pandas
 import pandas.testing
 import pytest
 import sparse
+from pandas.testing import assert_frame_equal
+from starlette.status import (
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_422_UNPROCESSABLE_ENTITY,
+)
 
 from ..catalog import in_memory
+from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
+from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
+from ..structures.table import TableStructure
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
@@ -111,6 +120,7 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
+# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 def test_write_dataframe_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -136,6 +146,7 @@ def test_write_dataframe_full(tree):
         assert result.specs == specs
 
 
+# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 def test_write_dataframe_partitioned(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -208,7 +219,12 @@ def test_write_sparse_chunked(tree):
         with record_history() as history:
             x = client.new(
                 "sparse",
-                COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                [
+                    DataSource(
+                        structure=COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                        structure_family="sparse",
+                    )
+                ],
                 metadata=metadata,
                 specs=specs,
             )
@@ -257,25 +273,25 @@ def test_limits(tree):
         x = client.write_array([1, 2, 3], specs=max_allowed_specs)
         x.update_metadata(specs=max_allowed_specs)  # no-op
         too_many_specs = max_allowed_specs + ["one_too_many"]
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             client.write_array([1, 2, 3], specs=too_many_specs)
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             x.update_metadata(specs=too_many_specs)
 
         # Specs cannot repeat.
         has_repeated_spec = ["spec0", "spec1", "spec0"]
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             client.write_array([1, 2, 3], specs=has_repeated_spec)
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             x.update_metadata(specs=has_repeated_spec)
 
         # A given spec cannot be too long.
         max_allowed_chars = ["a" * MAX_SPEC_CHARS]
         client.write_array([1, 2, 3], specs=max_allowed_chars)
         too_many_chars = ["a" * (1 + MAX_SPEC_CHARS)]
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             client.write_array([1, 2, 3], specs=too_many_chars)
-        with fail_with_status_code(422):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
             x.update_metadata(specs=too_many_chars)
 
 
@@ -294,7 +310,7 @@ def test_metadata_revisions(tree):
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
-        with fail_with_status_code(404):
+        with fail_with_status_code(HTTP_404_NOT_FOUND):
             ac.metadata_revisions.delete_revision(1)
 
 
@@ -330,7 +346,7 @@ async def test_delete(tree):
         assert len(assets_before_delete) == 1
 
         # Writing again with the same name fails.
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             client.write_array(
                 [1, 2, 3],
                 metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
@@ -367,13 +383,13 @@ async def test_delete_non_empty_node(tree):
 
         # Cannot delete non-empty nodes
         assert "a" in client
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             client.delete("a")
         assert "b" in a
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             a.delete("b")
         assert "c" in b
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             b.delete("c")
         assert "d" in c
         assert not list(d)  # leaf is empty
@@ -384,6 +400,7 @@ async def test_delete_non_empty_node(tree):
         client.delete("a")
 
 
+# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 @pytest.mark.asyncio
 async def test_write_in_container(tree):
     "Create a container and write a structure into it."
@@ -437,11 +454,102 @@ async def test_bytes_in_metadata(tree):
 
 
 @pytest.mark.asyncio
-async def test_container_export(tree):
+async def test_container_export(tree, buffer):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
 
         a = client.create_container("a")
         a.write_array([1, 2, 3], key="b")
-        buffer = io.BytesIO()
         client.export(buffer, format="application/json")
+
+
+def test_write_with_specified_mimetype(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        structure = TableStructure.from_pandas(df)
+
+        for mimetype in [PARQUET_MIMETYPE, "text/csv"]:
+            x = client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=structure,
+                        mimetype=mimetype,
+                    ),
+                ],
+            )
+            x.write_partition(df, 0)
+            x.read()
+            x.refresh()
+            x.data_sources()[0]["mimetype"] == mimetype
+
+        # Specifying unsupported mimetype raises expected error.
+        with fail_with_status_code(415):
+            client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=structure,
+                        mimetype="application/x-does-not-exist",
+                    ),
+                ],
+            )
+
+
+@pytest.mark.parametrize(
+    "orig_file, file_toappend, expected_file",
+    [
+        (
+            {"A": [1, 2, 3], "B": [4, 5, 6]},
+            {"A": [11, 12, 13], "B": [14, 15, 16]},
+            {"A": [1, 2, 3, 11, 12, 13], "B": [4, 5, 6, 14, 15, 16]},
+        ),
+        (
+            {"A": [1.2, 2.5, 3.7], "B": [4.6, 5.8, 6.9]},
+            {"A": [11.2, 12.5, 13.7], "B": [14.6, 15.8, 16.9]},
+            {
+                "A": [1.2, 2.5, 3.7, 11.2, 12.5, 13.7],
+                "B": [4.6, 5.8, 6.9, 14.6, 15.8, 16.9],
+            },
+        ),
+        (
+            {"C": ["x", "y"], "D": ["a", "b"]},
+            {"C": ["xx", "yy", "zz"], "D": ["aa", "bb", "cc"]},
+            {"C": ["x", "y", "xx", "yy", "zz"], "D": ["a", "b", "aa", "bb", "cc"]},
+        ),
+    ],
+)
+def test_append_partition(
+    tree: CatalogContainerAdapter,
+    orig_file: dict,
+    file_toappend: dict,
+    expected_file: dict,
+):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        df = pandas.DataFrame(orig_file)
+        structure = TableStructure.from_pandas(df)
+
+        x = client.new(
+            "table",
+            [
+                DataSource(
+                    structure_family="table",
+                    structure=structure,
+                    mimetype="text/csv",
+                ),
+            ],
+            key="x",
+        )
+        x.write(df)
+
+        df2 = pandas.DataFrame(file_toappend)
+
+        x.append_partition(df2, 0)
+
+        df3 = pandas.DataFrame(expected_file)
+
+        assert_frame_equal(x.read(), df3, check_dtype=False)

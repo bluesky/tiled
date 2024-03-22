@@ -422,6 +422,10 @@ client or pass the optional parameter `include_data_sources=True` to
 
         return self._metadata_revisions
 
+    def delete_tree(self):
+        endpoint = self.uri.replace("/metadata/", "/nodes/", 1)
+        handle_error(self.context.http_client.delete(endpoint))
+
 
 STRUCTURE_TYPES = OneShotCachedMap(
     {

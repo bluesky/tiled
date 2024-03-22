@@ -1,4 +1,3 @@
-import io
 import json
 from pathlib import Path
 
@@ -87,9 +86,8 @@ def test_export_table(client, filename, tmpdir):
     client["C"].export(Path(tmpdir, filename))
 
 
-def test_streaming_export(client):
+def test_streaming_export(client, buffer):
     "The application/json-seq format is streamed via a generator."
-    buffer = io.BytesIO()
     client["C"].export(buffer, format="application/json-seq")
     # Verify that output is valid newline-delimited JSON.
     buffer.seek(0)
@@ -99,27 +97,24 @@ def test_streaming_export(client):
         json.loads(line)
 
 
-def test_streaming_export_empty(client):
+def test_streaming_export_empty(client, buffer):
     "The application/json-seq format is streamed via a generator."
-    buffer = io.BytesIO()
     client["empty_table"].export(buffer, format="application/json-seq")
     buffer.seek(0)
     assert buffer.read() == b""
 
 
-def test_export_weather_data_var(client, tmpdir):
-    buffer = io.BytesIO()
+def test_export_weather_data_var(client, tmpdir, buffer):
     client["structured_data"]["weather"]["temperature"].export(
         buffer, slice=(0,), format="text/csv"
     )
 
 
-def test_export_weather_all(client):
-    buffer = io.BytesIO()
+def test_export_weather_all(client, buffer):
     client["structured_data"]["weather"].export(buffer, format="application/x-hdf5")
 
 
-def test_serialization_error_hdf5_metadata(client):
+def test_serialization_error_hdf5_metadata(client, buffer):
     tree = MapAdapter(
         {
             "good": MapAdapter({}, metadata={"a": 1}),
@@ -128,7 +123,6 @@ def test_serialization_error_hdf5_metadata(client):
     )
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
-        buffer = io.BytesIO()
         client["good"].export(buffer, format="application/x-hdf5")
         with pytest.raises(ClientError, match="contains types or structure"):
             client["bad"].export(buffer, format="application/x-hdf5")

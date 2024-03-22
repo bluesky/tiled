@@ -7,14 +7,16 @@ import warnings
 from dataclasses import asdict
 
 import entrypoints
+from starlette.status import HTTP_404_NOT_FOUND
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
-from .base import BaseClient
+from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
     ClientError,
@@ -248,16 +250,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
             tail = tuple(tail)  # list -> tuple
+            params = {
+                **_queries_to_params(KeyLookup(key)),
+                **self._queries_as_params,
+                **self._sorting_params,
+            }
+            if self._include_data_sources:
+                params["include_data_sources"] = True
             content = handle_error(
                 self.context.http_client.get(
                     self.item["links"]["search"],
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "include_data_sources": self._include_data_sources,
-                        **_queries_to_params(KeyLookup(key)),
-                        **self._queries_as_params,
-                        **self._sorting_params,
-                    },
+                    params=params,
                 )
             ).json()
             self._cached_len = (
@@ -304,17 +308,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         self_link = self.item["links"]["self"]
                         if self_link.endswith("/"):
                             self_link = self_link[:-1]
+                        params = {}
+                        if self._include_data_sources:
+                            params["include_data_sources"] = True
                         content = handle_error(
                             self.context.http_client.get(
                                 self_link + "".join(f"/{key}" for key in keys[i:]),
                                 headers={"Accept": MSGPACK_MIME_TYPE},
-                                params={
-                                    "include_data_sources": self._include_data_sources
-                                },
+                                params=params,
                             )
                         ).json()
                     except ClientError as err:
-                        if err.response.status_code == 404:
+                        if err.response.status_code == HTTP_404_NOT_FOUND:
                             # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
                             err_arg = keys[i:]
                             if len(err_arg) == 1:
@@ -412,15 +417,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
+            params = {
+                **self._queries_as_params,
+                **sorting_params,
+            }
+            if self._include_data_sources:
+                params["include_data_sources"] = True
             content = handle_error(
                 self.context.http_client.get(
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "include_data_sources": self._include_data_sources,
-                        **self._queries_as_params,
-                        **sorting_params,
-                    },
+                    params=params,
                 )
             ).json()
             self._cached_len = (
@@ -570,7 +577,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def new(
         self,
         structure_family,
-        structure,
+        data_sources,
         *,
         key=None,
         metadata=None,
@@ -595,30 +602,37 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if isinstance(spec, str):
                 spec = Spec(spec)
             normalized_specs.append(asdict(spec))
-        data_sources = []
-        if structure_family != StructureFamily.container:
-            # TODO Handle multiple data sources.
-            data_sources.append(
-                {"structure": asdict(structure), "structure_family": structure_family}
-            )
         item = {
             "attributes": {
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
-                "data_sources": data_sources,
+                "data_sources": [asdict(data_source) for data_source in data_sources],
             }
         }
         body = dict(item["attributes"])
         if key is not None:
             body["id"] = key
+
+        # if check:
+        if any(data_source.assets for data_source in data_sources):
+            endpoint = self.uri.replace("/metadata/", "/register/", 1)
+        else:
+            endpoint = self.uri
+
         document = handle_error(
             self.context.http_client.post(
-                self.uri,
+                endpoint,
                 headers={"Accept": MSGPACK_MIME_TYPE},
                 content=safe_json_dump(body),
             )
         ).json()
+        if structure_family == StructureFamily.container:
+            structure = {"contents": None, "count": None}
+        else:
+            # Only containers can have multiple data_sources right now.
+            (data_source,) = data_sources
+            structure = data_source.structure
         item["attributes"]["structure"] = structure
 
         # if server returned modified metadata update the local copy
@@ -626,7 +640,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             item["attributes"]["metadata"] = document.pop("metadata")
         # Ditto for structure
         if "structure" in document:
-            item["attributes"]["structure"] = document.pop("structure")
+            item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
+                document.pop("structure")
+            )
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)
@@ -663,7 +679,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new(
             StructureFamily.container,
-            {"contents": None, "count": None},
+            [],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -725,7 +741,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         client = self.new(
             StructureFamily.array,
-            structure,
+            [
+                DataSource(structure=structure, structure_family=StructureFamily.array),
+            ],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -791,7 +809,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         client = self.new(
             StructureFamily.awkward,
-            structure,
+            [
+                DataSource(
+                    structure=structure, structure_family=StructureFamily.awkward
+                ),
+            ],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -842,7 +864,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         # Define the overall shape and the dimensions of each chunk.
         >>> from tiled.structures.sparse import COOStructure
-        >>> x = c.new("sparse", COOStructure(shape=(10,), chunks=((5, 5),)))
+        >>> structure = COOStructure(shape=(10,), chunks=((5, 5),))
+        >>> data_source = DataSource(structure=structure, structure_family=StructureFamily.sparse)
+        >>> x = c.new("sparse", [data_source])
         # Upload the data in each chunk.
         # Coords are given with in the reference frame of each chunk.
         >>> x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
@@ -858,7 +882,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         client = self.new(
             StructureFamily.sparse,
-            structure,
+            [
+                DataSource(
+                    structure=structure, structure_family=StructureFamily.sparse
+                ),
+            ],
             key=key,
             metadata=metadata,
             specs=specs,
@@ -904,7 +932,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure = TableStructure.from_pandas(dataframe)
         client = self.new(
             StructureFamily.table,
-            structure,
+            [
+                DataSource(structure=structure, structure_family=StructureFamily.table),
+            ],
             key=key,
             metadata=metadata,
             specs=specs,

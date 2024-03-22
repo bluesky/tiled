@@ -1,5 +1,6 @@
 import dask
-import dask.dataframe
+import dask.dataframe.core
+from starlette.status import HTTP_404_NOT_FOUND
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, UNCHANGED
@@ -162,7 +163,7 @@ class _DaskDataFrameClient(BaseClient):
 
         if columns is not None:
             meta = meta[columns]
-        ddf = dask.dataframe.DataFrame(
+        ddf = dask.dataframe.core.DataFrame(
             dask_tasks,
             name=name,
             meta=meta,
@@ -191,7 +192,7 @@ class _DaskDataFrameClient(BaseClient):
                 )
             ).json()
         except ClientError as err:
-            if err.response.status_code == 404:
+            if err.response.status_code == HTTP_404_NOT_FOUND:
                 raise KeyError(column)
             raise
         item = content["data"]
@@ -215,6 +216,15 @@ class _DaskDataFrameClient(BaseClient):
     def write_partition(self, dataframe, partition):
         handle_error(
             self.context.http_client.put(
+                self.item["links"]["partition"].format(index=partition),
+                content=bytes(serialize_arrow(dataframe, {})),
+                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+            )
+        )
+
+    def append_partition(self, dataframe, partition):
+        handle_error(
+            self.context.http_client.patch(
                 self.item["links"]["partition"].format(index=partition),
                 content=bytes(serialize_arrow(dataframe, {})),
                 headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},

@@ -47,6 +47,7 @@ all = [
     "aiosqlite",
     "alembic",
     "anyio",
+    "asgi-correlation-id",
     "asyncpg",
     "appdirs",
     "awkward >=2.4.3",
@@ -54,9 +55,9 @@ all = [
     "cachetools",
     "cachey",
     "click !=8.1.0",
-    "dask",
-    "dask[array]",
-    "dask[dataframe]",
+    "dask <2024.3.0",
+    "dask[array] <2024.3.0",
+    "dask[dataframe] <2024.3.0",
     "entrypoints",
     "fastapi",
     "h5netcdf",
@@ -100,7 +101,7 @@ all = [
 ]
 # These are needed by the client and server to transmit/receive arrays.
 array = [
-    "dask[array]",
+    "dask[array] <2024.3.0",
     "numpy",
 ]
 # This is the "kichen sink" fully-featured client dependency set.
@@ -109,8 +110,8 @@ client = [
     "awkward >=2.4.3",
     "blosc",
     "click !=8.1.0",
-    "dask[array]",
-    "dask[dataframe]",
+    "dask[array] <2024.3.0",
+    "dask[dataframe] <2024.3.0",
     "entrypoints",
     "httpx >=0.20.0,!=0.23.1",
     "jsonschema",
@@ -137,7 +138,7 @@ compression = [
 ]
 # These are needed by the client and server to transmit/receive dataframes.
 dataframe = [
-    "dask[dataframe]",
+    "dask[dataframe] <2024.3.0",
     "pandas",
     "pyarrow",
 ]
@@ -159,6 +160,7 @@ dev = [
     "myst-parser",
     "numpydoc",
     "sphinx-click",
+    "sphinxcontrib-mermaid",
     "sphinx-copybutton",
     "sphinx_rtd_theme",
 ]
@@ -190,10 +192,11 @@ minimal-server = [
     "alembic",
     "anyio",
     "appdirs",
+    "asgi-correlation-id",
     "cachey",
     "cachetools",
     "click !=8.1.0",
-    "dask",
+    "dask <2024.3.0",
     "fastapi",
     "httpx >=0.20.0,!=0.23.1",
     "canonicaljson",
@@ -226,15 +229,16 @@ server = [
     "alembic",
     "anyio",
     "appdirs",
+    "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
     "blosc",
     "cachetools",
     "cachey",
     "click !=8.1.0",
-    "dask",
-    "dask[array]",
-    "dask[dataframe]",
+    "dask <2024.3.0",
+    "dask[array] <2024.3.0",
+    "dask[dataframe] <2024.3.0",
     "fastapi",
     "h5netcdf",
     "h5py",
@@ -281,7 +285,7 @@ sparse = [
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [
-    "dask[array]",
+    "dask[array] <2024.3.0",
     "pandas",
     "pyarrow",
     "xarray",

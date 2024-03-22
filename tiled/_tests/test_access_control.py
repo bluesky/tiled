@@ -1,8 +1,8 @@
-import io
 import json
 
 import numpy
 import pytest
+from starlette.status import HTTP_403_FORBIDDEN
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -180,11 +180,10 @@ def test_access_control_with_api_key_auth(context, enter_password):
         context.api_key = None
 
 
-def test_node_export(enter_password, context):
+def test_node_export(enter_password, context, buffer):
     "Exporting a node should include only the children we can see."
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
-    buffer = io.BytesIO()
     alice_client.export(buffer, format="application/json")
     alice_client.logout()
     buffer.seek(0)
@@ -214,7 +213,7 @@ def test_writing_blocked_by_access_policy(enter_password, context):
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
     alice_client["d"]["x"].metadata
-    with fail_with_status_code(403):
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
         alice_client["d"]["x"].update_metadata(metadata={"added_key": 3})
     alice_client.logout()
 
@@ -222,7 +221,7 @@ def test_writing_blocked_by_access_policy(enter_password, context):
 def test_create_blocked_by_access_policy(enter_password, context):
     with enter_password("secret1"):
         alice_client = from_context(context, username="alice")
-    with fail_with_status_code(403):
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
         alice_client["e"].write_array([1, 2, 3])
     alice_client.logout()
 
@@ -234,3 +233,65 @@ def test_public_access(context):
     public_client["f"].read()
     with pytest.raises(KeyError):
         public_client["a", "A1"]
+
+
+def test_service_principal_access(tmpdir):
+    "Test that a service principal can work with SimpleAccessPolicy."
+    config = {
+        "authentication": {
+            "secret_keys": ["SECRET"],
+            "providers": [
+                {
+                    "provider": "toy",
+                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                    "args": {
+                        "users_to_passwords": {
+                            "admin": "admin",
+                        }
+                    },
+                }
+            ],
+            "tiled_admins": [{"id": "admin", "provider": "toy"}],
+        },
+        "database": {
+            "uri": f"sqlite+aiosqlite:///{tmpdir}/auth.db",
+            "init_if_not_exists": True,
+        },
+        "trees": [
+            {
+                "tree": "catalog",
+                "args": {
+                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "writable_storage": f"file://localhost{tmpdir}/data",
+                    "init_if_not_exists": True,
+                },
+                "path": "/",
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "access_lists": {},
+                        "provider": "toy",
+                        "admins": ["admin"],
+                    },
+                },
+            }
+        ],
+    }
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_password("admin"):
+            admin_client = from_context(context, username="admin")
+        sp = admin_client.context.admin.create_service_principal("user")
+        key_info = admin_client.context.admin.create_api_key(sp["uuid"])
+        admin_client.write_array([1, 2, 3], key="x")
+        admin_client.write_array([4, 5, 6], key="y")
+        admin_client.logout()
+
+    # Drop the admin, no longer needed.
+    config["authentication"].pop("tiled_admins")
+    # Add the service principal to the access_lists.
+    config["trees"][0]["access_control"]["args"]["access_lists"][sp["uuid"]] = ["x"]
+    with Context.from_app(
+        build_app_from_config(config), api_key=key_info["secret"]
+    ) as context:
+        sp_client = from_context(context)
+        list(sp_client) == ["x"]

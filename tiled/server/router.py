@@ -12,6 +12,14 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Sec
 from jmespath.exceptions import JMESPathError
 from pydantic import BaseSettings
 from starlette.responses import FileResponse
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
+    HTTP_406_NOT_ACCEPTABLE,
+)
 
 from .. import __version__
 from ..structures.core import StructureFamily
@@ -44,6 +52,7 @@ from .dependencies import (
     get_validation_registry,
     slice_,
 )
+from .links import links_for_node
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
@@ -198,12 +207,12 @@ async def search(
             headers=headers,
         )
     except NoEntry:
-        raise HTTPException(status_code=404, detail="No such entry.")
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
     except WrongTypeForRoute as err:
-        raise HTTPException(status_code=404, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
     except JMESPathError as err:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
 
@@ -229,7 +238,8 @@ async def distinct(
         )
     else:
         raise HTTPException(
-            status_code=405, detail="This node does not support distinct."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not support distinct.",
         )
 
 
@@ -330,7 +340,7 @@ async def metadata(
         )
     except JMESPathError as err:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
     meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
@@ -346,7 +356,10 @@ async def metadata(
 )
 async def array_block(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     block=Depends(block),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
@@ -358,20 +371,12 @@ async def array_block(
     """
     Fetch a chunk of array-like data.
     """
-    if entry.structure_family == "array":
-        shape = entry.structure().shape
-    elif entry.structure_family == "sparse":
-        shape = entry.structure().shape
-    else:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /array/block route.",
-        )
+    shape = entry.structure().shape
     # Check that block dimensionality matches array dimensionality.
     ndim = len(shape)
     if len(block) != ndim:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Block parameter must have {ndim} comma-separated parameters, "
                 f"corresponding to the dimensions of this {ndim}-dimensional array."
@@ -381,7 +386,7 @@ async def array_block(
         # Handle special case of numpy scalar.
         if shape != ():
             raise HTTPException(
-                status_code=400,
+                status_code=HTTP_400_BAD_REQUEST,
                 detail=f"Requested scalar but shape is {entry.structure().shape}",
             )
         with record_timing(request.state.metrics, "read"):
@@ -391,15 +396,17 @@ async def array_block(
             with record_timing(request.state.metrics, "read"):
                 array = await ensure_awaitable(entry.read_block, block, slice)
         except IndexError:
-            raise HTTPException(status_code=400, detail="Block index out of range")
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+            )
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
-                status_code=400,
+                status_code=HTTP_400_BAD_REQUEST,
                 detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
             )
     if array.nbytes > settings.response_bytesize_limit:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Use slicing ('?slice=...') to request smaller chunks."
@@ -420,7 +427,7 @@ async def array_block(
             )
     except UnsupportedMediaTypes as err:
         # raise HTTPException(status_code=406, detail=", ".join(err.supported))
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.get(
@@ -428,7 +435,10 @@ async def array_block(
 )
 async def array_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     slice=Depends(slice_),
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
@@ -440,11 +450,6 @@ async def array_full(
     Fetch a slice of array-like data.
     """
     structure_family = entry.structure_family
-    if structure_family not in {"array", "sparse"}:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /array/full route.",
-        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -452,18 +457,20 @@ async def array_full(
     try:
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read, slice)
-        if structure_family == "array":
+        if structure_family == StructureFamily.array:
             array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
-        raise HTTPException(status_code=400, detail="Block index out of range")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+        )
     if (expected_shape is not None) and (expected_shape != array.shape):
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
         )
     if array.nbytes > settings.response_bytesize_limit:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Use slicing ('?slice=...') to request smaller chunks."
@@ -483,7 +490,7 @@ async def array_full(
                 filename=filename,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.get(
@@ -494,7 +501,7 @@ async def array_full(
 async def get_table_partition(
     request: Request,
     partition: int,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Query(None, min_length=1),
     field: Optional[List[str]] = Query(None, min_length=1, deprecated=True),
     format: Optional[str] = None,
@@ -513,7 +520,9 @@ async def get_table_partition(
                 "Include these query values using only the 'column' parameter.",
             )
         )
-        raise HTTPException(status_code=400, detail=redundant_field_and_column)
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail=redundant_field_and_column
+        )
     elif field is not None:
         field_is_deprecated = " ".join(
             (
@@ -542,7 +551,7 @@ async def get_table_partition(
 async def post_table_partition(
     request: Request,
     partition: int,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Body(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -577,24 +586,23 @@ async def table_partition(
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
     """
-    if entry.structure_family != StructureFamily.table:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /table/partition route.",
-        )
     try:
         # The singular/plural mismatch here of "fields" and "field" is
         # due to the ?field=A&field=B&field=C... encodes in a URL.
         with record_timing(request.state.metrics, "read"):
             df = await ensure_awaitable(entry.read_partition, partition, column)
     except IndexError:
-        raise HTTPException(status_code=400, detail="Partition out of range")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail="Partition out of range"
+        )
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such field {key}.")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail=f"No such field {key}."
+        )
     if df.memory_usage().sum() > settings.response_bytesize_limit:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Select a subset of the columns ('?field=...') to "
@@ -615,7 +623,7 @@ async def table_partition(
                 filename=filename,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.get(
@@ -625,7 +633,7 @@ async def table_partition(
 )
 async def get_table_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -653,7 +661,7 @@ async def get_table_full(
 )
 async def post_table_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(scopes=["read:data"], structure_families={StructureFamily.table}),
     column: Optional[List[str]] = Body(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -686,20 +694,17 @@ async def table_full(
     """
     Fetch the data for the given table.
     """
-    if entry.structure_family != StructureFamily.table:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /table/full route.",
-        )
     try:
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, column)
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such field {key}.")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail=f"No such field {key}."
+        )
     if data.memory_usage().sum() > settings.response_bytesize_limit:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Select a subset of the columns to "
@@ -721,7 +726,7 @@ async def table_full(
                 filter_for_access=None,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.get(
@@ -731,7 +736,9 @@ async def table_full(
 )
 async def get_container_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.container}
+    ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
@@ -759,7 +766,9 @@ async def get_container_full(
 )
 async def post_container_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.container}
+    ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Body(None, min_length=1),
     format: Optional[str] = None,
@@ -792,17 +801,14 @@ async def container_full(
     """
     Fetch the data for the given container.
     """
-    if entry.structure_family != StructureFamily.container:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /container/full route.",
-        )
     try:
         with record_timing(request.state.metrics, "read"):
             data = await ensure_awaitable(entry.read, fields=field)
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such field {key}.")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail=f"No such field {key}."
+        )
     curried_filter = partial(
         filter_for_access,
         principal=principal,
@@ -825,7 +831,7 @@ async def container_full(
                 filter_for_access=curried_filter,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.get(
@@ -836,7 +842,10 @@ async def container_full(
 )
 async def node_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={StructureFamily.table, StructureFamily.container},
+    ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
@@ -852,12 +861,14 @@ async def node_full(
             data = await ensure_awaitable(entry.read, field)
     except KeyError as err:
         (key,) = err.args
-        raise HTTPException(status_code=400, detail=f"No such field {key}.")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail=f"No such field {key}."
+        )
     if (entry.structure_family == StructureFamily.table) and (
         data.memory_usage().sum() > settings.response_bytesize_limit
     ):
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Select a subset of the columns ('?field=...') to "
@@ -889,7 +900,7 @@ async def node_full(
                 filter_for_access=curried_filter,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.get(
@@ -899,7 +910,9 @@ async def node_full(
 )
 async def get_awkward_buffers(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.awkward}
+    ),
     form_key: Optional[List[str]] = Query(None, min_length=1),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -935,7 +948,9 @@ async def get_awkward_buffers(
 async def post_awkward_buffers(
     request: Request,
     body: List[str],
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.awkward}
+    ),
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
@@ -973,11 +988,6 @@ async def _awkward_buffers(
 ):
     structure_family = entry.structure_family
     structure = entry.structure()
-    if structure_family != StructureFamily.awkward:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /awkward/buffers route.",
-        )
     with record_timing(request.state.metrics, "read"):
         # The plural vs. singular mismatch is due to the way query parameters
         # are given as ?form_key=A&form_key=B&form_key=C.
@@ -987,7 +997,7 @@ async def _awkward_buffers(
         > settings.response_bytesize_limit
     ):
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Use slicing ('?slice=...') to request smaller chunks."
@@ -1008,7 +1018,7 @@ async def _awkward_buffers(
                 filename=filename,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.get(
@@ -1018,7 +1028,9 @@ async def _awkward_buffers(
 )
 async def awkward_full(
     request: Request,
-    entry=SecureEntry(scopes=["read:data"]),
+    entry=SecureEntry(
+        scopes=["read:data"], structure_families={StructureFamily.awkward}
+    ),
     # slice=Depends(slice_),
     format: Optional[str] = None,
     filename: Optional[str] = None,
@@ -1029,11 +1041,6 @@ async def awkward_full(
     Fetch a slice of AwkwardArray data.
     """
     structure_family = entry.structure_family
-    if structure_family != StructureFamily.awkward:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cannot read {entry.structure_family} structure with /awkward/full route.",
-        )
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import awkward
@@ -1045,7 +1052,7 @@ async def awkward_full(
     array = awkward.from_buffers(*components)
     if array.nbytes > settings.response_bytesize_limit:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail=(
                 f"Response would exceed {settings.response_bytesize_limit}. "
                 "Use slicing ('?slice=...') to request smaller chunks."
@@ -1065,7 +1072,7 @@ async def awkward_full(
                 filename=filename,
             )
     except UnsupportedMediaTypes as err:
-        raise HTTPException(status_code=406, detail=err.args[0])
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
 @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
@@ -1077,11 +1084,54 @@ async def post_metadata(
     settings: BaseSettings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
-    if not getattr(entry, "writable", False):
+    for data_source in body.data_sources:
+        if data_source.assets:
+            raise HTTPException(
+                "Externally-managed assets cannot be registered "
+                "using POST /metadata/{path} Use POST /register/{path} instead."
+            )
+    if body.data_sources and not getattr(entry, "writable", False):
         raise HTTPException(
-            status_code=405, detail=f"Data cannot be written at the path {path}"
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail=f"Data cannot be written at the path {path}",
         )
+    return await _create_node(
+        request=request,
+        path=path,
+        body=body,
+        validation_registry=validation_registry,
+        settings=settings,
+        entry=entry,
+    )
 
+
+@router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse)
+async def post_register(
+    request: Request,
+    path: str,
+    body: schemas.PostMetadataRequest,
+    validation_registry=Depends(get_validation_registry),
+    settings: BaseSettings = Depends(get_settings),
+    entry=SecureEntry(scopes=["write:metadata", "create", "register"]),
+):
+    return await _create_node(
+        request=request,
+        path=path,
+        body=body,
+        validation_registry=validation_registry,
+        settings=settings,
+        entry=entry,
+    )
+
+
+async def _create_node(
+    request: Request,
+    path: str,
+    body: schemas.PostMetadataRequest,
+    validation_registry,
+    settings: BaseSettings,
+    entry,
+):
     metadata, structure_family, specs = (
         body.metadata,
         body.structure_family,
@@ -1108,7 +1158,8 @@ async def post_metadata(
         if spec.name not in validation_registry:
             if settings.reject_undeclared_specs:
                 raise HTTPException(
-                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Unrecognized spec: {spec.name}",
                 )
         else:
             validator = validation_registry(spec.name)
@@ -1116,7 +1167,7 @@ async def post_metadata(
                 result = validator(metadata, structure_family, structure, spec)
             except ValidationError as e:
                 raise HTTPException(
-                    status_code=400,
+                    status_code=HTTP_400_BAD_REQUEST,
                     detail=f"failed validation for spec {spec.name}:\n{e}",
                 )
             if result is not None:
@@ -1130,30 +1181,9 @@ async def post_metadata(
         specs=body.specs,
         data_sources=body.data_sources,
     )
-    links = {}
-    base_url = get_base_url(request)
-    path_parts = [segment for segment in path.split("/") if segment] + [key]
-    path_str = "/".join(path_parts)
-    links["self"] = f"{base_url}/metadata/{path_str}"
-    if body.structure_family in {StructureFamily.array, StructureFamily.sparse}:
-        block_template = ",".join(
-            f"{{{index}}}" for index in range(len(node.structure().shape))
-        )
-        links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
-        links["full"] = f"{base_url}/array/full/{path_str}"
-    elif body.structure_family == StructureFamily.table:
-        links[
-            "partition"
-        ] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
-        links["full"] = f"{base_url}/table/full/{path_str}"
-    elif body.structure_family == StructureFamily.container:
-        links["full"] = f"{base_url}/container/full/{path_str}"
-        links["search"] = f"{base_url}/search/{path_str}"
-    elif body.structure_family == StructureFamily.awkward:
-        links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
-        links["full"] = f"{base_url}/awkward/full/{path_str}"
-    else:
-        raise NotImplementedError(body.structure_family)
+    links = links_for_node(
+        structure_family, structure, get_base_url(request), path + f"/{key}"
+    )
     response_data = {
         "id": key,
         "links": links,
@@ -1162,6 +1192,20 @@ async def post_metadata(
     if metadata_modified:
         response_data["metadata"] = metadata
     return json_or_msgpack(request, response_data)
+
+
+@router.put("/data_source/{path:path}")
+async def put_data_source(
+    request: Request,
+    path: str,
+    data_source: int,
+    body: schemas.PutDataSourceRequest,
+    settings: BaseSettings = Depends(get_settings),
+    entry=SecureEntry(scopes=["write:metadata", "register"]),
+):
+    await entry.put_data_source(
+        data_source=body.data_source,
+    )
 
 
 @router.delete("/metadata/{path:path}")
@@ -1173,7 +1217,23 @@ async def delete(
         await entry.delete()
     else:
         raise HTTPException(
-            status_code=405, detail="This node does not support deletion."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not support deletion.",
+        )
+    return json_or_msgpack(request, None)
+
+
+@router.delete("/nodes/{path:path}")
+async def bulk_delete(
+    request: Request,
+    entry=SecureEntry(scopes=["write:data", "write:metadata"]),
+):
+    if hasattr(entry, "delete_tree"):
+        await entry.delete_tree()
+    else:
+        raise HTTPException(
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not support bulk deletion.",
         )
     return json_or_msgpack(request, None)
 
@@ -1181,13 +1241,17 @@ async def delete(
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     body = await request.body()
     if not hasattr(entry, "write"):
         raise HTTPException(
-            status_code=405, detail="This node cannot accept array data."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node cannot accept array data.",
         )
     media_type = request.headers["content-type"]
     if entry.structure_family == "array":
@@ -1207,13 +1271,17 @@ async def put_array_full(
 @router.put("/array/block/{path:path}")
 async def put_array_block(
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
     block=Depends(block),
 ):
     if not hasattr(entry, "write_block"):
         raise HTTPException(
-            status_code=405, detail="This node cannot accept array data."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node cannot accept array data.",
         )
     from tiled.adapters.array import slice_and_shape_from_block_and_chunks
 
@@ -1239,12 +1307,15 @@ async def put_array_block(
 @router.put("/node/full/{path:path}", deprecated=True)
 async def put_node_full(
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"], structure_families={StructureFamily.table}
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     if not hasattr(entry, "write"):
         raise HTTPException(
-            status_code=405, detail="This node does not support writing."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not support writing.",
         )
     body = await request.body()
     media_type = request.headers["content-type"]
@@ -1263,7 +1334,8 @@ async def put_table_partition(
 ):
     if not hasattr(entry, "write_partition"):
         raise HTTPException(
-            status_code=405, detail="This node does not supporting writing a partition."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not supporting writing a partition.",
         )
     body = await request.body()
     media_type = request.headers["content-type"]
@@ -1273,19 +1345,39 @@ async def put_table_partition(
     return json_or_msgpack(request, None)
 
 
-@router.put("/awkward/full/{path:path}")
-async def put_awkward_full(
+@router.patch("/table/partition/{path:path}")
+async def patch_table_partition(
+    partition: int,
     request: Request,
     entry=SecureEntry(scopes=["write:data"]),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
-    body = await request.body()
-    if entry.structure_family != StructureFamily.awkward:
+    if not hasattr(entry, "write_partition"):
         raise HTTPException(
-            status_code=404, detail="This route is not applicable to this node."
+            status_code=405, detail="This node does not supporting writing a partition."
         )
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    deserializer = deserialization_registry.dispatch(StructureFamily.table, media_type)
+    data = await ensure_awaitable(deserializer, body)
+    await ensure_awaitable(entry.append_partition, data, partition)
+    return json_or_msgpack(request, None)
+
+
+@router.put("/awkward/full/{path:path}")
+async def put_awkward_full(
+    request: Request,
+    entry=SecureEntry(
+        scopes=["write:data"], structure_families={StructureFamily.awkward}
+    ),
+    deserialization_registry=Depends(get_deserialization_registry),
+):
+    body = await request.body()
     if not hasattr(entry, "write"):
-        raise HTTPException(status_code=405, detail="This node cannot be written to.")
+        raise HTTPException(
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node cannot be written to.",
+        )
     media_type = request.headers["content-type"]
     deserializer = deserialization_registry.dispatch(
         StructureFamily.awkward, media_type
@@ -1306,7 +1398,8 @@ async def put_metadata(
 ):
     if not hasattr(entry, "update_metadata"):
         raise HTTPException(
-            status_code=405, detail="This node does not support update of metadata."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not support update of metadata.",
         )
 
     metadata, structure_family, structure, specs = (
@@ -1330,7 +1423,8 @@ async def put_metadata(
         if spec.name not in validation_registry:
             if settings.reject_undeclared_specs:
                 raise HTTPException(
-                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Unrecognized spec: {spec.name}",
                 )
         else:
             validator = validation_registry(spec.name)
@@ -1338,7 +1432,7 @@ async def put_metadata(
                 result = validator(metadata, structure_family, structure, spec)
             except ValidationError as e:
                 raise HTTPException(
-                    status_code=400,
+                    status_code=HTTP_400_BAD_REQUEST,
                     detail=f"failed validation for spec {spec.name}:\n{e}",
                 )
             if result is not None:
@@ -1365,7 +1459,8 @@ async def get_revisions(
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
-            status_code=405, detail="This node does not support revisions."
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node does not support revisions.",
         )
 
     base_url = get_base_url(request)
@@ -1389,7 +1484,7 @@ async def delete_revision(
 ):
     if not hasattr(entry, "revisions"):
         raise HTTPException(
-            status_code=405,
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node does not support a del request for revisions.",
         )
 
@@ -1407,7 +1502,7 @@ async def get_asset(
 ):
     if not settings.expose_raw_assets:
         raise HTTPException(
-            status_code=403,
+            status_code=HTTP_403_FORBIDDEN,
             detail=(
                 "This Tiled server is configured not to allow "
                 "downloading raw assets."
@@ -1415,20 +1510,20 @@ async def get_asset(
         )
     if not hasattr(entry, "asset_by_id"):
         raise HTTPException(
-            status_code=405,
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node does not support downloading assets.",
         )
 
     asset = await entry.asset_by_id(id)
     if asset is None:
         raise HTTPException(
-            status_code=404,
+            status_code=HTTP_404_NOT_FOUND,
             detail=f"This node exists but it does not have an Asset with id {id}",
         )
     if asset.is_directory:
         if relative_path is None:
             raise HTTPException(
-                status_code=400,
+                status_code=HTTP_400_BAD_REQUEST,
                 detail=(
                     "This asset is a directory. Must specify relative path, "
                     f"from manifest provided by /asset/manifest/...?id={id}"
@@ -1436,18 +1531,18 @@ async def get_asset(
             )
         if relative_path.is_absolute():
             raise HTTPException(
-                status_code=400,
+                status_code=HTTP_400_BAD_REQUEST,
                 detail="relative_path query parameter must be a *relative* path",
             )
     else:
         if relative_path is not None:
             raise HTTPException(
-                status_code=400,
+                status_code=HTTP_400_BAD_REQUEST,
                 detail="This asset is not a directory. The relative_path query parameter must not be set.",
             )
     if not asset.data_uri.startswith("file:"):
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail="Only download assets stored as file:// is currently supported.",
         )
     path = path_from_uri(asset.data_uri)
@@ -1469,7 +1564,7 @@ async def get_asset(
         full_path,
         stat_result=stat_result,
         method="GET",
-        status_code=200,
+        status_code=HTTP_200_OK,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -1483,7 +1578,7 @@ async def get_asset_manifest(
 ):
     if not settings.expose_raw_assets:
         raise HTTPException(
-            status_code=403,
+            status_code=HTTP_403_FORBIDDEN,
             detail=(
                 "This Tiled server is configured not to allow "
                 "downloading raw assets."
@@ -1491,24 +1586,24 @@ async def get_asset_manifest(
         )
     if not hasattr(entry, "asset_by_id"):
         raise HTTPException(
-            status_code=405,
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node does not support downloading assets.",
         )
 
     asset = await entry.asset_by_id(id)
     if asset is None:
         raise HTTPException(
-            status_code=404,
+            status_code=HTTP_404_NOT_FOUND,
             detail=f"This node exists but it does not have an Asset with id {id}",
         )
     if not asset.is_directory:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail="This asset is not a directory. There is no manifest.",
         )
     if not asset.data_uri.startswith("file:"):
         raise HTTPException(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             detail="Only download assets stored as file:// is currently supported.",
         )
     path = path_from_uri(asset.data_uri)

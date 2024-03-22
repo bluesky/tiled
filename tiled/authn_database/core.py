@@ -10,11 +10,9 @@ from sqlalchemy.sql import func
 from .base import Base
 from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
-# This is the alembic revision ID of the database revision
-# required by this version of Tiled.
-REQUIRED_REVISION = "769180ce732e"
-# This is list of all valid revisions (from current to oldest).
+# This is list of all valid alembic revisions (from current to oldest).
 ALL_REVISIONS = [
+    "13024b8a6b74",
     "769180ce732e",
     "c7bd2573716d",
     "4a9dfaba4a98",
@@ -22,6 +20,7 @@ ALL_REVISIONS = [
     "722ff4e4fcc7",
     "481830dd6c11",
 ]
+REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
 async def create_default_roles(db):
@@ -46,6 +45,7 @@ async def create_default_roles(db):
                     "read:metadata",
                     "read:data",
                     "create",
+                    "register",
                     "write:metadata",
                     "write:data",
                     "admin:apikeys",

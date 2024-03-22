@@ -5,6 +5,7 @@ import os
 import secrets
 import sys
 import urllib.parse
+from contextlib import asynccontextmanager
 from functools import lru_cache, partial
 from pathlib import Path
 from typing import List
@@ -12,13 +13,24 @@ from typing import List
 import anyio
 import packaging.version
 import yaml
+from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+)
 
 from ..authenticators import Mode
 from ..config import construct_build_app_kwargs
@@ -193,7 +205,14 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # If we reach here, the no configuration problems were found.
 
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        "Manage lifespan events for each event loop that the app runs in"
+        await startup_event()
+        yield
+        await shutdown_event()
+
+    app = FastAPI(lifespan=lifespan)
 
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
@@ -210,7 +229,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             try:
                 stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
             except PermissionError:
-                raise HTTPException(status_code=401)
+                raise HTTPException(status_code=HTTP_401_UNAUTHORIZED)
             except FileNotFoundError:
                 # This may be a URL that has meaning to the client-side application,
                 # such as /ui//metadata/a/b/c.
@@ -218,14 +237,14 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 if try_app:
                     response = await lookup_file("index.html", try_app=False)
                     return response
-                raise HTTPException(status_code=404)
+                raise HTTPException(status_code=HTTP_404_NOT_FOUND)
             except OSError:
                 raise
             return FileResponse(
                 full_path,
                 stat_result=stat_result,
                 method="GET",
-                status_code=200,
+                status_code=HTTP_200_OK,
             )
 
         app.mount(
@@ -276,7 +295,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     @app.exception_handler(Conflicts)
     async def conflicts_exception_handler(request: Request, exc: Conflicts):
         message = exc.args[0]
-        return JSONResponse(status_code=409, content={"detail": message})
+        return JSONResponse(status_code=HTTP_409_CONFLICT, content={"detail": message})
 
     @app.exception_handler(UnsupportedQueryType)
     async def unsupported_query_type_exception_handler(
@@ -284,7 +303,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     ):
         query_type = exc.args[0]
         return JSONResponse(
-            status_code=400,
+            status_code=HTTP_400_BAD_REQUEST,
             content={
                 "detail": f"The query type {query_type!r} is not supported on this node."
             },
@@ -298,7 +317,24 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # If we restrict the allowed_headers in future, remember to include
+        # exemptions for these, related to asgi_correlation_id.
+        # allow_headers=["X-Requested-With", "X-Tiled-Request-ID"],
+        expose_headers=["X-Tiled-Request-ID"],
     )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        return await http_exception_handler(
+            request,
+            HTTPException(
+                HTTP_500_INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                headers={"X-Tiled-Request-ID": correlation_id.get() or ""},
+            ),
+        )
 
     app.include_router(router, prefix="/api/v1")
 
@@ -430,6 +466,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             settings.database_pool_pre_ping = database["pool_pre_ping"]
         if database.get("max_overflow"):
             settings.database_max_overflow = database["max_overflow"]
+        if database.get("init_if_not_exists"):
+            settings.database_init_if_not_exists = database["init_if_not_exists"]
         object_cache_available_bytes = server_settings.get("object_cache", {}).get(
             "available_bytes"
         )
@@ -444,8 +482,10 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             settings.database_uri = settings.database_uri or "sqlite+aiosqlite://"
         return settings
 
-    @app.on_event("startup")
     async def startup_event():
+        from .. import __version__
+
+        logger.info(f"Tiled version {__version__}")
         # Validate the single-user API key.
         settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
@@ -559,8 +599,28 @@ confusing behavior due to ambiguous encodings.
                 try:
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
-                    print(
-                        f"""
+                    if settings.database_init_if_not_exists:
+                        # The alembic stamping can only be does synchronously.
+                        # The cleanest option available is to start a subprocess
+                        # because SQLite is allergic to threads.
+                        import subprocess
+
+                        # TODO Check if catalog exists.
+                        subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "tiled",
+                                "admin",
+                                "initialize-database",
+                                str(engine.url),
+                            ],
+                            capture_output=True,
+                            check=True,
+                        )
+                    else:
+                        print(
+                            f"""
 
 No database found at {redacted_url}
 
@@ -568,9 +628,9 @@ To create one, run:
 
     tiled admin init-database {redacted_url}
 """,
-                        file=sys.stderr,
-                    )
-                    raise
+                            file=sys.stderr,
+                        )
+                        raise
                 except DatabaseUpgradeNeeded as err:
                     print(
                         f"""
@@ -627,7 +687,6 @@ Back up the database, and then run:
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
             )
 
-    @app.on_event("shutdown")
     async def shutdown_event():
         # Run shutdown tasks collected from trees (adapters).
         for task in tasks.get("shutdown", []):
@@ -656,7 +715,8 @@ Back up the database, and then run:
         ):
             if not csrf_cookie:
                 return Response(
-                    status_code=403, content="Expected tiled_csrf_token cookie"
+                    status_code=HTTP_403_FORBIDDEN,
+                    content="Expected tiled_csrf_token cookie",
                 )
             # Get the token from the Header or (if not there) the query parameter.
             csrf_token = request.headers.get(CSRF_HEADER_NAME)
@@ -665,13 +725,14 @@ Back up the database, and then run:
                 csrf_token = parsed_query.get(CSRF_QUERY_PARAMETER)
             if not csrf_token:
                 return Response(
-                    status_code=403,
+                    status_code=HTTP_403_FORBIDDEN,
                     content=f"Expected {CSRF_QUERY_PARAMETER} query parameter or {CSRF_HEADER_NAME} header",
                 )
             # Securely compare the token with the cookie.
             if not secrets.compare_digest(csrf_token, csrf_cookie):
                 return Response(
-                    status_code=403, content="Double-submit CSRF tokens do not match"
+                    status_code=HTTP_403_FORBIDDEN,
+                    content="Double-submit CSRF tokens do not match",
                 )
 
         response = await call_next(request)
@@ -694,7 +755,7 @@ Back up the database, and then run:
                 parsed_version = packaging.version.parse(raw_version)
             except Exception:
                 return JSONResponse(
-                    status_code=400,
+                    status_code=HTTP_400_BAD_REQUEST,
                     content={
                         "detail": (
                             f"Python Tiled client is version is reported as {raw_version}. "
@@ -705,7 +766,7 @@ Back up the database, and then run:
             else:
                 if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
                     return JSONResponse(
-                        status_code=400,
+                        status_code=HTTP_400_BAD_REQUEST,
                         content={
                             "detail": (
                                 f"Python Tiled client reports version {parsed_version}. "
@@ -826,15 +887,26 @@ Back up the database, and then run:
             try:
                 response = await call_next(request)
             except Exception:
-                # Make a placeholder to feed to capture_request_metrics.
-                # The actual error response will be created by FastAPI/Starlette
-                # further up the call stack, where this exception will propagate.
-                response = Response(status_code=500)
+                # Make an ephemeral response solely for 'capture_request_metrics'.
+                # It will only be used in the 'finally' clean-up block.
+                only_for_metrics = Response(status_code=HTTP_500_INTERNAL_SERVER_ERROR)
+                response = only_for_metrics
+                # Now re-raise the exception so that the server can generate and
+                # send an appropriate response to the client.
                 raise
             finally:
                 response.__class__ = PatchedStreamingResponse  # tolerate memoryview
                 metrics.capture_request_metrics(request, response)
+
+            # This is a *real* response (i.e., not the 'only_for_metrics' response).
+            # An exception above would have triggered an early exit.
             return response
+
+    app.add_middleware(
+        CorrelationIdMiddleware,
+        header_name="X-Tiled-Request-ID",
+        generator=lambda: secrets.token_hex(8),
+    )
 
     return app
 

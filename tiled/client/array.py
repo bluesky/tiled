@@ -24,7 +24,7 @@ class _DaskArrayClient(BaseClient):
 
     @property
     def size(self):
-        return numpy.product(self.structure().shape)
+        return numpy.prod(self.structure().shape)
 
     @property
     def dtype(self):
@@ -33,10 +33,8 @@ class _DaskArrayClient(BaseClient):
     @property
     def nbytes(self):
         structure = self.structure()
-        return (
-            numpy.product(structure.shape)
-            * structure.data_type.to_numpy_dtype().itemsize
-        )
+        itemsize = structure.data_type.to_numpy_dtype().itemsize
+        return numpy.prod(structure.shape) * itemsize
 
     @property
     def chunks(self):

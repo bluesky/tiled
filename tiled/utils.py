@@ -3,17 +3,20 @@ import builtins
 import collections.abc
 import contextlib
 import enum
+import functools
 import importlib
 import importlib.util
 import inspect
 import operator
 import os
 import platform
+import re
 import sys
 import threading
+import warnings
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import anyio
 
@@ -660,10 +663,7 @@ async def ensure_awaitable(func, *args, **kwargs):
     else:
         # run_sync() does not apply **kwargs to func
         # https://github.com/agronholm/anyio/issues/414
-        def func_with_kwargs(*args):
-            return func(*args, **kwargs)
-
-        return await anyio.to_thread.run_sync(func_with_kwargs, *args)
+        return await anyio.to_thread.run_sync(functools.partial(func, **kwargs), *args)
 
 
 def path_from_uri(uri):
@@ -686,3 +686,61 @@ def path_from_uri(uri):
     else:
         path = Path(parsed.path)
     return path
+
+
+SCHEME_PATTERN = re.compile(r"^[a-z0-9+]+:\/\/.*$")
+
+
+def ensure_uri(uri_or_path):
+    "Accept a URI or file path (Windows- or POSIX-style) and return a URI."
+    if not SCHEME_PATTERN.match(str(uri_or_path)):
+        # Interpret this as a filepath.
+        path = uri_or_path
+        uri_str = urlunparse(
+            ("file", "localhost", str(Path(path).absolute()), "", "", None)
+        )
+    else:
+        # Interpret this as a URI.
+        uri_str = uri_or_path
+        parsed = urlparse(uri_str)
+        if parsed.netloc == "":
+            mutable = list(parsed)
+            mutable[1] = "localhost"
+            uri_str = urlunparse(mutable)
+    return str(uri_str)
+
+
+class catch_warning_msg(warnings.catch_warnings):
+    """Backward compatible version of catch_warnings for python <3.11.
+
+    Allows regex matching of warning message, as in filterwarnings().
+    Note that this context manager is not thread-safe.
+    https://docs.python.org/3.12/library/warnings.html#warnings.catch_warnings
+    """
+
+    def __init__(
+        self,
+        *,
+        action="",
+        message="",
+        category=Warning,
+        module="",
+        lineno=0,
+        append=False,
+        record=False,
+    ):
+        super().__init__(record=record)
+        self.apply_filter = functools.partial(
+            warnings.filterwarnings,
+            action,
+            message=message,
+            category=category,
+            module=module,
+            lineno=lineno,
+            append=append,
+        )
+
+    def __enter__(self):
+        super().__enter__()
+        self.apply_filter()
+        return self

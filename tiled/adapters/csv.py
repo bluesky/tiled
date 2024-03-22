@@ -1,7 +1,13 @@
+from pathlib import Path
+
 import dask.dataframe
 
 from ..server.object_cache import NO_CACHE, get_object_cache
-from ..utils import path_from_uri
+from ..structures.core import StructureFamily
+from ..structures.data_source import Asset, DataSource, Management
+from ..structures.table import TableStructure
+from ..utils import ensure_uri, path_from_uri
+from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 
 
@@ -41,10 +47,131 @@ def read_csv(
     )
 
 
-read_csv.__doc__ = (
-    """
+read_csv.__doc__ = """
 This wraps dask.dataframe.read_csv. Original docstring:
 
-"""
-    + dask.dataframe.read_csv.__doc__
+""" + (
+    dask.dataframe.read_csv.__doc__ or ""
 )
+
+
+class CSVAdapter:
+    structure_family = StructureFamily.table
+
+    def __init__(
+        self,
+        data_uris,
+        structure=None,
+        metadata=None,
+        specs=None,
+        access_policy=None,
+    ):
+        # TODO Store data_uris instead and generalize to non-file schemes.
+        self._partition_paths = [path_from_uri(uri) for uri in data_uris]
+        self._metadata = metadata or {}
+        if structure is None:
+            table = dask.dataframe.read_csv(self._partition_paths)
+            structure = TableStructure.from_dask_dataframe(table)
+        self._structure = structure
+        self.specs = list(specs or [])
+        self.access_policy = access_policy
+
+    def metadata(self):
+        return self._metadata
+
+    @property
+    def dataframe_adapter(self):
+        partitions = []
+        for path in self._partition_paths:
+            if not Path(path).exists():
+                partition = None
+            else:
+                partition = dask.dataframe.read_csv(path)
+            partitions.append(partition)
+        return DataFrameAdapter(partitions, self._structure)
+
+    @classmethod
+    def init_storage(cls, data_uri, structure):
+        from ..server.schemas import Asset
+
+        directory = path_from_uri(data_uri)
+        directory.mkdir(parents=True, exist_ok=True)
+        assets = [
+            Asset(
+                data_uri=f"{data_uri}/partition-{i}.csv",
+                is_directory=False,
+                parameter="data_uris",
+                num=i,
+            )
+            for i in range(structure.npartitions)
+        ]
+        return assets
+
+    def append_partition(self, data, partition):
+        uri = self._partition_paths[partition]
+        data.to_csv(uri, index=False, mode="a", header=False)
+
+    def write_partition(self, data, partition):
+        uri = self._partition_paths[partition]
+        data.to_csv(uri, index=False)
+
+    def write(self, data):
+        if self.structure().npartitions != 1:
+            raise NotImplementedError
+        uri = self._partition_paths[0]
+        data.to_csv(uri, index=False)
+
+    def read(self, *args, **kwargs):
+        return self.dataframe_adapter.read(*args, **kwargs)
+
+    def read_partition(self, *args, **kwargs):
+        return self.dataframe_adapter.read_partition(*args, **kwargs)
+
+    def structure(self):
+        return self._structure
+
+    def get(self, key):
+        if key not in self.structure().columns:
+            return None
+        return ArrayAdapter.from_array(self.read([key])[key].values)
+
+    def generate_data_sources(self, mimetype, dict_or_none, item, is_directory):
+        return [
+            DataSource(
+                structure_family=self.dataframe_adapter.structure_family,
+                mimetype=mimetype,
+                structure=dict_or_none(self.dataframe_adapter.structure()),
+                parameters={},
+                management=Management.external,
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(item),
+                        is_directory=is_directory,
+                        parameter="data_uris",  # <-- PLURAL!
+                        num=0,  # <-- denoting that the Adapter expects a list, and this is the first element
+                    )
+                ],
+            )
+        ]
+
+    @classmethod
+    def from_single_file(
+        cls, data_uri, structure=None, metadata=None, specs=None, access_policy=None
+    ):
+        return cls(
+            [data_uri],
+            structure=structure,
+            metadata=metadata,
+            specs=specs,
+            access_policy=access_policy,
+        )
+
+    def __getitem__(self, key):
+        # Must compute to determine shape.
+        return ArrayAdapter.from_array(self.read([key])[key].values)
+
+    def items(self):
+        yield from (
+            (key, ArrayAdapter.from_array(self.read([key])[key].values))
+            for key in self._structure.columns
+        )

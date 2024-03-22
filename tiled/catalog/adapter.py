@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import cast
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
     Comparison,
@@ -35,15 +36,24 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..mimetypes import (
+    AWKWARD_BUFFERS_MIMETYPE,
+    DEFAULT_ADAPTERS_BY_MIMETYPE,
+    PARQUET_MIMETYPE,
+    SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    ZARR_MIMETYPE,
+)
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
+    SCHEME_PATTERN,
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
     UnsupportedQueryType,
     ensure_awaitable,
+    ensure_uri,
     import_object,
     path_from_uri,
     safe_json_dump,
@@ -51,14 +61,7 @@ from ..utils import (
 from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
-from .mimetypes import (
-    AWKWARD_BUFFERS_MIMETYPE,
-    DEFAULT_ADAPTERS_BY_MIMETYPE,
-    PARQUET_MIMETYPE,
-    SPARSE_BLOCKS_PARQUET_MIMETYPE,
-    ZARR_MIMETYPE,
-)
-from .utils import SCHEME_PATTERN, compute_structure_id, ensure_uri
+from .utils import compute_structure_id
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -71,18 +74,21 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-DEFAULT_INIT_STORAGE = OneShotCachedMap(
+INIT_STORAGE = OneShotCachedMap(
     {
-        StructureFamily.array: lambda: importlib.import_module(
+        ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
         ).ZarrArrayAdapter.init_storage,
-        StructureFamily.awkward: lambda: importlib.import_module(
+        AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.init_storage,
-        StructureFamily.table: lambda: importlib.import_module(
+        PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
         ).ParquetDatasetAdapter.init_storage,
-        StructureFamily.sparse: lambda: importlib.import_module(
+        "text/csv": lambda: importlib.import_module(
+            "...adapters.csv", __name__
+        ).CSVAdapter.init_storage,
+        SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
         ).SparseBlocksParquetAdapter.init_storage,
     }
@@ -320,7 +326,7 @@ class CatalogNodeAdapter:
 
     @property
     def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in self.node.data_sources or []]
+        return [DataSource.from_orm(ds) for ds in (self.node.data_sources or [])]
 
     async def asset_by_id(self, asset_id):
         statement = (
@@ -411,62 +417,54 @@ class CatalogNodeAdapter:
         )
 
     async def get_adapter(self):
-        num_data_sources = len(self.data_sources)
-        if num_data_sources > 1:
-            raise NotImplementedError
-        if num_data_sources == 1:
-            (data_source,) = self.data_sources
-            try:
-                adapter_factory = self.context.adapters_by_mimetype[
-                    data_source.mimetype
-                ]
-            except KeyError:
-                raise RuntimeError(
-                    f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
-                )
-            parameters = collections.defaultdict(list)
-            for asset in data_source.assets:
-                if asset.parameter is None:
-                    continue
-                scheme = urlparse(asset.data_uri).scheme
-                if scheme != "file":
-                    raise NotImplementedError(
-                        f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
-                    )
-                if scheme == "file":
-                    # Protect against misbehaving clients reading from unintended
-                    # parts of the filesystem.
-                    asset_path = path_from_uri(asset.data_uri)
-                    for readable_storage in self.context.readable_storage:
-                        if Path(
-                            os.path.commonpath(
-                                [path_from_uri(readable_storage), asset_path]
-                            )
-                        ) == path_from_uri(readable_storage):
-                            break
-                    else:
-                        raise RuntimeError(
-                            f"Refusing to serve {asset.data_uri} because it is outside "
-                            "the readable storage area for this server."
-                        )
-                if asset.num is None:
-                    parameters[asset.parameter] = asset.data_uri
-                else:
-                    parameters[asset.parameter].append(asset.data_uri)
-            adapter_kwargs = dict(parameters)
-            adapter_kwargs.update(data_source.parameters)
-            adapter_kwargs["specs"] = self.node.specs
-            adapter_kwargs["metadata"] = self.node.metadata_
-            adapter_kwargs["structure"] = data_source.structure
-            adapter_kwargs["access_policy"] = self.access_policy
-            adapter = await anyio.to_thread.run_sync(
-                partial(adapter_factory, **adapter_kwargs)
+        (data_source,) = self.data_sources
+        try:
+            adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
+        except KeyError:
+            raise RuntimeError(
+                f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
-            for query in self.queries:
-                adapter = adapter.search(query)
-            return adapter
-        else:  # num_data_sources == 0
-            assert False
+        parameters = collections.defaultdict(list)
+        for asset in data_source.assets:
+            if asset.parameter is None:
+                continue
+            scheme = urlparse(asset.data_uri).scheme
+            if scheme != "file":
+                raise NotImplementedError(
+                    f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
+                )
+            if scheme == "file":
+                # Protect against misbehaving clients reading from unintended
+                # parts of the filesystem.
+                asset_path = path_from_uri(asset.data_uri)
+                for readable_storage in self.context.readable_storage:
+                    if Path(
+                        os.path.commonpath(
+                            [path_from_uri(readable_storage), asset_path]
+                        )
+                    ) == path_from_uri(readable_storage):
+                        break
+                else:
+                    raise RuntimeError(
+                        f"Refusing to serve {asset.data_uri} because it is outside "
+                        "the readable storage area for this server."
+                    )
+            if asset.num is None:
+                parameters[asset.parameter] = asset.data_uri
+            else:
+                parameters[asset.parameter].append(asset.data_uri)
+        adapter_kwargs = dict(parameters)
+        adapter_kwargs.update(data_source.parameters)
+        adapter_kwargs["specs"] = self.node.specs
+        adapter_kwargs["metadata"] = self.node.metadata_
+        adapter_kwargs["structure"] = data_source.structure
+        adapter_kwargs["access_policy"] = self.access_policy
+        adapter = await anyio.to_thread.run_sync(
+            partial(adapter_factory, **adapter_kwargs)
+        )
+        for query in self.queries:
+            adapter = adapter.search(query)
+        return adapter
 
     def new_variation(
         self,
@@ -569,6 +567,15 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
     ):
+        # The only way to do "insert if does not exist" i.e. ON CONFLICT
+        # is to invoke dialect-specific insert.
+        if self.context.engine.dialect.name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert
+        elif self.context.engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
+        else:
+            assert False  # future-proofing
+
         key = key or self.context.key_maker()
         data_sources = data_sources or []
         node = orm.Node(
@@ -596,16 +603,36 @@ class CatalogNodeAdapter:
                 if data_source.management != Management.external:
                     if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
-                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[structure_family]
+                    if data_source.mimetype is None:
+                        data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
+                            data_source.structure_family
+                        ]
                     data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    init_storage = DEFAULT_INIT_STORAGE[structure_family]
+                    if data_source.mimetype not in INIT_STORAGE:
+                        raise HTTPException(
+                            status_code=415,
+                            detail=(
+                                f"The given data source mimetype, {data_source.mimetype}, "
+                                "is not one that the Tiled server knows how to write."
+                            ),
+                        )
+                    init_storage = INIT_STORAGE[data_source.mimetype]
                     assets = await ensure_awaitable(
                         init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
+                else:
+                    if data_source.mimetype not in self.context.adapters_by_mimetype:
+                        raise HTTPException(
+                            status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                            detail=(
+                                f"The given data source mimetype, {data_source.mimetype}, "
+                                "is not one that the Tiled server knows how to read."
+                            ),
+                        )
                 if data_source.structure is None:
                     structure_id = None
                 else:
@@ -615,14 +642,6 @@ class CatalogNodeAdapter:
                         structure_family, data_source.structure
                     )
                     structure_id = compute_structure_id(structure)
-                    # The only way to do "insert if does not exist" i.e. ON CONFLICT
-                    # is to invoke dialect-specific insert.
-                    if self.context.engine.dialect.name == "sqlite":
-                        from sqlalchemy.dialects.sqlite import insert
-                    elif self.context.engine.dialect.name == "postgresql":
-                        from sqlalchemy.dialects.postgresql import insert
-                    else:
-                        assert False  # future-proofing
                     statement = (
                         insert(orm.Structure).values(
                             id=structure_id,
@@ -637,22 +656,32 @@ class CatalogNodeAdapter:
                     parameters=data_source.parameters,
                     structure_id=structure_id,
                 )
+                db.add(data_source_orm)
                 node.data_sources.append(data_source_orm)
-                # await db.flush(data_source_orm)
+                await db.flush()  # Get data_source_orm.id.
                 for asset in data_source.assets:
-                    asset_orm = orm.Asset(
-                        data_uri=asset.data_uri,
-                        is_directory=asset.is_directory,
+                    # Find an asset_id if it exists, otherwise create a new one
+                    statement = select(orm.Asset.id).where(
+                        orm.Asset.data_uri == asset.data_uri
                     )
+                    result = await db.execute(statement)
+                    if row := result.fetchone():
+                        (asset_id,) = row
+                    else:
+                        statement = insert(orm.Asset).values(
+                            data_uri=asset.data_uri,
+                            is_directory=asset.is_directory,
+                        )
+                        result = await db.execute(statement)
+                        (asset_id,) = result.inserted_primary_key
                     assoc_orm = orm.DataSourceAssetAssociation(
-                        asset=asset_orm,
+                        asset_id=asset_id,
+                        data_source_id=data_source_orm.id,
                         parameter=asset.parameter,
                         num=asset.num,
                     )
-                    data_source_orm.asset_associations.append(assoc_orm)
-            db.add(node)
+                    db.add(assoc_orm)
             await db.commit()
-            await db.refresh(node)
             # Load with DataSources each DataSource's Structure.
             refreshed_node = (
                 await db.execute(
@@ -661,13 +690,55 @@ class CatalogNodeAdapter:
                     .options(
                         selectinload(orm.Node.data_sources).selectinload(
                             orm.DataSource.structure
-                        )
+                        ),
                     )
                 )
             ).scalar()
             return key, type(self)(
                 self.context, refreshed_node, access_policy=self.access_policy
             )
+
+    async def put_data_source(self, data_source):
+        # Obtain and hash the canonical (RFC 8785) representation of
+        # the JSON structure.
+        structure = _prepare_structure(
+            data_source.structure_family, data_source.structure
+        )
+        structure_id = compute_structure_id(structure)
+        # The only way to do "insert if does not exist" i.e. ON CONFLICT
+        # is to invoke dialect-specific insert.
+        if self.context.engine.dialect.name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert
+        elif self.context.engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
+        else:
+            assert False  # future-proofing
+        statement = (
+            insert(orm.Structure).values(
+                id=structure_id,
+                structure=structure,
+            )
+        ).on_conflict_do_nothing(index_elements=["id"])
+        async with self.context.session() as db:
+            await db.execute(statement)
+            values = dict(
+                structure_family=data_source.structure_family,
+                mimetype=data_source.mimetype,
+                management=data_source.management,
+                parameters=data_source.parameters,
+                structure_id=structure_id,
+            )
+            result = await db.execute(
+                update(orm.DataSource)
+                .where(orm.DataSource.id == data_source.id)
+                .values(**values)
+            )
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No data_source {data_source.id} on this node.",
+                )
+            await db.commit()
 
     # async def patch_node(datasources=None):
     #     ...
@@ -716,7 +787,7 @@ class CatalogNodeAdapter:
             if result.rowcount == 0:
                 # TODO Abstract this from FastAPI?
                 raise HTTPException(
-                    status_code=404,
+                    status_code=HTTP_404_NOT_FOUND,
                     detail=f"No node {self.node.id}",
                 )
             assert (
@@ -793,7 +864,7 @@ class CatalogNodeAdapter:
             if result.rowcount == 0:
                 # TODO Abstract this from FastAPI?
                 raise HTTPException(
-                    status_code=404,
+                    status_code=HTTP_404_NOT_FOUND,
                     detail=f"No revision {number} for node {self.node.id}",
                 )
             assert (
@@ -942,6 +1013,9 @@ class CatalogSparseAdapter(CatalogArrayAdapter):
 
 
 class CatalogTableAdapter(CatalogNodeAdapter):
+    async def get(self, *args, **kwargs):
+        return (await self.get_adapter()).get(*args, **kwargs)
+
     async def read(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
@@ -956,6 +1030,11 @@ class CatalogTableAdapter(CatalogNodeAdapter):
     async def write_partition(self, *args, **kwargs):
         return await ensure_awaitable(
             (await self.get_adapter()).write_partition, *args, **kwargs
+        )
+
+    async def append_partition(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).append_partition, *args, **kwargs
         )
 
 
@@ -1307,9 +1386,9 @@ def specs_array_to_json(specs):
 
 
 STRUCTURES = {
-    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
-    StructureFamily.table: CatalogTableAdapter,
+    StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
+    StructureFamily.table: CatalogTableAdapter,
 }

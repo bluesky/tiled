@@ -11,6 +11,7 @@ import pydantic.errors
 import pydantic.generics
 
 from ..structures.core import StructureFamily
+from ..structures.data_source import Management
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
@@ -111,13 +112,6 @@ class Asset(pydantic.BaseModel):
         )
 
 
-class Management(str, enum.Enum):
-    external = "external"
-    immutable = "immutable"
-    locked = "locked"
-    writable = "writable"
-
-
 class Revision(pydantic.BaseModel):
     revision_number: int
     metadata: dict
@@ -143,9 +137,9 @@ class DataSource(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            TableStructure,
             NodeStructure,
             SparseStructure,
+            TableStructure,
         ]
     ] = None
     mimetype: Optional[str] = None
@@ -175,9 +169,9 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            TableStructure,
             NodeStructure,
             SparseStructure,
+            TableStructure,
         ]
     ]
     sorting: Optional[List[SortingItem]]
@@ -224,11 +218,11 @@ class SparseLinks(pydantic.BaseModel):
 
 
 resource_links_type_by_structure_family = {
-    StructureFamily.container: ContainerLinks,
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
-    StructureFamily.table: DataFrameLinks,
+    StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
+    StructureFamily.table: DataFrameLinks,
 }
 
 
@@ -405,6 +399,10 @@ class PostMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise pydantic.errors.ListUniqueItemsError()
         return v
+
+
+class PutDataSourceRequest(pydantic.BaseModel):
+    data_source: DataSource
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):

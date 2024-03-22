@@ -7,10 +7,10 @@ import tifffile as tf
 from ..adapters.mapping import MapAdapter
 from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
 from ..catalog import in_memory
-from ..catalog.register import TIFF_SEQUENCE_EMPTY_NAME_ROOT, register
-from ..catalog.utils import ensure_uri
 from ..client import Context, from_context
+from ..client.register import TIFF_SEQUENCE_EMPTY_NAME_ROOT, register
 from ..server.app import build_app
+from ..utils import ensure_uri
 
 COLOR_SHAPE = (11, 17, 3)
 
@@ -80,8 +80,8 @@ async def test_tiff_sequence_order(tmpdir):
 
     adapter = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(adapter)) as context:
-        await register(adapter, tmpdir)
         client = from_context(context)
+        await register(client, tmpdir)
         for i in range(num_files):
             numpy.testing.assert_equal(client["image"][i], data * i)
 
@@ -128,8 +128,8 @@ a,b,c
             )
     adapter = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(adapter)) as context:
-        await register(adapter, tmpdir)
         client = from_context(context)
+        await register(client, tmpdir)
         # Single image is its own node.
         assert client["single_image"].shape == (3, 5)
         # Each sequence is grouped into a node.

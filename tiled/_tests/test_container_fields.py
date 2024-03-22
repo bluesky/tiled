@@ -1,5 +1,3 @@
-import io
-
 import anyio
 import h5py
 import pandas
@@ -7,8 +5,8 @@ import pytest
 import zarr
 
 from ..catalog import in_memory
-from ..catalog.register import register
 from ..client import Context, from_context, record_history
+from ..client.register import register
 from ..examples.generate_files import generate_files
 from ..server.app import build_app
 
@@ -20,7 +18,7 @@ def client(request: pytest.FixtureRequest):
     catalog = in_memory(readable_storage=[data_dir])
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        anyio.run(register, catalog, data_dir)
+        anyio.run(register, client, data_dir)
         yield client
 
 
@@ -34,10 +32,9 @@ def example_data_dir(tmpdir_factory):
 
 @pytest.mark.parametrize("fields", (None, (), ("a", "b")))
 @pytest.mark.parametrize("client", ("example_data_dir",), indirect=True)
-def test_directory_fields(client, fields):
+def test_directory_fields(client, fields, buffer):
     "Export selected fields (files) from a directory via /container/full."
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
@@ -58,11 +55,10 @@ def excel_data_dir(tmpdir_factory):
 
 @pytest.mark.parametrize("fields", (None, (), ("Sheet 1", "Sheet 10")))
 @pytest.mark.parametrize("client", ("excel_data_dir",), indirect=True)
-def test_excel_fields(client, fields):
+def test_excel_fields(client, fields, buffer):
     "Export selected fields (sheets) from an Excel file via /container/full."
     client = client["spreadsheet"]
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
         # TODO: Enable container to export XLSX if all nodes are tables?
@@ -82,19 +78,18 @@ def mark_xfail(value, unsupported="UNSPECIFIED ADAPTER"):
 def zarr_data_dir(tmpdir_factory):
     "Generate a temporary Zarr group file with multiple datasets."
     tmpdir = tmpdir_factory.mktemp("zarr_files")
-    root = zarr.open(str(tmpdir / "zarr_group.zarr"), "w")
-    for i, name in enumerate("abcde"):
-        root.create_dataset(name, data=range(i, i + 3))
+    with zarr.open(str(tmpdir / "zarr_group.zarr"), "w") as root:
+        for i, name in enumerate("abcde"):
+            root.create_dataset(name, data=range(i, i + 3))
     return tmpdir
 
 
 @pytest.mark.parametrize("fields", (None, (), mark_xfail(("b", "d"), "Zarr")))
 @pytest.mark.parametrize("client", ("zarr_data_dir",), indirect=True)
-def test_zarr_group_fields(client, fields):
+def test_zarr_group_fields(client, fields, buffer):
     "Export selected fields (Datasets) from a Zarr group via /container/full."
     client = client["zarr_group"]
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
@@ -117,11 +112,10 @@ def hdf5_data_dir(tmpdir_factory):
     "fields", (None, (), mark_xfail(("x",), "HDF5"), mark_xfail(("g",), "HDF5"))
 )
 @pytest.mark.parametrize("client", ("hdf5_data_dir",), indirect=True)
-def test_hdf5_fields(client, fields):
+def test_hdf5_fields(client, fields, buffer):
     "Export selected fields (array/group) from a HDF5 file via /container/full."
     client = client["hdf5_example"]
     url_path = client.item["links"]["full"]
-    buffer = io.BytesIO()
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
 
@@ -138,7 +132,7 @@ def assert_single_request_to_url(history, url_path):
 
 def assert_requested_fields_fetched(buffer, fields, client):
     "Only the requested fields were fetched."
-    file = h5py.File(buffer)
-    actual_fields = set(file.keys())
+    with h5py.File(buffer) as file:
+        actual_fields = set(file.keys())
     expected = set(fields or client.keys())  # By default all fields were fetched
     assert actual_fields == expected

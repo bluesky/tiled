@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ..catalog.register import DEFAULT_MIMETYPES_BY_FILE_EXT, resolve_mimetype
+from ..client.register import DEFAULT_MIMETYPES_BY_FILE_EXT, resolve_mimetype
 
 
 def test_resolve_mimetype():

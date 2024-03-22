@@ -291,7 +291,6 @@ class DataSource(Timestamped, Base):
     node_id = Column(
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
     )
-    structure_family = Column(Enum(StructureFamily), nullable=False)
     structure_id = Column(
         Unicode(32), ForeignKey("structures.id", ondelete="CASCADE"), nullable=True
     )
@@ -301,6 +300,7 @@ class DataSource(Timestamped, Base):
     parameters = Column(JSONVariant, nullable=True)
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
+    structure_family = Column(Enum(StructureFamily), nullable=False)
 
     # many-to-one relationship to Structure
     structure: Mapped["Structure"] = relationship(

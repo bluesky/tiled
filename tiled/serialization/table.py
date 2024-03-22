@@ -43,6 +43,13 @@ def serialize_csv(df, metadata, preserve_index=False):
     return file.getvalue().encode()
 
 
+@deserialization_registry.register(StructureFamily.table, "text/csv")
+def deserialize_csv(buffer):
+    import pandas
+
+    return pandas.read_csv(io.BytesIO(buffer), header=None)
+
+
 serialization_registry.register(StructureFamily.table, "text/csv", serialize_csv)
 serialization_registry.register(
     StructureFamily.table, "text/x-comma-separated-values", serialize_csv
