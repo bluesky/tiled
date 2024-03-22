@@ -447,6 +447,11 @@ client or pass the optional parameter `include_data_sources=True` to
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
+        Returns
+        -------
+        patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902).
+
         See Also
         --------
         patch_metadata
