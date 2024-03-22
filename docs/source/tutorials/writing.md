@@ -148,4 +148,3 @@ restarts and can be used by multiple servers running in parallel, in a scaled
 deployment.
 
 [SQLite]: https://www.sqlite.org/index.html
-
