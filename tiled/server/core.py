@@ -36,8 +36,6 @@ from ..utils import (
 from . import schemas
 from .etag import tokenize
 from .links import links_for_node
-from .pydantic_array import ArrayStructure
-from .pydantic_sparse import SparseStructure
 from .utils import record_timing
 
 del queries
@@ -264,10 +262,6 @@ DEFAULT_MEDIA_TYPES = {
     StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
-MAPPING = {
-    StructureFamily.array: ArrayStructure,
-    StructureFamily.sparse: SparseStructure,
-}
 
 
 async def construct_revisions_response(
@@ -439,7 +433,6 @@ async def construct_resource(
         attributes["specs"] = specs
     if (entry is not None) and entry.structure_family == StructureFamily.container:
         attributes["structure_family"] = StructureFamily.container
-        print("WHAT THE HELLL IS STRUCTURE IN IF", schemas.EntryFields.structure)
 
         if schemas.EntryFields.structure in fields:
             if (
@@ -483,8 +476,6 @@ async def construct_resource(
             else:
                 count = await len_or_approx(entry)
                 contents = None
-
-            print("OKKKKKKKKKKKKKKKK what is contents in core.py", contents)
             structure = schemas.NodeStructure(
                 count=count,
                 contents=contents,
@@ -503,14 +494,10 @@ async def construct_resource(
                         {"key": key, "direction": direction}
                         for key, direction in entry.sorting
                     ]
-        print("WHAT THE HELLL IS STRUCTURE before d", attributes)
-        myvariable = schemas.NodeAttributes(**attributes)
-        print("MY VARIABLE BEFORE DDD", myvariable)
         d = {
             "id": id_,
             "attributes": schemas.NodeAttributes(**attributes),
         }
-        print("what is DDDDDDDDDDDDDDDD", d, type(d))
 
         if not omit_links:
             d["links"] = links_for_node(
@@ -540,38 +527,23 @@ async def construct_resource(
                 )
             )
             structure = asdict(entry.structure())
-            print("WHAT THE HELLL IS STRUCTURE_FAMILTY IN ELSE", entry.structure_family)
-            print("WHAT THE HELLL IS STRUCTURE IN ELSE", structure)
-            print("WHAT THE HELLL IS STRUCTURE type IN ELSE", type(structure))
-
-            # structure_schema = MAPPING[entry.structure_family]  # lookup
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
             if schemas.EntryFields.structure in fields:
-                # attributes["structure"] = schemas.ArrayStructure(**structure)
-                # attributes["structure"] = structure_schema(**structure)
                 attributes["structure"] = structure
 
         else:
             # We only have entry names, not structure_family, so
             ResourceLinksT = schemas.SelfLinkOnly
-        # breakpoint()
-        print("WHAT THE HELLL IS STRUCTURE before d", attributes)
-        myvariable = schemas.NodeAttributes(**attributes)
-        print("MY VARIABLE BEFORE DDD", myvariable)
-
         d = {
             "id": path_parts[-1],
             "attributes": schemas.NodeAttributes(**attributes),
         }
-        print("what is DDDDDDDDDDDDDDDD", d, type(d))
         if not omit_links:
             d["links"] = links
         resource = schemas.Resource[
             schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict
         ](**d)
-        # breakpoint()
-    print("HERES IS THE RESOURCEs", resource.attributes)
     return resource
 
 

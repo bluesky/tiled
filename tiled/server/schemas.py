@@ -7,7 +7,7 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
-from typing_extensions import Annotated, TypeAliasType
+from typing_extensions import Annotated
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
@@ -468,7 +468,3 @@ class PutMetadataRequest(pydantic.BaseModel):
 
 
 NodeStructure.update_forward_refs()
-PositiveIntList = TypeAliasType(
-    "PositiveIntList",
-    Union[ArrayLinks, AwkwardLinks, ContainerLinks, SparseLinks, DataFrameLinks],
-)

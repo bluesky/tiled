@@ -336,7 +336,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             ),
         )
 
-    print("ARE YOU EVER HEREEEE unhandled_exception_handler")
     app.include_router(router, prefix="/api/v1")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
