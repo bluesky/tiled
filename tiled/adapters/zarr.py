@@ -40,8 +40,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         storage = zarr.storage.DirectoryStore(str(directory))
-        print('******************************mytype', type(structure), structure)
-        print('******************************mytype2', structure.data_type)
+
         zarr.storage.init_array(
             storage,
             shape=shape,

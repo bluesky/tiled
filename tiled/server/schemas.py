@@ -5,10 +5,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
-import pydantic
-import pydantic.dataclasses
-import pydantic.errors
 import pydantic.generics
+from pydantic import Field, StringConstraints
+from typing_extensions import Annotated, TypeAliasType
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
@@ -16,8 +15,6 @@ from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
-from pydantic import Field, StringConstraints
-from typing_extensions import Annotated
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
@@ -35,7 +32,7 @@ class Response(pydantic.generics.GenericModel, Generic[DataT, LinksT, MetaT]):
     links: Optional[LinksT] = None
     meta: Optional[MetaT] = None
 
-    @pydantic.validator("error", always=True)
+    @pydantic.field_validator("error")
     def check_consistency(cls, v, values):
         if v is not None and values["data"] is not None:
             raise ValueError("must not provide both data and error")
@@ -64,8 +61,16 @@ class EntryFields(str, enum.Enum):
 
 
 class NodeStructure(pydantic.BaseModel):
-    contents: Optional[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]] = None
+    # contents: Optional[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]
+    # contents: Optional[Dict[str, Resource[NodeAttributes, Union[ArrayLinks, AwkwardLinks, ContainerLinks,
+    # SparseLinks, DataFrameLinks], EmptyDict]]]
+    # contents: Optional[Union[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]]
+    contents: Optional[Dict[str, Any]]
+
     count: int
+
+    class Config:
+        smart_union = True
 
 
 class SortingDirection(int, enum.Enum):
@@ -78,14 +83,14 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class Spec(pydantic.BaseModel, extra=pydantic.Extra.forbid, frozen=True):
+class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
     name: Annotated[str, StringConstraints(max_length=255)]
     version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
 
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
-# Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
-Specs = Annotated[List[Spec], Field(max_items=20)]
+# Specs = pydantic.conlist(Spec, max_length=20, unique_items=True)
+Specs = Annotated[List[Spec], Field(max_length=20)]
 
 
 class Asset(pydantic.BaseModel):
@@ -134,13 +139,13 @@ class Revision(pydantic.BaseModel):
 
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
-    structure_family: StructureFamily
+    structure_family: Optional[StructureFamily] = None
     structure: Optional[
         Union[
             ArrayStructure,
             AwkwardStructure,
-            NodeStructure,
             SparseStructure,
+            NodeStructure,
             TableStructure,
         ]
     ] = None
@@ -148,6 +153,9 @@ class DataSource(pydantic.BaseModel):
     parameters: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable
+
+    class Config:
+        extra = "forbid"
 
     @classmethod
     def from_orm(cls, orm):
@@ -171,13 +179,17 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            NodeStructure,
             SparseStructure,
+            NodeStructure,
             TableStructure,
         ]
     ] = None
+
     sorting: Optional[List[SortingItem]] = None
     data_sources: Optional[List[DataSource]] = None
+
+    class Config:
+        extra = "forbid"
 
 
 AttributesT = TypeVar("AttributesT")
@@ -398,13 +410,13 @@ class PostMetadataRequest(pydantic.BaseModel):
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
-    @pydantic.validator("specs", always=True)
+    @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
         for i, value in enumerate(v, start=1):
             if value in v[i:]:
-                raise pydantic.errors.ListUniqueItemsError()
+                raise ValueError
         return v
 
 
@@ -445,14 +457,18 @@ class PutMetadataRequest(pydantic.BaseModel):
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
-    @pydantic.validator("specs", always=True)
+    @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
         for i, value in enumerate(v, start=1):
             if value in v[i:]:
-                raise pydantic.errors.ListUniqueItemsError()
+                raise ValueError
         return v
 
 
 NodeStructure.update_forward_refs()
+PositiveIntList = TypeAliasType(
+    "PositiveIntList",
+    Union[ArrayLinks, AwkwardLinks, ContainerLinks, SparseLinks, DataFrameLinks],
+)

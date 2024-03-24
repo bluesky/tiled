@@ -325,6 +325,7 @@ class CatalogNodeAdapter:
 
     @property
     def data_sources(self):
+        print("^^^^^^^^^^^^^^^^^^^^^^^^^^vvv are oyu ever in adaptors dude")
         return [DataSource.from_orm(ds) for ds in (self.node.data_sources or [])]
 
     async def asset_by_id(self, asset_id):
@@ -411,6 +412,13 @@ class CatalogNodeAdapter:
                             break
                     return adapter
             return None
+
+        print(
+            "QQQQQQQQQQQQQQQQQQQQ lets look at lookup_adaptor",
+            STRUCTURES[node.structure_family](
+                self.context, node, access_policy=self.access_policy
+            ),
+        )
         return STRUCTURES[node.structure_family](
             self.context, node, access_policy=self.access_policy
         )
@@ -577,6 +585,8 @@ class CatalogNodeAdapter:
 
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+        print("QQQQQQQQQQQQQQQQQQQQ lets look at lookup_adaptor", data_sources)
+
         node = orm.Node(
             key=key,
             ancestors=self.segments,

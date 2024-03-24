@@ -129,6 +129,7 @@ def client_for_item(
             class_ = structure_clients[structure_family]
         except KeyError:
             raise UnknownStructureFamily(structure_family) from None
+
     return class_(
         context=context,
         item=item,

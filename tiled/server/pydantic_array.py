@@ -163,6 +163,9 @@ class ArrayStructure(BaseModel):
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
 
+    class Config:
+        extra = "forbid"
+
     @classmethod
     def from_json(cls, structure):
         if "fields" in structure["data_type"]:

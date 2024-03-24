@@ -4,6 +4,7 @@ import secrets
 from datetime import timedelta
 from functools import lru_cache
 from typing import Any, List, Optional
+
 from pydantic_settings import BaseSettings
 
 DatabaseSettings = collections.namedtuple(
@@ -25,8 +26,12 @@ class Settings(BaseSettings):
     object_cache_log_level: str = os.getenv("TILED_OBJECT_CACHE_LOG_LEVEL", "INFO")
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
-    single_user_api_key: str = os.getenv("TILED_SINGLE_USER_API_KEY", secrets.token_hex(32))
-    single_user_api_key_generated: bool = not ("TILED_SINGLE_USER_API_KEY" in os.environ)
+    single_user_api_key: str = os.getenv(
+        "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
+    )
+    single_user_api_key_generated: bool = not (
+        "TILED_SINGLE_USER_API_KEY" in os.environ
+    )
     # The TILED_SERVER_SECRET_KEYS may be a single key or a ;-separated list of
     # keys to support key rotation. The first key will be used for encryption. Each
     # key will be tried in turn for decryption.
@@ -50,7 +55,9 @@ class Settings(BaseSettings):
     response_bytesize_limit: int = int(
         os.getenv("TILED_RESPONSE_BYTESIZE_LIMIT", 300_000_000)
     )  # 300 MB
-    reject_undeclared_specs: bool = bool(int(os.getenv("TILED_REJECT_UNDECLARED_SPECS", 0)))
+    reject_undeclared_specs: bool = bool(
+        int(os.getenv("TILED_REJECT_UNDECLARED_SPECS", 0))
+    )
     database_uri: Optional[str] = os.getenv("TILED_DATABASE_URI")
     database_init_if_not_exists: bool = int(
         os.getenv("TILED_DATABASE_INIT_IF_NOT_EXISTS", False)

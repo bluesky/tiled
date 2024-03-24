@@ -620,7 +620,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
             endpoint = self.uri
-        print("*****WWOWWWWWWWWWWWWWWWW********************************* before", body)
 
         document = handle_error(
             self.context.http_client.post(
@@ -629,7 +628,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 content=safe_json_dump(body),
             )
         ).json()
-        print("*****WWOWWWWWWWWWWWWWWWW*********************************after", item)
 
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
@@ -743,7 +741,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             dims=dims,
             data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
         )
-        print('STRUCTURE IN WRITE_ARRAY', type(structure))
         client = self.new(
             StructureFamily.array,
             [
