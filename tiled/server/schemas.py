@@ -61,16 +61,11 @@ class EntryFields(str, enum.Enum):
 
 
 class NodeStructure(pydantic.BaseModel):
-    # contents: Optional[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]
-    # contents: Optional[Dict[str, Resource[NodeAttributes, Union[ArrayLinks, AwkwardLinks, ContainerLinks,
-    # SparseLinks, DataFrameLinks], EmptyDict]]]
-    # contents: Optional[Union[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]]
     contents: Optional[Dict[str, Any]]
-
     count: int
 
     class Config:
-        smart_union = True
+        extra = "forbid"
 
 
 class SortingDirection(int, enum.Enum):
