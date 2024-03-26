@@ -1372,7 +1372,15 @@ async def put_awkward_full(
     return json_or_msgpack(request, None)
 
 
-@router.patch("/metadata/{path:path}", response_model=schemas.PatchMetadataResponse)
+@router.patch(
+    "/metadata/{path:path}",
+    openapi_extra={
+        "requestBody": {
+            "content": {"application/json-patch+json": {}},
+        },
+    },
+    response_model=schemas.PatchMetadataResponse,
+)
 async def patch_metadata(
     request: Request,
     body: schemas.PatchMetadataRequest,
