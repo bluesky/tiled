@@ -7,6 +7,7 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
+from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
 from ..structures.core import StructureFamily
@@ -519,15 +520,12 @@ class PatchMetadataRequest(pydantic.BaseModel):
     patch: Optional[Union[List[JSONPatchSpec], Dict]]  # Dict for merge-patch
     specs: Optional[Specs]
 
-    # Wait for fix https://github.com/pydantic/pydantic/issues/3957
-    # to do this with `unique_items` parameters to `pydantic.constr`.
     @pydantic.validator("specs", always=True)
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
-        for i, value in enumerate(v, start=1):
-            if value in v[i:]:
-                raise pydantic.errors.ListUniqueItemsError()
+        if len(v) != len(set(v)):
+            raise PydanticCustomError("specs", "Items must be unique")
         return v
 
 
