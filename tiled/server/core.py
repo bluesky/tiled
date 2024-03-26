@@ -433,6 +433,7 @@ async def construct_resource(
         attributes["specs"] = specs
     if (entry is not None) and entry.structure_family == StructureFamily.container:
         attributes["structure_family"] = StructureFamily.container
+
         if schemas.EntryFields.structure in fields:
             if (
                 ((max_depth is None) or (depth < max_depth))
@@ -497,6 +498,7 @@ async def construct_resource(
             "id": id_,
             "attributes": schemas.NodeAttributes(**attributes),
         }
+
         if not omit_links:
             d["links"] = links_for_node(
                 entry.structure_family,
@@ -529,6 +531,7 @@ async def construct_resource(
                 attributes["structure_family"] = entry.structure_family
             if schemas.EntryFields.structure in fields:
                 attributes["structure"] = structure
+
         else:
             # We only have entry names, not structure_family, so
             ResourceLinksT = schemas.SelfLinkOnly

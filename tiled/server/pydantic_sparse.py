@@ -12,6 +12,9 @@ class COOStructure(pydantic.BaseModel):
     resizable: Union[bool, Tuple[bool, ...]] = False
     layout: SparseLayout = SparseLayout.COO
 
+    class Config:
+        extra = "forbid"
+
 
 # This may be extended to a Union of structures if more are added.
 SparseStructure = COOStructure

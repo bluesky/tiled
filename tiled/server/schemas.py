@@ -5,10 +5,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
-import pydantic
-import pydantic.dataclasses
-import pydantic.errors
 import pydantic.generics
+from pydantic import Field, StringConstraints
+from typing_extensions import Annotated
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
@@ -29,11 +28,11 @@ class Error(pydantic.BaseModel):
 
 class Response(pydantic.generics.GenericModel, Generic[DataT, LinksT, MetaT]):
     data: Optional[DataT]
-    error: Optional[Error]
-    links: Optional[LinksT]
-    meta: Optional[MetaT]
+    error: Optional[Error] = None
+    links: Optional[LinksT] = None
+    meta: Optional[MetaT] = None
 
-    @pydantic.validator("error", always=True)
+    @pydantic.field_validator("error")
     def check_consistency(cls, v, values):
         if v is not None and values["data"] is not None:
             raise ValueError("must not provide both data and error")
@@ -62,8 +61,11 @@ class EntryFields(str, enum.Enum):
 
 
 class NodeStructure(pydantic.BaseModel):
-    contents: Optional[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]
+    contents: Optional[Dict[str, Any]]
     count: int
+
+    class Config:
+        extra = "forbid"
 
 
 class SortingDirection(int, enum.Enum):
@@ -76,20 +78,20 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class Spec(pydantic.BaseModel, extra=pydantic.Extra.forbid, frozen=True):
-    name: pydantic.constr(max_length=255)
-    version: Optional[pydantic.constr(max_length=255)]
+class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
+    name: Annotated[str, StringConstraints(max_length=255)]
+    version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
 
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
-# Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
-Specs = pydantic.conlist(Spec, max_items=20)
+# Specs = pydantic.conlist(Spec, max_length=20, unique_items=True)
+Specs = Annotated[List[Spec], Field(max_length=20)]
 
 
 class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
-    parameter: Optional[str]
+    parameter: Optional[str] = None
     num: Optional[int] = None
     id: Optional[int] = None
 
@@ -132,13 +134,13 @@ class Revision(pydantic.BaseModel):
 
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
-    structure_family: StructureFamily
+    structure_family: Optional[StructureFamily] = None
     structure: Optional[
         Union[
             ArrayStructure,
             AwkwardStructure,
-            NodeStructure,
             SparseStructure,
+            NodeStructure,
             TableStructure,
         ]
     ] = None
@@ -146,6 +148,9 @@ class DataSource(pydantic.BaseModel):
     parameters: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable
+
+    class Config:
+        extra = "forbid"
 
     @classmethod
     def from_orm(cls, orm):
@@ -162,20 +167,24 @@ class DataSource(pydantic.BaseModel):
 
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
-    structure_family: Optional[StructureFamily]
-    specs: Optional[Specs]
-    metadata: Optional[Dict]  # free-form, user-specified dict
+    structure_family: Optional[StructureFamily] = None
+    specs: Optional[Specs] = None
+    metadata: Optional[Dict] = None  # free-form, user-specified dict
     structure: Optional[
         Union[
             ArrayStructure,
             AwkwardStructure,
-            NodeStructure,
             SparseStructure,
+            NodeStructure,
             TableStructure,
         ]
-    ]
-    sorting: Optional[List[SortingItem]]
-    data_sources: Optional[List[DataSource]]
+    ] = None
+
+    sorting: Optional[List[SortingItem]] = None
+    data_sources: Optional[List[DataSource]] = None
+
+    class Config:
+        extra = "forbid"
 
 
 AttributesT = TypeVar("AttributesT")
@@ -240,8 +249,8 @@ class Resource(
     "A JSON API Resource"
     id: Union[str, uuid.UUID]
     attributes: AttributesT
-    links: Optional[ResourceLinksT]
-    meta: Optional[ResourceMetaT]
+    links: Optional[ResourceLinksT] = None
+    meta: Optional[ResourceMetaT] = None
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):
@@ -270,7 +279,7 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
     provider: str
     mode: AuthenticationMode
     links: Dict[str, str]
-    confirmation_message: Optional[str]
+    confirmation_message: Optional[str] = None
 
 
 class AboutAuthenticationLinks(pydantic.BaseModel):
@@ -284,7 +293,7 @@ class AboutAuthenticationLinks(pydantic.BaseModel):
 class AboutAuthentication(pydantic.BaseModel):
     required: bool
     providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks]
+    links: Optional[AboutAuthenticationLinks] = None
 
 
 class About(pydantic.BaseModel):
@@ -303,22 +312,25 @@ class PrincipalType(str, enum.Enum):
     service = "service"
 
 
-class Identity(pydantic.BaseModel, orm_mode=True):
-    id: pydantic.constr(max_length=255)
-    provider: pydantic.constr(max_length=255)
-    latest_login: Optional[datetime]
+class Identity(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
+    id: Annotated[str, StringConstraints(max_length=255)]
+    provider: Annotated[str, StringConstraints(max_length=255)]
+    latest_login: Optional[datetime] = None
 
 
-class Role(pydantic.BaseModel, orm_mode=True):
+class Role(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
     name: str
     scopes: List[str]
     # principals
 
 
-class APIKey(pydantic.BaseModel, orm_mode=True):
-    first_eight: pydantic.constr(min_length=8, max_length=8)
-    expiration_time: Optional[datetime]
-    note: Optional[pydantic.constr(max_length=255)]
+class APIKey(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
+    first_eight: Annotated[str, StringConstraints(min_length=8, max_length=8)]
+    expiration_time: Optional[datetime] = None
+    note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
     scopes: List[str]
     latest_activity: Optional[datetime] = None
 
@@ -338,7 +350,7 @@ class APIKeyWithSecret(APIKey):
         )
 
 
-class Session(pydantic.BaseModel, orm_mode=True):
+class Session(pydantic.BaseModel):
     """
     This related to refresh tokens, which have a session uuid ("sid") claim.
 
@@ -349,15 +361,17 @@ class Session(pydantic.BaseModel, orm_mode=True):
 
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
+    model_config = pydantic.ConfigDict(from_attributes=True)
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
 
 
-class Principal(pydantic.BaseModel, orm_mode=True):
+class Principal(pydantic.BaseModel):
     "Represents a User or Service"
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
+    model_config = pydantic.ConfigDict(from_attributes=True)
     uuid: uuid.UUID
     type: PrincipalType
     identities: List[Identity] = []
@@ -379,7 +393,7 @@ class APIKeyRequestParams(pydantic.BaseModel):
     # try to use the instantly-expiring API key!
     expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
     scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
-    note: Optional[str]
+    note: Optional[str] = None
 
 
 class PostMetadataRequest(pydantic.BaseModel):
@@ -391,13 +405,13 @@ class PostMetadataRequest(pydantic.BaseModel):
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
-    @pydantic.validator("specs", always=True)
+    @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
         for i, value in enumerate(v, start=1):
             if value in v[i:]:
-                raise pydantic.errors.ListUniqueItemsError()
+                raise ValueError
         return v
 
 
@@ -416,35 +430,35 @@ class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
     # May be None if not altered
-    metadata: Optional[Dict]
-    data_sources: Optional[List[DataSource]]
+    metadata: Optional[Dict] = None
+    data_sources: Optional[List[DataSource]] = None
 
 
 class DistinctValueInfo(pydantic.BaseModel):
-    value: Any
-    count: Optional[int]
+    value: Any = None
+    count: Optional[int] = None
 
 
 class GetDistinctResponse(pydantic.BaseModel):
-    metadata: Optional[Dict[str, List[DistinctValueInfo]]]
-    structure_families: Optional[List[DistinctValueInfo]]
-    specs: Optional[List[DistinctValueInfo]]
+    metadata: Optional[Dict[str, List[DistinctValueInfo]]] = None
+    structure_families: Optional[List[DistinctValueInfo]] = None
+    specs: Optional[List[DistinctValueInfo]] = None
 
 
 class PutMetadataRequest(pydantic.BaseModel):
     # These fields are optional because None means "no changes; do not update".
-    metadata: Optional[Dict]
-    specs: Optional[Specs]
+    metadata: Optional[Dict] = None
+    specs: Optional[Specs] = None
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
-    @pydantic.validator("specs", always=True)
+    @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
         for i, value in enumerate(v, start=1):
             if value in v[i:]:
-                raise pydantic.errors.ListUniqueItemsError()
+                raise ValueError
         return v
 
 
