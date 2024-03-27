@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 import anyio
+import typesense
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
@@ -1247,6 +1248,7 @@ def in_memory(
     readable_storage=None,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    typesense_client=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1258,6 +1260,7 @@ def in_memory(
         readable_storage=readable_storage,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
+        typesense_client=typesense_client,
     )
 
 
@@ -1272,6 +1275,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    typesense_client=None,
 ):
     uri = str(uri)
     if init_if_not_exists:
@@ -1293,6 +1297,13 @@ def from_uri(
     engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
+    if typesense_client:
+        typesense_client = typesense.Client(
+            {
+                "api_key": typesense_client["api_key"],
+                "nodes": typesense_client["nodes"],
+            }
+        )
     return CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
         RootNode(metadata, specs, access_policy),

@@ -98,6 +98,7 @@ all = [
     "xarray",
     "zarr",
     "zstandard",
+    "typesense",
 ]
 # These are needed by the client and server to transmit/receive arrays.
 array = [
