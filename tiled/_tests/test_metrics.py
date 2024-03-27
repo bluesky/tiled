@@ -1,9 +1,12 @@
 import re
 
+import httpx
+import pytest
 from fastapi import APIRouter
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
 from ..client import Context, from_context
+from ..client.utils import handle_error
 from ..server.app import build_app_from_config
 
 config = {
@@ -49,3 +52,15 @@ def test_error_code():
         response_404 = client.context.http_client.get("/does_not_exist")
         assert response_404.status_code == HTTP_404_NOT_FOUND
         assert total_request_time(client, 404) - baseline_time[404] > 0
+
+
+def test_correlation_id():
+    "Test that exceptions include correlation ID."
+    app = build_app_from_config(config)
+    app.include_router(router)
+    with Context.from_app(app, raise_server_exceptions=False) as context:
+        client = from_context(context)
+        response_500 = client.context.http_client.get("/error")
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            handle_error(response_500)
+        assert "correlation ID" in exc_info.value.args[0]

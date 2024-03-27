@@ -14,11 +14,54 @@ from ..utils import path_from_uri
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
 
+def raise_for_status(response) -> None:
+    """
+    Raise the `httpx.HTTPStatusError` if one occurred. Include correlation ID.
+    """
+    # This adapted from the method httpx.Response.raise_for_status, modified to
+    # remove the generic link to HTTP status documentation and include the
+    # correlation ID.
+    request = response._request
+    if request is None:
+        raise RuntimeError(
+            "Cannot call `raise_for_status` as the request "
+            "instance has not been set on this response."
+        )
+
+    if response.is_success:
+        return
+
+    if response.has_redirect_location:
+        message = (
+            "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+            "Redirect location: '{0.headers[location]}'\n"
+            "For more information, server admin can search server logs for "
+            "correlation ID {0.headers[x-tiled-request-id]}."
+        )
+    else:
+        message = (
+            "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+            "For more information, server admin can search server logs for "
+            "correlation ID {0.headers[x-tiled-request-id]}."
+        )
+
+    status_class = response.status_code // 100
+    error_types = {
+        1: "Informational response",
+        3: "Redirect response",
+        4: "Client error",
+        5: "Server error",
+    }
+    error_type = error_types.get(status_class, "Invalid status code")
+    message = message.format(response, error_type=error_type)
+    raise httpx.HTTPStatusError(message, request=request, response=response)
+
+
 def handle_error(response):
     if not response.is_error:
         return response
     try:
-        response.raise_for_status()
+        raise_for_status(response)
     except httpx.RequestError:
         raise  # Nothing to add in this case; just raise it.
     except httpx.HTTPStatusError as exc:
