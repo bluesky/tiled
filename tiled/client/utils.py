@@ -18,7 +18,7 @@ def raise_for_status(response) -> None:
     """
     Raise the `httpx.HTTPStatusError` if one occurred. Include correlation ID.
     """
-    # This adapted from the method httpx.Response.raise_for_status, modified to
+    # This is adapted from the method httpx.Response.raise_for_status, modified to
     # remove the generic link to HTTP status documentation and include the
     # correlation ID.
     request = response._request
