@@ -66,7 +66,7 @@ Write array and tabular data.
 <DataFrameClient ['x', 'y']>
 ```
 
-In some scenarios, you may want to send data a chunk at a time, rather than sending the entire chunk at once. This might be in cases where the full data is not available at once, or the data is too large for memory. This can be achieved in two ways: 
+In some scenarios, you may want to send data a chunk at a time, rather than sending the entire chunk at once. This might be in cases where the full data is not available at once, or the data is too large for memory. This can be achieved in two ways:
 
 The first one is to stack them before saving back to client using the above mentioned `write_array` method. This works when the size of data is small.
 
