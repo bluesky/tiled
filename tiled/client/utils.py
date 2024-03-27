@@ -29,7 +29,7 @@ def raise_for_status(response) -> None:
         )
 
     if response.is_success:
-        return
+        return response
 
     if response.has_redirect_location:
         message = (
