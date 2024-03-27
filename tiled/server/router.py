@@ -10,7 +10,7 @@ from typing import Any, List, Optional
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -344,6 +344,7 @@ async def metadata(
             detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
     meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
+
     return json_or_msgpack(
         request,
         schemas.Response(data=resource, meta=meta).dict(),
@@ -1191,6 +1192,7 @@ async def _create_node(
     }
     if metadata_modified:
         response_data["metadata"] = metadata
+
     return json_or_msgpack(request, response_data)
 
 

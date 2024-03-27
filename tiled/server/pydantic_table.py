@@ -21,6 +21,9 @@ class TableStructure(BaseModel):
     columns: List[str]
     resizable: Union[bool, Tuple[bool, ...]] = False
 
+    class Config:
+        extra = "forbid"
+
     @classmethod
     def from_dask_dataframe(cls, ddf):
         import dask.dataframe.utils

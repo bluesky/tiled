@@ -27,6 +27,7 @@ from fastapi.security import (
 from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
+from pydantic_settings import BaseSettings
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
@@ -45,7 +46,7 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from jose import ExpiredSignatureError, JWTError, jwt
 
-from pydantic import BaseModel, BaseSettings
+from pydantic import BaseModel
 
 from ..authn_database import orm
 from ..authn_database.connection_pool import get_database_session

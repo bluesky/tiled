@@ -18,3 +18,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Changed
 
 ### Fixed
+
+### Other
+
+ * Updated the pydantic version in the pyproject.toml. Now the allowed versions are >2.0.0 - <3.0.0 .

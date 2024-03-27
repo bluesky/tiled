@@ -577,6 +577,7 @@ class CatalogNodeAdapter:
 
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+
         node = orm.Node(
             key=key,
             ancestors=self.segments,

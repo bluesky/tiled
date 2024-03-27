@@ -602,6 +602,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if isinstance(spec, str):
                 spec = Spec(spec)
             normalized_specs.append(asdict(spec))
+
         item = {
             "attributes": {
                 "metadata": metadata,
@@ -627,6 +628,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 content=safe_json_dump(body),
             )
         ).json()
+
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
         else:

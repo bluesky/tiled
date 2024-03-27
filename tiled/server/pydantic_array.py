@@ -74,7 +74,7 @@ class BuiltinDtype(BaseModel):
 class Field(BaseModel):
     name: str
     dtype: Union[BuiltinDtype, "StructDtype"]
-    shape: Optional[Tuple[int, ...]]
+    shape: Optional[Tuple[int, ...]] = None
 
     @classmethod
     def from_numpy_descr(cls, field):
@@ -162,6 +162,9 @@ class ArrayStructure(BaseModel):
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
+
+    class Config:
+        extra = "forbid"
 
     @classmethod
     def from_json(cls, structure):

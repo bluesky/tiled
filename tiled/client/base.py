@@ -110,6 +110,7 @@ class BaseClient:
         self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
         structure_family = attributes["structure_family"]
+
         if structure is not None:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
@@ -119,6 +120,7 @@ class BaseClient:
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
             self._structure = structure_type.from_json(attributes["structure"])
+
         super().__init__()
 
     def structure(self):
@@ -215,6 +217,7 @@ To fetch the data sources up front, call include_data_sources() on the
 client or pass the optional parameter `include_data_sources=True` to
 `from_uri(...)` or similar."""
             )
+
         return self.include_data_sources().item["attributes"].get("data_sources")
 
     def include_data_sources(self):
