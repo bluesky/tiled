@@ -7,7 +7,8 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
-from typing_extensions import Annotated
+from pydantic_core import PydanticCustomError
+from typing_extensions import Annotated, TypedDict
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
@@ -460,6 +461,41 @@ class PutMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise ValueError
         return v
+
+
+# we use functional syntax to define JSONPatchSpec since "from" is a keyword
+JSONPatchSpec = TypedDict(
+    "JSONPatchSpec",
+    {
+        "op": str,
+        "path": str,
+        "from": str,
+        "value": Any,
+    },
+    total=False,
+)
+
+
+class PatchMetadataRequest(pydantic.BaseModel):
+    # These fields are optional because None means "no changes; do not update".
+    patch: Optional[Union[List[JSONPatchSpec], Dict]]  # Dict for merge-patch
+    specs: Optional[Specs]
+
+    @pydantic.validator("specs", always=True)
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        if len(v) != len(set(v)):
+            raise PydanticCustomError("specs", "Items must be unique")
+        return v
+
+
+class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
+    id: str
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    # May be None if not altered
+    metadata: Optional[Dict]
+    data_sources: Optional[List[DataSource]]
 
 
 NodeStructure.update_forward_refs()

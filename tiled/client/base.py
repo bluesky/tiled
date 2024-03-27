@@ -1,13 +1,17 @@
 import importlib
 import time
 import warnings
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 
+import jsonpatch
+import orjson
 from httpx import URL
 
 from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
+from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
 
@@ -194,6 +198,12 @@ class BaseClient:
         # persistent.
         return DictView(self._item["attributes"]["metadata"])
 
+    def metadata_copy(self):
+        """
+        Generate a mutable copy of metadata (useful with update_metadata())
+        """
+        return deepcopy(self._item["attributes"]["metadata"])
+
     @property
     def specs(self):
         "List of specifications describing the structure of the metadata and/or data."
@@ -369,9 +379,10 @@ client or pass the optional parameter `include_data_sources=True` to
 
     def update_metadata(self, metadata=None, specs=None):
         """
-        EXPERIMENTAL: Update metadata.
+        EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
-        This is subject to change or removal without notice
+        `update_metadata` is a user-friendly wrapper for `patch_metadata`.
+        This is subject to change or removal without notice.
 
         Parameters
         ----------
@@ -381,6 +392,186 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+
+        See Also
+        --------
+        patch_metadata
+        replace_metadata
+
+        Notes
+        -----
+        `update_metadata` constructs a JSON Patch (RFC6902) by comparing user updates
+        to existing metadata. It uses a slight variation of JSON Merge Patch (RFC7386)
+        as an intermediary to implement a python `dict.update`-like user-friendly
+        interface, but with additional features like key deletion (see examples) and
+        support for `None (null)` values.
+
+        Examples
+        --------
+
+        Add or update a key-value pair at the top or a nested level
+
+        >>> node.update_metadata({'key': new_value})
+        >>> node.update_metadata({'top_key': {'nested_key': new_value}})
+
+        Remove an existing key
+
+        >>> from tiled.client.metadata_update import DELETE_KEY
+        >>> node.update_metadata({'key_to_be_deleted': DELETE_KEY})
+
+        Interactively update complex metadata using a copy of original structure
+        (e.g., in iPython you may use tab completion to navigate nested metadata)
+
+        >>> md = node.metadata_copy()
+        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
+        >>> md['unwanted_key'] = DELETE_KEY
+        >>> node.update_metadata(metadata=md)  # Update the copy on the server
+        """
+
+        patch = self.build_metadata_patch(metadata=metadata)
+
+        self.patch_metadata(patch=patch, specs=specs)
+
+    def build_metadata_patch(self, metadata=None):
+        """
+        Build a valid JSON Patch (RFC6902) accepted by `patch_metadata`.
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+
+        Returns
+        -------
+        patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902).
+
+        See Also
+        --------
+        patch_metadata
+        update_metadata
+
+        Notes
+        -----
+        `build_metadata_patch` constructs a JSON Patch (RFC6902) by comparing user updates
+        to existing metadata. It uses a slight variation of JSON Merge Patch (RFC7386)
+        as an intermediary to implement a python `dict.update`-like user-friendly
+        interface, but with additional features like key deletion (see examples) and
+        support for `None (null)` values.
+
+        Examples
+        --------
+
+        Build a patch for adding/updating a key-value pair at the top or a nested level
+
+        >>> node.build_metadata_patch({'key': new_value})
+        >>> node.build_metadata_patch({'top_key': {'nested_key': new_value}})
+
+        Build a patch for removing an existing key
+
+        >>> from tiled.client.metadata_update import DELETE_KEY
+        >>> node.build_metadata_patch({'key_to_be_deleted': DELETE_KEY})
+
+        Interactively build a patch for complex metadata (e.g., in iPython you may use
+        tab completion to navigate nested metadata)
+
+        >>> md = node.metadata_copy()
+        >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
+        >>> md['unwanted_key'] = DELETE_KEY
+        >>> node.build_metadata_patch(metadata=md)  # Generate the patch
+        """
+
+        if metadata is None:
+            metadata = {}
+
+        patch = jsonpatch.JsonPatch.from_diff(
+            dict(self.metadata),
+            apply_update_patch(self.metadata_copy(), metadata),
+            dumps=orjson.dumps,
+        ).patch
+
+        return patch
+
+    def patch_metadata(self, patch=None, specs=None):
+        """
+        EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
+
+        This is subject to change or removal without notice.
+
+        Parameters
+        ----------
+        patch : List[dict], optional
+            JSON-serializable RFC 6902 patch to be applied to metadata
+            (See https://datatracker.ietf.org/doc/html/rfc6902)
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        See Also
+        --------
+        update_metadata
+        replace_metadata
+        """
+
+        self._cached_len = None
+
+        if specs is None:
+            normalized_specs = None
+        else:
+            normalized_specs = []
+            for spec in specs:
+                if isinstance(spec, str):
+                    spec = Spec(spec)
+                normalized_specs.append(asdict(spec))
+
+        data = {
+            "patch": patch,
+            "specs": normalized_specs,
+        }
+
+        content = handle_error(
+            self.context.http_client.patch(
+                self.item["links"]["self"],
+                content=safe_json_dump(data),
+                headers={"Content-Type": "application/json-patch+json"},
+            )
+        ).json()
+
+        if patch is not None:
+            if "metadata" in content:
+                # Metadata was accepted and modified by the specs validator on the server side.
+                # It is updated locally using the new version.
+                self._item["attributes"]["metadata"] = content["metadata"]
+            else:
+                # Metadata was accepted as it is by the server.
+                # It is updated locally with the version submitted by the client.
+                self._item["attributes"]["metadata"] = jsonpatch.apply_patch(
+                    dict(self.metadata), patch
+                )
+
+        if specs is not None:
+            self._item["attributes"]["specs"] = normalized_specs
+
+    def replace_metadata(self, metadata=None, specs=None):
+        """
+        EXPERIMENTAL: Replace metadata entirely (see update_metadata).
+
+        This is subject to change or removal without notice.
+
+        Parameters
+        ----------
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[str], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        See Also
+        --------
+        update_metadata
+        patch_metadata
         """
 
         self._cached_len = None

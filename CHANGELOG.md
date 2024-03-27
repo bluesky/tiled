@@ -12,6 +12,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 * Added a new HTTP endpoint, `PATCH /api/v1/table/partition/{path}`
   supporting appending rows to a tabular dataset.
 * Added a new method `DataFrameClient.append_partition`.
+* Add client-side methods for updating, patching, and replacing metadata.
 
 ### Removed
 
