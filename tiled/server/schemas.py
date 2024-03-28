@@ -26,7 +26,7 @@ class Error(pydantic.BaseModel):
     message: str
 
 
-class Response(pydantic.generics.GenericModel, Generic[DataT, LinksT, MetaT]):
+class Response(pydantic.BaseModel, Generic[DataT, LinksT, MetaT]):
     data: Optional[DataT]
     error: Optional[Error] = None
     links: Optional[LinksT] = None
@@ -243,9 +243,7 @@ class ContainerMeta(pydantic.BaseModel):
     count: int
 
 
-class Resource(
-    pydantic.generics.GenericModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]
-):
+class Resource(pydantic.BaseModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
     id: Union[str, uuid.UUID]
     attributes: AttributesT

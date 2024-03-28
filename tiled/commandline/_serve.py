@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from typing import List, Optional
@@ -140,7 +141,7 @@ def serve_directory(
     asyncio.run(initialize_database(engine))
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
-    from ..catalog import from_uri
+    from ..catalog import from_uri as catalog_from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     server_settings = {}
@@ -182,15 +183,25 @@ def serve_directory(
             )
         mimetype, obj_ref = match.groups()
         adapters_by_mimetype[mimetype] = obj_ref
-    catalog_adapter = from_uri(
+    catalog_adapter = catalog_from_uri(
         database,
         readable_storage=[directory],
         adapters_by_mimetype=adapters_by_mimetype,
     )
-    typer.echo(f"Indexing '{directory}' ...")
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
+    # Set the API key manually here, rather than letting the server do it,
+    # so that we can pass it to the client.
+    generated = False
+    if api_key is None:
+        api_key = os.getenv("TILED_SINGLE_USER_API_KEY")
+        if api_key is None:
+            import secrets
+
+            api_key = secrets.token_hex(32)
+            generated = True
+
     web_app = build_app(
         catalog_adapter,
         {
@@ -199,15 +210,47 @@ def serve_directory(
         },
         server_settings,
     )
+    import functools
+
+    import anyio
+    import uvicorn
+
+    from ..client import from_uri as client_from_uri
+
+    print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
+    config = uvicorn.Config(web_app, host=host, port=port)
+    server = uvicorn.Server(config)
+
+    async def run_server():
+        await server.serve()
+
+    async def wait_for_server():
+        "Wait for server to start up, or raise TimeoutError."
+        for _ in range(100):
+            await asyncio.sleep(0.1)
+            if server.started:
+                break
+        else:
+            raise TimeoutError("Server did not start in 10 seconds.")
+        host, port = server.servers[0].sockets[0].getsockname()
+        api_url = f"http://{host}:{port}/api/v1/"
+        return api_url
+
     if watch:
 
-        async def walk_and_serve():
-            import anyio
+        async def serve_and_walk():
+            server_task = asyncio.create_task(run_server())
+            api_url = await wait_for_server()
+            # When we add an AsyncClient for Tiled, use that here.
+            client = await anyio.to_thread.run_sync(
+                functools.partial(client_from_uri, api_url, api_key=api_key)
+            )
 
+            typer.echo(f"Server is up. Indexing files in {directory}...")
             event = anyio.Event()
             asyncio.create_task(
                 watch_(
-                    catalog_adapter,
+                    client,
                     directory,
                     initial_walk_complete_event=event,
                     mimetype_detection_hook=mimetype_detection_hook,
@@ -218,20 +261,22 @@ def serve_directory(
                 )
             )
             await event.wait()
-            typer.echo("Initial indexing complete. Starting server...")
-            print_admin_api_key_if_generated(web_app, host=host, port=port)
+            typer.echo("Initial indexing complete. Watching for changes...")
+            await server_task
 
-            import uvicorn
-
-            config = uvicorn.Config(web_app, host=host, port=port)
-            server = uvicorn.Server(config)
-            await server.serve()
-
-        asyncio.run(walk_and_serve())
     else:
-        asyncio.run(
-            register(
-                catalog_adapter,
+
+        async def serve_and_walk():
+            server_task = asyncio.create_task(run_server())
+            api_url = await wait_for_server()
+            # When we add an AsyncClient for Tiled, use that here.
+            client = await anyio.to_thread.run_sync(
+                functools.partial(client_from_uri, api_url, api_key=api_key)
+            )
+
+            typer.echo(f"Server is up. Indexing files in {directory}...")
+            await register(
+                client,
                 directory,
                 mimetype_detection_hook=mimetype_detection_hook,
                 mimetypes_by_file_ext=mimetypes_by_file_ext,
@@ -239,14 +284,10 @@ def serve_directory(
                 walkers=walkers,
                 key_from_filename=key_from_filename,
             )
-        )
+            typer.echo("Indexing complete.")
+            await server_task
 
-        typer.echo("Indexing complete. Starting server...")
-        print_admin_api_key_if_generated(web_app, host=host, port=port)
-
-        import uvicorn
-
-        uvicorn.run(web_app, host=host, port=port, log_config=log_config)
+    asyncio.run(serve_and_walk())
 
 
 def serve_catalog(
