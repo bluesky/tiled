@@ -213,26 +213,34 @@ def serve_directory(
     import functools
 
     import anyio
-    import httpcore
     import uvicorn
 
     from ..client import from_uri as client_from_uri
 
     print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
-    api_url = f"http://{host}:{port}/api/v1/"
+    config = uvicorn.Config(web_app, host=host, port=port)
+    server = uvicorn.Server(config)
 
     async def run_server():
-        config = uvicorn.Config(web_app, host=host, port=port)
-        server = uvicorn.Server(config)
         await server.serve()
+
+    async def wait_for_server():
+        "Wait for server to start up, or raise TimeoutError."
+        for _ in range(100):
+            await asyncio.sleep(0.1)
+            if server.started:
+                break
+        else:
+            raise TimeoutError("Server did not start in 10 seconds.")
+        host, port = server.servers[0].sockets[0].getsockname()
+        api_url = f"http://{host}:{port}/api/v1/"
+        return api_url
 
     if watch:
 
         async def serve_and_walk():
             server_task = asyncio.create_task(run_server())
-            # Wait for server to start up, with a retry loop.
-            async with httpcore.AsyncConnectionPool(retries=5) as http:
-                await http.request("GET", api_url)
+            api_url = await wait_for_server()
             # When we add an AsyncClient for Tiled, use that here.
             client = await anyio.to_thread.run_sync(
                 functools.partial(client_from_uri, api_url, api_key=api_key)
@@ -260,9 +268,7 @@ def serve_directory(
 
         async def serve_and_walk():
             server_task = asyncio.create_task(run_server())
-            # Wait for server to start up, with a retry loop.
-            async with httpcore.AsyncConnectionPool(retries=5) as http:
-                await http.request("GET", api_url)
+            api_url = await wait_for_server()
             # When we add an AsyncClient for Tiled, use that here.
             client = await anyio.to_thread.run_sync(
                 functools.partial(client_from_uri, api_url, api_key=api_key)
