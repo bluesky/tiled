@@ -1,3 +1,4 @@
+import contextlib
 import re
 import subprocess
 import sys
@@ -8,13 +9,16 @@ import httpx
 import pytest
 
 
+@contextlib.contextmanager
 def run_cli(command):
     "Run '/path/to/this/python -m ...'"
-    return subprocess.Popen(
+    process = subprocess.Popen(
         [sys.executable, "-m"] + command.split(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    yield process
+    process.terminate()
 
 
 def scrape_server_url_from_logs(process):
@@ -58,8 +62,8 @@ def check_server_readiness(process):
 )
 def test_serve_directory(args, tmpdir):
     "Test 'tiled serve directory ... with a variety of arguments."
-    process = run_cli(f"tiled serve directory {tmpdir!s} --port 0 " + args)
-    check_server_readiness(process)
+    with run_cli(f"tiled serve directory {tmpdir!s} --port 0 " + args) as process:
+        check_server_readiness(process)
 
 
 @pytest.mark.parametrize(
@@ -71,5 +75,5 @@ def test_serve_directory(args, tmpdir):
 )
 def test_serve_catalog_temp(args, tmpdir):
     "Test 'tiled serve catalog --temp ... with a variety of arguments."
-    process = run_cli(f"tiled serve directory {tmpdir!s} --port 0 " + args)
-    check_server_readiness(process)
+    with run_cli(f"tiled serve directory {tmpdir!s} --port 0 " + args) as process:
+        check_server_readiness(process)
