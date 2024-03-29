@@ -66,6 +66,24 @@ Write array and tabular data.
 <DataFrameClient ['x', 'y']>
 ```
 
+Search to find the data again.
+
+```py
+>>> from tiled.queries import Key
+>>> client.search(Key("color") == "green").values().first()
+<DataFrameClient ['x', 'y']>
+```
+
+Read the data.
+
+```py
+>>> client.search(Key("color") == "green").values().first().read()
+   x  y
+0  1  4
+1  2  5
+2  3  6
+```
+
 In some scenarios, you may want to write your data a chunk at a time, rather than sending it all at once. This might be in cases where the full data is not available at once, or the data is too large for memory. This can be achieved in two ways:
 
 The first one is to stack them before saving back to client using the above mentioned `write_array` method. This works when the size of data is small.
@@ -108,24 +126,6 @@ ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.in
 # Save to the 3rd array (first block index 2)
 >>> third_array = numpy.random.rand(32, 32).astype(numpy.int8)
 >>> array_client.write_block(third_array, block=(2, 0, 0))
-```
-
-Search to find the data again.
-
-```py
->>> from tiled.queries import Key
->>> client.search(Key("color") == "green").values().first()
-<DataFrameClient ['x', 'y']>
-```
-
-Read the data.
-
-```py
->>> client.search(Key("color") == "green").values().first().read()
-   x  y
-0  1  4
-1  2  5
-2  3  6
 ```
 
 ## Launch catalog with persistent data
