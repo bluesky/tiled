@@ -66,6 +66,7 @@ async def initialize_database(engine):
     async with engine.connect() as conn:
         # Create all tables.
         await conn.run_sync(Base.metadata.create_all)
+        await conn.commit()
 
         # Initialize Roles table.
         async with AsyncSession(engine) as db:
