@@ -113,7 +113,13 @@ ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.in
 ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.integer: 'i'>, itemsize=1), chunks=((1, 1, 1, 1, 1), (32,), (32,)), shape=(5, 32, 32), dims=None, resizable=False)
 
 # Allocate a new array client in tiled
+# Note: the following line of code works for tiled version <= v.0.1.0a114
 >>> array_client = client.new(structure_family="array", structure=structure, key="stacked_result", metadata={"color": "yellow", "barcode": 13})
+
+# For tiled version >= v0.1.0a115, consider the following
+>>> from tiled.structures.data_source import DataSource
+>>> data_source = DataSource(structure=structure, structure_family="array")
+>>> array_client = client.new(structure_family="array", data_sources=[data_source], key ="stacked_result", metadata={"color": "yellow", "barcode": 13})
 
 >>> array_client
 <ArrayClient shape=(5, 32, 32) chunks=((1, 1, 1, 1, 1), (32,), (32,)) dtype=int8>
@@ -127,6 +133,7 @@ ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.in
 >>> third_array = numpy.random.rand(32, 32).astype(numpy.int8)
 >>> array_client.write_block(third_array, block=(2, 0, 0))
 ```
+
 
 ## Launch catalog with persistent data
 
