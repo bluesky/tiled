@@ -66,7 +66,7 @@ Write array and tabular data.
 <DataFrameClient ['x', 'y']>
 ```
 
-In some scenarios, you may want to send data a chunk at a time, rather than sending the entire chunk at once. This might be in cases where the full data is not available at once, or the data is too large for memory. This can be achieved in two ways:
+In some scenarios, you may want to write your data a chunk at a time, rather than sending it all at once. This might be in cases where the full data is not available at once, or the data is too large for memory. This can be achieved in two ways:
 
 The first one is to stack them before saving back to client using the above mentioned `write_array` method. This works when the size of data is small.
 
@@ -82,11 +82,12 @@ When the size of merged data becomes an issue for memory, or in cases when you w
 >>> import numpy
 >>> from tiled.structures.array import ArrayStructure
 
->>> structure = ArrayStructure.from_array(numpy.zeros(stacked_array_shape, dtype = numpy.int8)) # A good practice to keep the dtype the same as your final results to avoid mismatch.
+>>> structure = ArrayStructure.from_array(numpy.zeros(stacked_array_shape, dtype=numpy.int8)) # A good practice to keep the dtype the same as your final results to avoid mismatch.
 >>> structure
 ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.integer: 'i'>, itemsize=1), chunks=((5,), (32,), (32,)), shape=(5, 32, 32), dims=None, resizable=False)
 
 # Re-define the chunk size to allow single array to be saved.
+# In our example, this becomes ((1, 1, 1, 1, 1), (32,), (32,))
 >>> structure.chunks = ((1,) * stacked_array_shape[0], (stacked_array_shape[1],), (stacked_array_shape[2],))
 
 # Now to see that the chunk for the first axis has been divided.
@@ -94,7 +95,7 @@ ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.in
 ArrayStructure(data_type=BuiltinDtype(endianness='not_applicable', kind=<Kind.integer: 'i'>, itemsize=1), chunks=((1, 1, 1, 1, 1), (32,), (32,)), shape=(5, 32, 32), dims=None, resizable=False)
 
 # Allocate a new array client in tiled
->>> array_client = client.new(structure_family="array", structure=structure, key ="stacked_result", metadata={"color": "yellow", "barcode": 13})
+>>> array_client = client.new(structure_family="array", structure=structure, key="stacked_result", metadata={"color": "yellow", "barcode": 13})
 
 >>> array_client
 <ArrayClient shape=(5, 32, 32) chunks=((1, 1, 1, 1, 1), (32,), (32,)) dtype=int8>
