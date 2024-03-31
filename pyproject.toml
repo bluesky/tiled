@@ -300,6 +300,7 @@ Documentation = "https://blueskyproject.io/tiled"
 
 [tool.hatch]
 version.source = "vcs"
+version.fallback-version = "0.0.0"
 build.hooks.vcs.version-file = "tiled/_version.py"
 
 # Defining this (empty) section invokes hatch_build.py
