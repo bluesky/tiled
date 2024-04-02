@@ -210,6 +210,12 @@ async def make_admin_by_identity(db, identity_provider, id):
         principal = await create_user(db, identity_provider, id)
     else:
         principal = identity.principal
+
+    # check if principal already has admin role
+    for role in principal.roles:
+        if role.name == "admin":
+            return principal
+
     admin_role = (await db.execute(select(Role).filter(Role.name == "admin"))).scalar()
     assert admin_role is not None, "Admin role is missing from Roles table"
     principal.roles.append(admin_role)

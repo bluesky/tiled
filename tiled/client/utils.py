@@ -31,18 +31,21 @@ def raise_for_status(response) -> None:
     if response.is_success:
         return response
 
+    # correlation ID may be missing if request didn't make it to the server
+    correlation_id = response.headers.get("x-tiled-request-id", None)
+
     if response.has_redirect_location:
         message = (
             "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
             "Redirect location: '{0.headers[location]}'\n"
             "For more information, server admin can search server logs for "
-            "correlation ID {0.headers[x-tiled-request-id]}."
+            "correlation ID {correlation_id}."
         )
     else:
         message = (
             "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
             "For more information, server admin can search server logs for "
-            "correlation ID {0.headers[x-tiled-request-id]}."
+            "correlation ID {correlation_id}."
         )
 
     status_class = response.status_code // 100
@@ -53,7 +56,9 @@ def raise_for_status(response) -> None:
         5: "Server error",
     }
     error_type = error_types.get(status_class, "Invalid status code")
-    message = message.format(response, error_type=error_type)
+    message = message.format(
+        response, error_type=error_type, correlation_id=correlation_id
+    )
     raise httpx.HTTPStatusError(message, request=request, response=response)
 
 

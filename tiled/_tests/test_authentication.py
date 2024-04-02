@@ -312,6 +312,13 @@ def test_admin(enter_password, config):
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.admin.show_principal(some_principal_uuid)
 
+    # Start the server a second time. Now alice is already an admin.
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+        admin_roles = context.whoami()["roles"]
+        assert "admin" in [role["name"] for role in admin_roles]
+
 
 def test_api_key_activity(enter_password, config):
     """
