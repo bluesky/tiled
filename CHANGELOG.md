@@ -3,6 +3,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Next
+
+### Fixed
+
+- The configuration setting `tiled_admins` did not work in practice. If a user
+  in the list was already an admin (such as, after a server restart) an error
+  was raised on startup.
+- The table creation statements for PostgreSQL were not committed. (This may
+  have been a regression due to a change in SQLAlchemy defaults.)
+- Tolerate HTTP responses that are missing a `x-tiled-request-id` header, such
+  as when a proxy server responds with an error.
+
+### Other
+
+- Usage of deprecated Pydantic 2.x APIs was updated.
+- Specify a `fallback-version`, `0.0.0`, to be used when the version-detection
+  code cannot run.
+
 ## v0.1.0a117
 
 ### Added
