@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
@@ -15,6 +15,10 @@ from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
+
+if TYPE_CHECKING:
+    import tiled.authn_database.orm
+    import tiled.catalog.orm
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
@@ -64,8 +68,7 @@ class NodeStructure(pydantic.BaseModel):
     contents: Optional[Dict[str, Any]]
     count: int
 
-    class Config:
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(extra="forbid")
 
 
 class SortingDirection(int, enum.Enum):
@@ -96,7 +99,7 @@ class Asset(pydantic.BaseModel):
     id: Optional[int] = None
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.Asset) -> Asset:
         return cls(
             data_uri=orm.data_uri,
             is_directory=orm.is_directory,
@@ -121,7 +124,7 @@ class Revision(pydantic.BaseModel):
     time_updated: datetime
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.Revision) -> Revision:
         # Trailing underscore in 'metadata_' avoids collision with
         # SQLAlchemy reserved word 'metadata'.
         return cls(
@@ -149,11 +152,10 @@ class DataSource(pydantic.BaseModel):
     assets: List[Asset] = []
     management: Management = Management.writable
 
-    class Config:
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(extra="forbid")
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
         return cls(
             id=orm.id,
             structure_family=orm.structure_family,
@@ -183,8 +185,7 @@ class NodeAttributes(pydantic.BaseModel):
     sorting: Optional[List[SortingItem]] = None
     data_sources: Optional[List[DataSource]] = None
 
-    class Config:
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(extra="forbid")
 
 
 AttributesT = TypeVar("AttributesT")
@@ -316,12 +317,20 @@ class Identity(pydantic.BaseModel):
     provider: Annotated[str, StringConstraints(max_length=255)]
     latest_login: Optional[datetime] = None
 
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.Identity) -> Identity:
+        return cls(id=orm.id, provider=orm.provider, latest_login=orm.latest_login)
+
 
 class Role(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
     name: str
     scopes: List[str]
     # principals
+
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.Role) -> Role:
+        return cls(name=orm.name, scopes=orm.scopes)
 
 
 class APIKey(pydantic.BaseModel):
@@ -332,12 +341,24 @@ class APIKey(pydantic.BaseModel):
     scopes: List[str]
     latest_activity: Optional[datetime] = None
 
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.APIKey) -> APIKey:
+        return cls(
+            first_eight=orm.first_eight,
+            expiration_time=orm.expiration_time,
+            note=orm.note,
+            scopes=orm.scopes,
+            latest_activity=orm.latest_activity,
+        )
+
 
 class APIKeyWithSecret(APIKey):
     secret: str  # hex-encoded bytes
 
     @classmethod
-    def from_orm(cls, orm, secret):
+    def from_orm(
+        cls, orm: tiled.authn_database.orm.APIKeyWithSecret, secret: str
+    ) -> APIKeyWithSecret:
         return cls(
             first_eight=orm.first_eight,
             expiration_time=orm.expiration_time,
@@ -364,6 +385,12 @@ class Session(pydantic.BaseModel):
     expiration_time: datetime
     revoked: bool
 
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.Session) -> Session:
+        return cls(
+            uuid=orm.uuid, expiration_time=orm.expiration_time, revoked=orm.revoked
+        )
+
 
 class Principal(pydantic.BaseModel):
     "Represents a User or Service"
@@ -379,18 +406,32 @@ class Principal(pydantic.BaseModel):
     latest_activity: Optional[datetime] = None
 
     @classmethod
-    def from_orm(cls, orm, latest_activity=None):
-        instance = super().from_orm(orm)
-        instance.latest_activity = latest_activity
-        return instance
+    def from_orm(
+        cls,
+        orm: tiled.authn_database.orm.Principal,
+        latest_activity: Optional[datetime] = None,
+    ) -> Principal:
+        return cls(
+            uuid=orm.uuid,
+            type=orm.type,
+            identities=[Identity.from_orm(id_) for id_ in orm.identities],
+            roles=[Role.from_orm(id_) for id_ in orm.roles],
+            api_keys=[APIKey.from_orm(api_key) for api_key in orm.api_keys],
+            sessions=[Session.from_orm(session) for session in orm.sessions],
+            latest_activity=latest_activity,
+        )
 
 
 class APIKeyRequestParams(pydantic.BaseModel):
     # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
-    expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
-    scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
+    expires_in: Optional[int] = pydantic.Field(
+        ..., json_schema_extra={"example": 600}
+    )  # seconds
+    scopes: Optional[List[str]] = pydantic.Field(
+        ..., json_schema_extra={"example": ["inherit"]}
+    )
     note: Optional[str] = None
 
 
@@ -458,6 +499,3 @@ class PutMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise ValueError
         return v
-
-
-NodeStructure.update_forward_refs()

@@ -792,7 +792,7 @@ async def generate_apikey(db, principal, apikey_params, request):
     # db.refresh(new_key)
     return json_or_msgpack(
         request,
-        schemas.APIKeyWithSecret.from_orm(new_key, secret=secret.hex()).dict(),
+        schemas.APIKeyWithSecret.from_orm(new_key, secret=secret.hex()).model_dump(),
     )
 
 
@@ -834,7 +834,9 @@ async def principal_list(
     principals = []
     for (principal_orm,) in principal_orms:
         latest_activity = await latest_principal_activity(db, principal_orm)
-        principal = schemas.Principal.from_orm(principal_orm, latest_activity).dict()
+        principal = schemas.Principal.from_orm(
+            principal_orm, latest_activity
+        ).model_dump()
         principals.append(principal)
     return json_or_msgpack(request, principals)
 
@@ -867,7 +869,7 @@ async def create_service_principal(
         )
     ).scalar()
 
-    principal = schemas.Principal.from_orm(fully_loaded_principal_orm).dict()
+    principal = schemas.Principal.from_orm(fully_loaded_principal_orm).model_dump()
     request.state.endpoint = "auth"
 
     return json_or_msgpack(request, principal)
@@ -904,7 +906,7 @@ async def principal(
     latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
-        schemas.Principal.from_orm(principal_orm, latest_activity).dict(),
+        schemas.Principal.from_orm(principal_orm, latest_activity).model_dump(),
     )
 
 
@@ -1104,7 +1106,7 @@ async def current_apikey_info(
     api_key_orm = await lookup_valid_api_key(db, secret)
     if api_key_orm is None:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-    return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm).dict())
+    return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm).model_dump())
 
 
 @base_authentication_router.delete("/apikey")
@@ -1169,7 +1171,7 @@ async def whoami(
     latest_activity = await latest_principal_activity(db, principal_orm)
     return json_or_msgpack(
         request,
-        schemas.Principal.from_orm(principal_orm, latest_activity).dict(),
+        schemas.Principal.from_orm(principal_orm, latest_activity).model_dump(),
     )
 
 

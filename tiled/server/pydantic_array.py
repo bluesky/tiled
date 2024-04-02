@@ -18,7 +18,7 @@ import sys
 from typing import List, Optional, Tuple, Union
 
 import numpy
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..structures.array import Endianness, Kind
 
@@ -153,7 +153,7 @@ class StructDtype(BaseModel):
         )
 
 
-Field.update_forward_refs()
+Field.model_rebuild()
 
 
 class ArrayStructure(BaseModel):
@@ -163,8 +163,7 @@ class ArrayStructure(BaseModel):
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
     @classmethod
     def from_json(cls, structure):

@@ -142,7 +142,7 @@ async def about(
                 "documentation": f"{base_url}/docs",
             },
             meta={"root_path": request.scope.get("root_path") or "" + "/api"},
-        ).dict(),
+        ).model_dump(),
         expires=datetime.utcnow() + timedelta(seconds=600),
     )
 
@@ -202,7 +202,7 @@ async def search(
             headers["Cache-Control"] = "must-revalidate"
         return json_or_msgpack(
             request,
-            resource.dict(),
+            resource.model_dump(),
             expires=expires,
             headers=headers,
         )
@@ -234,7 +234,7 @@ async def distinct(
         )
 
         return json_or_msgpack(
-            request, schemas.GetDistinctResponse.parse_obj(distinct).dict()
+            request, schemas.GetDistinctResponse.model_validate(distinct).model_dump()
         )
     else:
         raise HTTPException(
@@ -347,7 +347,7 @@ async def metadata(
 
     return json_or_msgpack(
         request,
-        schemas.Response(data=resource, meta=meta).dict(),
+        schemas.Response(data=resource, meta=meta).model_dump(),
         expires=getattr(entry, "metadata_stale_at", None),
     )
 
@@ -1188,7 +1188,7 @@ async def _create_node(
     response_data = {
         "id": key,
         "links": links,
-        "data_sources": [ds.dict() for ds in node.data_sources],
+        "data_sources": [ds.model_dump() for ds in node.data_sources],
     }
     if metadata_modified:
         response_data["metadata"] = metadata
@@ -1475,7 +1475,7 @@ async def get_revisions(
         limit,
         resolve_media_type(request),
     )
-    return json_or_msgpack(request, resource.dict())
+    return json_or_msgpack(request, resource.model_dump())
 
 
 @router.delete("/revisions/{path:path}")

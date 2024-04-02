@@ -6,7 +6,7 @@ the server and the client.
 
 import enum
 from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 
 class StructureFamily(str, enum.Enum):
@@ -36,5 +36,8 @@ class Spec:
             output = f"{type(self).__name__}({self.name!r}, version={self.version!r})"
         return output
 
-    def dict(self):
+    def dict(self) -> Dict[str, Optional[str]]:
+        # For easy interoperability with pydantic 1.x models
         return asdict(self)
+
+    model_dump = dict  # For easy interoperability with pydantic 2.x models

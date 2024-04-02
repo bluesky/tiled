@@ -429,7 +429,7 @@ async def construct_resource(
             # Convert from dataclass to pydantic.
             # The dataclass implementation of Spec supports dict() method
             # for ease of going between dataclass and pydantic.
-            specs.append(schemas.Spec(**spec.dict()))
+            specs.append(schemas.Spec(**spec.model_dump()))
         attributes["specs"] = specs
     if (entry is not None) and entry.structure_family == StructureFamily.container:
         attributes["structure_family"] = StructureFamily.container
