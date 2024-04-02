@@ -1,9 +1,7 @@
 import builtins
-import hashlib
 
 import tifffile
 
-from ..server.object_cache import with_object_cache
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..utils import path_from_uri
@@ -34,7 +32,6 @@ class TiffAdapter:
             raise Exception
         filepath = path_from_uri(data_uri)
         self._file = tifffile.TiffFile(filepath)
-        self._cache_key = (type(self).__module__, type(self).__qualname__, filepath)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
@@ -42,7 +39,7 @@ class TiffAdapter:
             if self._file.is_shaped:
                 shape = tuple(self._file.shaped_metadata[0]["shape"])
             else:
-                arr = with_object_cache(self._cache_key, self._file.asarray)
+                arr = self._file.asarray()
                 shape = arr.shape
             structure = ArrayStructure(
                 shape=shape,
@@ -63,7 +60,7 @@ class TiffAdapter:
         # if we only want a slice? I do not think that is possible with a
         # single-page TIFF but I'm not sure. Certainly it *is* possible for
         # multi-page TIFFs.
-        arr = with_object_cache(self._cache_key, self._file.asarray)
+        arr = self._file.asarray()
         if slice is not None:
             arr = arr[slice]
         return arr
@@ -74,7 +71,7 @@ class TiffAdapter:
         if sum(block) != 0:
             raise IndexError(block)
 
-        arr = with_object_cache(self._cache_key, self._file.asarray)
+        arr = self._file.asarray()
         if slice is not None:
             arr = arr[slice]
         return arr
@@ -115,11 +112,6 @@ class TiffSequenceAdapter:
         access_policy=None,
     ):
         self._seq = seq
-        self._cache_key = (
-            type(self).__module__,
-            type(self).__qualname__,
-            hashlib.md5(str(self._seq.files).encode()).hexdigest(),
-        )
         # TODO Check shape, chunks against reality.
         self.specs = specs or []
         self._provided_metadata = metadata or {}
@@ -150,26 +142,20 @@ class TiffSequenceAdapter:
         """
 
         if slice is None:
-            return with_object_cache(self._cache_key, self._seq.asarray)
+            return self._seq.asarray()
         if isinstance(slice, int):
             # e.g. read(slice=0)
-            return with_object_cache(
-                self._cache_key + (slice,),
-                tifffile.TiffFile(self._seq.files[slice]).asarray,
-            )
+            return tifffile.TiffFile(self._seq.files[slice]).asarray()
         # e.g. read(slice=(...))
         if isinstance(slice, tuple):
             if len(slice) == 0:
-                return with_object_cache(self._cache_key, self._seq.asarray)
+                return self._seq.asarray()
             image_axis, *the_rest = slice
             # Could be int or slice
             # (0, slice(...)) or (0,....) are converted to a list
             if isinstance(image_axis, int):
                 # e.g. read(slice=(0, ....))
-                arr = with_object_cache(
-                    self._cache_key + (image_axis,),
-                    tifffile.TiffFile(self._seq.files[image_axis]).asarray,
-                )
+                return tifffile.TiffFile(self._seq.files[image_axis]).asarray()
             if isinstance(image_axis, builtins.slice):
                 if image_axis.start is None:
                     slice_start = 0
@@ -180,14 +166,11 @@ class TiffSequenceAdapter:
                 else:
                     slice_step = image_axis.step
 
-                arr = with_object_cache(
-                    self._cache_key + (slice_start, image_axis.stop, slice_step),
-                    tifffile.TiffSequence(
-                        self._seq.files[
-                            slice_start : image_axis.stop : slice_step  # noqa: E203
-                        ]
-                    ).asarray,
-                )
+                arr = tifffile.TiffSequence(
+                    self._seq.files[
+                        slice_start : image_axis.stop : slice_step  # noqa: E203
+                    ]
+                ).asarray()
             arr = arr[tuple(the_rest)]
             return arr
         if isinstance(slice, builtins.slice):
@@ -201,12 +184,9 @@ class TiffSequenceAdapter:
             else:
                 slice_step = slice.step
 
-            arr = with_object_cache(
-                self._cache_key + (slice_start, slice.stop, slice_step),
-                tifffile.TiffSequence(
-                    self._seq.files[slice_start : slice.stop : slice_step]  # noqa: E203
-                ).asarray,
-            )
+            arr = tifffile.TiffSequence(
+                self._seq.files[slice_start : slice.stop : slice_step]  # noqa: E203
+            ).asarray()
             return arr
 
     def read_block(self, block, slice=None):

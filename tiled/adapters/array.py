@@ -1,6 +1,5 @@
 import dask.array
 
-from ..server.object_cache import get_object_cache
 from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 
@@ -76,11 +75,8 @@ class ArrayAdapter:
         array = self._array
         if slice is not None:
             array = array[slice]
-        # Special case for dask to cache computed result in object cache.
         if isinstance(self._array, dask.array.Array):
-            # Note: If the cache is set to NO_CACHE, this is a null context.
-            with get_object_cache().dask_context:
-                return array.compute()
+            return array.compute()
         return array
 
     def read_block(self, block, slice=None):
@@ -90,11 +86,8 @@ class ArrayAdapter:
         # Slice within the block.
         if slice is not None:
             array = array[slice]
-        # Special case for dask to cache computed result in object cache.
-        if isinstance(array, dask.array.Array):
-            # Note: If the cache is set to NO_CACHE, this is a null context.
-            with get_object_cache().dask_context:
-                return array.compute()
+        if isinstance(self._array, dask.array.Array):
+            return array.compute()
         return array
 
 
