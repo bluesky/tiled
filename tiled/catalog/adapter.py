@@ -583,7 +583,7 @@ class CatalogNodeAdapter:
             ancestors=self.segments,
             metadata_=metadata,
             structure_family=structure_family,
-            specs=[s.dict() for s in specs or []],
+            specs=[s.model_dump() for s in specs or []],
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -879,7 +879,7 @@ class CatalogNodeAdapter:
             # SQLAlchemy reserved word 'metadata'.
             values["metadata_"] = metadata
         if specs is not None:
-            values["specs"] = [s.dict() for s in specs]
+            values["specs"] = [s.model_dump() for s in specs]
         async with self.context.session() as db:
             current = (
                 await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
@@ -1111,7 +1111,7 @@ def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
         return None
-    return structure.dict()
+    return structure.model_dump()
 
 
 def binary_op(query, tree, operation):

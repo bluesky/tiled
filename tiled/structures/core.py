@@ -37,4 +37,7 @@ class Spec:
         return output
 
     def dict(self):
+        # For easy interoperability with pydantic 1.x models
         return asdict(self)
+
+    model_dump = dict  # For easy interoperability with pydantic 2.x models
