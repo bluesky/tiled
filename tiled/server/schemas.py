@@ -64,8 +64,7 @@ class NodeStructure(pydantic.BaseModel):
     contents: Optional[Dict[str, Any]]
     count: int
 
-    class Config:
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(extra="forbid")
 
 
 class SortingDirection(int, enum.Enum):
@@ -149,8 +148,7 @@ class DataSource(pydantic.BaseModel):
     assets: List[Asset] = []
     management: Management = Management.writable
 
-    class Config:
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(extra="forbid")
 
     @classmethod
     def from_orm(cls, orm):
@@ -183,8 +181,7 @@ class NodeAttributes(pydantic.BaseModel):
     sorting: Optional[List[SortingItem]] = None
     data_sources: Optional[List[DataSource]] = None
 
-    class Config:
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(extra="forbid")
 
 
 AttributesT = TypeVar("AttributesT")
