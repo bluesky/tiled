@@ -313,12 +313,20 @@ class Identity(pydantic.BaseModel):
     provider: Annotated[str, StringConstraints(max_length=255)]
     latest_login: Optional[datetime] = None
 
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(id=orm.id, provider=orm.provider, latest_login=orm.latest_login)
+
 
 class Role(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
     name: str
     scopes: List[str]
     # principals
+
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(name=orm.name, scopes=orm.scopes)
 
 
 class APIKey(pydantic.BaseModel):
@@ -328,6 +336,16 @@ class APIKey(pydantic.BaseModel):
     note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
     scopes: List[str]
     latest_activity: Optional[datetime] = None
+
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(
+            first_eight=orm.first_eight,
+            expiration_time=orm.expiration_time,
+            note=orm.note,
+            scopes=orm.scopes,
+            latest_activity=orm.latest_activity,
+        )
 
 
 class APIKeyWithSecret(APIKey):
@@ -361,6 +379,12 @@ class Session(pydantic.BaseModel):
     expiration_time: datetime
     revoked: bool
 
+    @classmethod
+    def from_orm(cls, orm):
+        return cls(
+            uuid=orm.uuid, expiration_time=orm.expiration_time, revoked=orm.revoked
+        )
+
 
 class Principal(pydantic.BaseModel):
     "Represents a User or Service"
@@ -377,9 +401,15 @@ class Principal(pydantic.BaseModel):
 
     @classmethod
     def from_orm(cls, orm, latest_activity=None):
-        instance = super().from_orm(orm)
-        instance.latest_activity = latest_activity
-        return instance
+        return cls(
+            uuid=orm.uuid,
+            type=orm.type,
+            identities=[Identity.from_orm(id_) for id_ in orm.identities],
+            roles=[Role.from_orm(id_) for id_ in orm.roles],
+            api_keys=[APIKey.from_orm(api_key) for api_key in orm.api_keys],
+            sessions=[Session.from_orm(session) for session in orm.sessions],
+            latest_activity=latest_activity,
+        )
 
 
 class APIKeyRequestParams(pydantic.BaseModel):
