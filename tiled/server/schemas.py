@@ -386,8 +386,12 @@ class APIKeyRequestParams(pydantic.BaseModel):
     # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
-    expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
-    scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
+    expires_in: Optional[int] = pydantic.Field(
+        ..., json_schema_extra={"example": 600}
+    )  # seconds
+    scopes: Optional[List[str]] = pydantic.Field(
+        ..., json_schema_extra={"example": ["inherit"]}
+    )
     note: Optional[str] = None
 
 
