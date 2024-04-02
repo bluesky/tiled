@@ -109,7 +109,7 @@ class RootNode:
 
     def __init__(self, metadata, specs, access_policy):
         self.metadata_ = metadata or {}
-        self.specs = [Spec.parse_obj(spec) for spec in specs or []]
+        self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
         self.key = None
         self.data_sources = None
@@ -279,7 +279,7 @@ class CatalogNodeAdapter:
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
-        self.specs = [Spec.parse_obj(spec) for spec in node.specs]
+        self.specs = [Spec.model_validate(spec) for spec in node.specs]
         self.ancestors = node.ancestors
         self.key = node.key
         self.access_policy = access_policy

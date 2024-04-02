@@ -234,7 +234,7 @@ async def distinct(
         )
 
         return json_or_msgpack(
-            request, schemas.GetDistinctResponse.parse_obj(distinct).model_dump()
+            request, schemas.GetDistinctResponse.model_validate(distinct).model_dump()
         )
     else:
         raise HTTPException(
