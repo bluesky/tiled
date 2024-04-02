@@ -36,7 +36,7 @@ class Spec:
             output = f"{type(self).__name__}({self.name!r}, version={self.version!r})"
         return output
 
-    def dict(self):
+    def dict(self) -> dict[str, str | None]:
         # For easy interoperability with pydantic 1.x models
         return asdict(self)
 

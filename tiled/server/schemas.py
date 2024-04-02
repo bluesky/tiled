@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
@@ -15,6 +15,10 @@ from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
+
+if TYPE_CHECKING:
+    import tiled.authn_database.orm
+    import tiled.catalog.orm
 
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
@@ -95,7 +99,7 @@ class Asset(pydantic.BaseModel):
     id: Optional[int] = None
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.Asset) -> Asset:
         return cls(
             data_uri=orm.data_uri,
             is_directory=orm.is_directory,
@@ -120,7 +124,7 @@ class Revision(pydantic.BaseModel):
     time_updated: datetime
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.Revision) -> Revision:
         # Trailing underscore in 'metadata_' avoids collision with
         # SQLAlchemy reserved word 'metadata'.
         return cls(
@@ -151,7 +155,7 @@ class DataSource(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid")
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
         return cls(
             id=orm.id,
             structure_family=orm.structure_family,
@@ -314,7 +318,7 @@ class Identity(pydantic.BaseModel):
     latest_login: Optional[datetime] = None
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.authn_database.orm.Identity) -> Identity:
         return cls(id=orm.id, provider=orm.provider, latest_login=orm.latest_login)
 
 
@@ -325,7 +329,7 @@ class Role(pydantic.BaseModel):
     # principals
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.authn_database.orm.Role) -> Role:
         return cls(name=orm.name, scopes=orm.scopes)
 
 
@@ -338,7 +342,7 @@ class APIKey(pydantic.BaseModel):
     latest_activity: Optional[datetime] = None
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.authn_database.orm.APIKey) -> APIKey:
         return cls(
             first_eight=orm.first_eight,
             expiration_time=orm.expiration_time,
@@ -352,7 +356,9 @@ class APIKeyWithSecret(APIKey):
     secret: str  # hex-encoded bytes
 
     @classmethod
-    def from_orm(cls, orm, secret):
+    def from_orm(
+        cls, orm: tiled.authn_database.orm.APIKeyWithSecret, secret: str
+    ) -> APIKeyWithSecret:
         return cls(
             first_eight=orm.first_eight,
             expiration_time=orm.expiration_time,
@@ -380,7 +386,7 @@ class Session(pydantic.BaseModel):
     revoked: bool
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.authn_database.orm.Session) -> Session:
         return cls(
             uuid=orm.uuid, expiration_time=orm.expiration_time, revoked=orm.revoked
         )
@@ -400,7 +406,11 @@ class Principal(pydantic.BaseModel):
     latest_activity: Optional[datetime] = None
 
     @classmethod
-    def from_orm(cls, orm, latest_activity=None):
+    def from_orm(
+        cls,
+        orm: tiled.authn_database.orm.Principal,
+        latest_activity: Optional[datetime] = None,
+    ) -> Principal:
         return cls(
             uuid=orm.uuid,
             type=orm.type,
