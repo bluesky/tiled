@@ -153,7 +153,7 @@ class StructDtype(BaseModel):
         )
 
 
-Field.update_forward_refs()
+Field.model_rebuild()
 
 
 class ArrayStructure(BaseModel):

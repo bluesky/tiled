@@ -458,6 +458,3 @@ class PutMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise ValueError
         return v
-
-
-NodeStructure.update_forward_refs()
