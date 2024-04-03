@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import cachetools
 
@@ -9,23 +9,17 @@ import cachetools
 DEFAULT_MAX_SIZE = int(os.getenv("TILED_RESOURCE_CACHE_MAX_SIZE", "1024"))
 DEFAULT_TIME_TO_USE_SECONDS = float(os.getenv("TILED_RESOURCE_CACHE_TTU", "60."))
 
-_cache = None
 
-
-def get_resource_cache():
-    global _cache
-    if _cache is None:
-        cache = default_resource_cache()
-        set_resource_cache(cache)
+def get_resource_cache() -> cachetools.Cache:
     return _cache
 
 
-def set_resource_cache(cache):
+def set_resource_cache(cache: cachetools.Cache) -> None:
     global _cache
     _cache = cache
 
 
-def default_ttu(_key, value, now):
+def default_ttu(_key: str, value: Any, now: float):
     """
     Retain cached items for at most 60 seconds.
     """
@@ -45,6 +39,10 @@ def with_resource_cache(
 ):
     """
     Use value from cache or, if not present, call factory(*args, **kwargs) and cache result.
+
+    This uses a globally configured resource cache by default.
+    For testing and debugging, a cache may be passed to the
+    parameter _resource_cache.
     """
     if _resource_cache is None:
         cache = get_resource_cache()
@@ -59,3 +57,6 @@ def with_resource_cache(
     if cache.maxsize:  # handle size 0 cache
         cache[cache_key] = value
     return value
+
+
+_cache: cachetools.Cache = default_resource_cache()
