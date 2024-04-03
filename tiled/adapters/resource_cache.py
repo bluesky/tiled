@@ -1,3 +1,4 @@
+import os
 from typing import Callable, Optional
 
 import cachetools
@@ -5,8 +6,8 @@ import cachetools
 # Cached items will be evicted if not used for a specified time interval
 # ("time to use"). If the cache size reaches its max size, the least recently
 # used cache item will be evicted.
-DEFAULT_MAX_SIZE = 1024
-DEFAULT_TIME_TO_USE_SECONDS = 60
+DEFAULT_MAX_SIZE = int(os.getenv("TILED_RESOURCE_CACHE_MAX_SIZE", "1024"))
+DEFAULT_TIME_TO_USE_SECONDS = float(os.getenv("TILED_RESOURCE_CACHE_TTU", "60."))
 
 _cache = None
 
