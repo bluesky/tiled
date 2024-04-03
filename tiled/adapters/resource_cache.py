@@ -56,5 +56,6 @@ def with_resource_cache(
         return value
     # Generate value and offer it to the cache.
     value = factory(*args, **kwargs)
-    cache[cache_key] = value
+    if cache.maxsize:  # handle size 0 cache
+        cache[cache_key] = value
     return value
