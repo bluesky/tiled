@@ -1,8 +1,14 @@
 import builtins
+import hashlib
+from typing import Any, Optional, Tuple, Union, cast
 
 import numpy as np
 import tifffile
+from numpy._typing import NDArray
+from type_alliases import JSON, Spec
 
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
+from ..server.object_cache import with_object_cache
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..utils import path_from_uri
@@ -23,13 +29,13 @@ class TiffAdapter:
 
     def __init__(
         self,
-        data_uri,
+        data_uri: Union[str, list[str]],
         *,
-        structure=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        structure: Optional[ArrayStructure] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    ) -> None:
         if not isinstance(data_uri, str):
             raise Exception
         filepath = path_from_uri(data_uri)
@@ -40,7 +46,10 @@ class TiffAdapter:
         self.access_policy = access_policy
         if structure is None:
             if self._file.is_shaped:
-                shape = tuple(self._file.shaped_metadata[0]["shape"])
+                from_file: tuple[dict[str, Any], ...] = cast(
+                    tuple[dict[str, Any], ...], self._file.shaped_metadata
+                )
+                shape = tuple(from_file[0]["shape"])
             else:
                 arr = self._file.asarray()
                 shape = arr.shape
@@ -51,14 +60,14 @@ class TiffAdapter:
             )
         self._structure = structure
 
-    def metadata(self):
+    def metadata(self) -> dict[Any, Any]:
         # This contains some enums, but Python's built-in JSON serializer
         # handles them fine (converting  to str or int as appropriate).
-        d = {tag.name: tag.value for tag in self._file.pages[0].tags.values()}
+        d = {tag.name: tag.value for tag in self._file.pages[0].tags.values()}  # type: ignore
         d.update(self._provided_metadata)
         return d
 
-    def read(self, slice=None):
+    def read(self, slice: Optional[slice] = None) -> NDArray[Any]:
         # TODO Is there support for reading less than the whole array
         # if we only want a slice? I do not think that is possible with a
         # single-page TIFF but I'm not sure. Certainly it *is* possible for
@@ -68,7 +77,9 @@ class TiffAdapter:
             arr = arr[slice]
         return arr
 
-    def read_block(self, block, slice=None):
+    def read_block(
+        self, block: Tuple[int, ...], slice: Optional[slice] = None
+    ) -> NDArray[Any]:
         # For simplicity, this adapter always treat a single TIFF file as one
         # chunk. This could be relaxed in the future.
         if sum(block) != 0:
@@ -79,7 +90,7 @@ class TiffAdapter:
             arr = arr[slice]
         return arr
 
-    def structure(self):
+    def structure(self) -> ArrayStructure:
         return self._structure
 
 
@@ -89,12 +100,12 @@ class TiffSequenceAdapter:
     @classmethod
     def from_uris(
         cls,
-        data_uris,
-        structure=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        data_uris: Union[str, list[str]],
+        structure: Optional[ArrayStructure] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    ) -> "TiffSequenceAdapter":
         filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         seq = tifffile.TiffSequence(filepaths)
         return cls(
@@ -107,13 +118,13 @@ class TiffSequenceAdapter:
 
     def __init__(
         self,
-        seq,
+        seq: Any,
         *,
-        structure=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        structure: Optional[ArrayStructure] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    ) -> None:
         self._seq = seq
         # TODO Check shape, chunks against reality.
         self.specs = specs or []
@@ -130,11 +141,11 @@ class TiffSequenceAdapter:
             )
         self._structure = structure
 
-    def metadata(self):
+    def metadata(self) -> JSON:
         # TODO How to deal with the many headers?
         return self._provided_metadata
 
-    def read(self, slice=Ellipsis):
+    def read(self, slice: Optional[Union[int, slice]] = ...) -> NDArray[Any]:
         """Return a numpy array
 
         Receives a sequence of values to select from a collection of tiff files that were saved in a folder
@@ -170,14 +181,13 @@ class TiffSequenceAdapter:
             arr = np.atleast_1d(arr[tuple(the_rest)])
             return arr
 
-    def read_block(self, block, slice=None):
+    def read_block(
+        self, block: Tuple[int, ...], slice: Optional[Union[int, slice]] = ...
+    ) -> NDArray[Any]:
         if any(block[1:]):
-            # e.g. block[1:] != [0,0, ..., 0]
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
-        if slice is not None:
-            arr = arr[slice]
-        return arr
+        return arr[slice]
 
-    def structure(self):
+    def structure(self) -> ArrayStructure:
         return self._structure

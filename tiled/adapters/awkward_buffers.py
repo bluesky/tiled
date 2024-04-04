@@ -7,6 +7,7 @@ from typing import Any, Iterator, List, Optional, Self, Union
 from collections.abc import Buffer
 
 import awkward.forms
+from type_alliases import JSON, Spec
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..server.pydantic_awkward import AwkwardStructure
@@ -15,12 +16,12 @@ from ..utils import path_from_uri
 from .awkward import AwkwardAdapter
 
 
-class DirectoryContainer(collections.abc.MutableMapping[str, bytes]):
+class DirectoryContainer(collections.abc.MutableMapping[str, JSON]):
     def __init__(self, directory: Path, form: Any):
         self.directory = directory
         self.form = form
 
-    def __getitem__(self, form_key: str) -> bytes:
+    def __getitem__(self, form_key: str) -> JSON:
         with open(self.directory / form_key, "rb") as file:
             return file.read()
 
@@ -54,8 +55,8 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         cls,
         data_uri: str,
         structure: AwkwardStructure,
-        metadata: Optional[dict[str, str]] = None,
-        specs: Optional[List[str]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> Self:
         form = awkward.forms.from_dict(structure.form)

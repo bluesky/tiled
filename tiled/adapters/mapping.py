@@ -4,7 +4,11 @@ import itertools
 import operator
 from collections import Counter
 from datetime import datetime
+from typing import Optional, Union
 
+from type_alliases import JSON, Spec
+
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
     Comparison,
@@ -52,13 +56,13 @@ class MapAdapter(collections.abc.Mapping, IndexersMixin):
 
     def __init__(
         self,
-        mapping,
+        mapping: dict,
         *,
         structure=None,
-        metadata=None,
+        metadata: Optional[JSON] = None,
         sorting=None,
-        specs=None,
-        access_policy=None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
         entries_stale_after=None,
         metadata_stale_after=None,
         must_revalidate=True,
