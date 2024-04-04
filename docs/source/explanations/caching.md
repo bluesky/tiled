@@ -57,7 +57,7 @@ the cache parameters:
 
 ```sh
 TILED_RESOURCE_CACHE_MAX_SIZE  # default 1024 items
-DEFAULT_TIME_TO_USE_SECONDS  # default 60. seconds
+TILED_RESOURCE_CACHE_TTU  # default 60. seconds
 ```
 
 The "size" is measured in cached items; that is, each item in the cache has
