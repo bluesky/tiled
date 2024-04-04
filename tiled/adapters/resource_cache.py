@@ -21,7 +21,7 @@ def set_resource_cache(cache: cachetools.Cache) -> None:
 
 def default_ttu(_key: str, value: Any, now: float):
     """
-    Retain cached items for at most 60 seconds.
+    Retain cached items for at most `DEFAULT_TIME_TO_USE_SECONDS` seconds (60s, by default).
     """
     return DEFAULT_TIME_TO_USE_SECONDS + now
 
