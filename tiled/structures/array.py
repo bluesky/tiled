@@ -4,6 +4,8 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional, Self, Tuple, Union
 
+import numpy
+
 
 class Endianness(str, enum.Enum):
     """
@@ -92,7 +94,7 @@ class BuiltinDtype:
             itemsize=dtype.itemsize,
         )
 
-    def to_numpy_dtype(self):
+    def to_numpy_dtype(self) -> numpy.dtype:
         import numpy
 
         return numpy.dtype(self.to_numpy_str())
