@@ -1,13 +1,19 @@
 import collections.abc
 import os
 import warnings
+from pathlib import Path
+from typing import Any, Iterator, List, Optional, Self, Union
 
 import h5py
 import numpy
+from numpy._typing import NDArray
+from type_alliases import HDF5, Spec
 
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import StructureFamily
+from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
 from .resource_cache import with_resource_cache
@@ -16,40 +22,13 @@ SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
-def hdf5_lookup(
-    data_uri,
-    *,
-    structure=None,
-    metadata=None,
-    swmr=SWMR_DEFAULT,
-    libver="latest",
-    specs=None,
-    access_policy=None,
-    path=None,
-):
-    path = path or []
-    adapter = HDF5Adapter.from_uri(
-        data_uri,
-        structure=structure,
-        metadata=metadata,
-        swmr=swmr,
-        libver=libver,
-        specs=specs,
-        access_policy=access_policy,
-    )
-    for segment in path:
-        adapter = adapter.get(segment)
-        if adapter is None:
-            raise KeyError(segment)
-    # TODO What to do with metadata, specs?
-    return adapter
-
-
-def from_dataset(dataset):
+def from_dataset(dataset: NDArray[Any]) -> ArrayAdapter:
     return ArrayAdapter.from_array(dataset, metadata=getattr(dataset, "attrs", {}))
 
 
-class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
+class HDF5Adapter(
+    collections.abc.Mapping[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixin
+):
     """
     Read an HDF5 file or a group within one.
 
@@ -80,8 +59,14 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     structure_family = StructureFamily.container
 
     def __init__(
-        self, node, *, structure=None, metadata=None, specs=None, access_policy=None
-    ):
+        self,
+        node: Any,
+        *,
+        structure: Optional[TableStructure] = None,
+        metadata: Optional[HDF5] = None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    ) -> None:
         self._node = node
         self._access_policy = access_policy
         self.specs = specs or []
@@ -91,29 +76,29 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
     @classmethod
     def from_file(
         cls,
-        file,
+        file: Any,
         *,
-        structure=None,
-        metadata=None,
-        swmr=SWMR_DEFAULT,
-        libver="latest",
-        specs=None,
-        access_policy=None,
-    ):
+        structure: Optional[TableStructure] = None,
+        metadata: HDF5 = None,
+        swmr: bool = SWMR_DEFAULT,
+        libver: str = "latest",
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    ) -> "HDF5Adapter":
         return cls(file, metadata=metadata, specs=specs, access_policy=access_policy)
 
     @classmethod
     def from_uri(
         cls,
-        data_uri,
+        data_uri: Union[str, list[str]],
         *,
-        structure=None,
-        metadata=None,
-        swmr=SWMR_DEFAULT,
-        libver="latest",
-        specs=None,
-        access_policy=None,
-    ):
+        structure: Optional[TableStructure] = None,
+        metadata: Optional[HDF5] = None,
+        swmr: bool = SWMR_DEFAULT,
+        libver: str = "latest",
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    ) -> "HDF5Adapter":
         filepath = path_from_uri(data_uri)
         cache_key = (h5py.File, filepath, "r", swmr, libver)
         file = with_resource_cache(
@@ -121,17 +106,17 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         )
         return cls.from_file(file)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return node_repr(self, list(self))
 
     @property
-    def access_policy(self):
+    def access_policy(self) -> Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]]:
         return self._access_policy
 
-    def structure(self):
+    def structure(self) -> None:
         return None
 
-    def metadata(self):
+    def metadata(self) -> HDF5:
         d = dict(self._node.attrs)
         for k, v in list(d.items()):
             # Convert any bytes to str.
@@ -140,10 +125,10 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         d.update(self._provided_metadata)
         return d
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         yield from self._node
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Union["HDF5Adapter", ArrayAdapter]:
         value = self._node[key]
         if isinstance(value, h5py.Group):
             return HDF5Adapter(value)
@@ -169,42 +154,73 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
                 return from_dataset(numpy.array([]))
             return from_dataset(value)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._node)
 
-    def keys(self):
+    def keys(self) -> KeysView:  # type: ignore
         return KeysView(lambda: len(self), self._keys_slice)
 
-    def values(self):
+    def values(self) -> ValuesView:  # type: ignore
         return ValuesView(lambda: len(self), self._items_slice)
 
-    def items(self):
+    def items(self) -> ItemsView:  # type: ignore
         return ItemsView(lambda: len(self), self._items_slice)
 
-    def search(self, query):
+    def search(self, query: Any) -> None:
         """
         Return a Tree with a subset of the mapping.
         """
         raise NotImplementedError
 
-    def read(self, fields=None):
+    def read(self, fields: Optional[str] = None) -> Self:
         if fields is not None:
             raise NotImplementedError
         return self
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start, stop, direction):
+    def _keys_slice(self, start: int, stop: int, direction: int) -> list[Any]:
         keys = list(self._node)
         if direction < 0:
-            keys = reversed(keys)
+            keys = list(reversed(keys))
         return keys[start:stop]
 
-    def _items_slice(self, start, stop, direction):
+    def _items_slice(
+        self, start: int, stop: int, direction: int
+    ) -> list[tuple[Any, Any]]:
         items = [(key, self[key]) for key in list(self)]
         if direction < 0:
-            items = reversed(items)
+            items = list(reversed(items))
         return items[start:stop]
 
-    def inlined_contents_enabled(self, depth):
+    def inlined_contents_enabled(self, depth: int) -> bool:
         return depth <= INLINED_DEPTH
+
+
+def hdf5_lookup(
+    data_uri: Union[str, list[str]],
+    *,
+    structure: Optional[TableStructure] = None,
+    metadata: Optional[HDF5] = None,
+    swmr: bool = SWMR_DEFAULT,
+    libver: str = "latest",
+    specs: Optional[List[Spec]] = None,
+    access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    path: Optional[Union[list[Path], list[str]]] = None,
+) -> Union[HDF5Adapter, ArrayAdapter]:
+    path = path or []
+    adapter = HDF5Adapter.from_uri(
+        data_uri,
+        structure=structure,
+        metadata=metadata,
+        swmr=swmr,
+        libver=libver,
+        specs=specs,
+        access_policy=access_policy,
+    )
+    for segment in path:
+        adapter = adapter.get(segment)  # type: ignore
+        if adapter is None:
+            raise KeyError(segment)
+    # TODO What to do with metadata, specs?
+    return adapter

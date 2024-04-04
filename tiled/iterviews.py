@@ -6,7 +6,7 @@ Iterables for KeysView, ValuesView, ItemsView that are sliceable.
 class IterViewBase:
     __slots__ = ("_get_length",)
 
-    def __init__(self, get_length):
+    def __init__(self, get_length) -> None:
         self._get_length = get_length
 
     def __repr__(self):
@@ -44,7 +44,7 @@ class KeysView(IterViewBase):
     __slots__ = ("_keys_slice",)
     _name = "key"
 
-    def __init__(self, get_length, keys_slice):
+    def __init__(self, get_length, keys_slice) -> None:
         self._keys_slice = keys_slice
         super().__init__(get_length)
 
@@ -81,7 +81,7 @@ class ItemsView(IterViewBase):
     __slots__ = ("_items_slice",)
     _name = "item"
 
-    def __init__(self, get_length, items_slice):
+    def __init__(self, get_length, items_slice) -> None:
         self._items_slice = items_slice
         super().__init__(get_length)
 
@@ -120,7 +120,7 @@ class ValuesView(IterViewBase):
     __slots__ = ("_items_slice",)
     _name = "value"
 
-    def __init__(self, get_length, items_slice):
+    def __init__(self, get_length, items_slice) -> None:
         self._items_slice = items_slice
         super().__init__(get_length)
 

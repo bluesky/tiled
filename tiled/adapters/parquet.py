@@ -1,8 +1,13 @@
 from pathlib import Path
+from typing import Any, List, Optional, Union
 
 import dask.dataframe
+import pandas
+from type_alliases import JSON, Spec
 
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.core import StructureFamily
+from ..structures.table import TableStructure
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
 
@@ -12,11 +17,11 @@ class ParquetDatasetAdapter:
 
     def __init__(
         self,
-        data_uris,
-        structure,
-        metadata=None,
-        specs=None,
-        access_policy=None,
+        data_uris: List[str],
+        structure: TableStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ):
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
@@ -25,11 +30,11 @@ class ParquetDatasetAdapter:
         self.specs = list(specs or [])
         self.access_policy = access_policy
 
-    def metadata(self):
+    def metadata(self) -> JSON:
         return self._metadata
 
     @property
-    def dataframe_adapter(self):
+    def dataframe_adapter(self) -> DataFrameAdapter:
         partitions = []
         for path in self._partition_paths:
             if not Path(path).exists():
@@ -40,7 +45,9 @@ class ParquetDatasetAdapter:
         return DataFrameAdapter(partitions, self._structure)
 
     @classmethod
-    def init_storage(cls, data_uri, structure):
+    def init_storage(
+        cls, data_uri: Union[str, list[str]], structure: TableStructure
+    ) -> Any:
         from ..server.schemas import Asset
 
         directory = path_from_uri(data_uri)
@@ -56,21 +63,21 @@ class ParquetDatasetAdapter:
         ]
         return assets
 
-    def write_partition(self, data, partition):
+    def write_partition(self, data: Any, partition: int) -> None:
         uri = self._partition_paths[partition]
         data.to_parquet(uri)
 
-    def write(self, data):
+    def write(self, data: Any) -> None:
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
         data.to_parquet(uri)
 
-    def read(self, *args, **kwargs):
+    def read(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
         return self.dataframe_adapter.read(*args, **kwargs)
 
-    def read_partition(self, *args, **kwargs):
+    def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
         return self.dataframe_adapter.read_partition(*args, **kwargs)
 
-    def structure(self):
+    def structure(self) -> TableStructure:
         return self._structure

@@ -1,4 +1,6 @@
 import dask.base
+from typing import Optional, Self
+
 import dask.dataframe
 import pandas
 
@@ -45,7 +47,7 @@ class TableAdapter:
         metadata=None,
         specs=None,
         access_policy=None,
-    ):
+    ) -> Self:
         structure = TableStructure.from_dask_dataframe(ddf)
         if specs is None:
             specs = [Spec("dataframe")]
@@ -60,12 +62,12 @@ class TableAdapter:
     def __init__(
         self,
         partitions,
-        structure,
+        structure: TableStructure,
         *,
         metadata=None,
         specs=None,
         access_policy=None,
-    ):
+    ) -> None:
         self._metadata = metadata or {}
         self._partitions = list(partitions)
         self._structure = structure
@@ -88,10 +90,10 @@ class TableAdapter:
     def metadata(self):
         return self._metadata
 
-    def structure(self):
+    def structure(self) -> TableStructure:
         return self._structure
 
-    def read(self, fields=None):
+    def read(self, fields: Optional[list[str]] = None) -> pandas.DataFrame:
         if any(p is None for p in self._partitions):
             raise ValueError("Not all partitions have been stored.")
         if isinstance(self._partitions[0], dask.dataframe.DataFrame):
@@ -107,7 +109,9 @@ class TableAdapter:
             df = df[fields]
         return df
 
-    def read_partition(self, partition, fields=None):
+    def read_partition(
+        self, partition: int, fields: Optional[list[str]] = None
+    ) -> pandas.DataFrame:
         partition = self._partitions[partition]
         if partition is None:
             raise RuntimeError(f"partition {partition} has not be stored yet")

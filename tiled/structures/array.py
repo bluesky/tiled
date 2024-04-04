@@ -2,7 +2,7 @@ import enum
 import os
 import sys
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Self, Tuple, Union
 
 
 class Endianness(str, enum.Enum):
@@ -234,7 +234,7 @@ class ArrayStructure:
         )
 
     @classmethod
-    def from_array(cls, array, shape=None, chunks=None, dims=None):
+    def from_array(cls, array, shape=None, chunks=None, dims=None) -> Self:
         from dask.array.core import normalize_chunks
 
         if not hasattr(array, "__array__"):

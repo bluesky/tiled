@@ -1,5 +1,12 @@
-import dask.array
+from typing import Any, List, Optional, Self, Tuple, Union
 
+import dask.array
+from numpy import dtype, ndarray
+from numpy.typing import NDArray
+from type_alliases import JSON, Spec
+
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
+from ..server.object_cache import get_object_cache
 from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 
@@ -23,13 +30,13 @@ class ArrayAdapter:
 
     def __init__(
         self,
-        array,
-        structure,
+        array: NDArray[Any],
+        structure: ArrayStructure,
         *,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    ) -> None:
         self._array = array
         self._structure = structure
         self._metadata = metadata or {}
@@ -38,15 +45,15 @@ class ArrayAdapter:
     @classmethod
     def from_array(
         cls,
-        array,
+        array: NDArray[Any],
         *,
-        shape=None,
-        chunks=None,
-        dims=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        shape: Optional[Tuple[int, ...]] = None,
+        chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
+        dims: Optional[Tuple[str, ...]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    ) -> Self:
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims
         )
@@ -58,20 +65,20 @@ class ArrayAdapter:
             access_policy=access_policy,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._array!r})"
 
     @property
-    def dims(self):
+    def dims(self) -> Optional[Tuple[str, ...]]:
         return self._structure.dims
 
-    def metadata(self):
+    def metadata(self) -> JSON:
         return self._metadata
 
-    def structure(self):
+    def structure(self) -> ArrayStructure:
         return self._structure
 
-    def read(self, slice=None):
+    def read(self, slice: Optional[slice]) -> ndarray[Any, dtype[Any]]:
         array = self._array
         if slice is not None:
             array = array[slice]
@@ -79,7 +86,11 @@ class ArrayAdapter:
             return array.compute()
         return array
 
-    def read_block(self, block, slice=None):
+    def read_block(
+        self,
+        block: Tuple[int, ...],
+        slice: slice,
+    ) -> ndarray[Any, dtype[Any]]:
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         array = self._array[slice_]
@@ -91,7 +102,9 @@ class ArrayAdapter:
         return array
 
 
-def slice_and_shape_from_block_and_chunks(block, chunks):
+def slice_and_shape_from_block_and_chunks(
+    block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
+) -> Tuple[Tuple[slice, ...], Tuple[int, ...]]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
     """

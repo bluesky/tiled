@@ -1,23 +1,37 @@
 from pathlib import Path
+from typing import Any, Callable, Iterator, List, Optional, Self, Tuple, Union
 
 import dask.dataframe
+import pandas
+from type_alliases import JSON, Spec
 
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
+from .table import TableAdapter
+
+# from ..server.pydantic_awkward import AwkwardStructure as AwkwardPydantic
+# from ..structures.awkward import AwkwardStructure as AwkwardStructureTiled
+# from ..server.pydantic_array import ArrayStructure as ArrayStructurePydantic
+# from ..structures.array import ArrayStructure as ArrayStructureTiled
+# from ..server.pydantic_table import TableStructure as TableStructurePydantic
+# from ..structures.table import TableStructure as TableStructureTiled
+# from ..server.pydantic_sparse import SparseStructure as SparseStructurePydantic
+# from ..structures.sparse import SparseStructure as SparseStructureTiled
 
 
 def read_csv(
-    data_uri,
-    structure=None,
-    metadata=None,
-    specs=None,
-    access_policy=None,
-    **kwargs,
-):
+    data_uri: str,
+    structure: Optional[TableStructure] = None,
+    metadata: Optional[JSON] = None,
+    specs: Optional[List[str]] = None,
+    access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    **kwargs: Any,
+) -> TableAdapter:
     """
     Read a CSV.
 
@@ -53,12 +67,12 @@ class CSVAdapter:
 
     def __init__(
         self,
-        data_uris,
-        structure=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        data_uris: Union[str, list[str]],
+        structure: Optional[TableStructure] = None,
+        metadata: Optional[dict[str, str]] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    ) -> None:
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
@@ -69,11 +83,11 @@ class CSVAdapter:
         self.specs = list(specs or [])
         self.access_policy = access_policy
 
-    def metadata(self):
+    def metadata(self) -> JSON:
         return self._metadata
 
     @property
-    def dataframe_adapter(self):
+    def dataframe_adapter(self) -> TableAdapter:
         partitions = []
         for path in self._partition_paths:
             if not Path(path).exists():
@@ -84,7 +98,7 @@ class CSVAdapter:
         return DataFrameAdapter(partitions, self._structure)
 
     @classmethod
-    def init_storage(cls, data_uri, structure):
+    def init_storage(cls, data_uri: str, structure: TableStructure) -> Any:
         from ..server.schemas import Asset
 
         directory = path_from_uri(data_uri)
@@ -100,35 +114,41 @@ class CSVAdapter:
         ]
         return assets
 
-    def append_partition(self, data, partition):
+    def append_partition(self, data: Any, partition: int) -> None:
         uri = self._partition_paths[partition]
         data.to_csv(uri, index=False, mode="a", header=False)
 
-    def write_partition(self, data, partition):
+    def write_partition(self, data: Any, partition: int) -> None:
         uri = self._partition_paths[partition]
         data.to_csv(uri, index=False)
 
-    def write(self, data):
+    def write(self, data: Any) -> None:
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
         data.to_csv(uri, index=False)
 
-    def read(self, *args, **kwargs):
+    def read(self, *args: Optional[list[str]], **kwargs: Any) -> pandas.DataFrame:
         return self.dataframe_adapter.read(*args, **kwargs)
 
-    def read_partition(self, *args, **kwargs):
+    def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
         return self.dataframe_adapter.read_partition(*args, **kwargs)
 
-    def structure(self):
+    def structure(self) -> TableStructure:
         return self._structure
 
-    def get(self, key):
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def generate_data_sources(self, mimetype, dict_or_none, item, is_directory):
+    def generate_data_sources(
+        self,
+        mimetype: Any,
+        dict_or_none: Callable[[TableStructure], dict[str, str]],
+        item: Union[str, Path],
+        is_directory: bool,
+    ) -> List[DataSource]:
         return [
             DataSource(
                 structure_family=self.dataframe_adapter.structure_family,
@@ -149,8 +169,13 @@ class CSVAdapter:
 
     @classmethod
     def from_single_file(
-        cls, data_uri, structure=None, metadata=None, specs=None, access_policy=None
-    ):
+        cls,
+        data_uri: str,
+        structure: Optional[TableStructure] = None,
+        metadata: Optional[dict[str, str]] = None,
+        specs: Optional[List[str]] = None,
+        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    ) -> Self:
         return cls(
             [data_uri],
             structure=structure,
@@ -159,11 +184,11 @@ class CSVAdapter:
             access_policy=access_policy,
         )
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> ArrayAdapter:
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def items(self):
+    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns
