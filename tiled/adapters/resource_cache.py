@@ -3,9 +3,16 @@ from typing import Any, Callable, Optional
 
 import cachetools
 
-# Cached items will be evicted if not used for a specified time interval
-# ("time to use"). If the cache size reaches its max size, the least recently
-# used cache item will be evicted.
+# When items are evicted from the cache, a hard reference is dropped, freeing
+# the resource to be closed by the garbage collector if there are no other
+# extant hard references. Items are evicted if:
+#
+# - They have been in the cache for a _total_ of more than a given time.
+#   (Accessing an item does not reset this time.)
+# - The cache is at capacity and this item is the least recently used item.
+#
+# The "size" is measured in cached items; that is, each item in the cache has
+# size 1.
 DEFAULT_MAX_SIZE = int(os.getenv("TILED_RESOURCE_CACHE_MAX_SIZE", "1024"))
 DEFAULT_TIME_TO_USE_SECONDS = float(os.getenv("TILED_RESOURCE_CACHE_TTU", "60."))
 
