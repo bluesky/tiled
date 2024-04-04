@@ -128,3 +128,15 @@ See {doc}`../explanations/structures` for more context.
    tiled.server.app.build_app
    tiled.server.app.build_app_from_config
 ```
+
+## Resource Cache
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.adapters.resource_cache.get_resource_cache
+   tiled.adapters.resource_cache.set_resource_cache
+   tiled.adapters.resource_cache.default_resource_cache
+   tiled.adapters.resource_cache.with_resource_cache
+```

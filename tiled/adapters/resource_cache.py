@@ -18,10 +18,12 @@ DEFAULT_TIME_TO_USE_SECONDS = float(os.getenv("TILED_RESOURCE_CACHE_TTU", "60.")
 
 
 def get_resource_cache() -> cachetools.Cache:
+    "Return resource cache, a process-global Cache."
     return _cache
 
 
 def set_resource_cache(cache: cachetools.Cache) -> None:
+    "Set the resource cache, a process-global Cache."
     global _cache
     _cache = cache
 
@@ -34,6 +36,7 @@ def default_ttu(_key: str, value: Any, now: float):
 
 
 def default_resource_cache():
+    "Create a new instance of the default resource cache."
     return cachetools.TLRUCache(DEFAULT_MAX_SIZE, default_ttu)
 
 
@@ -45,11 +48,10 @@ def with_resource_cache(
     **kwargs,
 ):
     """
-    Use value from cache or, if not present, call factory(*args, **kwargs) and cache result.
+    Use value from cache or, if not present, call `factory(*args, **kwargs)` and cache result.
 
-    This uses a globally configured resource cache by default.
-    For testing and debugging, a cache may be passed to the
-    parameter _resource_cache.
+    This uses a globally configured resource cache by default. For testing and
+    debugging, a cache may be passed to the parameter _resource_cache.
     """
     if _resource_cache is None:
         cache = get_resource_cache()
