@@ -115,7 +115,7 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         access_policy=None,
     ):
         filepath = path_from_uri(data_uri)
-        cache_key = (cls.__module__, cls.__name__, filepath)
+        cache_key = (h5py.File, filepath, "r", swmr, libver)
         file = with_resource_cache(
             cache_key, h5py.File, filepath, "r", swmr=swmr, libver=libver
         )

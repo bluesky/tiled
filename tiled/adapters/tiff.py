@@ -32,7 +32,7 @@ class TiffAdapter:
         if not isinstance(data_uri, str):
             raise Exception
         filepath = path_from_uri(data_uri)
-        cache_key = (type(self).__module__, type(self).__qualname__, filepath)
+        cache_key = (tifffile.TiffFile, filepath)
         self._file = with_resource_cache(cache_key, tifffile.TiffFile, filepath)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
