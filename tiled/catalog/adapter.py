@@ -1290,7 +1290,9 @@ def from_uri(
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
 
-    engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
+    engine = create_async_engine(
+        uri, echo=echo, json_serializer=json_serializer, poolclass=AsyncAdaptedQueuePool
+    )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogContainerAdapter(
