@@ -15,6 +15,7 @@ from type_alliases import JSON, Spec
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
+from ..server.schemas import NodeStructure
 from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 from ..utils import node_repr, path_from_uri
@@ -24,7 +25,7 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
 def read_zarr(
-    data_uri: Union[str, list[str]], structure: Optional[ArrayStructure], **kwargs: Any
+    data_uri: Union[str, list[str]], structure: Optional[NodeStructure], **kwargs: Any
 ) -> Union["ZarrGroupAdapter", "ZarrArrayAdapter"]:
     filepath = path_from_uri(data_uri)
     zarr_obj = zarr.open(filepath)  # Group or Array
@@ -116,7 +117,7 @@ class ZarrGroupAdapter(
         self,
         node: Any,
         *,
-        structure: Optional[ArrayStructure] = None,
+        structure: Optional[Union[NodeStructure, ArrayStructure]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,

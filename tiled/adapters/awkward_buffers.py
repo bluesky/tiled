@@ -13,19 +13,20 @@ from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..server.pydantic_awkward import AwkwardStructure
 from ..structures.core import StructureFamily
 from ..utils import path_from_uri
+from .array import ArrayAdapter
 from .awkward import AwkwardAdapter
 
 
-class DirectoryContainer(collections.abc.MutableMapping[str, JSON]):
+class DirectoryContainer(collections.abc.MutableMapping[str, bytes]):
     def __init__(self, directory: Path, form: Any):
         self.directory = directory
         self.form = form
 
-    def __getitem__(self, form_key: str) -> JSON:
+    def __getitem__(self, form_key: str) -> bytes:
         with open(self.directory / form_key, "rb") as file:
             return file.read()
 
-    def __setitem__(self, form_key: str, value: Buffer) -> None:
+    def __setitem__(self, form_key: str, value: bytes) -> None:
         with open(self.directory / form_key, "wb") as file:
             file.write(value)
 

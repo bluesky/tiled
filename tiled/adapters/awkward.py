@@ -5,6 +5,7 @@ from type_alliases import JSON
 
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import StructureFamily
+from .array import ArrayAdapter
 
 
 class AwkwardAdapter:

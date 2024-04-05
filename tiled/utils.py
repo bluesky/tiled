@@ -398,17 +398,17 @@ def tree(tree, max_lines=20):
 
 
 class Sentinel:
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         self.name = name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{self.name}>"
 
-    def __copy__(self):
+    def __copy__(self) -> "Sentinel":
         # The goal here is to make copy.copy(sentinel) == sentinel
         return self
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: "Sentinel") -> "Sentinel":
         # The goal here is to make copy.deepcopy(sentinel) == sentinel
         return self
 
