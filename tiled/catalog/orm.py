@@ -271,6 +271,41 @@ def create_index_metadata_tsvector_search(target, connection, **kw):
         )
 
 
+@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+def create_virtual_table_fits5(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        statements = [
+            # Create an external content fts5 table.
+            # See https://www.sqlite.org/fts5.html Section 4.4.3.
+            """
+            CREATE VIRTUAL TABLE metadata_fts5 USING fts5(metadata, content='nodes', content_rowid='id');
+            """,
+            # Triggers keep the index synchronized with the nodes table.
+            """
+            CREATE TRIGGER nodes_metadata_fts5_sync_ai AFTER INSERT ON nodes BEGIN
+              INSERT INTO metadata_fts5(rowid, metadata)
+              VALUES (new.id, new.metadata);
+            END;
+            """,
+            """
+            CREATE TRIGGER nodes_metadata_fts5_sync_ad AFTER DELETE ON nodes BEGIN
+              INSERT INTO metadata_fts5(metadata_fts5, rowid, metadata)
+              VALUES('delete', old.id, old.metadata);
+            END;
+            """,
+            """
+            CREATE TRIGGER nodes_metadata_fts5_sync_au AFTER UPDATE ON nodes BEGIN
+              INSERT INTO metadata_ft5_index(metadata_ft5_index, rowid, metadata)
+              VALUES('delete', old.id, old.metadata);
+              INSERT INTO metadata_ft5_index(rowid, metadata)
+              VALUES (new.id, new.metadata);
+            END;
+            """,
+        ]
+        for statement in statements:
+            connection.execute(text(statement))
+
+
 class DataSource(Timestamped, Base):
     """
     The describes how to open one or more file/blobs to extract data for a Node.
