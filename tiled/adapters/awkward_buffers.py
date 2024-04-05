@@ -4,7 +4,6 @@ A directory containing awkward buffers, one file per form key.
 import collections.abc
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Self, Union
-from collections.abc import Buffer
 
 import awkward.forms
 from type_alliases import JSON, Spec
@@ -13,7 +12,6 @@ from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..server.pydantic_awkward import AwkwardStructure
 from ..structures.core import StructureFamily
 from ..utils import path_from_uri
-from .array import ArrayAdapter
 from .awkward import AwkwardAdapter
 
 

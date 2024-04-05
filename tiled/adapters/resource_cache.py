@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Optional
 
-import cachetools
+import cachetools  # type: ignore
 
 # When items are evicted from the cache, a hard reference is dropped, freeing
 # the resource to be closed by the garbage collector if there are no other
@@ -28,25 +28,25 @@ def set_resource_cache(cache: cachetools.Cache) -> None:
     _cache = cache
 
 
-def default_ttu(_key: str, value: Any, now: float):
+def default_ttu(_key: str, value: Any, now: float) -> float:
     """
     Retain cached items for at most `DEFAULT_TIME_TO_USE_SECONDS` seconds (60s, by default).
     """
     return DEFAULT_TIME_TO_USE_SECONDS + now
 
 
-def default_resource_cache():
+def default_resource_cache() -> cachetools.TLRUCache:
     "Create a new instance of the default resource cache."
     return cachetools.TLRUCache(DEFAULT_MAX_SIZE, default_ttu)
 
 
 def with_resource_cache(
-    cache_key: str,
-    factory: Callable,
-    *args,
+    cache_key: Any,
+    factory: Callable[..., Any],
+    *args: Any,
     _resource_cache: Optional[cachetools.Cache] = None,
-    **kwargs,
-):
+    **kwargs: Any,
+) -> Any:
     """
     Use value from cache or, if not present, call `factory(*args, **kwargs)` and cache result.
 

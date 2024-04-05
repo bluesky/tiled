@@ -4,7 +4,7 @@ import itertools
 import operator
 from collections import Counter
 from datetime import datetime
-from typing import Any, Iterable, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 
 from _pydatetime import timedelta
 from fastapi import APIRouter

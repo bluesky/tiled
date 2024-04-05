@@ -1,5 +1,4 @@
 import builtins
-import hashlib
 from typing import Any, Optional, Tuple, Union, cast
 
 import numpy as np
@@ -8,7 +7,6 @@ from numpy._typing import NDArray
 from type_alliases import JSON, Spec
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
-from ..server.object_cache import with_object_cache
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..utils import path_from_uri

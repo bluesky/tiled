@@ -1,14 +1,11 @@
 from typing import Any, Iterator, Optional, Union
 
 import dask.base
-from typing import Optional, Self
-
 import dask.dataframe
 import pandas
 from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
-from ..server.object_cache import get_object_cache
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from .array import ArrayAdapter

@@ -614,7 +614,7 @@ def get_share_tiled_path():
 SHARE_TILED_PATH = get_share_tiled_path()
 
 
-def node_repr(tree, sample):
+def node_repr(tree, sample) -> str:
     sample_reprs = list(map(repr, sample))
     out = f"<{type(tree).__name__} {{"
     # Always show at least one.
@@ -666,7 +666,7 @@ async def ensure_awaitable(func, *args, **kwargs):
         return await anyio.to_thread.run_sync(functools.partial(func, **kwargs), *args)
 
 
-def path_from_uri(uri):
+def path_from_uri(uri) -> Path:
     """
     Give a URI, return a Path.
 
@@ -691,7 +691,7 @@ def path_from_uri(uri):
 SCHEME_PATTERN = re.compile(r"^[a-z0-9+]+:\/\/.*$")
 
 
-def ensure_uri(uri_or_path):
+def ensure_uri(uri_or_path) -> str:
     "Accept a URI or file path (Windows- or POSIX-style) and return a URI."
     if not SCHEME_PATTERN.match(str(uri_or_path)):
         # Interpret this as a filepath.

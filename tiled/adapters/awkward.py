@@ -1,11 +1,14 @@
+from typing import Any, List, Optional, Union
+
 import awkward
 import awkward.forms
 from numpy.typing import NDArray
 from type_alliases import JSON
 
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import StructureFamily
-from .array import ArrayAdapter
+from .awkward_buffers import DirectoryContainer
 
 
 class AwkwardAdapter:
@@ -42,7 +45,7 @@ class AwkwardAdapter:
         metadata: Optional[dict[str, str]] = None,
         specs: Optional[List[str]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
-    ) -> Self:
+    ) -> "AwkwardAdapter":
         """
 
         Parameters

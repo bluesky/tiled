@@ -6,7 +6,6 @@ from numpy.typing import NDArray
 from type_alliases import JSON, Spec
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
-from ..server.object_cache import get_object_cache
 from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 
