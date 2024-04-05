@@ -1,3 +1,5 @@
+from typing import Any
+
 import dask.dataframe
 import pandas
 
@@ -7,7 +9,7 @@ from .dataframe import DataFrameAdapter
 
 class ExcelAdapter(MapAdapter):
     @classmethod
-    def from_file(cls, file, **kwargs):
+    def from_file(cls, file: Any, **kwargs: Any) -> "ExcelAdapter":
         """
         Read the sheets in an Excel file.
 
@@ -43,7 +45,7 @@ class ExcelAdapter(MapAdapter):
         return cls(mapping, **kwargs)
 
     @classmethod
-    def from_uri(cls, data_uri, **kwargs):
+    def from_uri(cls, data_uri: str, **kwargs: Any) -> "ExcelAdapter":
         """
         Read the sheets in an Excel file.
 

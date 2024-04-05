@@ -1,6 +1,6 @@
 import collections.abc
 import itertools
-from typing import Any, Iterable, Iterator, Optional, Union
+from typing import Any, Iterator, Optional, Union
 
 import xarray
 

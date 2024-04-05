@@ -60,10 +60,10 @@ class TiffAdapter:
             )
         self._structure = structure
 
-    def metadata(self) -> dict[Any, Any]:
+    def metadata(self) -> JSON:
         # This contains some enums, but Python's built-in JSON serializer
         # handles them fine (converting  to str or int as appropriate).
-        d = {tag.name: tag.value for tag in self._file.pages[0].tags.values()}  # type: ignore
+        d = {tag.name: tag.value for tag in self._file.pages[0].tags.values()}
         d.update(self._provided_metadata)
         return d
 
@@ -118,7 +118,7 @@ class TiffSequenceAdapter:
 
     def __init__(
         self,
-        seq: Any,
+        seq: tifffile.TiffSequence,
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,

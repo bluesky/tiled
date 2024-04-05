@@ -1,9 +1,14 @@
+from typing import Any, Iterator, Optional, Union
+
 import dask.base
 from typing import Optional, Self
 
 import dask.dataframe
 import pandas
+from type_alliases import JSON
 
+from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
+from ..server.object_cache import get_object_cache
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from .array import ArrayAdapter
@@ -26,13 +31,13 @@ class TableAdapter:
     @classmethod
     def from_pandas(
         cls,
-        *args,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-        npartitions=1,
-        **kwargs,
-    ):
+        *args: Any,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        npartitions: int = 1,
+        **kwargs: Any,
+    ) -> "TableAdapter":
         ddf = dask.dataframe.from_pandas(*args, npartitions=npartitions, **kwargs)
         if specs is None:
             specs = [Spec("dataframe")]
@@ -43,11 +48,11 @@ class TableAdapter:
     @classmethod
     def from_dask_dataframe(
         cls,
-        ddf,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ) -> Self:
+        ddf: dask.dataframe.DataFrame,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    ) -> "TableAdapter":
         structure = TableStructure.from_dask_dataframe(ddf)
         if specs is None:
             specs = [Spec("dataframe")]
@@ -61,12 +66,12 @@ class TableAdapter:
 
     def __init__(
         self,
-        partitions,
+        partitions: list[Any],
         structure: TableStructure,
         *,
-        metadata=None,
-        specs=None,
-        access_policy=None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
+        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         self._metadata = metadata or {}
         self._partitions = list(partitions)
@@ -74,26 +79,26 @@ class TableAdapter:
         self.specs = specs or []
         self.access_policy = access_policy
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure.columns!r})"
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> ArrayAdapter:
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def items(self):
+    def items(self) -> Iterator[tuple[str, ArrayAdapter]]:
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns
         )
 
-    def metadata(self):
+    def metadata(self) -> JSON:
         return self._metadata
 
     def structure(self) -> TableStructure:
         return self._structure
 
-    def read(self, fields: Optional[list[str]] = None) -> pandas.DataFrame:
+    def read(self, fields: Optional[Union[str, list[str]]] = None) -> pandas.DataFrame:
         if any(p is None for p in self._partitions):
             raise ValueError("Not all partitions have been stored.")
         if isinstance(self._partitions[0], dask.dataframe.DataFrame):
@@ -110,7 +115,9 @@ class TableAdapter:
         return df
 
     def read_partition(
-        self, partition: int, fields: Optional[list[str]] = None
+        self,
+        partition: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        fields: Optional[str] = None,
     ) -> pandas.DataFrame:
         partition = self._partitions[partition]
         if partition is None:

@@ -63,11 +63,13 @@ class ParquetDatasetAdapter:
         ]
         return assets
 
-    def write_partition(self, data: Any, partition: int) -> None:
+    def write_partition(
+        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
+    ) -> None:
         uri = self._partition_paths[partition]
         data.to_parquet(uri)
 
-    def write(self, data: Any) -> None:
+    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]

@@ -28,7 +28,7 @@ def read_csv(
     data_uri: str,
     structure: Optional[TableStructure] = None,
     metadata: Optional[JSON] = None,
-    specs: Optional[List[str]] = None,
+    specs: Optional[List[Spec]] = None,
     access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     **kwargs: Any,
 ) -> TableAdapter:
@@ -114,15 +114,19 @@ class CSVAdapter:
         ]
         return assets
 
-    def append_partition(self, data: Any, partition: int) -> None:
+    def append_partition(
+        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
+    ) -> None:
         uri = self._partition_paths[partition]
         data.to_csv(uri, index=False, mode="a", header=False)
 
-    def write_partition(self, data: Any, partition: int) -> None:
+    def write_partition(
+        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
+    ) -> None:
         uri = self._partition_paths[partition]
         data.to_csv(uri, index=False)
 
-    def write(self, data: Any) -> None:
+    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]

@@ -4,6 +4,8 @@ import os
 from types import EllipsisType
 from typing import Any, Iterator, Optional, Tuple, Union
 
+import dask
+import pandas
 import zarr.core
 import zarr.hierarchy
 import zarr.storage
@@ -82,7 +84,9 @@ class ZarrArrayAdapter(ArrayAdapter):
         return self._array[self._stencil()][block_slice][slice]
 
     def write(
-        self, data: NDArray[Any], slice: Optional[Union[slice, EllipsisType]]
+        self,
+        data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        slice: Optional[Union[slice, EllipsisType]],
     ) -> None:
         if slice is not ...:
             raise NotImplementedError
@@ -90,7 +94,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
     async def write_block(
         self,
-        data: NDArray[Any],
+        data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
         slice: Optional[Union[slice, EllipsisType]],
     ) -> None:

@@ -1,5 +1,7 @@
 import awkward
 import awkward.forms
+from numpy.typing import NDArray
+from type_alliases import JSON
 
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import StructureFamily
@@ -10,12 +12,22 @@ class AwkwardAdapter:
 
     def __init__(
         self,
-        container,
-        structure,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        container: DirectoryContainer,
+        structure: AwkwardStructure,
+        metadata: Optional[dict[str, Any]] = None,
+        specs: Optional[List[str]] = None,
+        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    ) -> None:
+        """
+
+        Parameters
+        ----------
+        container :
+        structure :
+        metadata :
+        specs :
+        access_policy :
+        """
         self.container = container
         self._metadata = metadata or {}
         self._structure = structure
@@ -23,7 +35,26 @@ class AwkwardAdapter:
         self.access_policy = access_policy
 
     @classmethod
-    def from_array(cls, array, metadata=None, specs=None, access_policy=None):
+    def from_array(
+        cls,
+        array: NDArray[Any],
+        metadata: Optional[dict[str, str]] = None,
+        specs: Optional[List[str]] = None,
+        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    ) -> Self:
+        """
+
+        Parameters
+        ----------
+        array :
+        metadata :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         form, length, container = awkward.to_buffers(array)
         structure = AwkwardStructure(length=length, form=form.to_dict())
         return cls(
@@ -34,10 +65,26 @@ class AwkwardAdapter:
             access_policy=access_policy,
         )
 
-    def metadata(self):
+    def metadata(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         return self._metadata
 
-    def read_buffers(self, form_keys=None):
+    def read_buffers(self, form_keys: Optional[list[str]] = None) -> dict[Any, bytes]:
+        """
+
+        Parameters
+        ----------
+        form_keys :
+
+        Returns
+        -------
+
+        """
         form = awkward.forms.from_dict(self._structure.form)
         keys = [
             key
@@ -50,12 +97,12 @@ class AwkwardAdapter:
             buffers[key] = self.container[key]
         return buffers
 
-    def read(self):
+    def read(self) -> JSON:
         return dict(self.container)
 
-    def write(self, container):
+    def write(self, container: DirectoryContainer) -> None:
         for form_key, value in container.items():
             self.container[form_key] = value
 
-    def structure(self):
+    def structure(self) -> AwkwardStructure:
         return self._structure

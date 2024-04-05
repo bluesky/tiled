@@ -7,7 +7,7 @@ from typing import Any, Iterator, List, Optional, Self, Union
 import h5py
 import numpy
 from numpy._typing import NDArray
-from type_alliases import HDF5, Spec
+from type_alliases import JSON, Spec
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
@@ -63,7 +63,7 @@ class HDF5Adapter(
         node: Any,
         *,
         structure: Optional[TableStructure] = None,
-        metadata: Optional[HDF5] = None,
+        metadata: Optional[JSON] = None,
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
@@ -79,7 +79,7 @@ class HDF5Adapter(
         file: Any,
         *,
         structure: Optional[TableStructure] = None,
-        metadata: HDF5 = None,
+        metadata: JSON = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         specs: Optional[List[Spec]] = None,
@@ -93,7 +93,7 @@ class HDF5Adapter(
         data_uri: Union[str, list[str]],
         *,
         structure: Optional[TableStructure] = None,
-        metadata: Optional[HDF5] = None,
+        metadata: Optional[JSON] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         specs: Optional[list[Spec]] = None,
@@ -116,7 +116,7 @@ class HDF5Adapter(
     def structure(self) -> None:
         return None
 
-    def metadata(self) -> HDF5:
+    def metadata(self) -> JSON:
         d = dict(self._node.attrs)
         for k, v in list(d.items()):
             # Convert any bytes to str.
@@ -201,7 +201,7 @@ def hdf5_lookup(
     data_uri: Union[str, list[str]],
     *,
     structure: Optional[TableStructure] = None,
-    metadata: Optional[HDF5] = None,
+    metadata: Optional[JSON] = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
     specs: Optional[List[Spec]] = None,
