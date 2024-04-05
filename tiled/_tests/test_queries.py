@@ -163,18 +163,10 @@ def test_contains(client):
 
 
 def test_full_text(client):
-    if client.metadata["backend"] in {"sqlite"}:
-
-        def cm():
-            return fail_with_status_code(HTTP_400_BAD_REQUEST)
-
-    else:
-        cm = nullcontext
-    with cm():
-        assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
-        # plainto_tsquery fails to find certain words, weirdly, so it is a useful
-        # test that we are using tsquery
-        assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
+    assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
+    # plainto_tsquery fails to find certain words, weirdly, so it is a useful
+    # test that we are using tsquery
+    assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
 
 
 def test_regex(client):
