@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import selectinload
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
