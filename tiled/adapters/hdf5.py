@@ -10,6 +10,7 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.core import StructureFamily
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
+from .resource_cache import with_resource_cache
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
@@ -114,7 +115,10 @@ class HDF5Adapter(collections.abc.Mapping, IndexersMixin):
         access_policy=None,
     ):
         filepath = path_from_uri(data_uri)
-        file = h5py.File(filepath, "r", swmr=swmr, libver=libver)
+        cache_key = (h5py.File, filepath, "r", swmr, libver)
+        file = with_resource_cache(
+            cache_key, h5py.File, filepath, "r", swmr=swmr, libver=libver
+        )
         return cls.from_file(file)
 
     def __repr__(self):

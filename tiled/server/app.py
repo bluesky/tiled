@@ -49,9 +49,6 @@ from .dependencies import (
     get_serialization_registry,
     get_validation_registry,
 )
-from .object_cache import NO_CACHE, ObjectCache
-from .object_cache import logger as object_cache_logger
-from .object_cache import set_object_cache
 from .router import distinct, patch_route_signature, router, search
 from .settings import get_settings
 from .utils import (
@@ -468,13 +465,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             settings.database_max_overflow = database["max_overflow"]
         if database.get("init_if_not_exists"):
             settings.database_init_if_not_exists = database["init_if_not_exists"]
-        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
-            "available_bytes"
-        )
-        if object_cache_available_bytes is not None:
-            setattr(
-                settings, "object_cache_available_bytes", object_cache_available_bytes
-            )
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in memory. Horizontally scaled deployments
@@ -534,34 +524,6 @@ confusing behavior due to ambiguous encodings.
             app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
-        object_cache_logger.setLevel(settings.object_cache_log_level.upper())
-        object_cache_available_bytes = settings.object_cache_available_bytes
-        import psutil
-
-        TOTAL_PHYSICAL_MEMORY = psutil.virtual_memory().total
-        if object_cache_available_bytes < 0:
-            raise ValueError("Negative object cache size is not interpretable.")
-        if object_cache_available_bytes == 0:
-            cache = NO_CACHE
-            object_cache_logger.info("disabled")
-        else:
-            if 0 < object_cache_available_bytes < 1:
-                # Interpret this as a fraction of system memory.
-
-                object_cache_available_bytes = int(
-                    TOTAL_PHYSICAL_MEMORY * object_cache_available_bytes
-                )
-            else:
-                object_cache_available_bytes = int(object_cache_available_bytes)
-            cache = ObjectCache(object_cache_available_bytes)
-            percentage = round(
-                object_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100
-            )
-            object_cache_logger.info(
-                f"Will use up to {object_cache_available_bytes:_} bytes ({percentage:d}% of total physical RAM)"
-            )
-        set_object_cache(cache)
-
         # Expose the root_tree here to make it easier to access it from tests,
         # in usages like:
         # client.context.app.state.root_tree

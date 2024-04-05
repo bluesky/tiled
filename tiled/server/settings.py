@@ -20,10 +20,6 @@ class Settings(BaseSettings):
     allow_origins: List[str] = [
         item for item in os.getenv("TILED_ALLOW_ORIGINS", "").split() if item
     ]
-    object_cache_available_bytes: float = float(
-        os.getenv("TILED_OBJECT_CACHE_AVAILABLE_BYTES", "0.15")
-    )
-    object_cache_log_level: str = os.getenv("TILED_OBJECT_CACHE_LOG_LEVEL", "INFO")
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key: str = os.getenv(

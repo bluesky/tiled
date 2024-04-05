@@ -2,7 +2,6 @@ import dask.base
 import dask.dataframe
 import pandas
 
-from ..server.object_cache import get_object_cache
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from .array import ArrayAdapter
@@ -102,9 +101,7 @@ class TableAdapter:
                 )
             else:
                 ddf = dask.dataframe.concat(self._partitions, axis=0)
-            # Note: If the cache is set to NO_CACHE, this is a null context.
-            with get_object_cache().dask_context:
-                return ddf.compute()
+            return ddf.compute()
         df = pandas.concat(self._partitions, axis=0)
         if fields is not None:
             df = df[fields]
@@ -116,11 +113,8 @@ class TableAdapter:
             raise RuntimeError(f"partition {partition} has not be stored yet")
         if fields is not None:
             partition = partition[fields]
-        # Special case for dask to cache computed result in object cache.
         if isinstance(partition, dask.dataframe.DataFrame):
-            # Note: If the cache is set to NO_CACHE, this is a null context.
-            with get_object_cache().dask_context:
-                return partition.compute()
+            return partition.compute()
         return partition
 
 

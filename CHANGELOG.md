@@ -5,6 +5,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Next
 
+### Added
+
+- Added `tiled.adapters.resource_cache` for caching file handles between
+  requests.
+
+### Removed
+
+- Removed object cache from the codebase. If `object_cache` is included in
+  the server configuration file, a warning is raised that this configuration
+  has no effected.
+
 ### Fixed
 
 - The configuration setting `tiled_admins` did not work in practice. If a user
