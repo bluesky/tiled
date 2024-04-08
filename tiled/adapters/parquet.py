@@ -3,10 +3,10 @@ from typing import Any, List, Optional, Union
 
 import dask.dataframe
 import pandas
-from type_alliases import JSON, Spec
+from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter

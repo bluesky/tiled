@@ -4,11 +4,11 @@ from typing import Any, Optional, Tuple, Union, cast
 import numpy as np
 import tifffile
 from numpy._typing import NDArray
-from type_alliases import JSON, Spec
+from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
 

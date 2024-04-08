@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Union
+from typing import Any, Optional, Union
 
 import awkward
 import awkward.forms
@@ -7,7 +7,7 @@ from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from .awkward_buffers import DirectoryContainer
 
 
@@ -18,8 +18,8 @@ class AwkwardAdapter:
         self,
         container: DirectoryContainer,
         structure: AwkwardStructure,
-        metadata: Optional[dict[str, Any]] = None,
-        specs: Optional[List[str]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> None:
         """
@@ -42,8 +42,8 @@ class AwkwardAdapter:
     def from_array(
         cls,
         array: NDArray[Any],
-        metadata: Optional[dict[str, str]] = None,
-        specs: Optional[List[str]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> "AwkwardAdapter":
         """
@@ -78,7 +78,7 @@ class AwkwardAdapter:
         """
         return self._metadata
 
-    def read_buffers(self, form_keys: Optional[list[str]] = None) -> dict[Any, bytes]:
+    def read_buffers(self, form_keys: Optional[list[str]] = None) -> dict[Any, JSON]:
         """
 
         Parameters

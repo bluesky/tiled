@@ -1,13 +1,13 @@
-from typing import Any, List, Optional, Self, Tuple, Union
+from typing import Any, Optional, Self, Tuple, Union
 
 import dask.array
 from numpy import dtype, ndarray
 from numpy.typing import NDArray
-from type_alliases import JSON, Spec
+from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.array import ArrayStructure
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 
 
 class ArrayAdapter:
@@ -33,7 +33,7 @@ class ArrayAdapter:
         structure: ArrayStructure,
         *,
         metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         self._array = array
@@ -50,7 +50,7 @@ class ArrayAdapter:
         chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> Self:
         structure = ArrayStructure.from_array(

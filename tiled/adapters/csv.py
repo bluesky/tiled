@@ -1,12 +1,12 @@
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Optional, Self, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import dask.dataframe
 import pandas
-from type_alliases import JSON, Spec
+from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..utils import ensure_uri, path_from_uri
@@ -28,7 +28,7 @@ def read_csv(
     data_uri: str,
     structure: Optional[TableStructure] = None,
     metadata: Optional[JSON] = None,
-    specs: Optional[List[Spec]] = None,
+    specs: Optional[list[Spec]] = None,
     access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     **kwargs: Any,
 ) -> TableAdapter:
@@ -69,8 +69,8 @@ class CSVAdapter:
         self,
         data_uris: Union[str, list[str]],
         structure: Optional[TableStructure] = None,
-        metadata: Optional[dict[str, str]] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> None:
         # TODO Store data_uris instead and generalize to non-file schemes.
@@ -176,10 +176,10 @@ class CSVAdapter:
         cls,
         data_uri: str,
         structure: Optional[TableStructure] = None,
-        metadata: Optional[dict[str, str]] = None,
-        specs: Optional[List[str]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
-    ) -> Self:
+    ) -> "CSVAdapter":
         return cls(
             [data_uri],
             structure=structure,

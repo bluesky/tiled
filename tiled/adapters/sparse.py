@@ -5,10 +5,10 @@ import numpy
 import pandas
 import sparse
 from numpy._typing import NDArray
-from type_alliases import JSON, Spec
+from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from .array import slice_and_shape_from_block_and_chunks
 

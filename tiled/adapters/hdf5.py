@@ -2,17 +2,18 @@ import collections.abc
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Iterator, List, Optional, Self, Union
+from typing import Any, Iterator, Optional, Self, Union
 
 import h5py
 import numpy
 from numpy._typing import NDArray
-from type_alliases import JSON, Spec
+from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..structures.core import StructureFamily
+from ..server.schemas import NodeStructure
+from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
@@ -62,7 +63,7 @@ class HDF5Adapter(
         self,
         node: Any,
         *,
-        structure: Optional[TableStructure] = None,
+        structure: Optional[NodeStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
@@ -82,7 +83,7 @@ class HDF5Adapter(
         metadata: JSON = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        specs: Optional[List[Spec]] = None,
+        specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "HDF5Adapter":
         return cls(file, metadata=metadata, specs=specs, access_policy=access_policy)
@@ -92,7 +93,7 @@ class HDF5Adapter(
         cls,
         data_uri: Union[str, list[str]],
         *,
-        structure: Optional[TableStructure] = None,
+        structure: Optional[NodeStructure] = None,
         metadata: Optional[JSON] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
@@ -200,11 +201,11 @@ class HDF5Adapter(
 def hdf5_lookup(
     data_uri: Union[str, list[str]],
     *,
-    structure: Optional[TableStructure] = None,
+    structure: Optional[NodeStructure] = None,
     metadata: Optional[JSON] = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
-    specs: Optional[List[Spec]] = None,
+    specs: Optional[list[Spec]] = None,
     access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     path: Optional[Union[list[Path], list[str]]] = None,
 ) -> Union[HDF5Adapter, ArrayAdapter]:

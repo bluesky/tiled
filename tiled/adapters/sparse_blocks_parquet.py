@@ -10,10 +10,10 @@ from numpy._typing import NDArray
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.array import slice_and_shape_from_block_and_chunks
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from ..utils import path_from_uri
-from .type_alliases import JSON, Spec
+from .type_alliases import JSON
 
 
 def load_block(uri: str) -> Tuple[list[int], Tuple[NDArray[Any], Any]]:

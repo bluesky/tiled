@@ -3,12 +3,11 @@ import copy
 import itertools
 import operator
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 
-from _pydatetime import timedelta
 from fastapi import APIRouter
-from type_alliases import JSON, Spec
+from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -27,12 +26,12 @@ from ..queries import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import NodeStructure, SortingItem
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, Sentinel
 from .utils import IndexersMixin
 
 
-class MapAdapter(collections.abc.Mapping[str, Any], IndexersMixin):
+class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
     """
     Adapt any mapping (dictionary-like object) to Tiled.
     """
@@ -59,7 +58,7 @@ class MapAdapter(collections.abc.Mapping[str, Any], IndexersMixin):
 
     def __init__(
         self,
-        mapping: dict[str, Any],
+        mapping: dict[Any, JSON],
         *,
         structure: Optional[NodeStructure] = None,
         metadata: Optional[JSON] = None,
@@ -168,13 +167,13 @@ class MapAdapter(collections.abc.Mapping[str, Any], IndexersMixin):
         return None
 
     @property
-    def metadata_stale_at(self) -> Optional[timedelta]:
+    def metadata_stale_at(self) -> Optional[datetime]:
         if self.metadata_stale_after is None:
             return None
         return self.metadata_stale_after + datetime.now()
 
     @property
-    def entries_stale_at(self) -> Optional[timedelta]:
+    def entries_stale_at(self) -> Optional[datetime]:
         if self.entries_stale_after is None:
             return None
         return self.entries_stale_after + datetime.now()
