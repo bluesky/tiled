@@ -1,13 +1,13 @@
-from typing import Any, Optional, Self, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import dask.array
 from numpy import dtype, ndarray
 from numpy.typing import NDArray
-from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from .type_alliases import JSON
 
 
 class ArrayAdapter:
@@ -36,6 +36,16 @@ class ArrayAdapter:
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
+        """
+
+        Parameters
+        ----------
+        array :
+        structure :
+        metadata :
+        specs :
+        access_policy :
+        """
         self._array = array
         self._structure = structure
         self._metadata = metadata or {}
@@ -52,7 +62,23 @@ class ArrayAdapter:
         metadata: Optional[JSON] = None,
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
-    ) -> Self:
+    ) -> "ArrayAdapter":
+        """
+
+        Parameters
+        ----------
+        array :
+        shape :
+        chunks :
+        dims :
+        metadata :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims
         )
@@ -65,19 +91,53 @@ class ArrayAdapter:
         )
 
     def __repr__(self) -> str:
+        """
+
+        Returns
+        -------
+
+        """
         return f"{type(self).__name__}({self._array!r})"
 
     @property
     def dims(self) -> Optional[Tuple[str, ...]]:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure.dims
 
     def metadata(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         return self._metadata
 
     def structure(self) -> ArrayStructure:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure
 
     def read(self, slice: Optional[slice]) -> ndarray[Any, dtype[Any]]:
+        """
+
+        Parameters
+        ----------
+        slice :
+
+        Returns
+        -------
+
+        """
         array = self._array
         if slice is not None:
             array = array[slice]
@@ -90,6 +150,17 @@ class ArrayAdapter:
         block: Tuple[int, ...],
         slice: slice,
     ) -> ndarray[Any, dtype[Any]]:
+        """
+
+        Parameters
+        ----------
+        block :
+        slice :
+
+        Returns
+        -------
+
+        """
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         array = self._array[slice_]
@@ -106,6 +177,14 @@ def slice_and_shape_from_block_and_chunks(
 ) -> Tuple[Tuple[slice, ...], Tuple[int, ...]]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
+    Parameters
+    ----------
+    block :
+    chunks :
+
+    Returns
+    -------
+
     """
     slice_ = []
     shape = []

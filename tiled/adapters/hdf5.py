@@ -2,12 +2,11 @@ import collections.abc
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Iterator, Optional, Self, Union
+from typing import Any, Iterator, Optional, Union
 
 import h5py
 import numpy
 from numpy._typing import NDArray
-from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
@@ -18,12 +17,23 @@ from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
 from .resource_cache import with_resource_cache
+from .type_alliases import JSON
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
 def from_dataset(dataset: NDArray[Any]) -> ArrayAdapter:
+    """
+
+    Parameters
+    ----------
+    dataset :
+
+    Returns
+    -------
+
+    """
     return ArrayAdapter.from_array(dataset, metadata=getattr(dataset, "attrs", {}))
 
 
@@ -68,6 +78,16 @@ class HDF5Adapter(
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
+        """
+
+        Parameters
+        ----------
+        node :
+        structure :
+        metadata :
+        specs :
+        access_policy :
+        """
         self._node = node
         self._access_policy = access_policy
         self.specs = specs or []
@@ -86,6 +106,22 @@ class HDF5Adapter(
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "HDF5Adapter":
+        """
+
+        Parameters
+        ----------
+        file :
+        structure :
+        metadata :
+        swmr :
+        libver :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         return cls(file, metadata=metadata, specs=specs, access_policy=access_policy)
 
     @classmethod
@@ -100,6 +136,22 @@ class HDF5Adapter(
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "HDF5Adapter":
+        """
+
+        Parameters
+        ----------
+        data_uri :
+        structure :
+        metadata :
+        swmr :
+        libver :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         filepath = path_from_uri(data_uri)
         cache_key = (h5py.File, filepath, "r", swmr, libver)
         file = with_resource_cache(
@@ -108,16 +160,40 @@ class HDF5Adapter(
         return cls.from_file(file)
 
     def __repr__(self) -> str:
+        """
+
+        Returns
+        -------
+
+        """
         return node_repr(self, list(self))
 
     @property
     def access_policy(self) -> Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]]:
+        """
+
+        Returns
+        -------
+
+        """
         return self._access_policy
 
     def structure(self) -> None:
+        """
+
+        Returns
+        -------
+
+        """
         return None
 
     def metadata(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         d = dict(self._node.attrs)
         for k, v in list(d.items()):
             # Convert any bytes to str.
@@ -127,9 +203,25 @@ class HDF5Adapter(
         return d
 
     def __iter__(self) -> Iterator[Any]:
+        """
+
+        Returns
+        -------
+
+        """
         yield from self._node
 
     def __getitem__(self, key: str) -> Union["HDF5Adapter", ArrayAdapter]:
+        """
+
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
         value = self._node[key]
         if isinstance(value, h5py.Group):
             return HDF5Adapter(value)
@@ -156,24 +248,66 @@ class HDF5Adapter(
             return from_dataset(value)
 
     def __len__(self) -> int:
+        """
+
+        Returns
+        -------
+
+        """
         return len(self._node)
 
     def keys(self) -> KeysView:  # type: ignore
+        """
+
+        Returns
+        -------
+
+        """
         return KeysView(lambda: len(self), self._keys_slice)
 
     def values(self) -> ValuesView:  # type: ignore
+        """
+
+        Returns
+        -------
+
+        """
         return ValuesView(lambda: len(self), self._items_slice)
 
     def items(self) -> ItemsView:  # type: ignore
+        """
+
+        Returns
+        -------
+
+        """
         return ItemsView(lambda: len(self), self._items_slice)
 
     def search(self, query: Any) -> None:
         """
-        Return a Tree with a subset of the mapping.
+
+        Parameters
+        ----------
+        query :
+
+        Returns
+        -------
+                Return a Tree with a subset of the mapping.
+
         """
         raise NotImplementedError
 
-    def read(self, fields: Optional[str] = None) -> Self:
+    def read(self, fields: Optional[str] = None) -> "HDF5Adapter":
+        """
+
+        Parameters
+        ----------
+        fields :
+
+        Returns
+        -------
+
+        """
         if fields is not None:
             raise NotImplementedError
         return self
@@ -181,6 +315,18 @@ class HDF5Adapter(
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(self, start: int, stop: int, direction: int) -> list[Any]:
+        """
+
+        Parameters
+        ----------
+        start :
+        stop :
+        direction :
+
+        Returns
+        -------
+
+        """
         keys = list(self._node)
         if direction < 0:
             keys = list(reversed(keys))
@@ -189,12 +335,34 @@ class HDF5Adapter(
     def _items_slice(
         self, start: int, stop: int, direction: int
     ) -> list[tuple[Any, Any]]:
+        """
+
+        Parameters
+        ----------
+        start :
+        stop :
+        direction :
+
+        Returns
+        -------
+
+        """
         items = [(key, self[key]) for key in list(self)]
         if direction < 0:
             items = list(reversed(items))
         return items[start:stop]
 
     def inlined_contents_enabled(self, depth: int) -> bool:
+        """
+
+        Parameters
+        ----------
+        depth :
+
+        Returns
+        -------
+
+        """
         return depth <= INLINED_DEPTH
 
 
@@ -209,6 +377,23 @@ def hdf5_lookup(
     access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     path: Optional[Union[list[Path], list[str]]] = None,
 ) -> Union[HDF5Adapter, ArrayAdapter]:
+    """
+
+    Parameters
+    ----------
+    data_uri :
+    structure :
+    metadata :
+    swmr :
+    libver :
+    specs :
+    access_policy :
+    path :
+
+    Returns
+    -------
+
+    """
     path = path or []
     adapter = HDF5Adapter.from_uri(
         data_uri,

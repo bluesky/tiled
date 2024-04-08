@@ -3,7 +3,6 @@ from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import dask.dataframe
 import pandas
-from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.core import Spec, StructureFamily
@@ -13,6 +12,7 @@ from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 from .table import TableAdapter
+from .type_alliases import JSON
 
 # from ..server.pydantic_awkward import AwkwardStructure as AwkwardPydantic
 # from ..structures.awkward import AwkwardStructure as AwkwardStructureTiled
@@ -44,6 +44,18 @@ def read_csv(
 
     >>> read_csv("myfiles.*.csv")
     >>> read_csv("s3://bucket/myfiles.*.csv")
+
+    Parameters
+    ----------
+    data_uri :
+    structure :
+    metadata :
+    specs :
+    access_policy :
+    kwargs :
+
+    Returns
+    -------
     """
     filepath = path_from_uri(data_uri)
     ddf = dask.dataframe.read_csv(filepath, **kwargs)
@@ -63,6 +75,8 @@ This wraps dask.dataframe.read_csv. Original docstring:
 
 
 class CSVAdapter:
+    """ """
+
     structure_family = StructureFamily.table
 
     def __init__(
@@ -73,6 +87,16 @@ class CSVAdapter:
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> None:
+        """
+
+        Parameters
+        ----------
+        data_uris :
+        structure :
+        metadata :
+        specs :
+        access_policy :
+        """
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
@@ -84,10 +108,22 @@ class CSVAdapter:
         self.access_policy = access_policy
 
     def metadata(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         return self._metadata
 
     @property
     def dataframe_adapter(self) -> TableAdapter:
+        """
+
+        Returns
+        -------
+
+        """
         partitions = []
         for path in self._partition_paths:
             if not Path(path).exists():
@@ -99,6 +135,17 @@ class CSVAdapter:
 
     @classmethod
     def init_storage(cls, data_uri: str, structure: TableStructure) -> Any:
+        """
+
+        Parameters
+        ----------
+        data_uri :
+        structure :
+
+        Returns
+        -------
+
+        """
         from ..server.schemas import Asset
 
         directory = path_from_uri(data_uri)
@@ -117,31 +164,101 @@ class CSVAdapter:
     def append_partition(
         self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
     ) -> None:
+        """
+
+        Parameters
+        ----------
+        data :
+        partition :
+
+        Returns
+        -------
+
+        """
         uri = self._partition_paths[partition]
         data.to_csv(uri, index=False, mode="a", header=False)
 
     def write_partition(
         self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
     ) -> None:
+        """
+
+        Parameters
+        ----------
+        data :
+        partition :
+
+        Returns
+        -------
+
+        """
         uri = self._partition_paths[partition]
         data.to_csv(uri, index=False)
 
     def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
+        """
+
+        Parameters
+        ----------
+        data :
+
+        Returns
+        -------
+
+        """
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
         data.to_csv(uri, index=False)
 
     def read(self, *args: Optional[list[str]], **kwargs: Any) -> pandas.DataFrame:
+        """
+
+        Parameters
+        ----------
+        args :
+        kwargs :
+
+        Returns
+        -------
+
+        """
         return self.dataframe_adapter.read(*args, **kwargs)
 
     def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
+        """
+
+        Parameters
+        ----------
+        args :
+        kwargs :
+
+        Returns
+        -------
+
+        """
         return self.dataframe_adapter.read_partition(*args, **kwargs)
 
     def structure(self) -> TableStructure:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
+        """
+
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)
@@ -153,6 +270,19 @@ class CSVAdapter:
         item: Union[str, Path],
         is_directory: bool,
     ) -> List[DataSource]:
+        """
+
+        Parameters
+        ----------
+        mimetype :
+        dict_or_none :
+        item :
+        is_directory :
+
+        Returns
+        -------
+
+        """
         return [
             DataSource(
                 structure_family=self.dataframe_adapter.structure_family,
@@ -180,6 +310,20 @@ class CSVAdapter:
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> "CSVAdapter":
+        """
+
+        Parameters
+        ----------
+        data_uri :
+        structure :
+        metadata :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         return cls(
             [data_uri],
             structure=structure,
@@ -189,10 +333,26 @@ class CSVAdapter:
         )
 
     def __getitem__(self, key: str) -> ArrayAdapter:
+        """
+
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
+        """
+
+        Returns
+        -------
+
+        """
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns

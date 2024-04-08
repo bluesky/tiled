@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 
 from fastapi import APIRouter
-from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -28,10 +27,12 @@ from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import NodeStructure, SortingItem
 from ..structures.core import Spec, StructureFamily
 from ..utils import UNCHANGED, Sentinel
+from .table import TableAdapter
+from .type_alliases import JSON
 from .utils import IndexersMixin
 
 
-class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
+class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
     """
     Adapt any mapping (dictionary-like object) to Tiled.
     """
@@ -58,7 +59,7 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
 
     def __init__(
         self,
-        mapping: dict[Any, JSON],
+        mapping: dict[str, TableAdapter],
         *,
         structure: Optional[NodeStructure] = None,
         metadata: Optional[JSON] = None,
@@ -113,20 +114,52 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
 
     @property
     def must_revalidate(self) -> bool:
+        """
+
+        Returns
+        -------
+
+        """
         return self._must_revalidate
 
     @must_revalidate.setter
     def must_revalidate(self, value: bool) -> None:
+        """
+
+        Parameters
+        ----------
+        value :
+
+        Returns
+        -------
+
+        """
         self._must_revalidate = value
 
     @property
     def access_policy(self) -> Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]]:
+        """
+
+        Returns
+        -------
+
+        """
         return self._access_policy
 
     @access_policy.setter
     def access_policy(
         self, value: Union[SimpleAccessPolicy, DummyAccessPolicy]
     ) -> None:
+        """
+
+        Parameters
+        ----------
+        value :
+
+        Returns
+        -------
+
+        """
         self._access_policy = value
 
     def metadata(self) -> JSON:
@@ -138,42 +171,112 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
 
     @property
     def sorting(self) -> list[SortingItem]:
+        """
+
+        Returns
+        -------
+
+        """
         return list(self._sorting)
 
     def __repr__(self) -> str:
+        """
+
+        Returns
+        -------
+
+        """
         return (
             f"<{type(self).__name__}({{{', '.join(repr(k) for k in self._mapping)}}})>"
         )
 
     def __getitem__(self, key: str) -> Any:
+        """
+
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
         return self._mapping[key]
 
     def __iter__(self) -> Iterator[str]:
+        """
+
+        Returns
+        -------
+
+        """
         yield from self._mapping
 
     def __len__(self) -> int:
+        """
+
+        Returns
+        -------
+
+        """
         return len(self._mapping)
 
     def keys(self) -> KeysView:  # type: ignore
+        """
+
+        Returns
+        -------
+
+        """
         return KeysView(lambda: len(self), self._keys_slice)
 
     def values(self) -> ValuesView:  # type: ignore
+        """
+
+        Returns
+        -------
+
+        """
         return ValuesView(lambda: len(self), self._items_slice)
 
     def items(self) -> ItemsView:  # type: ignore
+        """
+
+        Returns
+        -------
+
+        """
         return ItemsView(lambda: len(self), self._items_slice)
 
     def structure(self) -> None:
+        """
+
+        Returns
+        -------
+
+        """
         return None
 
     @property
     def metadata_stale_at(self) -> Optional[datetime]:
+        """
+
+        Returns
+        -------
+
+        """
         if self.metadata_stale_after is None:
             return None
         return self.metadata_stale_after + datetime.now()
 
     @property
     def entries_stale_at(self) -> Optional[datetime]:
+        """
+
+        Returns
+        -------
+
+        """
         if self.entries_stale_after is None:
             return None
         return self.entries_stale_after + datetime.now()
@@ -187,6 +290,21 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
         must_revalidate: Union[Sentinel, bool] = UNCHANGED,
         **kwargs: Any,
     ) -> "MapAdapter":
+        """
+
+        Parameters
+        ----------
+        args :
+        mapping :
+        metadata :
+        sorting :
+        must_revalidate :
+        kwargs :
+
+        Returns
+        -------
+
+        """
         if mapping is UNCHANGED:
             mapping = self._mapping
         if metadata is UNCHANGED:
@@ -209,6 +327,16 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
         )
 
     def read(self, fields: Optional[str] = None) -> "MapAdapter":
+        """
+
+        Parameters
+        ----------
+        fields :
+
+        Returns
+        -------
+
+        """
         if fields is not None:
             new_mapping = {}
             for field in fields:
@@ -218,7 +346,14 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
 
     def search(self, query: Any) -> Any:
         """
-        Return a Adapter with a subset of the mapping.
+
+        Parameters
+        ----------
+        query :
+
+        Returns
+        -------
+                Return a Adapter with a subset of the mapping.
         """
         return self.query_registry(query, self)
 
@@ -229,6 +364,19 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
         specs: list[Spec],
         counts: int,
     ) -> dict[str, Any]:
+        """
+
+        Parameters
+        ----------
+        metadata :
+        structure_families :
+        specs :
+        counts :
+
+        Returns
+        -------
+
+        """
         data: dict[str, Any] = {}
         # data: dict[str, list[dict[str, Any]]] = {}
 
@@ -252,6 +400,16 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
         return data
 
     def sort(self, sorting: SortingItem) -> "MapAdapter":
+        """
+
+        Parameters
+        ----------
+        sorting :
+
+        Returns
+        -------
+
+        """
         mapping = copy.copy(self._mapping)
         for key, direction in reversed(sorting):
             if key == "_":
@@ -279,6 +437,18 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
     def _keys_slice(
         self, start: int, stop: int, direction: int
     ) -> Union[Iterator[str], list[str]]:
+        """
+
+        Parameters
+        ----------
+        start :
+        stop :
+        direction :
+
+        Returns
+        -------
+
+        """
         if direction > 0:
             yield from itertools.islice(self._mapping.keys(), start, stop)
         else:
@@ -296,7 +466,19 @@ class MapAdapter(collections.abc.Mapping[str, JSON], IndexersMixin):
 
     def _items_slice(
         self, start: int, stop: int, direction: int
-    ) -> Iterator[Tuple[str, NodeStructure]]:
+    ) -> Iterator[Tuple[str, TableAdapter]]:
+        """
+
+        Parameters
+        ----------
+        start :
+        stop :
+        direction :
+
+        Returns
+        -------
+
+        """
         # A goal of this implementation is to avoid iterating over
         # self._mapping.values() because self._mapping may be a OneShotCachedMap which
         # only constructs its values at access time. With this in mind, we
@@ -316,6 +498,14 @@ def walk_string_values(tree: MapAdapter, node: Optional[Any] = None) -> Iterator
     ...     )
     ... )
     ['apple', 'banana', 'cat', 'dog', 'elephant']
+
+    Parameters
+    ----------
+    tree :
+    node :
+
+    Returns
+    -------
     """
     if node is None:
         for node in tree:
@@ -334,6 +524,17 @@ def walk_string_values(tree: MapAdapter, node: Optional[Any] = None) -> Iterator
 
 
 def counter_to_dict(counter: dict[str, Any], counts: Any) -> list[dict[str, Any]]:
+    """
+
+    Parameters
+    ----------
+    counter :
+    counts :
+
+    Returns
+    -------
+
+    """
     if counts:
         data = [{"value": k, "count": v} for k, v in counter.items() if k is not None]
     else:
@@ -345,6 +546,17 @@ def counter_to_dict(counter: dict[str, Any], counts: Any) -> list[dict[str, Any]
 def iter_child_metadata(
     query_key: Any, tree: MapAdapter
 ) -> Iterator[Tuple[str, Any, Any]]:
+    """
+
+    Parameters
+    ----------
+    query_key :
+    tree :
+
+    Returns
+    -------
+
+    """
     for key, value in tree.items():
         term = value.metadata()
         for subkey in query_key.split("."):
@@ -357,6 +569,17 @@ def iter_child_metadata(
 
 
 def full_text_search(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     text = query.text
     query_words = set(text.split())
@@ -378,6 +601,17 @@ MapAdapter.register_query(FullText, full_text_search)
 
 
 def regex(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     import re
 
     matches = {}
@@ -394,6 +628,17 @@ MapAdapter.register_query(Regex, regex)
 
 
 def eq(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value, term in iter_child_metadata(query.key, tree):
         if term == query.value:
@@ -405,6 +650,17 @@ MapAdapter.register_query(Eq, eq)
 
 
 def noteq(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value, term in iter_child_metadata(query.key, tree):
         if term != query.value:
@@ -416,6 +672,17 @@ MapAdapter.register_query(NotEq, noteq)
 
 
 def contains(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value, term in iter_child_metadata(query.key, tree):
         if (
@@ -431,6 +698,17 @@ MapAdapter.register_query(Contains, contains)
 
 
 def comparison(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value, term in iter_child_metadata(query.key, tree):
         if query.operator not in {"le", "lt", "ge", "gt"}:
@@ -445,6 +723,17 @@ MapAdapter.register_query(Comparison, comparison)
 
 
 def _in(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value, term in iter_child_metadata(query.key, tree):
         if term in query.value:
@@ -456,6 +745,17 @@ MapAdapter.register_query(In, _in)
 
 
 def notin(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value, term in iter_child_metadata(query.key, tree):
         if term not in query.value:
@@ -467,6 +767,17 @@ MapAdapter.register_query(NotIn, notin)
 
 
 def specs(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     include = set(query.include)
     exclude = set(query.exclude)
@@ -483,6 +794,17 @@ MapAdapter.register_query(SpecsQuery, specs)
 
 
 def structure_family(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value in tree.items():
         if value.structure_family == query.value:
@@ -495,6 +817,17 @@ MapAdapter.register_query(StructureFamilyQuery, structure_family)
 
 
 def keys_filter(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
     matches = {}
     for key, value in tree.items():
         if key in query.keys:
@@ -511,9 +844,29 @@ class _HIGH_SORTER_CLASS:
     """
 
     def __lt__(self, other: "_HIGH_SORTER_CLASS") -> bool:
+        """
+
+        Parameters
+        ----------
+        other :
+
+        Returns
+        -------
+
+        """
         return False
 
     def __gt__(self, other: "_HIGH_SORTER_CLASS") -> bool:
+        """
+
+        Parameters
+        ----------
+        other :
+
+        Returns
+        -------
+
+        """
         return True
 
 

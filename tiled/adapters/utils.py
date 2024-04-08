@@ -24,16 +24,34 @@ class IndexersMixin:
 
     @property
     def keys_indexer(self) -> Any:
+        """
+
+        Returns
+        -------
+
+        """
         warnings.warn(_MESSAGE.format(name="keys"), DeprecationWarning)
         return self.keys()
 
     @property
     def values_indexer(self) -> Any:
+        """
+
+        Returns
+        -------
+
+        """
         warnings.warn(_MESSAGE.format(name="values"), DeprecationWarning)
         return self.values()
 
     @property
     def items_indexer(self) -> Any:
+        """
+
+        Returns
+        -------
+
+        """
         warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
         return self.items()
 
@@ -57,7 +75,23 @@ class IndexCallable:
     __slots__ = ("fn",)
 
     def __init__(self, fn: Any) -> None:
+        """
+
+        Parameters
+        ----------
+        fn :
+        """
         self.fn = fn
 
     def __getitem__(self, key: str) -> Any:
+        """
+
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
         return self.fn(key)

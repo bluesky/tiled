@@ -23,6 +23,18 @@ class DatasetAdapter(MapAdapter):
         specs: Optional[list[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> "DatasetAdapter":
+        """
+
+        Parameters
+        ----------
+        dataset :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         mapping = _DatasetMap(dataset)
         specs = specs or []
         if "xarray_dataset" not in [spec.name for spec in specs]:
@@ -42,6 +54,16 @@ class DatasetAdapter(MapAdapter):
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
         **kwargs: Any,
     ) -> None:
+        """
+
+        Parameters
+        ----------
+        mapping :
+        args :
+        specs :
+        access_policy :
+        kwargs :
+        """
         if isinstance(mapping, xarray.Dataset):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
@@ -51,6 +73,16 @@ class DatasetAdapter(MapAdapter):
         )
 
     def inlined_contents_enabled(self, depth: int) -> bool:
+        """
+
+        Parameters
+        ----------
+        depth :
+
+        Returns
+        -------
+
+        """
         # Tell the server to in-line the description of each array
         # (i.e. data_vars and coords) to avoid latency of a second
         # request.
@@ -59,15 +91,43 @@ class DatasetAdapter(MapAdapter):
 
 class _DatasetMap(collections.abc.Mapping[str, Any]):
     def __init__(self, dataset: Any) -> None:
+        """
+
+        Parameters
+        ----------
+        dataset :
+        """
         self._dataset = dataset
 
     def __len__(self) -> int:
+        """
+
+        Returns
+        -------
+
+        """
         return len(self._dataset.data_vars) + len(self._dataset.coords)
 
     def __iter__(self) -> Iterator[Any]:
+        """
+
+        Returns
+        -------
+
+        """
         yield from itertools.chain(self._dataset.data_vars, self._dataset.coords)
 
     def __getitem__(self, key: str) -> ArrayAdapter:
+        """
+
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
         data_array = self._dataset[key]
         if key in self._dataset.coords:
             spec = Spec("xarray_coord")

@@ -23,7 +23,16 @@ def get_resource_cache() -> cachetools.Cache:
 
 
 def set_resource_cache(cache: cachetools.Cache) -> None:
-    "Set the resource cache, a process-global Cache."
+    """
+    Set the resource cache, a process-global Cache.
+    Parameters
+    ----------
+    cache :
+
+    Returns
+    -------
+
+    """
     global _cache
     _cache = cache
 
@@ -31,6 +40,16 @@ def set_resource_cache(cache: cachetools.Cache) -> None:
 def default_ttu(_key: str, value: Any, now: float) -> float:
     """
     Retain cached items for at most `DEFAULT_TIME_TO_USE_SECONDS` seconds (60s, by default).
+
+    Parameters
+    ----------
+    _key :
+    value :
+    now :
+
+    Returns
+    -------
+
     """
     return DEFAULT_TIME_TO_USE_SECONDS + now
 
@@ -52,6 +71,18 @@ def with_resource_cache(
 
     This uses a globally configured resource cache by default. For testing and
     debugging, a cache may be passed to the parameter _resource_cache.
+
+    Parameters
+    ----------
+    cache_key :
+    factory :
+    args :
+    _resource_cache :
+    kwargs :
+
+    Returns
+    -------
+
     """
     if _resource_cache is None:
         cache = get_resource_cache()

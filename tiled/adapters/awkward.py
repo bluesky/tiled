@@ -3,12 +3,12 @@ from typing import Any, Optional, Union
 import awkward
 import awkward.forms
 from numpy.typing import NDArray
-from type_alliases import JSON
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from .awkward_buffers import DirectoryContainer
+from .type_alliases import JSON
 
 
 class AwkwardAdapter:
@@ -102,11 +102,33 @@ class AwkwardAdapter:
         return buffers
 
     def read(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         return dict(self.container)
 
     def write(self, container: DirectoryContainer) -> None:
+        """
+
+        Parameters
+        ----------
+        container :
+
+        Returns
+        -------
+
+        """
         for form_key, value in container.items():
             self.container[form_key] = value
 
     def structure(self) -> AwkwardStructure:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure
