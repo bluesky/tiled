@@ -125,6 +125,7 @@ client = [
     "pyyaml",
     "rich",
     "sparse",
+    "starlette",
     "typer",
     "xarray",
     "zstandard"
@@ -183,6 +184,7 @@ minimal-client = [
     "orjson",
     "pyyaml",
     "rich",
+    "starlette",
     "typer"
 ]
 # These are the requirements needed for basic server functionality.
