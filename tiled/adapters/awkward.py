@@ -78,7 +78,7 @@ class AwkwardAdapter:
         """
         return self._metadata
 
-    def read_buffers(self, form_keys: Optional[list[str]] = None) -> dict[Any, JSON]:
+    def read_buffers(self, form_keys: Optional[list[str]] = None) -> dict[str, Any]:
         """
 
         Parameters
@@ -101,7 +101,7 @@ class AwkwardAdapter:
             buffers[key] = self.container[key]
         return buffers
 
-    def read(self) -> JSON:
+    def read(self) -> dict[str, Any]:
         """
 
         Returns

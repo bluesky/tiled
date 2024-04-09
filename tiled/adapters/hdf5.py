@@ -100,7 +100,7 @@ class HDF5Adapter(
         file: Any,
         *,
         structure: Optional[TableStructure] = None,
-        metadata: JSON = None,
+        metadata: Optional[JSON] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         specs: Optional[list[Spec]] = None,

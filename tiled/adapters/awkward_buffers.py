@@ -2,6 +2,7 @@
 A directory containing awkward buffers, one file per form key.
 """
 import collections.abc
+from collections.abc import Buffer
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Union
 
@@ -15,7 +16,7 @@ from .awkward import AwkwardAdapter
 from .type_alliases import JSON
 
 
-class DirectoryContainer(collections.abc.MutableMapping[str, JSON]):
+class DirectoryContainer(collections.abc.MutableMapping[str, Buffer]):
     """ """
 
     def __init__(self, directory: Path, form: Any):
@@ -29,7 +30,7 @@ class DirectoryContainer(collections.abc.MutableMapping[str, JSON]):
         self.directory = directory
         self.form = form
 
-    def __getitem__(self, form_key: str) -> JSON:
+    def __getitem__(self, form_key: str) -> Buffer:
         """
 
         Parameters
@@ -43,7 +44,7 @@ class DirectoryContainer(collections.abc.MutableMapping[str, JSON]):
         with open(self.directory / form_key, "rb") as file:
             return file.read()
 
-    def __setitem__(self, form_key: str, value: JSON) -> None:
+    def __setitem__(self, form_key: str, value: Buffer) -> None:
         """
 
         Parameters

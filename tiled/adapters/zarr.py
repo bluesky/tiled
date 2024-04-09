@@ -26,7 +26,7 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 def read_zarr(
     data_uri: Union[str, list[str]], structure: Optional[NodeStructure], **kwargs: Any
-) -> Union["ZarrGroupAdapter", "ZarrArrayAdapter"]:
+) -> Union["ZarrGroupAdapter", ArrayAdapter]:
     """
 
     Parameters
@@ -41,7 +41,7 @@ def read_zarr(
     """
     filepath = path_from_uri(data_uri)
     zarr_obj = zarr.open(filepath)  # Group or Array
-    adapter: Union[ZarrGroupAdapter, ZarrArrayAdapter]
+    adapter: Union[ZarrGroupAdapter, ArrayAdapter]
     if isinstance(zarr_obj, zarr.hierarchy.Group):
         adapter = ZarrGroupAdapter(zarr_obj, **kwargs)
     else:
@@ -182,7 +182,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
 
 class ZarrGroupAdapter(
-    collections.abc.Mapping[str, Union["ZarrArrayAdapter", "ZarrGroupAdapter"]],
+    collections.abc.Mapping[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
     IndexersMixin,
 ):
     """ """
@@ -264,7 +264,7 @@ class ZarrGroupAdapter(
         """
         yield from self._node
 
-    def __getitem__(self, key: str) -> Union[ZarrArrayAdapter, "ZarrGroupAdapter"]:
+    def __getitem__(self, key: str) -> Union[ArrayAdapter, "ZarrGroupAdapter"]:
         """
 
         Parameters
