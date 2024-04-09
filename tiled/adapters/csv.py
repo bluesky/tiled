@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import dask.dataframe
 import pandas
@@ -28,7 +28,7 @@ def read_csv(
     data_uri: str,
     structure: Optional[TableStructure] = None,
     metadata: Optional[JSON] = None,
-    specs: Optional[list[Spec]] = None,
+    specs: Optional[List[Spec]] = None,
     access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     **kwargs: Any,
 ) -> TableAdapter:
@@ -81,10 +81,10 @@ class CSVAdapter:
 
     def __init__(
         self,
-        data_uris: Union[str, list[str]],
+        data_uris: Union[str, List[str]],
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> None:
         """
@@ -211,7 +211,7 @@ class CSVAdapter:
         uri = self._partition_paths[0]
         data.to_csv(uri, index=False)
 
-    def read(self, *args: Optional[list[str]], **kwargs: Any) -> pandas.DataFrame:
+    def read(self, *args: Optional[List[str]], **kwargs: Any) -> pandas.DataFrame:
         """
 
         Parameters
@@ -266,7 +266,7 @@ class CSVAdapter:
     def generate_data_sources(
         self,
         mimetype: Any,
-        dict_or_none: Callable[[TableStructure], dict[str, str]],
+        dict_or_none: Callable[[TableStructure], Dict[str, str]],
         item: Union[str, Path],
         is_directory: bool,
     ) -> List[DataSource]:
@@ -307,7 +307,7 @@ class CSVAdapter:
         data_uri: str,
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> "CSVAdapter":
         """

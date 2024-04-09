@@ -2,7 +2,7 @@ import builtins
 import collections.abc
 import os
 from types import EllipsisType
-from typing import Any, Iterator, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
 import pandas
@@ -25,7 +25,7 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
 def read_zarr(
-    data_uri: Union[str, list[str]], structure: Optional[NodeStructure], **kwargs: Any
+    data_uri: Union[str, List[str]], structure: Optional[NodeStructure], **kwargs: Any
 ) -> Union["ZarrGroupAdapter", ArrayAdapter]:
     """
 
@@ -92,7 +92,7 @@ class ZarrArrayAdapter(ArrayAdapter):
             )
         ]
 
-    def _stencil(self) -> tuple[slice, ...]:
+    def _stencil(self) -> Tuple[slice, ...]:
         """
         Trims overflow because Zarr always has equal-sized chunks.
         Returns
@@ -195,7 +195,7 @@ class ZarrGroupAdapter(
         *,
         structure: Optional[Union[NodeStructure, ArrayStructure]] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         """
@@ -348,7 +348,7 @@ class ZarrGroupAdapter(
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start: int, stop: int, direction: int) -> list[Any]:
+    def _keys_slice(self, start: int, stop: int, direction: int) -> List[Any]:
         """
 
         Parameters
@@ -366,7 +366,7 @@ class ZarrGroupAdapter(
             keys = list(reversed(keys))
         return keys[start:stop]
 
-    def _items_slice(self, start: int, stop: int, direction: int) -> list[Any]:
+    def _items_slice(self, start: int, stop: int, direction: int) -> List[Any]:
         """
 
         Parameters

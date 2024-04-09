@@ -2,7 +2,7 @@ import collections.abc
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Iterator, Optional, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import h5py
 import numpy
@@ -75,7 +75,7 @@ class HDF5Adapter(
         *,
         structure: Optional[NodeStructure] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         """
@@ -103,7 +103,7 @@ class HDF5Adapter(
         metadata: Optional[JSON] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "HDF5Adapter":
         """
@@ -127,7 +127,7 @@ class HDF5Adapter(
     @classmethod
     def from_uri(
         cls,
-        data_uri: Union[str, list[str]],
+        data_uri: Union[str, List[str]],
         *,
         structure: Optional[NodeStructure] = None,
         metadata: Optional[JSON] = None,
@@ -314,7 +314,7 @@ class HDF5Adapter(
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start: int, stop: int, direction: int) -> list[Any]:
+    def _keys_slice(self, start: int, stop: int, direction: int) -> List[Any]:
         """
 
         Parameters
@@ -334,7 +334,7 @@ class HDF5Adapter(
 
     def _items_slice(
         self, start: int, stop: int, direction: int
-    ) -> list[tuple[Any, Any]]:
+    ) -> List[Tuple[Any, Any]]:
         """
 
         Parameters
@@ -367,15 +367,15 @@ class HDF5Adapter(
 
 
 def hdf5_lookup(
-    data_uri: Union[str, list[str]],
+    data_uri: Union[str, List[str]],
     *,
     structure: Optional[NodeStructure] = None,
     metadata: Optional[JSON] = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
-    specs: Optional[list[Spec]] = None,
+    specs: Optional[List[Spec]] = None,
     access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
-    path: Optional[Union[list[Path], list[str]]] = None,
+    path: Optional[Union[List[Path], List[str]]] = None,
 ) -> Union[HDF5Adapter, ArrayAdapter]:
     """
 

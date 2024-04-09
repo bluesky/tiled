@@ -1,12 +1,12 @@
 from pathlib import Path
-from typing import Union
+from typing import List, Union
 
 import xarray
 
 from .xarray import DatasetAdapter
 
 
-def read_netcdf(filepath: Union[str, list[str], Path]) -> DatasetAdapter:
+def read_netcdf(filepath: Union[str, List[str], Path]) -> DatasetAdapter:
     """
 
     Parameters

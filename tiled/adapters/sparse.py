@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import dask
 import numpy
@@ -25,7 +25,7 @@ class COOAdapter:
         shape: Tuple[int, ...],
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "COOAdapter":
         """
@@ -66,7 +66,7 @@ class COOAdapter:
         *,
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "COOAdapter":
         """
@@ -96,13 +96,13 @@ class COOAdapter:
     @classmethod
     def from_global_ref(
         cls,
-        blocks: dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
+        blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
         shape: Tuple[int, ...],
         chunks: Tuple[Tuple[int, ...], ...],
         *,
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "COOAdapter":
         """
@@ -145,11 +145,11 @@ class COOAdapter:
 
     def __init__(
         self,
-        blocks: dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
+        blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
         structure: COOStructure,
         *,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         """

@@ -1,5 +1,5 @@
 import itertools
-from typing import Any, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import dask.base
 import dask.dataframe
@@ -16,7 +16,7 @@ from ..utils import path_from_uri
 from .type_alliases import JSON
 
 
-def load_block(uri: str) -> Tuple[list[int], Tuple[NDArray[Any], Any]]:
+def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
     """
 
     Parameters
@@ -42,10 +42,10 @@ class SparseBlocksParquetAdapter:
 
     def __init__(
         self,
-        data_uris: Union[str, list[str]],
+        data_uris: Union[str, List[str]],
         structure: COOStructure,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         """
@@ -70,7 +70,7 @@ class SparseBlocksParquetAdapter:
     @classmethod
     def init_storage(
         cls,
-        data_uri: Union[str, list[str]],
+        data_uri: Union[str, List[str]],
         structure: COOStructure,
     ) -> Any:
         """

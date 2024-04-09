@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Optional, Tuple, Union, cast
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import tifffile
@@ -27,11 +27,11 @@ class TiffAdapter:
 
     def __init__(
         self,
-        data_uri: Union[str, list[str]],
+        data_uri: Union[str, List[str]],
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> None:
         """
@@ -143,10 +143,10 @@ class TiffSequenceAdapter:
     @classmethod
     def from_uris(
         cls,
-        data_uris: Union[str, list[str]],
+        data_uris: Union[str, List[str]],
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "TiffSequenceAdapter":
         """
@@ -179,7 +179,7 @@ class TiffSequenceAdapter:
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         """

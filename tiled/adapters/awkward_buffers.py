@@ -121,7 +121,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         data_uri: str,
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> "AwkwardBuffersAdapter":
         """

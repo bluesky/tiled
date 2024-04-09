@@ -1,6 +1,6 @@
 import collections.abc
 import itertools
-from typing import Any, Iterator, Optional, Union
+from typing import Any, Iterator, List, Optional, Union
 
 import xarray
 
@@ -20,7 +20,7 @@ class DatasetAdapter(MapAdapter):
         cls,
         dataset: Any,
         *,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> "DatasetAdapter":
         """
@@ -50,7 +50,7 @@ class DatasetAdapter(MapAdapter):
         self,
         mapping: Any,
         *args: Any,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
         **kwargs: Any,
     ) -> None:

@@ -4,7 +4,7 @@ import itertools
 import operator
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import Any, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 from fastapi import APIRouter
 
@@ -64,7 +64,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         structure: Optional[NodeStructure] = None,
         metadata: Optional[JSON] = None,
         sorting: Optional[List[SortingItem]] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
         entries_stale_after: Optional[timedelta] = None,
         metadata_stale_after: Optional[timedelta] = None,
@@ -99,7 +99,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
             # This is a special case that means, "the given ordering".
             # By giving that a name ("_") we enable requests to asking for the
             # last N by requesting the sorting ("_", -1).
-            sorting = [SortingItem("_", 1)]
+            sorting = [SortingItem(key="_", direction=1)]
         self._sorting = sorting
         self._metadata = metadata or {}
         self.specs = specs or []
@@ -170,7 +170,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         return self._metadata
 
     @property
-    def sorting(self) -> list[SortingItem]:
+    def sorting(self) -> List[SortingItem]:
         """
 
         Returns
@@ -284,9 +284,9 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
     def new_variation(
         self,
         *args: Any,
-        mapping: Union[Sentinel, dict[str, Any]] = UNCHANGED,
+        mapping: Union[Sentinel, Dict[str, Any]] = UNCHANGED,
         metadata: Union[Sentinel, JSON] = UNCHANGED,
-        sorting: Union[Sentinel, list[SortingItem]] = UNCHANGED,
+        sorting: Union[Sentinel, List[SortingItem]] = UNCHANGED,
         must_revalidate: Union[Sentinel, bool] = UNCHANGED,
         **kwargs: Any,
     ) -> "MapAdapter":
@@ -361,7 +361,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         self,
         metadata: JSON,
         structure_families: StructureFamily,
-        specs: list[Spec],
+        specs: List[Spec],
         counts: int,
     ) -> dict[str, Any]:
         """
@@ -436,7 +436,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
 
     def _keys_slice(
         self, start: int, stop: int, direction: int
-    ) -> Union[Iterator[str], list[str]]:
+    ) -> Union[Iterator[str], List[str]]:
         """
 
         Parameters
@@ -523,7 +523,7 @@ def walk_string_values(tree: MapAdapter, node: Optional[Any] = None) -> Iterator
                     yield item
 
 
-def counter_to_dict(counter: dict[str, Any], counts: Any) -> list[dict[str, Any]]:
+def counter_to_dict(counter: Dict[str, Any], counts: Any) -> List[Dict[str, Any]]:
     """
 
     Parameters

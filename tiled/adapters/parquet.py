@@ -70,7 +70,7 @@ class ParquetDatasetAdapter:
 
     @classmethod
     def init_storage(
-        cls, data_uri: Union[str, list[str]], structure: TableStructure
+        cls, data_uri: Union[str, List[str]], structure: TableStructure
     ) -> Any:
         """
 

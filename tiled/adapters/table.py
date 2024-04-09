@@ -1,4 +1,4 @@
-from typing import Any, Iterator, Optional, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask.base
 import dask.dataframe
@@ -30,7 +30,7 @@ class TableAdapter:
         cls,
         *args: Any,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
         npartitions: int = 1,
         **kwargs: Any,
@@ -62,7 +62,7 @@ class TableAdapter:
         cls,
         ddf: dask.dataframe.DataFrame,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
     ) -> "TableAdapter":
         """
@@ -91,11 +91,11 @@ class TableAdapter:
 
     def __init__(
         self,
-        partitions: list[Any],
+        partitions: List[Any],
         structure: TableStructure,
         *,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         """
@@ -137,7 +137,7 @@ class TableAdapter:
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def items(self) -> Iterator[tuple[str, ArrayAdapter]]:
+    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         """
 
         Returns
@@ -167,7 +167,7 @@ class TableAdapter:
         """
         return self._structure
 
-    def read(self, fields: Optional[Union[str, list[str]]] = None) -> pandas.DataFrame:
+    def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
         """
 
         Parameters

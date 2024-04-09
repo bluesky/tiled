@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import dask.array
 from numpy import dtype, ndarray
@@ -33,7 +33,7 @@ class ArrayAdapter:
         structure: ArrayStructure,
         *,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> None:
         """
@@ -60,7 +60,7 @@ class ArrayAdapter:
         chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
     ) -> "ArrayAdapter":
         """
