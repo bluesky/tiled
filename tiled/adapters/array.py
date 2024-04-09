@@ -1,7 +1,6 @@
 from typing import Any, List, Optional, Tuple, Union
 
 import dask.array
-from numpy import dtype, ndarray
 from numpy.typing import NDArray
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
@@ -127,7 +126,7 @@ class ArrayAdapter:
         """
         return self._structure
 
-    def read(self, slice: Optional[slice]) -> ndarray[Any, dtype[Any]]:
+    def read(self, slice: Optional[slice]) -> NDArray[Any]:
         """
 
         Parameters
@@ -149,7 +148,7 @@ class ArrayAdapter:
         self,
         block: Tuple[int, ...],
         slice: slice,
-    ) -> ndarray[Any, dtype[Any]]:
+    ) -> NDArray[Any]:
         """
 
         Parameters

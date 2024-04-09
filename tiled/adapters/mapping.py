@@ -420,9 +420,10 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
                 mapping = dict(
                     sorted(
                         mapping.items(),
-                        key=lambda item: item[1].metadata().get(key, _HIGH_SORTER),
+                        key=lambda item: item[1].metadata().get(key, _HIGH_SORTER),  # type: ignore
                     )
                 )
+
             if direction < 0:
                 # TODO In Python 3.8 dict items should be reservible
                 # but I have seen errors in the wild that I could not

@@ -237,7 +237,7 @@ class ZarrGroupAdapter(
         """
         return self._access_policy
 
-    def metadata(self) -> JSON:
+    def metadata(self) -> Any:
         """
 
         Returns
