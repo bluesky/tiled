@@ -9,7 +9,7 @@ from typing import Any, Iterator, List, Optional, Union
 import awkward.forms
 
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
-from ..server.pydantic_awkward import AwkwardStructure
+from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..utils import path_from_uri
 from .awkward import AwkwardAdapter

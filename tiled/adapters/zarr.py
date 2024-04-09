@@ -2,7 +2,7 @@ import builtins
 import collections.abc
 import os
 from types import EllipsisType
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import dask
 import pandas
@@ -14,9 +14,9 @@ from numpy._typing import NDArray
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..server.schemas import NodeStructure
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .type_alliases import JSON
@@ -25,7 +25,9 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
 def read_zarr(
-    data_uri: Union[str, List[str]], structure: Optional[NodeStructure], **kwargs: Any
+    data_uri: Union[str, List[str]],
+    structure: Optional[ArrayStructure],
+    **kwargs: Any,
 ) -> Union["ZarrGroupAdapter", ArrayAdapter]:
     """
 
@@ -101,7 +103,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         """
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
-    def read(self, slice: Optional[slice]) -> NDArray[Any]:
+    def read(self, slice: ...) -> NDArray[Any]:
         """
 
         Parameters
@@ -114,9 +116,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         """
         return self._array[self._stencil()][slice]
 
-    def read_block(
-        self, block: Tuple[int, ...], slice: Optional[Union[slice, EllipsisType]]
-    ) -> NDArray[Any]:
+    def read_block(self, block: Tuple[int, ...], slice: ...) -> NDArray[Any]:
         """
 
         Parameters
@@ -138,7 +138,7 @@ class ZarrArrayAdapter(ArrayAdapter):
     def write(
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
-        slice: Optional[Union[slice, EllipsisType]],
+        slice: ...,
     ) -> None:
         """
 
@@ -159,7 +159,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
-        slice: Optional[Union[slice, EllipsisType]],
+        slice: ...,
     ) -> None:
         """
 
@@ -193,7 +193,7 @@ class ZarrGroupAdapter(
         self,
         node: Any,
         *,
-        structure: Optional[Union[NodeStructure, ArrayStructure]] = None,
+        structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,

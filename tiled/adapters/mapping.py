@@ -24,8 +24,9 @@ from ..queries import (
     StructureFamilyQuery,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import NodeStructure, SortingItem
+from ..server.schemas import SortingItem
 from ..structures.core import Spec, StructureFamily
+from ..structures.table import TableStructure
 from ..utils import UNCHANGED, Sentinel
 from .table import TableAdapter
 from .type_alliases import JSON
@@ -61,7 +62,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         self,
         mapping: dict[str, TableAdapter],
         *,
-        structure: Optional[NodeStructure] = None,
+        structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         sorting: Optional[List[SortingItem]] = None,
         specs: Optional[List[Spec]] = None,

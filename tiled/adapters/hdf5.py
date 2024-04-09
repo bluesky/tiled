@@ -11,7 +11,7 @@ from numpy._typing import NDArray
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..server.schemas import NodeStructure
+from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
@@ -73,7 +73,7 @@ class HDF5Adapter(
         self,
         node: Any,
         *,
-        structure: Optional[NodeStructure] = None,
+        structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
@@ -129,7 +129,7 @@ class HDF5Adapter(
         cls,
         data_uri: Union[str, List[str]],
         *,
-        structure: Optional[NodeStructure] = None,
+        structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
@@ -369,7 +369,7 @@ class HDF5Adapter(
 def hdf5_lookup(
     data_uri: Union[str, List[str]],
     *,
-    structure: Optional[NodeStructure] = None,
+    structure: Optional[ArrayStructure] = None,
     metadata: Optional[JSON] = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",

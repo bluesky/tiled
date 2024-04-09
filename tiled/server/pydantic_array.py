@@ -38,7 +38,7 @@ class BuiltinDtype(BaseModel):
     __endianness_reverse_map = {"big": ">", "little": "<", "not_applicable": "|"}
 
     @classmethod
-    def from_numpy_dtype(cls, dtype):
+    def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
         return cls(
             endianness=cls.__endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
