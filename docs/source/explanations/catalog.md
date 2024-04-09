@@ -276,3 +276,16 @@ data_source_id | asset_id | parameter | num
 1 | 2 | NULL | NULL
 1 | 3 | NULL | NULL
 1 | 4 | NULL | NULL
+
+## Revisions
+
+The `revisions` table stores snapshots of Node `metadata` and `specs`. When an
+update is made, the row in the `nodes` table is updated and a _copy_ with the
+original content is inserted in the `revisions` table.
+
+- `node_id` --- foreign key to the node
+- `revision_number` --- integer counting revisions of this node from 1
+- `metadata` --- snapshot of node metadata
+- `specs` --- snapshot of node specs
+- `id` --- an internal integer primary key, not exposed by the API
+- `time_created` and `time_updated` --- for forensics, not exposed by the API
