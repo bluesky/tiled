@@ -1,6 +1,7 @@
 import collections
 import importlib
 import itertools as it
+import logging
 import operator
 import os
 import re
@@ -61,6 +62,8 @@ from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -1281,11 +1284,20 @@ def from_uri(
         import subprocess
 
         # TODO Check if catalog exists.
-        subprocess.run(
+        process = subprocess.run(
             [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             check=True,
         )
+
+        # Capture stdout and stderr from the subprocess and write to logging
+        stdout = process.stdout.decode()
+        stderr = process.stderr.decode()
+
+        logging.info(f"Subprocess stdout: {stdout}")
+        logging.error(f"Subprocess stderr: {stderr}")
+
     if not SCHEME_PATTERN.match(uri):
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
