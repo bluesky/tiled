@@ -283,6 +283,8 @@ async def test_write_array_internal_direct(a, tmpdir):
     )
     x = await a.lookup_adapter(["x"])
     await x.write(arr)
+    print("Yep", x.read())
+    print("Hey", arr)
     assert numpy.array_equal(await x.read(), arr)
 
 

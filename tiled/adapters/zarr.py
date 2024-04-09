@@ -2,7 +2,7 @@ import builtins
 import collections.abc
 import os
 from types import EllipsisType
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
 import pandas
@@ -16,7 +16,6 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .type_alliases import JSON
@@ -26,7 +25,7 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 def read_zarr(
     data_uri: Union[str, List[str]],
-    structure: Optional[ArrayStructure],
+    structure: Optional[ArrayStructure] = None,
     **kwargs: Any,
 ) -> Union["ZarrGroupAdapter", ArrayAdapter]:
     """
@@ -103,7 +102,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         """
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
-    def read(self, slice: ...) -> NDArray[Any]:
+    def read(self, slice: Optional[Union[slice, EllipsisType]] = None) -> NDArray[Any]:
         """
 
         Parameters
@@ -116,7 +115,9 @@ class ZarrArrayAdapter(ArrayAdapter):
         """
         return self._array[self._stencil()][slice]
 
-    def read_block(self, block: Tuple[int, ...], slice: ...) -> NDArray[Any]:
+    def read_block(
+        self, block: Tuple[int, ...], slice: Optional[slice] = None
+    ) -> NDArray[Any]:
         """
 
         Parameters
@@ -138,7 +139,7 @@ class ZarrArrayAdapter(ArrayAdapter):
     def write(
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
-        slice: ...,
+        slice: Optional[EllipsisType] = ...,
     ) -> None:
         """
 
@@ -159,7 +160,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
-        slice: ...,
+        slice: Optional[EllipsisType] = ...,
     ) -> None:
         """
 

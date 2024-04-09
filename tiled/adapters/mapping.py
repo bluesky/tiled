@@ -268,7 +268,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         """
         if self.metadata_stale_after is None:
             return None
-        return self.metadata_stale_after + datetime.now()
+        return self.metadata_stale_after + datetime.utcnow()
 
     @property
     def entries_stale_at(self) -> Optional[datetime]:
@@ -280,7 +280,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         """
         if self.entries_stale_after is None:
             return None
-        return self.entries_stale_after + datetime.now()
+        return self.entries_stale_after + datetime.utcnow()
 
     def new_variation(
         self,

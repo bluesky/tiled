@@ -126,7 +126,7 @@ class ArrayAdapter:
         """
         return self._structure
 
-    def read(self, slice: Optional[slice]) -> NDArray[Any]:
+    def read(self, slice: Optional[slice] = None) -> NDArray[Any]:
         """
 
         Parameters
@@ -147,7 +147,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: slice,
+        slice: Optional[slice] = None,
     ) -> NDArray[Any]:
         """
 

@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
-from .awkward_buffers import DirectoryContainer
+from .awkward_directory_container import DirectoryContainer
 from .type_alliases import JSON
 
 

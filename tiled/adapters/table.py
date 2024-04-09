@@ -167,7 +167,9 @@ class TableAdapter:
         """
         return self._structure
 
-    def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
+    def read(
+        self, fields: Optional[Union[str, List[str]]] = None
+    ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
 
         Parameters

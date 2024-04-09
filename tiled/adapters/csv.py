@@ -211,7 +211,9 @@ class CSVAdapter:
         uri = self._partition_paths[0]
         data.to_csv(uri, index=False)
 
-    def read(self, *args: Optional[List[str]], **kwargs: Any) -> pandas.DataFrame:
+    def read(
+        self, *args: Any, **kwargs: Any
+    ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
 
         Parameters
