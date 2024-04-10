@@ -5,14 +5,6 @@ in accordance with its BSD-3 license
 import typing as tp
 
 import httpx
-from starlette.status import (
-    HTTP_200_OK,
-    HTTP_203_NON_AUTHORITATIVE_INFORMATION,
-    HTTP_300_MULTIPLE_CHOICES,
-    HTTP_301_MOVED_PERMANENTLY,
-    HTTP_304_NOT_MODIFIED,
-    HTTP_308_PERMANENT_REDIRECT,
-)
 
 from .cache import Cache
 from .cache_control import ByteStreamWrapper, CacheControl
@@ -40,11 +32,11 @@ class Transport(httpx.BaseTransport):
         cache: tp.Optional[Cache] = None,
         cacheable_methods: tp.Tuple[str, ...] = ("GET",),
         cacheable_status_codes: tp.Tuple[int, ...] = (
-            HTTP_200_OK,
-            HTTP_203_NON_AUTHORITATIVE_INFORMATION,
-            HTTP_300_MULTIPLE_CHOICES,
-            HTTP_301_MOVED_PERMANENTLY,
-            HTTP_308_PERMANENT_REDIRECT,
+            httpx.codes.OK,
+            httpx.codes.NON_AUTHORITATIVE_INFORMATION,
+            httpx.codes.MULTIPLE_CHOICES,
+            httpx.codes.MOVED_PERMANENTLY,
+            httpx.codes.PERMANENT_REDIRECT,
         ),
         always_cache: bool = False,
     ):
@@ -105,7 +97,7 @@ class Transport(httpx.BaseTransport):
             # But, below _collect_ the response with the content in it.
 
         if self.cache is not None:
-            if response.status_code == HTTP_304_NOT_MODIFIED:
+            if response.status_code == httpx.codes.NOT_MODIFIED:
                 if __debug__:
                     logger.debug(
                         "Server validated as fresh cached entry for: %s", request

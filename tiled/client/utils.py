@@ -7,7 +7,6 @@ from weakref import WeakValueDictionary
 
 import httpx
 import msgpack
-from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from ..utils import path_from_uri
 
@@ -70,7 +69,7 @@ def handle_error(response):
     except httpx.RequestError:
         raise  # Nothing to add in this case; just raise it.
     except httpx.HTTPStatusError as exc:
-        if response.status_code < HTTP_500_INTERNAL_SERVER_ERROR:
+        if response.status_code < httpx.codes.INTERNAL_SERVER_ERROR:
             # Include more detail that httpx does by default.
             if response.headers["Content-Type"] == "application/json":
                 detail = response.json().get("detail", "")

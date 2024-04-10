@@ -9,13 +9,6 @@ from email.utils import parsedate_to_datetime
 
 import attr
 import httpx
-from starlette.status import (
-    HTTP_200_OK,
-    HTTP_203_NON_AUTHORITATIVE_INFORMATION,
-    HTTP_300_MULTIPLE_CHOICES,
-    HTTP_301_MOVED_PERMANENTLY,
-    HTTP_308_PERMANENT_REDIRECT,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -121,11 +114,11 @@ class CacheControl:
         *,
         cacheable_methods: tp.Tuple[str, ...] = ("GET",),
         cacheable_status_codes: tp.Tuple[int, ...] = (
-            HTTP_200_OK,
-            HTTP_203_NON_AUTHORITATIVE_INFORMATION,
-            HTTP_300_MULTIPLE_CHOICES,
-            HTTP_301_MOVED_PERMANENTLY,
-            HTTP_308_PERMANENT_REDIRECT,
+            httpx.codes.OK,
+            httpx.codes.NON_AUTHORITATIVE_INFORMATION,
+            httpx.codes.MULTIPLE_CHOICES,
+            httpx.codes.MOVED_PERMANENTLY,
+            httpx.codes.PERMANENT_REDIRECT,
         ),
         always_cache: bool = False,
     ) -> None:
