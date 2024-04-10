@@ -27,7 +27,7 @@ and `assets`, describes the format,  structure, and location of the data.
   to the Adapter
 - `management` --- enum indicating whether the data is registered `"external"` data
   or `"writable"` data managed by Tiled
-- `structre_family` --- enum of structure types (`"container"`, `"array"`, `"table"`, ...)
+- `structure_family` --- enum of structure types (`"container"`, `"array"`, `"table"`, ...)
 - `structure_id` --- a foreign key to the `structures` table
 - `node_id` --- foreign key to `nodes`
 - `id` --- integer primary key
@@ -71,7 +71,7 @@ If `num` is NULL, the Adapter will be passed a scalar value. If `num` is an
 integer, the Adapter will be passed a list sorted by `num`.
 
 Database triggers are used to ensure self-consistency.
-
+`time_created` and `time_updated` contain timestamps related to the corresponding DB entry (Node, Data Source, Asset), and not the underlying data files.
 ### Single HDF5 file
 
 This is a simple example: one Data Source and one associated Asset.
@@ -82,7 +82,7 @@ select id, mimetype, parameters from data_sources;
 
 id | mimetype | parameters |
 -- | -- | --
-1 | "application/x-hdf5" | {"smwr": true} | NULL
+1 | "application/x-hdf5" | {"smwr": true}
 
 
 ```sql
@@ -118,7 +118,7 @@ select id, mimetype, parameters from data_sources;
 
 id | mimetype | parameters |
 -- | -- | --
-1 | "application/x-zarr" | {} | NULL
+1 | "application/x-zarr" | {}
 
 
 ```sql
@@ -129,7 +129,7 @@ id | data_uri | is_directory
 -- | -- | --
 1 | "file://localhost/path/to/data.zarr" | true
 
-(Notice is_directory is `true`.)
+(Notice `is_directory` is `true`.)
 
 ```sql
 select * from data_source_asset_assocation
@@ -179,10 +179,10 @@ select id, mimetype, parameters from data_sources;
 
 id | mimetype | parameters |
 -- | -- | --
-1 | "multipart/related;type=image/tiff" | {} | NULL
+1 | "multipart/related;type=image/tiff" | {}
 
 The MIME type `multipart/related;type=image/tiff` is registered to an Adapter
-that expects a _sequence_ of TIFF files.
+that expects a _sequence_ of TIFF files, e.g. `TiffSequenceAdapter`.
 
 ```sql
 select data_uri, is_diretory from assets
@@ -248,7 +248,7 @@ select id, mimetype, parameters from data_sources;
 
 id | mimetype | parameters |
 -- | -- | --
-1 | "application/x-hdf5" | {} | NULL
+1 | "application/x-hdf5" | {}
 
 
 ```sql
