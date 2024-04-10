@@ -3,6 +3,27 @@
 The Catalog database is a SQL database of information describing data: its
 name, metadata, structure, format, and location.
 
+## Overview
+
+```{mermaid}
+erDiagram
+    nodes ||--o{  data_sources : has
+    data_sources ||--o{  data_source_asset_association : has
+    data_source_asset_association }|--|{  assets : has
+    data_sources }|--||   structure : has
+    nodes ||--o{  revisions : has
+    alembic_version
+
+```
+
+- `nodes` - metadata and logical location of this dataset in Tiled's tree
+- `data_sources` - format and parameters for opening dataset
+- `structures` - description of dataset structure (e.g. shape, chunks, data type, column names, ...)
+- `assets` - location (URI) of data
+- `data_source_asset_assocation` - many-to-many relation between `data_sources` and `assets`
+- `revisions` - snapshots of revision history of metadata
+- `alembic_version` - version of database schema, to verify compatibility with version of Tiled
+
 ## Nodes
 
 The `nodes` table is the _logical_ view of the data, the way that Tiled
@@ -44,9 +65,7 @@ and `assets`, describes the format,  structure, and location of the data.
 Each Data Source references exactly one Structure.
 
 - `structure` --- JSON object describing the structure
-- `id` --- MD5 hash of the
-  [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON of the structure
-
+- `id` --- MD5 hash of the [RFC 8785][] canonical JSON of the structure
 
 ## Asset
 
@@ -305,3 +324,13 @@ original content is inserted in the `revisions` table.
 - `specs` --- snapshot of node specs
 - `id` --- an internal integer primary key, not exposed by the API
 - `time_created` and `time_updated` --- for forensics, not exposed by the API
+
+## Alembic Version
+
+The `alembic_version` table is managed by [Alembic][], a SQL migration tool, to
+stamp the current version of the database. The Tiled server checks this at
+startup to ensure that the version of Tiled being used is compatible with the
+version of the database.
+
+[RFC 8785]: https://www.rfc-editor.org/rfc/rfc8785
+[Alembic]: https://alembic.sqlalchemy.org/en/latest/
