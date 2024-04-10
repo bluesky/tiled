@@ -16,6 +16,12 @@ presents the data to clients. Each row represents one node in the logical
 - `id` an internal integer primary key, not exposed by the API
 - `time_created` and `time_updated` --- for forensics, not exposed by the API
 
+The `time_created` and `time_updated` columns, which appear in this table and
+others below, contain timestamps related to the corresponding database row
+(Node, Data Source, Asset), not the underlying data files. They should not
+carry a scientific meaning; they are only used for book-keeping, forensics,
+and debugging.
+
 ## Data Source
 
 Each Data Source is associated with one Node. Together, `data_sources`, `structures`,
@@ -47,7 +53,12 @@ Each Data Source references exactly one Structure.
 - `data_uri` --- location of data, given as `file://localhost/PATH`
   (It is planned to extend to schemes other than `file`, such as `s3`, in the
   future.)
-- `is_directory` --- boolean
+- `is_directory` --- boolean: `true` when the Asset being tracked is a
+  directory. This is used for data formats in which the directory structure is
+  an internal detail managed by the I/O library, such as Zarr and TileDB.
+  Otherwise this is `false`, and Tiled tracks each file as an individual Asset,
+  such as each TIFF file in a TIFF sequence, or each HDF5 file in a virtual
+  HDF5 dataset).
 - `hash_type` and `hash_content` --- not yet implemented (i.e. always NULL) but
   intended for content verification
 - `size` --- not yet implemented (i.e. always NULL) but intended to support
@@ -61,7 +72,12 @@ Assets and Data Sources have a many-to-many relation. The
 `data_source_asset_assocation` table is best described by the example below.
 
 - `data_source_id`, `asset_id` --- foreign keys
-- `parameter` --- the name of the parameter this Asset should be passed to
+- `parameter` --- the name of the Tiled Adapter's parameter that this Asset
+  should be passed to, e.g. `"data_uri"` or `"data_uris"`. These can be any
+  string because some Adapters handle a heterogeneous group of Assets, like
+  a combination of an image file and a separate text metadata file, and
+  load them as a unit. The parameter is used to differentiate the various
+  Assets for the Adapter.
 - `num` --- the position of this item in a list
 
 If `parameter` is NULL, the Asset is a supporting file, not passed directly to
@@ -71,7 +87,7 @@ If `num` is NULL, the Adapter will be passed a scalar value. If `num` is an
 integer, the Adapter will be passed a list sorted by `num`.
 
 Database triggers are used to ensure self-consistency.
-`time_created` and `time_updated` contain timestamps related to the corresponding DB entry (Node, Data Source, Asset), and not the underlying data files.
+
 ### Single HDF5 file
 
 This is a simple example: one Data Source and one associated Asset.
