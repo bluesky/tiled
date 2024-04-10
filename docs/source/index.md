@@ -44,6 +44,7 @@ explanations/compression
 explanations/specialized-formats
 explanations/caching
 explanations/access-control
+explanations/catalog
 explanations/faq
 explanations/lineage
 ```
