@@ -1,3 +1,4 @@
+from types import EllipsisType
 from typing import Any, List, Optional, Tuple, Union
 
 import dask.array
@@ -126,7 +127,12 @@ class ArrayAdapter:
         """
         return self._structure
 
-    def read(self, slice: Optional[slice] = None) -> NDArray[Any]:
+    def read(
+        self,
+        slice: Union[
+            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
+        ] = ...,
+    ) -> NDArray[Any]:
         """
 
         Parameters
@@ -138,8 +144,7 @@ class ArrayAdapter:
 
         """
         array = self._array
-        if slice is not None:
-            array = array[slice]
+        array = array[slice]
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
@@ -147,7 +152,9 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: Optional[slice] = None,
+        slice: Union[
+            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
+        ] = ...,
     ) -> NDArray[Any]:
         """
 

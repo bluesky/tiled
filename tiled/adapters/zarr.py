@@ -102,7 +102,12 @@ class ZarrArrayAdapter(ArrayAdapter):
         """
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
-    def read(self, slice: Optional[Union[slice, EllipsisType]] = None) -> NDArray[Any]:
+    def read(
+        self,
+        slice: Union[
+            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
+        ] = ...,
+    ) -> NDArray[Any]:
         """
 
         Parameters
@@ -116,7 +121,11 @@ class ZarrArrayAdapter(ArrayAdapter):
         return self._array[self._stencil()][slice]
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[slice] = None
+        self,
+        block: Tuple[int, ...],
+        slice: Union[
+            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
+        ] = ...,
     ) -> NDArray[Any]:
         """
 
@@ -139,7 +148,9 @@ class ZarrArrayAdapter(ArrayAdapter):
     def write(
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
-        slice: Optional[EllipsisType] = ...,
+        slice: Union[
+            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
+        ] = ...,
     ) -> None:
         """
 
