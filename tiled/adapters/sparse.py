@@ -6,11 +6,11 @@ import pandas
 import sparse
 from numpy._typing import NDArray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from .array import slice_and_shape_from_block_and_chunks
-from .type_alliases import JSON
+from .protocols import AccessPolicy
+from .type_alliases import JSON, NDSlice
 
 
 class COOAdapter:
@@ -26,7 +26,7 @@ class COOAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "COOAdapter":
         """
         Simplest constructor. Single chunk from coords, data arrays.
@@ -67,7 +67,7 @@ class COOAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "COOAdapter":
         """
         Construct from sparse.COO object.
@@ -103,7 +103,7 @@ class COOAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "COOAdapter":
         """
         Construct from blocks with coords given in global reference frame.
@@ -150,7 +150,7 @@ class COOAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
         Construct from blocks with coords given in block-local reference frame.
@@ -187,8 +187,8 @@ class COOAdapter:
         return self._structure
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[Union[int, slice]] = None
-    ) -> NDArray[Any]:
+        self, block: Tuple[int, ...], slice: Optional[NDSlice] = None
+    ) -> sparse.COO:
         """
 
         Parameters
@@ -207,7 +207,7 @@ class COOAdapter:
             arr = arr[slice]
         return arr
 
-    def read(self, slice: Optional[Union[int, slice]] = None) -> NDArray[Any]:
+    def read(self, slice: Optional[NDSlice] = None) -> sparse.COO:
         """
 
         Parameters

@@ -1,7 +1,4 @@
-"""
-A directory containing awkward buffers, one file per form key.
-"""
-import collections.abc
+import collections
 from pathlib import Path
 from typing import Any, Iterator
 

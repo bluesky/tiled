@@ -4,10 +4,10 @@ import dask.base
 import dask.dataframe
 import pandas
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from .array import ArrayAdapter
+from .protocols import AccessPolicy
 from .type_alliases import JSON
 
 
@@ -31,7 +31,7 @@ class TableAdapter:
         *args: Any,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
         npartitions: int = 1,
         **kwargs: Any,
     ) -> "TableAdapter":
@@ -63,7 +63,7 @@ class TableAdapter:
         ddf: dask.dataframe.DataFrame,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "TableAdapter":
         """
 
@@ -96,7 +96,7 @@ class TableAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 

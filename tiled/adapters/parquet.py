@@ -4,11 +4,12 @@ from typing import Any, List, Optional, Union
 import dask.dataframe
 import pandas
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
+from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
+from .protocols import AccessPolicy
 from .type_alliases import JSON
 
 
@@ -23,7 +24,7 @@ class ParquetDatasetAdapter:
         structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -69,9 +70,7 @@ class ParquetDatasetAdapter:
         return DataFrameAdapter(partitions, self._structure)
 
     @classmethod
-    def init_storage(
-        cls, data_uri: Union[str, List[str]], structure: TableStructure
-    ) -> Any:
+    def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
         """
 
         Parameters
@@ -83,8 +82,6 @@ class ParquetDatasetAdapter:
         -------
 
         """
-        from ..server.schemas import Asset
-
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         assets = [

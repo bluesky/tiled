@@ -1,13 +1,12 @@
-from types import EllipsisType
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple
 
 import dask.array
 from numpy.typing import NDArray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from .type_alliases import JSON
+from .protocols import AccessPolicy
+from .type_alliases import JSON, NDSlice
 
 
 class ArrayAdapter:
@@ -34,7 +33,7 @@ class ArrayAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -61,7 +60,7 @@ class ArrayAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "ArrayAdapter":
         """
 
@@ -129,9 +128,7 @@ class ArrayAdapter:
 
     def read(
         self,
-        slice: Union[
-            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
-        ] = ...,
+        slice: NDSlice = ...,
     ) -> NDArray[Any]:
         """
 
@@ -143,8 +140,7 @@ class ArrayAdapter:
         -------
 
         """
-        array = self._array
-        array = array[slice]
+        array = self._array[slice]
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
@@ -152,9 +148,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: Union[
-            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
-        ] = ...,
+        slice: NDSlice = ...,
     ) -> NDArray[Any]:
         """
 
@@ -180,7 +174,7 @@ class ArrayAdapter:
 
 def slice_and_shape_from_block_and_chunks(
     block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
-) -> Tuple[Tuple[slice, ...], Tuple[int, ...]]:
+) -> Tuple[NDSlice, Tuple[int, ...]]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
     Parameters

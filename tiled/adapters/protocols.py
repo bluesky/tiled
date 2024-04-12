@@ -1,31 +1,28 @@
 import collections.abc
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, TypedDict, Union
-from protcols import Protocol, abstractproperty
+from abc import abstractmethod
+from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
-from numpy.typing import NDArray
 import pandas
 import sparse
+from numpy.typing import NDArray
 
 from ..server.schemas import Principal
-from ..structures.core import StructureFamily
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
+from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
-from .type_aliases import JSON
-
-
-Spec = TypedDict({"name": str, "version": str})
-Slice = Any  # TODO Replace this with our Union for a slice/tuple/.../etc.
+from .type_alliases import JSON, Filters, NDSlice, Scopes
 
 
 class BaseAdapter(Protocol):
     structure_family: StructureFamily
 
+    @abstractmethod
     def metadata(self) -> JSON:
         pass
 
-    @abstractproperty
+    @abstractmethod
     def specs(self) -> List[Spec]:
         pass
 
@@ -33,6 +30,7 @@ class BaseAdapter(Protocol):
 class ContainerAdapter(collections.abc.Mapping[str, "AnyAdapter"], BaseAdapter):
     structure_family = Literal[StructureFamily.container]
 
+    @abstractmethod
     def structure(self) -> None:
         pass
 
@@ -40,14 +38,16 @@ class ContainerAdapter(collections.abc.Mapping[str, "AnyAdapter"], BaseAdapter):
 class ArrayAdapter(BaseAdapter):
     structure_family = Literal[StructureFamily.array]
 
+    @abstractmethod
     def structure(self) -> ArrayStructure:
         pass
 
-    # TODO Fix slice
-    def read(self, slice: Slice) -> NDArray:
+    @abstractmethod
+    def read(self, slice: NDSlice) -> NDArray:
         pass
 
     # TODO Fix slice
+    @abstractmethod
     def read_block(self, block: Tuple[int, ...]) -> NDArray:
         pass
 
@@ -55,12 +55,15 @@ class ArrayAdapter(BaseAdapter):
 class AwkwardAdapter(BaseAdapter):
     structure_family = Literal[StructureFamily.awkward]
 
+    @abstractmethod
     def structure(self) -> AwkwardStructure:
         pass
 
+    @abstractmethod
     def read(self) -> NDArray:  # Are Slice and Array defined by numpy somewhere?
         pass
 
+    @abstractmethod
     def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, Any]:
         pass
 
@@ -68,12 +71,13 @@ class AwkwardAdapter(BaseAdapter):
 class SparseAdapter(BaseAdapter):
     structure_family = Literal[StructureFamily.sparse]
 
+    @abstractmethod
     def structure(self) -> SparseStructure:
         pass
 
     # TODO Fix slice (just like array)
     def read(
-        self, slice: Slice
+        self, slice: NDSlice
     ) -> sparse.COO:  # Are Slice and Array defined by numpy somewhere?
         pass
 
@@ -85,15 +89,19 @@ class SparseAdapter(BaseAdapter):
 class TableAdapter(BaseAdapter):
     structure_family = Literal[StructureFamily.table]
 
+    @abstractmethod
     def structure(self) -> TableStructure:
         pass
 
+    @abstractmethod
     def read(self, fields: list[str]) -> pandas.DataFrame:
         pass
 
+    @abstractmethod
     def read_partition(self, partition: int) -> pandas.DataFrame:
         pass
 
+    @abstractmethod
     def get(self, key: str) -> ArrayAdapter:
         pass
 
@@ -103,15 +111,12 @@ AnyAdapter = Union[
 ]
 
 
-Scopes = Set[str]
-Query = Any  # for now...
-Filters = List[Query]
-
-
 class AccessPolicy(Protocol):
+    @abstractmethod
     def allowed_scopes(self, node: BaseAdapter, principal: Principal) -> Scopes:
         pass
 
+    @abstractmethod
     def filters(
         self, node: BaseAdapter, principal: Principal, scopes: Scopes
     ) -> Filters:

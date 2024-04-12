@@ -4,13 +4,13 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import dask.dataframe
 import pandas
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
+from .protocols import AccessPolicy
 from .table import TableAdapter
 from .type_alliases import JSON
 
@@ -29,7 +29,7 @@ def read_csv(
     structure: Optional[TableStructure] = None,
     metadata: Optional[JSON] = None,
     specs: Optional[List[Spec]] = None,
-    access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+    access_policy: Optional[AccessPolicy] = None,
     **kwargs: Any,
 ) -> TableAdapter:
     """
@@ -85,7 +85,7 @@ class CSVAdapter:
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -134,7 +134,7 @@ class CSVAdapter:
         return DataFrameAdapter(partitions, self._structure)
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: TableStructure) -> Any:
+    def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
         """
 
         Parameters
@@ -146,8 +146,6 @@ class CSVAdapter:
         -------
 
         """
-        from ..server.schemas import Asset
-
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         assets = [
@@ -267,7 +265,7 @@ class CSVAdapter:
 
     def generate_data_sources(
         self,
-        mimetype: Any,
+        mimetype: str,
         dict_or_none: Callable[[TableStructure], Dict[str, str]],
         item: Union[str, Path],
         is_directory: bool,
@@ -310,7 +308,7 @@ class CSVAdapter:
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "CSVAdapter":
         """
 

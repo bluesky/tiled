@@ -8,12 +8,13 @@ import pandas
 import sparse
 from numpy._typing import NDArray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.array import slice_and_shape_from_block_and_chunks
+from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from ..utils import path_from_uri
-from .type_alliases import JSON
+from .protocols import AccessPolicy
+from .type_alliases import JSON, NDSlice
 
 
 def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
@@ -46,7 +47,7 @@ class SparseBlocksParquetAdapter:
         structure: COOStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -70,9 +71,9 @@ class SparseBlocksParquetAdapter:
     @classmethod
     def init_storage(
         cls,
-        data_uri: Union[str, List[str]],
+        data_uri: str,
         structure: COOStructure,
-    ) -> Any:
+    ) -> List[Asset]:
         """
 
         Parameters
@@ -84,8 +85,6 @@ class SparseBlocksParquetAdapter:
         -------
 
         """
-        from ..server.schemas import Asset
-
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +144,7 @@ class SparseBlocksParquetAdapter:
         uri = self.blocks[(0,) * len(self._structure.shape)]
         data.to_parquet(path_from_uri(uri))
 
-    def read(self, slice: Optional[Union[int, slice]]) -> NDArray[Any]:
+    def read(self, slice: NDSlice) -> sparse.COO:
         """
 
         Parameters
@@ -175,8 +174,8 @@ class SparseBlocksParquetAdapter:
         return arr[slice]
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[Union[int, slice]]
-    ) -> NDArray[Any]:
+        self, block: Tuple[int, ...], slice: Optional[NDSlice]
+    ) -> sparse.COO:
         """
 
         Parameters

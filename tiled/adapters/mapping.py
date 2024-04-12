@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 from fastapi import APIRouter
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
     Comparison,
@@ -28,12 +27,12 @@ from ..server.schemas import SortingItem
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..utils import UNCHANGED, Sentinel
-from .table import TableAdapter
+from .protocols import AccessPolicy, AnyAdapter
 from .type_alliases import JSON
 from .utils import IndexersMixin
 
 
-class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
+class MapAdapter(collections.abc.Mapping[str, AnyAdapter], IndexersMixin):
     """
     Adapt any mapping (dictionary-like object) to Tiled.
     """
@@ -60,13 +59,13 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
 
     def __init__(
         self,
-        mapping: dict[str, TableAdapter],
+        mapping: dict[str, Any],
         *,
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         sorting: Optional[List[SortingItem]] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
         entries_stale_after: Optional[timedelta] = None,
         metadata_stale_after: Optional[timedelta] = None,
         must_revalidate: bool = True,
@@ -138,7 +137,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         self._must_revalidate = value
 
     @property
-    def access_policy(self) -> Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]]:
+    def access_policy(self) -> Optional[AccessPolicy]:
         """
 
         Returns
@@ -148,9 +147,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
         return self._access_policy
 
     @access_policy.setter
-    def access_policy(
-        self, value: Union[SimpleAccessPolicy, DummyAccessPolicy]
-    ) -> None:
+    def access_policy(self, value: AccessPolicy) -> None:
         """
 
         Parameters
@@ -468,7 +465,7 @@ class MapAdapter(collections.abc.Mapping[str, TableAdapter], IndexersMixin):
 
     def _items_slice(
         self, start: int, stop: int, direction: int
-    ) -> Iterator[Tuple[str, TableAdapter]]:
+    ) -> Iterator[Tuple[str, Any]]:
         """
 
         Parameters

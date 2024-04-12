@@ -1,13 +1,13 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import awkward
 import awkward.forms
 from numpy.typing import NDArray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from .awkward_directory_container import DirectoryContainer
+from .protocols import AccessPolicy
 from .type_alliases import JSON
 
 
@@ -20,7 +20,7 @@ class AwkwardAdapter:
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -44,7 +44,7 @@ class AwkwardAdapter:
         array: NDArray[Any],
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "AwkwardAdapter":
         """
 
@@ -78,7 +78,7 @@ class AwkwardAdapter:
         """
         return self._metadata
 
-    def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+    def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, bytes]:
         """
 
         Parameters

@@ -5,12 +5,12 @@ import numpy as np
 import tifffile
 from numpy._typing import NDArray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..utils import path_from_uri
+from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
-from .type_alliases import JSON
+from .type_alliases import JSON, NDSlice
 
 
 class TiffAdapter:
@@ -27,12 +27,12 @@ class TiffAdapter:
 
     def __init__(
         self,
-        data_uri: Union[str, List[str]],
+        data_uri: str,
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -81,7 +81,7 @@ class TiffAdapter:
         d.update(self._provided_metadata)
         return d
 
-    def read(self, slice: Optional[slice] = None) -> NDArray[Any]:
+    def read(self, slice: Optional[NDSlice] = None) -> NDArray[Any]:
         """
 
         Parameters
@@ -147,7 +147,7 @@ class TiffSequenceAdapter:
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "TiffSequenceAdapter":
         """
 
@@ -180,7 +180,7 @@ class TiffSequenceAdapter:
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -218,7 +218,7 @@ class TiffSequenceAdapter:
         # TODO How to deal with the many headers?
         return self._provided_metadata
 
-    def read(self, slice: Optional[Union[int, slice]] = ...) -> NDArray[Any]:
+    def read(self, slice: Optional[NDSlice] = ...) -> NDArray[Any]:
         """Return a numpy array
 
         Receives a sequence of values to select from a collection of tiff files
@@ -266,7 +266,7 @@ class TiffSequenceAdapter:
             return arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[Union[int, slice]] = ...
+        self, block: Tuple[int, ...], slice: Optional[NDSlice] = ...
     ) -> NDArray[Any]:
         """
 

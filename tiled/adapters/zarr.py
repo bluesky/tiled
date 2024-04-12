@@ -1,7 +1,6 @@
 import builtins
 import collections.abc
 import os
-from types import EllipsisType
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
@@ -11,20 +10,21 @@ import zarr.hierarchy
 import zarr.storage
 from numpy._typing import NDArray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
+from ..server.schemas import Asset
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
-from .type_alliases import JSON
+from .protocols import AccessPolicy
+from .type_alliases import JSON, NDSlice
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
 def read_zarr(
-    data_uri: Union[str, List[str]],
+    data_uri: str,
     structure: Optional[ArrayStructure] = None,
     **kwargs: Any,
 ) -> Union["ZarrGroupAdapter", ArrayAdapter]:
@@ -57,7 +57,7 @@ class ZarrArrayAdapter(ArrayAdapter):
     """ """
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: ArrayStructure) -> Any:
+    def init_storage(cls, data_uri: str, structure: ArrayStructure) -> List[Asset]:
         """
 
         Parameters
@@ -69,8 +69,6 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        from ..server.schemas import Asset
-
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in structure.chunks)
@@ -104,9 +102,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
     def read(
         self,
-        slice: Union[
-            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
-        ] = ...,
+        slice: NDSlice = ...,
     ) -> NDArray[Any]:
         """
 
@@ -123,9 +119,7 @@ class ZarrArrayAdapter(ArrayAdapter):
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: Union[
-            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
-        ] = ...,
+        slice: NDSlice = ...,
     ) -> NDArray[Any]:
         """
 
@@ -148,9 +142,7 @@ class ZarrArrayAdapter(ArrayAdapter):
     def write(
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
-        slice: Union[
-            int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
-        ] = ...,
+        slice: NDSlice = ...,
     ) -> None:
         """
 
@@ -171,7 +163,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
-        slice: Optional[EllipsisType] = ...,
+        slice: Optional[NDSlice] = ...,
     ) -> None:
         """
 
@@ -208,7 +200,7 @@ class ZarrGroupAdapter(
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -240,7 +232,7 @@ class ZarrGroupAdapter(
         return node_repr(self, list(self))
 
     @property
-    def access_policy(self) -> Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]]:
+    def access_policy(self) -> Optional[AccessPolicy]:
         """
 
         Returns

@@ -1,13 +1,13 @@
 import collections.abc
 import itertools
-from typing import Any, Iterator, List, Optional, Union
+from typing import Any, Iterator, List, Optional
 
 import xarray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..structures.core import Spec
 from .array import ArrayAdapter
 from .mapping import MapAdapter
+from .protocols import AccessPolicy
 
 
 class DatasetAdapter(MapAdapter):
@@ -21,7 +21,7 @@ class DatasetAdapter(MapAdapter):
         dataset: Any,
         *,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[DummyAccessPolicy, SimpleAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "DatasetAdapter":
         """
 
@@ -51,7 +51,7 @@ class DatasetAdapter(MapAdapter):
         mapping: Any,
         *args: Any,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Any,
     ) -> None:
         """

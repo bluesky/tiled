@@ -8,7 +8,6 @@ import h5py
 import numpy
 from numpy._typing import NDArray
 
-from ..access_policies import DummyAccessPolicy, SimpleAccessPolicy
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.array import ArrayStructure
@@ -16,6 +15,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
+from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
 from .type_alliases import JSON
 
@@ -76,7 +76,7 @@ class HDF5Adapter(
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -104,7 +104,7 @@ class HDF5Adapter(
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "HDF5Adapter":
         """
 
@@ -127,14 +127,14 @@ class HDF5Adapter(
     @classmethod
     def from_uri(
         cls,
-        data_uri: Union[str, List[str]],
+        data_uri: str,
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         specs: Optional[list[Spec]] = None,
-        access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ) -> "HDF5Adapter":
         """
 
@@ -169,7 +169,7 @@ class HDF5Adapter(
         return node_repr(self, list(self))
 
     @property
-    def access_policy(self) -> Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]]:
+    def access_policy(self) -> Optional[AccessPolicy]:
         """
 
         Returns
@@ -367,14 +367,14 @@ class HDF5Adapter(
 
 
 def hdf5_lookup(
-    data_uri: Union[str, List[str]],
+    data_uri: str,
     *,
     structure: Optional[ArrayStructure] = None,
     metadata: Optional[JSON] = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
     specs: Optional[List[Spec]] = None,
-    access_policy: Optional[Union[SimpleAccessPolicy, DummyAccessPolicy]] = None,
+    access_policy: Optional[AccessPolicy] = None,
     path: Optional[Union[List[Path], List[str]]] = None,
 ) -> Union[HDF5Adapter, ArrayAdapter]:
     """
