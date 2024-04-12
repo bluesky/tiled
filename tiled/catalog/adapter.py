@@ -1187,9 +1187,9 @@ def contains(query, tree):
 def full_text(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
     if dialect_name == "sqlite":
-        # condition = orm.Node.metadata_.op("LIKE")(query.text)
-        # condition = orm.Node.id == text("metadata_fts5.rowid")
-        # condition = condition & text("metadata_fts5.metadata MATCH :text").bindparams(text=query.text)
+        #condition = orm.Node.metadata_.op("LIKE")(query.text)
+        #condition = orm.Node.id == text("metadata_fts5.rowid")
+        #condition = condition & text("metadata_fts5.metadata MATCH :text").bindparams(text=query.text)
         raise UnsupportedQueryType("full_text")
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
