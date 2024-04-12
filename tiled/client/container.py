@@ -7,7 +7,7 @@ import warnings
 from dataclasses import asdict
 
 import entrypoints
-from starlette.status import HTTP_404_NOT_FOUND
+import httpx
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -319,7 +319,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             )
                         ).json()
                     except ClientError as err:
-                        if err.response.status_code == HTTP_404_NOT_FOUND:
+                        if err.response.status_code == httpx.codes.NOT_FOUND:
                             # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
                             err_arg = keys[i:]
                             if len(err_arg) == 1:
