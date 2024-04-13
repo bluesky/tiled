@@ -171,7 +171,6 @@ class TiffSequenceAdapter:
             return arr
 
     def read_block(self, block, slice=None):
-        print(f"{block=}, {slice=}")
         if any(block[1:]):
             # e.g. block[1:] != [0,0, ..., 0]
             raise IndexError(block)
