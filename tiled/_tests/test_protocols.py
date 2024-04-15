@@ -57,11 +57,11 @@ def arrayadapter_protocol_read_block(
 
 
 def arrayadapter_protocol_specs(adapter: ArrayAdapter) -> None:
-    adapter.specs
+    adapter.specs()
 
 
 def arrayadapter_protocol_metadata(adapter: ArrayAdapter) -> None:
-    adapter.metadata
+    adapter.metadata()
 
 
 def test_arrayadapter_protocol(mocker: MockType) -> None:
