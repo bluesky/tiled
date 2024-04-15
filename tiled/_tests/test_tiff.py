@@ -21,7 +21,7 @@ def client(tmpdir_module):
     sequence_directory.mkdir()
     filepaths = []
     for i in range(3):
-        data = numpy.random.random((5, 7))
+        data = numpy.random.random((5, 7, 4))
         filepath = sequence_directory / f"temp{i:05}.tif"
         tf.imwrite(filepath, data)
         filepaths.append(filepath)
@@ -46,11 +46,16 @@ def client(tmpdir_module):
 @pytest.mark.parametrize(
     "slice_input, correct_shape",
     [
-        (None, (3, 5, 7)),
-        (0, (5, 7)),
-        (slice(0, 3, 2), (2, 5, 7)),
-        ((1, slice(0, 3), slice(0, 3)), (3, 3)),
-        ((slice(0, 3), slice(0, 3), slice(0, 3)), (3, 3, 3)),
+        (None, (3, 5, 7, 4)),
+        (0, (5, 7, 4)),
+        (slice(0, 3, 2), (2, 5, 7, 4)),
+        ((1, slice(0, 3), slice(0, 3)), (3, 3, 4)),
+        ((slice(0, 3), slice(0, 3), slice(0, 3)), (3, 3, 3, 4)),
+        ((..., 0, 0, 0), (3,)),
+        ((0, slice(0, 1), slice(0, 2), ...), (1, 2, 4)),
+        ((0, ..., slice(0, 2)), (5, 7, 2)),
+        ((..., slice(0, 1)), (3, 5, 7, 1)),
+
     ],
 )
 def test_tiff_sequence(client, slice_input, correct_shape):
@@ -58,7 +63,7 @@ def test_tiff_sequence(client, slice_input, correct_shape):
     assert arr.shape == correct_shape
 
 
-@pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0), (1, 5, 7))])
+@pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0, 0), (1, 5, 7, 4))])
 def test_tiff_sequence_block(client, block_input, correct_shape):
     arr = client["sequence"].read_block(block_input)
     assert arr.shape == correct_shape
