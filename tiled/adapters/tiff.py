@@ -163,7 +163,7 @@ class TiffSequenceAdapter:
             elif image_axis is Ellipsis:
                 # Return all images
                 arr = tifffile.TiffSequence(self._seq.files).asarray()
-                the_rest.insert(0, Ellipsis)     # Include any leading dimensions
+                the_rest.insert(0, Ellipsis)  # Include any leading dimensions
             elif isinstance(image_axis, builtins.slice):
                 arr = self.read(slice=image_axis)
             arr = arr[tuple(the_rest)]

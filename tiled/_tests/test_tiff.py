@@ -55,7 +55,6 @@ def client(tmpdir_module):
         ((0, slice(0, 1), slice(0, 2), ...), (1, 2, 4)),
         ((0, ..., slice(0, 2)), (5, 7, 2)),
         ((..., slice(0, 1)), (3, 5, 7, 1)),
-
     ],
 )
 def test_tiff_sequence(client, slice_input, correct_shape):
