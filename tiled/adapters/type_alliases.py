@@ -1,4 +1,11 @@
-from types import EllipsisType
+import builtins
+import sys
+
+if sys.version_info[0] < 3.10:
+    EllipsisType = builtins.ellipsis
+else:
+    from types import EllipsisType
+
 from typing import Any, Dict, List, Set, Tuple, Union
 
 JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
