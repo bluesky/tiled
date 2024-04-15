@@ -1,6 +1,6 @@
 import collections.abc
 from abc import abstractmethod
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
 import pandas
 import sparse
@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 from ..server.schemas import Principal
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
 from .type_alliases import JSON, Filters, NDSlice, Scopes
@@ -32,6 +32,8 @@ class ContainerAdapter(collections.abc.Mapping[str, "AnyAdapter"], BaseAdapter):
 
 
 class ArrayAdapter(BaseAdapter, Protocol):
+    structure_family: Literal[StructureFamily.array]
+
     @abstractmethod
     def structure(self) -> ArrayStructure:
         pass

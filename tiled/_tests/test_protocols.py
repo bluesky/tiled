@@ -11,7 +11,7 @@ from tiled.structures.core import Spec, StructureFamily
 
 
 class MyArrayAdapter:
-    structure_family = Literal[StructureFamily.array]
+    structure_family: Literal[StructureFamily.array] = StructureFamily.array
 
     def __init__(
         self,
