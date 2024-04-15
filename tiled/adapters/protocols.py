@@ -1,6 +1,6 @@
 import collections.abc
 from abc import abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 import pandas
 import sparse
@@ -9,52 +9,44 @@ from numpy.typing import NDArray
 from ..server.schemas import Principal
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import Spec
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
 from .type_alliases import JSON, Filters, NDSlice, Scopes
 
 
 class BaseAdapter(Protocol):
-    structure_family: StructureFamily
-
     @abstractmethod
     def metadata(self) -> JSON:
-        pass
+        ...
 
     @abstractmethod
     def specs(self) -> List[Spec]:
-        pass
+        ...
 
 
 class ContainerAdapter(collections.abc.Mapping[str, "AnyAdapter"], BaseAdapter):
-    structure_family = Literal[StructureFamily.container]
-
     @abstractmethod
     def structure(self) -> None:
         pass
 
 
-class ArrayAdapter(BaseAdapter):
-    structure_family = Literal[StructureFamily.array]
-
+class ArrayAdapter(BaseAdapter, Protocol):
     @abstractmethod
     def structure(self) -> ArrayStructure:
         pass
 
     @abstractmethod
-    def read(self, slice: NDSlice) -> NDArray:
+    def read(self, slice: NDSlice) -> NDArray[Any]:
         pass
 
     # TODO Fix slice
     @abstractmethod
-    def read_block(self, block: Tuple[int, ...]) -> NDArray:
+    def read_block(self, block: Tuple[int, ...]) -> NDArray[Any]:
         pass
 
 
-class AwkwardAdapter(BaseAdapter):
-    structure_family = Literal[StructureFamily.awkward]
-
+class AwkwardAdapter(BaseAdapter, Protocol):
     @abstractmethod
     def structure(self) -> AwkwardStructure:
         pass
@@ -68,9 +60,7 @@ class AwkwardAdapter(BaseAdapter):
         pass
 
 
-class SparseAdapter(BaseAdapter):
-    structure_family = Literal[StructureFamily.sparse]
-
+class SparseAdapter(BaseAdapter, Protocol):
     @abstractmethod
     def structure(self) -> SparseStructure:
         pass
@@ -86,9 +76,7 @@ class SparseAdapter(BaseAdapter):
         pass
 
 
-class TableAdapter(BaseAdapter):
-    structure_family = Literal[StructureFamily.table]
-
+class TableAdapter(BaseAdapter, Protocol):
     @abstractmethod
     def structure(self) -> TableStructure:
         pass
