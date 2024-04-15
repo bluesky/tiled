@@ -1,8 +1,13 @@
-import builtins
 import sys
 
-if sys.version_info[0] < 3.10:
-    EllipsisType = builtins.ellipsis
+if sys.version_info < (3, 10):
+    from enum import Enum
+
+    class EllipsisType(Enum):
+        Ellipsis = "..."
+
+    Ellipsis = ellipsis.Ellipsis
+    EllipsisType = type(Ellipsis)
 else:
     from types import EllipsisType
 
