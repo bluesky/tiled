@@ -3,20 +3,10 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Generic,
-    List,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
-from pydantic import Field, StringConstraints
+from pydantic import ConfigDict, Field, StringConstraints
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
@@ -527,8 +517,7 @@ JSONPatchSpec = TypedDict(
 
 class HyphenizedBaseModel(pydantic.BaseModel):
     # This model configuration allows aliases like "content-type"
-    class Config:
-        alias_generator: Callable[[str], str] = lambda f: f.replace("_", "-")
+    model_config = ConfigDict(alias_generator=lambda f: f.replace("_", "-"))
 
 
 class PatchMetadataRequest(HyphenizedBaseModel):
