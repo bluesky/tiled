@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
@@ -515,12 +515,20 @@ JSONPatchSpec = TypedDict(
 )
 
 
-class PatchMetadataRequest(pydantic.BaseModel):
+class HyphenizedBaseModel(pydantic.BaseModel):
+    # This model configuration allows aliases like "content-type"
+    class Config:
+        alias_generator: Callable[[str], str] = lambda f: f.replace("_", "-")
+
+
+class PatchMetadataRequest(HyphenizedBaseModel):
+    content_type: str
+
     # These fields are optional because None means "no changes; do not update".
     patch: Optional[Union[List[JSONPatchSpec], Dict]]  # Dict for merge-patch
     specs: Optional[Specs]
 
-    @pydantic.validator("specs", always=True)
+    @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
@@ -537,4 +545,4 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     data_sources: Optional[List[DataSource]]
 
 
-NodeStructure.update_forward_refs()
+NodeStructure.model_rebuild()

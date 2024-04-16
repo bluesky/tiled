@@ -531,6 +531,7 @@ client or pass the optional parameter `include_data_sources=True` to
                 normalized_specs.append(asdict(spec))
 
         data = {
+            "content-type": "application/json-patch+json",
             "patch": patch,
             "specs": normalized_specs,
         }
@@ -539,7 +540,6 @@ client or pass the optional parameter `include_data_sources=True` to
             self.context.http_client.patch(
                 self.item["links"]["self"],
                 content=safe_json_dump(data),
-                headers={"Content-Type": "application/json-patch+json"},
             )
         ).json()
 

@@ -1372,15 +1372,7 @@ async def put_awkward_full(
     return json_or_msgpack(request, None)
 
 
-@router.patch(
-    "/metadata/{path:path}",
-    openapi_extra={
-        "requestBody": {
-            "content": {"application/json-patch+json": {}},
-        },
-    },
-    response_model=schemas.PatchMetadataResponse,
-)
+@router.patch("/metadata/{path:path}", response_model=schemas.PatchMetadataResponse)
 async def patch_metadata(
     request: Request,
     body: schemas.PatchMetadataRequest,
@@ -1394,9 +1386,18 @@ async def patch_metadata(
             detail="This node does not support update of metadata.",
         )
 
-    if request.headers["content-type"] == "application/json-patch+json":
+    if body.content_type in [
+        "application/json-patch+json",
+        "json-patch",
+        "jsonpatch",
+    ]:
         metadata = apply_json_patch(entry.metadata(), (body.patch or []))
-    elif request.headers["content-type"] == "application/merge-patch+json":
+    elif body.content_type in [
+        "application/merge-patch+json",
+        "merge-patch",
+        "json-merge-patch",
+        "merge",
+    ]:
         metadata = apply_merge_patch(entry.metadata(), (body.patch or {}))
     else:
         raise HTTPException(
