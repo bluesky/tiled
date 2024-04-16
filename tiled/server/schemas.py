@@ -3,7 +3,17 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import pydantic.generics
 from pydantic import Field, StringConstraints
