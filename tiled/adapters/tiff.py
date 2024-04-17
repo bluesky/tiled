@@ -1,6 +1,7 @@
 import builtins
 
 import tifffile
+import numpy as np
 
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
@@ -133,7 +134,7 @@ class TiffSequenceAdapter:
         # TODO How to deal with the many headers?
         return self._provided_metadata
 
-    def read(self, slice=None):
+    def read(self, slice=Ellipsis):
         """Return a numpy array
 
         Receives a sequence of values to select from a collection of tiff files that were saved in a folder
@@ -142,7 +143,7 @@ class TiffSequenceAdapter:
         or it can receive a tuple (int or slice) to select a more specific sequence of pixels of a group of images.
         """
 
-        if (slice is None) or (slice is Ellipsis):
+        if slice is Ellipsis:
             return self._seq.asarray()
         if isinstance(slice, int):
             # e.g. read(slice=0) -- return an entire image
@@ -166,8 +167,7 @@ class TiffSequenceAdapter:
                 the_rest.insert(0, Ellipsis)  # Include any leading dimensions
             elif isinstance(image_axis, builtins.slice):
                 arr = self.read(slice=image_axis)
-            arr = arr[tuple(the_rest)]
-            # NOTE: may need to force np.array type if arr is a scalar
+            arr = np.atleast_1d(arr[tuple(the_rest)])
             return arr
 
     def read_block(self, block, slice=None):
