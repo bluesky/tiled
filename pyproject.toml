@@ -12,7 +12,7 @@ authors = [
 maintainers = [
   { name = "Brookhaven National Laboratory", email = "dallan@bnl.gov" },
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.8, <3.11.9"
 
 # All dependencies are optional; it depends on whether you are running
 # a client or server (or both) and what data structures you care about.
