@@ -28,6 +28,7 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Physics",
 ]
 
@@ -51,7 +52,7 @@ all = [
     "asyncpg",
     "appdirs",
     "awkward >=2.4.3",
-    "blosc",
+    "blosc2",
     "cachetools",
     "cachey",
     "click !=8.1.0",
@@ -108,7 +109,7 @@ array = [
 client = [
     "appdirs",
     "awkward >=2.4.3",
-    "blosc",
+    "blosc2",
     "click !=8.1.0",
     "dask[array]",
     "dask[dataframe]",
@@ -132,7 +133,7 @@ client = [
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
 compression = [
-    "blosc",
+    "blosc2",
     "lz4",
     "zstandard",
 ]
@@ -233,7 +234,7 @@ server = [
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
-    "blosc",
+    "blosc2",
     "cachetools",
     "cachey",
     "click !=8.1.0",
