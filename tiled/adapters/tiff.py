@@ -1,7 +1,7 @@
 import builtins
 
-import tifffile
 import numpy as np
+import tifffile
 
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
