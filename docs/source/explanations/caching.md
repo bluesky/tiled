@@ -76,7 +76,7 @@ from cachetools import Cache
 from tiled.adapters.resource_cache import set_resource_cache
 
 cache = Cache(maxsize=1)
-set_resouurce_cache(cache)
+set_resource_cache(cache)
 ```
 
 Any object satisfying the `cachetools.Cache` interface is acceptable.

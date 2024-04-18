@@ -1,5 +1,6 @@
 import builtins
 
+import numpy as np
 import tifffile
 
 from ..structures.array import ArrayStructure, BuiltinDtype
@@ -123,7 +124,7 @@ class TiffSequenceAdapter:
             structure = ArrayStructure(
                 shape=shape,
                 # one chunks per underlying TIFF file
-                chunks=((1,) * shape[0], (shape[1],), (shape[2],)),
+                chunks=((1,) * shape[0], *[(i,) for i in shape[1:]]),
                 # Assume all files have the same data type
                 data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
             )
@@ -133,66 +134,45 @@ class TiffSequenceAdapter:
         # TODO How to deal with the many headers?
         return self._provided_metadata
 
-    def read(self, slice=None):
+    def read(self, slice=Ellipsis):
         """Return a numpy array
 
         Receives a sequence of values to select from a collection of tiff files that were saved in a folder
-        The input order is defined as files --> X slice --> Y slice
+        The input order is defined as: files --> vertical slice --> horizontal slice --> color slice --> ...
         read() can receive one value or one slice to select all the data from one file or a sequence of files;
-        or it can receive a tuple of up to three values (int or slice) to select a more specific sequence of pixels
-        of a group of images
+        or it can receive a tuple (int or slice) to select a more specific sequence of pixels of a group of images.
         """
 
-        if slice is None:
+        if slice is Ellipsis:
             return self._seq.asarray()
         if isinstance(slice, int):
-            # e.g. read(slice=0)
+            # e.g. read(slice=0) -- return an entire image
             return tifffile.TiffFile(self._seq.files[slice]).asarray()
-        # e.g. read(slice=(...))
+        if isinstance(slice, builtins.slice):
+            # e.g. read(slice=(...)) -- return a slice along the image axis
+            return tifffile.TiffSequence(self._seq.files[slice]).asarray()
         if isinstance(slice, tuple):
             if len(slice) == 0:
                 return self._seq.asarray()
+            if len(slice) == 1:
+                return self.read(slice=slice[0])
             image_axis, *the_rest = slice
-            # Could be int or slice
-            # (0, slice(...)) or (0,....) are converted to a list
+            # Could be int or slice (0, slice(...)) or (0,....); the_rest is converted to a list
             if isinstance(image_axis, int):
                 # e.g. read(slice=(0, ....))
-                return tifffile.TiffFile(self._seq.files[image_axis]).asarray()
-            if isinstance(image_axis, builtins.slice):
-                if image_axis.start is None:
-                    slice_start = 0
-                else:
-                    slice_start = image_axis.start
-                if image_axis.step is None:
-                    slice_step = 1
-                else:
-                    slice_step = image_axis.step
-
-                arr = tifffile.TiffSequence(
-                    self._seq.files[
-                        slice_start : image_axis.stop : slice_step  # noqa: E203
-                    ]
-                ).asarray()
-            arr = arr[tuple(the_rest)]
-            return arr
-        if isinstance(slice, builtins.slice):
-            # Check for start and step which can be optional
-            if slice.start is None:
-                slice_start = 0
-            else:
-                slice_start = slice.start
-            if slice.step is None:
-                slice_step = 1
-            else:
-                slice_step = slice.step
-
-            arr = tifffile.TiffSequence(
-                self._seq.files[slice_start : slice.stop : slice_step]  # noqa: E203
-            ).asarray()
+                arr = tifffile.TiffFile(self._seq.files[image_axis]).asarray()
+            elif image_axis is Ellipsis:
+                # Return all images
+                arr = tifffile.TiffSequence(self._seq.files).asarray()
+                the_rest.insert(0, Ellipsis)  # Include any leading dimensions
+            elif isinstance(image_axis, builtins.slice):
+                arr = self.read(slice=image_axis)
+            arr = np.atleast_1d(arr[tuple(the_rest)])
             return arr
 
     def read_block(self, block, slice=None):
-        if block[1:] != (0, 0):
+        if any(block[1:]):
+            # e.g. block[1:] != [0,0, ..., 0]
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
         if slice is not None:
