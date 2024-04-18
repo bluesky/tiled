@@ -237,7 +237,7 @@ class Comparison(NoBool):
 
     Parameters
     ----------
-    operator : {"gt", "lt", "ge", "lt"}
+    operator : {"gt", "lt", "ge", "le"}
     key : str
         e.g. "temperature"
     value : JSONSerializable
