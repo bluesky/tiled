@@ -255,7 +255,7 @@ EXECUTE FUNCTION raise_if_null_parameter_exists();"""
         )
 
 
-@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+@event.listens_for(Node.__table__, "after_create")
 def create_index_metadata_tsvector_search(target, connection, **kw):
     # This creates a ts_vector based metadata search index for fulltext.
     # Postgres only feature
@@ -271,7 +271,7 @@ def create_index_metadata_tsvector_search(target, connection, **kw):
         )
 
 
-@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+@event.listens_for(Node.__table__, "after_create")
 def create_virtual_table_fits5(target, connection, **kw):
     if connection.engine.dialect.name == "sqlite":
         statements = [
