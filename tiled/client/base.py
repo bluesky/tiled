@@ -429,6 +429,9 @@ client or pass the optional parameter `include_data_sources=True` to
         endpoint = self.uri.replace("/metadata/", "/nodes/", 1)
         handle_error(self.context.http_client.delete(endpoint))
 
+    def __dask_tokenize__(self):
+        return (type(self), self.uri)
+
 
 STRUCTURE_TYPES = OneShotCachedMap(
     {

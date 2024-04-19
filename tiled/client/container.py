@@ -1,5 +1,6 @@
 import collections
 import collections.abc
+import functools
 import importlib
 import itertools
 import time
@@ -950,11 +951,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     f"Unsure how to handle type {type(dataframe)}"
                 )
 
-            def write_partition(x, partition_info):
-                client.write_partition(x, partition_info["number"])
-                return x
-
-            ddf.map_partitions(write_partition, meta=dataframe._meta).compute()
+            ddf.map_partitions(
+                functools.partial(_write_partition, client=client), meta=dataframe._meta
+            ).compute()
         else:
             client.write(dataframe)
 
@@ -1014,6 +1013,11 @@ class _Wrap:
 
     def __call__(self):
         return self.obj
+
+
+def _write_partition(x, partition_info, client):
+    client.write_partition(x, partition_info["number"])
+    return x
 
 
 DEFAULT_STRUCTURE_CLIENT_DISPATCH = {

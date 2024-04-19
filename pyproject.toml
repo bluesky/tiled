@@ -55,9 +55,9 @@ all = [
     "cachetools",
     "cachey",
     "click !=8.1.0",
-    "dask <2024.3.0",
-    "dask[array] <2024.3.0",
-    "dask[dataframe] <2024.3.0",
+    "dask",
+    "dask[array]",
+    "dask[dataframe]",
     "entrypoints",
     "fastapi",
     "h5netcdf",
@@ -101,7 +101,7 @@ all = [
 ]
 # These are needed by the client and server to transmit/receive arrays.
 array = [
-    "dask[array] <2024.3.0",
+    "dask[array]",
     "numpy",
 ]
 # This is the "kichen sink" fully-featured client dependency set.
@@ -110,8 +110,8 @@ client = [
     "awkward >=2.4.3",
     "blosc",
     "click !=8.1.0",
-    "dask[array] <2024.3.0",
-    "dask[dataframe] <2024.3.0",
+    "dask[array]",
+    "dask[dataframe]",
     "entrypoints",
     "httpx >=0.20.0,!=0.23.1",
     "jsonschema",
@@ -138,7 +138,7 @@ compression = [
 ]
 # These are needed by the client and server to transmit/receive dataframes.
 dataframe = [
-    "dask[dataframe] <2024.3.0",
+    "dask[dataframe]",
     "pandas",
     "pyarrow",
 ]
@@ -196,7 +196,7 @@ minimal-server = [
     "cachey",
     "cachetools",
     "click !=8.1.0",
-    "dask <2024.3.0",
+    "dask",
     "fastapi",
     "httpx >=0.20.0,!=0.23.1",
     "canonicaljson",
@@ -237,9 +237,9 @@ server = [
     "cachetools",
     "cachey",
     "click !=8.1.0",
-    "dask <2024.3.0",
-    "dask[array] <2024.3.0",
-    "dask[dataframe] <2024.3.0",
+    "dask",
+    "dask[array]",
+    "dask[dataframe]",
     "fastapi",
     "h5netcdf",
     "h5py",
@@ -287,7 +287,7 @@ sparse = [
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [
-    "dask[array] <2024.3.0",
+    "dask[array]",
     "pandas",
     "pyarrow",
     "xarray",
