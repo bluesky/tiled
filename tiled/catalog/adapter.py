@@ -377,12 +377,25 @@ class CatalogNodeAdapter:
             return self.data_sources[0].structure
         return None
 
+    def apply_conditions(self, statement):
+        # IF this is a sqlite database and we are doing a full text MATCH
+        # query, we need a JOIN with the FTS5 virtual table.
+        if (self.context.engine.dialect.name == "sqlite") and any(
+            isinstance(condition.type, MatchType) for condition in self.conditions
+        ):
+            metadata_fts5 = _sqlite_fts5_virtual_table(orm.Node.metadata)
+            statement = statement.join(
+                metadata_fts5, metadata_fts5.c.rowid == orm.Node.id
+            )
+        for condition in self.conditions:
+            statement = statement.filter(condition)
+        return statement
+
     async def async_len(self):
         statement = select(func.count(orm.Node.key)).filter(
             orm.Node.ancestors == self.segments
         )
-        for condition in self.conditions:
-            statement = statement.filter(condition)
+        statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
@@ -405,20 +418,12 @@ class CatalogNodeAdapter:
             assert not first_level.conditions
             return await first_level.lookup_adapter(segments[1:])
         statement = select(orm.Node)
-        # IF this is a sqlite database and we are doing a full text MATCH
-        # query, we need a JOIN with the FTS5 virtual table.
-        if self.context.engine.dialect.name == "sqlite" and any(
-            isinstance(condition.type, MatchType) for condition in self.conditions
-        ):
-            metadata_fts5 = _sqlite_fts5_virtual_table(orm.Node.metadata)
-            statement = statement.select_from(metadata_fts5)
+        statement = self.apply_conditions(statement)
         statement = statement.filter(
             orm.Node.ancestors == self.segments + ancestors
         ).options(
             selectinload(orm.Node.data_sources).selectinload(orm.DataSource.structure)
         )
-        for condition in self.conditions:
-            statement = statement.filter(condition)
         async with self.context.session() as db:
             node = (await db.execute(statement.filter(orm.Node.key == key))).scalar()
         if node is None:
@@ -963,8 +968,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
-        for condition in self.conditions:
-            statement = statement.filter(condition)
+        statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (
                 (
@@ -986,8 +990,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
-        for condition in self.conditions:
-            statement = statement.filter(condition)
+        statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             nodes = (
                 (
