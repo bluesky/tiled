@@ -91,7 +91,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.12"]
       fail-fast: false
     steps:
 
