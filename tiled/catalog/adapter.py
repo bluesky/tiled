@@ -1,4 +1,5 @@
 import collections
+import functools
 import importlib
 import itertools as it
 import logging
@@ -16,6 +17,10 @@ from urllib.parse import quote_plus, urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
+    JSON,
+    Column,
+    Integer,
+    Table,
     delete,
     event,
     false,
@@ -35,6 +40,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import selectinload
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast
+from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
@@ -398,14 +404,18 @@ class CatalogNodeAdapter:
             # Search queries and access controls apply only at the top level.
             assert not first_level.conditions
             return await first_level.lookup_adapter(segments[1:])
-        statement = (
-            select(orm.Node)
-            .filter(orm.Node.ancestors == self.segments + ancestors)
-            .options(
-                selectinload(orm.Node.data_sources).selectinload(
-                    orm.DataSource.structure
-                )
-            )
+        statement = select(orm.Node)
+        # IF this is a sqlite database and we are doing a full text MATCH
+        # query, we need a JOIN with the FTS5 virtual table.
+        if self.context.engine.dialect.name == "sqlite" and any(
+            isinstance(condition.type, MatchType) for condition in self.conditions
+        ):
+            metadata_fts5 = _sqlite_fts5_virtual_table(orm.Node.metadata)
+            statement = statement.select_from(metadata_fts5)
+        statement = statement.filter(
+            orm.Node.ancestors == self.segments + ancestors
+        ).options(
+            selectinload(orm.Node.data_sources).selectinload(orm.DataSource.structure)
         )
         for condition in self.conditions:
             statement = statement.filter(condition)
@@ -1187,10 +1197,8 @@ def contains(query, tree):
 def full_text(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
     if dialect_name == "sqlite":
-        #condition = orm.Node.metadata_.op("LIKE")(query.text)
-        #condition = orm.Node.id == text("metadata_fts5.rowid")
-        #condition = condition & text("metadata_fts5.metadata MATCH :text").bindparams(text=query.text)
-        raise UnsupportedQueryType("full_text")
+        metadata_fts5 = _sqlite_fts5_virtual_table(orm.Node.metadata)
+        condition = metadata_fts5.c.metadata.match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
             cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
@@ -1466,3 +1474,13 @@ STRUCTURES = {
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }
+
+
+@functools.lru_cache(1)
+def _sqlite_fts5_virtual_table(sqlalchemy_metadata):
+    return Table(
+        "metadata_fts5",
+        sqlalchemy_metadata,
+        Column("rowid", Integer, primary_key=True),
+        Column("metadata", JSON),
+    )

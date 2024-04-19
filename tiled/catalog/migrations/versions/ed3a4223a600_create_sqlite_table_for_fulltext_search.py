@@ -5,13 +5,12 @@ Revises: e756b9381c14
 Create Date: 2024-04-11 16:41:01.369520
 
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = 'ed3a4223a600'
-down_revision = 'e756b9381c14'
+revision = "ed3a4223a600"
+down_revision = "e756b9381c14"
 branch_labels = None
 depends_on = None
 
