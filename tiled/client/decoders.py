@@ -3,7 +3,7 @@ from httpx._decoders import SUPPORTED_DECODERS
 
 from ..utils import modules_available
 
-if modules_available("blosc"):
+if modules_available("blosc2"):
 
     class BloscDecoder:
         def __init__(self):
@@ -18,13 +18,13 @@ if modules_available("blosc"):
 
         def flush(self) -> bytes:
             # Hide this here to defer the numpy import that it triggers.
-            import blosc
+            import blosc2
 
             if len(self._data) == 1:
                 (data,) = self._data
             else:
                 data = b"".join(self._data)
-            return blosc.decompress(data)
+            return blosc2.decompress(data)
 
     SUPPORTED_DECODERS["blosc"] = BloscDecoder
 
