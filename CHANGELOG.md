@@ -5,14 +5,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
-- Fix regression introduced in the previous release (v0.1.0b1) where exceptions
+### Added
+
+- Added a new HTTP endpoint, `PATCH /api/v1/metadata/{path}` supporting modifying
+  existing metadata using a `application/json-patch+json` or a
+  `application/merge-patch+json` patch.
+- Added client-side methods for replacing, updating (similar to `dict.uodate()`),
+  and patching metadata.
+
+### Fixed
+
+- Fixed regression introduced in the previous release (v0.1.0b1) where exceptions
   raised in the server sent _no_ response instead of properly sending a 500
   response. (This presents in the client as, "Server disconnected without
   sending a response.") A test now protects against this class of regression.
 
 ## v0.1.0b2 (2024-05-28)
 
-## Changed
+### Changed
 
 - Customized default logging configuration to include correlation ID and username
   of authenticated user.
