@@ -1386,23 +1386,14 @@ async def patch_metadata(
             detail="This node does not support update of metadata.",
         )
 
-    if body.content_type in [
-        "application/json-patch+json",
-        "json-patch",
-        "jsonpatch",
-    ]:
+    if body.content_type == "application/json-patch+json":
         metadata = apply_json_patch(entry.metadata(), (body.patch or []))
-    elif body.content_type in [
-        "application/merge-patch+json",
-        "merge-patch",
-        "json-merge-patch",
-        "merge",
-    ]:
+    elif body.content_type == "application/merge-patch+json":
         metadata = apply_merge_patch(entry.metadata(), (body.patch or {}))
     else:
         raise HTTPException(
             status_code=HTTP_406_NOT_ACCEPTABLE,
-            detail="application/json-patch+json or application/merge-patch+json expected.",
+            detail="application/json-patch+json or application/merge-patch+json content type expected.",
         )
 
     structure_family, structure, specs = (
