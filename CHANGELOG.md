@@ -10,7 +10,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Added a new HTTP endpoint, `PATCH /api/v1/metadata/{path}` supporting modifying
   existing metadata using a `application/json-patch+json` or a
   `application/merge-patch+json` patch.
-- Added client-side methods for replacing, updating (similar to `dict.uodate()`),
+- Added client-side methods for replacing, updating (similar to `dict.update()`),
   and patching metadata.
 
 ### Fixed
