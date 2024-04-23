@@ -3,10 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Next
+## v0.1.0a118 (23 April 2024)
 
 ### Added
 
+- Python 3.12 support
 - Added `tiled.adapters.resource_cache` for caching file handles between
   requests.
 
@@ -25,6 +26,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
   have been a regression due to a change in SQLAlchemy defaults.)
 - Tolerate HTTP responses that are missing a `x-tiled-request-id` header, such
   as when a proxy server responds with an error.
+- Use `httpx` status code sentinels (instead of `starlette` ones) for typing
+  client-side status codes.
+
+### Changed
+
+- Removed upper bound version pin on `dask`.
+- Switched from `blosc` to `blosc2`.
+- Made client objects dask-serializable
+- Added support for registering multiple Assets with a DataSource in an update
+
 
 ### Other
 
@@ -32,7 +43,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Specify a `fallback-version`, `0.0.0`, to be used when the version-detection
   code cannot run.
 
-## v0.1.0a117
+## v0.1.0a117 (28 March 2024)
 
 ### Added
 
