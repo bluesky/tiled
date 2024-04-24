@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0a119 (24 April 2024)
+
+### Fixed
+
+- Metric-reporting had an error when `compress` timing was recorded but
+  `content-encoding` header was unset.
+
 ## v0.1.0a118 (23 April 2024)
 
 ### Added
