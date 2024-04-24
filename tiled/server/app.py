@@ -717,11 +717,11 @@ Back up the database, and then run:
                 parsed_version = packaging.version.parse(raw_version)
             except Exception:
                 logger.warning(
-                    f"Python Tiled client is version is reported as {raw_version}. "
+                    f"Python Tiled client version is reported as {raw_version}. "
                     "This cannot be parsed as a valid version."
                 )
             else:
-                if (not parsed_version.is_deverlease) and (
+                if (not parsed_version.is_devrelease) and (
                     parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION
                 ):
                     return JSONResponse(
