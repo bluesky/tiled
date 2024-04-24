@@ -716,17 +716,14 @@ Back up the database, and then run:
             try:
                 parsed_version = packaging.version.parse(raw_version)
             except Exception:
-                return JSONResponse(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    content={
-                        "detail": (
-                            f"Python Tiled client is version is reported as {raw_version}. "
-                            "This cannot be parsed as a valid version."
-                        ),
-                    },
+                logger.warning(
+                    f"Python Tiled client is version is reported as {raw_version}. "
+                    "This cannot be parsed as a valid version."
                 )
             else:
-                if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+                if (not parsed_version.is_deverlease) and (
+                    parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION
+                ):
                     return JSONResponse(
                         status_code=HTTP_400_BAD_REQUEST,
                         content={
