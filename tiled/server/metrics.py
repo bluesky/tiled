@@ -125,13 +125,14 @@ def capture_request_metrics(request, response):
             metrics["read"]["pack"]
         )
     if "compress" in metrics:
-        encoding = response.headers["content-encoding"]
-        COMPRESSION_DURATION.labels(
-            method=method, code=code, endpoint=endpoint, encoding=encoding
-        ).observe(metrics["compress"]["dur"])
-        COMPRESSION_RATIO.labels(
-            method=method, code=code, endpoint=endpoint, encoding=encoding
-        ).observe(metrics["compress"]["ratio"])
+        encoding = response.headers.get("content-encoding")
+        if encoding:
+            COMPRESSION_DURATION.labels(
+                method=method, code=code, endpoint=endpoint, encoding=encoding
+            ).observe(metrics["compress"]["dur"])
+            COMPRESSION_RATIO.labels(
+                method=method, code=code, endpoint=endpoint, encoding=encoding
+            ).observe(metrics["compress"]["ratio"])
 
 
 @lru_cache()
