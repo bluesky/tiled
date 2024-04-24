@@ -295,9 +295,9 @@ def create_virtual_table_fits5(target, connection, **kw):
             """,
             """
             CREATE TRIGGER nodes_metadata_fts5_sync_au AFTER UPDATE ON nodes BEGIN
-              INSERT INTO metadata_ft5_index(metadata_ft5_index, rowid, metadata)
+              INSERT INTO metadata_fts5_index(metadata_fts5_index, rowid, metadata)
               VALUES('delete', old.id, old.metadata);
-              INSERT INTO metadata_ft5_index(rowid, metadata)
+              INSERT INTO metadata_fts5_index(rowid, metadata)
               VALUES (new.id, new.metadata);
             END;
             """,
