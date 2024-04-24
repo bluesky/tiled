@@ -2,7 +2,7 @@ from typing import Any, List, Literal, Optional, Tuple
 
 import numpy
 from numpy.typing import NDArray
-from pytest_mock import MockType
+from pytest_mock import MockFixture
 
 from tiled.adapters.protocols import AccessPolicy, ArrayAdapter
 from tiled.adapters.type_alliases import JSON, NDSlice
@@ -64,7 +64,7 @@ def arrayadapter_protocol_metadata(adapter: ArrayAdapter) -> None:
     adapter.metadata()
 
 
-def test_arrayadapter_protocol(mocker: MockType) -> None:
+def test_arrayadapter_protocol(mocker: MockFixture) -> None:
     mock_call = mocker.patch.object(MyArrayAdapter, "structure")
     mock_call2 = mocker.patch.object(MyArrayAdapter, "read")
     mock_call3 = mocker.patch.object(MyArrayAdapter, "read_block")
