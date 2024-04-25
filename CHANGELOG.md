@@ -7,7 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- The `content-encoding` `blosc` was recently upgraded from Blosc to Blsoc2.
+- The `content-encoding` `blosc` was recently upgraded from Blosc to Blosc2.
   The `content-encoding` has been renamed to `blosc2` to avoid version
   confusion between different versions of Tiled servers and clients.
 
