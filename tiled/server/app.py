@@ -5,6 +5,7 @@ import os
 import secrets
 import sys
 import urllib.parse
+import warnings
 from contextlib import asynccontextmanager
 from functools import lru_cache, partial
 from pathlib import Path
@@ -715,18 +716,18 @@ Back up the database, and then run:
             agent, _, raw_version = user_agent.partition("/")
             try:
                 parsed_version = packaging.version.parse(raw_version)
-            except Exception:
-                return JSONResponse(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    content={
-                        "detail": (
-                            f"Python Tiled client is version is reported as {raw_version}. "
-                            "This cannot be parsed as a valid version."
-                        ),
-                    },
+            except Exception as caught_exception:
+                invalid_version_message = (
+                    f"Python Tiled client version is reported as {raw_version}. "
+                    "This cannot be parsed as a valid version."
                 )
+                logger.warning(invalid_version_message)
+                if isinstance(caught_exception, packaging.version.InvalidVersion):
+                    warnings.warn(invalid_version_message)
             else:
-                if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+                if (not parsed_version.is_devrelease) and (
+                    parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION
+                ):
                     return JSONResponse(
                         status_code=HTTP_400_BAD_REQUEST,
                         content={
