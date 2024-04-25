@@ -315,6 +315,17 @@ class CustomTableAdapter:
     def metadata(self) -> JSON:
         return self._metadata
 
+    def __getitem__(self, key: str) -> ArrayAdapter:
+        array = numpy.random.rand(2, 512, 512)
+        metadata: JSON = {"foo": "bar"}
+        structure = ArrayStructure(
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int32")),
+            shape=(2, 512, 512),
+            chunks=((1, 1), (512,), (512,)),
+            dims=("time", "x", "y"),  # optional
+        )
+        return CustomArrayAdapter(array, structure, metadata=metadata)
+
 
 def tableadapter_protocol_functions(
     adapter: TableAdapter, partitions: pandas.DataFrame, fields: List[str]
@@ -324,6 +335,7 @@ def tableadapter_protocol_functions(
     adapter.read_partition(partitions)
     adapter.specs()
     adapter.metadata()
+    adapter["abc"]
 
 
 def test_tableadapter_protocol(mocker: MockFixture) -> None:
@@ -332,6 +344,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
     mock_call3 = mocker.patch.object(CustomTableAdapter, "read_partition")
     mock_call4 = mocker.patch.object(CustomTableAdapter, "specs")
     mock_call5 = mocker.patch.object(CustomTableAdapter, "metadata")
+    mock_call6 = mocker.patch.object(CustomTableAdapter, "__getitem__")
 
     structure = TableStructure(
         arrow_schema="a", npartitions=1, columns=["A"], resizable=False
@@ -351,6 +364,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
     mock_call3.assert_called_once_with(partition)
     mock_call4.assert_called_once()
     mock_call5.assert_called_once()
+    mock_call6.assert_called_once_with("abc")
 
 
 class CustomAccessPolicy:

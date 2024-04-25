@@ -28,6 +28,8 @@ class BaseAdapter(Protocol):
 
 
 class ContainerAdapter(collections.abc.Mapping[str, "AnyAdapter"], BaseAdapter):
+    structure_family: Literal[StructureFamily.container]
+
     @abstractmethod
     def structure(self) -> None:
         pass
@@ -107,6 +109,10 @@ class TableAdapter(BaseAdapter, Protocol):
         partition: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         fields: Optional[str] = None,
     ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
+        pass
+
+    @abstractmethod
+    def __getitem__(self, key: str) -> ArrayAdapter:
         pass
 
 

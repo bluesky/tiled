@@ -1,14 +1,6 @@
 import sys
 
 if sys.version_info < (3, 10):
-    """
-    from enum import Enum
-
-    class ellipsis(Enum):
-        Ellipsis = "..."
-
-    EllipsisType = ellipsis.Ellipsis
-    """
     EllipsisType = type(Ellipsis)
 else:
     from types import EllipsisType
