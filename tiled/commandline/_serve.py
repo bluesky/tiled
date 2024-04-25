@@ -199,10 +199,12 @@ def serve_directory(
 
     import anyio
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
     from ..client import from_uri as client_from_uri
 
     print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
+    log_config = log_config or LOGGING_CONFIG  # fall back to uvicorn default
     config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
     server = uvicorn.Server(config)
 
@@ -435,7 +437,9 @@ or use an existing one:
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
+    log_config = log_config or LOGGING_CONFIG  # fall back to uvicorn default
     uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
@@ -502,7 +506,9 @@ def serve_pyobject(
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
+    log_config = log_config or LOGGING_CONFIG  # fall back to uvicorn default
     uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
