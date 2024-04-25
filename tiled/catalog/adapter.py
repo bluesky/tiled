@@ -16,9 +16,11 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import selectinload
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
@@ -1316,7 +1318,19 @@ def from_uri(
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
 
-    engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
+    parsed_url = make_url(uri)
+    if (parsed_url.get_dialect().name == "sqlite") and (
+        parsed_url.database != ":memory:"
+    ):
+        # For file-backed SQLite databases, connection pooling offers a
+        # significant performance boost. For SQLite databases that exist
+        # only in process memory, pooling is not applicable.
+        poolclass = AsyncAdaptedQueuePool
+    else:
+        poolclass = None  # defer to sqlalchemy default
+    engine = create_async_engine(
+        uri, echo=echo, json_serializer=json_serializer, poolclass=poolclass
+    )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogContainerAdapter(
