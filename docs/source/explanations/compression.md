@@ -55,8 +55,8 @@ entries in this table above later ones.
 | [Zstandard](https://facebook.github.io/zstd/)                    | `zstd`          | `zstandard`             |
 | [gzip](https://en.wikipedia.org/wiki/Gzip)                       | `gzip`          | none (built in)         |
 
-The Tiled Python *client* currently supports gzip and blosc (if the Python
-package `blosc` is installed).
+The Tiled Python *client* currently supports gzip, zstd, and blosc2 (as long as
+the associated optional dependency is installed).
 
 ## Example Requests and Responses
 
