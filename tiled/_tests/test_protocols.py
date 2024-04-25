@@ -8,16 +8,18 @@ import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
-from tiled.adapters.array import ArrayAdapter as ArrayAdapterOfTiled
+from tiled.access_policies import ALL_ACCESS, ALL_SCOPES
 from tiled.adapters.awkward_directory_container import DirectoryContainer
 from tiled.adapters.protocols import (
     AccessPolicy,
     ArrayAdapter,
     AwkwardAdapter,
+    BaseAdapter,
     SparseAdapter,
     TableAdapter,
 )
-from tiled.adapters.type_alliases import JSON, NDSlice
+from tiled.adapters.type_alliases import JSON, Filters, NDSlice, Scopes
+from tiled.server.schemas import Principal, PrincipalType
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.core import Spec, StructureFamily
@@ -313,12 +315,9 @@ class CustomTableAdapter:
     def metadata(self) -> JSON:
         return self._metadata
 
-    def get(self, key: str) -> ArrayAdapterOfTiled:
-        return ArrayAdapterOfTiled.from_array(self.read([key])[key].values)
-
 
 def tableadapter_protocol_functions(
-    adapter: TableAdapter, partitions: int, fields: List[str]
+    adapter: TableAdapter, partitions: pandas.DataFrame, fields: List[str]
 ) -> None:
     adapter.structure()
     adapter.read(fields)
@@ -338,10 +337,10 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
         arrow_schema="a", npartitions=1, columns=["A"], resizable=False
     )
 
-    partitions = pandas.DataFrame([1, 2, 3])
+    partitions = pandas.DataFrame([1])
     metadata: JSON = {"foo": "bar"}
     fields = ["a", "b", "c"]
-    partition = pandas.DataFrame(1)
+    partition = pandas.DataFrame([1])
 
     anytableadapter = CustomTableAdapter(partitions, structure, metadata=metadata)
     assert anytableadapter.structure_family == StructureFamily.table
@@ -352,3 +351,56 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
     mock_call3.assert_called_once_with(partition)
     mock_call4.assert_called_once()
     mock_call5.assert_called_once()
+
+
+class CustomAccessPolicy:
+    ALL = ALL_ACCESS
+
+    def __init__(self, scopes: Optional[Scopes] = None) -> None:
+        self.scopes = scopes if (scopes is not None) else ALL_SCOPES
+
+    def _get_id(self, principal: Principal) -> None:
+        return None
+
+    def allowed_scopes(self, node: BaseAdapter, principal: Principal) -> Scopes:
+        allowed = self.scopes
+        somemetadata = node.metadata()  # noqa: 841
+        return allowed
+
+    def filters(
+        self, node: BaseAdapter, principal: Principal, scopes: Scopes
+    ) -> Filters:
+        queries: Filters = []
+        somespecs = node.specs()  # noqa: 841
+        return queries
+
+
+def accesspolicy_protocol_functions(
+    policy: AccessPolicy, node: BaseAdapter, principal: Principal, scopes: Scopes
+) -> None:
+    policy.allowed_scopes(node, principal)
+    policy.filters(node, principal, scopes)
+
+
+def test_accesspolicy_protocol(mocker: MockFixture) -> None:
+    mock_call = mocker.patch.object(CustomAwkwardAdapter, "metadata")
+    mock_call2 = mocker.patch.object(CustomAwkwardAdapter, "specs")
+
+    anyaccesspolicy = CustomAccessPolicy(scopes={"a12mdjnk4"})
+
+    structure = AwkwardStructure(length=2, form={"a": "b"})
+
+    metadata: JSON = {"foo": "bar"}
+    container = DirectoryContainer(directory=Path("somedirectory"), form={})
+    principal = Principal(
+        uuid="12345678124123412345678123456781", type=PrincipalType.user
+    )
+    scopes = {"abc"}
+
+    anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
+
+    accesspolicy_protocol_functions(
+        anyaccesspolicy, anyawkwardadapter, principal, scopes
+    )
+    mock_call.assert_called_once()
+    mock_call2.assert_called_once()

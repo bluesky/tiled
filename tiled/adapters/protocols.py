@@ -7,7 +7,6 @@ import pandas
 import sparse
 from numpy.typing import NDArray
 
-from ..adapters.array import ArrayAdapter as ArrayAdapterOfTiled
 from ..server.schemas import Principal
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
@@ -21,11 +20,11 @@ from .type_alliases import JSON, Filters, NDSlice, Scopes
 class BaseAdapter(Protocol):
     @abstractmethod
     def metadata(self) -> JSON:
-        ...
+        pass
 
     @abstractmethod
     def specs(self) -> List[Spec]:
-        ...
+        pass
 
 
 class ContainerAdapter(collections.abc.Mapping[str, "AnyAdapter"], BaseAdapter):
@@ -108,10 +107,6 @@ class TableAdapter(BaseAdapter, Protocol):
         partition: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         fields: Optional[str] = None,
     ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
-        pass
-
-    @abstractmethod
-    def get(self, key: str) -> ArrayAdapterOfTiled:
         pass
 
 
