@@ -31,11 +31,11 @@ def test_zstd(client):
     assert "zstd" in response.headers["Content-Encoding"]
 
 
-def test_blosc(client):
+def test_blosc2(client):
     ac = client["compresses_well"]
     with record_history() as h:
         ac[:]
     (response,) = h.responses
     (request,) = h.requests
-    assert "blosc" in request.headers["Accept-Encoding"]
-    assert "blosc" in response.headers["Content-Encoding"]
+    assert "blosc2" in request.headers["Accept-Encoding"]
+    assert "blosc2" in response.headers["Content-Encoding"]

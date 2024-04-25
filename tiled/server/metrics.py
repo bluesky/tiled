@@ -88,7 +88,7 @@ for code in ["200", "304", "500"]:
         READ_DURATION.labels(code=code, method="GET", endpoint=endpoint)
         TOKENIZE_DURATION.labels(code=code, method="GET", endpoint=endpoint)
         PACK_DURATION.labels(code=code, method="GET", endpoint=endpoint)
-        for encoding in ["blosc", "gzip", "lz4", "zstd"]:
+        for encoding in ["blosc2", "gzip", "lz4", "zstd"]:
             COMPRESSION_DURATION.labels(
                 code=code, method="GET", endpoint=endpoint, encoding=encoding
             )

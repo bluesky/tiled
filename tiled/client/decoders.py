@@ -5,7 +5,7 @@ from ..utils import modules_available
 
 if modules_available("blosc2"):
 
-    class BloscDecoder:
+    class Blosc2Decoder:
         def __init__(self):
             # Blosc seems to have no streaming interface.
             # Accumulate response data in a cache here,
@@ -26,7 +26,7 @@ if modules_available("blosc2"):
                 data = b"".join(self._data)
             return blosc2.decompress(data)
 
-    SUPPORTED_DECODERS["blosc"] = BloscDecoder
+    SUPPORTED_DECODERS["blosc2"] = Blosc2Decoder
 
 
 if modules_available("zstandard"):

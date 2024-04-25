@@ -50,7 +50,7 @@ entries in this table above later ones.
 
 | Method                                                           | Accept-Encoding | Required Python Package |
 | ---------------------------------------------------------------- | --------------- | ----------------------- |
-| [blosc](https://www.blosc.org/)                                  | `blosc`         | `blosc`                 |
+| [blosc2](https://www.blosc.org/)                                 | `blosc2`        | `blosc2`                |
 | [lz4](https://en.wikipedia.org/wiki/LZ4_(compression_algorithm)) | `lz4`           | `lz4`                   |
 | [Zstandard](https://facebook.github.io/zstd/)                    | `zstd`          | `zstandard`             |
 | [gzip](https://en.wikipedia.org/wiki/Gzip)                       | `gzip`          | none (built in)         |

@@ -355,4 +355,4 @@ if modules_available("blosc2"):
             pass
 
     for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:
-        compression_registry.register(media_type, "blosc", BloscBuffer)
+        compression_registry.register(media_type, "blosc2", BloscBuffer)
