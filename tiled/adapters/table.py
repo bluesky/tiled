@@ -91,7 +91,7 @@ class TableAdapter:
 
     def __init__(
         self,
-        partitions: List[Any],
+        partitions: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         structure: TableStructure,
         *,
         metadata: Optional[JSON] = None,
@@ -168,8 +168,8 @@ class TableAdapter:
         return self._structure
 
     def read(
-        self, fields: Optional[Union[str, List[str]]] = None
-    ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
+        self, fields: Optional[List[str]] = None
+    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
         """
 
         Parameters
@@ -199,7 +199,7 @@ class TableAdapter:
         self,
         partition: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         fields: Optional[str] = None,
-    ) -> pandas.DataFrame:
+    ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
 
         Parameters

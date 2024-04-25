@@ -2,16 +2,19 @@ import collections.abc
 from abc import abstractmethod
 from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
+import dask.dataframe
 import pandas
 import sparse
 from numpy.typing import NDArray
 
+from ..adapters.array import ArrayAdapter as ArrayAdapterOfTiled
 from ..server.schemas import Principal
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
+from .awkward_directory_container import DirectoryContainer
 from .type_alliases import JSON, Filters, NDSlice, Scopes
 
 
@@ -49,20 +52,28 @@ class ArrayAdapter(BaseAdapter, Protocol):
 
 
 class AwkwardAdapter(BaseAdapter, Protocol):
+    structure_family: Literal[StructureFamily.awkward]
+
     @abstractmethod
     def structure(self) -> AwkwardStructure:
         pass
 
     @abstractmethod
-    def read(self) -> NDArray:  # Are Slice and Array defined by numpy somewhere?
+    def read(self) -> NDArray[Any]:  # Are Slice and Array defined by numpy somewhere?
         pass
 
     @abstractmethod
     def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, Any]:
         pass
 
+    @abstractmethod
+    def write(self, container: DirectoryContainer) -> None:
+        pass
+
 
 class SparseAdapter(BaseAdapter, Protocol):
+    structure_family: Literal[StructureFamily.sparse] = StructureFamily.sparse
+
     @abstractmethod
     def structure(self) -> SparseStructure:
         pass
@@ -79,20 +90,28 @@ class SparseAdapter(BaseAdapter, Protocol):
 
 
 class TableAdapter(BaseAdapter, Protocol):
+    structure_family: Literal[StructureFamily.table] = StructureFamily.table
+
     @abstractmethod
     def structure(self) -> TableStructure:
         pass
 
     @abstractmethod
-    def read(self, fields: list[str]) -> pandas.DataFrame:
+    def read(
+        self, fields: list[str]
+    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
         pass
 
     @abstractmethod
-    def read_partition(self, partition: int) -> pandas.DataFrame:
+    def read_partition(
+        self,
+        partition: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        fields: Optional[str] = None,
+    ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
         pass
 
     @abstractmethod
-    def get(self, key: str) -> ArrayAdapter:
+    def get(self, key: str) -> ArrayAdapterOfTiled:
         pass
 
 
