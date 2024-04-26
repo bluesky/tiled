@@ -6,6 +6,7 @@ This intentionally only uses built-in dataclasses, not pydantic models.
 """
 import inspect
 from dataclasses import fields
+from typing import Any
 
 from .utils import DictView, UnsupportedQueryType
 
@@ -84,11 +85,11 @@ register = query_registry.register
 
 
 class QueryTranslationRegistry:
-    def __init__(self):
+    def __init__(self) -> None:
         self._lookup = {}
         self._lazy = {}
 
-    def register(self, class_, translator):
+    def register(self, class_, translator) -> Any:
         self._lookup[class_] = translator
         return translator
 

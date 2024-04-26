@@ -1,9 +1,16 @@
-import numpy
-import sparse
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ..structures.core import StructureFamily
+import dask
+import numpy
+import pandas
+import sparse
+from numpy._typing import NDArray
+
+from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from .array import slice_and_shape_from_block_and_chunks
+from .protocols import AccessPolicy
+from .type_alliases import JSON, NDSlice
 
 
 class COOAdapter:
@@ -13,16 +20,30 @@ class COOAdapter:
     @classmethod
     def from_arrays(
         cls,
-        coords,
-        data,
-        shape,
-        dims=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        coords: NDArray[Any],
+        data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        shape: Tuple[int, ...],
+        dims: Optional[Tuple[str, ...]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+    ) -> "COOAdapter":
         """
         Simplest constructor. Single chunk from coords, data arrays.
+
+        Parameters
+        ----------
+        coords :
+        data :
+        shape :
+        dims :
+        metadata :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
         """
         structure = COOStructure(
             dims=dims,
@@ -39,8 +60,29 @@ class COOAdapter:
         )
 
     @classmethod
-    def from_coo(cls, coo, *, dims=None, metadata=None, specs=None, access_policy=None):
-        "Construct from sparse.COO object."
+    def from_coo(
+        cls,
+        coo: sparse.COO,
+        *,
+        dims: Optional[Tuple[str, ...]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+    ) -> "COOAdapter":
+        """
+        Construct from sparse.COO object.
+        Parameters
+        ----------
+        coo :
+        dims :
+        metadata :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         return cls.from_arrays(
             coords=coo.coords,
             data=coo.data,
@@ -54,17 +96,30 @@ class COOAdapter:
     @classmethod
     def from_global_ref(
         cls,
-        blocks,
-        shape,
-        chunks,
+        blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
+        shape: Tuple[int, ...],
+        chunks: Tuple[Tuple[int, ...], ...],
         *,
-        dims=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        dims: Optional[Tuple[str, ...]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+    ) -> "COOAdapter":
         """
         Construct from blocks with coords given in global reference frame.
+        Parameters
+        ----------
+        blocks :
+        shape :
+        chunks :
+        dims :
+        metadata :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
         """
         local_blocks = {}
         for block, (coords, data) in blocks.items():
@@ -90,15 +145,22 @@ class COOAdapter:
 
     def __init__(
         self,
-        blocks,
-        structure,
+        blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
+        structure: COOStructure,
         *,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+    ) -> None:
         """
         Construct from blocks with coords given in block-local reference frame.
+        Parameters
+        ----------
+        blocks :
+        structure :
+        metadata :
+        specs :
+        access_policy :
         """
         self.blocks = blocks
         self._metadata = metadata or {}
@@ -106,13 +168,38 @@ class COOAdapter:
         self.specs = specs or []
         self.access_policy = access_policy
 
-    def metadata(self):
+    def metadata(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         return self._metadata
 
-    def structure(self):
+    def structure(self) -> COOStructure:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure
 
-    def read_block(self, block, slice=None):
+    def read_block(
+        self, block: Tuple[int, ...], slice: Optional[NDSlice] = None
+    ) -> sparse.COO:
+        """
+
+        Parameters
+        ----------
+        block :
+        slice :
+
+        Returns
+        -------
+
+        """
         coords, data = self.blocks[block]
         _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
@@ -120,7 +207,17 @@ class COOAdapter:
             arr = arr[slice]
         return arr
 
-    def read(self, slice=None):
+    def read(self, slice: Optional[NDSlice] = None) -> sparse.COO:
+        """
+
+        Parameters
+        ----------
+        slice :
+
+        Returns
+        -------
+
+        """
         all_coords = []
         all_data = []
         for block, (coords, data) in self.blocks.items():

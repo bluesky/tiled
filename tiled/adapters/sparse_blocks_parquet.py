@@ -1,15 +1,33 @@
 import itertools
+from typing import Any, List, Optional, Tuple, Union
 
+import dask.base
+import dask.dataframe
 import numpy
 import pandas
 import sparse
+from numpy._typing import NDArray
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
-from ..structures.core import StructureFamily
+from ..server.schemas import Asset
+from ..structures.core import Spec, StructureFamily
+from ..structures.sparse import COOStructure
 from ..utils import path_from_uri
+from .protocols import AccessPolicy
+from .type_alliases import JSON, NDSlice
 
 
-def load_block(uri):
+def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
+    """
+
+    Parameters
+    ----------
+    uri :
+
+    Returns
+    -------
+
+    """
     # TODO This can be done without pandas.
     # Better to use a plain I/O library.
     df = pandas.read_parquet(path_from_uri(uri))
@@ -19,16 +37,28 @@ def load_block(uri):
 
 
 class SparseBlocksParquetAdapter:
+    """ """
+
     structure_family = StructureFamily.sparse
 
     def __init__(
         self,
-        data_uris,
-        structure,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        data_uris: List[str],
+        structure: COOStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+    ) -> None:
+        """
+
+        Parameters
+        ----------
+        data_uris :
+        structure :
+        metadata :
+        specs :
+        access_policy :
+        """
         num_blocks = (range(len(n)) for n in structure.chunks)
         self.blocks = {}
         for block, uri in zip(itertools.product(*num_blocks), data_uris):
@@ -41,11 +71,20 @@ class SparseBlocksParquetAdapter:
     @classmethod
     def init_storage(
         cls,
-        data_uri,
-        structure,
-    ):
-        from ..server.schemas import Asset
+        data_uri: str,
+        structure: COOStructure,
+    ) -> List[Asset]:
+        """
 
+        Parameters
+        ----------
+        data_uri :
+        structure :
+
+        Returns
+        -------
+
+        """
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -61,20 +100,61 @@ class SparseBlocksParquetAdapter:
         ]
         return assets
 
-    def metadata(self):
+    def metadata(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         return self._metadata
 
-    def write_block(self, data, block):
+    def write_block(
+        self,
+        data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        block: Tuple[int, ...],
+    ) -> None:
+        """
+
+        Parameters
+        ----------
+        data :
+        block :
+
+        Returns
+        -------
+
+        """
         uri = self.blocks[block]
         data.to_parquet(path_from_uri(uri))
 
-    def write(self, data):
+    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
+        """
+
+        Parameters
+        ----------
+        data :
+
+        Returns
+        -------
+
+        """
         if len(self.blocks) > 1:
             raise NotImplementedError
         uri = self.blocks[(0,) * len(self._structure.shape)]
         data.to_parquet(path_from_uri(uri))
 
-    def read(self, slice=...):
+    def read(self, slice: NDSlice) -> sparse.COO:
+        """
+
+        Parameters
+        ----------
+        slice :
+
+        Returns
+        -------
+
+        """
         all_coords = []
         all_data = []
         for block, uri in self.blocks.items():
@@ -93,11 +173,30 @@ class SparseBlocksParquetAdapter:
         )
         return arr[slice]
 
-    def read_block(self, block, slice=...):
+    def read_block(
+        self, block: Tuple[int, ...], slice: Optional[NDSlice]
+    ) -> sparse.COO:
+        """
+
+        Parameters
+        ----------
+        block :
+        slice :
+
+        Returns
+        -------
+
+        """
         coords, data = load_block(self.blocks[block])
         _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
         return arr[slice]
 
-    def structure(self):
+    def structure(self) -> COOStructure:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure

@@ -398,17 +398,17 @@ def tree(tree, max_lines=20):
 
 
 class Sentinel:
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         self.name = name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{self.name}>"
 
-    def __copy__(self):
+    def __copy__(self) -> "Sentinel":
         # The goal here is to make copy.copy(sentinel) == sentinel
         return self
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: "Sentinel") -> "Sentinel":
         # The goal here is to make copy.deepcopy(sentinel) == sentinel
         return self
 
@@ -614,7 +614,7 @@ def get_share_tiled_path():
 SHARE_TILED_PATH = get_share_tiled_path()
 
 
-def node_repr(tree, sample):
+def node_repr(tree, sample) -> str:
     sample_reprs = list(map(repr, sample))
     out = f"<{type(tree).__name__} {{"
     # Always show at least one.
@@ -666,7 +666,7 @@ async def ensure_awaitable(func, *args, **kwargs):
         return await anyio.to_thread.run_sync(functools.partial(func, **kwargs), *args)
 
 
-def path_from_uri(uri):
+def path_from_uri(uri) -> Path:
     """
     Give a URI, return a Path.
 
@@ -691,7 +691,7 @@ def path_from_uri(uri):
 SCHEME_PATTERN = re.compile(r"^[a-z0-9+]+:\/\/.*$")
 
 
-def ensure_uri(uri_or_path):
+def ensure_uri(uri_or_path) -> str:
     "Accept a URI or file path (Windows- or POSIX-style) and return a URI."
     if not SCHEME_PATTERN.match(str(uri_or_path)):
         # Interpret this as a filepath.

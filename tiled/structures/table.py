@@ -22,7 +22,7 @@ class TableStructure:
     resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
-    def from_dask_dataframe(cls, ddf):
+    def from_dask_dataframe(cls, ddf) -> "TableStructure":
         import dask.dataframe.utils
         import pyarrow
 

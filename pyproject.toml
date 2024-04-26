@@ -153,6 +153,7 @@ dev = [
     "pytest <8",  # TMP pin while plugins catch up
     "pytest-asyncio",
     "pytest-rerunfailures",
+    "pytest-mock",
     "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
     # These are dependencies of various sphinx extensions for documentation.
     "ipython",
