@@ -216,7 +216,7 @@ class TableAdapter:
             raise RuntimeError(f"partition {partition} has not be stored yet")
         if fields is not None:
             df = df[fields]
-        if isinstance(df, dask.dfframe.DataFrame):
+        if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
         return partition
 
