@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import Any, List, Optional, Tuple, Union, cast, Dict
 
 import numpy as np
 import tifffile
@@ -54,8 +54,8 @@ class TiffAdapter:
         self.access_policy = access_policy
         if structure is None:
             if self._file.is_shaped:
-                from_file: tuple[dict[str, Any], ...] = cast(
-                    tuple[dict[str, Any], ...], self._file.shaped_metadata
+                from_file: Tuple[Dict[str, Any], ...] = cast(
+                    Tuple[Dict[str, Any], ...], self._file.shaped_metadata
                 )
                 shape = tuple(from_file[0]["shape"])
             else:

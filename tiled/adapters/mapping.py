@@ -69,7 +69,7 @@ class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
 
     def __init__(
         self,
-        mapping: dict[str, Any],
+        mapping: Dict[str, Any],
         *,
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
@@ -371,7 +371,7 @@ class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
         structure_families: StructureFamily,
         specs: List[Spec],
         counts: int,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
 
         Parameters
