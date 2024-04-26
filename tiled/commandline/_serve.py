@@ -199,11 +199,13 @@ def serve_directory(
 
     import anyio
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
     from ..client import from_uri as client_from_uri
 
     print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
-    config = uvicorn.Config(web_app, host=host, port=port)
+    log_config = log_config or LOGGING_CONFIG  # fall back to uvicorn default
+    config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
     server = uvicorn.Server(config)
 
     async def run_server():
@@ -334,6 +336,9 @@ def serve_catalog(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
+    log_config: Optional[str] = typer.Option(
+        None, help="Custom uvicorn logging configuration file"
+    ),
 ):
     "Serve a catalog."
     import urllib.parse
@@ -432,8 +437,10 @@ or use an existing one:
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
-    uvicorn.run(web_app, host=host, port=port)
+    log_config = log_config or LOGGING_CONFIG  # fall back to uvicorn default
+    uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
 serve_app.command("catalog")(serve_catalog)
@@ -477,6 +484,9 @@ def serve_pyobject(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
+    log_config: Optional[str] = typer.Option(
+        None, help="Custom uvicorn logging configuration file"
+    ),
 ):
     "Serve a Tree instance from a Python module."
     from ..server.app import build_app, print_admin_api_key_if_generated
@@ -496,8 +506,10 @@ def serve_pyobject(
     print_admin_api_key_if_generated(web_app, host=host, port=port)
 
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
-    uvicorn.run(web_app, host=host, port=port)
+    log_config = log_config or LOGGING_CONFIG  # fall back to uvicorn default
+    uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
 @serve_app.command("demo")
@@ -571,6 +583,9 @@ def serve_config(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
+    log_config: Optional[str] = typer.Option(
+        None, help="Custom uvicorn logging configuration file"
+    ),
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
@@ -605,9 +620,10 @@ def serve_config(
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
-    # If --host is given, it overrides host in config. Same for --port.
+    # If --host is given, it overrides host in config. Same for --port and --log-config.
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
+    uvicorn_kwargs["log_config"] = log_config or uvicorn_kwargs.get("log_config")
 
     # This config was already validated when it was parsed. Do not re-validate.
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
