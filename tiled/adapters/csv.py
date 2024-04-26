@@ -14,15 +14,6 @@ from .protocols import AccessPolicy
 from .table import TableAdapter
 from .type_alliases import JSON
 
-# from ..server.pydantic_awkward import AwkwardStructure as AwkwardPydantic
-# from ..structures.awkward import AwkwardStructure as AwkwardStructureTiled
-# from ..server.pydantic_array import ArrayStructure as ArrayStructurePydantic
-# from ..structures.array import ArrayStructure as ArrayStructureTiled
-# from ..server.pydantic_table import TableStructure as TableStructurePydantic
-# from ..structures.table import TableStructure as TableStructureTiled
-# from ..server.pydantic_sparse import SparseStructure as SparseStructurePydantic
-# from ..structures.sparse import SparseStructure as SparseStructureTiled
-
 
 def read_csv(
     data_uri: str,
