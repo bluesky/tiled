@@ -328,11 +328,11 @@ class CustomTableAdapter:
 
 
 def tableadapter_protocol_functions(
-    adapter: TableAdapter, partitions: pandas.DataFrame, fields: List[str]
+    adapter: TableAdapter, partition: int, fields: List[str]
 ) -> None:
     adapter.structure()
     adapter.read(fields)
-    adapter.read_partition(partitions)
+    adapter.read_partition(partition)
     adapter.specs()
     adapter.metadata()
     adapter["abc"]
@@ -353,7 +353,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
     partitions = pandas.DataFrame([1])
     metadata: JSON = {"foo": "bar"}
     fields = ["a", "b", "c"]
-    partition = pandas.DataFrame([1])
+    partition = 1
 
     anytableadapter = CustomTableAdapter(partitions, structure, metadata=metadata)
     assert anytableadapter.structure_family == StructureFamily.table
