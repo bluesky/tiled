@@ -1,11 +1,10 @@
-from __future__ import annotations
-
-import collections
 from pathlib import Path
 from typing import Any, Iterator
 
+from typing_extensions import MutableMapping
 
-class DirectoryContainer(collections.abc.MutableMapping[str, bytes]):
+
+class DirectoryContainer(MutableMapping[str, bytes]):
     """ """
 
     def __init__(self, directory: Path, form: Any):
