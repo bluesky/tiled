@@ -197,7 +197,7 @@ class TableAdapter:
 
     def read_partition(
         self,
-        partition: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        partition: int,
         fields: Optional[str] = None,
     ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
@@ -211,13 +211,13 @@ class TableAdapter:
         -------
 
         """
-        partition = self._partitions[partition]
-        if partition is None:
+        df = self._partitions[partition]
+        if df is None:
             raise RuntimeError(f"partition {partition} has not be stored yet")
         if fields is not None:
-            partition = partition[fields]
-        if isinstance(partition, dask.dataframe.DataFrame):
-            return partition.compute()
+            df = df[fields]
+        if isinstance(df, dask.dfframe.DataFrame):
+            return df.compute()
         return partition
 
 

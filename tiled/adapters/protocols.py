@@ -117,7 +117,7 @@ class TableAdapter(BaseAdapter, Protocol):
     @abstractmethod
     def read_partition(
         self,
-        partition: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        partition: int,
         fields: Optional[str] = None,
     ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
         pass
