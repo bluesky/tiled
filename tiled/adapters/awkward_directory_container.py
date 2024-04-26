@@ -1,10 +1,18 @@
+import sys
 from pathlib import Path
 from typing import Any, Iterator
 
-from typing_extensions import MutableMapping
+if sys.version_info < (3, 9):
+    from typing_extensions import MutableMapping
+
+    MappingType = MutableMapping
+else:
+    import collections
+
+    MappingType = collections.abc.MutableMapping
 
 
-class DirectoryContainer(MutableMapping[str, bytes]):
+class DirectoryContainer(MappingType[str, bytes]):
     """ """
 
     def __init__(self, directory: Path, form: Any):

@@ -1,6 +1,7 @@
 import builtins
 import collections.abc
 import os
+import sys
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
@@ -185,8 +186,18 @@ class ZarrArrayAdapter(ArrayAdapter):
         self._array[block_slice] = data
 
 
+if sys.version_info < (3, 9):
+    from typing_extensions import Mapping
+
+    MappingType = Mapping
+else:
+    import collections
+
+    MappingType = collections.abc.Mapping
+
+
 class ZarrGroupAdapter(
-    collections.abc.Mapping[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    MappingType[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
     IndexersMixin,
 ):
     """ """

@@ -2,6 +2,7 @@ import collections.abc
 import copy
 import itertools
 import operator
+import sys
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
@@ -31,8 +32,17 @@ from .protocols import AccessPolicy, AnyAdapter
 from .type_alliases import JSON
 from .utils import IndexersMixin
 
+if sys.version_info < (3, 9):
+    from typing_extensions import Mapping
 
-class MapAdapter(collections.abc.Mapping[str, AnyAdapter], IndexersMixin):
+    MappingType = Mapping
+else:
+    import collections
+
+    MappingType = collections.abc.Mapping
+
+
+class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
     """
     Adapt any mapping (dictionary-like object) to Tiled.
     """

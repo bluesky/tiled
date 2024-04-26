@@ -1,4 +1,5 @@
 import collections.abc
+import sys
 from abc import abstractmethod
 from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
@@ -27,7 +28,17 @@ class BaseAdapter(Protocol):
         pass
 
 
-class ContainerAdapter(collections.abc.Mapping[str, "AnyAdapter"], BaseAdapter):
+if sys.version_info < (3, 9):
+    from typing_extensions import Mapping
+
+    MappingType = Mapping
+else:
+    import collections
+
+    MappingType = collections.abc.Mapping
+
+
+class ContainerAdapter(MappingType[str, "AnyAdapter"], BaseAdapter):
     structure_family: Literal[StructureFamily.container]
 
     @abstractmethod
