@@ -298,7 +298,7 @@ class CustomTableAdapter:
         return self._structure
 
     def read(
-        self, fields: Optional[list[str]] = None
+        self, fields: Optional[List[str]] = None
     ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
         return self._partitions
 

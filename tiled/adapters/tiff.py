@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, List, Optional, Tuple, Union, cast, Dict
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import tifffile

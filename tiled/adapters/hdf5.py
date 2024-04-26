@@ -142,7 +142,7 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         metadata: Optional[JSON] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        specs: Optional[list[Spec]] = None,
+        specs: Optional[List[Spec]] = None,
         access_policy: Optional[AccessPolicy] = None,
     ) -> "HDF5Adapter":
         """
