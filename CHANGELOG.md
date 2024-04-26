@@ -10,6 +10,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - The `tiled serve ...` CLI commands now accept a `--log-config` option,
   pointing to a custom uvicorn logging configuration file. An example
   file was added to the repository root, `example_log_config.yml`.
+- Added `tiled.adapters.protocols` which will provide possibility for user to
+  implement their custom adapters in a way that satisfies mypy.
 
 ### Changed
 
