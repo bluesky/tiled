@@ -4,8 +4,6 @@ import os
 import sys
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
-import dask
-import pandas
 import zarr.core
 import zarr.hierarchy
 import zarr.storage
@@ -142,7 +140,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
     def write(
         self,
-        data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        data: NDArray[Any],
         slice: NDSlice = ...,
     ) -> None:
         """
@@ -162,7 +160,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
     async def write_block(
         self,
-        data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        data: NDArray[Any],
         block: Tuple[int, ...],
         slice: Optional[NDSlice] = ...,
     ) -> None:
