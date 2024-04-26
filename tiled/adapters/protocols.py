@@ -110,7 +110,7 @@ class TableAdapter(BaseAdapter, Protocol):
 
     @abstractmethod
     def read(
-        self, fields: list[str]
+        self, fields: List[str]
     ) -> Union[dask.dataframe.DataFrame, pandas.DataFrame]:
         pass
 

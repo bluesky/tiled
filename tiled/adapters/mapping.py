@@ -115,8 +115,8 @@ class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
         self.specs = specs or []
         self._access_policy = access_policy
         self._must_revalidate = must_revalidate
-        self.include_routers: list[APIRouter] = []
-        self.background_tasks: list[Any] = []
+        self.include_routers: List[APIRouter] = []
+        self.background_tasks: List[Any] = []
         self.entries_stale_after = entries_stale_after
         self.metadata_stale_after = metadata_stale_after
         self.specs = specs or []
@@ -323,8 +323,8 @@ class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
             must_revalidate = self.must_revalidate
         return type(self)(
             # *args,
-            mapping=cast(dict[str, Any], mapping),
-            sorting=cast(list[SortingItem], sorting),
+            mapping=cast(Dict[str, Any], mapping),
+            sorting=cast(List[SortingItem], sorting),
             metadata=cast(JSON, self._metadata),
             specs=self.specs,
             access_policy=self.access_policy,
@@ -385,7 +385,7 @@ class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
         -------
 
         """
-        data: dict[str, Any] = {}
+        data: Dict[str, Any] = {}
         # data: dict[str, list[dict[str, Any]]] = {}
 
         if metadata:
