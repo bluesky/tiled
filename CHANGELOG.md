@@ -3,6 +3,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The `tiled serve ...` CLI commands now accept a `--log-config` option,
+  pointing to a custom uvicorn logging configuration file. An example
+  file was added to the repository root, `example_log_config.yml`.
+
+### Changed
+
+- SQLite-backed catalogs now employ connection pooling. This results in a
+  significant speed-up and avoids frequently re-opening the SQLite file.
+
 ## v0.1.0a120 (25 April 2024)
 
 ### Fixed
