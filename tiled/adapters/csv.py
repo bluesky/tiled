@@ -81,7 +81,7 @@ class CSVAdapter:
 
     def __init__(
         self,
-        data_uris: Union[str, List[str]],
+        data_uris: List[str],
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,

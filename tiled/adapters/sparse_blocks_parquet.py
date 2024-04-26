@@ -43,7 +43,7 @@ class SparseBlocksParquetAdapter:
 
     def __init__(
         self,
-        data_uris: Union[str, List[str]],
+        data_uris: List[str],
         structure: COOStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,

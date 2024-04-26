@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import tifffile
@@ -143,7 +143,7 @@ class TiffSequenceAdapter:
     @classmethod
     def from_uris(
         cls,
-        data_uris: Union[str, List[str]],
+        data_uris: List[str],
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
