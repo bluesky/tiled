@@ -17,6 +17,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - SQLite-backed catalogs now employ connection pooling. This results in a
   significant speed-up and avoids frequently re-opening the SQLite file.
+- Metadata returned from the use of the `select_metadata` is now a one-item
+  dictionary with 'selected' as the key, to match default type/behavior.
 
 ## v0.1.0a120 (25 April 2024)
 

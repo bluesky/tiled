@@ -415,9 +415,9 @@ async def construct_resource(
         attributes["data_sources"] = entry.data_sources
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
-            attributes["metadata"] = jmespath.compile(select_metadata).search(
-                entry.metadata()
-            )
+            attributes["metadata"] = {
+                "selected": jmespath.compile(select_metadata).search(entry.metadata())
+            }
         else:
             attributes["metadata"] = entry.metadata()
     if schemas.EntryFields.specs in fields:
