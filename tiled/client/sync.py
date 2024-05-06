@@ -74,7 +74,11 @@ def _sync_container(source, dest, copy_internal, copy_external):
             metadata=dict(child_node.metadata),
             specs=child_node.specs,
         )
-        if (original_data_source.management != Management.external) and copy_internal:
+        if (
+            original_data_sources
+            and (original_data_sources[0].management != Management.external)
+            and copy_internal
+        ):
             _DISPATCH[child_node.structure_family](
                 child_node, node, copy_internal, copy_external
             )
