@@ -1,3 +1,4 @@
+import collections.abc
 import itertools
 
 from ..structures.core import StructureFamily
@@ -18,8 +19,18 @@ def sync(
     source : tiled node
     dest : tiled node
     """
-    source = source.include_data_sources().refresh()
-    _DISPATCH[source.structure_family](source, dest, copy_internal, copy_external)
+    if hasattr(source, "structure_family"):
+        # looks like a client object
+        _DISPATCH[source.structure_family](
+            source.include_data_sources(), dest, copy_internal, copy_external
+        )
+    elif isinstance(source, list):
+        # such as result of source.items().head()
+        _DISPATCH[StructureFamily.container](
+            dict(source), dest, copy_internal, copy_external
+        )
+    elif isinstance(source, collections.abc.Mapping):
+        _DISPATCH[StructureFamily.container](source, dest, copy_internal, copy_external)
 
 
 def _sync_array(source, dest, copy_internal, copy_external):
@@ -38,7 +49,7 @@ def _sync_table(source, dest, copy_internal, copy_external):
 
 def _sync_container(source, dest, copy_internal, copy_external):
     for key, child_node in source.items():
-        original_data_sources = child_node.data_sources()
+        original_data_sources = child_node.include_data_sources().data_sources()
         if not original_data_sources:
             if child_node.structure_family == StructureFamily.container:
                 data_sources = []
