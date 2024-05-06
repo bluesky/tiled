@@ -11,11 +11,29 @@ def sync(
     dest: BaseClient,
 ):
     """
+    Copy data from one Tiled instance to another.
 
     Parameters
     ----------
     source : tiled node
     dest : tiled node
+
+    Examples
+    --------
+
+    Connect to two instances and copy data.
+
+    >>> from tiled.client import from_uri
+    >>> a = from_uri("http://localhost:8000", api_key="secret")
+    >>> b = from_uri("http://localhost:9000", api_key="secret")
+    >>> sync(a, b)
+
+
+    Copy select data.
+
+    >>> sync(a.items().head(), b)
+    >>> sync(a.search(...), b)
+
     """
     if hasattr(source, "structure_family"):
         # looks like a client object
