@@ -9,8 +9,6 @@ from .base import BaseClient
 def sync(
     source: BaseClient,
     dest: BaseClient,
-    copy_internal: bool = True,
-    copy_external: bool = False,
 ):
     """
 
@@ -21,19 +19,15 @@ def sync(
     """
     if hasattr(source, "structure_family"):
         # looks like a client object
-        _DISPATCH[source.structure_family](
-            source.include_data_sources(), dest, copy_internal, copy_external
-        )
+        _DISPATCH[source.structure_family](source.include_data_sources(), dest)
     elif isinstance(source, list):
         # such as result of source.items().head()
-        _DISPATCH[StructureFamily.container](
-            dict(source), dest, copy_internal, copy_external
-        )
+        _DISPATCH[StructureFamily.container](dict(source), dest)
     elif isinstance(source, collections.abc.Mapping):
-        _DISPATCH[StructureFamily.container](source, dest, copy_internal, copy_external)
+        _DISPATCH[StructureFamily.container](source, dest)
 
 
-def _sync_array(source, dest, copy_internal, copy_external):
+def _sync_array(source, dest):
     num_blocks = (range(len(n)) for n in source.chunks)
     # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
     for block in itertools.product(*num_blocks):
@@ -41,16 +35,18 @@ def _sync_array(source, dest, copy_internal, copy_external):
         dest.write_block(array, block)
 
 
-def _sync_table(source, dest, copy_internal, copy_external):
+def _sync_table(source, dest):
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
         dest.write_partition(df, partition)
 
 
-def _sync_container(source, dest, copy_internal, copy_external):
+def _sync_container(source, dest):
     for key, child_node in source.items():
         original_data_sources = child_node.include_data_sources().data_sources()
         if not original_data_sources:
+            # A container with no data sources is just an organizational
+            # entity in the database.
             if child_node.structure_family == StructureFamily.container:
                 data_sources = []
             else:
@@ -62,10 +58,6 @@ def _sync_container(source, dest, copy_internal, copy_external):
             (original_data_source,) = original_data_sources
             if original_data_source.management == Management.external:
                 data_sources = [original_data_source]
-                if copy_external:
-                    raise NotImplementedError(
-                        "Copying externally-managed data is not yet implemented"
-                    )
             else:
                 if child_node.structure_family == StructureFamily.container:
                     data_sources = []
@@ -88,14 +80,11 @@ def _sync_container(source, dest, copy_internal, copy_external):
         if (
             original_data_sources
             and (original_data_sources[0].management != Management.external)
-            and copy_internal
         ) or (
             child_node.structure_family == StructureFamily.container
             and (not original_data_sources)
         ):
-            _DISPATCH[child_node.structure_family](
-                child_node, node, copy_internal, copy_external
-            )
+            _DISPATCH[child_node.structure_family](child_node, node)
 
 
 _DISPATCH = {
