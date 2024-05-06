@@ -7,6 +7,7 @@ from pathlib import Path
 from httpx import URL
 
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
@@ -218,7 +219,12 @@ client or pass the optional parameter `include_data_sources=True` to
 `from_uri(...)` or similar."""
             )
 
-        return self.include_data_sources().item["attributes"].get("data_sources")
+        data_sources_json = (
+            self.include_data_sources().item["attributes"].get("data_sources")
+        )
+        if data_sources_json is None:
+            return None
+        return [DataSource.from_json(d) for d in data_sources_json]
 
     def include_data_sources(self):
         """
@@ -271,16 +277,16 @@ client or pass the optional parameter `include_data_sources=True` to
             manifest_link = self.item["links"]["self"].replace(
                 "/metadata", "/asset/manifest", 1
             )
-            for asset in data_source["assets"]:
-                if asset["is_directory"]:
+            for asset in data_source.assets:
+                if asset.is_directory:
                     manifest = handle_error(
                         self.context.http_client.get(
-                            manifest_link, params={"id": asset["id"]}
+                            manifest_link, params={"id": asset.id}
                         )
                     ).json()["manifest"]
                 else:
                     manifest = None
-                manifests[asset["id"]] = manifest
+                manifests[asset.id] = manifest
         return manifests
 
     def raw_export(self, destination_directory=None, max_workers=4):
@@ -321,22 +327,22 @@ client or pass the optional parameter `include_data_sources=True` to
             bytes_link = self.item["links"]["self"].replace(
                 "/metadata", "/asset/bytes", 1
             )
-            for asset in data_source["assets"]:
-                if len(data_source["assets"]) == 1:
+            for asset in data_source.assets:
+                if len(data_source.assets) == 1:
                     # Only one asset: keep the name simple.
                     base_path = destination_directory
                 else:
                     # Multiple assets: Add a subdirectory named for the asset
                     # id to namespace each asset.
-                    base_path = Path(destination_directory, str(asset["id"]))
-                if asset["is_directory"]:
-                    relative_paths = asset_manifest[asset["id"]]
+                    base_path = Path(destination_directory, str(asset.id))
+                if asset.is_directory:
+                    relative_paths = asset_manifest[asset.id]
                     urls.extend(
                         [
                             URL(
                                 bytes_link,
                                 params={
-                                    "id": asset["id"],
+                                    "id": asset.id,
                                     "relative_path": relative_path,
                                 },
                             )
@@ -350,7 +356,7 @@ client or pass the optional parameter `include_data_sources=True` to
                         ]
                     )
                 else:
-                    urls.append(URL(bytes_link, params={"id": asset["id"]}))
+                    urls.append(URL(bytes_link, params={"id": asset.id}))
                     paths.append(Path(base_path, ATTACHMENT_FILENAME_PLACEHOLDER))
         return download(self.context.http_client, urls, paths, max_workers=max_workers)
 

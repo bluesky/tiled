@@ -296,9 +296,9 @@ def get_asset_filepaths(node):
     """
     filepaths = []
     for data_source in node.data_sources() or []:
-        for asset in data_source["assets"]:
+        for asset in data_source.assets:
             # If, in the future, there are nodes with s3:// or other
             # schemes, path_from_uri will raise an exception here
             # because it cannot provide a filepath.
-            filepaths.append(path_from_uri(asset["data_uri"]))
+            filepaths.append(path_from_uri(asset.data_uri))
     return filepaths

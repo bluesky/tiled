@@ -483,7 +483,7 @@ def test_write_with_specified_mimetype(tree):
             x.write_partition(df, 0)
             x.read()
             x.refresh()
-            x.data_sources()[0]["mimetype"] == mimetype
+            x.data_sources()[0].mimetype == mimetype
 
         # Specifying unsupported mimetype raises expected error.
         with fail_with_status_code(415):
