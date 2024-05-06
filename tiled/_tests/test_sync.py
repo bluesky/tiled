@@ -68,7 +68,7 @@ def test_sync_internal():
             sync(source, dest)
             assert list(source) == list(dest)
             assert list(source["c"]) == list(dest["c"])
-            read(dest)
+            read(dest, strict=True)
 
 
 def test_sync_external(tmp_path):
@@ -78,7 +78,7 @@ def test_sync_external(tmp_path):
             sync(source, dest)
             assert list(source) == list(dest)
             assert list(source["subdir"]) == list(dest["subdir"])
-            read(dest)
+            read(dest, strict=True)
 
 
 def test_sync_search_results():
