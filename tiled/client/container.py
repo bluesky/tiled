@@ -407,6 +407,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     self.context,
                     self.structure_clients,
                     item,
+                    include_data_sources=self._include_data_sources,
                 )
             return
         if direction > 0:
@@ -444,6 +445,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     self.context,
                     self.structure_clients,
                     item,
+                    include_data_sources=self._include_data_sources,
                 )
             next_page_url = content["links"]["next"]
 
