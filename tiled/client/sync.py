@@ -78,6 +78,9 @@ def _sync_container(source, dest, copy_internal, copy_external):
             original_data_sources
             and (original_data_sources[0].management != Management.external)
             and copy_internal
+        ) or (
+            child_node.structure_family == StructureFamily.container
+            and (not original_data_sources)
         ):
             _DISPATCH[child_node.structure_family](
                 child_node, node, copy_internal, copy_external
