@@ -90,9 +90,17 @@ class DaskDatasetClient(Container):
                     )
             else:
                 if "xarray_coord" in spec_names:
-                    coords[name] = (array_client.dims, array_client.read(),array_client.metadata["attrs"])
+                    coords[name] = (
+                        array_client.dims,
+                        array_client.read(),
+                        array_client.metadata["attrs"],
+                    )
                 elif "xarray_data_var" in spec_names:
-                    data_vars[name] = (array_client.dims, array_client.read(),array_client.metadata["attrs"])
+                    data_vars[name] = (
+                        array_client.dims,
+                        array_client.read(),
+                        array_client.metadata["attrs"],
+                    )
                 else:
                     raise ValueError(
                         "Child nodes of xarray_dataset should include spec "
