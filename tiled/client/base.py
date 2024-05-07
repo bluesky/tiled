@@ -1,4 +1,3 @@
-import importlib
 import time
 import warnings
 from dataclasses import asdict
@@ -6,9 +5,9 @@ from pathlib import Path
 
 from httpx import URL
 
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
+from ..utils import UNCHANGED, DictView, ListView, safe_json_dump
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
 
@@ -437,21 +436,3 @@ client or pass the optional parameter `include_data_sources=True` to
 
     def __dask_tokenize__(self):
         return (type(self), self.uri)
-
-
-STRUCTURE_TYPES = OneShotCachedMap(
-    {
-        StructureFamily.array: lambda: importlib.import_module(
-            "...structures.array", BaseClient.__module__
-        ).ArrayStructure,
-        StructureFamily.awkward: lambda: importlib.import_module(
-            "...structures.awkward", BaseClient.__module__
-        ).AwkwardStructure,
-        StructureFamily.table: lambda: importlib.import_module(
-            "...structures.table", BaseClient.__module__
-        ).TableStructure,
-        StructureFamily.sparse: lambda: importlib.import_module(
-            "...structures.sparse", BaseClient.__module__
-        ).SparseStructure,
-    }
-)
