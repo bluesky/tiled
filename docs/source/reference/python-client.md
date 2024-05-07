@@ -292,3 +292,13 @@ Tiled currently includes two clients for each structure family:
    tiled.client.cache.Cache.size
    tiled.client.cache.Cache.write_safe
 ```
+
+## Sync
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.sync.copy
+```
