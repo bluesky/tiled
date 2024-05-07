@@ -11,7 +11,7 @@ from tiled.catalog import in_memory
 from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.smoke import read
-from tiled.client.sync import sync
+from tiled.client.sync import copy
 from tiled.queries import Key
 from tiled.server.app import build_app
 
@@ -61,48 +61,48 @@ def populate_internal(client):
     container.write_dataframe(df, key="B", metadata={"color": "green"}, specs=["beta"])
 
 
-def test_sync_internal():
+def test_copy_internal():
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
-            sync(source, dest)
+            copy(source, dest)
             assert list(source) == list(dest)
             assert list(source["c"]) == list(dest["c"])
             read(dest, strict=True)
 
 
-def test_sync_external(tmp_path):
+def test_copy_external(tmp_path):
     with client_factory(readable_storage=[tmp_path]) as dest:
         with client_factory() as source:
             populate_external(source, tmp_path)
-            sync(source, dest)
+            copy(source, dest)
             assert list(source) == list(dest)
             assert list(source["subdir"]) == list(dest["subdir"])
             read(dest, strict=True)
 
 
-def test_sync_search_results():
+def test_copy_search_results():
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
             results = source.search(Key("color") == "red")
-            sync(results, dest)
+            copy(results, dest)
             assert list(results) == list(dest)
 
 
-def test_sync_items():
+def test_copy_items():
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
             select_items = source.items()[:2]
-            sync(select_items, dest)
+            copy(select_items, dest)
             assert [key for key, _ in select_items] == list(dest)
 
 
-def test_sync_dict():
+def test_copy_dict():
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
             select_dict = dict(source.items()[:2])
-            sync(select_dict, dest)
+            copy(select_dict, dest)
             assert list(select_dict) == list(dest)

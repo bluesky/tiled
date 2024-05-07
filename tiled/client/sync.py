@@ -6,7 +6,7 @@ from ..structures.data_source import DataSource, Management
 from .base import BaseClient
 
 
-def sync(
+def copy(
     source: BaseClient,
     dest: BaseClient,
 ):
@@ -24,15 +24,16 @@ def sync(
     Connect to two instances and copy data.
 
     >>> from tiled.client import from_uri
+    >>> from tiled.client.sync import copy
     >>> a = from_uri("http://localhost:8000", api_key="secret")
     >>> b = from_uri("http://localhost:9000", api_key="secret")
-    >>> sync(a, b)
+    >>> copy(a, b)
 
 
     Copy select data.
 
-    >>> sync(a.items().head(), b)
-    >>> sync(a.search(...), b)
+    >>> copy(a.items().head(), b)
+    >>> copy(a.search(...), b)
 
     """
     if hasattr(source, "structure_family"):
@@ -45,7 +46,7 @@ def sync(
         _DISPATCH[StructureFamily.container](source, dest)
 
 
-def _sync_array(source, dest):
+def _copy_array(source, dest):
     num_blocks = (range(len(n)) for n in source.chunks)
     # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
     for block in itertools.product(*num_blocks):
@@ -53,13 +54,13 @@ def _sync_array(source, dest):
         dest.write_block(array, block)
 
 
-def _sync_table(source, dest):
+def _copy_table(source, dest):
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
         dest.write_partition(df, partition)
 
 
-def _sync_container(source, dest):
+def _copy_container(source, dest):
     for key, child_node in source.items():
         original_data_sources = child_node.include_data_sources().data_sources()
         if not original_data_sources:
@@ -106,7 +107,7 @@ def _sync_container(source, dest):
 
 
 _DISPATCH = {
-    StructureFamily.array: _sync_array,
-    StructureFamily.container: _sync_container,
-    StructureFamily.table: _sync_table,
+    StructureFamily.array: _copy_array,
+    StructureFamily.container: _copy_container,
+    StructureFamily.table: _copy_table,
 }
