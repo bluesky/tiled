@@ -59,7 +59,8 @@ def _copy_table(source, dest):
 def _copy_container(source, dest):
     for key, child_node in source.items():
         original_data_sources = child_node.include_data_sources().data_sources()
-        if not original_data_sources:
+        num_data_sources = len(original_data_sources)
+        if num_data_sources == 0:
             # A container with no data sources is just an organizational
             # entity in the database.
             if child_node.structure_family == StructureFamily.container:
@@ -69,7 +70,7 @@ def _copy_container(source, dest):
                     f"Unable to copy {child_node} which is a "
                     f"{child_node.structure_family} but has no data sources."
                 )
-        else:
+        elif num_data_sources == 1:
             (original_data_source,) = original_data_sources
             if original_data_source.management == Management.external:
                 data_sources = [original_data_source]
@@ -85,6 +86,12 @@ def _copy_container(source, dest):
                             structure=original_data_source.structure,
                         )
                     ]
+        else:
+            # As of this writing this is impossible, but we anticipate that
+            # it may be added someday.
+            raise NotImplementedError(
+                "Multiple Data Sources in one Node is not supported."
+            )
         node = dest.new(
             key=key,
             structure_family=child_node.structure_family,
