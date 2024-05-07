@@ -12,6 +12,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   file was added to the repository root, `example_log_config.yml`.
 - Added `tiled.adapters.protocols` which will provide possibility for user to
   implement their custom adapters in a way that satisfies mypy.
+- Added `tiled.client.smoke` with a utility for walking a node and ensuring
+  that the data in it can be read.
+- Added `tiled.client.sync` with a utility for copying nodes between two
+  Tiled instances.
 
 ### Changed
 
@@ -19,6 +23,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
   significant speed-up and avoids frequently re-opening the SQLite file.
 - Metadata returned from the use of the `select_metadata` is now a one-item
   dictionary with 'selected' as the key, to match default type/behavior.
+- The method `BaseClient.data_sources()` returns dataclass objects instead of
+  raw dict objects.
+
+### Fixed
+
+- Propagate setting `include_data_sources` into child nodes.
 
 ## v0.1.0a120 (25 April 2024)
 
