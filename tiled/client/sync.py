@@ -1,9 +1,10 @@
+import httpx
 import itertools
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource, Management
 from .base import BaseClient
-
+from .utils import ClientError
 
 def copy(
     source: BaseClient,
@@ -92,13 +93,20 @@ def _copy_container(source, dest):
             raise NotImplementedError(
                 "Multiple Data Sources in one Node is not supported."
             )
-        node = dest.new(
-            key=key,
-            structure_family=child_node.structure_family,
-            data_sources=data_sources,
-            metadata=dict(child_node.metadata),
-            specs=child_node.specs,
-        )
+        try:
+            node = dest.new(
+                key=key,
+                structure_family=child_node.structure_family,
+                data_sources=data_sources,
+                metadata=dict(child_node.metadata),
+                specs=child_node.specs,
+            )
+        except ClientError as e:
+            if e.response.status_code == httpx.codes.CONFLICT:
+                print('Skipped existing entry (or UUID hash collision)')
+                continue
+            else:
+                raise e
         if (
             original_data_sources
             and (original_data_sources[0].management != Management.external)
