@@ -652,6 +652,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Merge in "id" and "links" returned by the server.
         item.update(document)
 
+        # Ensure this is a dataclass, not a dict.
+        # When we apply type hints and mypy to the client it should be possible
+        # to dispense with this.
+        if (structure_family != StructureFamily.container) and isinstance(
+            structure, dict
+        ):
+            structure_type = STRUCTURE_TYPES[structure_family]
+            structure = structure_type.from_json(structure)
+
         return client_for_item(
             self.context,
             self.structure_clients,
