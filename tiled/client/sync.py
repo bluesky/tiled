@@ -1,4 +1,3 @@
-import collections.abc
 import itertools
 
 from ..structures.core import StructureFamily
@@ -39,11 +38,8 @@ def copy(
     if hasattr(source, "structure_family"):
         # looks like a client object
         _DISPATCH[source.structure_family](source.include_data_sources(), dest)
-    elif isinstance(source, list):
-        # such as result of source.items().head()
+    else:
         _DISPATCH[StructureFamily.container](dict(source), dest)
-    elif isinstance(source, collections.abc.Mapping):
-        _DISPATCH[StructureFamily.container](source, dest)
 
 
 def _copy_array(source, dest):
