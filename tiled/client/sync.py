@@ -51,6 +51,22 @@ def _copy_array(source, dest):
         dest.write_block(array, block)
 
 
+def _copy_awkward(source, dest):
+    import awkward
+
+    array = source.read()
+    _form, _length, container = awkward.to_buffers(array)
+    dest.write(container)
+
+
+def _copy_sparse(source, dest):
+    num_blocks = (range(len(n)) for n in source.chunks)
+    # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
+    for block in itertools.product(*num_blocks):
+        array = source.read_block(block)
+        dest.write_block(array.coords, array.data, block)
+
+
 def _copy_table(source, dest):
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
@@ -119,6 +135,8 @@ def _copy_container(source, dest):
 
 _DISPATCH = {
     StructureFamily.array: _copy_array,
+    StructureFamily.awkward: _copy_awkward,
     StructureFamily.container: _copy_container,
+    StructureFamily.sparse: _copy_sparse,
     StructureFamily.table: _copy_table,
 }

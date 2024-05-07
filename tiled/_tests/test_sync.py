@@ -2,9 +2,11 @@ import asyncio
 import contextlib
 import tempfile
 
+import awkward
 import h5py
 import numpy
 import pandas
+import sparse
 import tifffile
 
 from tiled.catalog import in_memory
@@ -43,6 +45,9 @@ def populate_external(client, tmp_path):
         with h5py.File(filepath, "w") as file:
             g = file.create_group("g")
             g["data"] = numpy.arange(3)
+    # Note: Tiled does not currently happen to support any formats that it
+    # identifies as 'awkward' or 'sparse'. Potentially it could, and this
+    # test could be expanded to include those examples.
     asyncio.run(register(client, tmp_path))
 
 
@@ -53,12 +58,24 @@ def populate_internal(client):
     # table
     df = pandas.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
     client.write_dataframe(df, key="b", metadata={"color": "green"}, specs=["beta"])
+    # awkward
+    client.write_awkward(
+        awkward.Array([1, [2, 3]]), key="d", metadata={"color": "red"}, specs=["alpha"]
+    )
+    # sparse
+    coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+    client.write_sparse(key="e", coords=coo.coords, data=coo.data, shape=coo.shape)
+
     # nested
     container = client.create_container("c")
     container.write_array(
         [1, 2, 3], key="A", metadata={"color": "red"}, specs=["alpha"]
     )
     container.write_dataframe(df, key="B", metadata={"color": "green"}, specs=["beta"])
+    container.write_awkward(
+        awkward.Array([1, [2, 3]]), key="D", metadata={"color": "red"}, specs=["alpha"]
+    )
+    container.write_sparse(key="E", coords=coo.coords, data=coo.data, shape=coo.shape)
 
 
 def test_copy_internal():
