@@ -75,11 +75,13 @@ class DaskDatasetClient(Container):
                     coords[name] = (
                         array_client.dims,
                         coords_fetcher.register(name, array_client, array_structure),
+                        array_client.metadata["attrs"],
                     )
                 elif "xarray_data_var" in spec_names:
                     data_vars[name] = (
                         array_client.dims,
                         data_vars_fetcher.register(name, array_client, array_structure),
+                        array_client.metadata["attrs"],
                     )
                 else:
                     raise ValueError(
@@ -88,9 +90,17 @@ class DaskDatasetClient(Container):
                     )
             else:
                 if "xarray_coord" in spec_names:
-                    coords[name] = (array_client.dims, array_client.read())
+                    coords[name] = (
+                        array_client.dims,
+                        array_client.read(),
+                        array_client.metadata["attrs"],
+                    )
                 elif "xarray_data_var" in spec_names:
-                    data_vars[name] = (array_client.dims, array_client.read())
+                    data_vars[name] = (
+                        array_client.dims,
+                        array_client.read(),
+                        array_client.metadata["attrs"],
+                    )
                 else:
                     raise ValueError(
                         "Child nodes of xarray_dataset should include spec "

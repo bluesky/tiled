@@ -78,7 +78,7 @@ def client():
 def test_xarray_dataset(client, key):
     expected = EXPECTED[key]
     actual = client[key].read().load()
-    xarray.testing.assert_equal(actual, expected)
+    xarray.testing.assert_identical(actual, expected)
 
 
 def test_specs(client):
