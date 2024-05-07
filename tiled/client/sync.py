@@ -66,7 +66,7 @@ def _copy_container(source, dest):
                 data_sources = []
             else:
                 raise ValueError(
-                    f"Unable to copy {child_node} which has is a "
+                    f"Unable to copy {child_node} which is a "
                     f"{child_node.structure_family} but has no data sources."
                 )
         else:
