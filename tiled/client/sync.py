@@ -1,10 +1,12 @@
-import httpx
 import itertools
+
+import httpx
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource, Management
 from .base import BaseClient
 from .utils import ClientError
+
 
 def copy(
     source: BaseClient,
@@ -119,7 +121,7 @@ def _copy_container(source, dest):
             )
         except ClientError as e:
             if e.response.status_code == httpx.codes.CONFLICT:
-                print('Skipped existing entry (or UUID hash collision)')
+                print("Skipped existing entry (or UUID hash collision)")
                 continue
             else:
                 raise e
