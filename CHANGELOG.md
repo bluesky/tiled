@@ -25,6 +25,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   dictionary with 'selected' as the key, to match default type/behavior.
 - The method `BaseClient.data_sources()` returns dataclass objects instead of
   raw dict objects.
+- `tiled.client.sync` has conflict handling, with initial options of 'error'
+  (default), 'warn', and 'skip'
 
 ### Fixed
 
