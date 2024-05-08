@@ -1,4 +1,5 @@
 import itertools
+import warnings
 
 import httpx
 
@@ -11,7 +12,7 @@ from .utils import ClientError
 def copy(
     source: BaseClient,
     dest: BaseClient,
-    skip_duplicates: bool = False,
+    on_conflict: str = "error",
 ):
     """
     Copy data from one Tiled instance to another.
@@ -20,7 +21,7 @@ def copy(
     ----------
     source : tiled node
     dest : tiled node
-    skip_duplicates : bool, default False
+    on_conflict : str, default 'error', other options 'warn', 'skip'
 
     Examples
     --------
@@ -39,17 +40,20 @@ def copy(
     >>> copy(a.items().head(), b)
     >>> copy(a.search(...), b)
 
+    Copy and ignore duplicates.
+
+    >>> copy(a, b, on_conflict = 'skip')
     """
     if hasattr(source, "structure_family"):
         # looks like a client object
         _DISPATCH[source.structure_family](
-            source.include_data_sources(), dest, skip_duplicates
+            source.include_data_sources(), dest, on_conflict
         )
     else:
-        _DISPATCH[StructureFamily.container](dict(source), dest, skip_duplicates)
+        _DISPATCH[StructureFamily.container](dict(source), dest, on_conflict)
 
 
-def _copy_array(source, dest, skip_duplicates):
+def _copy_array(source, dest, on_conflict):
     num_blocks = (range(len(n)) for n in source.chunks)
     # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
     for block in itertools.product(*num_blocks):
@@ -57,7 +61,7 @@ def _copy_array(source, dest, skip_duplicates):
         dest.write_block(array, block)
 
 
-def _copy_awkward(source, dest, skip_duplicates):
+def _copy_awkward(source, dest, on_conflict):
     import awkward
 
     array = source.read()
@@ -65,7 +69,7 @@ def _copy_awkward(source, dest, skip_duplicates):
     dest.write(container)
 
 
-def _copy_sparse(source, dest, skip_duplicates):
+def _copy_sparse(source, dest, on_conflict):
     num_blocks = (range(len(n)) for n in source.chunks)
     # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
     for block in itertools.product(*num_blocks):
@@ -73,13 +77,13 @@ def _copy_sparse(source, dest, skip_duplicates):
         dest.write_block(array.coords, array.data, block)
 
 
-def _copy_table(source, dest, skip_duplicates):
+def _copy_table(source, dest, on_conflict):
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
         dest.write_partition(df, partition)
 
 
-def _copy_container(source, dest, skip_duplicates):
+def _copy_container(source, dest, on_conflict):
     for key, child_node in source.items():
         original_data_sources = child_node.include_data_sources().data_sources()
         num_data_sources = len(original_data_sources)
@@ -124,8 +128,11 @@ def _copy_container(source, dest, skip_duplicates):
                 specs=child_node.specs,
             )
         except ClientError as err:
-            if skip_duplicates and err.response.status_code == httpx.codes.CONFLICT:
-                print("Skipped existing entry (or UUID hash collision)")
+            if (
+                on_conflict == "skip" or on_conflict == "warn"
+            ) and err.response.status_code == httpx.codes.CONFLICT:
+                if on_conflict == "warn":
+                    warnings.warn("Skipped existing entry")
                 continue
             else:
                 raise err
@@ -136,7 +143,9 @@ def _copy_container(source, dest, skip_duplicates):
             child_node.structure_family == StructureFamily.container
             and (not original_data_sources)
         ):
-            _DISPATCH[child_node.structure_family](child_node, node)
+            _DISPATCH[child_node.structure_family](
+                child_node, node, on_conflict=on_conflict
+            )
 
 
 _DISPATCH = {
