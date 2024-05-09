@@ -54,8 +54,6 @@ all = [
     "awkward >=2.4.3",
     "blosc2",
     "cachetools",
-    "cachey",
-    "click !=8.1.0",
     "dask",
     "dask[array]",
     "dask[dataframe]",
@@ -76,10 +74,8 @@ all = [
     "orjson",
     "packaging",
     "pandas",
-    "parquet",
     "pillow",
     "prometheus_client",
-    "psutil",
     "pyarrow",
     "pydantic >=2, <3",
     "pydantic-settings >=2, <3",
@@ -92,10 +88,9 @@ all = [
     "sqlalchemy[asyncio] >=2",
     "starlette",
     "tifffile",
-    "toolz",
     "typer",
     "uvicorn[standard]",
-    "watchgod",
+    "watchfiles",
     "xarray",
     "zarr",
     "zstandard",
@@ -110,7 +105,6 @@ client = [
     "appdirs",
     "awkward >=2.4.3",
     "blosc2",
-    "click !=8.1.0",
     "dask[array]",
     "dask[dataframe]",
     "entrypoints",
@@ -128,7 +122,8 @@ client = [
     "sparse",
     "typer",
     "xarray",
-    "zstandard"
+    "watchfiles",
+    "zstandard",
 ]
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
@@ -177,7 +172,6 @@ formats = [
 # These are the requirements needed for basic client functionality.
 minimal-client = [
     "appdirs",
-    "click !=8.1.0",
     "entrypoints",
     "httpx >=0.20.0,!=0.23.1",
     "jsonschema",
@@ -185,7 +179,8 @@ minimal-client = [
     "orjson",
     "pyyaml",
     "rich",
-    "typer"
+    "typer",
+    "watchfiles",
 ]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
@@ -195,9 +190,7 @@ minimal-server = [
     "anyio",
     "appdirs",
     "asgi-correlation-id",
-    "cachey",
     "cachetools",
-    "click !=8.1.0",
     "dask",
     "fastapi",
     "httpx >=0.20.0,!=0.23.1",
@@ -208,8 +201,6 @@ minimal-server = [
     "msgpack >=1.0.0",
     "orjson",
     "packaging",
-    "parquet",
-    "psutil",
     "prometheus_client",
     "pydantic >=2, <3",
     "pydantic-settings >=2, <3",
@@ -219,10 +210,8 @@ minimal-server = [
     "pyyaml",
     "sqlalchemy[asyncio] >=2",
     "starlette",
-    "toolz",
     "typer",
     "uvicorn[standard]",
-    "watchgod",
     "zarr",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
@@ -237,8 +226,6 @@ server = [
     "awkward >=2.4.3",
     "blosc2",
     "cachetools",
-    "cachey",
-    "click !=8.1.0",
     "dask",
     "dask[array]",
     "dask[dataframe]",
@@ -258,10 +245,8 @@ server = [
     "orjson",
     "packaging",
     "pandas",
-    "parquet",
     "pillow",
     "prometheus_client",
-    "psutil",
     "pyarrow",
     "pydantic >=2, <3",
     "pydantic-settings >=2, <3",
@@ -273,10 +258,8 @@ server = [
     "sqlalchemy[asyncio] >=2",
     "starlette",
     "tifffile",
-    "toolz",
     "typer",
     "uvicorn[standard]",
-    "watchgod",
     "xarray",
     "zarr",
     "zstandard",
