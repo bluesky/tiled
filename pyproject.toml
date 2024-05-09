@@ -122,7 +122,8 @@ client = [
     "sparse",
     "typer",
     "xarray",
-    "zstandard"
+    "watchfiles",
+    "zstandard",
 ]
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
@@ -178,7 +179,8 @@ minimal-client = [
     "orjson",
     "pyyaml",
     "rich",
-    "typer"
+    "typer",
+    "watchfiles",
 ]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
@@ -210,7 +212,6 @@ minimal-server = [
     "starlette",
     "typer",
     "uvicorn[standard]",
-    "watchfiles",
     "zarr",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
@@ -259,7 +260,6 @@ server = [
     "tifffile",
     "typer",
     "uvicorn[standard]",
-    "watchfiles",
     "xarray",
     "zarr",
     "zstandard",
