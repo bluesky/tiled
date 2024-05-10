@@ -6,6 +6,7 @@ import awkward
 import h5py
 import numpy
 import pandas
+import pytest
 import sparse
 import tifffile
 
@@ -14,6 +15,7 @@ from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.smoke import read
 from tiled.client.sync import copy
+from tiled.client.utils import ClientError
 from tiled.queries import Key
 from tiled.server.app import build_app
 
@@ -86,6 +88,35 @@ def test_copy_internal():
             assert list(source) == list(dest)
             assert list(source["c"]) == list(dest["c"])
             read(dest, strict=True)
+
+
+def test_copy_skip_conflict():
+    with client_factory() as dest:
+        with client_factory() as source:
+            populate_internal(source)
+            copy(source, dest)
+            copy(source, dest, on_conflict="skip")
+            assert list(source) == list(dest)
+            assert list(source["c"]) == list(dest["c"])
+            read(dest, strict=True)
+
+
+def test_copy_warn_conflict():
+    with client_factory() as dest:
+        with client_factory() as source:
+            populate_internal(source)
+            copy(source, dest)
+            with pytest.warns(UserWarning):
+                copy(source, dest, on_conflict="warn")
+
+
+def test_copy_error_conflict():
+    with client_factory() as dest:
+        with client_factory() as source:
+            populate_internal(source)
+            copy(source, dest)
+            with pytest.raises(ClientError):
+                copy(source, dest)
 
 
 def test_copy_external(tmp_path):
