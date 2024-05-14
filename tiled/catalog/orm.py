@@ -9,11 +9,14 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Table,
     Unicode,
     event,
+    schema,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
@@ -271,15 +274,36 @@ def create_index_metadata_tsvector_search(target, connection, **kw):
         )
 
 
-@event.listens_for(Node.__table__, "after_create")
+class FTS5Table(Table):
+    pass
+
+
+@compiles(schema.CreateTable, "sqlite")
+def _compile(element: schema.CreateTable, compiler, **kw):
+    if not isinstance(element.target, FTS5Table):
+        return compiler.visit_create_table(element, **kw)
+    name = compiler.preparer.format_table(element.target)
+    cols = ", ".join(
+        # Skip last column (rowid).
+        compiler.preparer.format_column(col)
+        for col in element.target.columns[1:]
+    )
+    return f"CREATE VIRTUAL TABLE {name} USING fts5({cols}, content='nodes', content_rowid='id')"
+
+
+metadata_fts5 = FTS5Table(
+    "metadata_fts5", Base.metadata, Column("rowid", Integer), Column("metadata", JSON)
+)
+
+
+@event.listens_for(metadata_fts5, "after_create")
 def create_virtual_table_fits5(target, connection, **kw):
     if connection.engine.dialect.name == "sqlite":
         statements = [
-            # Create an external content fts5 table.
             # See https://www.sqlite.org/fts5.html Section 4.4.3.
-            """
-            CREATE VIRTUAL TABLE metadata_fts5 USING fts5(metadata, content='nodes', content_rowid='id');
-            """,
+            # """
+            # CREATE VIRTUAL TABLE metadata_fts5 USING fts5(metadata, content='nodes', content_rowid='id');
+            # """,
             # Triggers keep the index synchronized with the nodes table.
             """
             CREATE TRIGGER nodes_metadata_fts5_sync_ai AFTER INSERT ON nodes BEGIN
