@@ -24,6 +24,11 @@ def upgrade():
             """
             CREATE VIRTUAL TABLE metadata_fts5 USING fts5(metadata, content='nodes', content_rowid='id');
             """,
+            # Insert all existing node content into the fts5 table.
+            """
+            INSERT INTO metadata_fts5(rowid, metadata)
+            SELECT id, metadata FROM nodes;
+            """
             # Triggers keep the index synchronized with the nodes table.
             """
             CREATE TRIGGER nodes_metadata_fts5_sync_ai AFTER INSERT ON nodes BEGIN
