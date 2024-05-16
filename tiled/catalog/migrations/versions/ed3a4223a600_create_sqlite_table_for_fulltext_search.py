@@ -28,7 +28,7 @@ def upgrade():
             """
             INSERT INTO metadata_fts5(rowid, metadata)
             SELECT id, metadata FROM nodes;
-            """
+            """,
             # Triggers keep the index synchronized with the nodes table.
             """
             CREATE TRIGGER nodes_metadata_fts5_sync_ai AFTER INSERT ON nodes BEGIN
