@@ -159,6 +159,23 @@ class Context:
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
+    def __repr__(self):
+        auth_info = []
+        if (self.api_key is None) and (self.http_client.auth is None):
+            auth_info.append("(unauthenticated)")
+        else:
+            auth_info.append("authenticated")
+            identities = self.whoami()["identities"]
+            if identities:
+                auth_info.append("as")
+                auth_info.append(
+                    ",".join(f"'{identity['id']}'" for identity in identities)
+                )
+            if self.api_key is not None:
+                auth_info.append(f"with API key '{self.api_key[:8]}...'")
+        auth_repr = " ".join(auth_info)
+        return f"<{type(self).__name__} {auth_repr}>"
+
     def __enter__(self):
         return self
 
