@@ -165,11 +165,11 @@ class Context:
             auth_info.append("(unauthenticated)")
         else:
             auth_info.append("authenticated")
-            identities = self.whoami()["identities"]
-            if identities:
+            if self.server_info["authentication"].get("links"):
+                whoami = self.whoami()
                 auth_info.append("as")
                 auth_info.append(
-                    ",".join(f"'{identity['id']}'" for identity in identities)
+                    ",".join(f"'{identity['id']}'" for identity in whoami["identities"])
                 )
             if self.api_key is not None:
                 auth_info.append(f"with API key '{self.api_key[:min(len(self.api_key)//2, 8)]}...'")
