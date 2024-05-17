@@ -172,7 +172,9 @@ class Context:
                     ",".join(f"'{identity['id']}'" for identity in whoami["identities"])
                 )
             if self.api_key is not None:
-                auth_info.append(f"with API key '{self.api_key[:min(len(self.api_key)//2, 8)]}...'")
+                auth_info.append(
+                    f"with API key '{self.api_key[:min(len(self.api_key)//2, 8)]}...'"
+                )
         auth_repr = " ".join(auth_info)
         return f"<{type(self).__name__} {auth_repr}>"
 
