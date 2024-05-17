@@ -77,11 +77,14 @@ def test_password_auth(enter_password, config):
             from_context(context, username="alice")
         # Reuse token from cache.
         client = from_context(context, username="alice")
+        assert "authenticated as 'alice'" in repr(client.context)
         client.logout()
+        assert "unauthenticated" in repr(client.context)
 
         # Log in as Bob.
         with enter_password("secret2"):
             client = from_context(context, username="bob")
+            assert "authenticated as 'bob'" in repr(client.context)
         client.logout()
 
         # Bob's password should not work for Alice.
@@ -333,6 +336,10 @@ def test_api_key_activity(enter_password, config):
         context.logout()
         assert key_info["latest_activity"] is None  # never used
         context.api_key = key_info["secret"]
+        assert "authenticated as 'alice'" in repr(context)
+        assert "with API key" in repr(context)
+        assert key_info["secret"][:8] in repr(context)
+        assert key_info["secret"][8:] not in repr(context)
 
         # Use the key for a couple requests and see that latest_activity becomes set and then increases.
         client = from_context(context)
