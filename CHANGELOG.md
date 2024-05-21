@@ -33,6 +33,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Propagate setting `include_data_sources` into child nodes.
 - Populate attributes in member data variables and coordinates of xarray Datasets.
 - Update dependencies.
+- Fix behavior of queries `In` and `NotIn` when passed an empty list of values.
 
 ## v0.1.0a120 (25 April 2024)
 
