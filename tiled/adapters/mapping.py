@@ -766,6 +766,8 @@ def notin(query: Any, tree: MapAdapter) -> MapAdapter:
 
     """
     matches = {}
+    if len(query.value) == 0:
+        return tree
     for key, value, term in iter_child_metadata(query.key, tree):
         if term not in query.value:
             matches[key] = value

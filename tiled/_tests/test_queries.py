@@ -261,7 +261,7 @@ def test_notin(client, query_values):
 
 
 def test_not_in_empty(client):
-    assert list(client.search(NotIn("letter", []))) == []
+    assert sorted(list(client.search(NotIn("letter", [])))) == sorted(list(client))
 
 
 @pytest.mark.parametrize(
