@@ -10,6 +10,7 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
+from typing import Callable, Dict
 from urllib.parse import quote_plus, urlparse
 
 import anyio
@@ -1206,35 +1207,46 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def in_or_not_in(query, tree, method):
-    dialect_name = tree.engine.url.get_dialect().name
-    keys = query.key.split(".")
+def in_or_not_in_sqlite(query, tree, method, keys, attr):
     attr = orm.Node.metadata_[keys]
-    if dialect_name == "sqlite":
-        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
-    elif dialect_name == "postgresql":
-        # Engage btree_gin index with @> operator
-        if method == "in_":
-            condition = or_(
+    condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+def in_or_not_in_postgresql(query, tree, method):
+    keys = query.key.split(".")
+    # Engage btree_gin index with @> operator
+    if method == "in_":
+        condition = or_(
+            *(
+                orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
+                for item in query.value
+            )
+        )
+    elif method == "not_in":
+        condition = not_(
+            or_(
                 *(
                     orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
                     for item in query.value
                 )
             )
-        elif method == "not_in":
-            condition = not_(
-                or_(
-                    *(
-                        orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
-                        for item in query.value
-                    )
-                )
-            )
-        else:
-            raise UnsupportedQueryType("NotIn")
-    else:
-        raise UnsupportedQueryType("In/NotIn")
+        )
     return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+_IN_OR_NOT_IN_DIALECT_DISPATCH: Dict[str, Callable] = {
+    "sqlite": in_or_not_in_sqlite,
+    "postgresql": in_or_not_in_postgresql,
+}
+
+
+def in_or_not_in(query, tree, method):
+    METHODS = {"in_", "not_in"}
+    if method not in METHODS:
+        raise ValueError(f"method must be one of {METHODS}")
+    dialect_name = tree.engine.url.get_dialect().name
+    return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
 
 
 def keys_filter(query, tree):
