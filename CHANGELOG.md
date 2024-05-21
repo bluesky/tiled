@@ -16,6 +16,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   that the data in it can be read.
 - Added `tiled.client.sync` with a utility for copying nodes between two
   Tiled instances.
+- Show authentication state in `Context` repr.
 
 ### Changed
 
