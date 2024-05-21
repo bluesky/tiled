@@ -230,6 +230,10 @@ def test_in(client, query_values):
     ]
 
 
+def test_in_empty(client):
+    assert list(client.search(In("letter", []))) == []
+
+
 @pytest.mark.parametrize(
     "query_values",
     [
@@ -254,6 +258,10 @@ def test_notin(client, query_values):
             - set(["a", "k", "z"])
         )
     )
+
+
+def test_not_in_empty(client):
+    assert list(client.search(NotIn("letter", []))) == []
 
 
 @pytest.mark.parametrize(
