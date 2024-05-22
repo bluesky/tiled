@@ -5,9 +5,20 @@ import operator
 import sys
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
-from fastapi import APIRouter
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
