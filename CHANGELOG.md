@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A dependency on `fastapi` was introduced in `tiled.adapters`. This has been
+  removed.
+
 ## v0.1.0a121 (21 May 2024)
 
 ### Added
