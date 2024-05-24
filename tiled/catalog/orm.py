@@ -97,7 +97,7 @@ class Node(Timestamped, Base):
             "id",
             "metadata",
             postgresql_using="gin",
-        )
+        ),
         # This is used by ORDER BY with the default sorting.
         # Index("ancestors_time_created", "ancestors", "time_created"),
     )
@@ -289,6 +289,15 @@ def _compile(element: schema.CreateTable, compiler, **kw):
         for col in element.target.columns[1:]
     )
     return f"CREATE VIRTUAL TABLE {name} USING fts5({cols}, content='nodes', content_rowid='id')"
+
+
+# Preclude the creation of the FTS5 virtual table in posgres instances,
+# Where fulltext search is handled by a different indexing mechanism.
+@compiles(schema.CreateTable, "postgresql")
+def _compile(element: schema.CreateTable, compiler, **kw):
+    if not isinstance(element.target, FTS5Table):
+        return compiler.visit_create_table(element, **kw)
+    return "SELECT 1"
 
 
 metadata_fts5 = FTS5Table(
