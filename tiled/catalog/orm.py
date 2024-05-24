@@ -279,7 +279,7 @@ class FTS5Table(Table):
 
 
 @compiles(schema.CreateTable, "sqlite")
-def _compile(element: schema.CreateTable, compiler, **kw):
+def _compile_fts5_virtual_table_sqlite(element: schema.CreateTable, compiler, **kw):
     if not isinstance(element.target, FTS5Table):
         return compiler.visit_create_table(element, **kw)
     name = compiler.preparer.format_table(element.target)
@@ -291,10 +291,10 @@ def _compile(element: schema.CreateTable, compiler, **kw):
     return f"CREATE VIRTUAL TABLE {name} USING fts5({cols}, content='nodes', content_rowid='id')"
 
 
-# Preclude the creation of the FTS5 virtual table in posgres instances,
-# Where fulltext search is handled by a different indexing mechanism.
 @compiles(schema.CreateTable, "postgresql")
-def _compile(element: schema.CreateTable, compiler, **kw):
+def _compile_no_op_fts5_postgresql(element: schema.CreateTable, compiler, **kw):
+    # Preclude the creation of the FTS5 virtual table in posgres instances,
+    # Where fulltext search is handled by a different indexing mechanism.
     if not isinstance(element.target, FTS5Table):
         return compiler.visit_create_table(element, **kw)
     return "SELECT 1"
