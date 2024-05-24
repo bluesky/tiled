@@ -364,7 +364,7 @@ client or pass the optional parameter `include_data_sources=True` to
         "List formats that the server can export this data as."
         formats = set()
         for spec in self.item["attributes"]["specs"]:
-            formats.update(self.context.server_info["formats"].get(spec, []))
+            formats.update(self.context.server_info["formats"].get(spec["name"], []))
         formats.update(
             self.context.server_info["formats"][
                 self.item["attributes"]["structure_family"]
