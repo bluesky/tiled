@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Updated `BaseClient.formats` to use the `dict` structure for specs.
+
 ## v0.1.0a122 (23 May 2024)
 
 ### Fixed
