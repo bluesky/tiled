@@ -178,7 +178,7 @@ def test_full_text_update(client):
     if client.metadata["backend"] == "map":
         pytest.skip("Updating not supported")
     # Update the fulltext index and check that it is current with the main data.
-    try:     
+    try:
         client["full_text_test_case"].update_metadata({"color": "red"})
         assert list(client.search(FullText("purple"))) == []
         assert list(client.search(FullText("red"))) == ["full_text_test_case"]
