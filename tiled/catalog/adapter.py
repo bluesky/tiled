@@ -16,10 +16,6 @@ from urllib.parse import quote_plus, urlparse
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
-    JSON,
-    Column,
-    Integer,
-    Table,
     delete,
     event,
     false,
