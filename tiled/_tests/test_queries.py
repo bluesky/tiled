@@ -50,6 +50,10 @@ mapping["full_text_test_case"] = ArrayAdapter.from_array(
     numpy.ones(10), metadata={"color": "purple"}
 )
 
+mapping["full_text_test_case_urple"] = ArrayAdapter.from_array(
+    numpy.ones(10), metadata={"color": "urple"}
+)
+
 mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo", "bar"])
 mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
     numpy.ones(10), specs=["foo", "bar", "baz"]
@@ -167,6 +171,32 @@ def test_full_text(client):
     # plainto_tsquery fails to find certain words, weirdly, so it is a useful
     # test that we are using tsquery
     assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
+    assert list(client.search(FullText("urple"))) == ["full_text_test_case_urple"]
+
+
+def test_full_text_update(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("Updating not supported")
+    # Update the fulltext index and check that it is current with the main data.
+    try:     
+        client["full_text_test_case"].update_metadata({"color": "red"})
+        assert list(client.search(FullText("purple"))) == []
+        assert list(client.search(FullText("red"))) == ["full_text_test_case"]
+    finally:
+        # Reset case in the event tests are run out of order.
+        client["full_text_test_case"].update_metadata({"color": "purple"})
+
+
+def test_full_text_delete(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("Updating not supported")
+    # Delete a record the fulltext index and check that it is current with the main data.
+    client.write_array(numpy.ones(10), metadata={"item": "toaster"}, key="test_delete")
+    # Assert that the data was written
+    assert list(client.search(FullText("toaster"))) == ["test_delete"]
+    client.delete("test_delete")
+    assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
+    assert list(client.search(FullText("toaster"))) == []
 
 
 def test_regex(client):
