@@ -490,7 +490,7 @@ async def watch(
         )
         # Signal that initial walk is complete.
         # Process any changes that were accumulated during the initial walk.
-        await initial_walk_complete_event.set()
+        initial_walk_complete_event.set()
 
 
 async def _watch(
@@ -506,7 +506,7 @@ async def _watch(
     def watch_filter(change, path):
         return settings.filter(Path(path))
 
-    await ready_event.set()
+    ready_event.set()
     backlog = []
     async for batch in watchfiles.awatch(
         path,
