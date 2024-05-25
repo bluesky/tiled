@@ -143,6 +143,7 @@ dataframe = [
 dev = [
     "coverage",
     "flake8",
+    "importlib_resources;python_version < \"3.9\"",
     "ldap3",
     "pre-commit",
     "pytest <8",  # TMP pin while plugins catch up
