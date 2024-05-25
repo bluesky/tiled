@@ -1,11 +1,14 @@
 LOGGING_CONFIG = {
     "disable_existing_loggers": False,
     "filters": {
+        "principal": {
+            "()": "tiled.server.principal_log_filter.PrincipalFilter",
+        },
         "correlation_id": {
             "()": "asgi_correlation_id.CorrelationIdFilter",
             "default_value": "-",
             "uuid_length": 16,
-        }
+        },
     },
     "formatters": {
         "access": {
@@ -13,7 +16,7 @@ LOGGING_CONFIG = {
             "datefmt": "%Y-%m-%dT%H:%M:%S",
             "format": "[%(asctime)s.%(msecs)03dZ] "
             "[%(correlation_id)s] %(levelprefix)s "
-            '%(client_addr)s - "%(request_line)s" '
+            '%(client_addr)s (%(principal)s) - "%(request_line)s" '
             "%(status_code)s",
         },
         "default": {
@@ -28,7 +31,7 @@ LOGGING_CONFIG = {
     "handlers": {
         "access": {
             "class": "logging.StreamHandler",
-            "filters": ["correlation_id"],
+            "filters": ["principal", "correlation_id"],
             "formatter": "access",
             "stream": "ext://sys.stdout",
         },

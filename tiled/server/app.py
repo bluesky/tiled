@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextvars
 import logging
 import os
 import secrets
@@ -38,7 +39,7 @@ from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import validation_registry as default_validation_registry
 from . import schemas
 from .authentication import get_current_principal
@@ -75,6 +76,10 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("%(message)s"))
 logger.addHandler(handler)
+
+
+# This is used to pass the currently-authenticated principal into the logger.
+current_principal = contextvars.ContextVar("current_principal")
 
 
 def custom_openapi(app):
@@ -870,6 +875,14 @@ Back up the database, and then run:
         header_name="X-Tiled-Request-ID",
         generator=lambda: secrets.token_hex(8),
     )
+
+    @app.middleware("http")
+    async def current_principal_logging_filter(request: Request, call_next):
+        request.state.principal = SpecialUsers.public
+        response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        current_principal.set(request.state.principal)
+        return response
 
     return app
 
