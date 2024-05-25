@@ -29,7 +29,7 @@ from ..queries import (
 )
 from ..server.app import build_app
 from .conftest import TILED_TEST_POSTGRESQL_URI
-from .utils import fail_with_status_code, temp_postgres
+from .utils import fail_with_status_code, sqlite_from_dump, temp_postgres
 
 keys = list(string.ascii_lowercase)
 mapping = {
@@ -48,6 +48,10 @@ mapping["does_not_contain_z"] = ArrayAdapter.from_array(
 )
 mapping["full_text_test_case"] = ArrayAdapter.from_array(
     numpy.ones(10), metadata={"color": "purple"}
+)
+
+mapping["full_text_test_case_urple"] = ArrayAdapter.from_array(
+    numpy.ones(10), metadata={"color": "urple"}
 )
 
 mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo", "bar"])
@@ -163,18 +167,53 @@ def test_contains(client):
 
 
 def test_full_text(client):
-    if client.metadata["backend"] in {"sqlite"}:
+    "Basic test of FullText query"
+    assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
+    # plainto_tsquery fails to find certain words, weirdly, so it is a useful
+    # test that we are using tsquery
+    assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
+    assert list(client.search(FullText("urple"))) == ["full_text_test_case_urple"]
 
-        def cm():
-            return fail_with_status_code(HTTP_400_BAD_REQUEST)
 
-    else:
-        cm = nullcontext
-    with cm():
-        assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
-        # plainto_tsquery fails to find certain words, weirdly, so it is a useful
-        # test that we are using tsquery
-        assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
+def test_full_text_after_migration():
+    # Load a SQL database created by an older version of Tiled, predating FullText
+    # support, and verify that the migration indexes the pre-existing metadata.
+    with sqlite_from_dump("before_creating_fts5_virtual_table.sql") as database_path:
+        subprocess.check_call(
+            [sys.executable]
+            + f"-m tiled catalog upgrade-database sqlite+aiosqlite:///{database_path}".split()
+        )
+        catalog = from_uri(database_path)
+        app = build_app(catalog)
+        with Context.from_app(app) as context:
+            client = from_context(context)
+            assert list(client.search(FullText("blue"))) == ["x"]
+            assert list(client.search(FullText("red"))) == []  # does not exist
+
+
+def test_full_text_update(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("Updating not supported")
+    # Update the fulltext index and check that it is current with the main data.
+    try:
+        client["full_text_test_case"].update_metadata({"color": "red"})
+        assert list(client.search(FullText("purple"))) == []
+        assert list(client.search(FullText("red"))) == ["full_text_test_case"]
+    finally:
+        # Reset case in the event tests are run out of order.
+        client["full_text_test_case"].update_metadata({"color": "purple"})
+
+
+def test_full_text_delete(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("Updating not supported")
+    # Delete a record the fulltext index and check that it is current with the main data.
+    client.write_array(numpy.ones(10), metadata={"item": "toaster"}, key="test_delete")
+    # Assert that the data was written
+    assert list(client.search(FullText("toaster"))) == ["test_delete"]
+    client.delete("test_delete")
+    assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
+    assert list(client.search(FullText("toaster"))) == []
 
 
 def test_regex(client):

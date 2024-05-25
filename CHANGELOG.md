@@ -3,7 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.1.0b1
+
+### Added
+
+- Support for `FullText` search on SQLite-backed catalogs
 
 ### Fixed
 

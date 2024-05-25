@@ -9,11 +9,14 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Table,
     Unicode,
     event,
+    schema,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
@@ -94,7 +97,7 @@ class Node(Timestamped, Base):
             "id",
             "metadata",
             postgresql_using="gin",
-        )
+        ),
         # This is used by ORDER BY with the default sorting.
         # Index("ancestors_time_created", "ancestors", "time_created"),
     )
@@ -255,7 +258,7 @@ EXECUTE FUNCTION raise_if_null_parameter_exists();"""
         )
 
 
-@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+@event.listens_for(Node.__table__, "after_create")
 def create_index_metadata_tsvector_search(target, connection, **kw):
     # This creates a ts_vector based metadata search index for fulltext.
     # Postgres only feature
@@ -269,6 +272,71 @@ def create_index_metadata_tsvector_search(target, connection, **kw):
                 """
             )
         )
+
+
+class FTS5Table(Table):
+    pass
+
+
+@compiles(schema.CreateTable, "sqlite")
+def _compile_fts5_virtual_table_sqlite(element: schema.CreateTable, compiler, **kw):
+    if not isinstance(element.target, FTS5Table):
+        return compiler.visit_create_table(element, **kw)
+    name = compiler.preparer.format_table(element.target)
+    cols = ", ".join(
+        # Skip last column (rowid).
+        compiler.preparer.format_column(col)
+        for col in element.target.columns[1:]
+    )
+    return f"CREATE VIRTUAL TABLE {name} USING fts5({cols}, content='nodes', content_rowid='id')"
+
+
+@compiles(schema.CreateTable, "postgresql")
+def _compile_no_op_fts5_postgresql(element: schema.CreateTable, compiler, **kw):
+    # Preclude the creation of the FTS5 virtual table in posgres instances,
+    # Where fulltext search is handled by a different indexing mechanism.
+    if not isinstance(element.target, FTS5Table):
+        return compiler.visit_create_table(element, **kw)
+    return "SELECT 1"
+
+
+metadata_fts5 = FTS5Table(
+    "metadata_fts5", Base.metadata, Column("rowid", Integer), Column("metadata", JSON)
+)
+
+
+@event.listens_for(metadata_fts5, "after_create")
+def create_virtual_table_fits5(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        statements = [
+            # See https://www.sqlite.org/fts5.html Section 4.4.3.
+            # """
+            # CREATE VIRTUAL TABLE metadata_fts5 USING fts5(metadata, content='nodes', content_rowid='id');
+            # """,
+            # Triggers keep the index synchronized with the nodes table.
+            """
+            CREATE TRIGGER nodes_metadata_fts5_sync_ai AFTER INSERT ON nodes BEGIN
+              INSERT INTO metadata_fts5(rowid, metadata)
+              VALUES (new.id, new.metadata);
+            END;
+            """,
+            """
+            CREATE TRIGGER nodes_metadata_fts5_sync_ad AFTER DELETE ON nodes BEGIN
+              INSERT INTO metadata_fts5(metadata_fts5, rowid, metadata)
+              VALUES('delete', old.id, old.metadata);
+            END;
+            """,
+            """
+            CREATE TRIGGER nodes_metadata_fts5_sync_au AFTER UPDATE ON nodes BEGIN
+              INSERT INTO metadata_fts5(metadata_fts5, rowid, metadata)
+              VALUES('delete', old.id, old.metadata);
+              INSERT INTO metadata_fts5(rowid, metadata)
+              VALUES (new.id, new.metadata);
+            END;
+            """,
+        ]
+        for statement in statements:
+            connection.execute(text(statement))
 
 
 class DataSource(Timestamped, Base):

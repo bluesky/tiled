@@ -1,7 +1,11 @@
 import contextlib
 import getpass
+import sqlite3
+import sys
+import tempfile
 import uuid
 from enum import IntEnum
+from pathlib import Path
 
 import httpx
 import pytest
@@ -10,6 +14,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..client import context
 from ..client.base import BaseClient
+
+if sys.version_info < (3, 9):
+    import importlib_resources as resources
+else:
+    from importlib import resources  # Python >= 3.9 only
 
 
 @contextlib.contextmanager
@@ -64,3 +73,19 @@ class URL_LIMITS(IntEnum):
     HUGE = 80_000
     DEFAULT = BaseClient.URL_CHARACTER_LIMIT
     TINY = 10
+
+
+@contextlib.contextmanager
+def sqlite_from_dump(filename):
+    """Create a SQLite db in a temporary directory, loading a SQL script.
+
+    SQL script should be given as a filename, assumed to be in tiled/_tests/sql/
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        database_path = Path(directory, "catalog.db")
+        conn = sqlite3.connect(database_path)
+        ref = resources.files("tiled._tests.sql") / filename
+        with resources.as_file(ref) as path:
+            conn.executescript(path.read_text())
+        conn.close()
+        yield database_path
