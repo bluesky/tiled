@@ -87,4 +87,5 @@ def sqlite_from_dump(filename):
         ref = resources.files("tiled._tests.sql") / filename
         with resources.as_file(ref) as path:
             conn.executescript(path.read_text())
+        conn.close()
         yield database_path
