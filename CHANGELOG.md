@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+## Changed
+
+- Customized default logging configuration to include correlation ID
+
 ## v0.1.0b1 (2024-05-25)
 
 ### Added
