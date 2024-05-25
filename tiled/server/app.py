@@ -870,12 +870,6 @@ Back up the database, and then run:
             # An exception above would have triggered an early exit.
             return response
 
-    app.add_middleware(
-        CorrelationIdMiddleware,
-        header_name="X-Tiled-Request-ID",
-        generator=lambda: secrets.token_hex(8),
-    )
-
     @app.middleware("http")
     async def current_principal_logging_filter(request: Request, call_next):
         request.state.principal = SpecialUsers.public
@@ -883,6 +877,12 @@ Back up the database, and then run:
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         current_principal.set(request.state.principal)
         return response
+
+    app.add_middleware(
+        CorrelationIdMiddleware,
+        header_name="X-Tiled-Request-ID",
+        generator=lambda: secrets.token_hex(8),
+    )
 
     return app
 
