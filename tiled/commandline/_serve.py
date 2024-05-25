@@ -619,13 +619,16 @@ def serve_config(
         logger,
         print_admin_api_key_if_generated,
     )
+    from ..server.logging_config import LOGGING_CONFIG
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
     # If --host is given, it overrides host in config. Same for --port and --log-config.
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
-    uvicorn_kwargs["log_config"] = log_config or uvicorn_kwargs.get("log_config")
+    uvicorn_kwargs["log_config"] = (
+        log_config or uvicorn_kwargs.get("log_config") or LOGGING_CONFIG
+    )
 
     # This config was already validated when it was parsed. Do not re-validate.
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
