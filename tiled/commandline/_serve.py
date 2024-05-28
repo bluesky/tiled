@@ -102,6 +102,9 @@ def serve_directory(
     log_config: Optional[str] = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
+    ),
 ):
     "Serve a Tree instance from a directory of files."
     import tempfile
@@ -201,10 +204,9 @@ def serve_directory(
     import uvicorn
 
     from ..client import from_uri as client_from_uri
-    from ..server.logging_config import LOGGING_CONFIG
 
     print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
-    log_config = log_config or LOGGING_CONFIG
+    log_config = _setup_log_config(log_config, log_timestamps)
     config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
     server = uvicorn.Server(config)
 
@@ -339,6 +341,9 @@ def serve_catalog(
     log_config: Optional[str] = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
+    ),
 ):
     "Serve a catalog."
     import urllib.parse
@@ -438,9 +443,7 @@ or use an existing one:
 
     import uvicorn
 
-    from ..server.logging_config import LOGGING_CONFIG
-
-    log_config = log_config or LOGGING_CONFIG
+    log_config = _setup_log_config(log_config, log_timestamps)
     uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
@@ -488,6 +491,9 @@ def serve_pyobject(
     log_config: Optional[str] = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
+    ),
 ):
     "Serve a Tree instance from a Python module."
     from ..server.app import build_app, print_admin_api_key_if_generated
@@ -508,9 +514,7 @@ def serve_pyobject(
 
     import uvicorn
 
-    from ..server.logging_config import LOGGING_CONFIG
-
-    log_config = log_config or LOGGING_CONFIG
+    log_config = _setup_log_config(log_config, log_timestamps)
     uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
@@ -588,6 +592,9 @@ def serve_config(
     log_config: Optional[str] = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
+    ),
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
@@ -619,15 +626,15 @@ def serve_config(
         logger,
         print_admin_api_key_if_generated,
     )
-    from ..server.logging_config import LOGGING_CONFIG
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
     # If --host is given, it overrides host in config. Same for --port and --log-config.
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
-    uvicorn_kwargs["log_config"] = (
-        log_config or uvicorn_kwargs.get("log_config") or LOGGING_CONFIG
+    uvicorn_kwargs["log_config"] = _setup_log_config(
+        log_config or uvicorn_kwargs.get("log_config"),
+        log_timestamps,
     )
 
     # This config was already validated when it was parsed. Do not re-validate.
@@ -648,3 +655,32 @@ def serve_config(
     import uvicorn
 
     uvicorn.run(web_app, **uvicorn_kwargs)
+
+
+def _setup_log_config(log_config, log_timestamps):
+    if log_config is None:
+        from ..server.logging_config import LOGGING_CONFIG
+
+        log_config = LOGGING_CONFIG
+
+    if log_timestamps:
+        import copy
+
+        log_config = copy.deepcopy(log_config)
+        try:
+            log_config["formatters"]["access"]["format"] = (
+                "[%(asctime)s.%(msecs)03dZ] "
+                + log_config["formatters"]["access"]["format"]
+            )
+            log_config["formatters"]["default"]["format"] = (
+                "[%(asctime)s.%(msecs)03dZ] "
+                + log_config["formatters"]["default"]["format"]
+            )
+        except KeyError:
+            typer.echo(
+                "The --log-timestamps option is only applicable with a logging "
+                "configuration that, like the default logging configuration, has "
+                "formatters 'access' and 'default'."
+            )
+            raise typer.Abort()
+    return log_config
