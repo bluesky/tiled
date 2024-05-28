@@ -14,17 +14,17 @@ LOGGING_CONFIG = {
         "access": {
             "()": "uvicorn.logging.AccessFormatter",
             "datefmt": "%Y-%m-%dT%H:%M:%S",
-            "format": "[%(asctime)s.%(msecs)03dZ] "
-            "[%(correlation_id)s] %(levelprefix)s "
-            '%(client_addr)s (%(principal)s) - "%(request_line)s" '
-            "%(status_code)s",
+            "format": (
+                "[%(correlation_id)s] "
+                '%(client_addr)s (%(principal)s) - "%(request_line)s" '
+                "%(status_code)s"
+            ),
+            "use_colors": True,
         },
         "default": {
             "()": "uvicorn.logging.DefaultFormatter",
             "datefmt": "%Y-%m-%dT%H:%M:%S",
-            "format": "[%(asctime)s.%(msecs)03dZ] "
-            "[%(correlation_id)s] %(levelprefix)s "
-            "%(message)s",
+            "format": "[%(correlation_id)s] %(levelprefix)s %(message)s",
             "use_colors": True,
         },
     },
