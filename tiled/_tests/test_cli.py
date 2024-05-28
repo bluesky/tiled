@@ -25,7 +25,7 @@ def scrape_server_url_from_logs(process):
     "Scrape from server logs 'Uvicorn running on https://...'"
 
     def target(queue):
-        pattern = re.compile(r"Uvicorn running on (\S*)")
+        pattern = re.compile(r"Uvicorn running on .*(http:\/\/\S+:\d+).*")
         while not process.poll():
             line = process.stderr.readline()
             if match := pattern.search(line.decode()):
