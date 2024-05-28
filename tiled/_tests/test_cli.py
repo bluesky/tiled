@@ -26,10 +26,16 @@ def scrape_server_url_from_logs(process):
 
     def target(queue):
         pattern = re.compile(r"Uvicorn running on .*(http:\/\/\S+:\d+).*")
+        lines = []
         while not process.poll():
             line = process.stderr.readline()
+            lines.append(line.decode())
             if match := pattern.search(line.decode()):
                 break
+        else:
+            raise RuntimeError(
+                "Did not find server URL in log output:\n" + "\n".join(lines)
+            )
         url = match.group(1)
         queue.put(url)
 
@@ -59,9 +65,9 @@ def check_server_readiness(process):
         "--api-key secret",
     ],
 )
-def test_serve_directory(args, tmpdir):
+def test_serve_directory(args, tmp_path):
     "Test 'tiled serve directory ... with a variety of arguments."
-    with run_cli(f"tiled serve directory {tmpdir!s} --port 0 " + args) as process:
+    with run_cli(f"tiled serve directory {tmp_path!s} --port 0 " + args) as process:
         check_server_readiness(process)
 
 
@@ -72,7 +78,36 @@ def test_serve_directory(args, tmpdir):
         "--api-key secret",
     ],
 )
-def test_serve_catalog_temp(args, tmpdir):
+def test_serve_catalog_temp(args, tmp_path):
     "Test 'tiled serve catalog --temp ... with a variety of arguments."
-    with run_cli(f"tiled serve directory {tmpdir!s} --port 0 " + args) as process:
+    with run_cli(f"tiled serve directory {tmp_path!s} --port 0 " + args) as process:
+        check_server_readiness(process)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        "",
+    ],
+)
+def test_serve_config(args, tmp_path):
+    "Test 'tiled serve config' with a tmp config file."
+    (tmp_path / "data").mkdir()
+    (tmp_path / "config").mkdir()
+    config_filepath = tmp_path / "config" / "config.yml"
+    with open(config_filepath, "w") as file:
+        file.write(
+            f"""
+authentication:
+  allow_anonymous_access: false
+trees:
+  - path: /
+    tree: catalog
+    args:
+      uri: sqlite+aiosqlite:///{tmp_path / 'catalog.db'}
+      writable_storage: {tmp_path / 'data'}
+      init_if_not_exists: true
+"""
+        )
+    with run_cli(f"tiled serve config {config_filepath} --port 0 " + args) as process:
         check_server_readiness(process)
