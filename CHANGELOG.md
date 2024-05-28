@@ -3,6 +3,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+## Changed
+
+- Customized default logging configuration to include correlation ID and username
+  of authenticated user.
+- Added `--log-timestamps` CLI flag to `tiled serve ...` to opt in to including
+  timestamp prefix in log messages.
+
 ## v0.1.0b1 (2024-05-25)
 
 ### Added

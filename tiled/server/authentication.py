@@ -373,6 +373,8 @@ async def get_current_principal(
             ),
             headers=headers_for_401(request, security_scopes),
         )
+    # This is used to pass the currently-authenticated principal into the logger.
+    request.state.principal = principal
     return principal
 
 
