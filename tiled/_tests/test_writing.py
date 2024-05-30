@@ -30,6 +30,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
+from ..utils import patch_mimetypes
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
@@ -320,12 +321,12 @@ def test_merge_patching(tree):
         client = from_context(context)
         ac = client.write_array([1, 2, 3], metadata={"a": 0, "b": 2}, specs=["spec1"])
         ac.patch_metadata(
-            md_patch={"a": 1, "c": 3}, content_type="application/merge-patch+json"
+            md_patch={"a": 1, "c": 3}, content_type=patch_mimetypes.MERGE_PATCH
         )
         assert dict(ac.metadata) == {"a": 1, "b": 2, "c": 3}
         assert ac.specs[0].name == "spec1"
         ac.patch_metadata(
-            specs_patch=["spec2"], content_type="application/merge-patch+json"
+            specs_patch=["spec2"], content_type=patch_mimetypes.MERGE_PATCH
         )
         assert [x.name for x in ac.specs] == ["spec2"]
 
@@ -348,13 +349,13 @@ def test_json_patching(tree):
                 {"op": "add", "path": "/c", "value": 3},
                 {"op": "replace", "path": "/a", "value": 1},
             ],
-            content_type="application/json-patch+json",
+            content_type=patch_mimetypes.JSON_PATCH,
         )
         assert dict(ac.metadata) == {"a": 1, "b": 2, "c": 3}
         assert ac.specs[0].name == "spec1"
         ac.patch_metadata(
             specs_patch=[{"op": "add", "path": "/1", "value": "spec2"}],
-            content_type="application/json-patch+json",
+            content_type=patch_mimetypes.JSON_PATCH,
         )
         assert [x.name for x in ac.specs] == ["spec1", "spec2"]
 

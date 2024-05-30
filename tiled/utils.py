@@ -14,11 +14,22 @@ import re
 import sys
 import threading
 import warnings
+from collections import namedtuple
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse, urlunparse
 
 import anyio
+
+# helper for avoiding re-typing patch mimetypes
+# namedtuple for the lack of StrEnum in py<3.11
+patch_mimetypes = namedtuple(
+    "patch_mimetypes",
+    "JSON_PATCH MERGE_PATCH",
+)(
+    JSON_PATCH="application/json-patch+json",
+    MERGE_PATCH="application/merge-patch+json",
+)
 
 
 class ListView(collections.abc.Sequence):
