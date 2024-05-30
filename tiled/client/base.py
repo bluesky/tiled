@@ -1,16 +1,24 @@
 import time
 import warnings
-from copy import deepcopy
+from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
 
+import json_merge_patch
 import jsonpatch
 import orjson
 from httpx import URL
 
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..utils import UNCHANGED, DictView, ListView, OneShotCachedMap, safe_json_dump
+from ..utils import (
+    UNCHANGED,
+    DictView,
+    ListView,
+    OneShotCachedMap,
+    patch_mimetypes,
+    safe_json_dump,
+)
 from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
@@ -200,9 +208,12 @@ class BaseClient:
 
     def metadata_copy(self):
         """
-        Generate a mutable copy of metadata (useful with update_metadata())
+        Generate a mutable copy of metadata and specs for validating metadata
+        (useful with update_metadata())
         """
-        return deepcopy(self._item["attributes"]["metadata"])
+        metadata = deepcopy(self._item["attributes"]["metadata"])
+        specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
+        return [metadata, specs]  # returning as list of mutable items
 
     @property
     def specs(self):
@@ -427,19 +438,27 @@ client or pass the optional parameter `include_data_sources=True` to
         Interactively update complex metadata using a copy of original structure
         (e.g., in iPython you may use tab completion to navigate nested metadata)
 
-        >>> md = node.metadata_copy()
+        >>> md = node.metadata_copy()[0]
         >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
+        if isinstance(metadata, list) and len(metadata) == 2:
+            if specs is None:
+                # Likely [metadata, specs] form from node.metadata_copy()
+                metadata, specs = metadata
+            else:
+                raise ValueError("Duplicate specs provided after [metadata, specs]")
 
-        patch = self.build_metadata_patch(metadata=metadata)
+        md_patch, specs_patch = self.build_metadata_patches(
+            metadata=metadata, specs=specs
+        )
+        self.patch_metadata(md_patch=md_patch, specs_patch=specs_patch)
 
-        self.patch_metadata(patch=patch, specs=specs)
-
-    def build_metadata_patch(self, metadata=None):
+    def build_metadata_patches(self, metadata=None, specs=None):
         """
-        Build a valid JSON Patch (RFC6902) accepted by `patch_metadata`.
+        Build valid JSON Patches (RFC6902) for metadata and metadata validation
+        specs accepted by `patch_metadata`.
 
         Parameters
         ----------
@@ -447,10 +466,17 @@ client or pass the optional parameter `include_data_sources=True` to
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
+        specs : list[Spec], optional
+            Metadata validation specifications.
+
         Returns
         -------
-        patch : list[dict]
-            A JSON serializable object representing a valid JSON patch (RFC6902).
+        metadata_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for metadata.
+        specs_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for metadata validation specifications.
 
         See Also
         --------
@@ -460,7 +486,7 @@ client or pass the optional parameter `include_data_sources=True` to
         Notes
         -----
         `build_metadata_patch` constructs a JSON Patch (RFC6902) by comparing user updates
-        to existing metadata. It uses a slight variation of JSON Merge Patch (RFC7386)
+        to existing metadata/specs. It uses a slight variation of JSON Merge Patch (RFC7386)
         as an intermediary to implement a python `dict.update`-like user-friendly
         interface, but with additional features like key deletion (see examples) and
         support for `None (null)` values.
@@ -470,35 +496,74 @@ client or pass the optional parameter `include_data_sources=True` to
 
         Build a patch for adding/updating a key-value pair at the top or a nested level
 
-        >>> node.build_metadata_patch({'key': new_value})
-        >>> node.build_metadata_patch({'top_key': {'nested_key': new_value}})
+        >>> patches = node.build_metadata_patches({'key': new_value})
+        >>> patches = node.build_metadata_patches({'top_key': {'nested_key': new_value}})
+
+        Build patches for metadata and specs ("mp", "sp")
+
+        >>> mp, sp = node.build_metadata_patches(metadata=metadata, specs=specs)
 
         Build a patch for removing an existing key
 
         >>> from tiled.client.metadata_update import DELETE_KEY
-        >>> node.build_metadata_patch({'key_to_be_deleted': DELETE_KEY})
+        >>> node.build_metadata_patches({'key_to_be_deleted': DELETE_KEY})
 
         Interactively build a patch for complex metadata (e.g., in iPython you may use
         tab completion to navigate nested metadata)
 
-        >>> md = node.metadata_copy()
+        >>> md = node.metadata_copy()[0]
         >>> md['L1_key']['L2_key']['L3_key'] = new_value  # use tab completion
         >>> md['unwanted_key'] = DELETE_KEY
-        >>> node.build_metadata_patch(metadata=md)  # Generate the patch
+        >>> node.build_metadata_patches(metadata=md)  # Generate the patch
         """
 
         if metadata is None:
-            metadata = {}
+            metadata_patch = []
+        else:
+            md_copy = deepcopy(self._item["attributes"]["metadata"])
+            metadata_patch = jsonpatch.JsonPatch.from_diff(
+                self._item["attributes"]["metadata"],
+                apply_update_patch(md_copy, metadata),
+                dumps=orjson.dumps,
+            ).patch
 
+        if specs is None:
+            specs_patch = None
+        else:
+            sp_copy = [spec["name"] for spec in self._item["attributes"]["specs"]]
+            specs_patch = (
+                []
+                if specs is None
+                else jsonpatch.JsonPatch.from_diff(
+                    sp_copy, specs, dumps=orjson.dumps
+                ).patch
+            )
+
+        return metadata_patch, specs_patch
+
+    def _build_json_patch(self, origin, update_patch):
+        """
+        Lower level method to construct a JSON patch from an origin and update_patch.
+        An "update_patch" is a `dict.update`-like specification that may include
+        `DELETE_KEY` for marking a dictionary key for deletion.
+        """
+        if update_patch is None:
+            return []
         patch = jsonpatch.JsonPatch.from_diff(
-            dict(self.metadata),
-            apply_update_patch(self.metadata_copy(), metadata),
-            dumps=orjson.dumps,
-        ).patch
+            origin, apply_update_patch(origin, update_patch), dumps=orjson.dumps
+        )
+        return patch.patch
 
-        return patch
+    def _build_metadata_revisions(self):
+        if self._metadata_revisions is None:
+            link = self.item["links"]["self"].replace("/metadata", "/revisions", 1)
+            self._metadata_revisions = MetadataRevisions(self.context, link)
 
-    def patch_metadata(self, patch=None, specs=None):
+        return self._metadata_revisions
+
+    def patch_metadata(
+        self, md_patch=None, specs_patch=None, content_type=patch_mimetypes.JSON_PATCH
+    ):
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
 
@@ -506,12 +571,17 @@ client or pass the optional parameter `include_data_sources=True` to
 
         Parameters
         ----------
-        patch : List[dict], optional
-            JSON-serializable RFC 6902 patch to be applied to metadata
-            (See https://datatracker.ietf.org/doc/html/rfc6902)
-        specs : List[str], optional
-            List of names that are used to label that the data and/or metadata
-            conform to some named standard specification.
+        md_patch : List[dict], optional
+            JSON-serializable patch to be applied to metadata
+        specs_patch : List[dict], optional
+            JSON-serializable patch to be applied to metadata validation
+            specifications list
+        content_type : str
+            Mimetype of the patches. Acceptable values are:
+            - "application/json-patch+json"
+              (See https://datatracker.ietf.org/doc/html/rfc6902)
+            - "application/merge-patch+json"
+              (See https://datatracker.ietf.org/doc/html/rfc7386)
 
         See Also
         --------
@@ -521,19 +591,46 @@ client or pass the optional parameter `include_data_sources=True` to
 
         self._cached_len = None
 
-        if specs is None:
-            normalized_specs = None
+        def patcher(doc, patch, patch_type):
+            # this helper function applies a given type of patch to the document
+            # and returns the modified document
+            if patch_type == patch_mimetypes.JSON_PATCH:
+                return jsonpatch.apply_patch(
+                    doc=doc,
+                    patch=patch,
+                    in_place=False,
+                )
+            if patch_type == patch_mimetypes.MERGE_PATCH:
+                return json_merge_patch.merge(doc, patch)
+            raise ValueError(
+                f"Unsupported patch type {content_type}. "
+                f"Acceptable values are: {', '.join(patch_mimetypes)}."
+            )
+
+        assert content_type in patch_mimetypes
+        if specs_patch is None:
+            normalized_specs_patch = None
         else:
-            normalized_specs = []
-            for spec in specs:
-                if isinstance(spec, str):
-                    spec = Spec(spec)
-                normalized_specs.append(asdict(spec))
+            normalized_specs_patch = []
+
+        if content_type == patch_mimetypes.JSON_PATCH:
+            if specs_patch:
+                for spec_patch in copy(specs_patch):
+                    value = spec_patch.get("value", None)
+                    if isinstance(value, str):
+                        spec_patch["value"] = asdict(Spec(value))
+                    normalized_specs_patch.append(spec_patch)
+        elif content_type == patch_mimetypes.MERGE_PATCH:
+            if specs_patch:
+                for spec in specs_patch:
+                    if isinstance(spec, str):
+                        spec = Spec(spec)
+                    normalized_specs_patch.append(asdict(spec))
 
         data = {
-            "content-type": "application/json-patch+json",
-            "patch": patch,
-            "specs": normalized_specs,
+            "content-type": content_type,
+            "metadata": md_patch,
+            "specs": normalized_specs_patch,
         }
 
         content = handle_error(
@@ -543,7 +640,7 @@ client or pass the optional parameter `include_data_sources=True` to
             )
         ).json()
 
-        if patch is not None:
+        if md_patch is not None:
             if "metadata" in content:
                 # Metadata was accepted and modified by the specs validator on the server side.
                 # It is updated locally using the new version.
@@ -551,12 +648,14 @@ client or pass the optional parameter `include_data_sources=True` to
             else:
                 # Metadata was accepted as it is by the server.
                 # It is updated locally with the version submitted by the client.
-                self._item["attributes"]["metadata"] = jsonpatch.apply_patch(
-                    dict(self.metadata), patch
+                self._item["attributes"]["metadata"] = patcher(
+                    dict(self.metadata), md_patch, content_type
                 )
 
-        if specs is not None:
-            self._item["attributes"]["specs"] = normalized_specs
+        if specs_patch is not None:
+            current_specs = self._item["attributes"]["specs"]
+            patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
+            self._item["attributes"]["specs"] = patched_specs
 
     def replace_metadata(self, metadata=None, specs=None):
         """

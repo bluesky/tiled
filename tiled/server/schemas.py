@@ -25,6 +25,8 @@ DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
 
+MAX_ALLOWED_SPECS = 20
+
 
 class Error(pydantic.BaseModel):
     code: int
@@ -89,7 +91,7 @@ class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
 # Specs = pydantic.conlist(Spec, max_length=20, unique_items=True)
-Specs = Annotated[List[Spec], Field(max_length=20)]
+Specs = Annotated[List[Spec], Field(max_length=MAX_ALLOWED_SPECS)]
 
 
 class Asset(pydantic.BaseModel):
@@ -502,17 +504,22 @@ class PutMetadataRequest(pydantic.BaseModel):
         return v
 
 
-# we use functional syntax to define JSONPatchSpec since "from" is a keyword
-JSONPatchSpec = TypedDict(
-    "JSONPatchSpec",
-    {
-        "op": str,
-        "path": str,
-        "from": str,
-        "value": Any,
-    },
-    total=False,
-)
+def JSONPatchType(dtype=Any):
+    # we use functional syntax with TypedDict here since "from" is a keyword
+    return TypedDict(
+        "JSONPatchType",
+        {
+            "op": str,
+            "path": str,
+            "from": str,
+            "value": dtype,
+        },
+        total=False,
+    )
+
+
+JSONPatchSpec = JSONPatchType(Spec)
+JSONPatchAny = JSONPatchType(Any)
 
 
 class HyphenizedBaseModel(pydantic.BaseModel):
@@ -524,15 +531,31 @@ class PatchMetadataRequest(HyphenizedBaseModel):
     content_type: str
 
     # These fields are optional because None means "no changes; do not update".
-    patch: Optional[Union[List[JSONPatchSpec], Dict]]  # Dict for merge-patch
-    specs: Optional[Specs]
+    # Dict for merge-patch:
+    metadata: Optional[Union[List[JSONPatchAny], Dict]] = None
+
+    # Specs for merge-patch. left_to_right mode is used to distinguish between
+    # merge-patch List[asdict(Spec)] and json-patch List[Dict]
+    specs: Optional[Union[Specs, List[JSONPatchSpec]]] = Field(
+        union_mode="left_to_right"
+    )
 
     @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
-        if len(v) != len(set(v)):
-            raise PydanticCustomError("specs", "Items must be unique")
+        if v and isinstance(v[0], Spec):
+            # This is the MERGE_PATCH case
+            if len(v) != len(set(v)):
+                raise PydanticCustomError("specs", "Items must be unique")
+        elif v and isinstance(v[0], dict):
+            # This is the JSON_PATCH case
+            v_new = [v_["value"] for v_ in v if v_["op"] in ["add", "replace"]]
+            # Note: uniqueness should be checked with existing specs included,
+            # however since we use replace_metadata to eventually write to db this
+            # will be caught and an error raised there.
+            if len(v_new) != len(set(v_new)):
+                raise PydanticCustomError("specs", "Items must be unique")
         return v
 
 

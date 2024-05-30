@@ -21,11 +21,12 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
+    HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
-from ..utils import ensure_awaitable, path_from_uri
+from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
 from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
@@ -1385,28 +1386,44 @@ async def patch_metadata(
             status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node does not support update of metadata.",
         )
-
-    if body.content_type == "application/json-patch+json":
-        metadata = apply_json_patch(entry.metadata(), (body.patch or []))
-    elif body.content_type == "application/merge-patch+json":
-        metadata = apply_merge_patch(entry.metadata(), (body.patch or {}))
+    if body.content_type == patch_mimetypes.JSON_PATCH:
+        metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
+        specs = apply_json_patch((entry.specs or []), (body.specs or []))
+    elif body.content_type == patch_mimetypes.MERGE_PATCH:
+        metadata = apply_merge_patch(entry.metadata(), (body.metadata or {}))
+        # body.specs = [] clears specs, as per json merge patch specification
+        # but we treat body.specs = None as "no modifications"
+        current_specs = entry.specs or []
+        target_specs = current_specs if body.specs is None else body.specs
+        specs = apply_merge_patch(current_specs, target_specs)
     else:
         raise HTTPException(
             status_code=HTTP_406_NOT_ACCEPTABLE,
-            detail="application/json-patch+json or application/merge-patch+json content type expected.",
+            detail=f"valid content types: {', '.join(patch_mimetypes)}",
         )
 
-    structure_family, structure, specs = (
+    # Manually validate limits that bypass pydantic validation via patch
+    if len(specs) > schemas.MAX_ALLOWED_SPECS:
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Update cannot result in more than {schemas.MAX_ALLOWED_SPECS} specs",
+        )
+    if len(specs) != len(set(specs)):
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Update cannot result in non-unique specs",
+        )
+
+    structure_family, structure = (
         entry.structure_family,
         entry.structure(),
-        body.specs if body.specs is not None else entry.specs,
     )
 
     metadata_modified, metadata = await validate_metadata(
         metadata=metadata,
         structure_family=structure_family,
         structure=structure,
-        specs=specs,
+        specs=[Spec(x) for x in specs],
         validation_registry=validation_registry,
         settings=settings,
     )
