@@ -314,6 +314,51 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+def test_merge_patching(tree):
+    "Test merge patching of metadata and specs"
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], metadata={"a": 0, "b": 2}, specs=["spec1"])
+        ac.patch_metadata(
+            md_patch={"a": 1, "c": 3}, content_type="application/merge-patch+json"
+        )
+        assert dict(ac.metadata) == {"a": 1, "b": 2, "c": 3}
+        assert ac.specs[0].name == "spec1"
+        ac.patch_metadata(
+            specs_patch=["spec2"], content_type="application/merge-patch+json"
+        )
+        assert [x.name for x in ac.specs] == ["spec2"]
+
+
+def test_json_patching(tree):
+    "Test json patching of metadata and specs"
+
+    validation_registry = ValidationRegistry()
+
+    for i in range(10):
+        validation_registry.register(f"spec{i}", lambda *args, **kwargs: None)
+
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], metadata={"a": 0, "b": 2}, specs=["spec1"])
+        ac.patch_metadata(
+            md_patch=[
+                {"op": "add", "path": "/c", "value": 3},
+                {"op": "replace", "path": "/a", "value": 1},
+            ],
+            content_type="application/json-patch+json",
+        )
+        assert dict(ac.metadata) == {"a": 1, "b": 2, "c": 3}
+        assert ac.specs[0].name == "spec1"
+        ac.patch_metadata(
+            specs_patch=[{"op": "add", "path": "/1", "value": "spec2"}],
+            content_type="application/json-patch+json",
+        )
+        assert [x.name for x in ac.specs] == ["spec1", "spec2"]
+
+
 def test_metadata_with_unsafe_objects(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
