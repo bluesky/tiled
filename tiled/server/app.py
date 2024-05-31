@@ -330,6 +330,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        # The current_principal_logging_filter middleware will not have
+        # had a chance to finish running, so set the principal here.
         principal = getattr(request.state, "principal", None)
         current_principal.set(principal)
         return await http_exception_handler(
@@ -877,10 +879,6 @@ Back up the database, and then run:
         request.state.principal = SpecialUsers.public
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
-        import random
-
-        if random.random() > 0.5:
-            raise Exception
         current_principal.set(request.state.principal)
         return response
 
