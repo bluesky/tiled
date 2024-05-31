@@ -330,6 +330,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        principal = getattr(request.state, "principal", None)
+        current_principal.set(principal)
         return await http_exception_handler(
             request,
             HTTPException(

@@ -8,8 +8,10 @@ class PrincipalFilter(Filter):
     """Logging filter to attach username or Service Principal UUID to LogRecord"""
 
     def filter(self, record: LogRecord) -> bool:
-        principal = current_principal.get()
-        if isinstance(principal, SpecialUsers):
+        principal = current_principal.get(None)
+        if principal is None:
+            short_name = "unset"
+        elif isinstance(principal, SpecialUsers):
             short_name = f"{principal.value}"
         elif principal.type == "service":
             short_name = f"service:{principal.uuid}"
