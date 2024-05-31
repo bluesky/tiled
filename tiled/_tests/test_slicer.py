@@ -6,7 +6,8 @@ from ..server.dependencies import slice_
 slice_test_data = [
     "",
     ":",
-    "::" "0",
+    "::",
+    "0",
     "0:",
     "0::",
     ":0",
