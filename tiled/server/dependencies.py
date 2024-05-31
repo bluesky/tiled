@@ -163,7 +163,7 @@ def expected_shape(
 
 
 def slice_(
-    slice: str | None = None,
+    slice: Optional[str] = None,
 ):
     "Specify and parse a block index parameter."
 
