@@ -17,6 +17,9 @@ from .authentication import get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
+# saving slice() to rescue after using "slice" for FastAPI dependency injection of slice_(slice: str)
+slice_func = slice
+
 
 @lru_cache(1)
 def get_query_registry():
@@ -160,19 +163,16 @@ def expected_shape(
 
 
 def slice_(
-    slice: str = Query(None, pattern="^[-0-9,:]*$"),
+    slice: str | None = None,
 ):
     "Specify and parse a block index parameter."
-    import numpy
 
-    # IMPORTANT We are eval-ing a user-provider string here so we need to be
-    # very careful about locking down what can be in it. The regex above
-    # excludes any letters or operators, so it is not possible to execute
-    # functions or expensive arithmetic.
-    return tuple(
-        [
-            eval(f"numpy.s_[{dim!s}]", {"numpy": numpy})
-            for dim in (slice or "").split(",")
-            if dim
-        ]
-    )
+    def np_style_slicer(indices: tuple):
+        return indices[0] if len(indices) == 1 else slice_func(*indices)
+
+    def parse_slice_str(dim: str):
+        return np_style_slicer(
+            tuple(int(idx) if idx else None for idx in dim.split(":"))
+        )
+
+    return tuple(parse_slice_str(dim) for dim in (slice or "").split(",") if dim)
