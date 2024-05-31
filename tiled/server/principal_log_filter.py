@@ -10,6 +10,9 @@ class PrincipalFilter(Filter):
     def filter(self, record: LogRecord) -> bool:
         principal = current_principal.get(None)
         if principal is None:
+            # This should not be possible, but it is here for
+            # defense in depth. Any errors raised in the filter
+            # cause the server to send no response at all.
             short_name = "unset"
         elif isinstance(principal, SpecialUsers):
             short_name = f"{principal.value}"

@@ -877,6 +877,10 @@ Back up the database, and then run:
         request.state.principal = SpecialUsers.public
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        import random
+
+        if random.random() > 0.5:
+            raise Exception
         current_principal.set(request.state.principal)
         return response
 
