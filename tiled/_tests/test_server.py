@@ -39,7 +39,6 @@ def test_500_response():
     server = uvicorn.Server(config)
 
     async def run_server():
-        print("run_server")
         await server.serve()
 
     async def wait_for_server():
@@ -65,7 +64,6 @@ def test_500_response():
             client.context.http_client.get, f"{url}/error"
         )
         assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
-        print("asserted")
         await server_task.shutdown()
         await server_task()
 
