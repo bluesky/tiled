@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+- Fix regression introduced in the previous release (v0.1.0b1) where exceptions
+  raised in the server sent _no_ response instead of properly sending a 500
+  response. (This presents in the client as, "Server disconnected without
+  sending a response.") A test now protects against this class of regression.
+
 ## v0.1.0b2 (2024-05-28)
 
 ## Changed
