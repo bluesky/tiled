@@ -574,9 +574,10 @@ client or pass the optional parameter `include_data_sources=True` to
             specifications list
         content_type : str
             Mimetype of the patches. Acceptable values are:
-            - "application/json-patch+json"
+
+            * "application/json-patch+json"
               (See https://datatracker.ietf.org/doc/html/rfc6902)
-            - "application/merge-patch+json"
+            * "application/merge-patch+json"
               (See https://datatracker.ietf.org/doc/html/rfc7386)
 
         See Also
