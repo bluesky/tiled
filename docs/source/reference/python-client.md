@@ -141,7 +141,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.base.BaseClient.replace_metadata
    tiled.client.base.BaseClient.update_metadata
    tiled.client.base.BaseClient.patch_metadata
-   tiled.client.base.BaseClient.build_metadata_patch
+   tiled.client.base.BaseClient.build_metadata_patches
    tiled.client.base.BaseClient.uri
    tiled.client.base.BaseClient.structure_family
    tiled.client.base.BaseClient.item
