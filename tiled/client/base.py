@@ -11,14 +11,7 @@ from httpx import URL
 
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..utils import (
-    UNCHANGED,
-    DictView,
-    ListView,
-    OneShotCachedMap,
-    patch_mimetypes,
-    safe_json_dump,
-)
+from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error
 
@@ -450,10 +443,10 @@ client or pass the optional parameter `include_data_sources=True` to
             else:
                 raise ValueError("Duplicate specs provided after [metadata, specs]")
 
-        md_patch, specs_patch = self.build_metadata_patches(
+        metadata_patch, specs_patch = self.build_metadata_patches(
             metadata=metadata, specs=specs
         )
-        self.patch_metadata(md_patch=md_patch, specs_patch=specs_patch)
+        self.patch_metadata(metadata_patch=metadata_patch, specs_patch=specs_patch)
 
     def build_metadata_patches(self, metadata=None, specs=None):
         """
@@ -562,7 +555,10 @@ client or pass the optional parameter `include_data_sources=True` to
         return self._metadata_revisions
 
     def patch_metadata(
-        self, md_patch=None, specs_patch=None, content_type=patch_mimetypes.JSON_PATCH
+        self,
+        metadata_patch=None,
+        specs_patch=None,
+        content_type=patch_mimetypes.JSON_PATCH,
     ):
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
@@ -571,7 +567,7 @@ client or pass the optional parameter `include_data_sources=True` to
 
         Parameters
         ----------
-        md_patch : List[dict], optional
+        metadata_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata
         specs_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata validation
@@ -629,7 +625,7 @@ client or pass the optional parameter `include_data_sources=True` to
 
         data = {
             "content-type": content_type,
-            "metadata": md_patch,
+            "metadata": metadata_patch,
             "specs": normalized_specs_patch,
         }
 
@@ -640,7 +636,7 @@ client or pass the optional parameter `include_data_sources=True` to
             )
         ).json()
 
-        if md_patch is not None:
+        if metadata_patch is not None:
             if "metadata" in content:
                 # Metadata was accepted and modified by the specs validator on the server side.
                 # It is updated locally using the new version.
@@ -649,7 +645,7 @@ client or pass the optional parameter `include_data_sources=True` to
                 # Metadata was accepted as it is by the server.
                 # It is updated locally with the version submitted by the client.
                 self._item["attributes"]["metadata"] = patcher(
-                    dict(self.metadata), md_patch, content_type
+                    dict(self.metadata), metadata_patch, content_type
                 )
 
         if specs_patch is not None:

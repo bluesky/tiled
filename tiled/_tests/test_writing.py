@@ -321,7 +321,7 @@ def test_merge_patching(tree):
         client = from_context(context)
         ac = client.write_array([1, 2, 3], metadata={"a": 0, "b": 2}, specs=["spec1"])
         ac.patch_metadata(
-            md_patch={"a": 1, "c": 3}, content_type=patch_mimetypes.MERGE_PATCH
+            metadata_patch={"a": 1, "c": 3}, content_type=patch_mimetypes.MERGE_PATCH
         )
         assert dict(ac.metadata) == {"a": 1, "b": 2, "c": 3}
         assert ac.specs[0].name == "spec1"
@@ -345,7 +345,7 @@ def test_json_patching(tree):
         client = from_context(context)
         ac = client.write_array([1, 2, 3], metadata={"a": 0, "b": 2}, specs=["spec1"])
         ac.patch_metadata(
-            md_patch=[
+            metadata_patch=[
                 {"op": "add", "path": "/c", "value": 3},
                 {"op": "replace", "path": "/a", "value": 1},
             ],
