@@ -916,7 +916,7 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def update_metadata(self, metadata=None, specs=None):
+    async def replace_metadata(self, metadata=None, specs=None):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with

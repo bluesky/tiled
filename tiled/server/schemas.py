@@ -6,8 +6,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
-from pydantic import Field, StringConstraints
-from typing_extensions import Annotated
+from pydantic import ConfigDict, Field, StringConstraints
+from pydantic_core import PydanticCustomError
+from typing_extensions import Annotated, TypedDict
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
@@ -23,6 +24,8 @@ if TYPE_CHECKING:
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
+
+MAX_ALLOWED_SPECS = 20
 
 
 class Error(pydantic.BaseModel):
@@ -88,7 +91,7 @@ class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
 # Specs = pydantic.conlist(Spec, max_length=20, unique_items=True)
-Specs = Annotated[List[Spec], Field(max_length=20)]
+Specs = Annotated[List[Spec], Field(max_length=MAX_ALLOWED_SPECS)]
 
 
 class Asset(pydantic.BaseModel):
@@ -499,3 +502,69 @@ class PutMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise ValueError
         return v
+
+
+def JSONPatchType(dtype=Any):
+    # we use functional syntax with TypedDict here since "from" is a keyword
+    return TypedDict(
+        "JSONPatchType",
+        {
+            "op": str,
+            "path": str,
+            "from": str,
+            "value": dtype,
+        },
+        total=False,
+    )
+
+
+JSONPatchSpec = JSONPatchType(Spec)
+JSONPatchAny = JSONPatchType(Any)
+
+
+class HyphenizedBaseModel(pydantic.BaseModel):
+    # This model configuration allows aliases like "content-type"
+    model_config = ConfigDict(alias_generator=lambda f: f.replace("_", "-"))
+
+
+class PatchMetadataRequest(HyphenizedBaseModel):
+    content_type: str
+
+    # These fields are optional because None means "no changes; do not update".
+    # Dict for merge-patch:
+    metadata: Optional[Union[List[JSONPatchAny], Dict]] = None
+
+    # Specs for merge-patch. left_to_right mode is used to distinguish between
+    # merge-patch List[asdict(Spec)] and json-patch List[Dict]
+    specs: Optional[Union[Specs, List[JSONPatchSpec]]] = Field(
+        union_mode="left_to_right"
+    )
+
+    @pydantic.field_validator("specs")
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        if v and isinstance(v[0], Spec):
+            # This is the MERGE_PATCH case
+            if len(v) != len(set(v)):
+                raise PydanticCustomError("specs", "Items must be unique")
+        elif v and isinstance(v[0], dict):
+            # This is the JSON_PATCH case
+            v_new = [v_["value"] for v_ in v if v_["op"] in ["add", "replace"]]
+            # Note: uniqueness should be checked with existing specs included,
+            # however since we use replace_metadata to eventually write to db this
+            # will be caught and an error raised there.
+            if len(v_new) != len(set(v_new)):
+                raise PydanticCustomError("specs", "Items must be unique")
+        return v
+
+
+class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
+    id: str
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    # May be None if not altered
+    metadata: Optional[Dict]
+    data_sources: Optional[List[DataSource]]
+
+
+NodeStructure.model_rebuild()
