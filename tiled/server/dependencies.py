@@ -20,6 +20,9 @@ from .utils import filter_for_access, record_timing
 # saving slice() to rescue after using "slice" for FastAPI dependency injection of slice_(slice: str)
 slice_func = slice
 
+DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
+SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
+
 
 @lru_cache(1)
 def get_query_registry():
@@ -163,7 +166,7 @@ def expected_shape(
 
 
 def slice_(
-    slice: Optional[str] = None,
+    slice: str = Query(None, pattern=SLICE_REGEX),
 ):
     "Specify and parse a block index parameter."
 
