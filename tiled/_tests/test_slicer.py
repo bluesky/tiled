@@ -1,7 +1,29 @@
+import pathlib
+
 import pytest
 from fastapi import Query
+from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 
-from ..server.dependencies import slice_
+from tiled.catalog import in_memory
+from tiled.client import Context, from_context
+from tiled.server.app import build_app
+from tiled.server.dependencies import slice_
+
+
+@pytest.fixture(scope="module")
+def module_tmp_path(tmp_path_factory: pytest.TempdirFactory) -> pathlib.Path:
+    return tmp_path_factory.mktemp("temp")
+
+
+@pytest.fixture(scope="module")
+def client(module_tmp_path):
+    catalog = in_memory(writable_storage=module_tmp_path)
+    app = build_app(catalog)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        client.write_array([1], key="x")
+        yield client
+
 
 slice_test_data = [
     "",
@@ -105,3 +127,10 @@ def test_slicer_malicious_exec(slice: str):
     """
     with pytest.raises(ValueError):
         _ = slice_(slice)
+
+
+@pytest.mark.parametrize("slice", slice_typo_data + slice_malicious_data)
+def test_slicer_fastapi_query_rejectsion(slice, client):
+    http_client = client.context.http_client
+    response = http_client.get(f"/api/v1/array/block/x?block=0&slice={slice}")
+    assert response.status_code == HTTP_422_UNPROCESSABLE_ENTITY
