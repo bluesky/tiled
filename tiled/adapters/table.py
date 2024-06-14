@@ -51,7 +51,6 @@ class TableAdapter:
         -------
 
         """
-        print("HHHHHHHHere in table adapter")
         ddf = dask.dataframe.from_pandas(*args, npartitions=npartitions, **kwargs)
         if specs is None:
             specs = [Spec("dataframe")]
@@ -214,7 +213,6 @@ class TableAdapter:
         -------
 
         """
-        print("Ever in adapters/table read????", self._partitions[0])
         if any(p is None for p in self._partitions):
             raise ValueError("Not all partitions have been stored.")
         if isinstance(self._partitions[0], dask.dataframe.DataFrame):
@@ -226,13 +224,11 @@ class TableAdapter:
                 ddf = dask.dataframe.concat(self._partitions, axis=0)
             return ddf.compute()
         if isinstance(self._partitions[0], pyarrow.Table):
-            print("IS IT HEREEEE")
             return pyarrow.concat_tables(self._partitions)
 
         df = pandas.concat(self._partitions, axis=0)
         if fields is not None:
             df = df[fields]
-        print("In read adapter/table", df)
 
         return df
 
